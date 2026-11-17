@@ -263,8 +263,8 @@ def test_osc_child_set_compiles_every_id_form(caplog):
     [
         ({"segment": "x"}, "[acme1] child_set: OSC id needs a 'segment' index (got {'segment': 'x'}); skipping entry"),
         ({"map": {}}, "[acme1] child_set: OSC id needs a 'segment' index (got {'map': {}}); skipping entry"),
-        ("$1", "[acme1] child_set: OSC rules have no capture groups — id must be {segment: N} or a literal (got '$1'); skipping entry"),
-        (None, "[acme1] child_set: OSC rules have no capture groups — id must be {segment: N} or a literal (got None); skipping entry"),
+        ("$1", "[acme1] child_set: OSC rules have no capture groups, so id must be {segment: N} or a literal (got '$1'); skipping entry"),
+        (None, "[acme1] child_set: OSC rules have no capture groups, so id must be {segment: N} or a literal (got None); skipping entry"),
     ],
 )
 def test_osc_child_set_bad_id_warns_and_skips(caplog, cid, message):
@@ -314,7 +314,7 @@ def test_osc_child_set_props_every_form(caplog):
     ]
     assert list(out[0]["props"][0]) == ["prop", "type", "arg", "map"]
     assert caplog.messages == [
-        "[acme1] child_set: state 'other' — OSC rules have no capture groups; use {arg: N}. Skipping"
+        "[acme1] child_set: state 'other': OSC rules have no capture groups; use {arg: N}. Skipping"
     ]
 
 
@@ -375,8 +375,8 @@ def test_json_child_set_key_wins_over_path(caplog):
 @pytest.mark.parametrize(
     "cid, message",
     [
-        (None, "[acme1] child_set: a json rule has no captures — id must be a literal child id (got None); skipping entry"),
-        ("$1", "[acme1] child_set: a json rule has no captures — id must be a literal child id (got '$1'); skipping entry"),
+        (None, "[acme1] child_set: a json rule has no captures, so id must be a literal child id (got None); skipping entry"),
+        ("$1", "[acme1] child_set: a json rule has no captures, so id must be a literal child id (got '$1'); skipping entry"),
     ],
 )
 def test_json_child_set_bad_id_warns_and_skips(caplog, cid, message):

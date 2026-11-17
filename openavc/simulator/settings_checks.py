@@ -52,7 +52,7 @@ from openavc.simulator.validation_result import ValidationResult
 
 #: What every initial-state type line ends with.
 _WIRE_FORM = (
-    "Expected when the wire form differs from the logical type — confirm the "
+    "Expected when the wire form differs from the logical type. Confirm the "
     "driver's response rules map it back."
 )
 

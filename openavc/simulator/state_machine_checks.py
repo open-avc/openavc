@@ -120,8 +120,8 @@ class _Transitions:
             self.result.warning(
                 "state_machine",
                 f"{label} duplicates an earlier transition for "
-                f"from '{pair[0]}' trigger '{pair[1]}' — the first "
-                f"listed wins, this one is unreachable",
+                f"from '{pair[0]}' trigger '{pair[1]}'. The first "
+                f"listed wins, so this one is unreachable",
             )
         self.seen.add(pair)
 
@@ -147,7 +147,7 @@ class _Transitions:
             return
         self.result.warning(
             "state_machine",
-            f"{label} has neither 'trigger' nor 'after_seconds' — it can never fire",
+            f"{label} has neither 'trigger' nor 'after_seconds', so it can never fire",
         )
 
     def _trigger_names_a_command(self, label: str, transition: dict) -> None:
@@ -157,5 +157,5 @@ class _Transitions:
         if self.command_names and trigger not in self.command_names:
             self.result.warning(
                 "state_machine",
-                f"{label} trigger '{trigger}' matches no command name — it will never fire",
+                f"{label} trigger '{trigger}' matches no command name, so it will never fire",
             )

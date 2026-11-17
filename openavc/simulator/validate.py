@@ -276,14 +276,14 @@ def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict)
         result.warning(
             "child_entities",
             f"driver declares child entity types ({names}) but has no "
-            f"simulator: section — per-child state is modelled from the "
+            f"simulator: section. Per-child state is modelled from the "
             f"declarations, so seed each child's starting values under "
             f"simulator.initial_state with dotted keys (e.g. output.2.input)."
         )
     else:
         result.info(
             "child_entities",
-            f"driver declares child entity types ({names}) — per-child state "
+            f"driver declares child entity types ({names}). Per-child state "
             f"is modelled from the declarations, but only where the pairing is "
             f"declared: a child_id command needs sets: / query_for:, and an "
             f"each_child poll query needs query_for:. Anything without one "

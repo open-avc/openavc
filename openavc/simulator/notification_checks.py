@@ -61,7 +61,7 @@ def check_notifications(
     if not _notifications_reach_driver(driver_def, transport):
         result.warning(
             "notifications",
-            f"notifications: has no effect for transport '{transport}' — only "
+            f"notifications: has no effect for transport '{transport}'. Only "
             f"TCP, serial and UDP simulators push notification messages on "
             f"the control link (unless the driver declares a multicast, SSE, "
             f"TCP dial-back, or HTTP-listener push: block)"
@@ -141,7 +141,7 @@ class _NotificationCheck:
             self.result.warning(
                 "notifications",
                 f"notification key '{key}' is not a state variable or "
-                f"initial_state key — it only fires if a handler writes that key"
+                f"initial_state key, so it only fires if a handler writes that key"
             )
 
         var_type = self.state_vars.get(key, {}).get("type", "string")
@@ -166,7 +166,7 @@ class _NotificationCheck:
             self.result.error(
                 "notifications",
                 f"notification '{key}' template uses {{value}} but '{key}' is "
-                f"boolean — Python's str(True) produces 'True' not 'true'. Use "
+                f"boolean, and Python's str(True) produces 'True' not 'true'. Use "
                 f"per-value templates ('true': ..., 'false': ...) instead."
             )
             return
@@ -178,8 +178,8 @@ class _NotificationCheck:
         if var_type == "boolean" and trigger not in ("true", "false", "*"):
             self.result.error(
                 "notifications",
-                f"notification '{key}' value key {trigger!r} never matches — "
-                f"boolean lookups use lowercase 'true'/'false' (quote the keys "
+                f"notification '{key}' value key {trigger!r} never matches. "
+                f"Boolean lookups use lowercase 'true'/'false' (quote the keys "
                 f"in YAML so they stay strings)"
             )
         if var_type == "enum" and trigger != "*":
@@ -225,5 +225,5 @@ class _NotificationCheck:
             self.result.warning(
                 "notifications",
                 f"notification '{key}' emits {message!r} which matches no "
-                f"driver response pattern — the driver will ignore it"
+                f"driver response pattern, so the driver will ignore it"
             )

@@ -209,8 +209,8 @@ def test_every_case_has_an_expectation():
 EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                              'response_parsing',
                                              '3 simulator reply/replies match no driver response '
-                                             'rule, none of them the only answer to a polled query '
-                                             '— the shape of a write acknowledgement, which '
+                                             'rule, none of them the only answer to a polled query. '
+                                             'That is the shape of a write acknowledgement, which '
                                              "carries no state: 'A', 'B', 'C'. A polled query "
                                              'whose answer nothing parses warns instead.'),
                                             ('warning',
@@ -226,7 +226,7 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
  'framing_four_trailing_replies': [('info',
                                     'response_parsing',
                                     '4 simulator reply/replies match no driver response rule, none '
-                                    'of them the only answer to a polled query — the shape of a '
+                                    'of them the only answer to a polled query. That is the shape of a '
                                     "write acknowledgement, which carries no state: 'A', 'B', 'C', "
                                     "'D'. A polled query whose answer nothing parses warns "
                                     'instead.'),
@@ -243,7 +243,7 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                                   'response_parsing',
                                                   '1 simulator reply/replies match no driver '
                                                   'response rule, none of them the only answer to '
-                                                  'a polled query — the shape of a write '
+                                                  'a polled query. That is the shape of a write '
                                                   "acknowledgement, which carries no state: 'PWR 1 "
                                                   "0123456789012345678901234567890123456789XYZ'. A "
                                                   'polled query whose answer nothing parses warns '
@@ -255,8 +255,8 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                                   'on, so the driver never completes a frame and '
                                                   "reads nothing they carry: 'C0' -> b'PWR 1 "
                                                   "0123456789012345678901234567890123'. A reply "
-                                                  'written by hand — a respond: template or a '
-                                                  'respond() call in a handler — is sent verbatim, '
+                                                  'written by hand (a respond: template or a '
+                                                  'respond() call in a handler) is sent verbatim, '
                                                   'so end it with the delimiter; only the handlers '
                                                   'the simulator generates are terminated for '
                                                   'you.')],
@@ -284,13 +284,13 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                                  ('error',
                                                   'notifications',
                                                   "notification 'power' value key 'True' never "
-                                                  'matches — boolean lookups use lowercase '
+                                                  'matches. Boolean lookups use lowercase '
                                                   "'true'/'false' (quote the keys in YAML so they "
                                                   'stay strings)'),
                                                  ('warning',
                                                   'notifications',
                                                   "notification 'power' emits 'PWR True\\r\\n' "
-                                                  'which matches no driver response pattern — the '
+                                                  'which matches no driver response pattern, so the '
                                                   'driver will ignore it')],
  'notifications_empty_on_http': [],
  'notifications_empty_on_osc': [],
@@ -302,7 +302,7 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                      ('warning',
                                       'notifications',
                                       "notification 'power' emits 'NOPE 5\\r\\n' which matches no "
-                                      'driver response pattern — the driver will ignore it')],
+                                      'driver response pattern, so the driver will ignore it')],
  'notifications_pattern_filled_from_config_derived': [('info',
                                                        'reply_framing',
                                                        '1 simulator reply checked, all terminated '
@@ -314,7 +314,7 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
  'parsing_bytes_constant_is_unreadable': [('info',
                                            'response_parsing',
                                            '1 simulator reply/replies match no driver response '
-                                           'rule, none of them the only answer to a polled query — '
+                                           'rule, none of them the only answer to a polled query. That is '
                                            'the shape of a write acknowledgement, which carries no '
                                            "state: 'NOPE'. A polled query whose answer nothing "
                                            'parses warns instead.'),
@@ -367,8 +367,8 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                                   "'\\\\r\\\\n' this driver splits incoming bytes "
                                                   'on, so the driver never completes a frame and '
                                                   "reads nothing they carry: 'STATUS?' -> b'X'. A "
-                                                  'reply written by hand — a respond: template or '
-                                                  'a respond() call in a handler — is sent '
+                                                  'reply written by hand (a respond: template or '
+                                                  'a respond() call in a handler) is sent '
                                                   'verbatim, so end it with the delimiter; only '
                                                   'the handlers the simulator generates are '
                                                   'terminated for you.')],
@@ -384,7 +384,7 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                               'response_parsing',
                                               '1 simulator reply/replies match no driver response '
                                               'rule, none of them the only answer to a polled '
-                                              'query — the shape of a write acknowledgement, which '
+                                              'query. That is the shape of a write acknowledgement, which '
                                               "carries no state: 'NOPE'. A polled query whose "
                                               'answer nothing parses warns instead.'),
                                              ('info',
@@ -421,7 +421,7 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
  'parsing_state_ref_used_twice': [('info',
                                    'response_parsing',
                                    '1 simulator reply/replies match no driver response rule, none '
-                                   'of them the only answer to a polled query — the shape of a '
+                                   'of them the only answer to a polled query. That is the shape of a '
                                    "write acknowledgement, which carries no state: 'NM a a'. A "
                                    'polled query whose answer nothing parses warns instead.'),
                                   ('info',

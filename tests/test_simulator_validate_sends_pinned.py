@@ -398,8 +398,8 @@ FRAMING_ORDER: list = [('error',
   'reply_framing',
   "3 of 3 simulator replies come back without the '\\\\r\\\\n' this driver splits incoming bytes "
   "on, so the driver never completes a frame and reads nothing they carry: 'PING' -> b'PONG'; "
-  "'LVL?' -> b'L'; 'PWR 1' -> b'P'. A reply written by hand — a respond: template or a respond() "
-  'call in a handler — is sent verbatim, so end it with the delimiter; only the handlers the '
+  "'LVL?' -> b'L'; 'PWR 1' -> b'P'. A reply written by hand (a respond: template or a respond() "
+  'call in a handler) is sent verbatim, so end it with the delimiter; only the handlers the '
   'simulator generates are terminated for you.')]
 
 
@@ -412,8 +412,8 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                             ('info',
                                              'response_parsing',
                                              '1 simulator reply/replies match no driver response '
-                                             'rule, none of them the only answer to a polled query '
-                                             '— the shape of a write acknowledgement, which '
+                                             'rule, none of them the only answer to a polled query. '
+                                             'That is the shape of a write acknowledgement, which '
                                              "carries no state: 'HUH'. A polled query whose answer "
                                              'nothing parses warns instead.'),
                                             ('info',
@@ -432,7 +432,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                                   'response_parsing',
                                                   '2 simulator reply/replies match no driver '
                                                   'response rule, none of them the only answer to '
-                                                  'a polled query — the shape of a write '
+                                                  'a polled query. That is the shape of a write '
                                                   "acknowledgement, which carries no state: 'x', "
                                                   "'y'. A polled query whose answer nothing parses "
                                                   'warns instead.'),
@@ -447,8 +447,8 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                              "'\\\\r\\\\n' this driver splits incoming bytes on, "
                                              'so the driver never completes a frame and reads '
                                              "nothing they carry: 'PWR 1' -> b'PWR 1\\\\r\\\\n'. A "
-                                             'reply written by hand — a respond: template or a '
-                                             'respond() call in a handler — is sent verbatim, so '
+                                             'reply written by hand (a respond: template or a '
+                                             'respond() call in a handler) is sent verbatim, so '
                                              'end it with the delimiter; only the handlers the '
                                              'simulator generates are terminated for you.')],
  'command_matched_with_the_prefix': [],
@@ -469,8 +469,8 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                    "1 of 1 simulator replies come back without the '\\\\r\\\\n' "
                                    'this driver splits incoming bytes on, so the driver never '
                                    "completes a frame and reads nothing they carry: 'PWR 1' -> "
-                                   "b'PWR 1\\\\r\\\\n'. A reply written by hand — a respond: "
-                                   'template or a respond() call in a handler — is sent verbatim, '
+                                   "b'PWR 1\\\\r\\\\n'. A reply written by hand (a respond: "
+                                   'template or a respond() call in a handler) is sent verbatim, '
                                    'so end it with the delimiter; only the handlers the simulator '
                                    'generates are terminated for you.')],
  'command_raw_with_config_skips_the_prefix': [('error',
@@ -601,87 +601,87 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
  'osc_samples_by_parameter_type': [('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'int_default' "
-                                    "(sample address: '/a/7') — add a command_handlers entry with "
+                                    "(sample address: '/a/7'). Add a command_handlers entry with "
                                     'a matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'int_min' (sample "
-                                    "address: '/b/3') — add a command_handlers entry with a "
+                                    "address: '/b/3'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'int_bare' (sample "
-                                    "address: '/c/1') — add a command_handlers entry with a "
+                                    "address: '/c/1'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'int_both' (sample "
-                                    "address: '/c2/5') — add a command_handlers entry with a "
+                                    "address: '/c2/5'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'child' (sample "
-                                    "address: '/d/01') — add a command_handlers entry with a "
+                                    "address: '/d/01'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'num_default' "
-                                    "(sample address: '/e/2.5') — add a command_handlers entry "
+                                    "(sample address: '/e/2.5'). Add a command_handlers entry "
                                     'with a matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'num_min' (sample "
-                                    "address: '/f/-1') — add a command_handlers entry with a "
+                                    "address: '/f/-1'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'num_bare' (sample "
-                                    "address: '/g/1.00') — add a command_handlers entry with a "
+                                    "address: '/g/1.00'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'num_both' (sample "
-                                    "address: '/g2/0.5') — add a command_handlers entry with a "
+                                    "address: '/g2/0.5'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'flag' (sample "
-                                    "address: '/h/01') — add a command_handlers entry with a "
+                                    "address: '/h/01'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'enum_plain' (sample "
-                                    "address: '/i/x1') — add a command_handlers entry with a "
+                                    "address: '/i/x1'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'enum_pair' (sample "
-                                    "address: '/j/w1') — add a command_handlers entry with a "
+                                    "address: '/j/w1'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'enum_empty' (sample "
-                                    "address: '/k/test') — add a command_handlers entry with a "
+                                    "address: '/k/test'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'text_default' "
-                                    "(sample address: '/l/abc') — add a command_handlers entry "
+                                    "(sample address: '/l/abc'). Add a command_handlers entry "
                                     'with a matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'text_bare' (sample "
-                                    "address: '/m/test') — add a command_handlers entry with a "
+                                    "address: '/m/test'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'two' (sample "
-                                    "address: '/n/2/test') — add a command_handlers entry with a "
+                                    "address: '/n/2/test'). Add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'config_filled' "
-                                    "(sample address: '/o/z1') — add a command_handlers entry with "
+                                    "(sample address: '/o/z1'). Add a command_handlers entry with "
                                     'a matching address: pattern or a responses entry for it'),
                                    ('warning',
                                     'command_coverage',
@@ -690,7 +690,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                    ('error',
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'protocol_braces' "
-                                    "(sample address: '/q/{4}') — add a command_handlers entry "
+                                    "(sample address: '/q/{4}'). Add a command_handlers entry "
                                     'with a matching address: pattern or a responses entry for '
                                     'it')],
  'poll_query_config_filled': [('error',
@@ -741,8 +741,8 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                       "1 of 3 simulator replies come back without the '\\\\r\\\\n' "
                                       'this driver splits incoming bytes on, so the driver never '
                                       "completes a frame and reads nothing they carry: 'STATUS?' "
-                                      "-> b'PWR 1\\\\r\\\\n'. A reply written by hand — a respond: "
-                                      'template or a respond() call in a handler — is sent '
+                                      "-> b'PWR 1\\\\r\\\\n'. A reply written by hand (a respond: "
+                                      'template or a respond() call in a handler) is sent '
                                       'verbatim, so end it with the delimiter; only the handlers '
                                       'the simulator generates are terminated for you.')],
  'poll_query_matching_a_parameterised_command': [('info',
@@ -831,7 +831,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                     ('info',
                                      'response_parsing',
                                      '4 simulator reply/replies match no driver response rule, '
-                                     'none of them the only answer to a polled query — the shape '
+                                     'none of them the only answer to a polled query. That is the shape '
                                      "of a write acknowledgement, which carries no state: 'A1', "
                                      "'A4', 'A6', 'A7'. A polled query whose answer nothing parses "
                                      'warns instead.'),
@@ -841,7 +841,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                      'this driver splits incoming bytes on, so the driver never '
                                      "completes a frame and reads nothing they carry: 'LIVE?' -> "
                                      "b'A7'; 'ask_power' -> b'A1'; 'Q1?' -> b'A2'. A reply written "
-                                     'by hand — a respond: template or a respond() call in a '
-                                     'handler — is sent verbatim, so end it with the delimiter; '
+                                     'by hand (a respond: template or a respond() call in a '
+                                     'handler) is sent verbatim, so end it with the delimiter; '
                                      'only the handlers the simulator generates are terminated for '
                                      'you.')]}

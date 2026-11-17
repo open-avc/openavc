@@ -1083,7 +1083,7 @@ def _load_status(driver_id: str, filepath: Path) -> tuple[bool, str | None]:
         return False, refused
     if _is_imported(filepath):
         return False, (
-            "Imported but not registered — duplicate driver ID "
+            "Imported but not registered: a duplicate driver ID "
             "or a failed last reload"
         )
     return False, "Not loaded"

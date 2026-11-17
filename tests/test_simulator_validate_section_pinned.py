@@ -546,7 +546,7 @@ def test_a_group_nested_four_hundred_deep_is_checked_to_its_leaf(tmp_path):
     where = "controls[0]" + ".controls[0]" * 400
     assert found == [(
         "warning",
-        f"{where} (power): key 'nope' is not a state variable or initial_state key — the "
+        f"{where} (power): key 'nope' is not a state variable or initial_state key, so the "
         f"control shows nothing and writes to a key nothing reads",
     )]
 
@@ -556,42 +556,42 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'control_keys_unknown': [('warning',
                            'controls',
                            "controls[0] (power): key 'pwr' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[1] (select): key 'src' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[2] (slider): key 'vol' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[3] (toggle): key 'mute' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[4] (presets): key 'preset' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[5] (indicator): key 'alarm' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[6] (matrix): state_pattern 'xpt.1' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads'),
                           ('warning',
                            'controls',
                            "controls[7] (meters): key_pattern 'lvl.1' is not a state variable or "
-                           'initial_state key — the control shows nothing and writes to a key '
+                           'initial_state key, so the control shows nothing and writes to a key '
                            'nothing reads')],
  'control_keys_with_nothing_known': [],
  'control_not_a_mapping': [('error', 'controls', "controls[0]: must be a mapping, got: 'power'"),
@@ -644,7 +644,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                "controls[3] (toggle): missing required field 'key'"),
                               ('warning',
                                'controls',
-                               "controls[3] (toggle): missing 'label' — the panel shows "
+                               "controls[3] (toggle): missing 'label', so the panel shows "
                                "'undefined'"),
                               ('error',
                                'controls',
@@ -666,21 +666,21 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                "controls[6] (presets): missing required field 'key'"),
                               ('warning',
                                'controls',
-                               "controls[6] (presets): neither 'count' nor 'names' given — the "
+                               "controls[6] (presets): neither 'count' nor 'names' given, so the "
                                'panel renders no preset buttons'),
                               ('error',
                                'controls',
                                "controls[7] (group): missing required field 'controls'"),
                               ('warning',
                                'controls',
-                               "controls[7] (group): missing 'label' — the panel shows "
+                               "controls[7] (group): missing 'label', so the panel shows "
                                "'undefined'"),
                               ('error',
                                'controls',
                                "controls[8] (indicator): missing required field 'key'"),
                               ('warning',
                                'controls',
-                               "controls[8] (indicator): missing 'label' — the panel shows "
+                               "controls[8] (indicator): missing 'label', so the panel shows "
                                "'undefined'")],
  'controls_every_type_complete': [],
  'controls_false': [('error', 'controls', 'simulator.controls must be a list')],
@@ -695,18 +695,18 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'group_children_checked': [('warning',
                              'controls',
                              "controls[0].controls[0] (power): key 'nope' is not a state variable "
-                             'or initial_state key — the control shows nothing and writes to a key '
+                             'or initial_state key, so the control shows nothing and writes to a key '
                              'nothing reads'),
                             ('error',
                              'controls',
                              "controls[0].controls[1]: must be a mapping, got: 'bad'"),
                             ('warning',
                              'controls',
-                             "controls[0].controls[2] (group): missing 'label' — the panel shows "
+                             "controls[0].controls[2] (group): missing 'label', so the panel shows "
                              "'undefined'"),
                             ('warning',
                              'controls',
-                             "controls[0].controls[2].controls[0] (toggle): missing 'label' — the "
+                             "controls[0].controls[2].controls[0] (toggle): missing 'label', so the "
                              "panel shows 'undefined'"),
                             ('error',
                              'controls',
@@ -717,7 +717,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                             ('warning',
                              'controls',
                              "controls[1] (power): key 'after' is not a state variable or "
-                             'initial_state key — the control shows nothing and writes to a key '
+                             'initial_state key, so the control shows nothing and writes to a key '
                              'nothing reads')],
  'group_children_not_a_list': [('error',
                                 'controls',
@@ -729,27 +729,27 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'handler_beside_respond_and_set_state': [('warning',
                                            'command_handlers',
                                            "handler 'PWR (\\\\d)': set_state:/respond: are ignored "
-                                           'when handler: is present — move that logic into the '
+                                           'when handler: is present. Move that logic into the '
                                            'handler code'),
                                           ('warning',
                                            'command_handlers',
                                            "handler 'PWR (\\\\d)': set_state:/respond: are ignored "
-                                           'when handler: is present — move that logic into the '
+                                           'when handler: is present. Move that logic into the '
                                            'handler code'),
                                           ('warning',
                                            'command_handlers',
                                            "handler '': set_state:/respond: are ignored when "
-                                           'handler: is present — move that logic into the handler '
+                                           'handler: is present. Move that logic into the handler '
                                            'code'),
                                           ('warning',
                                            'command_handlers',
                                            "handler 'LVL': set_state:/respond: are ignored when "
-                                           'handler: is present — move that logic into the handler '
+                                           'handler: is present. Move that logic into the handler '
                                            'code')],
  'handler_code_a_bare_return': [('error',
                                  'handler_syntax',
                                  "handler for 'PWR\\\\?' has a Python syntax error (line 1): "
-                                 "'return' outside function — the simulator will skip this "
+                                 "'return' outside function. The simulator will skip this "
                                  'handler')],
  'handler_code_compiles': [],
  'handler_entries_not_mappings': [('error',
@@ -767,72 +767,72 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'handler_syntax_errors_labelled': [('error',
                                      'handler_syntax',
                                      "handler for '/ch/1' has a Python syntax error (line 1): '(' "
-                                     'was never closed — the simulator will skip this handler'),
+                                     'was never closed. The simulator will skip this handler'),
                                     ('error',
                                      'handler_syntax',
                                      "handler for 'PWR\\\\?' has a Python syntax error (line 1): "
-                                     'invalid syntax — the simulator will skip this handler'),
+                                     'invalid syntax. The simulator will skip this handler'),
                                     ('error',
                                      'handler_syntax',
                                      "handler for 'LVL' has a Python syntax error (line 1): "
-                                     "expected ':' — the simulator will skip this handler"),
+                                     "expected ':'. The simulator will skip this handler"),
                                     ('error',
                                      'handler_syntax',
                                      "handler for '?' has a Python syntax error (line 1): '(' was "
-                                     'never closed — the simulator will skip this handler'),
+                                     'never closed. The simulator will skip this handler'),
                                     ('error',
                                      'handler_syntax',
                                      "handler for '?' has a Python syntax error (line 1): invalid "
-                                     'syntax — the simulator will skip this handler'),
+                                     'syntax. The simulator will skip this handler'),
                                     ('error',
                                      'handler_syntax',
                                      "handler for 'SRC' has a Python syntax error (line 1): "
-                                     'invalid syntax — the simulator will skip this handler')],
+                                     'invalid syntax. The simulator will skip this handler')],
  'handlers_both_passes_in_order': [('error',
                                     'handler_syntax',
                                     "handler for 'A' has a Python syntax error (line 1): '(' was "
-                                    'never closed — the simulator will skip this handler'),
+                                    'never closed. The simulator will skip this handler'),
                                    ('error',
                                     'command_handlers',
                                     "command_handlers entries must be mappings, got: 'bad'"),
                                    ('error',
                                     'handler_syntax',
                                     "handler for 'B (\\\\d)' has a Python syntax error (line 1): "
-                                    "'(' was never closed — the simulator will skip this handler"),
+                                    "'(' was never closed. The simulator will skip this handler"),
                                    ('warning',
                                     'command_handlers',
                                     "handler 'A': set_state:/respond: are ignored when handler: is "
-                                    'present — move that logic into the handler code'),
+                                    'present. Move that logic into the handler code'),
                                    ('error',
                                     'command_handlers',
                                     "invalid regex in handler pattern '(': missing ), unterminated "
-                                    'subpattern at position 0 — the simulator will skip this '
+                                    'subpattern at position 0. The simulator will skip this '
                                     'handler'),
                                    ('warning',
                                     'command_handlers',
                                     "handler 'B (\\\\d)': set_state:/respond: are ignored when "
-                                    'handler: is present — move that logic into the handler code'),
+                                    'handler: is present. Move that logic into the handler code'),
                                    ('error',
                                     'set_state',
                                     "handler 'C': template '{state.nope}{1}' references capture "
-                                    'group {1} but the pattern has only 0 group(s) — the '
+                                    'group {1} but the pattern has only 0 group(s), so the '
                                     'placeholder stays literal at runtime'),
                                    ('warning',
                                     'set_state',
                                     "handler 'C': template '{state.nope}{1}' references "
-                                    '{state.nope} which is not a state key — the placeholder stays '
+                                    '{state.nope} which is not a state key, so the placeholder stays '
                                     'literal at runtime')],
  'labels_missing_and_present': [('warning',
                                  'controls',
-                                 "controls[0] (toggle): missing 'label' — the panel shows "
+                                 "controls[0] (toggle): missing 'label', so the panel shows "
                                  "'undefined'"),
                                 ('warning',
                                  'controls',
-                                 "controls[1] (indicator): missing 'label' — the panel shows "
+                                 "controls[1] (indicator): missing 'label', so the panel shows "
                                  "'undefined'"),
                                 ('warning',
                                  'controls',
-                                 "controls[2] (group): missing 'label' — the panel shows "
+                                 "controls[2] (group): missing 'label', so the panel shows "
                                  "'undefined'")],
  'machine_bare': [('error', 'state_machine', "state_machine 'pwr' needs a non-empty 'states' list"),
                   ('error', 'state_machine', "state_machine 'pwr' needs an 'initial' state"),
@@ -879,16 +879,16 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'matrix_pattern_unknown_key': [('warning',
                                  'controls',
                                  "controls[0] (matrix): state_pattern 'xpt.1.src' is not a state "
-                                 'variable or initial_state key — the control shows nothing and '
+                                 'variable or initial_state key, so the control shows nothing and '
                                  'writes to a key nothing reads')],
  'matrix_pattern_without_output': [('warning',
                                     'controls',
                                     "controls[0] (matrix): state_pattern 'route' has no {output} "
-                                    'placeholder — every output binds the same key'),
+                                    'placeholder, so every output binds the same key'),
                                    ('warning',
                                     'controls',
                                     "controls[1] (matrix): state_pattern 'route.{out}' has no "
-                                    '{output} placeholder — every output binds the same key')],
+                                    '{output} placeholder, so every output binds the same key')],
  'matrix_sizes_bad': [('error',
                        'controls',
                        "controls[0] (matrix): 'inputs' must be a positive integer, got: 0"),
@@ -921,35 +921,35 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'meters_mute_pattern_only_bad': [('warning',
                                    'controls',
                                    "controls[0] (meters): mute_pattern 'mute' has no {ch} "
-                                   'placeholder — every channel binds the same key')],
+                                   'placeholder, so every channel binds the same key')],
  'meters_patterns_not_text': [],
  'meters_patterns_unknown': [('warning',
                               'controls',
                               "controls[0] (meters): key_pattern 'lvl.1' is not a state variable "
-                              'or initial_state key — the control shows nothing and writes to a '
+                              'or initial_state key, so the control shows nothing and writes to a '
                               'key nothing reads'),
                              ('warning',
                               'controls',
                               "controls[0] (meters): mute_pattern 'mt.1' is not a state variable "
-                              'or initial_state key — the control shows nothing and writes to a '
+                              'or initial_state key, so the control shows nothing and writes to a '
                               'key nothing reads'),
                              ('warning',
                               'controls',
                               "controls[1] (meters): mute_pattern 'mt.1' is not a state variable "
-                              'or initial_state key — the control shows nothing and writes to a '
+                              'or initial_state key, so the control shows nothing and writes to a '
                               'key nothing reads')],
  'meters_patterns_without_ch': [('warning',
                                  'controls',
                                  "controls[0] (meters): key_pattern 'meter' has no {ch} "
-                                 'placeholder — every channel binds the same key'),
+                                 'placeholder, so every channel binds the same key'),
                                 ('warning',
                                  'controls',
                                  "controls[0] (meters): mute_pattern 'mute' has no {ch} "
-                                 'placeholder — every channel binds the same key'),
+                                 'placeholder, so every channel binds the same key'),
                                 ('warning',
                                  'controls',
                                  "controls[1] (meters): key_pattern 'meter.{channel}' has no {ch} "
-                                 'placeholder — every channel binds the same key')],
+                                 'placeholder, so every channel binds the same key')],
  'presets_count_and_names_bad': [('error',
                                   'controls',
                                   "controls[0] (presets): 'count' must be an integer"),
@@ -966,7 +966,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'presets_names_only': [],
  'presets_neither_count_nor_names': [('warning',
                                       'controls',
-                                      "controls[0] (presets): neither 'count' nor 'names' given — "
+                                      "controls[0] (presets): neither 'count' nor 'names' given, so "
                                       'the panel renders no preset buttons')],
  'respond_names_a_boolean': [('error',
                               'type_consistency',
@@ -989,16 +989,16 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                              ('warning',
                               'command_handlers',
                               "handler 'SRC\\\\?': set_state:/respond: are ignored when handler: "
-                              'is present — move that logic into the handler code'),
+                              'is present. Move that logic into the handler code'),
                              ('warning',
                               'set_state',
                               "handler 'X': template '{state.nope}' references {state.nope} which "
-                              'is not a state key — the placeholder stays literal at runtime')],
+                              'is not a state key, so the placeholder stays literal at runtime')],
  'respond_names_a_boolean_dotted': [('warning',
                                      'set_state',
                                      "handler 'PWR\\\\?': template 'P{state.power.1} "
                                      "{state.power_x} {state.level}' references {state.power_x} "
-                                     'which is not a state key — the placeholder stays literal at '
+                                     'which is not a state key, so the placeholder stays literal at '
                                      'runtime')],
  'respond_names_a_dotted_boolean': [('error',
                                      'type_consistency',
@@ -1027,50 +1027,50 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'template_capture_refs': [('error',
                             'set_state',
                             "handler 'PWR (\\\\d) (\\\\d)': template 'P{0}{1}{2}{3}{10}' "
-                            'references capture group {3} but the pattern has only 2 group(s) — '
+                            'references capture group {3} but the pattern has only 2 group(s), so '
                             'the placeholder stays literal at runtime'),
                            ('error',
                             'set_state',
                             "handler 'PWR (\\\\d) (\\\\d)': template 'P{0}{1}{2}{3}{10}' "
-                            'references capture group {10} but the pattern has only 2 group(s) — '
+                            'references capture group {10} but the pattern has only 2 group(s), so '
                             'the placeholder stays literal at runtime'),
                            ('error',
                             'set_state',
                             "handler 'LVL': template '{1}' references capture group {1} but the "
-                            'pattern has only 0 group(s) — the placeholder stays literal at '
+                            'pattern has only 0 group(s), so the placeholder stays literal at '
                             'runtime'),
                            ('error',
                             'set_state',
                             "handler 'LVL': template 'L{1}' references capture group {1} but the "
-                            'pattern has only 0 group(s) — the placeholder stays literal at '
+                            'pattern has only 0 group(s), so the placeholder stays literal at '
                             'runtime'),
                            ('error',
                             'set_state',
                             "handler '(?:SRC) (\\\\w+)': template '{1}{2}' references capture "
-                            'group {2} but the pattern has only 1 group(s) — the placeholder stays '
+                            'group {2} but the pattern has only 1 group(s), so the placeholder stays '
                             'literal at runtime')],
  'template_invalid_regex': [('error',
                              'command_handlers',
                              "invalid regex in handler pattern 'PWR (': missing ), unterminated "
-                             'subpattern at position 4 — the simulator will skip this handler'),
+                             'subpattern at position 4. The simulator will skip this handler'),
                             ('error',
                              'command_handlers',
                              "invalid regex in handler pattern '[': unterminated character set at "
-                             'position 0 — the simulator will skip this handler'),
+                             'position 0. The simulator will skip this handler'),
                             ('error',
                              'command_handlers',
                              "invalid regex in handler pattern '*': nothing to repeat at position "
-                             '0 — the simulator will skip this handler')],
+                             '0. The simulator will skip this handler')],
  'template_match_used_when_receive_blank': [('error',
                                              'set_state',
                                              "handler 'PWR (\\\\d)': template 'P{2}' references "
                                              'capture group {2} but the pattern has only 1 '
-                                             'group(s) — the placeholder stays literal at runtime'),
+                                             'group(s), so the placeholder stays literal at runtime'),
                                             ('error',
                                              'set_state',
                                              "handler 'LVL (\\\\d+) (\\\\d+)': template 'L{2}{3}' "
                                              'references capture group {3} but the pattern has '
-                                             'only 2 group(s) — the placeholder stays literal at '
+                                             'only 2 group(s), so the placeholder stays literal at '
                                              'runtime')],
  'template_osc_entries_skipped': [],
  'template_receive_a_list': ('raises', 'TypeError', "unhashable type: 'list'"),
@@ -1081,17 +1081,17 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'template_refs_with_nothing_known': [('error',
                                        'set_state',
                                        "handler 'PWR (\\\\d)': template '{state.x}{4}' references "
-                                       'capture group {4} but the pattern has only 1 group(s) — '
+                                       'capture group {4} but the pattern has only 1 group(s), so '
                                        'the placeholder stays literal at runtime')],
  'template_respond_empty_not_text': [('error',
                                       'set_state',
                                       "handler 'PWR (\\\\d)': template '{2}' references capture "
-                                      'group {2} but the pattern has only 1 group(s) — the '
+                                      'group {2} but the pattern has only 1 group(s), so the '
                                       'placeholder stays literal at runtime'),
                                      ('warning',
                                       'set_state',
                                       "handler 'LVL': set_state target 'nope' is not a state "
-                                      'variable or initial_state key — the value will be written '
+                                      'variable or initial_state key, so the value will be written '
                                       'to a key nothing reads')],
  'template_respond_not_text': ('raises',
                                'TypeError',
@@ -1100,12 +1100,12 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'template_set_state_targets': [('warning',
                                  'set_state',
                                  "handler 'PWR (\\\\d)': set_state target 'nope' is not a state "
-                                 'variable or initial_state key — the value will be written to a '
+                                 'variable or initial_state key, so the value will be written to a '
                                  'key nothing reads')],
  'template_set_state_values_not_text': [('error',
                                          'set_state',
                                          'handler \'PWR (\\\\d)\': template "[\'{3}\']" references '
-                                         'capture group {3} but the pattern has only 1 group(s) — '
+                                         'capture group {3} but the pattern has only 1 group(s), so '
                                          'the placeholder stays literal at runtime')],
  'template_state_refs': [('error',
                           'type_consistency',
@@ -1115,47 +1115,47 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                          ('warning',
                           'set_state',
                           "handler 'PWR\\\\?': template 'P{state.power} L{state.level} "
-                          "X{state.nope}' references {state.nope} which is not a state key — the "
+                          "X{state.nope}' references {state.nope} which is not a state key, so the "
                           'placeholder stays literal at runtime'),
                          ('warning',
                           'set_state',
                           "handler 'SRC\\\\?': template 'S{state.a.b} {state.zone-1} {state.} "
                           "{state.nope}{state.nope}' references {state.nope} which is not a state "
-                          'key — the placeholder stays literal at runtime'),
+                          'key, so the placeholder stays literal at runtime'),
                          ('warning',
                           'set_state',
                           "handler 'SRC\\\\?': template 'S{state.a.b} {state.zone-1} {state.} "
                           "{state.nope}{state.nope}' references {state.nope} which is not a state "
-                          'key — the placeholder stays literal at runtime'),
+                          'key, so the placeholder stays literal at runtime'),
                          ('warning',
                           'set_state',
                           "handler 'LVL (\\\\d+)': template '{state.gone}{1}' references "
-                          '{state.gone} which is not a state key — the placeholder stays literal '
+                          '{state.gone} which is not a state key, so the placeholder stays literal '
                           'at runtime')],
  'template_without_a_pattern': [('warning',
                                  'command_handlers',
                                  'handler with respond:/set_state: has no receive: or match: '
-                                 'pattern — it can never fire'),
+                                 'pattern, so it can never fire'),
                                 ('warning',
                                  'command_handlers',
                                  'handler with respond:/set_state: has no receive: or match: '
-                                 'pattern — it can never fire'),
+                                 'pattern, so it can never fire'),
                                 ('warning',
                                  'command_handlers',
                                  'handler with respond:/set_state: has no receive: or match: '
-                                 'pattern — it can never fire'),
+                                 'pattern, so it can never fire'),
                                 ('warning',
                                  'command_handlers',
                                  'handler with respond:/set_state: has no receive: or match: '
-                                 'pattern — it can never fire')],
+                                 'pattern, so it can never fire')],
  'template_without_a_pattern_carrying_refs': [('warning',
                                                'command_handlers',
                                                'handler with respond:/set_state: has no receive: '
-                                               'or match: pattern — it can never fire'),
+                                               'or match: pattern, so it can never fire'),
                                               ('warning',
                                                'command_handlers',
                                                'handler with respond:/set_state: has no receive: '
-                                               'or match: pattern — it can never fire')],
+                                               'or match: pattern, so it can never fire')],
  'transition_after_seconds': [('error',
                                'state_machine',
                                "state_machine 'pwr' transition 0 'after_seconds' must be a number"),
@@ -1166,22 +1166,22 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'transition_can_never_fire': [('warning',
                                 'state_machine',
                                 "state_machine 'pwr' transition 0 has neither 'trigger' nor "
-                                "'after_seconds' — it can never fire")],
+                                "'after_seconds', so it can never fire")],
  'transition_complete': [],
  'transition_duplicates': [('warning',
                             'state_machine',
                             "state_machine 'pwr' transition 1 duplicates an earlier transition for "
-                            "from 'off' trigger 'power_on' — the first listed wins, this one is "
+                            "from 'off' trigger 'power_on'. The first listed wins, so this one is "
                             'unreachable'),
                            ('warning',
                             'state_machine',
                             "state_machine 'pwr' transition 2 duplicates an earlier transition for "
-                            "from 'off' trigger 'power_on' — the first listed wins, this one is "
+                            "from 'off' trigger 'power_on'. The first listed wins, so this one is "
                             'unreachable'),
                            ('warning',
                             'state_machine',
                             "state_machine 'pwr' transition 4 duplicates an earlier transition for "
-                            "from 'on' trigger '*' — the first listed wins, this one is "
+                            "from 'on' trigger '*'. The first listed wins, so this one is "
                             'unreachable'),
                            ('error',
                             'state_machine',
@@ -1189,7 +1189,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                            ('warning',
                             'state_machine',
                             "state_machine 'pwr' transition 6 duplicates an earlier transition for "
-                            "from 'None' trigger 'power_off' — the first listed wins, this one is "
+                            "from 'None' trigger 'power_off'. The first listed wins, so this one is "
                             'unreachable'),
                            ('error',
                             'state_machine',
@@ -1197,13 +1197,13 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                            ('warning',
                             'state_machine',
                             "state_machine 'pwr' transition 8 duplicates an earlier transition for "
-                            "from 'off' trigger 'None' — the first listed wins, this one is "
+                            "from 'off' trigger 'None'. The first listed wins, so this one is "
                             'unreachable')],
  'transition_duplicates_per_machine': [('warning',
                                         'state_machine',
                                         "state_machine 'lamp' transition 1 duplicates an earlier "
-                                        "transition for from 'off' trigger 'power_on' — the first "
-                                        'listed wins, this one is unreachable')],
+                                        "transition for from 'off' trigger 'power_on'. The first "
+                                        'listed wins, so this one is unreachable')],
  'transition_everything_wrong': [('error',
                                   'state_machine',
                                   "state_machine 'pwr' transition 0 'from' state 'warm' is not one "
@@ -1219,12 +1219,12 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                  ('warning',
                                   'state_machine',
                                   "state_machine 'pwr' transition 0 trigger 'nope' matches no "
-                                  'command name — it will never fire'),
+                                  'command name, so it will never fire'),
                                  ('warning',
                                   'state_machine',
                                   "state_machine 'pwr' transition 1 duplicates an earlier "
-                                  "transition for from 'warm' trigger 'nope' — the first listed "
-                                  'wins, this one is unreachable'),
+                                  "transition for from 'warm' trigger 'nope'. The first listed "
+                                  'wins, so this one is unreachable'),
                                  ('error',
                                   'state_machine',
                                   "state_machine 'pwr' transition 1 'from' state 'warm' is not one "
@@ -1240,7 +1240,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                  ('warning',
                                   'state_machine',
                                   "state_machine 'pwr' transition 1 trigger 'nope' matches no "
-                                  'command name — it will never fire'),
+                                  'command name, so it will never fire'),
                                  ('error',
                                   'state_machine',
                                   "state_machine 'pwr' transition 2 is missing 'from'"),
@@ -1250,7 +1250,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                  ('warning',
                                   'state_machine',
                                   "state_machine 'pwr' transition 2 has neither 'trigger' nor "
-                                  "'after_seconds' — it can never fire")],
+                                  "'after_seconds', so it can never fire")],
  'transition_from_a_list_beside_a_trigger': ('raises', 'TypeError', "unhashable type: 'list'"),
  'transition_from_a_list_without_a_trigger': [('error',
                                                'state_machine',
@@ -1295,11 +1295,11 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'transition_trigger_names_no_command': [('warning',
                                           'state_machine',
                                           "state_machine 'pwr' transition 0 trigger 'power_toggle' "
-                                          'matches no command name — it will never fire'),
+                                          'matches no command name, so it will never fire'),
                                          ('warning',
                                           'state_machine',
                                           "state_machine 'pwr' transition 3 trigger '7' matches no "
-                                          'command name — it will never fire')],
+                                          'command name, so it will never fire')],
  'transition_trigger_with_no_commands': [],
  'transitions_states_text': [('error',
                               'state_machine',

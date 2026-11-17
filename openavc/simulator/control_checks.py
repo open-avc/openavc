@@ -54,7 +54,7 @@ class _Control:
             return
         if key not in self.known_keys:
             self.warning(
-                f"{field} '{key}' is not a state variable or initial_state key — the "
+                f"{field} '{key}' is not a state variable or initial_state key, so the "
                 f"control shows nothing and writes to a key nothing reads"
             )
 
@@ -101,7 +101,7 @@ def _per_item_pattern(control: _Control, field: str, token: str, item: str) -> N
     placeholder = "{" + token + "}"
     if placeholder not in pattern:
         control.warning(
-            f"{field} {pattern!r} has no {placeholder} placeholder — every "
+            f"{field} {pattern!r} has no {placeholder} placeholder, so every "
             f"{item} binds the same key"
         )
     else:
@@ -137,7 +137,7 @@ def _meters(control: _Control) -> None:
 
 def _presets(control: _Control) -> None:
     if "count" not in control.fields and "names" not in control.fields:
-        control.warning("neither 'count' nor 'names' given — the panel renders no preset buttons")
+        control.warning("neither 'count' nor 'names' given, so the panel renders no preset buttons")
     count = control.fields.get("count")
     if count is not None and not isinstance(count, int):
         control.error("'count' must be an integer")
@@ -252,7 +252,7 @@ def _check_fields(control: _Control, kind: _ControlType) -> None:
         if field not in fields:
             control.error(f"missing required field '{field}'")
     if kind.label_required and "label" not in fields:
-        control.warning("missing 'label' — the panel shows 'undefined'")
+        control.warning("missing 'label', so the panel shows 'undefined'")
     if kind.has_key:
         control.warn_unknown_key(fields.get("key"), "key")
     if kind.own_rules is not None:

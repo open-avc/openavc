@@ -183,8 +183,8 @@ def _report_unframed(result: ValidationResult, heard: _Heard, raw_delimiter: str
         f"{len(unframed)} of {heard.replies} simulator replies come back without the "
         f"{raw_delimiter!r} this driver splits incoming bytes on, so the driver "
         f"never completes a frame and reads nothing they carry: {shown}. "
-        f"A reply written by hand — a respond: template or a respond() call in "
-        f"a handler — is sent verbatim, so end it with the delimiter; only the "
+        f"A reply written by hand (a respond: template or a respond() call in "
+        f"a handler) is sent verbatim, so end it with the delimiter; only the "
         f"handlers the simulator generates are terminated for you."
     )
 

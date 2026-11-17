@@ -225,8 +225,8 @@ def _report_acknowledgements(result: ValidationResult, acknowledgements: list[st
     result.info(
         "response_parsing",
         f"{len(acknowledgements)} simulator reply/replies match no driver "
-        f"response rule, none of them the only answer to a polled query — "
-        f"the shape of a write acknowledgement, which carries no state: "
+        f"response rule, none of them the only answer to a polled query. "
+        f"That is the shape of a write acknowledgement, which carries no state: "
         f"{shown}. A polled query whose answer nothing parses warns "
         f"instead."
     )

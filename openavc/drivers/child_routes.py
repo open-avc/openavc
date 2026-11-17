@@ -286,7 +286,7 @@ def _osc_id(cid: Any, device_id: str) -> dict[str, Any] | None:
     if cid is None or _names_a_capture(cid):
         log.warning(
             f"[{device_id}] child_set: OSC rules have no capture "
-            f"groups — id must be {{segment: N}} or a literal "
+            f"groups, so id must be {{segment: N}} or a literal "
             f"(got {cid!r}); skipping entry"
         )
         return None
@@ -302,7 +302,7 @@ def _osc_prop(
         return _long_form(prop, expr, var_type, "arg")
     if _names_a_capture(expr):
         log.warning(
-            f"[{device_id}] child_set: state '{prop}' — OSC "
+            f"[{device_id}] child_set: state '{prop}': OSC "
             f"rules have no capture groups; use {{arg: N}}. Skipping"
         )
         return None
@@ -330,8 +330,8 @@ def _json_id(cid: Any, device_id: str) -> dict[str, Any] | None:
     """A literal child id; a body has no capture for ``$N`` to name."""
     if cid is None or _names_a_capture(cid):
         log.warning(
-            f"[{device_id}] child_set: a json rule has no captures — "
-            f"id must be a literal child id (got {cid!r}); skipping entry"
+            f"[{device_id}] child_set: a json rule has no captures, "
+            f"so id must be a literal child id (got {cid!r}); skipping entry"
         )
         return None
     return {"id": ("literal", cid)}

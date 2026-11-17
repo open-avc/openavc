@@ -104,7 +104,7 @@ def _check_code(result: ValidationResult, entry: dict) -> None:
         result.error(
             "handler_syntax",
             f"handler for {label!r} has a Python syntax error "
-            f"(line {e.lineno}): {e.msg} — the simulator will skip this handler"
+            f"(line {e.lineno}): {e.msg}. The simulator will skip this handler"
         )
 
 
@@ -151,13 +151,13 @@ class _Template:
         if "handler" in self.entry:
             self._text_unused(
                 f"handler {self.pattern!r}: set_state:/respond: are ignored "
-                f"when handler: is present — move that logic into the handler code"
+                f"when handler: is present. Move that logic into the handler code"
             )
             return False
         if not self.pattern:
             self._text_unused(
                 "handler with respond:/set_state: has no receive: or match: "
-                "pattern — it can never fire"
+                "pattern, so it can never fire"
             )
             return False
         return True
@@ -173,8 +173,8 @@ class _Template:
         except re.error as e:
             self.result.error(
                 "command_handlers",
-                f"invalid regex in handler pattern {self.pattern!r}: {e} — "
-                f"the simulator will skip this handler"
+                f"invalid regex in handler pattern {self.pattern!r}: {e}. "
+                f"The simulator will skip this handler"
             )
             return None
 
@@ -193,7 +193,7 @@ class _Template:
                 self.result.warning(
                     "set_state",
                     f"handler {self.pattern!r}: set_state target '{key}' is not "
-                    f"a state variable or initial_state key — the value will be "
+                    f"a state variable or initial_state key, so the value will be "
                     f"written to a key nothing reads"
                 )
             texts.append(str(value))
@@ -207,7 +207,7 @@ class _Template:
                     "set_state",
                     f"handler {self.pattern!r}: template {text!r} references "
                     f"capture group {{{n}}} but the pattern has only "
-                    f"{group_count} group(s) — the placeholder stays literal at runtime"
+                    f"{group_count} group(s), so the placeholder stays literal at runtime"
                 )
 
     def _state_refs(self, text: str) -> None:
@@ -216,7 +216,7 @@ class _Template:
                 self.result.warning(
                     "set_state",
                     f"handler {self.pattern!r}: template {text!r} references "
-                    f"{{state.{m.group(1)}}} which is not a state key — the "
+                    f"{{state.{m.group(1)}}} which is not a state key, so the "
                     f"placeholder stays literal at runtime"
                 )
 

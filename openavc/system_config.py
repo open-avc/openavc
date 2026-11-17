@@ -610,7 +610,7 @@ def migrate_legacy_project_dir(
     except OSError as e:
         log.warning(
             "Could not move projects directory from %s to %s: %s. Nothing was "
-            "changed — your data is still at %s. Move it to %s manually (with "
+            "changed, and your data is still at %s. Move it to %s manually (with "
             "the server stopped), or set OPENAVC_PROJECT to its project.avc.",
             legacy, target, e, legacy, target,
         )

@@ -239,7 +239,7 @@ def check_state_coverage(
         result.warning(
             "state_coverage",
             f"SIMULATOR_INFO seeds no initial_state at all, but the driver "
-            f"declares {len(driver_state_vars)} state variable(s) — the "
+            f"declares {len(driver_state_vars)} state variable(s). The "
             f"simulator models none of this device, so nothing it answers "
             f"can exercise the driver's parsing."
         )
@@ -250,8 +250,8 @@ def check_state_coverage(
         f"SIMULATOR_INFO seeds {len(sim_initial)} state key(s); "
         f"{len(unseeded)} of the driver's {len(driver_state_vars)} state "
         f"variable(s) are not among them BY NAME: "
-        f"{examples(unseeded, _STATE_EXAMPLES, ' (+{} more)')}. Usually correct — "
-        f"the simulator seeds what goes on the wire and the driver publishes "
+        f"{examples(unseeded, _STATE_EXAMPLES, ' (+{} more)')}. Usually that is correct. "
+        f"The simulator seeds what goes on the wire and the driver publishes "
         f"what it computes from that, so the names differ. Worth a look only "
         f"if the counts say the simulator models far less than the driver "
         f"reads."

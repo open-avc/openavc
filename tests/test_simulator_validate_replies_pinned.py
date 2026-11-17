@@ -466,15 +466,15 @@ FRAMING_PROBES: list = [('warning',
   'reply_framing',
   "1 of 4 simulator replies come back without the '\\\\r\\\\n' this driver splits incoming "
   "bytes on, so the driver never completes a frame and reads nothing they carry: 'PING' -> "
-  "b'PONG'. A reply written by hand — a respond: template or a respond() call in a handler — "
+  "b'PONG'. A reply written by hand (a respond: template or a respond() call in a handler) "
   'is sent verbatim, so end it with the delimiter; only the handlers the simulator generates '
   'are terminated for you.')]
 FRAMING_MANY: list = [('error',
   'reply_framing',
   "5 of 5 simulator replies come back without the '\\\\r\\\\n' this driver splits incoming "
   "bytes on, so the driver never completes a frame and reads nothing they carry: 'C0' -> "
-  "b'R0'; 'C1' -> b'R1'; 'C2' -> b'R2'; +2 more. A reply written by hand — a respond: template "
-  'or a respond() call in a handler — is sent verbatim, so end it with the delimiter; only the '
+  "b'R0'; 'C1' -> b'R1'; 'C2' -> b'R2'; +2 more. A reply written by hand (a respond: template "
+  'or a respond() call in a handler) is sent verbatim, so end it with the delimiter; only the '
   'handlers the simulator generates are terminated for you.')]
 FRAMING_MANY_TRAILING: list = [('warning',
   'reply_framing',
@@ -487,7 +487,7 @@ FRAMING_RAISING_PROBE: list = [('error',
   'reply_framing',
   "1 of 1 simulator replies come back without the '\\\\r\\\\n' this driver splits incoming "
   "bytes on, so the driver never completes a frame and reads nothing they carry: 'OK' -> b'O'. "
-  'A reply written by hand — a respond: template or a respond() call in a handler — is sent '
+  'A reply written by hand (a respond: template or a respond() call in a handler) is sent '
   'verbatim, so end it with the delimiter; only the handlers the simulator generates are '
   'terminated for you.')]
 FRAMING_MUTED: list = []
@@ -501,7 +501,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'framing_empty_delimiter_skipped': [('info',
                                       'response_parsing',
                                       '1 simulator reply/replies match no driver response '
-                                      'rule, none of them the only answer to a polled query — '
+                                      'rule, none of them the only answer to a polled query. That is '
                                       'the shape of a write acknowledgement, which carries no '
                                       "state: 'R'. A polled query whose answer nothing parses "
                                       'warns instead.')],
@@ -511,13 +511,13 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'framing_udp_skipped': [('info',
                           'response_parsing',
                           '1 simulator reply/replies match no driver response rule, none of '
-                          'them the only answer to a polled query — the shape of a write '
+                          'them the only answer to a polled query. That is the shape of a write '
                           "acknowledgement, which carries no state: 'R'. A polled query whose "
                           'answer nothing parses warns instead.')],
  'framing_unframed_many': [('info',
                             'response_parsing',
                             '5 simulator reply/replies match no driver response rule, none of '
-                            'them the only answer to a polled query — the shape of a write '
+                            'them the only answer to a polled query. That is the shape of a write '
                             "acknowledgement, which carries no state: 'R0', 'R1', 'R2', 'R3' "
                             '(+1 more). A polled query whose answer nothing parses warns '
                             'instead.'),
@@ -526,8 +526,8 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                             "5 of 5 simulator replies come back without the '\\\\r\\\\n' this "
                             'driver splits incoming bytes on, so the driver never completes a '
                             "frame and reads nothing they carry: 'C0' -> b'R0'; 'C1' -> b'R1'; "
-                            "'C2' -> b'R2'; +2 more. A reply written by hand — a respond: "
-                            'template or a respond() call in a handler — is sent verbatim, so '
+                            "'C2' -> b'R2'; +2 more. A reply written by hand (a respond: "
+                            'template or a respond() call in a handler) is sent verbatim, so '
                             'end it with the delimiter; only the handlers the simulator '
                             'generates are terminated for you.')],
  'json_set_not_a_mapping': ('raises',
@@ -540,7 +540,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                     ('warning',
                                      'notifications',
                                      "notification 'power' emits 'POWER 1' which matches no "
-                                     'driver response pattern — the driver will ignore it')],
+                                     'driver response pattern, so the driver will ignore it')],
  'notification_boolean_key_capitalised': [('info',
                                            'reply_framing',
                                            '2 simulator replies checked, all terminated with '
@@ -548,7 +548,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                           ('error',
                                            'notifications',
                                            "notification 'power' value key 'True' never "
-                                           'matches — boolean lookups use lowercase '
+                                           'matches. Boolean lookups use lowercase '
                                            "'true'/'false' (quote the keys in YAML so they "
                                            'stay strings)')],
  'notification_boolean_value_template': [('info',
@@ -558,7 +558,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                          ('error',
                                           'notifications',
                                           "notification 'power' template uses {value} but "
-                                          "'power' is boolean — Python's str(True) produces "
+                                          "'power' is boolean, and Python's str(True) produces "
                                           "'True' not 'true'. Use per-value templates ('true': "
                                           "..., 'false': ...) instead.")],
  'notification_enum_key_unknown': [('info',
@@ -572,40 +572,40 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                    ('warning',
                                     'notifications',
                                     "notification 'input' emits 'INP 3' which matches no "
-                                    'driver response pattern — the driver will ignore it'),
+                                    'driver response pattern, so the driver will ignore it'),
                                    ('warning',
                                     'notifications',
                                     "notification 'input' emits 'INP 1' which matches no "
-                                    'driver response pattern — the driver will ignore it')],
+                                    'driver response pattern, so the driver will ignore it')],
  'notification_enum_star': [('info',
                              'reply_framing',
                              "2 simulator replies checked, all terminated with '\\\\r\\\\n'."),
                             ('warning',
                              'notifications',
                              "notification 'input' emits 'INP hdmi1' which matches no driver "
-                             'response pattern — the driver will ignore it')],
+                             'response pattern, so the driver will ignore it')],
  'notification_json_child_key': [],
  'notification_json_list_of_two': [('warning',
                                     'notifications',
                                     'notification \'level\' emits \'[{"zone": 1}, {"zone": '
-                                    "2}]' which matches no driver response pattern — the "
+                                    "2}]' which matches no driver response pattern, so the "
                                     'driver will ignore it')],
  'notification_json_list_unwrap': [],
  'notification_json_mapping_key': [],
  'notification_json_not_json': [('warning',
                                  'notifications',
                                  "notification 'level' emits 'zone {value' which matches no "
-                                 'driver response pattern — the driver will ignore it')],
+                                 'driver response pattern, so the driver will ignore it')],
  'notification_json_path_only_mapping': [('warning',
                                           'notifications',
                                           'notification \'level\' emits \'{"ignored": 1}\' '
-                                          'which matches no driver response pattern — the '
+                                          'which matches no driver response pattern, so the '
                                           'driver will ignore it')],
  'notification_json_reads': [],
  'notification_json_rules_only': [('warning',
                                    'notifications',
                                    "notification 'level' emits 'LEVEL=3' which matches no "
-                                   'driver response pattern — the driver will ignore it')],
+                                   'driver response pattern, so the driver will ignore it')],
  'notification_json_set_by_path': [],
  'notification_json_set_shorthand': [],
  'notification_no_rules': [],
@@ -616,7 +616,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                      ('warning',
                                       'notifications',
                                       'notification \'level\' emits \'{"quality": 1}\' which '
-                                      'matches no driver response pattern — the driver will '
+                                      'matches no driver response pattern, so the driver will '
                                       'ignore it')],
  'notification_own_terminator': [('info',
                                   'reply_framing',
@@ -632,7 +632,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                     ('warning',
                                      'notifications',
                                      "notification 'power' emits 'POWER ON' which matches no "
-                                     'driver response pattern — the driver will ignore it')],
+                                     'driver response pattern, so the driver will ignore it')],
  'notification_star_default_from_type': [('info',
                                           'reply_framing',
                                           '2 simulator replies checked, all terminated with '
@@ -644,7 +644,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                       ('warning',
                                        'notifications',
                                        "notification 'level' emits 'LEVEL=3' which matches no "
-                                       'driver response pattern — the driver will ignore it')],
+                                       'driver response pattern, so the driver will ignore it')],
  'notification_star_from_initial': [('info',
                                      'reply_framing',
                                      '2 simulator replies checked, all terminated with '
@@ -652,7 +652,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                     ('warning',
                                      'notifications',
                                      "notification 'level' emits 'LEVEL=7' which matches no "
-                                     'driver response pattern — the driver will ignore it')],
+                                     'driver response pattern, so the driver will ignore it')],
  'notification_state_ref': [('info',
                              'reply_framing',
                              "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
@@ -663,12 +663,12 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                               ('warning',
                                'notifications',
                                "notification key 'volume' is not a state variable or "
-                               'initial_state key — it only fires if a handler writes that '
+                               'initial_state key, so it only fires if a handler writes that '
                                'key'),
                               ('warning',
                                'notifications',
                                "notification 'volume' emits 'VOL ' which matches no driver "
-                               'response pattern — the driver will ignore it')],
+                               'response pattern, so the driver will ignore it')],
  'notification_unknown_state_ref': [('info',
                                      'reply_framing',
                                      '2 simulator replies checked, all terminated with '
@@ -701,7 +701,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'parsing_acknowledgements': [('info',
                                'response_parsing',
                                '5 simulator reply/replies match no driver response rule, none '
-                               'of them the only answer to a polled query — the shape of a '
+                               'of them the only answer to a polled query. That is the shape of a '
                                "write acknowledgement, which carries no state: 'ACK', 'OK1', "
                                "'OK2', 'OK3' (+1 more). A polled query whose answer nothing "
                                'parses warns instead.')],
@@ -710,16 +710,16 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                              "1 of 2 simulator replies come back without the '\\\\r\\\\n' this "
                              'driver splits incoming bytes on, so the driver never completes a '
                              "frame and reads nothing they carry: 'PWR?' -> b'PWR 1'. A reply "
-                             'written by hand — a respond: template or a respond() call in a '
-                             'handler — is sent verbatim, so end it with the delimiter; only '
+                             'written by hand (a respond: template or a respond() call in a '
+                             'handler) is sent verbatim, so end it with the delimiter; only '
                              'the handlers the simulator generates are terminated for you.')],
  'parsing_capture_unresolvable': [('error',
                                    'reply_framing',
                                    '1 of 3 simulator replies come back without the '
                                    "'\\\\r\\\\n' this driver splits incoming bytes on, so the "
                                    'driver never completes a frame and reads nothing they '
-                                   "carry: 'LVL?' -> b'LEVEL {1}'. A reply written by hand — a "
-                                   'respond: template or a respond() call in a handler — is '
+                                   "carry: 'LVL?' -> b'LEVEL {1}'. A reply written by hand (a "
+                                   'respond: template or a respond() call in a handler) is '
                                    'sent verbatim, so end it with the delimiter; only the '
                                    'handlers the simulator generates are terminated for you.')],
  'parsing_config_in_pattern': [('error',
@@ -727,8 +727,8 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                 "1 of 2 simulator replies come back without the '\\\\r\\\\n' "
                                 'this driver splits incoming bytes on, so the driver never '
                                 "completes a frame and reads nothing they carry: 'PWR?' -> "
-                                "b'U7 PWR 1'. A reply written by hand — a respond: template or "
-                                'a respond() call in a handler — is sent verbatim, so end it '
+                                "b'U7 PWR 1'. A reply written by hand (a respond: template or "
+                                'a respond() call in a handler) is sent verbatim, so end it '
                                 'with the delimiter; only the handlers the simulator generates '
                                 'are terminated for you.')],
  'parsing_json_reply': [('error',
@@ -736,8 +736,8 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                          "1 of 1 simulator replies come back without the '\\\\r\\\\n' this "
                          'driver splits incoming bytes on, so the driver never completes a '
                          'frame and reads nothing they carry: \'STATUS?\' -> b\'{"status": '
-                         '{"power": true}}\'. A reply written by hand — a respond: template or '
-                         'a respond() call in a handler — is sent verbatim, so end it with the '
+                         '{"power": true}}\'. A reply written by hand (a respond: template or '
+                         'a respond() call in a handler) is sent verbatim, so end it with the '
                          'delimiter; only the handlers the simulator generates are terminated '
                          'for you.')],
  'parsing_named_query_and_on_connect': [('warning',
@@ -755,8 +755,8 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                         ('info',
                                          'response_parsing',
                                          '1 simulator reply/replies match no driver response '
-                                         'rule, none of them the only answer to a polled query '
-                                         '— the shape of a write acknowledgement, which '
+                                         'rule, none of them the only answer to a polled query. '
+                                         'That is the shape of a write acknowledgement, which '
                                          "carries no state: 'ARMED'. A polled query whose "
                                          'answer nothing parses warns instead.'),
                                         ('info',
@@ -783,7 +783,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'parsing_script_handler': [('info',
                              'response_parsing',
                              '2 simulator reply/replies match no driver response rule, none of '
-                             'them the only answer to a polled query — the shape of a write '
+                             'them the only answer to a polled query. That is the shape of a write '
                              "acknowledgement, which carries no state: 'POWER?', 'NAME X'. A "
                              'polled query whose answer nothing parses warns instead.'),
                             ('error',
@@ -791,8 +791,8 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                              "2 of 4 simulator replies come back without the '\\\\r\\\\n' this "
                              'driver splits incoming bytes on, so the driver never completes a '
                              "frame and reads nothing they carry: 'PWR?' -> b'POWER?'; 'NAME?' "
-                             "-> b'NAME 1'. A reply written by hand — a respond: template or a "
-                             'respond() call in a handler — is sent verbatim, so end it with '
+                             "-> b'NAME 1'. A reply written by hand (a respond: template or a "
+                             'respond() call in a handler) is sent verbatim, so end it with '
                              'the delimiter; only the handlers the simulator generates are '
                              'terminated for you.')],
  'parsing_serial_own_terminator': [('info',
@@ -809,8 +809,8 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                  "1 of 3 simulator replies come back without the '\\\\r\\\\n' "
                                  'this driver splits incoming bytes on, so the driver never '
                                  "completes a frame and reads nothing they carry: 'LVL?' -> "
-                                 "b'LEVEL=5'. A reply written by hand — a respond: template or "
-                                 'a respond() call in a handler — is sent verbatim, so end it '
+                                 "b'LEVEL=5'. A reply written by hand (a respond: template or "
+                                 'a respond() call in a handler) is sent verbatim, so end it '
                                  'with the delimiter; only the handlers the simulator '
                                  'generates are terminated for you.')],
  'parsing_then_query_answer': [('warning',
@@ -826,21 +826,21 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'push_gate_http_http_listener': [],
  'push_gate_http_list_type': [('warning',
                                'notifications',
-                               "notifications: has no effect for transport 'http' — only TCP, "
+                               "notifications: has no effect for transport 'http'. Only TCP, "
                                'serial and UDP simulators push notification messages on the '
                                'control link (unless the driver declares a multicast, SSE, TCP '
                                'dial-back, or HTTP-listener push: block)')],
  'push_gate_http_multicast': [],
  'push_gate_http_none': [('warning',
                           'notifications',
-                          "notifications: has no effect for transport 'http' — only TCP, "
+                          "notifications: has no effect for transport 'http'. Only TCP, "
                           'serial and UDP simulators push notification messages on the control '
                           'link (unless the driver declares a multicast, SSE, TCP dial-back, '
                           'or HTTP-listener push: block)')],
  'push_gate_http_push_not_mapping': [('warning',
                                       'notifications',
-                                      "notifications: has no effect for transport 'http' — "
-                                      'only TCP, serial and UDP simulators push notification '
+                                      "notifications: has no effect for transport 'http'. "
+                                      'Only TCP, serial and UDP simulators push notification '
                                       'messages on the control link (unless the driver '
                                       'declares a multicast, SSE, TCP dial-back, or '
                                       'HTTP-listener push: block)')],
@@ -849,14 +849,14 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'push_gate_http_udp_listener': [],
  'push_gate_http_unknown_type': [('warning',
                                   'notifications',
-                                  "notifications: has no effect for transport 'http' — only "
+                                  "notifications: has no effect for transport 'http'. Only "
                                   'TCP, serial and UDP simulators push notification messages '
                                   'on the control link (unless the driver declares a '
                                   'multicast, SSE, TCP dial-back, or HTTP-listener push: '
                                   'block)')],
  'push_gate_osc_sse': [('warning',
                         'notifications',
-                        "notifications: has no effect for transport 'osc' — only TCP, serial "
+                        "notifications: has no effect for transport 'osc'. Only TCP, serial "
                         'and UDP simulators push notification messages on the control link '
                         '(unless the driver declares a multicast, SSE, TCP dial-back, or '
                         'HTTP-listener push: block)')],

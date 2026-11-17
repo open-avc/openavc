@@ -728,13 +728,13 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
                                     'type_consistency',
                                     "State variable 'power' is boolean but initial_state value is "
                                     "str: 'on'. Expected when the wire form differs from the "
-                                    "logical type — confirm the driver's response rules map it "
+                                    "logical type. Confirm the driver's response rules map it "
                                     'back.'),
                                    ('info',
                                     'type_consistency',
                                     "State variable 'level' is integer but initial_state value is "
                                     "str: 'x'. Expected when the wire form differs from the "
-                                    "logical type — confirm the driver's response rules map it "
+                                    "logical type. Confirm the driver's response rules map it "
                                     'back.'),
                                    ('error',
                                     'type_consistency',
@@ -979,26 +979,26 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
  'types_boolean_given_int': [('info',
                               'type_consistency',
                               "State variable 'v' is boolean but initial_state value is int: 1. "
-                              'Expected when the wire form differs from the logical type — confirm '
+                              'Expected when the wire form differs from the logical type. Confirm '
                               "the driver's response rules map it back.")],
  'types_boolean_given_none': [('info',
                                'type_consistency',
                                "State variable 'v' is boolean but initial_state value is NoneType: "
-                               'None. Expected when the wire form differs from the logical type — '
-                               "confirm the driver's response rules map it back.")],
+                               'None. Expected when the wire form differs from the logical type. '
+                               "Confirm the driver's response rules map it back.")],
  'types_boolean_given_text': [('info',
                                'type_consistency',
                                "State variable 'v' is boolean but initial_state value is str: "
-                               "'on'. Expected when the wire form differs from the logical type — "
-                               "confirm the driver's response rules map it back.")],
+                               "'on'. Expected when the wire form differs from the logical type. "
+                               "Confirm the driver's response rules map it back.")],
  'types_enum_number_listed_as_text': [],
  'types_enum_value_listed': [],
  'types_enum_value_listed_as_text': [],
  'types_enum_value_unlisted': [('info',
                                 'type_consistency',
                                 "State variable 'v' initial value 'c' not in enum values: ['a', "
-                                "'b']. Expected when the wire form differs from the logical type — "
-                                "confirm the driver's response rules map it back.")],
+                                "'b']. Expected when the wire form differs from the logical type. "
+                                "Confirm the driver's response rules map it back.")],
  'types_enum_values_a_mapping': [('info',
                                   'type_consistency',
                                   "State variable 'v' is an enum whose values are computed, so its "
@@ -1012,68 +1012,68 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
  'types_float_given_bool': [('info',
                              'type_consistency',
                              "State variable 'v' is float but initial_state value is bool: True. "
-                             'Expected when the wire form differs from the logical type — confirm '
+                             'Expected when the wire form differs from the logical type. Confirm '
                              "the driver's response rules map it back.")],
  'types_float_given_float': [],
  'types_float_given_list': [('info',
                              'type_consistency',
                              "State variable 'v' is float but initial_state value is list: [1]. "
-                             'Expected when the wire form differs from the logical type — confirm '
+                             'Expected when the wire form differs from the logical type. Confirm '
                              "the driver's response rules map it back.")],
  'types_initial_state_a_list': [],
  'types_integer_given_bool': [('info',
                                'type_consistency',
                                "State variable 'v' is integer but initial_state value is bool: "
-                               'True. Expected when the wire form differs from the logical type — '
-                               "confirm the driver's response rules map it back.")],
+                               'True. Expected when the wire form differs from the logical type. '
+                               "Confirm the driver's response rules map it back.")],
  'types_integer_given_float': [('info',
                                 'type_consistency',
                                 "State variable 'v' is integer but initial_state value is float: "
-                                '5.0. Expected when the wire form differs from the logical type — '
-                                "confirm the driver's response rules map it back.")],
+                                '5.0. Expected when the wire form differs from the logical type. '
+                                "Confirm the driver's response rules map it back.")],
  'types_integer_given_int': [],
  'types_integer_given_text': [('info',
                                'type_consistency',
                                "State variable 'v' is integer but initial_state value is str: '5'. "
-                               'Expected when the wire form differs from the logical type — '
-                               "confirm the driver's response rules map it back.")],
+                               'Expected when the wire form differs from the logical type. '
+                               "Confirm the driver's response rules map it back.")],
  'types_list_type': [],
  'types_mapping_type': [],
  'types_number_given_bool': [('info',
                               'type_consistency',
                               "State variable 'v' is number but initial_state value is bool: "
-                              'False. Expected when the wire form differs from the logical type — '
-                              "confirm the driver's response rules map it back.")],
+                              'False. Expected when the wire form differs from the logical type. '
+                              "Confirm the driver's response rules map it back.")],
  'types_number_given_float': [],
  'types_number_given_int': [],
  'types_number_given_text': [('info',
                               'type_consistency',
                               "State variable 'v' is number but initial_state value is str: '1.5'. "
-                              'Expected when the wire form differs from the logical type — confirm '
+                              'Expected when the wire form differs from the logical type. Confirm '
                               "the driver's response rules map it back.")],
  'types_numeric_type': [],
  'types_several_in_declared_order': [('info',
                                       'type_consistency',
                                       "State variable 'z' is integer but initial_state value is "
                                       "str: '2'. Expected when the wire form differs from the "
-                                      "logical type — confirm the driver's response rules map it "
+                                      "logical type. Confirm the driver's response rules map it "
                                       'back.'),
                                      ('info',
                                       'type_consistency',
                                       "State variable 'a' is boolean but initial_state value is "
                                       "str: 'no'. Expected when the wire form differs from the "
-                                      "logical type — confirm the driver's response rules map it "
+                                      "logical type. Confirm the driver's response rules map it "
                                       'back.'),
                                      ('info',
                                       'type_consistency',
                                       "State variable 'm' initial value 'y' not in enum values: "
                                       "['x']. Expected when the wire form differs from the logical "
-                                      "type — confirm the driver's response rules map it back."),
+                                      "type. Confirm the driver's response rules map it back."),
                                      ('info',
                                       'type_consistency',
                                       "State variable 'n' is number but initial_state value is "
                                       "str: '1'. Expected when the wire form differs from the "
-                                      "logical type — confirm the driver's response rules map it "
+                                      "logical type. Confirm the driver's response rules map it "
                                       'back.')],
  'types_string_given_int': [],
  'types_type_missing_given_int': [],
@@ -1263,13 +1263,13 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                               'type_consistency',
                                               "State variable 'power' is boolean but initial_state "
                                               'value is int: 1. Expected when the wire form '
-                                              'differs from the logical type — confirm the '
+                                              'differs from the logical type. Confirm the '
                                               "driver's response rules map it back."),
                                              ('info',
                                               'type_consistency',
                                               "State variable 'mode' initial value 'b' not in enum "
                                               "values: ['a']. Expected when the wire form differs "
-                                              "from the logical type — confirm the driver's "
+                                              "from the logical type. Confirm the driver's "
                                               'response rules map it back.'),
                                              ('error',
                                               'transport_match',
@@ -1296,7 +1296,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                      ('warning',
                                       'state_coverage',
                                       'SIMULATOR_INFO seeds no initial_state at all, but the '
-                                      'driver declares 2 state variable(s) — the simulator models '
+                                      'driver declares 2 state variable(s). The simulator models '
                                       'none of this device, so nothing it answers can exercise the '
                                       "driver's parsing.")]},
  'required_driver_id_missing': {'driver_id': 'acme_widget',
@@ -1311,7 +1311,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                                ('warning',
                                                 'state_coverage',
                                                 'SIMULATOR_INFO seeds no initial_state at all, but '
-                                                'the driver declares 2 state variable(s) — the '
+                                                'the driver declares 2 state variable(s). The '
                                                 'simulator models none of this device, so nothing '
                                                 "it answers can exercise the driver's parsing.")]},
  'required_name_missing': {'driver_id': 'acme_widget',
@@ -1357,7 +1357,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                           ('warning',
                                            'state_coverage',
                                            'SIMULATOR_INFO seeds no initial_state at all, but the '
-                                           'driver declares 2 state variable(s) — the simulator '
+                                           'driver declares 2 state variable(s). The simulator '
                                            'models none of this device, so nothing it answers can '
                                            "exercise the driver's parsing."),
                                           ('info',
@@ -1371,7 +1371,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                               'issues': [('warning',
                                           'state_coverage',
                                           'SIMULATOR_INFO seeds no initial_state at all, but the '
-                                          'driver declares 2 state variable(s) — the simulator '
+                                          'driver declares 2 state variable(s). The simulator '
                                           'models none of this device, so nothing it answers can '
                                           "exercise the driver's parsing."),
                                          ('info',
@@ -1385,7 +1385,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                            'issues': [('warning',
                                        'state_coverage',
                                        'SIMULATOR_INFO seeds no initial_state at all, but the '
-                                       'driver declares 2 state variable(s) — the simulator models '
+                                       'driver declares 2 state variable(s). The simulator models '
                                        'none of this device, so nothing it answers can exercise '
                                        "the driver's parsing."),
                                       ('info',
@@ -1451,7 +1451,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                             'state_coverage',
                                             'SIMULATOR_INFO seeds 1 state key(s); 6 of the '
                                             "driver's 7 state variable(s) are not among them BY "
-                                            'NAME: v1, v2, v3, v4, v5, v6. Usually correct — the '
+                                            'NAME: v1, v2, v3, v4, v5, v6. Usually that is correct. The '
                                             'simulator seeds what goes on the wire and the driver '
                                             'publishes what it computes from that, so the names '
                                             'differ. Worth a look only if the counts say the '
@@ -1461,7 +1461,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                      'state_coverage',
                                      "SIMULATOR_INFO seeds 1 state key(s); 8 of the driver's 9 "
                                      'state variable(s) are not among them BY NAME: v0, v1, v2, '
-                                     'v4, v5, v6 (+2 more). Usually correct — the simulator seeds '
+                                     'v4, v5, v6 (+2 more). Usually that is correct. The simulator seeds '
                                      'what goes on the wire and the driver publishes what it '
                                      'computes from that, so the names differ. Worth a look only '
                                      'if the counts say the simulator models far less than the '
@@ -1471,7 +1471,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                      'state_coverage',
                                      "SIMULATOR_INFO seeds 1 state key(s); 1 of the driver's 2 "
                                      'state variable(s) are not among them BY NAME: <unevaluated>. '
-                                     'Usually correct — the simulator seeds what goes on the wire '
+                                     'Usually that is correct. The simulator seeds what goes on the wire '
                                      'and the driver publishes what it computes from that, so the '
                                      'names differ. Worth a look only if the counts say the '
                                      'simulator models far less than the driver reads.')]},
@@ -1479,7 +1479,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                        'issues': [('warning',
                                    'state_coverage',
                                    'SIMULATOR_INFO seeds no initial_state at all, but the driver '
-                                   'declares 2 state variable(s) — the simulator models none of '
+                                   'declares 2 state variable(s). The simulator models none of '
                                    "this device, so nothing it answers can exercise the driver's "
                                    'parsing.')]},
  'state_none_seeded_no_variables': {'driver_id': 'acme_widget', 'issues': []},
@@ -1492,8 +1492,8 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                        'issues': [('info',
                                    'state_coverage',
                                    "SIMULATOR_INFO seeds 2 state key(s); 1 of the driver's 2 state "
-                                   'variable(s) are not among them BY NAME: level. Usually correct '
-                                   '— the simulator seeds what goes on the wire and the driver '
+                                   'variable(s) are not among them BY NAME: level. Usually that is correct. '
+                                   'The simulator seeds what goes on the wire and the driver '
                                    'publishes what it computes from that, so the names differ. '
                                    'Worth a look only if the counts say the simulator models far '
                                    'less than the driver reads.')]},
@@ -1560,38 +1560,38 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                            'type_consistency',
                                            "State variable 'power' is boolean but initial_state "
                                            'value is _Unevaluated: <unevaluated>. Expected when '
-                                           'the wire form differs from the logical type — confirm '
+                                           'the wire form differs from the logical type. Confirm '
                                            "the driver's response rules map it back.")]},
  'types_wire_values': {'driver_id': 'acme_widget',
                        'issues': [('info',
                                    'type_consistency',
                                    "State variable 'power' is boolean but initial_state value is "
                                    "str: 'on'. Expected when the wire form differs from the "
-                                   "logical type — confirm the driver's response rules map it "
+                                   "logical type. Confirm the driver's response rules map it "
                                    'back.'),
                                   ('info',
                                    'type_consistency',
                                    "State variable 'level' is integer but initial_state value is "
                                    'bool: True. Expected when the wire form differs from the '
-                                   "logical type — confirm the driver's response rules map it "
+                                   "logical type. Confirm the driver's response rules map it "
                                    'back.'),
                                   ('info',
                                    'type_consistency',
                                    "State variable 'gain' is number but initial_state value is "
                                    "str: '1.5'. Expected when the wire form differs from the "
-                                   "logical type — confirm the driver's response rules map it "
+                                   "logical type. Confirm the driver's response rules map it "
                                    'back.'),
                                   ('info',
                                    'type_consistency',
                                    "State variable 'trim' is float but initial_state value is "
                                    'bool: False. Expected when the wire form differs from the '
-                                   "logical type — confirm the driver's response rules map it "
+                                   "logical type. Confirm the driver's response rules map it "
                                    'back.'),
                                   ('info',
                                    'type_consistency',
                                    "State variable 'mode' initial value 'c' not in enum values: "
                                    "['a', 'b']. Expected when the wire form differs from the "
-                                   "logical type — confirm the driver's response rules map it "
+                                   "logical type. Confirm the driver's response rules map it "
                                    'back.'),
                                   ('info',
                                    'type_consistency',

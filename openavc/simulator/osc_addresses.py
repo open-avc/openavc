@@ -202,6 +202,6 @@ def _typed_pair(arg: tuple | list) -> tuple[str, Any]:
         return (tag, arg[1])
     raise ValueError(
         f"OSC respond() argument {arg!r} is not a (type_tag, value) "
-        f"pair — the type tag must be one of {sorted(OSC_TYPE_TAGS)}. "
+        f"pair. The type tag must be one of {sorted(OSC_TYPE_TAGS)}. "
         f"Pass a bare value to have its type inferred."
     )

@@ -549,7 +549,7 @@ def test_listing_python_drivers(tmp_path, isolated, monkeypatch):
 
     listed = list_python_drivers([tmp_path / "missing", first, second])
 
-    resident = "Imported but not registered — duplicate driver ID or a failed last reload"
+    resident = "Imported but not registered: a duplicate driver ID or a failed last reload"
     # A replacing copy goes to the end of the list as it stands when it is read.
     assert listed == [
         _entry("pin_ls_annotated"),
@@ -578,7 +578,7 @@ def test_listing_python_drivers_reports_a_driver_whose_class_was_not_found(
     assert list_python_drivers([tmp_path]) == [
         _entry(
             "pin_ls_classless",
-            load_error="Imported but not registered — duplicate driver ID or a failed last reload",
+            load_error="Imported but not registered: a duplicate driver ID or a failed last reload",
         )
     ]
 

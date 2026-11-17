@@ -132,7 +132,7 @@ def check_osc_command_coverage(
         result.error(
             "command_coverage",
             f"No simulator handler matches OSC command '{cmd_name}' "
-            f"(sample address: {sample!r}) — add a command_handlers entry "
+            f"(sample address: {sample!r}). Add a command_handlers entry "
             f"with a matching address: pattern or a responses entry for it"
         )
 
