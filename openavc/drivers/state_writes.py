@@ -34,6 +34,7 @@ from typing import Any
 
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.drivers.contract_events import TYPE_MISMATCH, UNDECLARED_STATE
+from openavc.drivers.declared_names import declared_enum_values
 from openavc.drivers.spec import PLATFORM_STATE_PROPS
 from openavc.utils.logger import get_logger
 
@@ -84,7 +85,9 @@ def _type_mismatch(
 ) -> bool:
     """True when ``value`` is not of its ``declared`` type. A type this does
     not check (string, a type it does not know) never mismatches, and nor
-    does an enum that declares no values.
+    does an enum that declares no values. An enum's values are read as every
+    other check reads them (``declared_enum_values``): a choice declared as a
+    ``{value, label}`` mapping is its value.
 
     Python's ``bool`` is an ``int``. The contract observer reports ``True``
     written to a numeric variable; the debug log has always accepted it
@@ -96,7 +99,8 @@ def _type_mismatch(
     if not isinstance(declared, str):
         return False
     if declared == "enum":
-        return "values" in var_def and str(value) not in [str(v) for v in var_def["values"]]
+        allowed = declared_enum_values(var_def)
+        return allowed is not None and str(value) not in allowed
     if declared == "boolean":
         return not isinstance(value, bool)
     numeric = _NUMERIC_TYPES.get(declared)

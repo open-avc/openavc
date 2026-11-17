@@ -49,6 +49,8 @@ def _debug_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
     ]
 
 
+_LABELLED = [{"value": "on", "label": "On"}, {"value": "off", "label": "Off"}]
+
 _CASES = [
     ({"type": "integer"}, "loud", "declared integer, got str",
      "[acme1] State 'volume' declared as integer but got str: 'loud'"),
@@ -71,6 +73,11 @@ _CASES = [
     ({"type": "enum", "values": [1, "b"]}, "b", None, None),
     ({"type": "enum", "values": [1, "b"]}, "c", "not one of the declared values",
      "[acme1] State 'volume' value 'c' not in declared enum values [1, 'b']"),
+    # A choice may be declared as a {value, label} mapping: the value is what
+    # the driver writes, and it is one of the declared values.
+    ({"type": "enum", "values": _LABELLED}, "on", None, None),
+    ({"type": "enum", "values": _LABELLED}, "maybe", "not one of the declared values",
+     f"[acme1] State 'volume' value 'maybe' not in declared enum values {_LABELLED}"),
     ({"type": "enum"}, "anything", None, None),
     ({"type": "string"}, 5, None, None),
     ({}, 5, None, None),
