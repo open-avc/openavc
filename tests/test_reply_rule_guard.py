@@ -436,19 +436,10 @@ def test_a_device_audit_names_the_failed_rule_and_its_error():
 
 
 def test_every_contract_event_has_audit_words():
-    """The report's words and the audit wizard's labels each list every kind."""
-    import re
-    from pathlib import Path
-
-    from openavc.audit.observe import CONTRACT_TEXT
+    """The report's words list every kind, and the audit wizard is sent them
+    beside the counts (it keeps no list of its own)."""
+    from openavc.audit.observe import CONTRACT_TEXT, contract_labels
     from openavc.drivers.base import CONTRACT_EVENTS
 
     assert set(CONTRACT_TEXT) == set(CONTRACT_EVENTS)
-    step = Path(__file__).parents[1] / (
-        "openavc/web/programmer/src/views/devices/audit/steps/ListenStep.tsx"
-    )
-    labels = re.search(
-        r"const CONTRACT_LABELS[^{]*\{(.*?)\};", step.read_text(encoding="utf-8"), re.S
-    )
-    assert labels is not None
-    assert set(re.findall(r"^\s*(\w+):", labels.group(1), re.M)) == set(CONTRACT_EVENTS)
+    assert contract_labels(dict.fromkeys(CONTRACT_EVENTS, 1)) == CONTRACT_TEXT

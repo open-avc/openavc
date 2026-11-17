@@ -11,9 +11,14 @@ Two sources, both the platform's own, never a second parser:
 - **Contract events**, from the driver's ``contract_observer``
   (``drivers/base.py``): replies no response rule matched, writes to state the
   driver does not declare, values not of their declared type, values that did
-  not convert, commands the driver does not have, state for children it never
-  registered, response rules that failed while reading a reply. Each one is
+  not convert, commands the driver does not have, status for a channel or zone
+  not set up on the device, a reply whose channel or zone could not be found
+  (``drivers/child_placement.py`` decides which of a reply's children are
+  told), response rules that failed while reading a reply. Each one is
   counted; the first ``EVENT_DETAIL_KEPT`` of each kind keep their detail.
+  ``CONTRACT_TEXT`` is the one set of words for each kind: the report, the
+  wizard (the live view sends it beside the counts) and the Driver Builder's
+  live test all read it.
 
 Two faults are read from the traffic rather than reported by the driver:
 
@@ -48,6 +53,8 @@ from openavc.core.device_traffic import (
 )
 from openavc.core.device_info import PLATFORM_DEVICE_KEYS
 from openavc.core.state_store import is_flat_primitive
+from openavc.drivers.child_placement import placement_example
+from openavc.drivers.contract_events import CHILD_UNPLACED, CHILD_UNREGISTERED
 from openavc.utils.log_redaction import get_secret_registry
 
 # Payload bytes an audit keeps (raw chunks included).
@@ -60,25 +67,36 @@ EVENT_DETAIL_KEPT = 50
 # How long after a request a reply still counts as its answer.
 REPLY_WINDOW_SECONDS = 2.0
 
-# Each contract event kind, in words (the wizard's timeline and the report).
+# Each contract event kind, in words (the wizard, its timeline, the report
+# and the Driver Builder's live test).
 CONTRACT_TEXT = {
     "unmatched_response": "A reply matched none of the driver's rules",
     "undeclared_state": "The driver wrote a status value it does not list",
     "type_mismatch": "A status value is not the type the driver says it is",
     "coercion_failure": "A reply's value could not be converted to the type the driver says it is",
     "unknown_command": "The driver was asked for a command it does not have",
-    "child_unregistered": "The driver wrote status for a channel or zone it does not have",
+    CHILD_UNREGISTERED: "Status for a channel or zone that is not set up on this device",
+    CHILD_UNPLACED: "A reply's status could not be matched to a channel or zone",
     "rule_failed": "A response rule failed while reading a reply",
 }
 
 
+def contract_labels(counts: dict[str, int]) -> dict[str, str]:
+    """The words for each contract event kind counted, which the wizard shows
+    beside the count: the report's own."""
+    return {kind: CONTRACT_TEXT.get(kind, kind) for kind in counts}
+
+
 def contract_example(detail: Any) -> str:
     """What one contract event is about, in a line: the rule that failed and
-    its error, else the reply, the state, the command or the address."""
+    its error, the channel or zone a reply named or why it could not be
+    found, else the reply, the state, the command or the address."""
     if not isinstance(detail, dict):
         return ""
     if detail.get("rule"):
         return f'"{detail["rule"]}" ({detail.get("error", "")})'
+    if "child_type" in detail:
+        return placement_example(detail)
     return str(
         detail.get("text") or detail.get("state")
         or detail.get("command") or detail.get("address") or ""

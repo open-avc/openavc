@@ -279,6 +279,8 @@ export interface AuditListen {
   };
   contract: {
     counts: Record<string, number>;
+    /** Each counted kind in words: the report's own, so the two read alike. */
+    labels?: Record<string, string>;
     recent: { t: number; kind: string; detail: Record<string, unknown> }[];
   };
   status_table: {

@@ -183,7 +183,9 @@ async def test_child_set_ids_that_cannot_be_placed_are_skipped():
     driver, seen = _driver(_definition("tcp", [
         # A capture the pattern does not have, an optional one that did not
         # take part, a literal that is not an integer id, and one beyond the
-        # roster: none writes, and only the last is told to an observer.
+        # roster: none writes. The first two carry no id, so the reply does
+        # not speak of a child and is read; the literal cannot be placed (told,
+        # and the reply read nothing); the last is told unregistered.
         {"match": r"A(\d+)", "child_set": [{"type": "channel", "id": "$4", "state": {"level": "$1"}}]},
         {"match": r"B(\d+)(?:@(\d+))?", "child_set": [{"type": "channel", "id": "$2", "state": {"level": "$1"}}]},
         {"match": r"C(\d+)", "child_set": [{"type": "channel", "id": "abc", "state": {"level": "$1"}}]},
@@ -192,8 +194,11 @@ async def test_child_set_ids_that_cannot_be_placed_are_skipped():
     for line in (b"A5", b"B5", b"C5", b"D5"):
         await driver.on_data_received(line)
     assert [driver.get_child_state("channel", n).get("level") for n in range(1, 5)] == [None] * 4
-    assert seen == [("child_unregistered", {"child_type": "channel", "local_id": 7})]
-    assert driver._parsed_messages == 4
+    assert seen == [
+        ("child_unplaced", {"child_type": "channel", "reason": "bad_id", "id": "abc"}),
+        ("child_unregistered", {"child_type": "channel", "local_id": 7}),
+    ]
+    assert driver._parsed_messages == 3
 
 
 async def test_a_child_prop_naming_a_capture_the_rule_lacks_is_skipped_alone():
@@ -310,14 +315,14 @@ async def test_osc_child_set_entries_that_cannot_be_placed_or_read():
     driver, seen = _driver(_definition("osc", [{
         "address": "/ch/*/fader",
         "child_set": [
-            # Segment beyond the address: skipped.
+            # Segment beyond the address: not this message's child, skipped.
             {"type": "channel", "id": {"segment": 9}, "state": {"level": {"arg": 0}}},
             # The prop's arg is not in the message: no write for this entry.
             {"type": "channel", "id": {"segment": 1}, "state": {"level": {"arg": 5}}},
             # Mapped id, a literal prop and a positional prop.
             {"type": "channel", "id": {"segment": 1, "map": {"03": 3}},
              "state": {"level": {"arg": 0}, "name": "Fixed"}},
-            # A wire id outside the map: skipped quietly.
+            # A wire id outside the map: another entry's, skipped quietly.
             {"type": "channel", "id": {"segment": 1, "map": {"09": 4}},
              "state": {"level": {"arg": 0}}},
         ],
@@ -412,7 +417,7 @@ async def test_json_null_with_a_declared_type_is_no_reading_and_not_a_coercion_f
     assert seen == []
 
 
-async def test_json_child_set_literal_that_is_not_a_child_id_is_skipped_quietly():
+async def test_json_child_set_literal_that_is_not_a_child_id_is_skipped_and_told():
     driver, seen = _driver(_definition("tcp", [{
         "json": True,
         "child_set": [
@@ -423,7 +428,7 @@ async def test_json_child_set_literal_that_is_not_a_child_id_is_skipped_quietly(
     assert driver._apply_json_responses('{"lvl": 5}') is True
     assert driver.get_child_state("channel", 2).get("level") == 5
     assert driver.get_child_state("channel", 2).get("name") is None
-    assert seen == []
+    assert seen == [("child_unplaced", {"child_type": "channel", "reason": "bad_id", "id": "abc"})]
 
 
 async def test_json_child_set_beyond_the_roster_is_told_only_when_the_body_carries_it():
@@ -434,7 +439,10 @@ async def test_json_child_set_beyond_the_roster_is_told_only_when_the_body_carri
     }]))
     assert driver._apply_json_responses('{"mode": "a"}') is True
     assert seen == []
-    assert driver._apply_json_responses('{"lvl6": 1}') is False
+    # Read, as a text reply naming a channel the roster lacks is: nothing is
+    # written and the regex rules are not offered it.
+    assert driver._apply_json_responses('{"lvl6": 1}') is True
+    assert driver.get_child_state("channel", 6) == {}
     assert seen == [("child_unregistered", {"child_type": "channel", "local_id": 6})]
 
 

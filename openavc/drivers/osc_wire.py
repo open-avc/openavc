@@ -17,11 +17,13 @@ anything here:
   push values and the call's wire values, as every other send form does, so
   its ``read_back: true`` reads exactly the address it wrote.
 * A ``child_set:`` entry names its child by an address segment or a literal,
-  and a rule routing to children throttles per concrete address, since the
-  wildcard pattern serves every child.
-* A message is read once a rule matches it, counted before the rule reads
-  anything; the rule runs under its own guard (``reply_guard``), so one
-  that fails on a message leaves the rest of its bundle to be read.
+  placed as every form's is (``child_placement``), and a rule routing to
+  children throttles per concrete address, since the wildcard pattern serves
+  every child.
+* A message is read once a rule matches it, unless the rule's only work was
+  children it could place none of (``child_placement.reply_read``); the rule
+  runs under its own guard (``reply_guard``), so one that fails on a message
+  has still read it and leaves the rest of its bundle to be read.
 
 ``OscWire`` is a mixin ``ConfigurableDriver`` inherits, so every name stays
 on the driver object. From its host it needs ``device_id``, ``config``,
@@ -40,6 +42,7 @@ from typing import Any, Callable
 
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers import compiled_protocol
+from openavc.drivers.child_placement import PLACED, ChildReads, reply_read
 from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.contract_events import UNMATCHED_RESPONSE
 from openavc.drivers.json_replies import JSON_PATH_MISSING, extract_json_path
@@ -129,7 +132,9 @@ def _arg_value(mapping: dict[str, Any], args: list[tuple[str, Any]]) -> Any:
 
 
 def _child_wire_id(segments: list[str], id_spec: tuple[str, Any]) -> Any:
-    """The wire id a child_set entry names: an address segment or a literal."""
+    """The wire id a child_set entry names: an address segment or a literal
+    (``_NO_ARG``: a segment the address does not have, so the message does
+    not speak of that entry's child)."""
     id_kind, id_val = id_spec
     if id_kind != "segment":
         return id_val
@@ -228,34 +233,49 @@ class OscWire:
         for rule in self._osc_responses:
             addr_pattern, condition = rule[0], rule[4]
             if fnmatch.fnmatch(address, addr_pattern) and self._rule_applies(condition):
-                self._parsed_messages += 1
                 # Under its own guard (reply_guard): a rule that fails on one
-                # message leaves the rest of the bundle to be read.
-                with self._rule_guard(OSC, rule, address=address, args=_unread_args(args)):
-                    self._apply_osc_rule(rule, address, args)
+                # message has read it and leaves the rest of the bundle to be
+                # read.
+                read = True
+                try:
+                    with self._rule_guard(OSC, rule, address=address, args=_unread_args(args)):
+                        read = self._apply_osc_rule(rule, address, args)
+                finally:
+                    self._count_osc_read(address, read)
                 return True
         return False
 
+    def _count_osc_read(self, address: str, read: bool) -> None:
+        """Count a message a rule matched: read, or (its only children placed
+        nowhere) unread, kept as the unread-replies check's sample."""
+        if read:
+            self._parsed_messages += 1
+        else:
+            self._last_unread = address[:80]
+
     def _apply_osc_rule(
         self, rule: Any, address: str, args: list[tuple[str, Any]]
-    ) -> None:
+    ) -> bool:
+        """Apply one matched rule; whether it read the message
+        (``child_placement.reply_read``)."""
         addr_pattern, mappings, child_mappings, tstate, _condition = rule
         flat = self._osc_flat_reads(mappings, args)
-        children = (
+        reads = (
             self._resolve_osc_child_mappings(address, args, child_mappings)
-            if child_mappings else []
+            if child_mappings else ChildReads()
         )
         # An OSC child_set rule matches a wildcard address pattern
         # (/ch/*/mix/fader), so the concrete address IS the per-child scope.
         if self._throttle_hold(
-            tstate, address if child_mappings else "", flat, children,
+            tstate, address if child_mappings else "", flat, reads.writes,
         ):
             log.debug(
                 f"[{self.device_id}] OSC response throttled: {addr_pattern}"
             )
-            return
-        self._apply_writes(flat, children)
-        log.debug(f"[{self.device_id}] OSC matched: {addr_pattern}")
+        else:
+            self._apply_writes(flat, reads.writes)
+            log.debug(f"[{self.device_id}] OSC matched: {addr_pattern}")
+        return reply_read(reads.placements, bool(flat))
 
     def _osc_flat_reads(
         self, mappings: list[dict[str, Any]], args: list[tuple[str, Any]]
@@ -278,36 +298,36 @@ class OscWire:
         address: str,
         args: list[tuple[str, Any]],
         child_mappings: list[dict[str, Any]],
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
+    ) -> ChildReads:
         """Read an address-matched OSC message for child-entity state
-        (``child_set:``): one ``(child type, local id, updates)`` per child.
-        The child id comes from an address segment or a literal; prop values
-        from positional args or literals. The id map, the coercion and the
-        unregistered-id guard are the regex path's (``_place_child``)."""
+        (``child_set:``): where each child went, and one ``(child type, local
+        id, updates)`` per child placed. The child id comes from an address
+        segment or a literal; prop values from positional args or literals.
+        The placement is every form's (``_place_child``)."""
         segments = address.strip("/").split("/")
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
+        reads = ChildReads()
         for cm in child_mappings:
-            write = self._osc_child_write(segments, args, cm)
-            if write is not None:
-                writes.append(write)
-        return writes
+            self._osc_child_read(reads, segments, args, cm)
+        return reads
 
-    def _osc_child_write(
-        self, segments: list[str], args: list[tuple[str, Any]], cm: dict[str, Any]
-    ) -> tuple[str, Any, dict[str, Any]] | None:
-        ctype = cm["type"]
+    def _osc_child_read(
+        self,
+        reads: ChildReads,
+        segments: list[str],
+        args: list[tuple[str, Any]],
+        cm: dict[str, Any],
+    ) -> None:
         raw_id = _child_wire_id(segments, cm["id"])
         if raw_id is _NO_ARG:
-            return None
-        local_id = self._place_child(ctype, raw_id, cm, "child_set")
-        if local_id is None:
-            return None
+            return
+        placement = self._place_child(raw_id, cm)
         updates: dict[str, Any] = {}
-        for pm in cm["props"]:
-            value = self._osc_prop(pm, args)
-            if value is not _NO_ARG:
-                updates[pm["prop"]] = value
-        return (ctype, local_id, updates) if updates else None
+        if placement.outcome == PLACED:
+            for pm in cm["props"]:
+                value = self._osc_prop(pm, args)
+                if value is not _NO_ARG:
+                    updates[pm["prop"]] = value
+        reads.add(placement, updates)
 
     def _osc_prop(self, pm: dict[str, Any], args: list[tuple[str, Any]]) -> Any:
         """One child prop's value: its literal, else its positional arg."""

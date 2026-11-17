@@ -46,6 +46,7 @@ from openavc.audit.observe import (
     REPLY_WINDOW_SECONDS,
     ContractEvent,
     contract_example,
+    contract_labels,
     is_platform_key,
     recorded,
     replies_to_nobody,
@@ -731,6 +732,7 @@ class ListenPass:
             },
             "contract": {
                 "counts": dict(observer.event_counts),
+                "labels": contract_labels(observer.event_counts),
                 "recent": [e.to_dict() for e in observer.events[-10:]],
             },
             "status_table": self.status_table(),

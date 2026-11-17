@@ -12,10 +12,10 @@ ends in the same two questions, answered here once:
   text, except that ``null`` is no reading at all.
 * **Which child does a ``child_set:`` entry write?** The id the reply
   carries goes through the entry's ``id_map:``, is coerced to the child
-  type's ``id_format``, and has to be a registered child. A device
-  legitimately answers for ports beyond the roster a person configured, so
-  an id that falls out at any of those steps is skipped, not raised; one
-  that is simply not registered is told to a contract observer.
+  type's ``id_format``, and has to be a registered child. The answer is one
+  ``child_placement.Placement`` (placed, unregistered, or unplaceable with
+  a reason), whose rules that module states; ``_place_child`` decides it and
+  tells a contract observer what that module says is told.
 
 When a value does not convert, the coercer keeps it as it came or reads it
 as False, which is right for the room and invisible to the author, so a
@@ -34,7 +34,23 @@ from typing import Any, Callable
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers import compiled_protocol
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.drivers.contract_events import CHILD_UNREGISTERED, COERCION_FAILURE
+from openavc.drivers.child_placement import (
+    BAD_ID,
+    GAP,
+    NAMED,
+    UNMAPPED,
+    UNREGISTERED,
+    Placement,
+    placed,
+    placement_detail,
+    unplaceable,
+    unregistered,
+)
+from openavc.drivers.contract_events import (
+    CHILD_UNPLACED,
+    CHILD_UNREGISTERED,
+    COERCION_FAILURE,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.drivers.configurable")
@@ -156,13 +172,13 @@ class ReplyValues:
         child_types = self._definition.get("child_entity_types") or {}
         return coerce_child_local_id(child_types.get(child_type), raw)
 
-    def _place_child(
-        self, ctype: str, raw_id: Any, cm: dict[str, Any], form: str
-    ) -> Any:
-        """The registered child a reply's wire id names under a ``child_set``
-        (or ``child_list``) entry, or None when it names none: outside the
-        entry's id map, not that kind of id, or not registered (told to a
-        contract observer)."""
+    def _place_child(self, raw_id: Any, cm: dict[str, Any]) -> Placement:
+        """Where a reply's wire id puts its value under a ``child_set`` or
+        ``child_list`` entry ``cm`` (``child_placement``). An item of a list
+        that names its children by place, unregistered, is a gap the page
+        covers rather than a child the device named."""
+        ctype = cm["type"]
+        form = "child_list" if "list" in cm else "child_set"
         id_map = cm.get("id_map")
         if id_map is not None:
             mapped_id = id_map.get(str(raw_id).strip())
@@ -171,16 +187,27 @@ class ReplyValues:
                     f"[{self.device_id}] {form}: {ctype} wire id "
                     f"{raw_id!r} not in the id map — skipping"
                 )
-                return None
+                return unregistered(ctype, None, UNMAPPED)
             raw_id = mapped_id
         local_id = self._coerce_child_local_id(ctype, raw_id)
         if local_id is None:
-            return None
+            return self._told(unplaceable(ctype, BAD_ID, _as_reported(raw_id)))
         if not self.is_child_registered(ctype, local_id):
-            log.debug(
-                f"[{self.device_id}] {form}: {ctype} {local_id!r} not "
-                f"registered — skipping"
-            )
-            self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
-            return None
-        return local_id
+            by_place = form == "child_list" and cm["list"].get("id_group") is None
+            return self._told(unregistered(ctype, local_id, GAP if by_place else NAMED))
+        return placed(ctype, local_id)
+
+    def _told(self, placement: Placement) -> Placement:
+        """A placement that wrote nothing, in the debug log and, when
+        ``child_placement`` says so, to a contract observer."""
+        log.debug(
+            f"[{self.device_id}] reply: {placement.child_type} "
+            f"{placement.outcome} ({placement.why}"
+            f"{'' if placement.local_id is None else f', {placement.local_id!r}'}) "
+            f"— skipping"
+        )
+        detail = placement_detail(placement)
+        if detail is not None:
+            kind = CHILD_UNREGISTERED if placement.outcome == UNREGISTERED else CHILD_UNPLACED
+            self._observe(kind, **detail)
+        return placement

@@ -237,8 +237,10 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     traffic = dialog.get_by_role("log", name="Traffic")
     expect(traffic.get_by_text('"PWR?\\r"').first).to_be_visible(timeout=EXPECT_TIMEOUT)
     expect(traffic.get_by_text('"LAMP=450"').first).to_be_visible(timeout=EXPECT_TIMEOUT)
+    # The summary's count, in the report's own words (the timeline line
+    # names the reply instead of a count).
     expect(dialog.get_by_text(
-        "Replies that matched none of the driver's rules", exact=False,
+        re.compile(r"^A reply matched none of the driver's rules: \d+$"),
     )).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )

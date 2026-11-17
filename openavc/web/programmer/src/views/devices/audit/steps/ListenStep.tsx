@@ -14,16 +14,6 @@ import { ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 import { valueText } from "../../../../components/shared/booleanWords";
 
-const CONTRACT_LABELS: Record<string, string> = {
-  unmatched_response: "Replies that matched none of the driver's rules",
-  undeclared_state: "Status values the driver does not list",
-  type_mismatch: "Values of the wrong type",
-  coercion_failure: "Values that could not be converted",
-  unknown_command: "Commands the driver does not have",
-  child_unregistered: "Status for channels or zones the driver does not have",
-  rule_failed: "Replies a response rule failed to read",
-};
-
 /** Step 5: connect as adding the device to a space would, and listen. */
 export function ListenStep() {
   const session = useAuditStore((s) => s.session);
@@ -339,7 +329,7 @@ function ContractSummary({ listen }: { listen: audit.AuditListen }) {
       <ul style={{ margin: 0, paddingLeft: "var(--space-lg)" }}>
         {counts.map(([kind, n]) => (
           <li key={kind}>
-            {CONTRACT_LABELS[kind] ?? kind}: {n}
+            {listen.contract.labels?.[kind] ?? kind}: {n}
           </li>
         ))}
       </ul>

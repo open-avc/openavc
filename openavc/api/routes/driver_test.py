@@ -267,17 +267,26 @@ def _test_observer(
 
     A response rule that failed while reading the reply is a contract error:
     the runtime skips it, so the reply looks read and nothing else says so.
-    A reply no rule matched is listed apart: the runtime drops it with a
-    debug line, so without this the author sees the bytes arrive and nothing
-    happen, and cannot tell a missing rule from a rule that did not fit.
+    So is a reply whose channel or zone id, or page start, the driver could
+    not read (``drivers/child_placement.py``): nothing is written, and the
+    empty state changes are otherwise the only sign. It is worded as a device
+    audit words it (``audit/observe.py``). A reply naming a channel or zone
+    beyond this test's roster is not a fault of the driver, and fails nothing
+    here. A reply
+    no rule matched is listed apart: the runtime drops it with a debug line,
+    so without this the author sees the bytes arrive and nothing happen, and
+    cannot tell a missing rule from a rule that did not fit.
     """
-    from openavc.drivers.base import RULE_FAILED, UNMATCHED_RESPONSE
+    from openavc.audit.observe import CONTRACT_TEXT, contract_example
+    from openavc.drivers.base import CHILD_UNPLACED, RULE_FAILED, UNMATCHED_RESPONSE
     from openavc.drivers.reply_guard import rule_failure_sentence
 
     def observe(kind: str, detail: dict[str, Any]) -> None:
         if kind == RULE_FAILED:
             sentence = rule_failure_sentence(str(detail.get("rule")), str(detail.get("error")))
             _note_once(contract_errors, sentence)
+        elif kind == CHILD_UNPLACED:
+            _note_once(contract_errors, f"{CONTRACT_TEXT[kind]}: {contract_example(detail)}.")
         elif kind == UNMATCHED_RESPONSE:
             unmatched.append(_unmatched_text(detail))
 

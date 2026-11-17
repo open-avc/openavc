@@ -15,13 +15,14 @@ The rules worth knowing before changing anything here:
 * A ``child_set:`` entry names its child by a capture or a literal; a
   ``child_list:`` entry spreads one reply's list across children, each item
   by its own id capture or by its place counted from ``start``. Either way
-  the id goes through the id map, the id coercion and the registered check
-  (``ReplyValues._place_child``) before anything is written.
-* A line is read once a rule matches it and applies, counted before the
-  rule reads anything. The rule runs under its own guard
-  (``reply_guard``), so one that fails reading the line has still read
-  it. A line no rule read is counted as unread for the poll loop's
-  unread-replies check and told to a contract observer.
+  the id is placed (``ReplyValues._place_child``, the rules in
+  ``child_placement``) before anything is written.
+* A line is read once a rule matches it and applies, unless the rule's only
+  work was children it could place none of (``child_placement.reply_read``).
+  The rule runs under its own guard (``reply_guard``), so one that fails
+  reading the line has still read it. A line no rule read is counted as
+  unread for the poll loop's unread-replies check; one no rule matched is
+  also told to a contract observer.
 
 ``TextReplies`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``, the
@@ -36,6 +37,13 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
+from openavc.drivers.child_placement import (
+    NO_START,
+    PLACED,
+    ChildReads,
+    reply_read,
+    unplaceable,
+)
 from openavc.drivers.contract_events import UNMATCHED_RESPONSE
 from openavc.drivers.json_replies import JSON_PATH_MISSING, extract_json_path
 from openavc.drivers.reply_guard import TEXT
@@ -103,21 +111,24 @@ def _list_items(spec: dict[str, Any], text: str) -> list[re.Match[str] | None]:
     return [m for m in element.finditer(text) if m.end() > m.start()]
 
 
-def _list_start(start_spec: tuple[str, Any], match: re.Match[str]) -> Any:
-    """The id the list's first place names, or ``_UNREAD`` when the reply
-    does not say where its list begins: placing it anyway could write one
-    page over another."""
+def _list_start(start_spec: tuple[str, Any], match: re.Match[str]) -> tuple[Any, Any]:
+    """The id the list's first place names, and the start as the reply
+    wrote it. The id is ``_UNREAD`` when the reply does not say where its
+    list begins: placing it anyway could write one page over another."""
     kind, value = start_spec
     if kind != "group":
-        return value
+        return value, None
+    raw = _group(match, value)
     try:
-        return int(str(match.group(value)).strip())
-    except (IndexError, re.error, TypeError, ValueError):
-        return _UNREAD
+        return int(str(raw).strip()), raw
+    except (TypeError, ValueError):
+        return _UNREAD, raw
 
 
 def _item_id(item: re.Match[str] | None, place: int, start: Any, id_group: Any) -> Any:
-    """The wire id one list item names: its own capture, else its place."""
+    """The wire id one list item names: its own capture, else its place.
+    ``_UNREAD`` for an item that does not match the element (it holds its
+    place and is read no further) and one that names no id of its own."""
     if item is None:
         return _UNREAD
     if id_group is None:
@@ -145,6 +156,7 @@ class TextReplies:
     _apply_json_responses: Callable[[str], bool]
     _rule_guard: Callable[..., Any]
     _place_child: Callable[..., Any]
+    _told: Callable[..., Any]
     _convert_declared: Callable[[Any, str], Any]
     _mapped_reading: Callable[..., Any]
     _convert_value: Callable[[Any, str], Any]
@@ -176,30 +188,47 @@ class TextReplies:
             # Before anything is written, and before the throttle: a rule
             # that does not apply right now has not consumed this frame.
             if match and self._rule_applies(rule[4]):
-                # Read at the match, before the rule reads anything: one that
-                # fails reading it has still read it (reply_guard).
-                if not read_by_json:
-                    self._parsed_messages += 1
-                with self._rule_guard(TEXT, rule, text=text):
-                    self._apply_text_rule(rule, match)
+                # Read unless the rule says it placed nothing it could: one
+                # that fails reading it has still read it (reply_guard).
+                read = True
+                try:
+                    with self._rule_guard(TEXT, rule, text=text):
+                        read = self._apply_text_rule(rule, match)
+                finally:
+                    self._count_text_read(text, read, read_by_json)
                 return True
         return False
 
-    def _apply_text_rule(self, rule: Any, match: re.Match[str]) -> None:
+    def _count_text_read(self, text: str, read: bool, read_by_json: bool) -> None:
+        """Count a line a rule matched: read, or (its only children placed
+        nowhere) unread, kept as the sample the unread-replies check logs. A
+        body a json rule read was counted there."""
+        if read_by_json:
+            return
+        if read:
+            self._parsed_messages += 1
+        else:
+            self._last_unread = text[:80]
+
+    def _apply_text_rule(self, rule: Any, match: re.Match[str]) -> bool:
+        """Apply one matched rule; whether it read the line
+        (``child_placement.reply_read``)."""
         pattern, mappings, child_mappings, tstate, _condition, follow_ups = rule
         flat = self._text_flat_reads(match, mappings)
-        children = (
+        reads = (
             self._resolve_child_mappings(match, child_mappings)
-            if child_mappings else []
+            if child_mappings else ChildReads()
         )
+        children = reads.writes
         scope = throttle_scope(child_mappings, match)
         if self._throttle_hold(tstate, scope, flat, children):
             log.debug(f"[{self.device_id}] Response throttled: {pattern.pattern}")
-            return
-        self._apply_writes(flat, children)
-        log.debug(f"[{self.device_id}] Response matched: {pattern.pattern}")
-        if follow_ups:
-            self._follow_up(rule, follow_ups, scope, children)
+        else:
+            self._apply_writes(flat, children)
+            log.debug(f"[{self.device_id}] Response matched: {pattern.pattern}")
+            if follow_ups:
+                self._follow_up(rule, follow_ups, scope, children)
+        return reply_read(reads.placements, bool(flat))
 
     def _text_flat_reads(
         self, match: re.Match[str], mappings: list[dict[str, Any]]
@@ -233,46 +262,38 @@ class TextReplies:
 
     def _resolve_child_mappings(
         self, match: re.Match[str], child_mappings: list[dict[str, Any]]
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
+    ) -> ChildReads:
         """Read a matched response's captures for child-entity state
-        (``child_set:``, ``child_list:``): one ``(child type, local id,
-        updates)`` per child, written by the caller with
-        ``set_child_state_batch``."""
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
+        (``child_set:``, ``child_list:``): where each child went, and one
+        ``(child type, local id, updates)`` per child placed, written by the
+        caller with ``set_child_state_batch``."""
+        reads = ChildReads()
         for cm in child_mappings:
             if "list" in cm:
-                writes.extend(self._resolve_child_list(match, cm))
+                reads.extend(self._resolve_child_list(match, cm))
                 continue
             id_kind, id_val = cm["id"]
             raw_id = _group(match, id_val) if id_kind == "group" else id_val
-            if id_kind == "group" and raw_id is None:
-                continue
-            write = self._child_write(cm["type"], raw_id, cm, match, "child_set")
-            if write is not None:
-                writes.append(write)
-        return writes
+            # An optional id capture that did not take part: this reply does
+            # not speak of that entry's child (child_placement).
+            if raw_id is not None:
+                self._child_read(reads, cm, raw_id, match)
+        return reads
 
-    def _child_write(
-        self,
-        ctype: str,
-        raw_id: Any,
-        cm: dict[str, Any],
-        match: re.Match[str],
-        form: str,
-    ) -> tuple[str, Any, dict[str, Any]] | None:
-        """One child's ``(child type, local id, updates)`` from a wire id and
-        the match its props read their captures from (the rule's match for
-        ``child_set``, one item's for ``child_list``). None when the id cannot
-        be placed or nothing was read."""
-        local_id = self._place_child(ctype, raw_id, cm, form)
-        if local_id is None:
-            return None
+    def _child_read(
+        self, reads: ChildReads, cm: dict[str, Any], raw_id: Any, match: re.Match[str],
+    ) -> None:
+        """Place one child from a wire id and read its props from the match
+        they read their captures from (the rule's match for ``child_set``,
+        one item's for ``child_list``)."""
+        placement = self._place_child(raw_id, cm)
         updates: dict[str, Any] = {}
-        for pm in cm["props"]:
-            value = self._text_prop(pm, match)
-            if value is not _UNREAD:
-                updates[pm["prop"]] = value
-        return (ctype, local_id, updates) if updates else None
+        if placement.outcome == PLACED:
+            for pm in cm["props"]:
+                value = self._text_prop(pm, match)
+                if value is not _UNREAD:
+                    updates[pm["prop"]] = value
+        reads.add(placement, updates)
 
     def _text_prop(self, pm: dict[str, Any], match: re.Match[str]) -> Any:
         if "value" in pm:
@@ -284,7 +305,7 @@ class TextReplies:
 
     def _resolve_child_list(
         self, match: re.Match[str], cm: dict[str, Any]
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
+    ) -> ChildReads:
         """Spread one reply's list across children (``child_list:``).
 
         With a separator the list is split on it and every item, trimmed, has
@@ -293,24 +314,23 @@ class TextReplies:
         element is found along the list one after another. An item names its
         child by its own id capture, or by its place counted from ``start``
         (a number, or the rule's capture when the reply says where its page
-        begins). Each item is then written exactly as a ``child_set`` entry
-        would be: id map, id coercion, unregistered ids skipped."""
+        begins). Each item is then placed exactly as a ``child_set`` entry
+        would be; a place the roster skips is a gap, not a child the device
+        named (``child_placement``)."""
         spec = cm["list"]
+        reads = ChildReads()
         text = _group(match, spec["group"])
         if not text:
-            return []
-        items = _list_items(spec, text)
+            return reads
         id_group = spec["id_group"]
-        start = _list_start(spec["start"], match) if id_group is None else 0
+        start, raw_start = (
+            _list_start(spec["start"], match) if id_group is None else (0, None)
+        )
         if start is _UNREAD:
-            return []
-        placed = [
-            (item, raw_id)
-            for place, item in enumerate(items)
-            if (raw_id := _item_id(item, place, start, id_group)) is not _UNREAD
-        ]
-        writes = [
-            self._child_write(cm["type"], raw_id, cm, item, "child_list")
-            for item, raw_id in placed
-        ]
-        return [write for write in writes if write is not None]
+            reads.add(self._told(unplaceable(cm["type"], NO_START, raw_start)))
+            return reads
+        for place, item in enumerate(_list_items(spec, text)):
+            raw_id = _item_id(item, place, start, id_group)
+            if raw_id is not _UNREAD:
+                self._child_read(reads, cm, raw_id, item)
+        return reads

@@ -19,8 +19,9 @@ TYPE_MISMATCH = "type_mismatch"             # a value not of its declared type
 COERCION_FAILURE = "coercion_failure"       # a reply that would not convert
 UNKNOWN_COMMAND = "unknown_command"         # a command the driver does not have
 CHILD_UNREGISTERED = "child_unregistered"   # state for a child never registered
+CHILD_UNPLACED = "child_unplaced"           # a reply whose child could not be found
 RULE_FAILED = "rule_failed"                 # a reply rule that raised reading a reply
 CONTRACT_EVENTS: tuple[str, ...] = (
     UNMATCHED_RESPONSE, UNDECLARED_STATE, TYPE_MISMATCH, COERCION_FAILURE,
-    UNKNOWN_COMMAND, CHILD_UNREGISTERED, RULE_FAILED,
+    UNKNOWN_COMMAND, CHILD_UNREGISTERED, CHILD_UNPLACED, RULE_FAILED,
 )

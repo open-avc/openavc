@@ -14,8 +14,10 @@ The rules worth knowing before changing anything here:
 
 * A rule that raises is skipped alone. What it wrote before the raise stays,
   the next rule still runs, and the reply counts as read: a rule matched it,
-  so it is in this driver's language (the count is taken at the match, in
-  every form, before the rule reads anything).
+  so it is in this driver's language. Each form counts after the rule has
+  run, from what the rule says it read, and reads a raise as read; the one
+  matched reply that is not read is a rule whose only work was children it
+  could place none of (``child_placement.reply_read``).
 * The failing rule is reported by what its author wrote (its ``match:``, its
   ``address:``, or what a json rule sets), with the device's secrets masked
   (a ``match:`` is filled from the config): in the log as a warning naming

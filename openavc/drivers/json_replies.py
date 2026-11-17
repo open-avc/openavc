@@ -6,10 +6,16 @@ before changing anything here:
 
 * Rules are additive: every rule whose keys the body carries applies, and a
   rule whose keys are absent sets nothing and does not stamp its throttle
-  window. A body a json rule read is finished with, unless a rule declares
-  ``after_json`` (``TextReplies`` decides that). Each rule runs under its own
-  guard (``reply_guard``): one that raises is skipped, the next still runs,
-  and the body counts as read.
+  window. A ``child_set:`` entry's child is placed only when the body carries
+  a value for it (a smaller unit's reply has nothing at the paths of the ids
+  it does not have), as every form's is (``child_placement``). A rule whose
+  only values are for children the roster lacks has read the body without
+  writing, so it neither applies nor stamps its window; one whose only values
+  are for children it could place none of has not read it
+  (``child_placement.reply_read``). A body a json rule read is finished with,
+  unless a rule declares ``after_json`` (``TextReplies`` decides that). Each
+  rule runs under its own guard (``reply_guard``): one that raises is
+  skipped, the next still runs, and the body counts as read.
 * ``require:`` scopes a rule to bodies carrying all of the named keys, so
   endpoints that reuse a field name (a paired peripheral's ``status`` beside
   the main unit's) do not cross-write each other's state.
@@ -35,7 +41,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
-from openavc.drivers.contract_events import CHILD_UNREGISTERED
+from openavc.drivers.child_placement import PLACED, ChildReads, reply_read
 from openavc.drivers.reply_guard import JSON
 from openavc.utils.logger import get_logger
 
@@ -52,6 +58,8 @@ JSON_PATH_MISSING = object()
 _APPLIED = "applied"
 _HELD = "held"
 _FAILED = "failed"
+# Read, with nothing to write: its values were for children the roster lacks.
+_READ = "read"
 
 
 def _parsed(raw_value: Any) -> Any:
@@ -189,10 +197,8 @@ class JsonReplies:
     _rule_applies: Callable[[Any], bool]
     _throttle_hold: Callable[..., bool]
     _apply_writes: Callable[..., None]
-    is_child_registered: Callable[[str, Any], bool]
-    _observe: Callable[..., None]
     _rule_guard: Callable[..., Any]
-    _coerce_child_local_id: Callable[[str, Any], Any]
+    _place_child: Callable[..., Any]
     _mapped_reading: Callable[..., Any]
     _convert_json_value: Callable[[Any, str], Any]
 
@@ -219,7 +225,7 @@ class JsonReplies:
                 f"[{self.device_id}] JSON response applied "
                 f"({len(self._json_responses)} rule(s))"
             )
-        return applied or _HELD in outcomes or _FAILED in outcomes
+        return applied or any(o in outcomes for o in (_HELD, _FAILED, _READ))
 
     def _guarded_json_rule(self, obj: dict[str, Any], rule: Any, text: str) -> str | None:
         """One rule under its own guard (``reply_guard``): failed when it
@@ -232,15 +238,17 @@ class JsonReplies:
 
     def _apply_json_rule(self, obj: dict[str, Any], rule: Any) -> str | None:
         """One rule against one body: applied, held for its throttle window,
-        or None when it does not apply or the body carries none of its keys
-        (resolved first, so such a body does not stamp the window)."""
+        read with nothing to write, or None when it does not apply or the
+        body carries none of its keys it could use (resolved first, so such a
+        body does not stamp the window)."""
         mappings, tstate, require, condition, child_mappings = rule
         if not self._rule_applies(condition) or not _carries(obj, require):
             return None
         resolved = _flat_reads(obj, mappings)
-        child_writes = self._resolve_json_child_mappings(obj, child_mappings)
+        reads = self._resolve_json_child_mappings(obj, child_mappings)
+        child_writes = reads.writes
         if not resolved and not child_writes:
-            return None
+            return _READ if reads.placements and reply_read(reads.placements, False) else None
         flat = [
             (mapping["state"], self._mapped_reading(value, mapping, self._convert_json_value))
             for mapping, value in resolved
@@ -254,55 +262,31 @@ class JsonReplies:
 
     def _resolve_json_child_mappings(
         self, obj: Any, child_mappings: list[dict[str, Any]]
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
+    ) -> ChildReads:
         """Read a json rule's ``child_set:`` entries out of one parsed body.
 
         Resolved, not written: a body that carries none of a rule's paths must
         neither apply nor stamp the rule's throttle window, so the caller
         decides after seeing what came back."""
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
+        reads = ChildReads()
         for cm in child_mappings:
-            write = self._json_child_write(obj, cm)
-            if write is not None:
-                writes.append(write)
-        return writes
+            self._json_child_read(reads, obj, cm)
+        return reads
 
-    def _json_child_write(
-        self, obj: Any, cm: dict[str, Any]
-    ) -> tuple[str, Any, dict[str, Any]] | None:
-        """One ``child_set:`` entry's ``(child type, local id, updates)``, or
-        None. Unregistered ids are skipped -- a device legitimately answers
-        for units beyond a user-configured roster -- and told to a contract
-        observer only when the body carried a value for one: a smaller unit's
-        reply has nothing at the paths of the ids it does not have."""
-        ctype = cm["type"]
-        local_id = self._coerce_child_local_id(ctype, cm["id"][1])
-        if local_id is None:
-            return None
-        if not self.is_child_registered(ctype, local_id):
-            self._json_child_unregistered(obj, cm, local_id)
-            return None
-        updates: dict[str, Any] = {}
-        for pm in cm["props"]:
-            value = read_json_mapping(obj, pm)
-            if value is not JSON_PATH_MISSING:
-                updates[pm["prop"]] = self._mapped_reading(
-                    value, pm, self._convert_json_value
-                )
-        return (ctype, local_id, updates) if updates else None
-
-    def _json_child_unregistered(
-        self, obj: Any, cm: dict[str, Any], local_id: Any
-    ) -> None:
-        """Tell an observer about a child the roster lacks, when the body
-        carried a value for it."""
-        if not any(
-            read_json_mapping(obj, pm) is not JSON_PATH_MISSING for pm in cm["props"]
-        ):
+    def _json_child_read(self, reads: ChildReads, obj: Any, cm: dict[str, Any]) -> None:
+        """One ``child_set:`` entry: placed (``_place_child``) only when the
+        body carries a value for it, and its values read when it is."""
+        present = [
+            (pm, value) for pm in cm["props"]
+            if (value := read_json_mapping(obj, pm)) is not JSON_PATH_MISSING
+        ]
+        if not present:
             return
-        ctype = cm["type"]
-        log.debug(
-            f"[{self.device_id}] child_set: {ctype} {local_id!r} "
-            f"not registered — skipping"
-        )
-        self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
+        placement = self._place_child(cm["id"][1], cm)
+        updates: dict[str, Any] = {}
+        if placement.outcome == PLACED:
+            updates = {
+                pm["prop"]: self._mapped_reading(value, pm, self._convert_json_value)
+                for pm, value in present
+            }
+        reads.add(placement, updates)

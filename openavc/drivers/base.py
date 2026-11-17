@@ -61,6 +61,7 @@ from openavc.drivers.connect_lifecycle import (  # noqa: F401
 # What a contract observer can be told lives in its own module; these names
 # stay importable from here, the path drivers use.
 from openavc.drivers.contract_events import (  # noqa: F401
+    CHILD_UNPLACED,
     CHILD_UNREGISTERED,
     COERCION_FAILURE,
     CONTRACT_EVENTS,
