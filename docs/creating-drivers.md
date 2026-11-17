@@ -2197,9 +2197,10 @@ theoretically matchable and never actually found.
 
 A Python driver's block is checked by the same rules as a YAML one, and
 `python -m openavc.drivers.check` and the catalog refuse the same problems. A
-Python driver that is already installed still loads with a malformed block:
-the problem is shown on its entry in Installed, and its discovery hints are not
-used until it is fixed.
+Python driver that is already installed still loads with a malformed block,
+and the problem is shown on its entry in Installed. Its discovery hints are not
+used until the block is fixed, unless the problem is one of the few above that
+only stop a driver from saving.
 
 When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
 
