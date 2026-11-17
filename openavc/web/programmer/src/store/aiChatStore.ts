@@ -410,7 +410,10 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
 
     const entry = undoStack[idx];
     try {
-      await restoreSnapshot(entry.snapshot);
+      if (!(await restoreSnapshot(entry.snapshot))) {
+        set({ error: RESTORE_STOPPED_AT_UNSAVED });
+        return;
+      }
       // Remove this entry and all after it from the stack
       // Remove the user+assistant message pair and everything after
       set((s) => ({
@@ -436,7 +439,10 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
 
     const oldest = undoStack[0];
     try {
-      await restoreSnapshot(oldest.snapshot);
+      if (!(await restoreSnapshot(oldest.snapshot))) {
+        set({ error: RESTORE_STOPPED_AT_UNSAVED });
+        return;
+      }
       set({ undoStack: [], messages: [], suggestions: [], error: null });
     } catch (e) {
       set({ error: `Revert failed: ${parseApiError(e)}` });
@@ -444,25 +450,39 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
   },
 }));
 
+/** What Undo and Revert all say when they stop at an edit the tab has not
+ *  saved yet, having written nothing. */
+export const RESTORE_STOPPED_AT_UNSAVED =
+  "Nothing was undone: the project has a change that is not saved yet. Try again once it has saved.";
+
 /**
  * Write an undo snapshot back as the live project and bring every editor
- * surface along. The save carries the server's current ETag (fetched just
- * before the write — the editor's own ETag can be stale, since the WS
- * project.reloaded refetch is suppressed while dirty) so a concurrent edit
- * from another session 409s instead of being clobbered. The project store
- * force-reloads after, so the Project editor doesn't keep showing the
- * pre-undo project with a stale ETag — which made the next manual save 409
- * and left the divergence in place silently.
+ * surface along. Answers false, having written nothing, while the tab holds
+ * an edit the server does not have yet (store/saveState.ts): the snapshot
+ * does not carry it, and the reload after the write would drop it unsaved.
+ *
+ * The save carries the server's current ETag (fetched just before the write;
+ * the editor's own ETag can be stale, since the WS project.reloaded refetch
+ * is suppressed while dirty) so a concurrent edit from another session 409s
+ * instead of being clobbered. The project store force-reloads after, so the
+ * Project editor doesn't keep showing the pre-undo project with a stale
+ * ETag. An edit made while the write was on its way is the exception: the
+ * reload would drop it, so it is kept, and its own save meets the restored
+ * revision as a version conflict, whose banner offers the reload.
  */
-async function restoreSnapshot(snapshot: unknown): Promise<void> {
+async function restoreSnapshot(snapshot: unknown): Promise<boolean> {
   const { getProject, saveProject, reloadProject } = await import("../api/restClient");
   const { useProjectStore } = await import("./projectStore");
+  const { holdsUnsavedEdit } = await import("./saveState");
   const current = (await getProject()) as { _etag?: string };
+  // Asked after the ETag's read, so an edit made during it stops the write too.
+  if (holdsUnsavedEdit(useProjectStore.getState())) return false;
   // Snapshots come from getProject(), which embeds the transport-level
   // _etag marker — don't let it leak into the saved project body.
   const body = { ...(snapshot as Record<string, unknown>) };
   delete body._etag;
   await saveProject(body as unknown as Parameters<typeof saveProject>[0], current._etag);
   await reloadProject();
-  await useProjectStore.getState().forceReload();
+  if (!holdsUnsavedEdit(useProjectStore.getState())) await useProjectStore.getState().forceReload();
+  return true;
 }

@@ -51,6 +51,12 @@ export function saveStage(s: SaveProgress): SaveStage {
   return s.dirty ? "unsaved" : "saved";
 }
 
+/** Whether the tab holds an edit the server does not have yet: at every
+ *  stage but saved, a failed save and a version conflict included. */
+export function holdsUnsavedEdit(s: SaveProgress): boolean {
+  return saveStage(s) !== "saved";
+}
+
 /** What a save waiting to be tried again says, on the line across the top
  *  and on the Builder toolbar's status word. */
 export function retryWait(seconds: number): string {
