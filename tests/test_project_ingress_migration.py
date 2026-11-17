@@ -50,7 +50,7 @@ def mock_engine(tmp_path):
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
+    engine.apply_named_save = AsyncMock(return_value=ApplyOutcome("1"))
     engine.reload_project = AsyncMock()
     engine.broadcast_ws = AsyncMock()
     return engine
@@ -70,7 +70,7 @@ class TestPutProjectMigrates:
         resp = client.put("/api/project", json=_old_format_body())
         assert resp.status_code == 200
 
-        project = mock_engine.apply_project.call_args.args[0]
+        project = mock_engine.apply_named_save.call_args.args[0]
         assert project.openavc_version == "0.17.0"
         # 0.1.0 -> 0.2.0 moves connection fields into the connections table.
         assert project.connections["proj1"]["host"] == "10.0.0.5"
@@ -86,7 +86,7 @@ class TestPutProjectMigrates:
         }
         resp = client.put("/api/project", json=body)
         assert resp.status_code == 200
-        project = mock_engine.apply_project.call_args.args[0]
+        project = mock_engine.apply_named_save.call_args.args[0]
         assert project.openavc_version == "0.17.0"
 
     def test_non_object_body_is_422(self, client):

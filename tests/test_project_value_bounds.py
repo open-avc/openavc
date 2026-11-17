@@ -152,7 +152,7 @@ def client(tmp_path):
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
+    engine.apply_named_save = AsyncMock(return_value=ApplyOutcome("1"))
     engine.broadcast_ws = AsyncMock()
     app = FastAPI()
     app.include_router(router)
@@ -165,7 +165,7 @@ def test_an_older_project_saved_through_the_api_is_brought_inside(client):
     http, engine = client
     resp = http.put("/api/project", json=_older_project_out_of_bounds())
     assert resp.status_code == 200, resp.text
-    _assert_brought_inside(engine.apply_project.call_args.args[0])
+    _assert_brought_inside(engine.apply_named_save.call_args.args[0])
 
 
 def test_a_current_project_with_a_value_out_of_bounds_is_refused_by_name(client):
@@ -175,7 +175,7 @@ def test_a_current_project_with_a_value_out_of_bounds_is_refused_by_name(client)
     resp = http.put("/api/project", json=body)
     assert resp.status_code == 422
     assert "page_transition_duration" in resp.text
-    engine.apply_project.assert_not_called()
+    engine.apply_named_save.assert_not_called()
 
 
 # --- the AI's element doors refuse rather than store --------------------------
@@ -285,7 +285,7 @@ def test_an_older_project_with_a_nan_side_saved_through_the_api_loads(client):
         headers={"content-type": "application/json"},
     )
     assert resp.status_code == 200, resp.text
-    box = engine.apply_project.call_args.args[0].ui.pages[0].layouts[0].placements["power"]
+    box = engine.apply_named_save.call_args.args[0].ui.pages[0].layouts[0].placements["power"]
     assert box.w == 100
 
 
@@ -298,7 +298,7 @@ def test_a_current_project_with_a_nan_side_is_refused_by_name(client):
     assert resp.status_code == 422, resp.text
     assert "placements" in resp.json()["detail"]
     assert "finite" in resp.json()["detail"]
-    engine.apply_project.assert_not_called()
+    engine.apply_named_save.assert_not_called()
 
 
 @pytest.mark.asyncio

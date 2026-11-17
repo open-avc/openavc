@@ -64,7 +64,7 @@ def client(tmp_path):
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
+    engine.apply_named_save = AsyncMock(return_value=ApplyOutcome("1"))
     engine.broadcast_ws = AsyncMock()
 
     app = FastAPI()
@@ -106,7 +106,7 @@ def test_put_project_round_trips_the_monitor_list(client):
     resp = http.put("/api/project", json=_body())
     assert resp.status_code == 200, resp.text
 
-    saved: ProjectConfig = engine.apply_project.call_args.args[0]
+    saved: ProjectConfig = engine.apply_named_save.call_args.args[0]
     assert [m.key for m in saved.monitors] == [
         "device.proj.lamp_hours", "var.occupied",
     ]

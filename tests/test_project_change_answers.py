@@ -405,7 +405,7 @@ async def test_an_ai_edit_that_runs_whole_names_nothing(engine):
 
 # --- No door words the failure itself ---------------------------------------
 
-_APPLY_CALLS = {"apply_project", "apply_project_edit", "replace_project",
+_APPLY_CALLS = {"apply_project", "apply_named_save", "apply_project_edit", "replace_project",
                 "reassign_installed_equipment", "reload_project"}
 _DOOR_TREES = ("api", "cloud")
 

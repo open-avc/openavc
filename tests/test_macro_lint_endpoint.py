@@ -54,7 +54,7 @@ def client(tmp_path):
     engine.macros = MacroEngine(state, events, MagicMock())
     engine.project_path = tmp_path / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
+    engine.apply_named_save = AsyncMock(return_value=ApplyOutcome("1"))
     engine.broadcast_ws = AsyncMock()
 
     app = FastAPI()
@@ -273,6 +273,7 @@ def test_the_lint_writes_nothing(client):
     http, engine = client
     _lint(http, {"id": "macro_a", "steps": [{"action": "delay"}]})
     engine.apply_project.assert_not_called()
+    engine.apply_named_save.assert_not_called()
     assert engine._project_revision == 0
 
 

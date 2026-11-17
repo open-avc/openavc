@@ -50,7 +50,7 @@ def mock_engine(tmp_path):
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
+    engine.apply_named_save = AsyncMock(return_value=ApplyOutcome("1"))
     engine.reload_project = AsyncMock()
     engine.broadcast_ws = AsyncMock()
     return engine
