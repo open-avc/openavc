@@ -46,11 +46,14 @@ from openavc.core.connection_fault import (
     simulator_error_text,
 )
 from openavc.core.device_errors import DriverBuildError
+from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from openavc.core.device_sync import UnresolvedDevice
     from openavc.core.state_store import StateStore
     from openavc.drivers.base import BaseDriver
+
+log = get_logger("openavc.core.device_manager")
 
 RUNNING = "running"
 DISABLED = "disabled"
@@ -193,15 +196,19 @@ class DeviceRecordsMixin:
         listed and counted with why on its card. Whatever the device was
         before is replaced, except a device a driver runs: that one keeps
         running with the settings it has, since it is still in the project
-        and nothing better is known, and False is returned."""
+        and nothing better is known, and False is returned. One kept already
+        for the same reason is left as it is."""
         device_id = failure.device_id
         if self.runs(device_id):
             return False
-        if device_id in self._not_running:
-            await self.remove_device(device_id)
         entry = failure.entry
         product = bool(self.installed_equipment and self.installed_equipment.owns(device_id))
         fault = settings_failed_fault(str(entry.get("driver") or ""), failure, product=product)
+        kept = DeviceRecord(device_id, SETTINGS_FAILED, entry, fault)
+        if self._not_running.get(device_id) == kept:
+            return True
+        if device_id in self._not_running:
+            await self.remove_device(device_id)
         self._keep_record(device_id, SETTINGS_FAILED, entry, fault)
         prefix = f"device.{device_id}."
         self.state.set(f"{prefix}name", entry.get("name") or device_id, source="config")
@@ -234,7 +241,16 @@ class DeviceRecordsMixin:
         not be worked out; the ids a driver runs after."""
         waiting = [did for did, entry in self._records_in(SETTINGS_FAILED).items()
                    if entry.get("driver") == driver_id]
-        return [did for did in waiting if await self._retry_settings(did)]
+        return [did for did in waiting if await self._try_settings(did)]
+
+    async def _try_settings(self, device_id: str) -> bool:
+        """:meth:`_retry_settings`, with a failure logged as False, so one
+        device never costs the others their retry."""
+        try:
+            return await self._retry_settings(device_id)
+        except Exception:
+            log.exception(f"Failed to work out device '{device_id}' again")
+            return False
 
     async def _set_up_again(self, config: dict[str, Any]) -> bool:
         """Set a device no driver runs up again from ``config``, leaving

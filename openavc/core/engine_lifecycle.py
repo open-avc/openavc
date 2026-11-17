@@ -31,7 +31,7 @@ import time
 from pathlib import Path
 
 from openavc import runtime_flags
-from openavc.core.device_sync import add_devices, resolve_each
+from openavc.core.device_sync import add_devices, work_out_each
 from openavc.core.script_engine import ScriptEngine
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -379,7 +379,7 @@ class EngineLifecycleMixin:
         others still start (``core/device_sync.py``); one that cannot be
         worked out is kept by the device manager with why on its card."""
         self._sweep_device_logins()
-        resolved = resolve_each(self.project.devices, self.resolved_device_config)
+        resolved = work_out_each(self.project.devices, self.resolved_device_config)
         # A simulation that was on when the server stopped comes back
         # (core/simulation.py). Its devices register undialed, and the
         # bring-up round below starts the simulator and redirects them before

@@ -361,7 +361,7 @@ class DeviceManager(
         except Exception:
             log.debug(f"Error discarding superseded '{device_id}'", exc_info=True)
         prefix = f"device.{device_id}."
-        if device_id not in self._device_configs:
+        if self.device_record(device_id) is None:
             for key in self.state.get_namespace(prefix):
                 self.state.delete(f"{prefix}{key}")
         elif current is not None:
@@ -634,10 +634,10 @@ class DeviceManager(
         return readded
 
     def get_devices_using_driver(self, driver_id: str) -> list[str]:
-        """Return list of device IDs that use the given driver."""
+        """The ids of every device on ``driver_id``, in any state (its record)."""
         return [
-            did for did, cfg in self._device_configs.items()
-            if cfg.get("driver") == driver_id
+            record.device_id for record in self.device_records()
+            if record.config.get("driver") == driver_id
         ]
 
     async def disconnect_all(self) -> None:

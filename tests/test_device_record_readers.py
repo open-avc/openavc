@@ -42,6 +42,7 @@ from openavc.drivers.base import BaseDriver
 GOOD = "acme_record_widget"
 FAILS = "acme_record_fails"
 BAD = "acme_record_bad"
+SPLIT = "acme_record_split"
 MISSING = "acme_record_missing"
 
 HOSTS = {
@@ -83,6 +84,10 @@ def _drivers(monkeypatch):
     registry.register_driver(_driver_class(GOOD))
     registry.register_driver(_driver_class(FAILS, raises=True))
     registry.register_driver(_driver_class(BAD, default_config="port=23"))
+    # Its bridge ports written as a map: it cannot say whether it is a bridge.
+    registry.register_driver(_driver_class(
+        SPLIT, bridge={"ports": {"p1": {"kind": "serial", "passthrough_port": 4999}}},
+    ))
 
 
 def _project() -> ProjectConfig:
@@ -185,6 +190,10 @@ async def test_every_reader_says_the_same_about_a_device_in_each_state(engine):
     holds = {c.device_id for c in device_connections(engine.project, devices)}
     assert holds == {did for did, row in EXPECTED.items() if row["holds"]}
 
+    # Every device uses its driver, so none of them is deleted from under it.
+    for device in engine.project.devices:
+        assert device.id in devices.get_devices_using_driver(device.driver), device.id
+
     # The Device Audit refuses to share the equipment only with a device a
     # driver runs.
     names = list(HOSTS.values())
@@ -272,3 +281,41 @@ async def test_a_device_waiting_for_its_driver_moved_onto_one_it_cannot_work_out
 async def test_reload_reaches_only_the_devices_a_driver_runs_or_could_not_set_up(engine):
     assert await engine.devices.reload_driver(GOOD) == ["live"]
     assert engine.devices.device_record("off").status == "disabled"
+
+
+async def test_a_device_whose_driver_cannot_say_whether_it_is_a_bridge_stays_kept_at_each_save(engine):
+    engine.project.devices.append(DeviceConfig(id="split", driver=SPLIT, name="Bridge"))
+    engine.project.connections["split"] = {"host": "192.0.2.15"}
+    await engine._sync_devices()
+    assert engine.devices.status_of("split") == "settings_failed"
+    assert engine.state.get("device.split.offline_reason") == INVALID_CONFIG
+    assert SPLIT in engine.state.get("device.split.offline_detail")
+
+    await engine._sync_devices()
+    assert engine.devices.status_of("split") == "settings_failed"
+    assert engine.devices.get_driver("split") is None
+
+
+async def test_a_save_leaves_a_device_kept_for_the_same_reason_as_it_is(engine, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="openavc.core.device_manager"):
+        await engine._sync_devices()
+    assert not [r for r in caplog.records if "Removed device 'unset'" in r.getMessage()]
+    assert engine.devices.status_of("unset") == "settings_failed"
+
+
+async def test_one_device_that_cannot_be_tried_again_does_not_stop_a_driver_reload(engine, monkeypatch):
+    engine.project.devices.append(DeviceConfig(id="unset2", driver=BAD, name="Amplifier 2"))
+    await engine._sync_devices()
+    registry.register_driver(_driver_class(BAD, default_config={"port": 23}))
+    work_out = engine.devices.work_out
+
+    def flaky(device_id: str) -> dict:
+        if device_id == "unset":
+            raise RuntimeError("the project is being replaced")
+        return work_out(device_id)
+
+    monkeypatch.setattr(engine.devices, "work_out", flaky)
+    assert await engine.devices.reload_driver(BAD) == ["unset2"]
+    assert engine.devices.status_of("unset") == "settings_failed"

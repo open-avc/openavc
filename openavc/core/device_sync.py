@@ -137,16 +137,23 @@ def bridges_first(resolved: dict[str, dict[str, Any]]) -> tuple[list[list[str]],
     return [batch for batch in (bridges, others) if batch], failed
 
 
+def work_out_each(devices: Iterable[Any], resolve: Callable[[Any], dict[str, Any]]) -> ResolvedDevices:
+    """Each of ``devices`` worked out as the start and a save need it: its
+    settings (``resolve_each``), then whether its driver is a bridge
+    (``bridges_first``), each under its own guard. One that fails either is
+    in ``failed``, so the start, a save and a retry agree on it."""
+    resolved = resolve_each(devices, resolve)
+    _, unsplit = bridges_first(resolved.configs)
+    configs = {did: cfg for did, cfg in resolved.configs.items() if did not in unsplit}
+    return ResolvedDevices(configs, {**resolved.failed, **unsplit})
+
+
 def work_out(device: Any, resolve: Callable[[Any], dict[str, Any]]) -> dict[str, Any]:
-    """One project device worked out as a start or a save works each out
-    (``resolve_each``, then ``bridges_first``): its resolved record, or
-    :class:`UnresolvedDevice` with why it cannot be."""
-    resolved = resolve_each([device], resolve)
+    """One project device worked out (``work_out_each``): its resolved
+    record, or :class:`UnresolvedDevice` with why it cannot be."""
+    resolved = work_out_each([device], resolve)
     if resolved.failed:
         raise resolved.failed[device.id]
-    _, unsplit = bridges_first(resolved.configs)
-    if unsplit:
-        raise unsplit[device.id]
     return resolved.configs[device.id]
 
 

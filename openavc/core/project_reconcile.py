@@ -27,8 +27,8 @@ from openavc.core.device_sync import (
     delete_device_keys,
     keep_unresolved_at_sync,
     log_failed_sync_add,
-    resolve_each,
     update_changed_devices,
+    work_out_each,
 )
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.utils.logger import get_logger
@@ -225,7 +225,7 @@ class ProjectReconcileMixin:
 
         self._sweep_device_logins()
         # Build merged configs (device.config + connection table overrides)
-        resolved = resolve_each(self.project.devices, self.resolved_device_config)
+        resolved = work_out_each(self.project.devices, self.resolved_device_config)
         project_devices = resolved.configs
         known_ids = {record.device_id for record in self.devices.device_records()}
         project_ids = {d.id for d in self.project.devices}
