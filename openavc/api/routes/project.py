@@ -20,6 +20,7 @@ from openavc.api.models import (
     LoginsPassphraseRequest,
     PanelUnlockRequest,
 )
+from openavc.core.client_origin import OPERATION_HEADER, parse_client_id
 from openavc.core.command_params import (
     file_command_check,
     missing_params_check,
@@ -381,7 +382,9 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     active built-in reference protections. Both paths validate before writing.
     A change the running system could not take is a 500 that says so
     (``code`` ``not_applied``); one that runs with a part it could not start
-    lists each under ``not_running``.
+    lists each under ``not_running``. An ordinary save may name itself in an
+    ``X-OpenAVC-Operation`` header: sent again under the same id after its
+    answer was lost, it is answered with what it did.
     """
     max_body = 10 * 1024 * 1024
     content_length = request.headers.get("content-length")
@@ -464,7 +467,8 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
                 raise HTTPException(status_code=422, detail=str(error)) from error
         else:
             outcome = await engine.apply_project(
-                project, expected_revision=expected_rev
+                project, expected_revision=expected_rev,
+                operation=parse_client_id(request.headers.get(OPERATION_HEADER)),
             )
             # An earlier release's document saved over this one: what its
             # migration changed joins the notice for the running project.

@@ -88,6 +88,15 @@ class ApplyOutcome:
 
 
 @dataclass(frozen=True)
+class _NamedSave:
+    """The save that made the current revision, by the operation id its
+    sender gave it, and what it did."""
+
+    operation: str
+    outcome: ApplyOutcome
+
+
+@dataclass(frozen=True)
 class _TakenIn:
     """A project change as this system will run it, before it runs:
     ``as_given`` has the installed equipment composed in, ``project`` also
@@ -136,6 +145,10 @@ class ProjectChangesMixin:
         self._boot_id: str = secrets.token_hex(4)
         self._revision_counter: int = 0  # saves committed this run
         self._project_revision: str = f"{self._boot_id}-0"
+        # The last save that came with an operation id: one slot, in memory,
+        # so the same save sent again after its answer was lost is recognised
+        # while it is still the current revision (_resent_outcome).
+        self._last_named_save: _NamedSave | None = None
 
         # Reload serialization
         self._reload_lock = asyncio.Lock()
@@ -176,6 +189,7 @@ class ProjectChangesMixin:
         expected_revision: str | None = None,
         origin: ProjectOrigin = ProjectOrigin.EDIT,
         persist: bool = True,
+        operation: str | None = None,
     ) -> ApplyOutcome:
         """The one way a project change enters the engine.
 
@@ -192,10 +206,37 @@ class ProjectChangesMixin:
         both pass the compare and the loser's edit is silently overwritten —
         the exact race the 409 contract exists to prevent. Raises
         :class:`ProjectRevisionConflictError` on mismatch.
+
+        ``operation`` names the save (the Programmer's id for it). The same
+        save sent again under the same id, because its answer was lost, is
+        answered with what it did rather than applied twice or refused as
+        another session's change (:meth:`_resent_outcome`).
         """
         async with self._reload_lock:
+            resent = self._resent_outcome(operation)
+            if resent is not None:
+                return resent
             self._check_revision(expected_revision)
-            return await self._apply_project_locked(new_project, origin, persist)
+            outcome = await self._apply_project_locked(new_project, origin, persist)
+            self._last_named_save = _NamedSave(operation, outcome) if operation else None
+            return outcome
+
+    def _resent_outcome(self, operation: str | None) -> ApplyOutcome | None:
+        """What the save named ``operation`` did, when it is the one that
+        made the current revision; ``None`` otherwise. Once anything else has
+        moved the revision, the resend is checked as any other save is: an
+        answer of "saved" with the newer revision would let its sender save
+        over that change without seeing it. Caller holds ``_reload_lock``."""
+        last = self._last_named_save
+        if (
+            operation is None
+            or last is None
+            or last.operation != operation
+            or last.outcome.revision != self._project_revision
+        ):
+            return None
+        log.info("A save sent again after its answer was lost was already applied")
+        return last.outcome
 
     async def replace_project(
         self, new_project: ProjectConfig, update_notes: MigrationNotes, *,
