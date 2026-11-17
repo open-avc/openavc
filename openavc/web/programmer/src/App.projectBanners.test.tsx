@@ -36,7 +36,7 @@ beforeEach(() => {
   }) as typeof window.fetch;
   useProjectStore.setState({
     project: null, dirty: false, saving: false, loading: false,
-    error: null, loadError: null, conflictDetected: false,
+    error: null, loadError: null, conflictDetected: false, saveRetryIn: null,
   });
 });
 
@@ -77,6 +77,16 @@ describe("the save failure line", () => {
     const dismiss = screen.getByRole("button", { name: "Dismiss" }) as HTMLButtonElement;
     expect([retry.style.padding, retry.style.fontWeight, retry.style.border, retry.style.color]).toEqual(["2px 10px", "600", "1px solid var(--color-error)", "var(--color-error)"]);
     expect([dismiss.style.padding, dismiss.style.fontWeight, dismiss.style.border, dismiss.style.color]).toEqual(["2px 10px", "", "1px solid var(--border-color)", "var(--text-secondary)"]);
+  });
+
+  it("says a save waiting to be tried again as a retry, never as a failure", async () => {
+    await openProgramView();
+    act(() => useProjectStore.setState({ saveRetryIn: 2, dirty: true }));
+    expect(screen.getByText("Not saved yet. Trying again in 2 seconds.")).toBeInTheDocument();
+    expect(screen.queryByText(/Save failed/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    act(() => useProjectStore.setState({ saveRetryIn: 1 }));
+    expect(screen.getByText("Not saved yet. Trying again in 1 second.")).toBeInTheDocument();
   });
 
   it("stays away while a version conflict has its own banner", async () => {

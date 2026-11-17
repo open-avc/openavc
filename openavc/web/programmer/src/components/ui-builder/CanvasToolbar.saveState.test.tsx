@@ -14,7 +14,7 @@ beforeEach(() => {
   seed(makeProject(), { selectedPageId: "main" });
 });
 
-const IDLE = { dirty: false, saving: false, savePending: false, error: null, conflictDetected: false };
+const IDLE = { dirty: false, saving: false, savePending: false, error: null, conflictDetected: false, saveRetryIn: null };
 
 const draw = (state: Record<string, unknown> = {}) => {
   act(() => useProjectStore.setState({ ...IDLE, ...state } as never));
@@ -31,6 +31,13 @@ describe("the toolbar's save state", () => {
     expect(word.getAttribute("title")).toBe("Disk full");
     expect(word.style.color).toBe("var(--color-error, #d33)");
     expect(screen.queryByText("Saving...")).toBeNull();
+  });
+
+  it("says a save waiting to be tried again as Retrying..., with when on hover", () => {
+    draw({ saveRetryIn: 1, dirty: true });
+    const word = screen.getByText("Retrying...");
+    expect(word.getAttribute("title")).toBe("Not saved yet. Trying again in 1 second.");
+    expect(screen.queryByText("Save failed")).toBeNull();
   });
 
   it("leaves a version conflict to its own banner and says what else is true", () => {

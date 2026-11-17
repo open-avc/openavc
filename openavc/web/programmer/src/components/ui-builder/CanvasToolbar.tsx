@@ -24,7 +24,6 @@ import {
   Undo2,
   Redo2,
   Check,
-  Loader2,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
   MoveHorizontal,
@@ -39,7 +38,8 @@ import {
 import type { MacroConfig, UIConfig, UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
-import { saveFailure, saveNow } from "../../store/saveState";
+import { saveNow } from "../../store/saveState";
+import { SaveStatusWord } from "./SaveStatusWord";
 import { isCustomPage } from "./customPage";
 import { removePageFromGroups } from "./projectRewrites";
 import { canvasScreen, useChosenScreen } from "./canvasScreen";
@@ -175,10 +175,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
   const ui = useProjectStore((s) => s.project?.ui);
   const update = useProjectStore((s) => s.update);
   const dirty = useProjectStore((s) => s.dirty);
-  const saving = useProjectStore((s) => s.saving);
-  const savePending = useProjectStore((s) => s.savePending);
   const error = useProjectStore((s) => s.error);
-  const failure = useProjectStore(saveFailure);
   const undo = useUIBuilderStore((s) => s.undo);
   const redo = useUIBuilderStore((s) => s.redo);
   const undoStack = useUIBuilderStore((s) => s.undoStack);
@@ -1132,27 +1129,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
 
         {/* Save state + manual Save button */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, flexShrink: 0 }}>
-          {failure ? (
-            <span style={{ color: "var(--color-error, #d33)", fontWeight: 500 }} title={failure}>
-              Save failed
-            </span>
-          ) : saving ? (
-            <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-secondary)" }}>
-              <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
-              Saving...
-            </span>
-          ) : savePending ? (
-            <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }} title="Will save shortly">
-              Pending...
-            </span>
-          ) : dirty ? (
-            <span style={{ color: "var(--color-warning)", fontWeight: 500 }}>Unsaved</span>
-          ) : (
-            <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-secondary)" }}>
-              <Check size={12} />
-              Saved
-            </span>
-          )}
+          <SaveStatusWord />
           <button
             onClick={saveNow}
             disabled={!dirty && !error}

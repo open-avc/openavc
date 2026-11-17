@@ -3,7 +3,9 @@
  *
  * A failed save is shown (the line across the top of the app on every view,
  * components/shared/SaveFailedBanner.tsx, and the Builder toolbar's status
- * word) unless it was a version conflict: that has its own banner above the
+ * word, components/ui-builder/SaveStatusWord.tsx) once it has stopped trying;
+ * while it waits to be tried again, both say that instead. A version conflict
+ * is not shown here either: that has its own banner above the
  * whole app (App.tsx) with the only two answers that can work, and saying it
  * again here would offer a retry that can only conflict again. A failed
  * project load is the store's `loadError`, never `error`, so it is never said
@@ -24,9 +26,35 @@ interface SaveStatus {
   conflictDetected: boolean;
 }
 
+interface SaveProgress extends SaveStatus {
+  saveRetryIn: number | null;
+  saving: boolean;
+  savePending: boolean;
+  dirty: boolean;
+}
+
+/** Where the project's save stands, the first of these that is true. */
+export type SaveStage = "failed" | "retrying" | "saving" | "pending" | "unsaved" | "saved";
+
 /** Why the last save failed, or null when there is nothing to say here. */
 export function saveFailure(s: SaveStatus): string | null {
   return s.conflictDetected ? null : s.error;
+}
+
+/** Where the save stands: a failure once the save has stopped trying, and a
+ *  save waiting to be tried again as a retry, never as a failure. */
+export function saveStage(s: SaveProgress): SaveStage {
+  if (saveFailure(s)) return "failed";
+  if (s.saveRetryIn != null) return "retrying";
+  if (s.saving) return "saving";
+  if (s.savePending) return "pending";
+  return s.dirty ? "unsaved" : "saved";
+}
+
+/** What a save waiting to be tried again says, on the line across the top
+ *  and on the Builder toolbar's status word. */
+export function retryWait(seconds: number): string {
+  return `Not saved yet. Trying again in ${seconds} ${seconds === 1 ? "second" : "seconds"}.`;
 }
 
 /** The store is read once, before the flush. */

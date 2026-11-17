@@ -15,7 +15,10 @@ export interface SaveStatePatch {
   etag?: string | null;
   revision?: string | null;
   conflictDetected?: boolean;
+  /** Why the save failed, set only once it has stopped trying. */
   error?: string | null;
+  /** Seconds until a failed save is tried again; null while none waits. */
+  saveRetryIn?: number | null;
 }
 
 export interface SaveAttemptDeps {
@@ -56,7 +59,7 @@ export async function runSaveWithRetry(
     const project = deps.getProject();
     if (!project) return "noop";
     const etag = deps.getEtag();
-    deps.setState({ saving: true, savePending: false, error: null });
+    deps.setState({ saving: true, savePending: false, error: null, saveRetryIn: null });
     try {
       const result = await deps.saveProject(project, etag ?? undefined);
       const newEtag = result.etag ?? null;
@@ -67,6 +70,7 @@ export async function runSaveWithRetry(
       const editedDuringSave = deps.getProject() !== project;
       deps.setState({
         saving: false,
+        saveRetryIn: null,
         dirty: editedDuringSave,
         etag: newEtag,
         revision: newRevision,
@@ -75,16 +79,18 @@ export async function runSaveWithRetry(
       return "saved";
     } catch (e) {
       if (deps.isConflict(e)) {
-        deps.setState({ saving: false, conflictDetected: true, error: deps.conflictMessage(e) });
+        deps.setState({
+          saving: false, saveRetryIn: null, conflictDetected: true, error: deps.conflictMessage(e),
+        });
         return "conflict";
       }
       if (attempt < maxRetries) {
         const delay = (attempt + 1) * 1000;
-        deps.setState({ error: `Save failed, retrying in ${delay / 1000}s...`, saving: false });
+        deps.setState({ saving: false, saveRetryIn: delay / 1000 });
         await deps.sleep(delay);
         continue;
       }
-      deps.setState({ error: deps.failureMessage(e), saving: false });
+      deps.setState({ error: deps.failureMessage(e), saving: false, saveRetryIn: null });
       return "failed";
     }
   }

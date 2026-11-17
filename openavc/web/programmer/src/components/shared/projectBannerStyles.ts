@@ -17,6 +17,15 @@ export const bannerStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+/** A save waiting to be tried again: the same line, in the warning colour,
+ *  since nothing has failed yet. */
+export const waitBannerStyle: CSSProperties = {
+  ...bannerStyle,
+  background: "rgba(255,152,0,0.12)",
+  color: "var(--color-warning)",
+  borderBottom: "1px solid var(--color-warning)",
+};
+
 export const BANNER_TEXT_STYLE: CSSProperties = { flex: 1 };
 
 const button: CSSProperties = {

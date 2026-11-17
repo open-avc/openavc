@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ApiError } from "../api/errors";
+import { ApiError, SERVER_NOT_ANSWERING } from "../api/errors";
 import {
   runSaveWithRetry,
   type SaveAttemptDeps,
@@ -117,5 +117,39 @@ describe("runSaveWithRetry", () => {
     expect(await runSaveWithRetry(d)).toBe("saved");
     expect(patches.some((p) => p.error)).toBe(false);
     expect(patches.at(-1)).toMatchObject({ saving: false, dirty: false, etag: '"def"' });
+  });
+});
+
+describe("a save waiting to be tried again", () => {
+  const noAnswer = () => vi.fn(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+
+  it("waits in a state of its own, never written as a failure", async () => {
+    const { d, patches } = deps({ maxRetries: 2, saveProject: noAnswer() });
+
+    expect(await runSaveWithRetry(d)).toBe("failed");
+    expect(patches.filter((p) => p.saveRetryIn != null).map((p) => p.saveRetryIn)).toEqual([1, 2]);
+    // The failure is said once, when the tries are spent.
+    expect(patches.filter((p) => typeof p.error === "string").map((p) => p.error)).toEqual([
+      SERVER_NOT_ANSWERING,
+    ]);
+    expect(patches.at(-1)).toMatchObject({ saveRetryIn: null, saving: false });
+  });
+
+  it("clears the wait when the try after it saves", async () => {
+    let calls = 0;
+    const { d, patches } = deps({
+      maxRetries: 2,
+      saveProject: vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) throw new TypeError("Failed to fetch");
+        return { etag: '"def"' };
+      }),
+    });
+
+    expect(await runSaveWithRetry(d)).toBe("saved");
+    expect(patches.some((p) => typeof p.error === "string")).toBe(false);
+    expect(patches.at(-1)).toMatchObject({ saveRetryIn: null, saving: false, dirty: false });
   });
 });

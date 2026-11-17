@@ -94,6 +94,26 @@ async function main() {
     };
   }
 
+  // A save waiting to be tried again waits in a state of its own: the wait is
+  // never written as the save's failure, and the failure is said once, when
+  // the tries are spent.
+  {
+    const patches = [];
+    const { deps, state } = makeDeps({
+      saveProject: async () => { throw new Error("down"); },
+    });
+    const set = deps.setState;
+    deps.setState = (patch) => { patches.push(patch); set(patch); };
+    const outcome = await H.runSaveWithRetry(deps);
+    const waits = patches.filter((p) => p.saveRetryIn != null).map((p) => p.saveRetryIn);
+    const errors = patches.filter((p) => typeof p.error === "string").map((p) => p.error);
+    results.retry_wait_is_not_a_failure = {
+      pass: outcome === "failed" && eq(waits, [1, 2]) && errors.length === 1 &&
+        state.saveRetryIn === null,
+      detail: { outcome, waits, errors, saveRetryIn: state.saveRetryIn },
+    };
+  }
+
   // A version conflict is never retried — one write, no backoff.
   {
     let calls = 0;
