@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import (
-    AI_TOOL_RESULT, build_ai_tool_result_payload, extract_payload,
+    AI_TOOL_CALL, AI_TOOL_RESULT, build_ai_tool_result_payload, read_as,
 )
 from openavc.cloud.tools.catalog_tools import CatalogToolsMixin
 from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
@@ -342,10 +342,10 @@ class AIToolHandler(
         Dispatches tool execution as a background task so long-running tools
         (discovery scans, wait) don't block the agent's receive loop.
         """
-        payload = extract_payload(msg)
-        request_id = payload.get("request_id", "")
-        tool_name = payload.get("tool_name", "")
-        tool_input = payload.get("tool_input", {})
+        payload = read_as(AI_TOOL_CALL, msg)
+        request_id = payload["request_id"]
+        tool_name = payload["tool_name"]
+        tool_input = payload["tool_input"]
         if tool_input is None:  # a tool that takes nothing may be sent null
             tool_input = {}
 

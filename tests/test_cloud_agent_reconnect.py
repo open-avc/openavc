@@ -851,6 +851,11 @@ class TestHandshakeErrorClassification:
                 for sub in ast.walk(comparator):
                     if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
                         derived.add(sub.value)
+                    # The refusal reasons that mean the key is gone are the
+                    # wire contract's, named rather than spelled here.
+                    if isinstance(sub, ast.Name) and sub.id == "FATAL_REFUSAL_REASONS":
+                        from openavc.cloud.protocol import FATAL_REFUSAL_REASONS
+                        derived |= FATAL_REFUSAL_REASONS
 
         assert derived == set(self.FATAL_REASONS), (
             "The reasons the agent stops on drifted from this list. "

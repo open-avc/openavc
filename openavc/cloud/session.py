@@ -13,7 +13,7 @@ from typing import Any
 
 from openavc.cloud.crypto import derive_signing_key, sign_message, verify_message_signature
 from openavc.cloud.protocol import (
-    extract_payload,
+    SESSION_INVALID, SESSION_ROTATE, read_as,
 )
 from openavc.utils.logger import get_logger
 
@@ -128,11 +128,11 @@ class Session:
         Args:
             msg: The session_rotate message.
         """
-        payload = extract_payload(msg)
-        new_token = payload.get("new_session_token")
-        new_salt_hex = payload.get("new_signing_key_salt")
-        new_expires = payload.get("new_session_expires", "")
-        switch_at_seq = payload.get("switch_at_seq")
+        payload = read_as(SESSION_ROTATE, msg)
+        new_token = payload["new_session_token"]
+        new_salt_hex = payload["new_signing_key_salt"]
+        new_expires = payload["new_session_expires"]
+        switch_at_seq = payload["switch_at_seq"]
 
         # switch_at_seq is required: without it check_rotation can never fire
         # (it gates on `_rotate_at_downstream_seq is not None`), so the agent
@@ -210,8 +210,8 @@ class Session:
         Args:
             msg: The session_invalid message.
         """
-        payload = extract_payload(msg)
-        reason = payload.get("reason", "unknown")
+        payload = read_as(SESSION_INVALID, msg)
+        reason = payload["reason"]
         log.warning(f"Session invalidated by server: {reason}")
         self._valid = False
         raise SessionInvalid(reason)

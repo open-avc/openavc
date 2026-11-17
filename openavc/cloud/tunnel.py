@@ -18,6 +18,13 @@ import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidHandshake
 
+from openavc.cloud.protocol import (
+    HTTP_CANCEL, HTTP_REQUEST, TUNNEL_CLOSE, TUNNEL_DATA_MAX_BYTES, TUNNEL_OPEN,
+    TUNNEL_STREAM_IDLE_SECONDS, WS_CLOSE, WS_CLOSE_LOCAL_UNREACHABLE, WS_FRAME, WS_OPEN,
+    build_http_body, build_http_body_end, build_http_response, build_http_response_start,
+    build_ws_close, build_ws_frame, close_reason, read_as, read_tunnel_data,
+    sendable_close_code, ws_close_code,
+)
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_tls_kwargs
 from openavc.utils.request_origin import CLOUD_SESSION_HEADER, TUNNEL_HEADER
@@ -119,7 +126,8 @@ class TunnelHandler:
             # here at all until the local server has answered with headers.
             # This computer's own server: never through a proxy.
             self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0, read=300.0), verify=False, trust_env=False,
+                timeout=httpx.Timeout(30.0, read=TUNNEL_STREAM_IDLE_SECONDS),
+                verify=False, trust_env=False,
             )
         return self._http_client
 
@@ -195,12 +203,12 @@ class TunnelHandler:
 
     async def handle_tunnel_open(self, msg: dict[str, Any]) -> None:
         """Handle a tunnel_open message from the cloud."""
-        payload = msg.get("payload", {})
-        tunnel_id = payload.get("tunnel_id", "")
-        tunnel_token = payload.get("tunnel_token", "")
-        tunnel_data_url = payload.get("tunnel_data_url", "")
+        payload = read_as(TUNNEL_OPEN, msg)
+        tunnel_id = payload["tunnel_id"]
+        tunnel_token = payload["tunnel_token"]
+        tunnel_data_url = payload["tunnel_data_url"]
 
-        target_port = self._resolve_target_port(payload.get("target_port"))
+        target_port = self._resolve_target_port(payload["target_port"])
 
         if not tunnel_id or not tunnel_data_url:
             log.error("Tunnel open: missing tunnel_id or tunnel_data_url")
@@ -215,7 +223,7 @@ class TunnelHandler:
         conn = TunnelConnection(
             tunnel_id=tunnel_id,
             target_port=target_port,
-            stream_responses=bool(payload.get("stream_responses")),
+            stream_responses=bool(payload["stream_responses"]),
         )
 
         # A tunnel the cloud authorized to act as a signed-in Programmer
@@ -224,7 +232,7 @@ class TunnelHandler:
         # one -- so without this the session reaches the sign-in screen and
         # stops. The secret lives only in this process and dies with the
         # tunnel. The reason only decides what gets logged.
-        authorized = payload.get("authorized_session")
+        authorized = payload["authorized_session"]
         if isinstance(authorized, str) and authorized:
             from openavc.api import cloud_session
             conn.session_secret = cloud_session.open_session(tunnel_id, authorized)
@@ -243,7 +251,7 @@ class TunnelHandler:
                 # / plugin / asset / theme uploads through a remote tunnel.
                 # 16 MB matches the typical FastAPI/Starlette default on the
                 # cloud receive side and keeps memory bounded.
-                max_size=2**24,
+                max_size=TUNNEL_DATA_MAX_BYTES,
                 **internet_tls_kwargs(ws_url),
             )
 
@@ -279,9 +287,7 @@ class TunnelHandler:
 
     async def handle_tunnel_close(self, msg: dict[str, Any]) -> None:
         """Handle a tunnel_close message from the cloud."""
-        payload = msg.get("payload", {})
-        tunnel_id = payload.get("tunnel_id", "")
-        await self._close_tunnel(tunnel_id)
+        await self._close_tunnel(read_as(TUNNEL_CLOSE, msg)["tunnel_id"])
 
     async def _close_tunnel(self, tunnel_id: str) -> None:
         """Close a single tunnel and all its connections."""
@@ -356,11 +362,11 @@ class TunnelHandler:
         try:
             while conn.data_ws:
                 raw = await conn.data_ws.recv()
-                msg = json.loads(raw)
+                msg = read_tunnel_data(json.loads(raw))
                 msg_type = msg.get("type", "")
 
-                if msg_type == "http_request":
-                    request_id = msg.get("id", "")
+                if msg_type == HTTP_REQUEST:
+                    request_id = msg["id"]
                     task = asyncio.create_task(self._handle_http_request(conn, msg))
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
@@ -369,32 +375,32 @@ class TunnelHandler:
                         task.add_done_callback(
                             lambda _t, rid=request_id: conn.http_tasks.pop(rid, None)
                         )
-                elif msg_type == "http_cancel":
+                elif msg_type == HTTP_CANCEL:
                     # Nobody is reading this response any more -- the browser
                     # went away, or the cloud gave up on it. Stop pulling it
                     # out of the local server.
-                    task = conn.http_tasks.pop(msg.get("id", ""), None)
+                    task = conn.http_tasks.pop(msg["id"], None)
                     if task and not task.done():
                         task.cancel()
-                elif msg_type == "ws_open":
+                elif msg_type == WS_OPEN:
                     # A48: reserve the ws_id BEFORE awaiting anything. Frames
                     # that race ahead of the local connect get queued behind
                     # this entry rather than being dropped.
-                    ws_id = msg.get("id", "")
+                    ws_id = msg["id"]
                     if ws_id:
                         conn.pending_ws_opens.setdefault(ws_id, [])
                     task = asyncio.create_task(self._handle_ws_open(conn, msg))
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
-                elif msg_type == "ws_frame":
-                    ws_id = msg.get("id", "")
+                elif msg_type == WS_FRAME:
+                    ws_id = msg["id"]
                     if ws_id in conn.pending_ws_opens:
                         # Local WS still opening — queue for drain (A48).
                         conn.pending_ws_opens[ws_id].append(msg)
                     else:
                         await self._handle_ws_frame(conn, msg)
-                elif msg_type == "ws_close":
-                    ws_id = msg.get("id", "")
+                elif msg_type == WS_CLOSE:
+                    ws_id = msg["id"]
                     if ws_id in conn.pending_ws_opens:
                         # Local WS still opening — queue the close behind any
                         # pending frames so they drain in order, then the close
@@ -415,11 +421,12 @@ class TunnelHandler:
 
     async def _handle_http_request(self, conn: TunnelConnection, msg: dict) -> None:
         """Proxy an HTTP request to the local service."""
-        request_id = msg.get("id", "")
-        method = msg.get("method", "GET")
-        path = msg.get("path", "/")
-        headers = msg.get("headers", {})
-        body_b64 = msg.get("body", "")
+        msg = read_tunnel_data(msg, HTTP_REQUEST)
+        request_id = msg["id"]
+        method = msg["method"]
+        path = msg["path"]
+        headers = msg["headers"]
+        body_b64 = msg["body"]
 
         local_origin = self._loopback_origin(conn.target_port)
         url = f"{local_origin}{path}"
@@ -479,13 +486,10 @@ class TunnelHandler:
                     if len(response.content) > MAX_BUFFERED_RESPONSE:
                         raise ValueError(f"Response too large: {len(response.content)} bytes")
 
-                    resp_msg = {
-                        "type": "http_response",
-                        "id": request_id,
-                        "status": response.status_code,
-                        "headers": resp_headers,
-                        "body": base64.b64encode(response.content).decode(),
-                    }
+                    resp_msg = build_http_response(
+                        request_id, response.status_code, resp_headers,
+                        base64.b64encode(response.content).decode(),
+                    )
                 else:
                     # Send it as it arrives. No size ceiling here on purpose:
                     # that one exists because the buffered path holds the whole
@@ -497,22 +501,17 @@ class TunnelHandler:
                     # would describe a body that isn't the one being sent.
                     for header in ("content-length", "content-encoding"):
                         resp_headers.pop(header, None)
-                    await self._send_data(conn, {
-                        "type": "http_response_start",
-                        "id": request_id,
-                        "status": response.status_code,
-                        "headers": resp_headers,
-                    })
+                    await self._send_data(conn, build_http_response_start(
+                        request_id, response.status_code, resp_headers,
+                    ))
                     started = True
                     async for chunk in response.aiter_bytes():
                         if not chunk:
                             continue
-                        await self._send_data(conn, {
-                            "type": "http_body",
-                            "id": request_id,
-                            "data": base64.b64encode(chunk).decode(),
-                        })
-                    resp_msg = {"type": "http_body_end", "id": request_id}
+                        await self._send_data(conn, build_http_body(
+                            request_id, base64.b64encode(chunk).decode(),
+                        ))
+                    resp_msg = build_http_body_end(request_id)
 
         except asyncio.CancelledError:
             # The cloud asked us to stop, so it has already torn down its side
@@ -523,15 +522,11 @@ class TunnelHandler:
             if started:
                 # Status and headers are already gone; all that's left is to
                 # end the body honestly rather than leave the reader waiting.
-                resp_msg = {"type": "http_body_end", "id": request_id, "error": str(e)}
+                resp_msg = build_http_body_end(request_id, str(e))
             else:
-                resp_msg = {
-                    "type": "http_response",
-                    "id": request_id,
-                    "status": 502,
-                    "headers": {},
-                    "body": base64.b64encode(b"Bad Gateway").decode(),
-                }
+                resp_msg = build_http_response(
+                    request_id, 502, {}, base64.b64encode(b"Bad Gateway").decode(),
+                )
 
         await self._send_data(conn, resp_msg)
 
@@ -601,18 +596,19 @@ class TunnelHandler:
 
     async def _handle_ws_open(self, conn: TunnelConnection, msg: dict) -> None:
         """Open a local WebSocket connection for proxying."""
-        ws_id = msg.get("id", "")
+        msg = read_tunnel_data(msg, WS_OPEN)
+        ws_id = msg["id"]
         # `path` may include a query string (A47): preserve it intact so
         # endpoints that rely on `?token=…` style auth still authenticate.
-        path = msg.get("path", "/")
+        path = msg["path"]
         url, ssl_ctx = self._loopback_ws_url(conn.target_port, path)
 
         # Subprotocols arrive as a structured list; pass them to the
         # `websockets` client so it can negotiate with the local server.
-        subprotocols = msg.get("subprotocols") or None
+        subprotocols = msg["subprotocols"] or None
         # Forward only application-level headers; drop hop-by-hop and any
         # WebSocket-handshake headers the client library generates itself.
-        raw_headers = msg.get("headers") or {}
+        raw_headers = msg["headers"] or {}
         drop = {
             "host", "connection", "upgrade", "sec-websocket-key",
             "sec-websocket-version", "sec-websocket-extensions",
@@ -666,9 +662,9 @@ class TunnelHandler:
             while queue:
                 queued_msg = queue.pop(0)
                 qtype = queued_msg.get("type")
-                if qtype == "ws_frame":
+                if qtype == WS_FRAME:
                     await self._handle_ws_frame(conn, queued_msg)
-                elif qtype == "ws_close":
+                elif qtype == WS_CLOSE:
                     await self._handle_ws_close(conn, queued_msg)
                     # Close consumed; anything still queued behind it is stale.
                     queue.clear()
@@ -684,10 +680,14 @@ class TunnelHandler:
             log.warning(f"Tunnel {conn.tunnel_id}: WS open to {url} failed: {e}")
             # Drop any queued frames; the local socket never came up.
             conn.pending_ws_opens.pop(ws_id, None)
-            # Send ws_close back to cloud
+            # Tell the cloud this socket could not be opened here, so the
+            # browser's closes with a code that says so rather than a normal
+            # close it would read as a session that ended.
             if conn.data_ws:
                 try:
-                    await conn.data_ws.send(json.dumps({"type": "ws_close", "id": ws_id}))
+                    await conn.data_ws.send(json.dumps(
+                        build_ws_close(ws_id, WS_CLOSE_LOCAL_UNREACHABLE)
+                    ))
                 except (ConnectionClosed, OSError):
                     pass  # Best-effort notification to cloud
 
@@ -702,12 +702,7 @@ class TunnelHandler:
                     data_b64 = base64.b64encode(message.encode("utf-8")).decode()
                     is_binary = False
 
-                frame = {
-                    "type": "ws_frame",
-                    "id": ws_id,
-                    "data": data_b64,
-                    "binary": is_binary,
-                }
+                frame = build_ws_frame(ws_id, data_b64, is_binary)
                 if conn.data_ws:
                     await conn.data_ws.send(json.dumps(frame))
         except ConnectionClosed:
@@ -717,24 +712,48 @@ class TunnelHandler:
         except (OSError, ValueError):
             log.exception(f"Tunnel {conn.tunnel_id}: forward local WS error")
         finally:
-            # Clean up and notify cloud
+            # Clean up and pass the local server's close on to the cloud, code
+            # and reason included: the panel and the Programmer decide from
+            # the code whether to sign in again, reload or wait for approval,
+            # and without it every close reached the browser as a normal one.
             conn.local_ws_connections.pop(ws_id, None)
             if conn.data_ws:
+                code, reason = self._closed_with(local_ws)
                 try:
-                    await conn.data_ws.send(json.dumps({"type": "ws_close", "id": ws_id}))
+                    await conn.data_ws.send(json.dumps(build_ws_close(ws_id, code, reason)))
                 except (ConnectionClosed, OSError):
                     pass  # Best-effort notification to cloud
 
+    @staticmethod
+    def _close_arguments(msg: dict[str, Any]) -> dict[str, Any]:
+        """What to close a local socket with for the cloud's ws_close: the
+        browser's code and reason, or nothing when no usable code came."""
+        code = sendable_close_code(msg["code"])
+        if code is None:
+            return {}
+        reason = msg["reason"] if isinstance(msg["reason"], str) else ""
+        return {"code": code, "reason": close_reason(reason)}
+
+    @staticmethod
+    def _closed_with(local_ws: Any) -> tuple[int, str]:
+        """The close code and reason to pass on for a local socket that ended."""
+        code = getattr(local_ws, "close_code", None)
+        reason = getattr(local_ws, "close_reason", None)
+        return ws_close_code(code if isinstance(code, int) else None), (
+            reason if isinstance(reason, str) else ""
+        )
+
     async def _handle_ws_frame(self, conn: TunnelConnection, msg: dict) -> None:
         """Forward a WebSocket frame from cloud to local."""
-        ws_id = msg.get("id", "")
+        msg = read_tunnel_data(msg, WS_FRAME)
+        ws_id = msg["id"]
         local_ws = conn.local_ws_connections.get(ws_id)
         if not local_ws:
             return
 
-        data = base64.b64decode(msg.get("data", ""))
+        data = base64.b64decode(msg["data"])
         try:
-            if msg.get("binary"):
+            if msg["binary"]:
                 await local_ws.send(data)
             else:
                 await local_ws.send(data.decode("utf-8", errors="replace"))
@@ -742,11 +761,12 @@ class TunnelHandler:
             log.warning(f"Tunnel {conn.tunnel_id}: failed to forward ws_frame to local")
 
     async def _handle_ws_close(self, conn: TunnelConnection, msg: dict) -> None:
-        """Close a local WebSocket connection."""
-        ws_id = msg.get("id", "")
-        local_ws = conn.local_ws_connections.pop(ws_id, None)
+        """Close a local WebSocket connection, with the browser's own code
+        when the cloud passed one on and a close frame may carry it."""
+        msg = read_tunnel_data(msg, WS_CLOSE)
+        local_ws = conn.local_ws_connections.pop(msg["id"], None)
         if local_ws:
             try:
-                await local_ws.close()
+                await local_ws.close(**self._close_arguments(msg))
             except (ConnectionClosed, OSError):
                 pass  # Best-effort close

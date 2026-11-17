@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import CloudPairRequest
+from openavc.cloud.protocol import ROOM_NAME_MAX_CHARS
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_client
 
@@ -151,7 +152,7 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
     if room:
         # Capped to what the cloud's own rename field accepts, so a long
         # project name seeds a shorter name instead of failing the pairing.
-        payload["name"] = room[:200]
+        payload["name"] = room[:ROOM_NAME_MAX_CHARS]
     try:
         async with internet_client(timeout=30.0) as client:
             resp = await client.post(

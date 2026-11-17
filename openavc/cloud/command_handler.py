@@ -18,7 +18,7 @@ from openavc.cloud.protocol import (
     DIAGNOSTIC_RESULT, MAX_EMBED_BYTES,
     build_command_result_payload, build_diagnostic_result_payload,
     build_project_data_payload, build_device_commands_data_payload,
-    extract_payload,
+    read_message, read_payload,
 )
 from openavc.core.project_update import MigrationNotes
 from openavc.drivers.spec import is_file_command
@@ -88,12 +88,13 @@ class CommandHandler:
             msg: The parsed, verified message dict.
         """
         msg_type = msg.get("type", "")
-        payload = extract_payload(msg)
-        request_id = payload.get("request_id", "")
+        payload = read_message(msg)
+        request_id = payload["request_id"]
 
         # Audit attribution: the display name plus the durable user id, so
         # local logs identify the cloud user unambiguously even if the name
-        # changes or collides.
+        # changes or collides. The two reads (get_project, get_device_commands)
+        # name nobody.
         user_id = payload.get("user_id", "")
         user_name = payload.get("user_name", "")
         actor = f"{user_name} ({user_id})" if user_id else user_name
@@ -124,9 +125,10 @@ class CommandHandler:
         self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a device command."""
-        device_id = payload.get("device_id", "")
-        command = payload.get("command", "")
-        params = payload.get("params", {})
+        payload = read_payload(COMMAND, payload)
+        device_id = payload["device_id"]
+        command = payload["command"]
+        params = payload["params"]
 
         log.info(
             f"Cloud command: {actor} → {device_id}.{command}"
@@ -137,8 +139,8 @@ class CommandHandler:
             "device_id": device_id,
             "command": command,
             "params": params,
-            "user_name": payload.get("user_name", ""),
-            "user_id": payload.get("user_id", ""),
+            "user_name": payload["user_name"],
+            "user_id": payload["user_id"],
             "request_id": request_id,
         })
 
@@ -161,14 +163,15 @@ class CommandHandler:
         self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a project config push."""
-        mode = payload.get("mode", "full_replace")
-        project_json = payload.get("project_json")
+        payload = read_payload(CONFIG_PUSH, payload)
+        mode = payload["mode"]
+        project_json = payload["project_json"]
         log.info(f"Cloud config push: {actor} → mode={mode}")
 
         await self._events.emit("cloud.config_push", {
             "mode": mode,
-            "user_name": payload.get("user_name", ""),
-            "user_id": payload.get("user_id", ""),
+            "user_name": payload["user_name"],
+            "user_id": payload["user_id"],
             "request_id": request_id,
         })
 
@@ -257,19 +260,20 @@ class CommandHandler:
         self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
         """Handle a restart request."""
+        payload = read_payload(RESTART, payload)
         import time as _time
         now = _time.time()
         if now - self._last_restart_time < 60:
             await self._send_result(request_id, False, error="Restart rate limited (max 1 per 60s)")
             return
         self._last_restart_time = now
-        mode = payload.get("mode", "graceful")
+        mode = payload["mode"]
         log.info(f"Cloud restart: {actor} → mode={mode}")
 
         await self._events.emit("cloud.restart", {
             "mode": mode,
-            "user_name": payload.get("user_name", ""),
-            "user_id": payload.get("user_id", ""),
+            "user_name": payload["user_name"],
+            "user_id": payload["user_id"],
             "request_id": request_id,
         })
 
@@ -287,16 +291,17 @@ class CommandHandler:
         Implements the five diagnostic action types:
             ping, tcp_check, traceroute, dns_lookup, port_scan
         """
-        action = payload.get("action", "")
-        target = payload.get("target", "")
-        params = payload.get("params") or {}
+        payload = read_payload(DIAGNOSTIC, payload)
+        action = payload["action"]
+        target = payload["target"]
+        params = payload["params"] or {}
         log.info(f"Cloud diagnostic: {actor} → {action} {target}")
 
         await self._events.emit("cloud.diagnostic", {
             "action": action,
             "target": target,
-            "user_name": payload.get("user_name", ""),
-            "user_id": payload.get("user_id", ""),
+            "user_name": payload["user_name"],
+            "user_id": payload["user_id"],
             "request_id": request_id,
         })
 
@@ -365,15 +370,16 @@ class CommandHandler:
         and verifies against the provided checksum. Otherwise falls back to
         checking GitHub Releases independently.
         """
+        payload = read_payload(SOFTWARE_UPDATE, payload)
         from openavc.updater.host import get_firmware_host
         firmware_host = get_firmware_host()
         if firmware_host:
             await self._send_result(request_id, False, error="firmware_managed", result=firmware_host.guidance)
             return
-        target_version = payload.get("target_version", "")
-        auto_restart = payload.get("auto_restart", True)
-        update_url = payload.get("update_url", "")
-        checksum_sha256 = payload.get("checksum_sha256")
+        target_version = payload["target_version"]
+        auto_restart = payload["auto_restart"]
+        update_url = payload["update_url"]
+        checksum_sha256 = payload["checksum_sha256"]
         log.info(
             f"Cloud software update: {actor} → version={target_version}"
         )
@@ -381,8 +387,8 @@ class CommandHandler:
         await self._events.emit("cloud.software_update", {
             "target_version": target_version,
             "auto_restart": auto_restart,
-            "user_name": payload.get("user_name", ""),
-            "user_id": payload.get("user_id", ""),
+            "user_name": payload["user_name"],
+            "user_id": payload["user_id"],
             "request_id": request_id,
         })
 
@@ -493,6 +499,7 @@ class CommandHandler:
         product firmware host it is refused like a software update: firmware
         owns every update there.
         """
+        payload = read_payload(PANEL_SOFTWARE_UPDATE, payload)
         panel = self._panel_software
         if panel is None:
             await self._send_result(
@@ -500,22 +507,22 @@ class CommandHandler:
                 error="subsystem_unavailable: panel software updates are not running on this system",
             )
             return
-        target_version = payload.get("target_version", "")
+        target_version = payload["target_version"]
         log.info(f"Cloud panel software update: {actor} → version={target_version}")
         await self._events.emit("cloud.panel_software_update", {
             "target_version": target_version,
-            "install": payload.get("install"),
-            "user_name": payload.get("user_name", ""),
-            "user_id": payload.get("user_id", ""),
+            "install": payload["install"],
+            "user_name": payload["user_name"],
+            "user_id": payload["user_id"],
             "request_id": request_id,
         })
         outcome = await panel.stage(
-            update_url=payload.get("update_url"),
-            checksum_sha256=payload.get("checksum_sha256"),
+            update_url=payload["update_url"],
+            checksum_sha256=payload["checksum_sha256"],
             target_version=target_version,
-            target_version_code=payload.get("target_version_code"),
-            signer_sha256=payload.get("signer_sha256"),
-            install=payload.get("install"),
+            target_version_code=payload["target_version_code"],
+            signer_sha256=payload["signer_sha256"],
+            install=payload["install"],
         )
         if outcome.success:
             await self._send_result(request_id, True, result=outcome.message)

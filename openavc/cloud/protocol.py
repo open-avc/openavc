@@ -1,23 +1,43 @@
 """
-OpenAVC Cloud — Protocol message types, builders, and parsers.
+OpenAVC Cloud: THE wire contract between this agent and the cloud.
 
-Defines all message types for the cloud agent protocol, provides builder
-functions for constructing properly formatted messages, and a parser for
-validating and extracting incoming messages.
+Every message the two sides exchange, its fields, the vocabularies they draw
+from and the limits on them are rows in ``wire_tables.py``, which only this
+module imports; every other agent file asks this one. From those rows it
+derives the message sets, the buffer priorities, the capability each
+downstream request needs and the result that answers it, and it reads each
+downstream payload through ``read_payload`` (or ``read_tunnel_data`` on a
+tunnel's data socket), which fills in the table's default for a field the
+cloud left out. It also builds every upstream message. ``contract_gen.py``
+renders the same rows into ``wire_contract.json`` for the cloud.
 
-Messages fall into two categories:
-1. Handshake messages (hello, challenge, authenticate, session_start, etc.)
-   — no seq, session, or sig fields.
-2. Steady-state messages (heartbeat, state_batch, alert, command, etc.)
-   — include seq, session, and sig fields for authentication and ordering.
+Messages fall into three phases:
+1. Handshake (hello, challenge, authenticate, session_start, ...): no seq,
+   session or sig.
+2. Session (heartbeat, state_batch, command, ...): seq, session and sig for
+   ordering and authentication.
+3. A tunnel's data socket (http_request, ws_frame, ...): flat messages whose
+   fields sit beside ``type``.
 """
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 from typing import Any
 
+from openavc.cloud import wire_tables
 from openavc.cloud.crypto import sign_message, verify_message_signature
+from openavc.cloud.wire_tables import ABSENT, MESSAGES, VOCABULARIES
+
+
+def _limit(name: str) -> int:
+    return wire_tables.LIMITS[name][0]
+
+
+def vocabulary(name: str) -> tuple[Any, ...]:
+    """The values of one of the contract's vocabularies, in order."""
+    return tuple(entry.value for entry in VOCABULARIES[name])
 
 
 # --- Protocol Version ---
@@ -25,14 +45,14 @@ from openavc.cloud.crypto import sign_message, verify_message_signature
 # The wire-contract version this agent prefers to speak. It is a contract
 # number, not a product version — it moves only when the shape of the wire
 # changes in a way an older reader can't tolerate.
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = _limit("protocol_version")
 
 # The oldest wire version this agent still speaks. Both sides accept anything
 # in MIN_PROTOCOL_VERSION..PROTOCOL_VERSION and settle on the highest version
 # they share, so the two halves can be deployed in either order. That matters
 # because the order is never simultaneous in the field: the cloud always
 # updates first, and a fielded agent must keep working across that window.
-MIN_PROTOCOL_VERSION = 1
+MIN_PROTOCOL_VERSION = _limit("min_protocol_version")
 
 # Advertised in hello so the cloud can pick the highest mutually-supported
 # version instead of demanding an exact match.
@@ -43,20 +63,32 @@ SUPPORTED_PROTOCOL_VERSIONS = list(range(MIN_PROTOCOL_VERSION, PROTOCOL_VERSION 
 
 # Hard cap on a single wire message, enforced on BOTH sides' inbound paths
 # (agent: websockets max_size closes the connection; cloud: app-level check
-# drops the message with a message_too_large error). Mirrors
-# openavc-cloud/api/ws/handler.py MAX_MESSAGE_SIZE — keep them identical.
-MAX_MESSAGE_BYTES = 2**20  # 1 MB
+# drops the message with a message_too_large error).
+MAX_MESSAGE_BYTES = _limit("max_message_bytes")
 
 # Headroom subtracted when a sender pre-checks a payload against the cap:
 # covers the envelope fields added after the check (seq, session, sig, ts)
 # and result-wrapper keys around an embedded document.
-MESSAGE_SIZE_MARGIN = 8192
+MESSAGE_SIZE_MARGIN = _limit("message_size_margin")
 
 # Largest embedded document (e.g. a project JSON) a sender may put in one
 # message. Anything bigger must be refused with a typed error BEFORE it is
 # sequenced — an oversize message in the replay buffer would be re-sent and
 # re-rejected on every reconnect forever.
-MAX_EMBED_BYTES = MAX_MESSAGE_BYTES - MESSAGE_SIZE_MARGIN
+MAX_EMBED_BYTES = _limit("max_embed_bytes")
+
+# The longest wait between two reconnect attempts.
+RECONNECT_BACKOFF_MAX = _limit("reconnect_backoff_max_seconds")
+
+# A tunnel's data socket carries whole uploads after base64, so its ceiling is
+# well above the control connection's.
+TUNNEL_DATA_MAX_BYTES = _limit("tunnel_data_max_bytes")
+
+# How long a proxied response may sit with nothing arriving.
+TUNNEL_STREAM_IDLE_SECONDS = _limit("tunnel_stream_idle_seconds")
+
+# The longest room name pairing sends: what the cloud's rename field accepts.
+ROOM_NAME_MAX_CHARS = _limit("room_name_max_chars")
 
 
 # --- Message Type Constants ---
@@ -134,81 +166,78 @@ CERT_RENEW_DUE = "cert_renew_due"
 # what makes "Ask for help" a feature rather than a mail-sender.
 HELP_ACKNOWLEDGED = "help_acknowledged"
 
+# A tunnel's data socket (tunnel.py), flat messages beside `type`.
+HTTP_REQUEST = "http_request"
+HTTP_CANCEL = "http_cancel"
+HTTP_RESPONSE = "http_response"
+HTTP_RESPONSE_START = "http_response_start"
+HTTP_BODY = "http_body"
+HTTP_BODY_END = "http_body_end"
+WS_OPEN = "ws_open"
+WS_FRAME = "ws_frame"
+WS_CLOSE = "ws_close"
+
+# Every row of the contract, by type.
+MESSAGE_ROWS: dict[str, wire_tables.Message] = {m.type: m for m in MESSAGES}
+
+
+def _types(phase: str, *directions: str) -> set[str]:
+    return {m.type for m in MESSAGES if m.phase == phase and m.direction in directions}
+
+
 # Sets for validation
-HANDSHAKE_TYPES = {
-    HELLO, CHALLENGE, AUTHENTICATE, SESSION_START,
-    AUTH_FAILED, VERSION_MISMATCH, RESUME, RESUME_FROM,
-}
+HANDSHAKE_TYPES = {m.type for m in MESSAGES if m.phase == "handshake"}
+UPSTREAM_TYPES = _types("session", "up")
+DOWNSTREAM_TYPES = _types("session", "down")
+TUNNEL_DATA_TYPES = {m.type for m in MESSAGES if m.phase == "tunnel_data"}
 
-UPSTREAM_TYPES = {
-    HEARTBEAT, STATE_BATCH, ALERT, ALERT_RESOLVED, ACTIVE_ALERTS,
-    COMMAND_RESULT, TUNNEL_READY, TUNNEL_FAILED, DIAGNOSTIC_RESULT, PONG,
-    AI_TOOL_RESULT, PROJECT_DATA, MONITORS, DEVICE_COMMANDS_DATA, GAP_REPORT,
-    CERT_REQUEST, CERT_STATUS,
-}
+# Message priority for buffer overflow (lower = dropped first). A message with
+# none takes the sequencer's default. session_rotate is the highest: it must
+# never be dropped. active_alerts is worth as much as an alert, because
+# dropping it leaves an alert nobody can clear.
+MESSAGE_PRIORITY = {m.type: m.priority for m in MESSAGES if m.priority is not None}
 
-DOWNSTREAM_TYPES = {
-    ACK, SESSION_ROTATE, SESSION_INVALID, CONFIG_UPDATE,
-    CAPABILITIES_UPDATE, THROTTLE, ERROR, COMMAND, CONFIG_PUSH,
-    DIAGNOSTIC, SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE,
-    RESTART, PING, ALERT_RULES_UPDATE, AI_TOOL_CALL,
-    GET_PROJECT, GET_DEVICE_COMMANDS, CERT_RESULT, CERT_RENEW_DUE,
-    HELP_ACKNOWLEDGED,
-}
+# The capability a session must have been granted before this agent acts on a
+# downstream message (defense in depth: the cloud gates them too).
+CAPABILITY_GATED = {m.type: m.requires for m in MESSAGES if m.requires}
 
-# Message priority for buffer overflow (lower = dropped first)
-MESSAGE_PRIORITY = {
-    STATE_BATCH: 0,
-    HEARTBEAT: 2,
-    ALERT_RESOLVED: 3,
-    ALERT: 4,
-    # Dropped from a full buffer, this leaves an alert nobody can clear —
-    # the failure it exists to prevent — so it is worth as much as an alert.
-    ACTIVE_ALERTS: 4,
-    COMMAND_RESULT: 5,
-    TUNNEL_READY: 5,
-    TUNNEL_FAILED: 5,
-    DIAGNOSTIC_RESULT: 5,
-    AI_TOOL_RESULT: 5,
-    PROJECT_DATA: 5,
-    DEVICE_COMMANDS_DATA: 5,
-    GAP_REPORT: 7,
-    CERT_REQUEST: 5,
-    CERT_STATUS: 5,
-    PONG: 6,
-    # Downstream message priorities (for buffer overflow decisions)
-    SESSION_ROTATE: 10,  # Highest — must never be dropped
-    ACK: 9,
-    SESSION_INVALID: 9,
-    CONFIG_UPDATE: 7,
-    CAPABILITIES_UPDATE: 7,
-    COMMAND: 7,
-    CONFIG_PUSH: 7,
-    RESTART: 8,
-    PING: 6,
-    TUNNEL_OPEN: 5,
-    TUNNEL_CLOSE: 5,
-    DIAGNOSTIC: 4,
-    SOFTWARE_UPDATE: 4,
-    PANEL_SOFTWARE_UPDATE: 4,
-    ALERT_RULES_UPDATE: 4,
-    AI_TOOL_CALL: 5,
-    GET_PROJECT: 5,
-    CERT_RESULT: 5,
-    CERT_RENEW_DUE: 4,
-    HELP_ACKNOWLEDGED: 6,
-    THROTTLE: 3,
-    ERROR: 3,
+# The typed result that answers each downstream request, and so answers a
+# refusal of it: the cloud resolves a pending request only from its own result
+# type. A request with no request_id has nothing to correlate a refusal with.
+REQUEST_ANSWERS = {
+    m.type: m.answer for m in MESSAGES
+    if m.answer and any(f.name == "request_id" for f in m.fields)
 }
 
 
-# --- Alert Resolution Reasons ---
+# --- Vocabularies ---
+
+# What this instance can do, announced in its hello. The cloud answers with
+# the subset it grants.
+CAPABILITIES = vocabulary("capabilities")
+
+# auth_failed reasons that mean the system key itself is gone: retrying earns
+# the same refusal forever, so the agent stops.
+FATAL_REFUSAL_REASONS = frozenset(
+    e.value for e in VOCABULARIES["refusal_reasons"] if "stops_agent" in e.flags
+)
+
+# The state keys the cloud's built-in alert rules read, written from the
+# heartbeat's own metrics.
+BUILTIN_ALERT_KEYS = vocabulary("builtin_alert_keys")
+
+# The names a trusted certificate carries, filled with the label and zone the
+# cloud's enrollment answer gives.
+CERTIFICATE_NAMES = vocabulary("certificate_names")
+
+# A config push's result when there was no earlier project to send back.
+CONFIG_APPLIED = vocabulary("config_push_results")[0]
 
 # Why an alert ended, on the `reason` field of `alert_resolved`. An instance
 # can only ever report two things, and the difference between them is what a
 # service report prints as how fast a fault was dealt with: the span from
 # `fired_at` measures a repair for the first and nothing at all for the second.
-
+#
 # The reading came back. This is the only one that is a repair.
 RESOLVED_RECOVERED = "recovered"
 # The rule went away, so nobody is asking the question any more. Nothing
@@ -218,6 +247,34 @@ RESOLVED_RECOVERED = "recovered"
 # claiming to know which would be a guess. The cloud knows for the doors it
 # owns and records those more precisely.
 RESOLVED_RULE_REMOVED = "rule_removed"
+
+# A tunnel's WebSocket close codes. A code the far end closed with is passed
+# on as it is when a close frame may carry it; these are what this instance
+# sends when there is no such code.
+WS_CLOSE_NORMAL = 1000
+WS_CLOSE_LOCAL_UNREACHABLE = 1014
+# 1005 (no code given) reads as a normal close; 1006 and 1015 never appear in
+# a close frame, so a socket that ended that way was dropped, not closed.
+_NO_STATUS = 1005
+_SENDABLE_CLOSE_CODES = (
+    set(range(1000, 1004)) | set(range(1007, 1015)) | set(range(3000, 5000))
+)
+
+
+def ws_close_code(code: int | None) -> int:
+    """The close code to pass on for a socket that ended with ``code``."""
+    if code in _SENDABLE_CLOSE_CODES:
+        return int(code)
+    if code == _NO_STATUS:
+        return WS_CLOSE_NORMAL
+    return WS_CLOSE_LOCAL_UNREACHABLE
+
+
+def sendable_close_code(code: Any) -> int | None:
+    """A received close code this end may close its own socket with, else None."""
+    if isinstance(code, bool) or not isinstance(code, int):
+        return None
+    return code if code in _SENDABLE_CLOSE_CODES else None
 
 
 # --- Timestamp ---
@@ -686,3 +743,97 @@ def verify_steady_state_message(
 def extract_payload(msg: dict[str, Any]) -> dict[str, Any]:
     """Extract the payload from a message, defaulting to empty dict."""
     return msg.get("payload", {})
+
+
+# --- Readers (the downstream payload contract) ---
+
+def _fill_defaults(row: wire_tables.Message, fields: dict[str, Any]) -> dict[str, Any]:
+    out = dict(fields)
+    for f in row.fields:
+        if f.name not in out and f.default is not ABSENT:
+            out[f.name] = copy.deepcopy(f.default)
+    return out
+
+
+def read_payload(msg_type: str, payload: Any) -> dict[str, Any]:
+    """A downstream payload as the contract reads it.
+
+    Every field the cloud sent is kept as sent, null included, and every field
+    it left out takes the table's default; a field with no default stays out.
+    Raises ProtocolError for a payload that is not an object.
+    """
+    if not isinstance(payload, dict):
+        raise ProtocolError(f"{msg_type} payload is not an object")
+    row = MESSAGE_ROWS.get(msg_type)
+    return _fill_defaults(row, payload) if row else dict(payload)
+
+
+def read_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """The payload of a downstream message, read through its own type's row."""
+    return read_payload(msg.get("type", ""), extract_payload(msg))
+
+
+def read_as(msg_type: str, msg: dict[str, Any]) -> dict[str, Any]:
+    """The payload of ``msg``, read through ``msg_type``'s row: for a handler
+    that only ever receives that one type."""
+    return read_payload(msg_type, extract_payload(msg))
+
+
+def read_tunnel_data(msg: dict[str, Any], msg_type: str | None = None) -> dict[str, Any]:
+    """A message from a tunnel's data socket, its absent fields defaulted:
+    read through ``msg_type``'s row, or the message's own type's."""
+    row = MESSAGE_ROWS.get(msg_type or msg.get("type", ""))
+    return _fill_defaults(row, msg) if row and row.phase == "tunnel_data" else dict(msg)
+
+
+# --- Builders: a tunnel's data socket (upstream) ---
+
+def build_http_response(
+    request_id: str, status: int, headers: dict[str, Any], body_b64: str
+) -> dict[str, Any]:
+    """A whole buffered response."""
+    return {"type": HTTP_RESPONSE, "id": request_id, "status": status,
+            "headers": headers, "body": body_b64}
+
+
+def build_http_response_start(
+    request_id: str, status: int, headers: dict[str, Any]
+) -> dict[str, Any]:
+    """A streamed response's status and headers."""
+    return {"type": HTTP_RESPONSE_START, "id": request_id, "status": status,
+            "headers": headers}
+
+
+def build_http_body(request_id: str, data_b64: str) -> dict[str, Any]:
+    """One piece of a streamed response's body."""
+    return {"type": HTTP_BODY, "id": request_id, "data": data_b64}
+
+
+def build_http_body_end(request_id: str, error: str | None = None) -> dict[str, Any]:
+    """The end of a streamed response; ``error`` when it failed partway."""
+    msg: dict[str, Any] = {"type": HTTP_BODY_END, "id": request_id}
+    if error is not None:
+        msg["error"] = error
+    return msg
+
+
+def build_ws_frame(ws_id: str, data_b64: str, binary: bool) -> dict[str, Any]:
+    """One WebSocket message."""
+    return {"type": WS_FRAME, "id": ws_id, "data": data_b64, "binary": binary}
+
+
+# A close frame's reason is at most 123 bytes of UTF-8.
+_MAX_CLOSE_REASON_BYTES = 123
+
+
+def close_reason(reason: str) -> str:
+    """``reason`` cut to what a close frame carries, never mid-character."""
+    return reason.encode("utf-8")[:_MAX_CLOSE_REASON_BYTES].decode("utf-8", errors="ignore")
+
+
+def build_ws_close(ws_id: str, code: int, reason: str = "") -> dict[str, Any]:
+    """A WebSocket closed at this end, with the code to pass on."""
+    msg: dict[str, Any] = {"type": WS_CLOSE, "id": ws_id, "code": code}
+    if reason:
+        msg["reason"] = close_reason(reason)
+    return msg

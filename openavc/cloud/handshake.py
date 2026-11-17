@@ -24,7 +24,7 @@ from openavc.cloud.protocol import (
     AUTH_FAILED, VERSION_MISMATCH, RESUME_FROM,
     SUPPORTED_PROTOCOL_VERSIONS,
     build_hello, build_authenticate, build_resume,
-    parse_message, extract_payload, _now_iso,
+    parse_message, read_message, _now_iso,
 )
 from openavc.utils.logger import get_logger
 
@@ -151,15 +151,15 @@ class Handshake:
         msg_type = msg["type"]
 
         if msg_type == AUTH_FAILED:
-            payload = extract_payload(msg)
-            reason = payload.get("reason", "unknown")
-            message = payload.get("message", "Authentication failed")
+            payload = read_message(msg)
+            reason = payload["reason"]
+            message = payload["message"]
             raise HandshakeError(message, reason=reason)
 
         if msg_type == VERSION_MISMATCH:
-            payload = extract_payload(msg)
-            supported = payload.get("supported_versions", [])
-            message = payload.get("message", "Protocol version not supported")
+            payload = read_message(msg)
+            supported = payload["supported_versions"]
+            message = payload["message"]
             # Retrying can't fix this — the cloud has dropped every version we
             # speak, so the instance needs a software update. Carry the cloud's
             # supported list into the error so the agent can put a real cause in
@@ -179,8 +179,8 @@ class Handshake:
                 reason="unexpected_message",
             )
 
-        payload = extract_payload(msg)
-        nonce = payload.get("nonce")
+        payload = read_message(msg)
+        nonce = payload["nonce"]
         if not nonce:
             raise HandshakeError("Challenge missing nonce", reason="bad_challenge")
 
@@ -199,9 +199,9 @@ class Handshake:
         msg_type = msg["type"]
 
         if msg_type == AUTH_FAILED:
-            payload = extract_payload(msg)
-            reason = payload.get("reason", "unknown")
-            message = payload.get("message", "Authentication failed")
+            payload = read_message(msg)
+            reason = payload["reason"]
+            message = payload["message"]
             raise HandshakeError(message, reason=reason)
 
         if msg_type != SESSION_START:
@@ -210,7 +210,7 @@ class Handshake:
                 reason="unexpected_message",
             )
 
-        payload = extract_payload(msg)
+        payload = read_message(msg)
 
         # session_start carries the version the cloud settled on out of the set
         # we advertised in hello. Accept anything we actually speak, not just our
@@ -220,7 +220,7 @@ class Handshake:
         # mis-parsing them silently is worse than refusing the session. A cloud
         # that omits the field is the pre-negotiation v1 baseline, so treat
         # missing as compatible and keep the rollout safe in either order.
-        cloud_version = payload.get("protocol_version")
+        cloud_version = payload["protocol_version"]
         if cloud_version is not None and cloud_version not in SUPPORTED_PROTOCOL_VERSIONS:
             raise HandshakeError(
                 f"Cloud settled on protocol version {cloud_version}, which this "
@@ -230,13 +230,13 @@ class Handshake:
             )
 
         # Extract session info
-        session_id = payload.get("session_id")
-        session_token = payload.get("session_token")
-        signing_key_salt_hex = payload.get("signing_key_salt")
-        session_expires = payload.get("session_expires", "")
-        enabled_capabilities = payload.get("enabled_capabilities", [])
-        config = payload.get("config", {})
-        upgrade_required = payload.get("upgrade_required")
+        session_id = payload["session_id"]
+        session_token = payload["session_token"]
+        signing_key_salt_hex = payload["signing_key_salt"]
+        session_expires = payload["session_expires"]
+        enabled_capabilities = payload["enabled_capabilities"]
+        config = payload["config"]
+        upgrade_required = payload["upgrade_required"]
 
         if not all([session_id, session_token, signing_key_salt_hex]):
             raise HandshakeError(
@@ -314,7 +314,7 @@ class Handshake:
                 reason="unexpected_message",
             )
 
-        payload = extract_payload(msg)
-        replay_from = payload.get("replay_from_seq", 0)
+        payload = read_message(msg)
+        replay_from = payload["replay_from_seq"]
         log.info(f"Handshake: server says replay from seq {replay_from}")
         return replay_from

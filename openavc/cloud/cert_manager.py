@@ -32,8 +32,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from openavc.cloud.protocol import (
-    CERT_REQUEST, CERT_STATUS,
-    build_cert_request_payload, build_cert_status_payload, extract_payload,
+    CERT_RENEW_DUE, CERT_REQUEST, CERT_RESULT, CERT_STATUS, CERTIFICATE_NAMES,
+    build_cert_request_payload, build_cert_status_payload, read_as,
 )
 from openavc.utils.logger import get_logger
 
@@ -67,7 +67,8 @@ def _valid_dns_name(name: str, max_labels: int = 10) -> bool:
 
 
 def generate_key_and_csr(label: str, zone: str) -> tuple[bytes, str]:
-    """Fresh EC P-256 key + CSR with SANs exactly {*.label.zone, label.zone}.
+    """Fresh EC P-256 key + CSR whose SANs are exactly the wire contract's
+    certificate names (``*.label.zone`` and ``label.zone``).
 
     Returns ``(key_pem_bytes, csr_pem_str)``. The subject is empty — the
     names live in the SAN extension, which is all the issuance path reads.
@@ -83,8 +84,8 @@ def generate_key_and_csr(label: str, zone: str) -> tuple[bytes, str]:
         .add_extension(
             x509.SubjectAlternativeName(
                 [
-                    x509.DNSName(f"*.{label}.{zone}"),
-                    x509.DNSName(f"{label}.{zone}"),
+                    x509.DNSName(name.format(label=label, zone=zone))
+                    for name in CERTIFICATE_NAMES
                 ]
             ),
             critical=False,
@@ -229,8 +230,8 @@ class CertificateManager:
     # --- Downstream message handlers (dispatched by the agent) ---
 
     async def handle_cert_result(self, msg: dict[str, Any]) -> None:
-        payload = extract_payload(msg)
-        status = payload.get("status", "")
+        payload = read_as(CERT_RESULT, msg)
+        status = payload["status"]
 
         if status == "enrollment":
             await self._on_enrollment(payload)
@@ -241,19 +242,19 @@ class CertificateManager:
                 # e.g. the tail of a request from before a reconnect
                 log.info(
                     "Trusted certificate: ignoring stray error result — %s",
-                    payload.get("error", "unknown"),
+                    payload["error"],
                 )
                 return
             self._clear_pending()
-            code = str(payload.get("error", "unknown"))
-            detail = str(payload.get("detail", ""))
+            code = str(payload["error"])
+            detail = str(payload["detail"])
             retry_delay = BUSY_RETRY_INTERVAL if code == "busy" else RETRY_INTERVAL
             self._fail(code, detail, retry_delay=retry_delay)
         else:
             log.warning("Trusted certificate: unknown cert_result status %r", status)
 
     async def handle_renew_due(self, msg: dict[str, Any]) -> None:
-        payload = extract_payload(msg)
+        payload = read_as(CERT_RENEW_DUE, msg)
         if not self.enabled():
             # Disabled locally (possibly while offline) — remind the cloud so
             # it can stop nudging and tombstone the label.
@@ -264,7 +265,7 @@ class CertificateManager:
             return
         log.info(
             "Trusted certificate: cloud reports renewal due (expires %s) — renewing",
-            payload.get("expires_at", "unknown"),
+            payload["expires_at"],
         )
         # The cloud paces these nudges (its renewal loop is failure-aware),
         # so they intentionally bypass the local daily backoff.
@@ -284,8 +285,8 @@ class CertificateManager:
         if self._phase != "enrolling":
             log.info("Trusted certificate: ignoring unexpected enrollment result")
             return
-        label = payload.get("label", "")
-        zone = payload.get("zone", "")
+        label = payload["label"]
+        zone = payload["zone"]
         if not (_valid_dns_name(label, max_labels=1) and _valid_dns_name(zone)):
             self._clear_pending()
             self._fail(
@@ -308,7 +309,7 @@ class CertificateManager:
             log.info("Trusted certificate: ignoring cert_result with no request pending")
             return
         key_pem = self._pending_key_pem
-        chain_pem = payload.get("certificate_chain", "")
+        chain_pem = payload["certificate_chain"]
         self._clear_pending()
 
         from openavc import tls

@@ -620,12 +620,68 @@ async def test_ws_open_failure_drops_queued_frames(tunnel_handler, mock_agent):
         })
 
     assert "ws-bad" not in conn.pending_ws_opens
-    # Cloud was told the WS is closed
+    # Cloud was told the WS is closed, and that it could not be opened here:
+    # a code-less close reached the browser as a normal one.
     mock_data_ws.send.assert_called_once()
     sent = json.loads(mock_data_ws.send.call_args[0][0])
-    assert sent == {"type": "ws_close", "id": "ws-bad"}
+    assert sent == {"type": "ws_close", "id": "ws-bad", "code": 1014}
 
     await tunnel_handler.stop()
+
+
+class _ClosedLocalSocket:
+    """A local WebSocket the local server has already closed."""
+
+    def __init__(self, code, reason):
+        self.close_code = code
+        self.close_reason = reason
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code,reason,sent", [
+    (4001, "Authentication required", {"code": 4001, "reason": "Authentication required"}),
+    (4010, "Panel not approved", {"code": 4010, "reason": "Panel not approved"}),
+    (1000, "", {"code": 1000}),
+    (1006, "", {"code": 1014}),
+])
+async def test_the_local_servers_close_code_reaches_the_cloud(
+    tunnel_handler, code, reason, sent,
+):
+    """The panel and the Programmer decide from the close code whether to sign
+    in again, reload or wait for approval; through a tunnel that code used to
+    be dropped, so every close read as a normal one."""
+    from openavc.cloud.tunnel import TunnelConnection
+
+    mock_data_ws = AsyncMock()
+    conn = TunnelConnection(tunnel_id="t-code", target_port=8080, data_ws=mock_data_ws)
+    await tunnel_handler._forward_local_ws(conn, "ws-1", _ClosedLocalSocket(code, reason))
+
+    message = json.loads(mock_data_ws.send.call_args[0][0])
+    assert message == {"type": "ws_close", "id": "ws-1", **sent}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close,kwargs", [
+    ({"code": 1001, "reason": "Going away"}, {"code": 1001, "reason": "Going away"}),
+    ({}, {}),
+    ({"code": 1006}, {}),
+    ({"code": "4001"}, {}),
+])
+async def test_the_browsers_close_code_reaches_the_local_server(tunnel_handler, close, kwargs):
+    from openavc.cloud.tunnel import TunnelConnection
+
+    local_ws = AsyncMock()
+    conn = TunnelConnection(tunnel_id="t-code", target_port=8080, data_ws=AsyncMock())
+    conn.local_ws_connections["ws-1"] = local_ws
+    await tunnel_handler._handle_ws_close(conn, {"type": "ws_close", "id": "ws-1", **close})
+
+    local_ws.close.assert_awaited_once_with(**kwargs)
 
 
 # ===========================================================================

@@ -11,7 +11,7 @@ import threading
 from collections import OrderedDict
 from typing import Any
 
-from openavc.cloud.protocol import MESSAGE_PRIORITY, extract_payload
+from openavc.cloud.protocol import ACK, MESSAGE_PRIORITY, read_as
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -112,8 +112,8 @@ class Sequencer:
         Args:
             msg: The ack message dict.
         """
-        payload = extract_payload(msg)
-        acked_seq = payload.get("last_seq", 0)
+        payload = read_as(ACK, msg)
+        acked_seq = payload["last_seq"]
 
         if acked_seq <= self._last_ack_seq:
             return  # Already processed this ack or older

@@ -27,14 +27,14 @@ from openavc.cloud.protocol import (
     SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE, ALERT_RULES_UPDATE,
     AI_TOOL_CALL, GAP_REPORT, GET_PROJECT, GET_DEVICE_COMMANDS,
     CERT_RESULT, CERT_RENEW_DUE, HELP_ACKNOWLEDGED,
-    COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
-    DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED, HEARTBEAT, PONG,
-    UPSTREAM_PAYLOAD_BUILDERS,
+    TUNNEL_FAILED, HEARTBEAT, PONG,
+    UPSTREAM_PAYLOAD_BUILDERS, CAPABILITIES, CAPABILITY_GATED, REQUEST_ANSWERS,
+    FATAL_REFUSAL_REASONS, BUILTIN_ALERT_KEYS, RECONNECT_BACKOFF_MAX,
     MAX_MESSAGE_BYTES, MESSAGE_SIZE_MARGIN, SUPPORTED_PROTOCOL_VERSIONS,
     build_pong_payload, build_gap_report_payload,
     build_heartbeat_payload, build_tunnel_failed_payload,
     parse_message, is_handshake_message,
-    extract_payload, ProtocolError,
+    read_as, read_message, ProtocolError,
     _now_iso,
 )
 from openavc.cloud.session import Session, SessionInvalid
@@ -53,7 +53,7 @@ log = get_logger(__name__)
 # Reconnection backoff parameters
 BACKOFF_INITIAL = 5
 BACKOFF_MULTIPLIER = 2
-BACKOFF_MAX = 300  # 5 minutes
+BACKOFF_MAX = RECONNECT_BACKOFF_MAX
 
 # How long the agent tolerates total downstream silence before declaring the
 # connection dead and reconnecting. Under traffic the cloud acks every ~5s;
@@ -76,79 +76,29 @@ THROTTLE_MAX_SECONDS = 3600
 # no session rotation) is worse than forcing a fresh handshake.
 MAX_CONSECUTIVE_SIG_FAILURES = 5
 
-# Default capabilities the agent reports
-#
-# This is what the instance says it CAN do; the cloud answers with the subset
-# it grants (`enabled_capabilities` in session_start). So adding a name here
-# does not switch anything on — it makes the capability askable.
-DEFAULT_CAPABILITIES = [
-    "monitoring",
-    "remote_access",
-    "fleet_update",
-    "diagnostics",
-    "tunnel",
-    "trusted_certs",
-    # Video across the tunnel spends the cloud's bandwidth, so it is sold per
-    # space rather than included. Local viewing is never gated by it — see
-    # PluginAPI.viewer_access, where a viewer on the LAN is answered without
-    # the capability being consulted at all.
-    "tunnel_video",
-    # This system keeps its logins in its own login file and its project holds
-    # the saved-login marker in their place (core/device_logins.SAVED_LOGIN).
-    # A pushed project carrying the marker keeps the login saved here; it is
-    # never taken as a password. An older version would write the marker over
-    # its real password, so the cloud sends a project holding the marker only
-    # to a system that announces this. Nothing on this side is gated by it.
-    "saved_logins",
-    # A secret command parameter saved in a macro step or a control's action
-    # is kept here too, and the step holds a marker naming it
-    # (core/saved_params.py, `<saved on this system #` and its name). An older
-    # version would send that marker to the device as the key, so the cloud
-    # sends a project holding one only to a system that announces this.
-    # Nothing on this side is gated by it.
-    "saved_command_params",
-    # This version can stage a panel software update (panel_software_update).
-    # Announced by every system, panel or not: whether there is panel
-    # software to update is what `system.panel_software.*` state says, and a
-    # system without it refuses the message with `no_panel_software`.
-    "panel_software_update",
-]
+# What this instance says it CAN do: every capability in the wire contract's
+# vocabulary (protocol.CAPABILITIES, where each one's meaning is written). The
+# cloud answers with the subset it grants (`enabled_capabilities` in
+# session_start), so a name here switches nothing on; it makes the capability
+# askable. Some gate nothing on this side and exist only so the cloud knows
+# what this release reads: `saved_logins` and `saved_command_params` (a pushed
+# project's markers are kept, never sent to a device), and
+# `panel_software_update` (announced by every system, panel or not; one
+# without panel software refuses the message with `no_panel_software`).
+# `tunnel_video` is sold per space; local viewing never consults it (see
+# PluginAPI.viewer_access).
+DEFAULT_CAPABILITIES = list(CAPABILITIES)
 
-# Downstream messages that require a specific capability before the agent will
-# dispatch them. The agent is a defense-in-depth gate: if the
-# cloud sends a tunnel_open while "tunnel" isn't in the negotiated
-# enabled_capabilities, the agent ignores the message instead of acting on it.
-# Keep this map in sync with the canonical capability vocabulary in
-# `DEFAULT_CAPABILITIES` above and in `openavc-cloud/api/ws/handler.py`.
-_CAPABILITY_GATED: dict[str, str] = {
-    "tunnel_open": "tunnel",
-    "tunnel_close": "tunnel",
-    "diagnostic": "diagnostics",
-    # `software_update` is the fleet-update message type. Gating it here
-    # means an agent whose `fleet_update` capability was revoked by the
-    # cloud (via `features_disabled` in `upgrade_required`) silently
-    # ignores stray pushes instead of trying to apply an update it's not
-    # supposed to. See A59 in the pre-release audit.
-    "software_update": "fleet_update",
-    # Its own capability, not fleet_update's: an older system announces no
-    # such name, which is how the cloud knows which systems understand it.
-    "panel_software_update": "panel_software_update",
-    # The highest-risk remote-control messages: they drive AV hardware,
-    # full_replace the project, and restart the service. The spec model is
-    # that the agent enforces capabilities as defense-in-depth, so a plan that
-    # only grants `monitoring` (or an account whose `remote_access` was revoked
-    # mid-session) cannot execute them even if a cloud-side authorization bug
-    # sends them. Reads (`get_project`/`get_device_commands`) and AI tool calls
-    # stay ungated — they have their own gating and are not state-mutating.
-    "command": "remote_access",
-    "config_push": "remote_access",
-    "restart": "remote_access",
-    # Renewal nudges are cloud-initiated; if the plan/session doesn't include
-    # trusted certs, don't act on them. `cert_result` stays ungated — it only
-    # answers a request this agent chose to send, and without the in-memory
-    # pending key a pushed chain can't install anything anyway.
-    "cert_renew_due": "trusted_certs",
-}
+# Downstream messages this agent acts on only when the session was granted a
+# capability (protocol.CAPABILITY_GATED, from each row's `requires`). The agent
+# is a defense-in-depth gate: a cloud-side authorization bug that sends a
+# tunnel_open, command, config_push or restart to a plan without the grant
+# drives nothing here. `software_update` on `fleet_update` lets a cloud that
+# lists the feature in `features_disabled` switch updates off; `cert_renew_due`
+# on `trusted_certs` keeps a renewal nudge inert where the plan has none. Reads
+# (`get_project`, `get_device_commands`), AI tool calls and `cert_result` stay
+# ungated: they mutate nothing, or answer a request this agent chose to send.
+_CAPABILITY_GATED: dict[str, str] = CAPABILITY_GATED
 
 # Typed failure replies for request messages the agent refuses to dispatch
 # (capability not negotiated, or the owning subsystem isn't wired). The cloud
@@ -157,17 +107,7 @@ _CAPABILITY_GATED: dict[str, str] = {
 # or the portal burns the full request timeout on a message the agent already
 # dropped. Types absent here (cert_renew_due, tunnel_close, config/alert
 # updates) have no cloud-side future waiting; dropping them stays silent.
-_DROP_NACK_TYPES: dict[str, str] = {
-    COMMAND: COMMAND_RESULT,
-    CONFIG_PUSH: COMMAND_RESULT,
-    RESTART: COMMAND_RESULT,
-    SOFTWARE_UPDATE: COMMAND_RESULT,
-    PANEL_SOFTWARE_UPDATE: COMMAND_RESULT,
-    GET_PROJECT: PROJECT_DATA,
-    GET_DEVICE_COMMANDS: DEVICE_COMMANDS_DATA,
-    DIAGNOSTIC: DIAGNOSTIC_RESULT,
-    AI_TOOL_CALL: AI_TOOL_RESULT,
-}
+_DROP_NACK_TYPES: dict[str, str] = REQUEST_ANSWERS
 
 
 class CloudAgent:
@@ -445,7 +385,7 @@ class CloudAgent:
                 await self._connect_and_run()
             except HandshakeError as e:
                 log.error(f"Cloud agent: handshake failed — {e} (reason: {e.reason})")
-                if e.reason in ("unknown_system", "no_key", "bad_system_id"):
+                if e.reason in FATAL_REFUSAL_REASONS:
                     # Fatal — don't retry, key is permanently invalid
                     log.error("Cloud agent: system key is invalid or revoked. Stopping.")
                     self._running = False
@@ -1007,7 +947,7 @@ class CloudAgent:
             # drives nothing, so refusing it would only leave a room believing
             # nobody answered.
             if self._help_requests is not None:
-                await self._help_requests.handle_acknowledged(msg.get("payload") or {})
+                await self._help_requests.handle_acknowledged(read_as(HELP_ACKNOWLEDGED, msg))
             else:
                 log.info("Cloud agent: received help_acknowledged but no help subsystem")
         else:
@@ -1022,17 +962,19 @@ class CloudAgent:
         cloud-side future (and requests without a request_id) send nothing.
         """
         msg_type = msg.get("type", "")
-        payload = extract_payload(msg)
+        payload = read_message(msg)
         if msg_type == TUNNEL_OPEN:
-            tunnel_id = payload.get("tunnel_id", "")
+            tunnel_id = payload["tunnel_id"]
             if tunnel_id:
                 await self.send_message(
                     TUNNEL_FAILED, build_tunnel_failed_payload(tunnel_id, error)
                 )
             return
         result_type = _DROP_NACK_TYPES.get(msg_type)
-        request_id = payload.get("request_id", "")
-        if not result_type or not request_id:
+        if not result_type:
+            return
+        request_id = payload["request_id"]
+        if not request_id:
             return
         # Every result-shaped payload builder accepts these keywords, so the
         # NACK is built by the request's own typed-result builder.
@@ -1045,13 +987,12 @@ class CloudAgent:
     async def _handle_ping(self, msg: dict[str, Any]) -> None:
         """Respond to a ping with a signed pong (via _send_signed so the
         liveness reply still flows while the agent is throttled)."""
-        payload = extract_payload(msg)
-        nonce = payload.get("nonce", "")
+        nonce = read_as(PING, msg)["nonce"]
         await self._send_signed(PONG, build_pong_payload(nonce))
 
     async def _handle_config_update(self, msg: dict[str, Any]) -> None:
         """Apply a mid-session config update from the server."""
-        payload = extract_payload(msg)
+        payload = read_as(CONFIG_UPDATE, msg)
         self._apply_config(payload)
         log.info(f"Cloud agent: config updated — {list(payload.keys()) if isinstance(payload, dict) else payload}")
 
@@ -1098,8 +1039,8 @@ class CloudAgent:
 
     def _handle_capabilities_update(self, msg: dict[str, Any]) -> None:
         """Update enabled capabilities mid-session (e.g. plan change)."""
-        payload = extract_payload(msg)
-        new_caps = self._normalize_capabilities(payload.get("enabled_capabilities"))
+        payload = read_as(CAPABILITIES_UPDATE, msg)
+        new_caps = self._normalize_capabilities(payload["enabled_capabilities"])
         if new_caps is None:
             log.warning(
                 "Cloud agent: ignoring malformed capabilities_update "
@@ -1118,12 +1059,12 @@ class CloudAgent:
 
     def _handle_throttle(self, msg: dict[str, Any]) -> None:
         """Handle a throttle directive from the server."""
-        payload = extract_payload(msg)
-        limit_type = payload.get("limit", "")
+        payload = read_as(THROTTLE, msg)
+        limit_type = payload["limit"]
         # retry_after crosses the trust boundary — coerce and clamp it so a bad
         # value can't crash the sleep or pin the type off forever.
         try:
-            retry_after = float(payload.get("retry_after_seconds", 30))
+            retry_after = float(payload["retry_after_seconds"])
         except (TypeError, ValueError):
             retry_after = 30.0
         retry_after = max(0.0, min(retry_after, THROTTLE_MAX_SECONDS))
@@ -1170,16 +1111,15 @@ class CloudAgent:
 
     def _handle_error(self, msg: dict[str, Any]) -> None:
         """Log a server error response."""
-        payload = extract_payload(msg)
-        code = payload.get("code", "unknown")
-        ref_type = payload.get("ref_type", "")
-        message = payload.get("message", "")
+        payload = read_as(ERROR, msg)
+        code = payload["code"]
+        ref_type = payload["ref_type"]
+        message = payload["message"]
         log.warning(f"Cloud agent: server error — {code}: {message} (ref: {ref_type})")
 
     async def _handle_alert_rules_update(self, msg: dict[str, Any]) -> None:
         """Forward alert rules to the alert monitor (future)."""
-        payload = extract_payload(msg)
-        rules = payload.get("rules", [])
+        rules = read_as(ALERT_RULES_UPDATE, msg)["rules"]
         log.info(f"Cloud agent: received {len(rules)} alert rule(s)")
         await self.events.emit("cloud.alert_rules_update", {"rules": rules})
 
@@ -1264,10 +1204,11 @@ class CloudAgent:
                 if self._heartbeat_collector:
                     metrics = await self._heartbeat_collector.collect()
                     # Store metrics in StateStore for AlertMonitor evaluation
-                    for metric_key in ("cpu_percent", "memory_percent", "disk_percent"):
+                    for state_key in BUILTIN_ALERT_KEYS:
+                        metric_key = state_key.removeprefix("system.")
                         if metric_key in metrics:
                             self.state.set(
-                                f"system.{metric_key}", metrics[metric_key],
+                                state_key, metrics[metric_key],
                                 source="heartbeat",
                             )
                     await self.send_message(HEARTBEAT, metrics)
