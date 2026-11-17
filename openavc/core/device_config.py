@@ -154,22 +154,6 @@ def is_bridge_config(cfg: dict[str, Any]) -> bool:
     return bool(get_driver_bridge_ports(cfg.get("driver", "")))
 
 
-def bridge_first(
-    device_ids: list[str], resolved: dict[str, dict]
-) -> list[list[str]]:
-    """Split ``device_ids`` into ``[bridges, others]`` (each batch included
-    only if non-empty), preserving order within each, so bridge devices are
-    added and connected before the devices that route through them — a
-    bridge-bound device's connect path needs its bridge live to prep the
-    port (push serial baud/parity) first.
-    """
-    bridges: list[str] = []
-    others: list[str] = []
-    for did in device_ids:
-        (bridges if is_bridge_config(resolved[did]) else others).append(did)
-    return [batch for batch in (bridges, others) if batch]
-
-
 # The mark dialled_record leaves on a record the simulation points at the
 # simulator; connection_of reads it into DeviceConnection.simulated.
 _SIMULATED = "simulated"

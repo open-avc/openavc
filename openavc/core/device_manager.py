@@ -69,7 +69,7 @@ from openavc.core.pending_settings import PendingSettingsMixin
 from openavc.drivers.base import ConnectEndedError
 from openavc.drivers.registry import get_driver_class
 from openavc.drivers.transport_choice import declared_transport
-from openavc.core.device_config import bridge_first
+from openavc.core.device_sync import bridges_first
 from openavc.core.event_bus import EventBus
 from openavc.core.installed_equipment import driver_label
 from openavc.core.state_store import StateStore
@@ -372,7 +372,9 @@ class DeviceManager(
         Bridges first, then their dependents (a bridge-bound device's port prep
         needs its bridge live), and concurrently within each batch — sequential
         awaits here would serialize one connect timeout per device, which is
-        the cost this whole split exists to take out of the save.
+        the cost this whole split exists to take out of the save. A device
+        whose driver cannot say whether it is a bridge (``bridges_first``) is
+        logged with why and not dialed; the others still are.
         """
         pending = [d for d in self._deferred_connects if d in self._devices]
         self._deferred_connects.clear()
@@ -383,7 +385,10 @@ class DeviceManager(
             for did in pending
             if did in self._device_configs
         }
-        for batch in bridge_first(list(configs), configs):
+        batches, unsplit = bridges_first(configs)
+        for did, error in unsplit.items():
+            log.error(f"Bringing up device '{did}' failed: {error}")
+        for batch in batches:
             results = await asyncio.gather(
                 *(self._bring_up_device(did) for did in batch),
                 return_exceptions=True,

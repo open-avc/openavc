@@ -162,6 +162,29 @@ async def test_the_rollback_after_a_failed_save_brings_the_others_back(engine, c
     assert {"good1", "br", "good2"} <= _running(engine)
 
 
+
+async def test_a_bring_up_round_dials_every_other_device_when_a_driver_goes_bad_before_it(engine, caplog):
+    engine.project = _project("bridge ports written as a map")
+    registry.register_driver(_driver_class(BAD))
+    await engine._sync_devices(defer_connect=True)
+    assert "bad" in _running(engine)
+
+    # Its driver is replaced by one whose bridge block cannot be read before
+    # the round after the save dials the devices it registered.
+    registry.register_driver(_driver_class(
+        BAD, bridge={"ports": {"p1": {"kind": "serial", "passthrough_port": 4999}}},
+    ))
+    with caplog.at_level(logging.ERROR, logger="openavc.core.device_manager"):
+        await engine.devices.bring_up()
+
+    assert engine.state.get("device.good1.connected") is True
+    assert engine.state.get("device.good2.connected") is True
+    assert engine.state.get("device.br.connected") is True
+    assert any(
+        "'bad'" in r.getMessage() and "could not say whether it is a bridge" in r.getMessage()
+        for r in caplog.records
+    )
+
 async def test_a_running_device_that_can_no_longer_be_worked_out_keeps_running(engine):
     engine.project = _project("defaults written as text")
     registry.register_driver(_driver_class(BAD, default_config={"port": 23}))

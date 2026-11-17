@@ -15,7 +15,9 @@ a change to one is checked against the other.
 A part of the start that fails is counted in ``system.startup_errors`` and
 named in one warning; it never stops the rest of the start. The driver
 library's load is one of them: a start whose load fails goes on, and the
-devices whose driver did not register wait for it. Each step that settles a
+devices whose driver did not register wait for it. So is each device that
+cannot be worked out or added, counted on its own (core/device_sync.py): the
+others still start. Each step that settles a
 decision or converts something on disk before the project loads
 (``prepare_host``) is logged and never fatal, but not counted.
 
