@@ -15,9 +15,10 @@ speaking the protocol:
 
 - tcp, ssh, mqtt, OSC over TCP: a TCP connection, closed at once.
 - http: a HEAD request to the address the transport is built with
-  (``transport/endpoint.http_endpoint``: host, port and ``ssl``, the
-  certificate checked per ``verify_ssl``). A ``base_url`` in the config is
-  used only when there is no host: the transport never reads it.
+  (``transport/endpoint.http_endpoint``: host, port and ``ssl``, or what a
+  host written as a URL names, the certificate checked per ``verify_ssl``).
+  A ``base_url`` in the config is used only when there is no host: the
+  transport never reads it.
 - serial: the port opened and closed, at the line settings the connect
   opens it with (``drivers/transport_ladder.serial_line_settings``), so a
   setting the connect refuses is refused here too, before anything is
@@ -93,7 +94,12 @@ from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.discovery.network_scanner import resolve_address
 from openavc.discovery.port_guard import held_ports
 from openavc.drivers.transport_ladder import serial_line_settings
-from openavc.transport.endpoint import checks_certificate, control_bind_address, http_endpoint
+from openavc.transport.endpoint import (
+    checks_certificate,
+    control_bind_address,
+    http_endpoint,
+    url_address,
+)
 from openavc.transport.serial_transport import require_usb_adapter, serial_port_refusal
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
@@ -400,7 +406,7 @@ async def _through_bridge(
 def _port_problem(port: Any, cfg: dict[str, Any]) -> str | None:
     """Why ``port`` (as ``connection_of`` read it) cannot be dialed, or None."""
     if port is None:
-        raw = cfg.get("port")
+        raw = _port_as_written(cfg)
         if raw is not None and raw != "":
             return (
                 f"The port '{raw}' is not a number. Enter the device's port "
@@ -410,6 +416,15 @@ def _port_problem(port: Any, cfg: dict[str, Any]) -> str | None:
     if not 0 < int(port) <= 65535:
         return f"Port {port} is out of range. Ports run from 1 to 65535."
     return None
+
+
+def _port_as_written(cfg: dict[str, Any]) -> Any:
+    """The port the device's settings write: the one in a host written as a
+    URL, else the port setting."""
+    url = url_address(cfg.get("host"))
+    if url is not None and url.written_port:
+        return url.written_port
+    return cfg.get("port")
 
 
 def _bind_for(host: str) -> tuple[str | None, str | None]:
@@ -487,8 +502,9 @@ def _head_target(host: str, port: Any, cfg: dict[str, Any]) -> tuple[str, bool] 
     problem = _port_problem(port, cfg)
     if problem:
         return problem
-    # The address the HTTP transport is built with, from the same config.
-    endpoint = http_endpoint(host, cfg)
+    # The address the HTTP transport is built with, from the same config: a
+    # host written as a URL names its own scheme, port and path.
+    endpoint = http_endpoint(cfg.get("host"), cfg)
     return endpoint.base_url, endpoint.verify
 
 

@@ -45,8 +45,8 @@ from openavc.core.connection_fault import (
     restarting_message,
     typed_fault_from_exc,
 )
+from openavc.core.device_config import driver_connection
 from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
-from openavc.drivers.transport_choice import effective_transport
 from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.logger import get_logger
 
@@ -130,20 +130,13 @@ def _kept_silence_verdict(fault: ConnectionFault, driver: Any) -> ConnectionFaul
 
 
 def connection_descriptor(driver: BaseDriver) -> tuple[str, Any, str]:
-    """Return (host, port, transport) for a driver's connection, for the
-    connection-fault classifier's message. The transport is the one
-    BaseDriver.connect() opens (transport_choice).
+    """Return (host, port, transport) for where a driver dials now
+    (``core/device_config.driver_connection``): what the connection-fault
+    classifier's message names, and what the reconnect check dials. A
+    serial device has no host; its port is the COM or tty path.
     """
-    cfg = getattr(driver, "config", {}) or {}
-    transport = effective_transport(cfg, getattr(driver, "DRIVER_INFO", None))
-    if transport == "serial":
-        # Serial has no host; its "port" is the COM/tty path.
-        return "", cfg.get("port", ""), transport
-    host = cfg.get("host", "") or ""
-    port = cfg.get("port")
-    if port in (None, "") and transport == "http":
-        port = 443 if cfg.get("ssl") else 80
-    return host, port, transport
+    conn = driver_connection(driver)
+    return conn.host, conn.port, conn.transport
 
 
 class DeviceAwayMixin:

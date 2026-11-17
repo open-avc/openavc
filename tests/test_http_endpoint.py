@@ -110,3 +110,60 @@ def test_the_driver_builders_live_test_starts_at_the_same_ports():
         "HTTP_PORT": str(implied_port("http", {})),
         "HTTPS_PORT": str(implied_port("http", {"ssl": True})),
     }
+
+
+# --- a host written as a URL -------------------------------------------------
+# A driver may ask for a service's address as a URL (https://acme.example):
+# the URL names the scheme, the name and the port, and the Port and Use HTTPS
+# settings are not read, as such a driver's own client reads it.
+
+
+@pytest.mark.parametrize(
+    ("host", "config", "url"),
+    [
+        ("https://acme.example", {}, "https://acme.example:443"),
+        ("http://acme.example", {"ssl": True, "port": 443}, "http://acme.example:80"),
+        ("https://acme.example:8443", {"port": 9999}, "https://acme.example:8443"),
+        ("https://acme.example:8443/api/", {}, "https://acme.example:8443/api"),
+        (" HTTPS://Acme.Example ", {}, "https://acme.example:443"),
+        ("https://[2001:db8::40]:8443", {}, "https://[2001:db8::40]:8443"),
+    ],
+    ids=["https", "http-over-the-settings", "own-port", "path", "as-typed", "ipv6"],
+)
+def test_a_url_host_is_reached_where_it_names(host, config, url):
+    assert http_endpoint(host, config).base_url == url
+
+
+def test_a_url_host_with_a_port_that_is_not_one_is_refused_as_written():
+    with pytest.raises(UnusablePort) as caught:
+        http_endpoint("https://acme.example:web", {"port": 443})
+    assert caught.value.port == "web"
+
+
+@pytest.mark.parametrize(
+    ("host", "named"),
+    [
+        ("https://acme.example", ("acme.example", 443)),
+        ("http://acme.example", ("acme.example", 80)),
+        ("https://acme.example:8443/api", ("acme.example", 8443)),
+        ("https://[2001:db8::40]:8443", ("2001:db8::40", 8443)),
+        ("https://acme.example:web", ("acme.example", None)),
+    ],
+)
+def test_a_device_connection_names_the_address_a_url_host_names(host, named):
+    config = {"transport": "http", "host": host, "port": 9999, "ssl": False}
+    conn = connection_of({"id": "acme1", "driver": "acme_unregistered", "config": config})
+    assert (conn.host, conn.port) == named
+
+
+@pytest.mark.parametrize(
+    "host", ["https://acme.example", "http://acme.example:8080/api", "https://acme.example:web"],
+)
+def test_a_url_hosts_port_is_the_one_a_device_connection_reports(host):
+    config = {"transport": "http", "host": host, "port": 9999, "ssl": False}
+    reported = connection_of({"id": "acme1", "driver": "acme_unregistered", "config": config}).port
+    try:
+        dialled = http_endpoint(host, config).port
+    except UnusablePort:
+        dialled = None
+    assert dialled == reported

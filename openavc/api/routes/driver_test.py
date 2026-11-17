@@ -698,16 +698,17 @@ async def _test_udp_raw(body: TestCommandRequest) -> dict:
 
 def _raw_http_endpoint(body: TestCommandRequest) -> HttpEndpoint:
     """Where a raw HTTP probe goes: where the driver's own connection does,
-    from the request's host, port, ssl and verify_ssl."""
+    from the request's host, port, ssl and verify_ssl (a host written as a
+    URL names its own scheme, port and path)."""
     try:
         return http_endpoint(
             body.host,
             {"port": body.port, "ssl": body.ssl, "verify_ssl": body.verify_ssl},
         )
-    except UnusablePort:
+    except UnusablePort as unusable:
         raise HTTPException(
             status_code=422,
-            detail=f"Invalid HTTP port: {body.port!r}",
+            detail=f"Invalid HTTP port: {unusable.port!r}",
         ) from None
 
 

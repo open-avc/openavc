@@ -17,6 +17,14 @@ checked. The HTTP transport's builder, Test Connection, Open Web UI and the
 Driver Builder's raw probe all ask it. ``base_url`` in a config is not read
 here: the transport never reads it.
 
+THE rule for a host written as a URL (``https://acme.example:8443/api``, as a
+driver that asks for a service's address may take it) is :func:`url_address`:
+it names the device's name, and its port is the URL's own, else its scheme's
+(http 80, https 443). The device's Port and Use HTTPS settings are not read
+for such a host, as a driver's own client building from the URL never reads
+them. :func:`http_endpoint` and ``core/device_config.connection_of`` (where a
+device connects, which the reconnect check dials) both ask it.
+
 tcp, udp and osc have no fallback port: the driver must declare one
 (``BaseDriver._required_port``), and a device without one is a config error.
 """
@@ -27,6 +35,7 @@ import ipaddress
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from openavc.transport.snmp_codec import SNMP_PORT
 
@@ -105,19 +114,64 @@ def _port_number(port: Any) -> int:
     return number
 
 
+#: The port a URL's scheme implies when the URL names none.
+_SCHEME_PORTS: dict[str, int] = {"http": 80, "https": 443}
+
+
+@dataclass(frozen=True)
+class UrlAddress:
+    """What a host written as a URL names (:func:`url_address`)."""
+
+    scheme: str  # lower-cased: "https", "http", or whatever was written
+    name: str  # the host name or address, an IPv6 address without brackets
+    written_port: str  # the port as the URL writes it, "" when it names none
+    path: str  # "" for none, never ending in "/"
+
+    def port(self) -> int | None:
+        """The URL's own port, else its scheme's (http 80, https 443), else
+        None for a scheme with no port of its own. A written port that is not
+        a port number raises :class:`UnusablePort`, never falling back."""
+        if self.written_port:
+            return _port_number(self.written_port)
+        return _SCHEME_PORTS.get(self.scheme)
+
+
+def url_address(host: Any) -> UrlAddress | None:
+    """What ``host`` names when it is written as a URL, else None.
+
+    A host is a URL when it holds ``://``. Read as a client reads the URL:
+    the scheme and name lower-cased, the port as written, the path without
+    its query or a trailing ``/``.
+    """
+    text = str(host or "").strip()
+    if "://" not in text:
+        return None
+    parts = urlsplit(text)
+    # After any login, then after an IPv6 address's closing bracket.
+    hostinfo = parts.netloc.rpartition("@")[2]
+    after_name = hostinfo.partition("]")[2] if hostinfo.startswith("[") else hostinfo
+    return UrlAddress(
+        scheme=parts.scheme.lower(),
+        name=parts.hostname or "",
+        written_port=after_name.partition(":")[2],
+        path=parts.path.rstrip("/"),
+    )
+
+
 @dataclass(frozen=True)
 class HttpEndpoint:
     """Where an http device's requests go."""
 
-    scheme: str  # "https" when ssl is on, else "http"
+    scheme: str  # "https" when ssl is on, else "http"; a URL host's own
     host: str  # as a URL writes it (url_host)
     port: int
     verify: bool  # whether the device's certificate is checked
+    path: str = ""  # a URL host's path, which every request starts with
 
     @property
     def base_url(self) -> str:
         """What the HTTP transport is built with, the port always written."""
-        return f"{self.scheme}://{self.host}:{self.port}"
+        return f"{self.scheme}://{self.host}:{self.port}{self.path}"
 
 
 def http_endpoint(host: Any, config: Mapping[str, Any]) -> HttpEndpoint:
@@ -129,18 +183,42 @@ def http_endpoint(host: Any, config: Mapping[str, Any]) -> HttpEndpoint:
     device's own connection is refused for it. ``host`` is passed apart from
     ``config`` because a caller may already know better (a bridge binding
     that connects nowhere leaves no host).
+
+    A host written as a URL (:func:`url_address`) names the scheme, the port
+    and a path of its own; ``ssl`` and ``port`` are read only for what the
+    URL leaves out (a scheme other than http or https, which has no port).
     """
+    url = url_address(host)
+    if url is not None:
+        return _url_endpoint(url, config)
+    return HttpEndpoint(
+        scheme="https" if _uses_tls(config) else "http",
+        host=url_host(host),
+        port=_set_port(config),
+        verify=checks_certificate(config),
+    )
+
+
+def _set_port(config: Mapping[str, Any]) -> int:
+    """The port an http device's settings name, or their scheme's default."""
     port = config.get("port")
     if port is None or port == "":
         number = implied_port("http", config)
         assert number is not None  # http always has one
-    else:
-        number = _port_number(port)
+        return number
+    return _port_number(port)
+
+
+def _url_endpoint(url: UrlAddress, config: Mapping[str, Any]) -> HttpEndpoint:
+    """:func:`http_endpoint` for a host written as a URL."""
+    own_scheme = url.scheme in _SCHEME_PORTS
+    port = url.port()
     return HttpEndpoint(
-        scheme="https" if _uses_tls(config) else "http",
-        host=url_host(host),
-        port=number,
+        scheme=url.scheme if own_scheme else ("https" if _uses_tls(config) else "http"),
+        host=url_host(url.name),
+        port=port if port is not None else _set_port(config),
         verify=checks_certificate(config),
+        path=url.path,
     )
 
 

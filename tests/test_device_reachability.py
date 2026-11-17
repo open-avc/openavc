@@ -264,6 +264,20 @@ async def test_http_tests_the_address_the_transport_sends_to(
     assert captured_httpx["verify"] is verify
 
 
+async def test_http_tests_the_address_a_url_host_names(drivers, captured_httpx):
+    """A host written as a URL names its own scheme and port, as the driver's
+    connection reads it: the test goes there and reports that address."""
+    drivers("acme_reach_http_url", "http", {"port": 443, "ssl": True})
+    device = DeviceConfig(id="hu", driver="acme_reach_http_url", name="HU", config={})
+    project = _project(device, connections={"hu": {"host": "http://acme.example:8080/api"}})
+
+    result = await _test(device, project)
+
+    assert result["success"] is True, result
+    assert captured_httpx["url"] == "http://acme.example:8080/api"
+    assert (result["connection"]["host"], result["connection"]["port"]) == ("acme.example", 8080)
+
+
 async def test_http_port_that_is_not_a_number_is_named(drivers, captured_httpx):
     drivers("acme_reach_http_badport", "http", {})
     device = DeviceConfig(id="hp", driver="acme_reach_http_badport", name="HP", config={})

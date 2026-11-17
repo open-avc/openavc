@@ -25,7 +25,12 @@ over it), it names where the device really connects, the simulator on this
 computer while a simulation points it there (``DeviceConnection.simulated``).
 The device manager asks ``dialled_record`` for its running devices
 (``DeviceManager.dialled_record``, ``connections_now``), and the connection
-test (``core/device_reachability``) dials that.
+test (``core/device_reachability``) dials that. A caller that holds the
+running driver asks ``driver_connection``, the same answer read from the
+driver's own config: the reconnect check (``core/device_reconnect``) dials
+it, and the device card's reason sentence (``core/device_away``) names it.
+Either reading names a host written as a URL by the name and port it names
+(``transport/endpoint.url_address``).
 
 ``device_connections`` turns that around for anything that asks "which
 project devices would a connection to this address meet?". Handed the device
@@ -54,7 +59,8 @@ from openavc.drivers.registry import (
     get_driver_default_config,
     get_driver_transport,
 )
-from openavc.transport.endpoint import implied_port
+from openavc.drivers.transport_choice import effective_transport
+from openavc.transport.endpoint import UnusablePort, implied_port, url_address
 from openavc.transport.serial_transport import resolve_usb_binding
 from openavc.utils.logger import get_logger
 
@@ -165,7 +171,10 @@ class DeviceConnection:
 
     ``port`` is a number for a network transport and a path for serial; a
     transport that falls back to a port of its own (http, ssh, mqtt, snmp)
-    reports that port when the device names none. ``bridge`` is the id of the
+    reports that port when the device names none. A host written as a URL is
+    reported as the name and port it names (``transport/endpoint.url_address``),
+    which is where the device's client connects. A serial device has no
+    ``host``, whatever its settings kept from another transport. ``bridge`` is the id of the
     bridge the device is set to go through (``core.bridge_binding``): it
     reaches ``host`` through that bridge's pass-through port, or (transport
     ``bridge``) emits through it and holds no connection of its own; or the
@@ -220,7 +229,27 @@ def _port_of(transport: str, cfg: dict[str, Any]) -> int | str | None:
         return None
 
 
-def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
+def _address_of(transport: str, cfg: dict[str, Any]) -> tuple[str, int | str | None]:
+    """The host and port ``cfg`` dials over ``transport``. A host written as
+    a URL dials the name and port it names; the device's port setting is read
+    only when the URL's scheme has no port of its own."""
+    if transport == "serial":
+        return "", _port_of(transport, cfg)
+    host = str(cfg.get("host") or "")
+    url = url_address(host)
+    if url is None:
+        return host, _port_of(transport, cfg)
+    try:
+        port = url.port()
+    except UnusablePort:
+        # As a port setting that is not a number: no port, never a fallback.
+        return url.name, None
+    return url.name, port if port is not None else _port_of(transport, cfg)
+
+
+def connection_of(
+    resolved: dict[str, Any], definition: Mapping[str, Any] | None = None,
+) -> DeviceConnection:
     """Where a device connects, from its resolved record.
 
     ``resolved`` is what :func:`resolve_device_config` returns, which is also
@@ -228,17 +257,21 @@ def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
     as it is set to. Handed :func:`dialled_record`'s answer instead, it is
     where the device connects now. The transport is the one
     ``BaseDriver.connect`` opens (``transport_choice``: the device's own
-    choice, else its driver's, else tcp).
+    choice, else its driver's, else tcp); the driver's is read from
+    ``definition`` when given (a running driver's own ``DRIVER_INFO``), else
+    from the driver registered under the record's driver id.
     """
     cfg = resolved.get("config") or {}
     driver = str(resolved.get("driver") or "")
-    transport = get_device_transport(driver, cfg)
+    transport = (
+        effective_transport(cfg, definition) if definition is not None
+        else get_device_transport(driver, cfg)
+    )
     # What the resolver recorded of a bridge binding: a pass-through is
     # already rewritten to the bridge's host, and a binding that cannot be
     # completed connects nowhere, whatever address the config still holds.
     binding = bridge_binding(cfg)
-    host = "" if binding.unresolved else str(cfg.get("host") or "")
-    port = None if binding.unresolved else _port_of(transport, cfg)
+    host, port = ("", None) if binding.unresolved else _address_of(transport, cfg)
     device_id = str(resolved.get("id") or "")
     return DeviceConnection(
         device_id=device_id,
@@ -250,6 +283,24 @@ def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
         bridge=binding.bridge,
         simulated=bool(resolved.get(_SIMULATED)),
     )
+
+
+def driver_connection(driver: Any) -> DeviceConnection:
+    """Where a running driver dials now: :func:`connection_of` over the
+    driver's own config and definition.
+
+    For a caller holding the driver (the reconnect check, the device card's
+    reason sentence). A running simulation has pointed that config at the
+    simulator, so this is :func:`dialled_record`'s answer for the same
+    driver, read without the device manager's record.
+    """
+    info = getattr(driver, "DRIVER_INFO", None) or {}
+    record = {
+        "id": getattr(driver, "device_id", ""),
+        "driver": str(info.get("id") or ""),
+        "config": getattr(driver, "config", None) or {},
+    }
+    return connection_of(record, info)
 
 
 def dialled_record(

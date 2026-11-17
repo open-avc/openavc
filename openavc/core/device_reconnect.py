@@ -27,7 +27,6 @@ import random
 import time
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
-from urllib.parse import urlsplit
 
 from openavc.core.connection_fault import (
     AUTH_FAILED,
@@ -130,25 +129,6 @@ class _ReconnectRun:
     # Permanent faults in a row; see _MAX_PERMANENT_FAULT_ATTEMPTS.
     permanent_attempts: int = 0
     noisy: bool = True  # whether this attempt is said in the log
-
-
-def _dial_target(host: Any, port: Any) -> tuple[Any, Any]:
-    """The name and port the reconnect check dials for a device's host.
-
-    A host field may hold a URL (some drivers ask for a service's address
-    that way): the check dials its name, on its own port or the scheme's,
-    as the client will. Any other host is dialed as it is.
-    """
-    text = str(host or "").strip()
-    if "://" not in text:
-        return host, port
-    parts = urlsplit(text)
-    try:
-        own_port = parts.port
-    except ValueError:
-        own_port = None
-    scheme_port = {"https": 443, "http": 80}.get(parts.scheme.lower())
-    return parts.hostname or "", own_port or scheme_port or port
 
 
 def _probe_fault(
@@ -420,12 +400,17 @@ class DeviceReconnectMixin:
         includes every case where we can't cheaply tell, so a probe failure
         never becomes the reason a device stays offline. Otherwise returns
         why the port did not answer, typed, for ``_set_offline_reason``.
+
+        It dials where the driver dials now (``connection_descriptor``, over
+        ``device_config.connection_of``): the transport's own port when the
+        device names none, the name and port a URL host names, the simulator
+        while a simulation points the device there. A port that is not a
+        number is never dialed: the connect refuses it as a setting to fix.
         """
         host, port, transport = connection_descriptor(driver)
-        if (transport or "").lower() not in _PROBE_FIRST_TRANSPORTS:
+        if transport not in _PROBE_FIRST_TRANSPORTS:
             return None
-        host, port = _dial_target(host, port)
-        if not host or port in (None, "", 0):
+        if not host or not isinstance(port, int):
             return None
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address
@@ -441,7 +426,7 @@ class DeviceReconnectMixin:
         try:
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(
-                    host, int(port), local_addr=(bind, 0) if bind else None,
+                    host, port, local_addr=(bind, 0) if bind else None,
                 ),
                 timeout=_PROBE_TIMEOUT,
             )
