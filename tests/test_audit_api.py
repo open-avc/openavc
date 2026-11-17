@@ -43,10 +43,13 @@ _DRIVER_REGISTRY["acme_audit_api"] = _AcmeAuditDriver
 
 
 class FakeDevices:
-    """The device manager's pause surface, recording what it was asked."""
+    """The device manager's pause surface, recording what it was asked. A
+    device paused by hand reads paused from its state flag, as the real
+    manager reads it."""
 
-    def __init__(self, running: set[str]):
+    def __init__(self, running: set[str], state: StateStore | None = None):
         self.running = running
+        self.state = state
         self.paused: set[str] = set()
         self.calls: list[tuple[str, str]] = []
 
@@ -63,7 +66,8 @@ class FakeDevices:
         self.calls.append(("resume", device_id))
 
     def is_paused(self, device_id):
-        return device_id in self.paused
+        flagged = self.state is not None and bool(self.state.get(f"device.{device_id}.paused"))
+        return device_id in self.paused or flagged
 
     def runs(self, device_id):
         return device_id in self.running
@@ -103,8 +107,8 @@ def wired(monkeypatch, tmp_path):
         ],
         connections={},
     )
-    engine = SimpleNamespace(project=project, state=state)
-    devices = FakeDevices(running={"lobby", "other"})
+    devices = FakeDevices(running={"lobby", "other"}, state=state)
+    engine = SimpleNamespace(project=project, state=state, devices=devices)
     manager = AuditManager(devices)
     store = ReportStore(tmp_path / "audit_reports")
 
@@ -196,7 +200,6 @@ async def test_a_simulated_device_is_still_paused_for_the_audit(wired):
     at_simulator = connection_of(dialled_record(hall, {"host": "127.0.0.1", "port": 19400}))
     assert at_simulator.simulated
     wired.devices.connections_now = lambda: [at_simulator]
-    wired.engine.devices = wired.devices
 
     rows = (await routes.audit_conflicts("10.9.9.9"))["devices"]
     assert [r["device_id"] for r in rows] == ["other"]
@@ -222,7 +225,6 @@ async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
     )
     wired.engine.project.devices[1].enabled = True  # enabled, its driver missing
     # The first step says it is not running, not that it will be paused.
-    wired.engine.devices = wired.devices
     rows = (await routes.audit_conflicts("127.0.0.1"))["devices"]
     assert {r["device_id"]: r["running"] for r in rows if r["device_id"] in ("lobby", "spare")} == {
         "lobby": True, "spare": False,
@@ -242,7 +244,6 @@ async def test_connecting_is_not_refused_for_a_device_no_driver_runs(wired, monk
                      config={"host": "127.0.0.1"},
                      enabled=held_by != "it is disabled"),
     )
-    wired.engine.devices = wired.devices
     started = await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["lobby"]))
     session_id = started["session"]["session_id"]
     wired.engine.state.set("device.lobby.paused", True)  # as the real pause writes it
