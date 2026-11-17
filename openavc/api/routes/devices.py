@@ -22,6 +22,7 @@ from openavc.api.models import (
     PendingSettingsRequest,
     RawSendRequest,
 )
+from openavc.core.device_errors import DeviceNotOrphanedError
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
@@ -543,11 +544,20 @@ async def retry_orphaned_device(device_id: str) -> dict[str, Any]:
         success = await engine.devices.retry_orphaned_device(device_id)
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
-    except ValueError as e:
-        # The device is there and is not an orphan — nothing to retry. A 404
-        # would be a lie about a device the caller can see, and the old
-        # "not found or not orphaned" made the reader guess which it was.
+    except DeviceNotOrphanedError as e:
+        # The device is there and is not an orphan: nothing to retry. A 404
+        # would be a lie about a device the caller can see.
         raise _api_error(409, str(e), e)
+    except Exception as e:
+        # The retry builds the device, so this is its driver's own failure
+        # (a constructor refusing the settings, most often), whatever it
+        # raised. Its text was written for the driver's author: logged.
+        raise _api_error(
+            500,
+            f"The driver could not set up device '{device_id}'. "
+            "The server log has the driver's error.",
+            e,
+        )
     if success:
         return {"status": "activated", "device_id": device_id}
     return {"status": "still_orphaned", "device_id": device_id,

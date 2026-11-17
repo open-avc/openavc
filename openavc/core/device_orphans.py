@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
-from openavc.core.device_errors import DeviceNotFoundError
+from openavc.core.device_errors import DeviceNotFoundError, DeviceNotOrphanedError
 from openavc.core.installed_equipment import missing_driver_reason
 from openavc.drivers.registry import is_driver_registered
 from openavc.utils.logger import get_logger
@@ -117,13 +117,15 @@ class DeviceOrphansMixin:
 
         The two ways to ask about the wrong device are separate answers,
         because the door above them is: an id nobody has is not found, while a
-        device that is running perfectly well has nothing to retry.
+        device that is running perfectly well has nothing to retry. Each has
+        its own type, because the retry that follows builds the device, and a
+        driver's constructor can raise a ValueError of its own.
         """
         if device_id in self._orphaned_devices:
             return self._orphaned_devices[device_id]
         if device_id not in self._device_configs:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        raise ValueError(f"Device '{device_id}' is not orphaned")
+        raise DeviceNotOrphanedError(device_id)
 
     async def retry_all_orphans(self, *, defer_connect: bool = False) -> list[str]:
         """Promote every orphan whose driver is now in the registry.

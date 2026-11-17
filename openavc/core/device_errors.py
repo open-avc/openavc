@@ -13,8 +13,8 @@ manager's own refusals, whose text is written for the reader. A driver's
 exception never gets one (``mark_failed_command`` marks it differently), because
 its text was written for whoever wrote the driver.
 
-core/device_manager.py re-exports every name here, the path the rest of the
-platform imports them from.
+Import them from here. core/device_manager.py re-exports the earlier ones, the
+path much of the platform still imports them from.
 """
 
 from __future__ import annotations
@@ -39,6 +39,23 @@ class DeviceNotFoundError(ValueError):
     WebSocket — are unchanged. The doors catch THIS to say "not found", and
     everything else answers for itself.
     """
+
+
+class DeviceNotOrphanedError(ValueError):
+    """Retry was asked of a device that is not waiting for its driver: it is
+    there, and there is nothing to retry.
+
+    Named for the same reason as :class:`DeviceNotFoundError`. Retry builds
+    the device, so a driver whose constructor refuses the device's settings
+    raises its own ValueError out of the same call, and a door catching the
+    broad type answered that "not orphaned", in the driver's words. The door
+    catches THIS for "nothing to retry"; a driver's failure answers for
+    itself.
+    """
+
+    def __init__(self, device_id: str) -> None:
+        super().__init__(f"Device '{device_id}' is not orphaned")
+        self.device_id = device_id
 
 
 def device_restarting(device_id: str, seconds_left: int) -> ConnectionError:

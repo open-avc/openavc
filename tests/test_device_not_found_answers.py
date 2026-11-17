@@ -26,6 +26,7 @@ platform's error contract, not any product's.
 from __future__ import annotations
 
 import ast
+import asyncio
 import sys
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ from fastapi.testclient import TestClient
 
 from openavc.api import rest, ws
 from openavc.core import device_manager as device_manager_module
+from openavc.core.device_errors import DeviceNotOrphanedError
 from openavc.core.device_manager import DeviceManager, DeviceNotFoundError
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -44,6 +46,7 @@ from openavc.drivers.base import (
     DeviceSettingValueError,
     UnknownDeviceSettingError,
 )
+from openavc.drivers.registry import register_driver, unregister_driver
 from openavc.main import app
 
 _MISSING = "no_such_device"
@@ -165,7 +168,39 @@ async def test_a_device_that_is_simply_not_an_orphan_is_not_reported_missing(cor
     with pytest.raises(ValueError) as caught:
         await dm.retry_orphaned_device("dev1")
     assert not isinstance(caught.value, DeviceNotFoundError)
+    assert isinstance(caught.value, DeviceNotOrphanedError)
+    assert caught.value.device_id == "dev1"
     assert "is not orphaned" in str(caught.value)
+
+
+class _AcmeUnbuildable(_AcmeDriver):
+    """A driver that refuses the settings it is built with, the way a driver
+    checking a model field does: its own ValueError, from its constructor."""
+
+    DRIVER_INFO: dict[str, Any] = {**_AcmeDriver.DRIVER_INFO, "id": "acme_unbuildable"}
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise ValueError("unknown Acme model 'WX-9'")
+
+
+async def test_a_driver_that_will_not_build_the_device_is_not_called_not_orphaned(core):
+    """Retry builds the device, so a driver's own ValueError comes out of the
+    same call as "not orphaned" does. They have to be told apart by type: the
+    one says the device has nothing to retry, the other that its driver
+    refused it."""
+    state, events = core
+    dm = DeviceManager(state, events)
+    await dm.add_device({"id": "dev1", "driver": "acme_unbuildable", "name": "Widget"})
+    assert state.get("device.dev1.orphaned") is True
+
+    register_driver(_AcmeUnbuildable)
+    try:
+        with pytest.raises(ValueError) as caught:
+            await dm.retry_orphaned_device("dev1")
+    finally:
+        unregister_driver("acme_unbuildable")
+    assert not isinstance(caught.value, DeviceNotOrphanedError)
+    assert "unknown Acme model" in str(caught.value)
 
 
 async def test_an_undeclared_setting_key_names_the_setting_not_the_device(core):
@@ -443,13 +478,41 @@ def test_retry_separates_a_missing_device_from_a_healthy_one(client):
     assert resp.json()["detail"] == "Device 'dev1' not found"
 
     engine.devices.retry_orphaned_device = AsyncMock(
-        side_effect=ValueError("Device 'dev1' is not orphaned")
+        side_effect=DeviceNotOrphanedError("dev1")
     )
     resp = c.post("/api/devices/dev1/retry")
     assert resp.status_code == 409
     detail = resp.json()["detail"]
     assert detail == "Device 'dev1' is not orphaned"
     assert "not found" not in detail
+
+
+def test_retry_answers_a_driver_that_will_not_build_the_device_as_its_failure(client):
+    """The device was waiting for its driver, the driver arrived, and its
+    constructor refused the device's settings with its own ValueError. That
+    was answered 409 "nothing to retry" in the driver's words; it is the
+    driver's failure, worded for the reader, with the driver's text in the
+    server log."""
+    c, engine = client
+    dm = DeviceManager(engine.state, engine.events)
+    engine.devices = dm
+
+    async def _wait_for_driver() -> None:
+        await dm.add_device({"id": "dev1", "driver": "acme_unbuildable", "name": "Widget"})
+
+    asyncio.run(_wait_for_driver())
+    register_driver(_AcmeUnbuildable)
+    try:
+        resp = c.post("/api/devices/dev1/retry")
+    finally:
+        unregister_driver("acme_unbuildable")
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert "not orphaned" not in detail
+    assert "WX-9" not in detail
+    assert detail == (
+        "The driver could not set up device 'dev1'. The server log has the driver's error."
+    )
 
 
 # ── The AI tool doors, which answer in prose rather than status codes ───────
