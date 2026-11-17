@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { UIElement, Placement, ProjectConfig } from "../api/types";
-import { useProjectStore } from "./projectStore";
+import { dropWithProjectUndo, useProjectStore } from "./projectStore";
 import {
   computeRollbackPatch,
   selectionAfterRollback,
@@ -118,6 +118,8 @@ interface UIBuilderStore {
     before: ProjectConfig | null,
     after: ProjectConfig | null,
   ) => boolean;
+  /** Drop the whole history and end the run in progress. */
+  clearUndoHistory: () => void;
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
   setPaletteDragPreview: (
@@ -314,9 +316,15 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
     const { undoStack, redoStack } = get();
     if (undoStack.length === 0 && redoStack.length === 0) return false;
     if (!undoHistoryIsStale([...undoStack, ...redoStack], before, after)) return false;
+    get().clearUndoHistory();
+    return true;
+  },
+
+  clearUndoHistory: () => {
+    // The run goes too: left open, the next quick edit joins an entry that
+    // no longer exists and is pushed nowhere.
     get().endEditRun();
     set({ undoStack: [], redoStack: [] });
-    return true;
   },
 
   touchMutation: () => {
@@ -389,3 +397,9 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
     })),
 
 }));
+
+// A forced reload replaces the project this history was made on, and the
+// project store drops its own history with it; this one goes too, or its
+// next undo writes the replaced project's pages back. A plain refetch is
+// clearUndoHistoryIfStale's to decide, by what it moved.
+dropWithProjectUndo(() => useUIBuilderStore.getState().clearUndoHistory());

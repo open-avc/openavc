@@ -91,6 +91,17 @@ interface UndoEntry {
 
 const MAX_UNDO = 50;
 
+/** The undo histories kept beside this store's on the same project (the UI
+ *  Builder's), each dropped with this store's when `forceReload` replaces the
+ *  project they were made on. */
+const _followingHistories = new Set<() => void>();
+
+/** Drop `clear`'s history whenever this store drops its own on a forced
+ *  reload. Called once, by the store that keeps the history. */
+export function dropWithProjectUndo(clear: () => void): void {
+  _followingHistories.add(clear);
+}
+
 // Module-level debounce timer for debouncedSave
 let _saveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -146,6 +157,9 @@ interface ProjectStore {
   updateProject: (patch: Partial<ProjectConfig["project"]>) => void;
   setProject: (project: ProjectConfig) => void;
   dismissConflict: () => void;
+  /** Replace the project with the server's, unsaved edits and all, and drop
+   *  every undo history kept on it (this store's and those following it,
+   *  `dropWithProjectUndo`). A fetch that fails changes neither. */
   forceReload: () => Promise<void>;
   undo: () => void;
   redo: () => void;
@@ -301,7 +315,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   forceReload: async () => {
     set({ loading: true, error: null, dirty: false, conflictDetected: false });
     const copy = await fetchServerCopy(set);
-    if (copy) set({ ...adopted(copy, get().loadGeneration), undoStack: [], redoStack: [] });
+    if (!copy) return;
+    set({ ...adopted(copy, get().loadGeneration), undoStack: [], redoStack: [] });
+    for (const clear of _followingHistories) clear();
   },
 
   undo: () => {
