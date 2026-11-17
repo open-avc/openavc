@@ -345,6 +345,26 @@ def test_the_builder_test_hears_every_kind_a_contract_observer_is_told():
     assert not set(driver_test.FAILS_THE_TEST) & set(driver_test.LISTED)
 
 
+def test_the_builder_test_fails_a_command_the_driver_does_not_have():
+    """Asked for by the driver itself (the test refuses an unknown command it
+    is asked to send before sending anything)."""
+    from openavc.api.routes.driver_test import _Heard
+
+    heard = _Heard()
+    heard.observe(UNKNOWN_COMMAND, {"command": "acme_missing"})
+    heard.observe(UNKNOWN_COMMAND, {"command": "acme_missing"})
+    assert heard.contract_errors == [
+        "The driver was asked for a command it does not have: acme_missing."
+    ]
+    # An undeclared write is said once, by the strict raise, not again here.
+    heard.observe(UNDECLARED_STATE, {"state": "lamp_hours"})
+    assert heard.result_fields() == {
+        "contract_errors": ["The driver was asked for a command it does not have: acme_missing."],
+        "unmatched": [],
+        "unregistered": [],
+    }
+
+
 def test_the_audit_words_a_value_fault_with_what_it_is_about():
     from openavc.audit.observe import contract_example
 
