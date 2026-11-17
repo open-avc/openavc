@@ -20,9 +20,17 @@ describe("decideProjectReload", () => {
     expect(decideProjectReload(clean, { type: "project.reloaded", origin_client: "me" }, "me")).toBe("own");
   });
 
-  it("treats a broadcast during its own project save as its own", () => {
-    expect(decideProjectReload({ ...dirty, saving: true }, { type: "project.reloaded", revision: "r2" }, "me")).toBe("own");
+  it("treats this tab's broadcast during its own project save as its own", () => {
     expect(decideProjectReload({ ...clean, saving: true }, { type: "project.reloaded", revision: "r2", origin_client: "me" }, "me")).toBe("own");
+    expect(decideProjectReload({ ...dirty, saving: true }, { type: "project.reloaded", revision: "r2", origin_client: "me" }, "me")).toBe("own");
+  });
+
+  it("decides another writer's broadcast during its own project save once the save is done", () => {
+    // Another tab, a learned setting, a cloud push, landing while this tab's
+    // save is out: if the save lands too, the server is past the revision it
+    // answers with, and a clean store has to fetch what it missed.
+    expect(decideProjectReload({ ...dirty, saving: true }, { type: "project.reloaded", revision: "r2", origin_client: "someone-else" }, "me")).toBe("after-save");
+    expect(decideProjectReload({ ...dirty, saving: true }, { type: "project.reloaded", revision: "r2" }, "me")).toBe("after-save");
   });
 
   it("refetches quietly when nothing is unsaved", () => {

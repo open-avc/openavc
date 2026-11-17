@@ -21,6 +21,11 @@ export type ProjectReloadDecision =
   // refetch would drop them, so the caller re-syncs what it changed
   // (syncDeviceConfig, syncAfterSetupAction, syncPendingSettings).
   | "own"
+  // Another writer's change (another tab, a learned setting, a cloud push)
+  // while our project save is in flight: decided again once the save is done.
+  // If the save then lands, the server is already past the revision it
+  // answers with; if it conflicts, its own banner says so.
+  | "after-save"
   // Nothing of ours is unsaved: refetch quietly. Also our own edit through a
   // dedicated endpoint when nothing is unsaved and the store is behind it,
   // so a caller that re-syncs nothing (a child's label, a plugin uninstall,
@@ -39,9 +44,10 @@ export function decideProjectReload(
   msg: ProjectReloadMessage,
   clientId: string = CLIENT_ID,
 ): ProjectReloadDecision {
-  if (store.saving) return "own";
+  const fromThisTab = Boolean(msg.origin_client) && msg.origin_client === clientId;
+  if (store.saving) return fromThisTab ? "own" : "after-save";
   const serverRevision = msg.revision ?? null;
-  if (msg.origin_client && msg.origin_client === clientId) {
+  if (fromThisTab) {
     const behind = serverRevision != null && serverRevision !== store.revision;
     return !store.dirty && behind ? "refetch" : "own";
   }

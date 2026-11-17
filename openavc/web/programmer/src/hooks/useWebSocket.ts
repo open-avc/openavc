@@ -140,6 +140,26 @@ export function useWebSocket() {
       }, 300);
     };
 
+    const actOnProjectReload = (notice: ProjectReloadMessage) => {
+      const store = useProjectStore.getState();
+      const decision = decideProjectReload(store, notice);
+      // Our own change: a save in flight takes its revision from the PUT
+      // response, and with edits unsaved the caller re-syncs what it
+      // changed. Nothing to refetch and nothing to warn about.
+      if (decision === "own") return;
+      if (decision === "after-save") {
+        void store.whenSaved().then(() => {
+          if (!useProjectStore.getState().conflictDetected) actOnProjectReload(notice);
+        });
+      } else if (decision === "refetch") {
+        debouncedProjectReload(notice.revision);
+      } else if (decision === "warn-other-session") {
+        showInfo("Project modified by another session. Save may trigger a conflict. Consider reloading.");
+      } else {
+        showInfo("Project modified externally. Your unsaved changes may conflict");
+      }
+    };
+
     // Plugin events arrive in bursts during engine reload (2N events for N
     // plugins); debounce so we issue at most one listPlugins+extensions fetch
     // per burst.
@@ -200,20 +220,7 @@ export function useWebSocket() {
       // Project was modified: by this tab through a dedicated endpoint, by
       // another session, the AI, a fleet push. projectReload.ts decides which.
       if (msg.type === "project.reloaded") {
-        const store = useProjectStore.getState();
-        const notice = msg as unknown as ProjectReloadMessage;
-        const decision = decideProjectReload(store, notice);
-        // Our own change: a save in flight takes its revision from the PUT
-        // response, and with edits unsaved the caller re-syncs what it
-        // changed. Nothing to refetch and nothing to warn about.
-        if (decision === "own") return;
-        if (decision === "refetch") {
-          debouncedProjectReload(notice.revision);
-        } else if (decision === "warn-other-session") {
-          showInfo("Project modified by another session. Save may trigger a conflict. Consider reloading.");
-        } else {
-          showInfo("Project modified externally. Your unsaved changes may conflict");
-        }
+        actOnProjectReload(msg as unknown as ProjectReloadMessage);
       }
 
       // Log streaming

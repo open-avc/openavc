@@ -137,6 +137,8 @@ interface ProjectStore {
    *  loads. A save that fails or conflicts leaves its own line and no load. */
   retryLoad: () => Promise<void>;
   save: (retryCount?: number) => Promise<void>;
+  /** Settles once the save under way, and any it chains, is done. */
+  whenSaved: () => Promise<void>;
   debouncedSave: (delay?: number) => void;
   flushSave: () => void;
   update: (patch: Partial<ProjectConfig>) => void;
@@ -238,6 +240,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     _saveChain = performSave();
     return _saveChain;
   },
+
+  whenSaved: () => _saveChain,
 
   debouncedSave: (delay = 500) => {
     clearTimeout(_saveTimer);
