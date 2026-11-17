@@ -45,13 +45,12 @@ from openavc.discovery import probe_runner as probe_runner_mod
 from openavc.discovery.probe_runner import (
     _MAX_PROBE_RESPONDERS,
     RateLimiter,
-    _apply_extract,
     _make_udp_socket,
-    _matches,
     run_tcp_active_probe,
     run_udp_broadcast_probe,
 )
 from openavc.discovery.result import DeviceState, Evidence
+from openavc.drivers.discovery_hint import extract_values, reply_matches
 from openavc.discovery.tier_matcher import (
     TierMatcher,
     extract_vendor_strings,
@@ -312,18 +311,18 @@ class TestResponseMatching:
 
     def test_starts_with_hex(self):
         spec = self._spec_with_match(starts_with_hex="AA55")
-        assert _matches(b"\xaa\x55hello", spec.response_match) is True
-        assert _matches(b"\xff\xffhello", spec.response_match) is False
+        assert reply_matches(b"\xaa\x55hello", spec.response_match) is True
+        assert reply_matches(b"\xff\xffhello", spec.response_match) is False
 
     def test_contains_in_text(self):
         spec = self._spec_with_match(contains="NovaStar")
-        assert _matches(b"hello NovaStar world", spec.response_match) is True
-        assert _matches(b"hello world", spec.response_match) is False
+        assert reply_matches(b"hello NovaStar world", spec.response_match) is True
+        assert reply_matches(b"hello world", spec.response_match) is False
 
     def test_regex_matches_decoded_text(self):
         spec = self._spec_with_match(regex=r"^NS-([A-Z0-9]+)$")
-        assert _matches(b"NS-ABC123", spec.response_match) is True
-        assert _matches(b"junk", spec.response_match) is False
+        assert reply_matches(b"NS-ABC123", spec.response_match) is True
+        assert reply_matches(b"junk", spec.response_match) is False
 
     # B9 removed the multi-matcher AND-together case from the schema —
     # probes now declare exactly one of expect / expect_regex /
@@ -337,7 +336,7 @@ class TestExtractRules:
             "port": 6000, "send_ascii": "x", "expect": "y",
             "extract": {"manufacturer": "NovaStar"},
         })
-        reserved, extracted = _apply_extract(b"any payload", h.udp_probe.extract)
+        reserved, extracted = extract_values(b"any payload", h.udp_probe.extract)
         assert reserved == {"manufacturer": "NovaStar"}
         assert extracted == {}
 
@@ -346,7 +345,7 @@ class TestExtractRules:
             "port": 6000, "send_ascii": "x", "expect": "y",
             "extract": {"model": {"regex": r"model=(\S+)", "group": 1}},
         })
-        reserved, extracted = _apply_extract(
+        reserved, extracted = extract_values(
             b"abc model=MMX-FR-9R8 fw=2.5", h.udp_probe.extract,
         )
         assert reserved == {}
@@ -357,7 +356,7 @@ class TestExtractRules:
             "port": 6000, "send_ascii": "x", "expect": "y",
             "extract": {"model": {"regex": r"model=(\S+)", "group": 1}},
         })
-        reserved, extracted = _apply_extract(b"no model field", h.udp_probe.extract)
+        reserved, extracted = extract_values(b"no model field", h.udp_probe.extract)
         assert extracted == {}
 
 

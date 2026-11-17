@@ -37,7 +37,6 @@ from openavc.discovery.tier_matcher import (
 from openavc.drivers.discovery_block import (  # noqa: F401  (the names discovery code imports from here)
     DISALLOWED_OPEN_PORTS,
     MAX_PROBE_TIMEOUT_MS,
-    RESERVED_EXTRACT_KEYS,
     read_discovery_block,
 )
 from openavc.drivers.discovery_hint import (  # noqa: F401

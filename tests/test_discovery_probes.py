@@ -6,7 +6,7 @@ synthetic payloads:
   * ``openavc.discovery.hints.parse_driver_discovery`` — how a declared
     ``tcp_probe`` / ``udp_probe`` block is parsed (port, send, matcher, tls,
     extract rules, and the schema's error cases).
-  * ``openavc.discovery.probe_runner._matches`` / ``_apply_extract`` — how a
+  * ``openavc.drivers.discovery_hint.reply_matches`` / ``extract_values`` — how a
     response is matched (``expect`` / ``expect_hex`` / ``expect_regex``) and
     mined (static + regex extract, reserved manufacturer/make lifting).
 
@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from openavc.discovery.hints import DiscoveryHintError, parse_driver_discovery
-from openavc.discovery.probe_runner import _apply_extract, _matches
+from openavc.drivers.discovery_hint import extract_values, reply_matches
 
 
 def _driver(discovery: dict, driver_id: str = "acme_widget") -> dict:
@@ -168,29 +168,29 @@ class TestMatcher:
 
     def test_contains_ascii(self):
         m = self._match(expect="ACME")
-        assert _matches(b"hello ACME-1000 ready", m) is True
-        assert _matches(b"nope", m) is False
+        assert reply_matches(b"hello ACME-1000 ready", m) is True
+        assert reply_matches(b"nope", m) is False
 
     def test_contains_matches_inside_binary(self):
         # contains tries the utf-8 bytes first, then latin-1 text.
         m = self._match(expect="ACME")
-        assert _matches(b"\x00\x01ACME\xff", m) is True
+        assert reply_matches(b"\x00\x01ACME\xff", m) is True
 
     def test_starts_with_hex_prefix_only(self):
         m = self._match(expect_hex="aabb")
-        assert _matches(b"\xaa\xbb\x01\x02", m) is True
-        assert _matches(b"\x01\xaa\xbb", m) is False  # not at the start
+        assert reply_matches(b"\xaa\xbb\x01\x02", m) is True
+        assert reply_matches(b"\x01\xaa\xbb", m) is False  # not at the start
 
     def test_regex(self):
         m = self._match(expect_regex=r"FW (\d+\.\d+)")
-        assert _matches(b"unit FW 1.20 ok", m) is True
-        assert _matches(b"unit FW x", m) is False
+        assert reply_matches(b"unit FW 1.20 ok", m) is True
+        assert reply_matches(b"unit FW x", m) is False
 
     def test_connect_only_matches_anything(self):
         # An empty ResponseMatch (banner-grab probe) accepts any payload.
         m = _tcp(port=1).response_match
-        assert _matches(b"anything", m) is True
-        assert _matches(b"", m) is True
+        assert reply_matches(b"anything", m) is True
+        assert reply_matches(b"", m) is True
 
 
 # ─────────────────────────── Extract ───────────────────────────
@@ -201,27 +201,27 @@ class TestExtract:
         return _tcp(port=1, send_ascii="x", expect="A", **block).extract
 
     def test_static_value(self):
-        reserved, extracted = _apply_extract(b"whatever", self._rules(extract={"region": "us"}))
+        reserved, extracted = extract_values(b"whatever", self._rules(extract={"region": "us"}))
         assert extracted["region"] == "us"
         assert reserved == {}
 
     def test_regex_group(self):
         rules = self._rules(extract={"model": {"regex": r"MODEL:(\w+)", "group": 1}})
-        reserved, extracted = _apply_extract(b"MODEL:WIDGET9 v1", rules)
+        reserved, extracted = extract_values(b"MODEL:WIDGET9 v1", rules)
         assert extracted["model"] == "WIDGET9"
 
     def test_reserved_manufacturer_lifted(self):
-        reserved, extracted = _apply_extract(b"x", self._rules(extract_manufacturer="Acme"))
+        reserved, extracted = extract_values(b"x", self._rules(extract_manufacturer="Acme"))
         assert reserved["manufacturer"] == "Acme"
         assert "manufacturer" not in extracted
 
     def test_regex_miss_skips_field(self):
         rules = self._rules(extract={"model": {"regex": r"NOPE:(\w+)", "group": 1}})
-        reserved, extracted = _apply_extract(b"no match here", rules)
+        reserved, extracted = extract_values(b"no match here", rules)
         assert "model" not in extracted
 
     def test_no_rules_returns_empty(self):
-        reserved, extracted = _apply_extract(b"x", ())
+        reserved, extracted = extract_values(b"x", ())
         assert reserved == {} and extracted == {}
 
 
@@ -238,7 +238,7 @@ class TestVendorNarrowingContract:
             },
             "manufacturer_alias": ["Acme Corp", "Acme"],
         }))
-        reserved, _ = _apply_extract(b"ACME ready", hint.tcp_probe.extract)
+        reserved, _ = extract_values(b"ACME ready", hint.tcp_probe.extract)
         vendor = (reserved.get("manufacturer") or reserved.get("make") or "").strip().lower()
         # parse normalizes aliases to lowercase.
         assert vendor in set(hint.manufacturer_alias)

@@ -75,11 +75,6 @@ DISALLOWED_OPEN_PORTS: frozenset[int] = frozenset(_DISALLOWED_OPEN_PORTS)
 # scan budget unreasonably.
 MAX_PROBE_TIMEOUT_MS: int = 10000
 
-# Reserved ``extract:`` keys whose values feed the manufacturer-alias hint
-# path. The probe runner lifts these into the top-level evidence response/txt
-# dict so ``extract_vendor_strings`` finds them.
-RESERVED_EXTRACT_KEYS: frozenset[str] = frozenset({"manufacturer", "make"})
-
 # The keys the block itself may hold.
 KNOWN_DISCOVERY_KEYS: frozenset[str] = frozenset({
     "requires",

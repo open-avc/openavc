@@ -53,7 +53,6 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
-import re
 import socket
 import ssl
 import time
@@ -69,9 +68,12 @@ from openavc.discovery.hints import (
     CustomProbeSpec,
     ExtractRule,
     ProbeFollowUp,
-    RESERVED_EXTRACT_KEYS,
-    ResponseMatch,
     describe_response_match,
+)
+from openavc.drivers.discovery_hint import (
+    RESERVED_EXTRACT_KEYS,
+    extract_values,
+    reply_matches,
 )
 from openavc.discovery.multicast import set_shared_port_reuse
 from openavc.discovery.port_guard import (
@@ -257,68 +259,6 @@ class RateLimiter:
 # ---------------------------------------------------------------------------
 # Match + extract helpers
 # ---------------------------------------------------------------------------
-
-
-def _matches(payload: bytes, match: ResponseMatch) -> bool:
-    """Return True iff every declared matcher in ``match`` succeeds."""
-    if match.starts_with is not None:
-        if not payload.startswith(match.starts_with):
-            return False
-    if match.contains is not None:
-        needle = match.contains
-        # Try bytes first (binary protocols), then latin-1 text.
-        if needle.encode("utf-8") not in payload:
-            text = payload.decode("latin-1", errors="replace")
-            if needle not in text:
-                return False
-    if match.regex is not None:
-        text = payload.decode("latin-1", errors="replace")
-        if not match.regex.search(text):
-            return False
-    return True
-
-
-def _apply_extract(
-    payload: bytes,
-    rules: tuple[ExtractRule, ...],
-) -> tuple[dict[str, str], dict[str, str]]:
-    """Run extract rules. Returns (reserved, extracted).
-
-    ``reserved`` carries the manufacturer / make values which the
-    runner lifts to the top of the evidence ``response`` / ``txt``
-    dict so ``extract_vendor_strings`` finds them. Everything else
-    lands in ``extracted``.
-    """
-    reserved: dict[str, str] = {}
-    extracted: dict[str, str] = {}
-    if not rules:
-        return reserved, extracted
-
-    text = payload.decode("latin-1", errors="replace")
-    for rule in rules:
-        value: str | None = None
-        if rule.value is not None:
-            value = rule.value
-        elif rule.regex is not None:
-            m = rule.regex.search(text)
-            if m is None:
-                continue
-            try:
-                if rule.group == 0:
-                    value = m.group(0)
-                elif rule.group <= (m.re.groups or 0):
-                    value = m.group(rule.group)
-                else:
-                    continue
-            except (IndexError, re.error):
-                continue
-        if value is None:
-            continue
-        if rule.field_name in RESERVED_EXTRACT_KEYS:
-            reserved[rule.field_name] = value
-        else:
-            extracted[rule.field_name] = value
-    return reserved, extracted
 
 
 def _driver_supplied(rules: tuple[ExtractRule, ...]) -> list[str] | None:
@@ -676,7 +616,7 @@ async def observe_udp_probe(
                     spec.probe_id, _MAX_PROBE_RESPONDERS,
                 )
 
-            if not _matches(data, spec.response_match):
+            if not reply_matches(data, spec.response_match):
                 if obs is not None:
                     obs.miss = MISS_REPLY
                 continue
@@ -698,7 +638,7 @@ async def observe_udp_probe(
                     )
                 continue
 
-            reserved, extracted = _apply_extract(data, spec.extract)
+            reserved, extracted = extract_values(data, spec.extract)
             # UDP txt is flat — every extracted field is a top-level key,
             # which puts manufacturer/make exactly where
             # extract_vendor_strings looks for them.
@@ -796,7 +736,7 @@ async def _run_follow_up(
         acc += chunk
         if step.expect_silence:
             break  # it spoke; that is the answer, no need to read more
-        if _matches(bytes(acc), step.response_match):
+        if reply_matches(bytes(acc), step.response_match):
             break
 
     reply = bytes(acc)
@@ -807,7 +747,7 @@ async def _run_follow_up(
             probe_id, target, port, "silent" if ok else "answered", len(acc),
         )
         return ok, reply
-    return _matches(reply, step.response_match), reply
+    return reply_matches(reply, step.response_match), reply
 
 
 async def run_tcp_active_probe(
@@ -1007,13 +947,13 @@ async def _exchange(
                 acc += chunk
                 if not has_matcher:
                     break  # connect-only probe: any reply is enough
-                if _matches(bytes(acc), match):
+                if reply_matches(bytes(acc), match):
                     break  # fingerprint satisfied — return immediately
             payload = bytes(acc)
 
         # Follow-up step, on the SAME connection. Only worth running when the
         # first exchange already matched — otherwise this is not the device.
-        if spec.follow_up is not None and _matches(payload, spec.response_match):
+        if spec.follow_up is not None and reply_matches(payload, spec.response_match):
             obs.follow_up_sent = spec.follow_up.send
             follow_up_ok, obs.follow_up_reply = await _run_follow_up(
                 spec.follow_up, reader, writer, spec.probe_id, target, spec.port,
@@ -1052,7 +992,7 @@ def expects_greeting(spec: CustomProbeSpec, greeting: bytes) -> bool:
         or match.contains is not None
         or match.regex is not None
     )
-    return declared and bool(greeting) and _matches(greeting, match)
+    return declared and bool(greeting) and reply_matches(greeting, match)
 
 
 def answered_by_greeting(spec: CustomProbeSpec) -> bool:
@@ -1117,7 +1057,7 @@ def _judge(
         obs.miss = MISS_NO_REPLY
         return obs
     # The payload matcher (if any) must still pass; an empty matcher passes.
-    if not _matches(payload, spec.response_match):
+    if not reply_matches(payload, spec.response_match):
         obs.miss = MISS_REPLY if payload else MISS_NO_REPLY
         return obs
     if spec.follow_up is not None and follow_up_ok is not True:
@@ -1128,11 +1068,11 @@ def _judge(
         obs.miss = MISS_FOLLOW_UP
         return obs
 
-    reserved, extracted = _apply_extract(payload, spec.extract)
+    reserved, extracted = extract_values(payload, spec.extract)
     if cert_subject_str:
         # Extract from the cert subject too (e.g. the model out of the CN); the
         # payload takes precedence, the cert fills in what it didn't provide.
-        c_reserved, c_extracted = _apply_extract(cert_subject_str.encode("utf-8"), spec.extract)
+        c_reserved, c_extracted = extract_values(cert_subject_str.encode("utf-8"), spec.extract)
         for k, v in c_reserved.items():
             reserved.setdefault(k, v)
         for k, v in c_extracted.items():
@@ -1141,7 +1081,7 @@ def _judge(
         # The second exchange's reply, when the first only opens the protocol
         # (an upgrade answered, a session started) and the second is the one
         # that names the device. It fills in what neither of the above did.
-        f_reserved, f_extracted = _apply_extract(obs.follow_up_reply, spec.extract)
+        f_reserved, f_extracted = extract_values(obs.follow_up_reply, spec.extract)
         for k, v in f_reserved.items():
             reserved.setdefault(k, v)
         for k, v in f_extracted.items():

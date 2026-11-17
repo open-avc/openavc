@@ -5,7 +5,9 @@ discovery engine and matcher consume, and the fingerprints and probes it holds.
 reader of a hint (the probe runner, the matcher, the explanations, the
 catalog's checks across drivers) reads these shapes. So is the canonical form
 of an OUI hint (``normalize_oui_prefix``), which the OUI table and the
-matcher's lookup share. Standard library only;
+matcher's lookup share, and how a probe's reply is judged (``reply_matches``,
+``extract_values``): the probe runner and the catalog's replay of captured
+replies judge a reply the same way. Standard library only;
 vendored into the community catalog with the driver contract.
 """
 
@@ -213,6 +215,71 @@ class DiscoveryHint:
 
 class DiscoveryHintError(ValueError):
     """Raised when a driver's ``discovery:`` block is structurally invalid."""
+
+
+# ---------------------------------------------------------------------------
+# Judging a probe's reply
+# ---------------------------------------------------------------------------
+
+# Reserved ``extract:`` keys whose values feed the manufacturer-alias hint
+# path. The probe runner lifts these into the top-level evidence response/txt
+# dict so ``extract_vendor_strings`` finds them.
+RESERVED_EXTRACT_KEYS: frozenset[str] = frozenset({"manufacturer", "make"})
+
+
+def reply_matches(payload: bytes, match: ResponseMatch) -> bool:
+    """Whether a reply passes every matcher a probe declares.
+
+    The matchers AND together: ``starts_with`` (``expect_hex``) is a byte
+    prefix, ``contains`` (``expect``) is found in the bytes or else in their
+    latin-1 text, and ``regex`` (``expect_regex``) searches the latin-1 text.
+    """
+    if match.starts_with is not None and not payload.startswith(match.starts_with):
+        return False
+    text = payload.decode("latin-1", errors="replace")
+    if match.contains is not None:
+        if match.contains.encode("utf-8") not in payload and match.contains not in text:
+            return False
+    if match.regex is not None and not match.regex.search(text):
+        return False
+    return True
+
+
+def _extracted_value(text: str, rule: ExtractRule) -> str | None:
+    """One rule's value: its literal, or its group of the regex's first hit.
+    None when the regex finds nothing or names a group it does not have."""
+    if rule.value is not None:
+        return rule.value
+    if rule.regex is None:
+        return None
+    return _captured(rule.regex.search(text), rule.group)
+
+
+def _captured(hit: re.Match | None, group: int) -> str | None:
+    """The group a rule names from its regex's hit, or None."""
+    if hit is None:
+        return None
+    if group not in range(hit.re.groups + 1):
+        return None
+    return hit.group(group)
+
+
+def extract_values(
+    payload: bytes, rules: tuple[ExtractRule, ...],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """What a probe's ``extract:`` rules pull from a reply, as (reserved,
+    extracted): the ``RESERVED_EXTRACT_KEYS`` fields, then every other field.
+    A rule whose regex finds nothing pulls nothing."""
+    reserved: dict[str, str] = {}
+    extracted: dict[str, str] = {}
+    text = payload.decode("latin-1", errors="replace")
+    for rule in rules:
+        value = _extracted_value(text, rule)
+        if value is None:
+            continue
+        into = reserved if rule.field_name in RESERVED_EXTRACT_KEYS else extracted
+        into[rule.field_name] = value
+    return reserved, extracted
 
 
 # ---------------------------------------------------------------------------
