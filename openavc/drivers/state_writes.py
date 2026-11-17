@@ -16,7 +16,11 @@ The rules worth knowing before changing anything here:
   before writing any, so strict mode fails a batch whole.
 * A value that is not of its declared type is never refused: the contract
   observer is told, and the debug log says so (Python's ``bool`` passes as a
-  number there, not for the observer).
+  number there, not for the observer). ``_write_state`` is THE place that
+  reports it: every door a driver writes a value through (``set_state``,
+  ``set_states``, and the child doors in drivers/child_entities.py) writes
+  through it, so a batch reports a value of the wrong type as a single write
+  does. The platform's own statements pass no declaration and are not judged.
 * Writing ``connected`` carries every registered child entity with it
   (drivers/child_entities.py), whichever of the two doors wrote it.
 
@@ -30,6 +34,7 @@ entities. ``UndeclaredStateError``, ``strict_driver_state`` and
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from openavc.core.state_store import StateStore, is_flat_primitive
@@ -232,17 +237,12 @@ class StateWrites:
         here — and a child left claiming presence under an unreachable parent
         is the one failure this platform cannot ship.
         """
-        var_def = self.DRIVER_INFO.get("state_variables", {}).get(property_name)
-        if var_def is None:
+        declared = self.DRIVER_INFO.get("state_variables", {})
+        if declared.get(property_name) is None:
             self._check_undeclared_state(property_name)
-        self._warn_on_type_mismatch(property_name, value, var_def)
         if property_name == self.LAST_ERROR_PROPERTY:
             self._last_error_writes += 1
-        self.state.set(
-            f"device.{self.device_id}.{property_name}",
-            value,
-            source=f"device.{self.device_id}",
-        )
+        self._write_state({property_name: value}, declared)
         if property_name == "connected" and self._children:
             self._children_follow_parent(bool(value))
 
@@ -325,6 +325,36 @@ class StateWrites:
             f"no binding picker will offer it"
         )
 
+    def _write_state(
+        self,
+        values: dict[str, Any],
+        declared: Mapping[str, dict[str, Any] | None] | None = None,
+    ) -> None:
+        """Write ``values``, each named under this device (``power``,
+        ``zone.01.mode``), to the store in one batch, first reporting each
+        value not of its type in ``declared``.
+
+        Every door a driver hands the platform a value through writes here,
+        the child doors included, so each reports a value of the wrong type
+        alike (:meth:`_warn_on_type_mismatch`): reported, never refused. What
+        is judged is what is stored, so a child's fault code cleared with
+        ``""`` is the ``None`` it stores, and a claim the platform drops is
+        not judged at all.
+
+        The platform's own statements pass no ``declared``: a child's
+        presence seed and its parent's reachability are not the driver's
+        values, and a driver may declare ``offline_reason`` as an enum of
+        its own codes, which the platform's codes are not in.
+        """
+        if declared:
+            for name, value in values.items():
+                self._warn_on_type_mismatch(name, value, declared.get(name))
+        prefix = f"device.{self.device_id}."
+        self.state.set_batch(
+            {prefix + name: value for name, value in values.items()},
+            source=f"device.{self.device_id}",
+        )
+
     def _warn_on_type_mismatch(
         self, prop_label: str, value: Any, var_def: dict | None
     ) -> None:
@@ -374,10 +404,7 @@ class StateWrites:
                 self._check_undeclared_state(k)
         if self.LAST_ERROR_PROPERTY in updates:
             self._last_error_writes += 1
-        namespaced = {
-            f"device.{self.device_id}.{k}": v for k, v in updates.items()
-        }
-        self.state.set_batch(namespaced, source=f"device.{self.device_id}")
+        self._write_state(updates, declared)
         # Same rule as set_state: reachability carries the children with it,
         # whichever door the driver used to write it.
         if "connected" in updates and self._children:

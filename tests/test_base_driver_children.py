@@ -1269,7 +1269,8 @@ def test_the_parent_drop_is_one_batch_across_types_in_registration_order():
     drv.state.set_batch = recording  # type: ignore[method-assign]
     drv.set_state("connected", False)
     drv.set_state("connected", False)
-    assert batches == [[
+    # The parent's own key is a write of its own.
+    assert [b for b in batches if b != ["device.ctrl1.connected"]] == [[
         f"device.ctrl1.{key}.{prop}"
         for key in ("encoder.001", "encoder.002", "decoder.4")
         for prop in ("online", "offline_reason", "offline_detail")
@@ -1351,14 +1352,104 @@ def test_a_child_write_of_the_wrong_type_is_reported_under_the_child_key():
     assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == "two"
 
 
-def test_a_batch_writes_no_type_check():
+def _mismatches(seen: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, Any]]:
+    return [(d["state"], d["value"]) for kind, d in seen if kind == "type_mismatch"]
+
+
+def test_every_child_door_reports_a_wrong_type_alike():
+    """A YAML driver writes every child through a batch, so a batch that
+    skipped the check left a child value of the wrong type reported to no one."""
+    drv = _make_driver()
+    drv.register_child("encoder", 5)
+    drv.register_child("encoder", 6)
+    seen = _observed(drv)
+    drv.set_child_state_batch("encoder", 5, {"lan_mode": "two", "name": "Lobby"})
+    drv.set_children_state_batch([
+        ("encoder", 5, {"lan_mode": "three"}),
+        ("encoder", 6, {"audio_source": "SDI", "signal_present": True}),
+    ])
+    assert _mismatches(seen) == [
+        ("encoder.005.lan_mode", "two"),
+        ("encoder.005.lan_mode", "three"),
+        ("encoder.006.audio_source", "SDI"),
+    ]
+    assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == "three"
+    assert drv.state.get("device.ctrl1.encoder.006.audio_source") == "SDI"
+
+
+def test_a_value_given_at_registration_is_reported_too():
+    drv = _make_driver()
+    seen = _observed(drv)
+    drv.register_child("encoder", 5, initial_state={"lan_mode": "two"})
+    # Registered already: the second call writes nothing, so reports nothing.
+    drv.register_child("encoder", 5, initial_state={"lan_mode": "four"})
+    assert _mismatches(seen) == [("encoder.005.lan_mode", "two")]
+    assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == "two"
+
+
+def test_a_child_write_that_is_not_made_reports_no_type():
     drv = _make_driver()
     drv.register_child("encoder", 5)
     seen = _observed(drv)
-    drv.set_child_state_batch("encoder", 5, {"lan_mode": "two"})
-    drv.set_children_state_batch([("encoder", 5, {"lan_mode": "three"})])
-    assert seen == []
-    assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == "three"
+    with pytest.raises(ValueError):
+        drv.set_child_state_batch("encoder", 5, {"lan_mode": "two", "nope": 1})
+    with pytest.raises(ValueError):
+        drv.set_children_state_batch([("encoder", 5, {"lan_mode": "two", "nope": 1})])
+    with pytest.raises(ValueError):
+        drv.register_child("encoder", 6, initial_state={"lan_mode": "two", "nope": 1})
+    drv.set_child_state_batch("encoder", 9, {"lan_mode": "two"})
+    drv.set_children_state_batch([("encoder", 9, {"lan_mode": "two"})])
+    drv.set_child_state_batch("encoder", 5, {"lan_mode": None})
+    assert _mismatches(seen) == []
+
+
+class _EnumFaultDriver(BaseDriver):
+    """Declares a child's fault code as an enum of its own codes, the way the
+    Driver Builder would author it: the platform's own codes are not in it."""
+
+    DRIVER_INFO: dict[str, Any] = {
+        "id": "acme_widget",
+        "name": "Acme Widget",
+        "transport": "tcp",
+        "state_variables": {},
+        "commands": {},
+        "child_entity_types": {
+            "port": {
+                "label": "Port",
+                "id_format": {"type": "integer", "min": 1, "max": 8},
+                "instances": {"presence": "reported"},
+                "state_variables": {
+                    "offline_reason": {
+                        "type": "enum", "values": ["not_responding", "service_fault"],
+                    },
+                },
+            },
+        },
+    }
+
+    async def send_command(self, command: str, params: Any = None) -> Any:
+        return None
+
+
+def test_the_platform_own_statements_are_judged_by_no_declaration():
+    """Seeding a reported roster's slot not_fitted, marking a child under an
+    unreachable device parent_offline, and dropping a driver's claim of it are
+    the platform's statements, not the driver's values."""
+    drv = _EnumFaultDriver("w1", {}, StateStore(), EventBus())
+    seen = _observed(drv)
+    drv.register_child("port", 1)
+    drv.register_child("port", 2, initial_state={"online": True})
+    drv.set_state("connected", True)
+    drv.set_state("connected", False)
+    drv.set_states({"connected": True})
+    drv.set_child_state("port", 1, "offline_reason", "parent_offline")
+    assert drv.get_child_state("port", 1)["offline_reason"] == "not_fitted"
+    # Clearing a fault with "" stores None, which nothing judges.
+    drv.set_child_state_batch("port", 2, {"offline_reason": ""})
+    drv.set_child_state("port", 2, "offline_reason", "")
+    assert _mismatches(seen) == []
+    drv.set_child_state("port", 2, "offline_reason", "acme_jammed")
+    assert _mismatches(seen) == [("port.2.offline_reason", "acme_jammed")]
 
 
 async def test_poll_children_pauses_between_batches_and_not_after_the_last(monkeypatch):

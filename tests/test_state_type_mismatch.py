@@ -1,5 +1,6 @@
 """A state value written against its declared type: what the contract observer
-is told and what the debug log says.
+is told and what the debug log says, whichever door the driver wrote it
+through.
 
 Neither refuses the write; listeners get the value as written. The two
 differ on purpose in one place, pinned here: Python's ``bool`` is an ``int``,
@@ -17,7 +18,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.base import TYPE_MISMATCH, BaseDriver
+from openavc.drivers.base import TYPE_MISMATCH, BaseDriver, UndeclaredStateError
 
 _LOGGER = "openavc.drivers.base"
 
@@ -114,6 +115,30 @@ def test_what_a_mismatched_write_reports(
 
 
 @pytest.mark.parametrize(("var_def", "value", "problem", "line"), _CASES)
+def test_a_batch_write_reports_as_a_single_write_does(
+    caplog, var_def: dict[str, Any], value: Any, problem: str | None, line: str | None,
+) -> None:
+    """set_states is the other door a driver writes its own state through,
+    and it reports a value of the wrong type word for word as set_state."""
+    caplog.set_level(logging.DEBUG, logger=_LOGGER)
+    observed: list[tuple[str, dict]] = []
+    drv = _widget(var_def, observed)
+    drv.set_states({"volume": value})
+    assert drv.get_state("volume") == value
+    mismatches = [detail for kind, detail in observed if kind == TYPE_MISMATCH]
+    if problem is None:
+        assert mismatches == []
+    else:
+        assert mismatches == [{
+            "state": "volume",
+            "declared": var_def.get("type", "string"),
+            "value": value,
+            "problem": problem,
+        }]
+    assert _debug_lines(caplog) == ([] if line is None else [line])
+
+
+@pytest.mark.parametrize(("var_def", "value", "problem", "line"), _CASES)
 def test_without_an_observer_only_the_log_reports(
     caplog, var_def: dict[str, Any], value: Any, problem: str | None, line: str | None,
 ) -> None:
@@ -131,3 +156,15 @@ def test_a_value_that_is_not_flat_reaches_the_observer_as_its_repr() -> None:
         "state": "volume", "declared": "integer", "value": "[1, 2]",
         "problem": "declared integer, got list",
     })]
+
+
+def test_a_batch_strict_mode_refuses_whole_reports_no_type() -> None:
+    """A batch strict mode refuses is not written, so nothing in it is
+    reported as written with the wrong type."""
+    observed: list[tuple[str, dict]] = []
+    drv = _widget({"type": "integer"}, observed)
+    drv.strict_state = True
+    with pytest.raises(UndeclaredStateError):
+        drv.set_states({"volume": "loud", "acme_extra": 1})
+    assert [kind for kind, _ in observed if kind == TYPE_MISMATCH] == []
+    assert drv.get_state("volume") is None

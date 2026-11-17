@@ -234,6 +234,37 @@ async def test_a_json_child_set_reports_an_unregistered_child_only_when_the_body
     assert events == [(CHILD_UNREGISTERED, {"child_type": "output", "local_id": 3})]
 
 
+async def test_a_yaml_child_value_of_the_wrong_type_is_reported_as_a_flat_one_is():
+    """The YAML runtime writes every child through a batch."""
+    definition = _definition(
+        state_variables={"mode": {"type": "enum", "values": ["on", "off"]}},
+        child_entity_types={
+            "zone": {
+                "id_format": {"type": "integer", "min": 1, "max": 4},
+                "state_variables": {"mode": {"type": "enum", "values": ["on", "off"]}},
+                "instances": {"count": 2},
+            },
+        },
+        responses=[
+            {"match": r"^Z(\d)MODE(\w+)$", "child_set": [
+                {"type": "zone", "id": "$1", "state": {"mode": "$2"}},
+            ]},
+            {"match": r"^MODE(\w+)$", "set": {"mode": "$1"}},
+        ],
+    )
+    driver, events = _driver(definition)
+    driver._register_declared_children()
+    await driver.on_data_received(b"Z1MODEon\r")
+    await driver.on_data_received(b"MODEon\r")
+    assert events == []
+    await driver.on_data_received(b"Z1MODEzzz\r")
+    await driver.on_data_received(b"MODEzzz\r")
+    assert [(kind, detail["state"]) for kind, detail in events] == [
+        (TYPE_MISMATCH, "zone.1.mode"), (TYPE_MISMATCH, "mode"),
+    ]
+    assert driver.get_child_state("zone", 1)["mode"] == "zzz"
+
+
 # ---------------------------------------------------------------------------
 # The Builder's Test tab (decision 3)
 # ---------------------------------------------------------------------------

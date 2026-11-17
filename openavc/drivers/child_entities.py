@@ -23,13 +23,17 @@ The rules worth knowing before changing anything here:
   passes ``normalize_child_fault_claim``, which drops a driver's claim of it.
 * A write to a child that was never registered is skipped and reported, never
   written: the key would be an orphan nothing lists.
+* Every door a driver writes a child through (``register_child``'s
+  ``initial_state`` and the three ``set_child_state*``) writes through
+  ``_write_children`` and on to the host's ``_write_state``, which reports a
+  value not of its declared type, the same for a batch as for one value.
 
 ``ChildEntities`` is a mixin that ``BaseDriver`` inherits, so every name stays on
 the driver object: drivers read ``self._project_child_entities`` directly, and
 tests reach ``BaseDriver._CHILD_RESERVED_PROPS`` on the class. ``BaseDriver``
 calls ``_init_child_entities()`` before anything writes state, and supplies what
 this needs from its host: ``DRIVER_INFO``, ``device_id``, ``state``,
-``_observe()``, ``_warn_on_type_mismatch()`` and ``_default_for_var_def()``.
+``_observe()``, ``_write_state()`` and ``_default_for_var_def()``.
 """
 
 from __future__ import annotations
@@ -71,6 +75,8 @@ _CHILD_STRING_ID_MAX_LEN = 128
 
 # A child is (child_type, local_id) everywhere the registry keys one.
 _Child = tuple[str, "int | str"]
+# One driver write to one child: (child_type, local_id, {prop: value}).
+_ChildWrite = tuple[str, "int | str", dict[str, Any]]
 
 
 def _in_service() -> dict[str, Any]:
@@ -272,7 +278,7 @@ class ChildEntities:
         # the driver having to plumb the project schema itself.
         self._project_child_entities: dict[str, dict[str, dict[str, Any]]] = {}
         # Whether this device has been told, once, that a claim of
-        # parent_offline was dropped (_child_writes).
+        # parent_offline was dropped (_driver_claim).
         self._parent_offline_claim_said = False
 
     def set_project_child_entities(
@@ -482,14 +488,32 @@ class ChildEntities:
         for prop in props:
             self._validate_child_prop(child_type, local_id, prop)
 
-    def _child_writes(
-        self, child_type: str, local_id: int | str, updates: dict[str, Any],
-    ) -> dict[str, Any]:
-        """A driver's ``updates`` to one child as the state keys and stored
-        values they write: passed through ``normalize_child_fault_claim``,
-        the seam every door a driver writes a child through shares."""
-        claimed = self._driver_claim(updates)
-        return self._child_keyed(child_type, local_id, claimed)
+    def _write_children(self, writes: list[_ChildWrite]) -> None:
+        """A driver's writes to children, each ``(child_type, local_id,
+        updates)``, in one batch: the seam every door a driver writes a child
+        through shares, after that door has checked every prop.
+
+        Each write passes ``normalize_child_fault_claim`` (``_driver_claim``)
+        and each stored value is judged against its child's declaration by
+        the host's ``_write_state``."""
+        values: dict[str, Any] = {}
+        declared: dict[str, dict[str, Any] | None] = {}
+        for child_type, local_id, updates in writes:
+            claimed = self._driver_claim(updates)
+            values.update(self._child_named(child_type, local_id, claimed))
+            declared.update(self._child_declared(child_type, local_id, claimed))
+        if values:
+            self._write_state(values, declared)
+
+    def _child_declared(
+        self, child_type: str, local_id: int | str, props: dict[str, Any],
+    ) -> dict[str, dict[str, Any] | None]:
+        """The declaration of each of ``props`` on one child, named as
+        ``_child_named`` names its value."""
+        schema = self._effective_child_schema(child_type, local_id)
+        return self._child_named(
+            child_type, local_id, {prop: schema.get(prop) for prop in props},
+        )
 
     def _driver_claim(self, updates: dict[str, Any]) -> dict[str, Any]:
         """``updates`` as the platform stores a driver's write, said once per
@@ -505,12 +529,15 @@ class ChildEntities:
             )
         return claimed
 
-    def _child_keyed(
+    def _child_named(
         self, child_type: str, local_id: int | str, values: dict[str, Any],
     ) -> dict[str, Any]:
-        """``values`` under the state keys of one child, as they are."""
+        """``values`` named under the device as one child's
+        (``<child_type>.<padded id>.<prop>``), as they are: what
+        ``_write_state`` writes and what a type report names."""
+        padded = self._format_child_id(child_type, local_id)
         return {
-            self._child_state_key(child_type, local_id, prop): value
+            f"{child_type}.{padded}.{prop}": value
             for prop, value in values.items()
         }
 
@@ -548,22 +575,36 @@ class ChildEntities:
 
         ``initial_state`` passes the seam a driver's every child write does
         (``normalize_child_fault_claim``): a claim of ``parent_offline`` is
-        dropped and the child starts as the roster says.
+        dropped and the child starts as the roster says. Each of its values
+        is judged against the child's declaration as a later write's is.
         """
-        self._register_child(
-            child_type, local_id, self._driver_claim(initial_state or {}), schema,
-        )
+        claimed = self._driver_claim(initial_state or {})
+        seed = self._admit_child(child_type, local_id, claimed, schema)
+        if seed is not None:
+            self._write_state(
+                seed, self._child_declared(child_type, local_id, claimed),
+            )
 
     def _register_child(
+        self, child_type: str, local_id: int | str, initial_state: dict[str, Any],
+    ) -> None:
+        """``register_child`` with ``initial_state`` written as given and
+        judged by no declaration: the platform's own door, through which the
+        declared roster marks a child registered while the device is away
+        ``parent_offline``."""
+        seed = self._admit_child(child_type, local_id, initial_state, None)
+        if seed is not None:
+            self._write_state(seed)
+
+    def _admit_child(
         self,
         child_type: str,
         local_id: int | str,
         initial_state: dict[str, Any],
-        schema: dict[str, dict[str, Any]] | None = None,
-    ) -> None:
-        """``register_child`` with ``initial_state`` written as given: the
-        platform's own door, through which the declared roster marks a child
-        registered while the device is away ``parent_offline``."""
+        schema: dict[str, dict[str, Any]] | None,
+    ) -> dict[str, Any] | None:
+        """Register one child and return the state it starts with (named as
+        ``_child_named`` names it), or None when it was registered already."""
         self._format_child_id(child_type, local_id)   # validates id range
         type_def = self._child_type_def(child_type)
         if schema is not None:
@@ -572,7 +613,7 @@ class ChildEntities:
         bucket = self._children.setdefault(child_type, {})
         if local_id in bucket:
             self._warn_if_schema_collides(child_type, local_id, schema)
-            return
+            return None
         # Stamp a fresh registration epoch. A deregister+re-register (which
         # resets the child's state) bumps it, so poll_children can tell a
         # re-registered child from the one it snapshotted (ABA guard).
@@ -594,10 +635,7 @@ class ChildEntities:
                 child_type, "initial_state property", unknown[0],
                 type_def.get("dynamic"),
             )
-        self.state.set_batch(
-            self._child_seed(child_type, local_id, eff_schema, overrides),
-            source=f"device.{self.device_id}",
-        )
+        return self._child_seed(child_type, local_id, eff_schema, overrides)
 
     def _warn_if_schema_collides(
         self, child_type: str, local_id: int | str,
@@ -654,7 +692,7 @@ class ChildEntities:
                 values[prop] = seeded[prop]
             else:
                 values[prop] = self._default_for_var_def(var_def)
-        return self._child_keyed(child_type, local_id, values)
+        return self._child_named(child_type, local_id, values)
 
     def _seed_presence(
         self, child_type: str, overrides: dict[str, Any],
@@ -764,14 +802,7 @@ class ChildEntities:
             )
             return
         self._validate_child_prop(child_type, local_id, prop)
-        schema = self._effective_child_schema(child_type, local_id)
-        self._warn_on_type_mismatch(
-            f"{child_type}.{self._format_child_id(child_type, local_id)}.{prop}",
-            value,
-            schema[prop],
-        )
-        for key, stored in self._child_writes(child_type, local_id, {prop: value}).items():
-            self.state.set(key, stored, source=f"device.{self.device_id}")
+        self._write_children([(child_type, local_id, {prop: value})])
 
     @staticmethod
     def child_fault(code: str = "", message: str = "") -> dict[str, Any]:
@@ -838,10 +869,7 @@ class ChildEntities:
             )
             return
         self._validate_child_props(child_type, local_id, updates)
-        self.state.set_batch(
-            self._child_writes(child_type, local_id, updates),
-            source=f"device.{self.device_id}",
-        )
+        self._write_children([(child_type, local_id, updates)])
 
     def set_children_state_batch(
         self, updates: list[tuple[str, int | str, dict[str, Any]]]
@@ -865,11 +893,7 @@ class ChildEntities:
                 )
         for child_type, local_id, child_updates in live:
             self._validate_child_props(child_type, local_id, child_updates)
-        namespaced: dict[str, Any] = {}
-        for child_type, local_id, child_updates in live:
-            namespaced.update(self._child_writes(child_type, local_id, child_updates))
-        if namespaced:
-            self.state.set_batch(namespaced, source=f"device.{self.device_id}")
+        self._write_children(live)
 
     # --- Reading children ---------------------------------------------------
 
