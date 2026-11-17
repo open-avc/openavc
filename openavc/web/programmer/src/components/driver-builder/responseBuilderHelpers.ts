@@ -61,6 +61,18 @@ export function getMappings(
   return mappings;
 }
 
+/** The capture a regex rule's mapping reads, as the driver reads it: its
+ *  `group`, else the whole match (0). */
+export function mappingGroup(mapping: { group?: number }): number {
+  return mapping.group ?? 0;
+}
+
+/** The capture group a mapping added to a regex rule takes: the one after
+ *  the highest any of its mappings reads, else the first. */
+export function nextMappingGroup(mappings: { group?: number }[]): number {
+  return mappings.length > 0 ? Math.max(...mappings.map(mappingGroup)) + 1 : 1;
+}
+
 /** True if every mapping fits the `set:` shorthand — i.e. writing the set:
  *  form would leave runtime behavior identical. A shorthand entry coerces by
  *  the state variable's declared type, while an explicit mapping coerces by
@@ -88,7 +100,7 @@ export function canUseSetShorthand(
     // Static literal mapping: group=0, value present
     if (m.group === 0 && m.value !== undefined) continue;
     // Capture-group mapping
-    if (m.group > 0) continue;
+    if (mappingGroup(m) > 0) continue;
     return false;
   }
   return true;
@@ -156,7 +168,7 @@ export function buildResponse(
       if (m.group === 0 && m.value !== undefined) {
         set[m.state] = m.value;
       } else {
-        set[m.state] = `$${m.group}`;
+        set[m.state] = `$${mappingGroup(m)}`;
       }
     }
     return { match: pattern, set, ...childSet, ...carry };

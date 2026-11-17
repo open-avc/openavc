@@ -32,6 +32,8 @@ import {
   containsToText,
   jsonChildPropFromText,
   jsonChildPropToText,
+  mappingGroup,
+  nextMappingGroup,
   oscChildIdFromParts,
   oscChildIdToText,
   oscChildPropFromText,
@@ -59,6 +61,18 @@ function _ordinal(n: number): string {
   if (n === 2) return "2nd";
   if (n === 3) return "3rd";
   return `${n}th`;
+}
+
+/** What a regex mapping's capture is called on its row: group 0 is the
+ *  whole match, the rest are numbered. */
+function _captureName(group: number): string {
+  return group === 0 ? "Whole match" : `Capture ${group}`;
+}
+
+function _captureTitle(group: number): string {
+  return group === 0
+    ? "The whole text the regex pattern matched"
+    : `Capture group ${group} from the regex pattern (the ${_ordinal(group)} set of parentheses)`;
 }
 
 interface ResponseBuilderProps {
@@ -563,9 +577,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 }}
                 title={draft.transport === "osc"
                   ? `Argument index ${mapping.arg ?? mapping.group} from the OSC message`
-                  : `Capture group ${mapping.group} from the regex pattern (the ${_ordinal(mapping.group)} set of parentheses)`}
+                  : _captureTitle(mappingGroup(mapping))}
               >
-                {draft.transport === "osc" ? `Arg ${mapping.arg ?? mapping.group}` : `Capture ${mapping.group}`} →
+                {draft.transport === "osc" ? `Arg ${mapping.arg ?? mapping.group}` : _captureName(mappingGroup(mapping))} →
               </label>
               <select
                 value={mapping.state}
@@ -651,13 +665,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                   stateVars,
                 ));
               } else {
-                const nextGroup =
-                  mappings.length > 0
-                    ? Math.max(...mappings.map((m) => m.group)) + 1
-                    : 1;
                 updateResponse(i, buildResponse(pattern, [
                   ...mappings,
-                  { group: nextGroup, state: "", type: "string" },
+                  { group: nextMappingGroup(mappings), state: "", type: "string" },
                 ], resp, stateVars));
               }
             }}
