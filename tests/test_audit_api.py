@@ -184,6 +184,26 @@ async def test_a_device_set_up_by_host_name_is_the_device_at_its_address(wired, 
     ]
 
 
+async def test_a_simulated_device_is_still_paused_for_the_audit(wired):
+    """A running simulation points Hall at the simulator on this computer,
+    but stopping it sends Hall straight back to the equipment beside the
+    audit: the audit reads each device as the project sets it."""
+    from openavc.audit.sandbox import target_names, unpaused_devices_at
+    from openavc.core.device_config import connection_of, dialled_record
+
+    hall = {"id": "other", "name": "Hall", "driver": "acme_audit_api",
+            "config": {"host": "10.9.9.9"}}
+    at_simulator = connection_of(dialled_record(hall, {"host": "127.0.0.1", "port": 19400}))
+    assert at_simulator.simulated
+    wired.devices.connections_now = lambda: [at_simulator]
+    wired.engine.devices = wired.devices
+
+    rows = (await routes.audit_conflicts("10.9.9.9"))["devices"]
+    assert [r["device_id"] for r in rows] == ["other"]
+    names = await target_names(wired.engine.project, "10.9.9.9", "10.9.9.9")
+    assert unpaused_devices_at(wired.engine.project, wired.engine.state, names) == ["Hall"]
+
+
 async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
     """A project device at the address whose driver is not installed (or that
     is disabled) holds no connection: the audit starts without pausing it,
