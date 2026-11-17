@@ -351,6 +351,34 @@ async def test_setup_action_error_emits_error_event():
     await dm._cancel_reconnect("dev1")
 
 
+async def test_a_setting_the_running_system_cannot_take_is_said_as_every_door_says_it():
+    """The handler saved a setting and the project change was not applied:
+    the Programmer is told in the words every door that changes the project
+    uses, never the exception's own text."""
+    import errno
+
+    from openavc.core.project_changes import ProjectNotAppliedError
+    from openavc.core.project_loader import ProjectSaveError
+
+    runner, engine, dm, driver = _make_env()
+
+    async def apply_project(new_project, **kwargs):
+        cause = ProjectSaveError(OSError(errno.ENOSPC, "No space left on device", "/srv/acme/project.avc"))
+        raise ProjectNotAppliedError(cause) from cause
+
+    engine.apply_project = apply_project
+    await runner.start("dev1", _setup_action(driver), {"password": "x"})
+    await _drain(runner)
+
+    said = (
+        "Not applied: the project file could not be written. The disk is full. "
+        "Free up disk space and try again. The previous project is still running."
+    )
+    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
+    assert (last["status"], last["step"], last["error"]) == ("error", said, said)
+    await dm._cancel_reconnect("dev1")
+
+
 async def test_setup_action_success_false_terminates_as_error():
     # A handler that returns success:false FAILED. `status` is the outcome
     # every client branches on, so it has to say so — a run that reported a

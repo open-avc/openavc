@@ -14,6 +14,7 @@ import pytest
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core.ui_events import UIEventRuntime
 from openavc.cloud.protocol import AI_TOOL_CALL, _now_iso
+from openavc.core.project_changes import ApplyOutcome
 
 
 def _make_tool_call_msg(tool_name, tool_input=None, request_id="req-1"):
@@ -152,7 +153,7 @@ def mock_engine():
         mutate(new_project)
         engine.project = new_project
         engine._project_revision += 1
-        return engine._project_revision
+        return ApplyOutcome(str(engine._project_revision))
 
     engine.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return engine

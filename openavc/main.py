@@ -73,7 +73,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from openavc import config, restart, runtime_flags, status_folder
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
@@ -501,36 +500,23 @@ app.include_router(network_routes.router)
 # every other API error instead of a wall of Pydantic JSON.
 from openavc.api.errors import (
     StructuredApiError,
-    project_not_applied_handler,
+    add_project_change_handler,
     request_validation_exception_handler,
     structured_api_error_handler,
-    unknown_word_handler,
 )
 
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
-
-from openavc.core.installed_equipment import InstalledEquipmentError
-
-
-@app.exception_handler(InstalledEquipmentError)
-async def installed_equipment_error(request, error):
-    return JSONResponse(status_code=409, content={"detail": str(error)})
 
 # The few errors that carry machine-readable fields put them *beside* the string
 # detail rather than inside it, so every client still finds a readable sentence
 # at {"detail": ...}. See openavc/api/errors.py for the contract.
 app.add_exception_handler(StructuredApiError, structured_api_error_handler)
 
-# An edit that adds a fixed choice this version does not know is a 422.
-from openavc.core.saved_values import UnknownWordError
-
-app.add_exception_handler(UnknownWordError, unknown_word_handler)
-
-# A project change the running system could not take, from any route that
-# changes the project: "Not applied" and why, never a bare server error.
-from openavc.core.project_changes import ProjectNotAppliedError
-
-app.add_exception_handler(ProjectNotAppliedError, project_not_applied_handler)
+# A project change that did not run, from any route that changes the project:
+# a refusal (a product's built-in device 409, a word this version does not
+# know 422) or a change the running system could not take (500, "Not
+# applied" and why), never a bare server error.
+add_project_change_handler(app)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).

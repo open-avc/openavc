@@ -62,8 +62,11 @@ class ProjectRevisionConflictError(Exception):
 class ProjectNotAppliedError(Exception):
     """A change the running system was given and could not take: the swap,
     the reconcile or the file's write failed, and everything was put back,
-    so the project before it is still running and the file was not
-    written. ``cause`` is what failed (also the ``__cause__``); every door
+    so the project before it is still running and the apply wrote no file.
+    A change that came from the file (a reload, and the restore and library
+    open that write the file first) leaves the file holding that change,
+    which is then not what runs. ``cause`` is what failed (also the
+    ``__cause__``); every door
     answers it in one wording (``api/error_messages.describe_change_failure``),
     never with the cause's own text. A refusal of the change itself (a word
     this version does not know, the installed equipment) is raised as it is,

@@ -232,9 +232,15 @@ class SetupActionRunner:
             log.exception(
                 "Setup action '%s' on device '%s' failed", action_id, device_id
             )
+            from openavc.api.error_messages import describe_change_failure
+
+            # A setting the handler saved that the running system could not
+            # take is said as every door that changes the project says it.
+            change = describe_change_failure(exc)
+            error = change.sentence if change else str(exc)
             await self._emit(
                 device_id, action_id, run_id,
-                str(exc) or "Setup action failed", None, "error", error=str(exc),
+                error or "Setup action failed", None, "error", error=error,
             )
         finally:
             driver._set_setup_context(None)

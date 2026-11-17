@@ -31,8 +31,6 @@ from openavc.core.project_loader import ProjectConfig, ProjectSaveError, save_pr
 from openavc.core.project_migration import CURRENT_VERSION
 from openavc.core.project_reconcile import FailedPart
 
-pytestmark = pytest.mark.asyncio
-
 #: Text that must never reach a reader: it stands for an exception's own
 #: words and a path on this system.
 PRIVATE = "acme-private-7731"
@@ -85,10 +83,14 @@ def engine(tmp_path, monkeypatch) -> Engine:
 
 def _client(engine: Engine, monkeypatch) -> httpx.AsyncClient:
     """The Programmer's routes for the doors below, with the server's own
-    handler for a change that was not applied."""
+    handlers for a change that did not run."""
     from openavc.api import _engine as engine_slot
     from openavc.api import plugins as plugin_routes
-    from openavc.api.errors import project_not_applied_handler
+    from openavc.api.errors import (
+        StructuredApiError,
+        add_project_change_handler,
+        structured_api_error_handler,
+    )
     from openavc.api.routes import isc as isc_routes
     from openavc.api.routes import project as project_routes
 
@@ -100,7 +102,8 @@ def _client(engine: Engine, monkeypatch) -> httpx.AsyncClient:
     app.include_router(project_routes.router, prefix="/api")
     app.include_router(isc_routes.router, prefix="/api")
     app.include_router(plugin_routes.router)
-    app.add_exception_handler(ProjectNotAppliedError, project_not_applied_handler)
+    add_project_change_handler(app)
+    app.add_exception_handler(StructuredApiError, structured_api_error_handler)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
@@ -171,11 +174,35 @@ async def test_a_reload_over_the_socket_says_so_in_the_same_words(engine, monkey
     assert socket.sent[-1]["message"] == NOT_TAKEN
 
 
-def test_the_server_answers_a_change_that_was_not_applied_in_its_words():
-    from openavc.api.errors import project_not_applied_handler
+def test_the_server_answers_every_change_that_did_not_run_in_its_words():
+    from openavc.api.errors import project_change_failures, project_change_handler
     from openavc.main import app
 
-    assert app.exception_handlers[ProjectNotAppliedError] is project_not_applied_handler
+    for failure in project_change_failures():
+        assert app.exception_handlers[failure] is project_change_handler
+
+
+async def test_a_refused_save_says_it_was_refused_not_that_another_session_saved(engine, monkeypatch):
+    """A refusal and a revision conflict can share a status; the code
+    beside the sentence tells them apart."""
+    from openavc.core.installed_equipment import InstalledEquipmentError
+
+    def refuse(current, proposed, *, reassigned=None):
+        raise InstalledEquipmentError("This server's own display stays in the project.")
+
+    monkeypatch.setattr(engine.installed_equipment, "validate_edit", refuse)
+    resp = await _http(engine, monkeypatch, "save")
+    assert resp.status_code == 409
+    assert resp.json() == {
+        "detail": "This server's own display stays in the project.", "code": "refused",
+    }
+
+
+async def test_a_save_against_a_moved_revision_says_conflict(engine, monkeypatch):
+    async with _client(engine, monkeypatch) as client:
+        resp = await client.put("/api/project", json=_renamed(engine), headers={"If-Match": '"stale"'})
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "conflict"
 
 
 def _ai(engine: Engine):

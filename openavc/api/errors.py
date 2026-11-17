@@ -104,19 +104,34 @@ def change_failure_error(exc: BaseException) -> StructuredApiError | None:
     return StructuredApiError(failure.status, failure.sentence, code=failure.code)
 
 
-async def project_not_applied_handler(request: Request, exc: Exception) -> JSONResponse:
-    """A project change the running system could not take
-    (``core/project_changes.ProjectNotAppliedError``), from any route: a 500
-    whose ``detail`` says it was not applied and why, ``code`` ``not_applied``.
-    The cause was logged where the change was put back."""
-    answer = change_failure_error(exc)
-    return await structured_api_error_handler(request, answer)
+def project_change_failures() -> tuple[type[Exception], ...]:
+    """Each project change that did not run that a route may raise and
+    ``project_change_handler`` answers (``describe_change_failure`` words a
+    revision conflict too, but only Save checks a revision, and catches it)."""
+    from openavc.core.installed_equipment import InstalledEquipmentError
+    from openavc.core.project_changes import ProjectNotAppliedError
+    from openavc.core.saved_values import UnknownWordError
+
+    return (InstalledEquipmentError, UnknownWordError, ProjectNotAppliedError)
 
 
-async def unknown_word_handler(request: Request, exc: Exception) -> JSONResponse:
-    """An edit that adds a fixed choice this version does not know
-    (``core/saved_values.UnknownWordError``): 422 with its sentence."""
-    return JSONResponse(status_code=422, content={"detail": str(exc)})
+def add_project_change_handler(app: Any) -> None:
+    """Answer each of ``project_change_failures`` from any route of ``app``
+    with ``project_change_handler``: the server's one registration, in
+    ``main.py``."""
+    for failure in project_change_failures():
+        app.add_exception_handler(failure, project_change_handler)
+
+
+async def project_change_handler(request: Request, exc: Exception) -> JSONResponse:
+    """A project change that did not run, from any route, in
+    ``error_messages.describe_change_failure``'s words with its ``code``
+    beside the sentence: a refusal (a product's built-in device 409, a word
+    this version does not know 422, both ``refused``) or a change the
+    running system could not take (500, ``not_applied``; its cause was
+    logged where the change was put back). A client tells a refusal from a
+    revision conflict by ``code``, never by status."""
+    return await structured_api_error_handler(request, change_failure_error(exc))
 
 
 def validation_error_lines(errors: list) -> list[str]:
