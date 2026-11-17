@@ -976,6 +976,11 @@ class PanelApp {
         content.appendChild(pageNode);
         container.appendChild(content);
 
+        // The animation in runs from a style resolved without `active`. A box
+        // `active` before it is on the document has none to run, whatever
+        // reads its style next (a Container's border, just below).
+        if (atOnce) container.classList.add('active');
+
         // Append to root (on top of everything)
         document.body.appendChild(container);
         applyCoordinateSpaces(pageNode);
@@ -985,10 +990,7 @@ class PanelApp {
         // setConnectionStatus re-enables overlays on reconnect.
         if (this._offline) container.style.pointerEvents = 'none';
 
-        // The animation in runs from a frame drawn without `active`; a box
-        // that is `active` from its first frame has no animation to run.
-        if (atOnce) container.classList.add('active');
-        else requestAnimationFrame(() => container.classList.add('active'));
+        if (!atOnce) requestAnimationFrame(() => container.classList.add('active'));
 
         // Evaluate bindings for new elements
         this.evaluateAllBindings();

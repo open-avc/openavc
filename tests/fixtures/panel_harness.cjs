@@ -11365,6 +11365,9 @@ function pagesInRoot(m) {
 }
 
 /** The page rig's checks (its `check` step), each throwing when the panel is not as named. */
+/** Overlay boxes a style inside was read from before the box was `active`. */
+const STYLE_READ_BEFORE_OPEN = new WeakSet();
+
 const PANEL_CHECKS = {
     // The root holds these pages, by their first control, and nothing else.
     rootHolds: (m, want) => {
@@ -11448,6 +11451,12 @@ const PANEL_CHECKS = {
         const frame = document.querySelector(`${selector} iframe`);
         const src = frame ? frame.getAttribute('src') || '' : null;
         assert(src !== null && src.includes(part), `the frame at ${selector} loads ${JSON.stringify(src)}, not an address with ${JSON.stringify(part)}`);
+    },
+    // No overlay box on the document had a style inside it read before it
+    // was `active` (STYLE_READ_BEFORE_OPEN, filled by a case that watches).
+    openBeforeStyleRead: () => {
+        const early = [...document.querySelectorAll('.panel-overlay')].filter((o) => STYLE_READ_BEFORE_OPEN.has(o));
+        assert(early.length === 0, `styles read before open in ${JSON.stringify(early.map((o) => o.dataset.pageId))}`);
     },
     // The Page Nav `id` is lit (`lit`), as it is while its page is showing.
     navLit: (m, id, lit) => {
@@ -12009,8 +12018,35 @@ Object.assign(tests, {
         ], { ui, open: ['dlg'] }));
         const failures = failedChecks(steps);
         const at = steps.findIndex((s) => s.op === 'msg' && s.x && s.x.ui === 'second');
-        const lost = sentFrom(steps, at).filter((f) => f.type === 'ui.submit');
-        if (lost.length !== 1) failures.push(`after the save the keypad sent ${JSON.stringify(lost)}, not only what was typed on the dialog opened again`);
+        const sent = sentFrom(steps, at).filter((f) => f.type === 'ui.submit').map((f) => f.value);
+        if (JSON.stringify(sent) !== '["1"]') failures.push(`after the save the keypad sent ${JSON.stringify(sent)}, not only the digit typed on the dialog opened again`);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_dialog_opened_again_is_open_before_any_style_in_it_is_read() {
+        // A Container reads its border off the cascade once it is on the
+        // document; a box whose style resolves before it is `active` runs
+        // its animation in when `active` lands.
+        const pages = NAV_PAGES().map((p) => (p.id === 'dlg'
+            ? { ...p, elements: [{ id: 'grp', type: 'group', label: 'Box' }, pinLabel('in_grp', { parent: 'grp' })],
+                layouts: [{ ...p.layouts[0], placements: { grp: box(5), in_grp: box(10) } }] }
+            : p));
+        const own = window.getComputedStyle;
+        window.getComputedStyle = function (el, ...rest) {
+            const box = el && el.closest ? el.closest('.panel-overlay') : null;
+            if (box && !box.classList.contains('active')) STYLE_READ_BEFORE_OPEN.add(box);
+            return own.call(this, el, ...rest);
+        };
+        let steps;
+        try {
+            steps = await driveCase(keptCase([
+                arrives(keptUi('second', pages)),
+                ['check', 'stack', ['dlg']], ['check', 'overlayShows', 'in_grp', 'in_grp'], ['check', 'openBeforeStyleRead'],
+            ], { ui: keptUi('first', pages), open: ['dlg'] }));
+        } finally {
+            window.getComputedStyle = own;
+        }
+        const failures = failedChecks(steps);
         assert(failures.length === 0, failures.join('\n'));
     },
 

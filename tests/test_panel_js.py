@@ -429,6 +429,7 @@ SCENARIOS = [
     "a_dialog_whose_page_went_or_no_longer_opens_over_is_not_reopened",
     "a_dialog_stays_open_over_the_page_standing_in_for_one_deleted",
     "a_half_typed_entry_on_a_kept_dialog_is_not_sent",
+    "a_dialog_opened_again_is_open_before_any_style_in_it_is_read",
     # A turn of the glass and a changed ui/ file draw the page in place too.
     "a_turn_of_the_glass_keeps_each_open_dialog_open",
     "a_changed_ui_file_keeps_each_open_dialog_open",
