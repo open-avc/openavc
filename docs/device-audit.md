@@ -19,7 +19,8 @@ a bridge, cannot be audited.
 
 A device in your project that uses the same address is paused while the audit runs, and
 reconnects when you finish. Its device page says it is paused for a Device Audit; pressing
-**Resume** there reconnects it, and the audit stops pausing it.
+**Resume** there reconnects it, and the audit stops pausing it. If OpenAVC stops or restarts
+during an audit, the audit ends and the device reconnects when OpenAVC starts again.
 
 ## Starting an Audit
 

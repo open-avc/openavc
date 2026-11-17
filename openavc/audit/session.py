@@ -533,7 +533,9 @@ class AuditManager:
         return session
 
     async def shutdown(self) -> None:
-        """End the active session, if any, because the server is stopping."""
+        """End the active session, if any, because the server is stopping. The
+        devices it paused stay paused until the engine's stop disconnects
+        them."""
         session = self.current()
         if session is not None:
             await self._teardown(session, SHUTDOWN)
@@ -549,7 +551,12 @@ class AuditManager:
             # teardown can run from inside it (the idle timeout), so it is not
             # cancelled from under itself.
             await session.stop_everything(spare=asyncio.current_task())
-            await self._resume_owned(session)
+            # At a shutdown the engine's stop disconnects every device next: a
+            # reconnect here would dial the real equipment and send it the
+            # settings waiting for it on the way down. A pause is not kept, so
+            # the next start connects the device as usual.
+            if status != SHUTDOWN:
+                await self._resume_owned(session)
             session.add_timeline("session.ended", self._end_text(status), status=status)
             log.info("Device audit %s ended (%s)", session.id, status)
             for hook in self._end_hooks:

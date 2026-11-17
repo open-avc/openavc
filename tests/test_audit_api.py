@@ -306,6 +306,22 @@ async def test_start_pauses_then_finish_resumes(wired):
     assert (await routes.current_session())["session"] is None
 
 
+async def test_a_shutdown_ends_the_audit_without_reconnecting_what_it_paused(wired):
+    """The server is stopping: the engine's stop disconnects every device next,
+    and a reconnect on the way down would dial the real equipment and send it
+    the settings waiting for it. A pause is not kept, so the next start
+    connects the device as usual."""
+    await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["lobby"]))
+    session = wired.manager.current()
+    assert wired.devices.paused == {"lobby"}
+
+    await wired.manager.shutdown()
+
+    assert session.status == "shutdown"
+    assert ("resume", "lobby") not in wired.devices.calls
+    assert not any(e.kind == "device.resumed" for e in session.timeline)
+
+
 async def test_start_refusals_say_why(wired):
     with pytest.raises(HTTPException) as exc:
         await routes.start_session(AuditStartRequest(address="no-such-device.invalid"))
