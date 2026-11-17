@@ -92,6 +92,9 @@ const FRAMES = new Map([
     ['state.set.ack', (app, msg) => app._takeAck(msg)],
 ]);
 
+/** How the page on screen goes when no page replaces it: at once, with no transition. */
+const LEAVE_AT_ONCE = { transition: 'none', duration: 0 };
+
 /**
  * A Container's caption at its `label_position`: against the top or the
  * bottom edge, and at the left, the middle or the right.
@@ -1113,31 +1116,20 @@ class PanelApp {
         }
     }
 
-    /** One draw of the page. */
+    /** One draw of the page: what is on screen ends, whatever is drawn next, then the page draws. */
     _drawCurrentPage() {
         // Everything below is about to be replaced, including whatever node an
         // in-place edit was holding.
         this._textEditor.release();
-
-        const pages = this.uiDef.pages || [];
-        let page = pages.find(p => p.id === this.currentPage);
+        const page = this._pageToDraw();
         if (!page) {
-            if (!pages.length) {
-                this._showNoPages();
-                return;
-            }
-            page = fallbackPage(pages);
-            this.currentPage = page.id;
+            this._clearScreen(LEAVE_AT_ONCE);
+            this._showNoPages();
+            return;
         }
-
-        // Clean up overlays
-        this.dismissAllOverlays();
-
         const motion = this._pageMotion();
         this.root.style.setProperty('--page-transition-duration', motion.duration + 'ms');
-        this._leavePage(motion);
-
-        clearMatrixOverlays();
+        this._clearScreen(motion);
 
         // Apply theme
         this.theme.apply(this.uiDef.settings || {});
@@ -1172,6 +1164,13 @@ class PanelApp {
         }
     }
 
+    /** What is on screen ends, whatever is drawn next: every overlay, the page (going with `motion`), a matrix's drag line and chooser. */
+    _clearScreen(motion) {
+        this.dismissAllOverlays();
+        this._leavePage(motion);
+        clearMatrixOverlays();
+    }
+
     /**
      * The page on screen goes: everything its controls started ends now
      * (nothing on it sends once the next page is drawn), and its nodes leave,
@@ -1183,6 +1182,14 @@ class PanelApp {
         leaving.end();
         takeAway(this.root, leaving, motion);
         this._surfaces.page = new Surface();
+    }
+
+    /** The page to draw: the current one, else the one standing in for it (made current); null when there are no pages. */
+    _pageToDraw() {
+        const pages = this.uiDef.pages || [];
+        const page = pages.find(p => p.id === this.currentPage) || (pages.length ? fallbackPage(pages) : null);
+        if (page) this.currentPage = page.id;
+        return page;
     }
 
     /** A project with no pages at all says so. */

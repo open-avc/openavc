@@ -403,12 +403,14 @@ SCENARIOS = [
     "two_quick_closes_of_a_dialog_reopened_while_leaving_leave_nothing_drawn",
     "a_dialog_with_a_quote_in_its_id_closes",
     # Every door into a page draw goes in through one entry: no draw runs
-    # inside another, a theme the draw itself puts on is that draw, and a
-    # page drawn before its theme lands is drawn again when it does (a dialog
-    # open over it staying open).
+    # inside another, a theme the draw itself puts on is that draw, a page
+    # drawn before its theme lands is drawn again when it does (a dialog open
+    # over it staying open), and a definition with no pages ends what was on
+    # screen.
     "a_theme_put_on_by_a_page_draw_draws_that_page_once",
     "a_page_drawn_before_its_theme_lands_is_drawn_again_when_it_does",
     "a_theme_that_lands_after_a_dialog_opened_leaves_it_open",
+    "a_definition_with_no_pages_ends_the_page_and_every_dialog",
     "a_draw_asked_for_inside_a_draw_runs_after_it",
     # The surface record (modules/surface.js): its timers cleared and its
     # ends run once, and whatever is given after it ended ended at once; a

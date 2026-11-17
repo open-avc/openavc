@@ -11400,6 +11400,11 @@ const PANEL_CHECKS = {
         const node = document.querySelector(`.panel-overlay:not(.dismissing) [data-element-id="${id}"]`);
         assert(node && node.textContent === text, `${id} on the overlay shows ${node && JSON.stringify(node.textContent)}, not ${JSON.stringify(text)}`);
     },
+    // The controls on screen, by element id.
+    controls: (m, want) => {
+        const have = Object.keys(m.app._surfaces.everyControl()).sort();
+        assert(JSON.stringify(have) === JSON.stringify(want), `the controls on screen are ${JSON.stringify(have)}, not ${JSON.stringify(want)}`);
+    },
 };
 
 /** A failed check's message, else nothing: each step's `threw`. */
@@ -11600,8 +11605,9 @@ Object.assign(tests, {
 // A page is drawn because a definition arrived, a theme landed, the Programmer
 // sent the canvas or the Preview something, the glass turned, or somebody went
 // to a page. Each goes in through one entry: no draw runs inside another, a
-// theme put on by the draw itself is that draw, and a page drawn before its
-// theme landed is drawn again when it does.
+// theme put on by the draw itself is that draw, a page drawn before its theme
+// landed is drawn again when it does, and a draw ends what was on screen
+// whatever it draws next.
 
 /** The theme pages' button and gauge, and a label reading `var.x`, which registers one binding. */
 const DOOR_ELEMENTS = [
@@ -11678,6 +11684,27 @@ Object.assign(tests, {
             steps: [['nav', 'dlg'], ['settle'], ['check', 'stack', ['dlg']], ['check', 'overlays', 1], ['check', 'rootHolds', ['h1']]],
         });
         for (const why of failedChecks(live)) failures.push(`panel: ${why}`);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_definition_with_no_pages_ends_the_page_and_every_dialog() {
+        const pageKeypad = { ...SURFACE_KEYPAD, id: 'kp2' };
+        const steps = await driveCase({
+            ui: pinUi('surface', [
+                pinPage('home', { elements: [pageKeypad], placements: { kp2: box(1) } }),
+                pinPage('dlg', { page_type: 'overlay', elements: [SURFACE_KEYPAD], placements: { kp: box(2) } }),
+            ]),
+            elementMap: true,
+            steps: [
+                ['click', '[data-element-id="kp2"] [aria-label="Key 1"]'], ['nav', 'dlg'], TYPE_ONE,
+                ['set', 'uiDef', pinUi('none', [])], ['render'],
+                ['check', 'stack', []], ['check', 'overlays', 0], ['check', 'controls', []],
+                ['wait', 1500],
+            ],
+        });
+        const failures = failedChecks(steps);
+        const late = sentFrom(steps, 4);
+        if (late.length) failures.push(`sent after the pages went: ${JSON.stringify(late)}`);
         assert(failures.length === 0, failures.join('\n'));
     },
 
