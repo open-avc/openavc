@@ -26,9 +26,10 @@ from typing import Any
 import pytest
 import yaml
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import best_match
 
-from openavc.drivers import spec
-from openavc.drivers.avcdriver_semantic import check_driver_definition
+from openavc.drivers import discovery_block, spec
+from openavc.drivers.avcdriver_semantic import check_driver_definition, unknown_key_errors
 from openavc.drivers.shape_checks import LEFT_FIELDS, LEFT_KEYS, READ_KEYS, shape_refusals
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -347,6 +348,47 @@ def test_the_discovery_block_is_left_to_its_reader() -> None:
     assert list(check_driver_definition(definition, strict=True).errors) == [
         "discovery.tcp_probe.port must be an integer"
     ]
+
+
+def test_the_schema_refuses_a_key_a_probe_s_second_step_does_not_read() -> None:
+    """An editor and the catalog's schema run refuse a misspelled key in a
+    tcp_probe's ``then:`` as the block's reader does, so a typo is never
+    accepted there and the check it meant silently left out."""
+    def with_then(then: dict[str, Any]) -> dict[str, Any]:
+        probe = {"port": 23, "send_ascii": "ID?\r", "expect": "ACME", "then": then}
+        return {**BASE, "discovery": {"tcp_probe": probe}}
+
+    then = {"send_ascii": "BIG?\r", "expect_silence": True}
+    assert _schema_refusals(with_then(then)) == []
+    definition = with_then({**then, "expect_silense": True})
+    refusals = _schema_refusals(definition)
+    assert len(refusals) == 1
+    deepest = best_match(refusals)
+    assert _place(deepest.absolute_path) == "discovery.tcp_probe.then"
+    assert "expect_silense" in deepest.message
+    assert list(check_driver_definition(definition, strict=True).errors) == [
+        "discovery.tcp_probe.then has unknown keys: ['expect_silense']"
+    ]
+
+
+def test_a_discovery_block_for_a_newer_release_is_not_judged_by_its_keys() -> None:
+    """Only the block's reader honours ``requires:``, so a key a newer
+    release reads is refused by nothing on an older one: the unknown-key
+    check leaves the block to that reader, as the shape walk does."""
+    then = {"send_ascii": "BIG?\r", "expect_silence": True, "a_newer_key": True}
+    probe = {"port": 23, "send_ascii": "ID?\r", "expect": "ACME", "then": then}
+    definition = {**BASE, "discovery": {"requires": "99.0.0", "tcp_probe": probe}}
+    assert unknown_key_errors(definition) == []
+    verdict = check_driver_definition(definition, platform_version="0.40.0", strict=True)
+    assert list(verdict.errors) == []
+
+
+def test_a_probe_s_second_step_declares_the_keys_its_reader_reads() -> None:
+    """The contract's ``then:`` and the reader name the same keys, so the
+    schema refuses exactly what the reader refuses."""
+    declared = spec.DEFS["tcpProbe"]["fields"]["then"]
+    assert declared.get("extra") is False
+    assert set(declared["fields"]) == set(discovery_block._KNOWN_FOLLOW_UP_KEYS)
 
 
 def test_a_python_driver_s_schema_takes_no_null_the_registry_does_not_declare() -> None:

@@ -3317,7 +3317,8 @@
               "minimum": 1,
               "maximum": 10000
             }
-          }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false,

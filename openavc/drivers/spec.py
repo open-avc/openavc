@@ -3361,6 +3361,9 @@ DEFS = {
                     'expect_hex': {'type': 'string'},
                     'timeout_ms': {'type': 'integer', 'min': 1, 'max': 10000},
                 },
+                # The discovery reader refuses any other key here
+                # (discovery_block._KNOWN_FOLLOW_UP_KEYS), so the schema does too.
+                'extra': False,
             },
         },
         'required': ('port',),

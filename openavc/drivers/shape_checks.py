@@ -24,10 +24,10 @@ What it leaves to the definition walk's own checks and to the catalog's
 schema run: text patterns, number ranges, lengths and counts, the names of a
 mapping's keys (``prop_names``), the negative and raw rules (``not_``,
 ``raw``), and a key the contract does not declare (``unknown_key_errors``).
-The ``discovery:`` block is not walked at all (``LEFT_FIELDS``): the
-discovery parser judges it, at the platform's doors through the hook the
-loader hands the definition walk and in the catalog through its own copy, so
-its sentences are that parser's.
+The ``discovery:`` block is not walked at all (``LEFT_FIELDS``), here or by
+the unknown-key walk (``avcdriver_semantic.unknown_key_errors``): its reader
+(``discovery_block``) judges it at every door, honouring the block's
+``requires:`` gate, so its sentences are that reader's.
 ``tests/test_shape_walk.py`` holds it to the published schema: it never
 refuses a value the schema takes, and every refusal of the schema it does
 not make is of one of those kinds.

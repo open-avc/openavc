@@ -98,7 +98,12 @@ from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.routing_checks import (
     routing_block_errors as routing_block_errors,
 )
-from openavc.drivers.shape_checks import shape_of as _shape_of, shape_refusals, unsaid
+from openavc.drivers.shape_checks import (
+    LEFT_FIELDS,
+    shape_of as _shape_of,
+    shape_refusals,
+    unsaid,
+)
 from openavc.drivers.serial_line import line_setting_errors
 from openavc.drivers.setting_checks import (
     config_learned_from_errors as config_learned_from_errors,
@@ -201,10 +206,22 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
     a driver written for a newer platform would vanish at load and take its
     devices offline — worse than the typo. The loader logs these as warnings;
     only the authoring gates treat them as errors.
+
+    The ``discovery:`` block is not descended (``shape_checks.LEFT_FIELDS``):
+    its reader names a key it does not read, and only that reader honours
+    the block's ``requires:`` gate, which says whether this release reads
+    the block at all.
     """
     walk = _KeyWalk()
-    walk.walk({"fields": FIELDS, "extra": False}, driver_def, "")
+    walk.walk({"fields": _KEY_WALK_FIELDS, "extra": False}, driver_def, "")
     return walk.errors
+
+
+# The top-level fields as the key walk reads them: a field left whole to its
+# own reader is declared (so it is no unknown key) but not descended.
+_KEY_WALK_FIELDS: dict[str, Any] = {
+    name: ({} if name in LEFT_FIELDS else node) for name, node in FIELDS.items()
+}
 
 
 class _KeyWalk:
