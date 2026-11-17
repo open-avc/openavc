@@ -116,13 +116,15 @@ def lib(tmp_path, monkeypatch):
     engine.devices.reload_driver = _none
     engine.devices.get_devices_using_driver = lambda driver_id: []
     monkeypatch.setattr(routes, "_get_engine", lambda: engine)
+    # And without its module: another test in the same process can leave
+    # openavc_driver_acme_widget imported, which a refusal must not be blamed for.
     modules_before = {n: m for n, m in sys.modules.items() if "acme" in n}
+    for name in modules_before:
+        del sys.modules[name]
     yield SimpleNamespace(repo=repo, catalog=catalog)
     for name in [n for n in sys.modules if "acme" in n]:
-        if name in modules_before:
-            sys.modules[name] = modules_before[name]
-        else:
-            sys.modules.pop(name, None)
+        del sys.modules[name]
+    sys.modules.update(modules_before)
 
 
 @pytest.fixture
@@ -133,6 +135,16 @@ def leftover(monkeypatch):
 
 def test_a_registration_left_by_another_test_is_not_carried_in(leftover, lib):
     assert registry.get_driver_class(DRIVER_ID) is None
+
+
+@pytest.fixture
+def leftover_module(monkeypatch):
+    """A driver module another test in the same process left imported."""
+    monkeypatch.setitem(sys.modules, MODULE, SimpleNamespace())
+
+
+def test_a_module_left_by_another_test_is_not_carried_in(leftover_module, lib):
+    assert MODULE not in sys.modules
 
 
 def _yaml(**extra) -> bytes:
