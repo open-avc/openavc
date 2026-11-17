@@ -235,7 +235,7 @@ async def preview_connect(driver: Any) -> ConnectPreview:
             reason="OpenAVC cannot show what this driver sends before it connects.",
         )
     definition = driver._definition
-    transport_type = str(driver.config.get("transport") or definition.get("transport") or "tcp")
+    transport_type = driver._effective_transport()
     if transport_type == "osc":
         capture: Any = capture_osc_transport()
     elif transport_type == "http":

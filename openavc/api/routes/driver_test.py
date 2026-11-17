@@ -35,6 +35,7 @@ from openavc.core.device_config import (
     devices_at_host,
     same_serial_port,
 )
+from openavc.drivers.transport_choice import effective_transport
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
 
@@ -179,7 +180,11 @@ def _build_test_driver(
     default_config = dict(definition.get("default_config") or {})
     # Serial drivers use `port` as a string path (e.g. "COM3"); IP transports
     # need an int. Coerce numeric strings for IP, leave serial strings alone.
-    transport_type = definition.get("transport", body.transport)
+    # The transport is the one the test driver connects over: the config's
+    # choice, else the draft's, else tcp (transport_choice).
+    transport_type = effective_transport(
+        {**default_config, **(body.config_overrides or {})}, definition
+    )
     port_value: int | str = body.port
     if transport_type != "serial":
         try:
@@ -605,7 +610,7 @@ def _describe_outgoing(
     """
     from openavc.drivers.configurable import ConfigurableDriver
 
-    transport = definition.get("transport", "tcp")
+    transport = effective_transport(config, definition)
     all_params = {**config, **params}
 
     if "address" in cmd_def:  # OSC

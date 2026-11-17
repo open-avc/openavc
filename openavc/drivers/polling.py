@@ -451,7 +451,7 @@ class PollLoop:
                 exc=last_exc,
                 host=self.config.get("host", ""),
                 port=self.config.get("port"),
-                transport=self.config.get("transport", ""),
+                transport=self._effective_transport(),
             )
             if classified.code not in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
                 return classified

@@ -39,6 +39,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from openavc.drivers.transport_choice import declared_transport
+
 # Definition fields copied onto DRIVER_INFO as written, in the order they land
 # there, because the platform reads them off a live driver rather than its
 # file.
@@ -103,7 +105,8 @@ def driver_info_for(driver_def: dict[str, Any]) -> dict[str, Any]:
         "version": driver_def.get("version", "1.0.0"),
         "author": driver_def.get("author", "Community"),
         "description": driver_def.get("description", ""),
-        "transport": driver_def.get("transport", "tcp"),
+        # A null or missing transport is tcp (transport_choice).
+        "transport": declared_transport(driver_def),
         "default_config": driver_def.get("default_config", {}),
         "config_schema": driver_def.get("config_schema", {}),
         "state_variables": driver_def.get("state_variables", {}),

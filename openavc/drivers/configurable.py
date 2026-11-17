@@ -503,7 +503,7 @@ class ConfigurableDriver(
         # A waiting liveness probe is satisfied by any qualifying inbound
         # frame; the data still flows through normal dispatch below.
         self._liveness_note_data(data)
-        if self._definition.get("transport") == "osc":
+        if self._effective_transport() == "osc":
             await self._handle_osc_response(data)
             return
         text = data.decode("utf-8", errors="replace").strip()

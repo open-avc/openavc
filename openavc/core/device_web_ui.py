@@ -22,6 +22,7 @@ from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.device_reconnect import _log_task_exception
+from openavc.drivers.transport_choice import effective_transport
 
 if TYPE_CHECKING:
     from openavc.core.state_store import StateStore
@@ -42,8 +43,7 @@ def _probe_host(driver: Any) -> str | None:
     host = config.get("host")
     if not host:
         return None
-    transport = config.get("transport") or driver.DRIVER_INFO.get("transport")
-    if transport == "http":
+    if effective_transport(config, getattr(driver, "DRIVER_INFO", None)) == "http":
         return None
     return str(host)
 

@@ -178,7 +178,7 @@ class SignIn:
         # frame parser and buffers raw bytes. On udp/http/osc that breaks the
         # transport's normal data path, so never run it there. The loader also
         # rejects auth on these transports; this is the runtime backstop.
-        if self._definition.get("transport") not in ("tcp", "serial"):
+        if self._effective_transport() not in ("tcp", "serial"):
             return None
         if not auth_def.get("username_prompt") or not auth_def.get("password_prompt"):
             return None

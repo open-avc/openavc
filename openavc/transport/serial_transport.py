@@ -25,6 +25,7 @@ from openavc.core.connection_fault import (
     usb_adapter_missing_message,
 )
 from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
+from openavc.drivers.transport_choice import configured_transport
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data, wire_held
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
@@ -173,7 +174,9 @@ def _bound_usb_serial(config: dict, driver_transport: str) -> str:
     transport, no ``usb_serial``)."""
     if config.get("bridge"):
         return ""
-    if (config.get("transport") or driver_transport) not in ("", "serial"):
+    # The device's own choice, else the driver's (transport_choice); "" is a
+    # driver not installed, whose stored adapter binding still counts.
+    if (configured_transport(config) or driver_transport) not in ("", "serial"):
         return ""
     return config.get("usb_serial") or ""
 

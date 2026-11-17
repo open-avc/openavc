@@ -63,6 +63,7 @@ from typing import Any
 from openavc.core.web_ui_probe import web_ui_url_for_http_config
 from openavc.drivers.avcdriver_semantic import validate_actions as validate_actions
 from openavc.drivers.spec import ACTION_KINDS, AVAILABILITIES, is_file_command
+from openavc.drivers.transport_choice import effective_transport
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -211,7 +212,7 @@ def _resolve_web_ui_url(
     # Auto-detect (web_ui unset).
     if detected_web_ui_url:
         return detected_web_ui_url
-    if config and driver_info.get("transport") == "http":
+    if config and effective_transport(config, driver_info) == "http":
         return web_ui_url_for_http_config(config)
     return None
 

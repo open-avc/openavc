@@ -100,6 +100,7 @@ class StartUpAndPoll:
     transport: Any
     events: Any
     _definition: dict[str, Any]
+    _effective_transport: Callable[[], str]
     _osc_responses: list[Any]
     _expand_query: Callable[[Any], list[str]]
     _query_enabled: Callable[[dict[str, Any]], bool]
@@ -148,8 +149,7 @@ class StartUpAndPoll:
         """
         if not self._pace_lines:
             return 0.0
-        transport = self.config.get("transport") or self._definition.get("transport")
-        if transport not in LINE_GAP_TRANSPORTS:
+        if self._effective_transport() not in LINE_GAP_TRANSPORTS:
             return 0.0
         try:
             if float(self.config.get("inter_command_delay") or 0) > 0:
@@ -192,7 +192,7 @@ class StartUpAndPoll:
         on_connect = _entries(self._definition.get("on_connect"))
         if not on_connect or not self._link_open():
             return
-        if self._definition.get("transport") == "osc":
+        if self._effective_transport() == "osc":
             await self._run_osc_on_connect(on_connect)
         else:
             await self._run_line_on_connect(on_connect)
@@ -282,7 +282,7 @@ class StartUpAndPoll:
     async def _dispatch_query(self, query: str) -> None:
         """Send one start-up, poll or follow-up line on a transport that is
         not OSC: a declared command by name, else the transport's raw form."""
-        transport_type = self._definition.get("transport")
+        transport_type = self._effective_transport()
         if query in self._definition.get("commands", {}):
             response = await self._send_command(query)
         else:
@@ -327,7 +327,7 @@ class StartUpAndPoll:
         if self._poll_gate_shut(polling):
             self._first_poll_skips = None
             return
-        transport_type = self._definition.get("transport")
+        transport_type = self._effective_transport()
         self._open_http_cycle(transport_type == "http")
         skips = self._first_poll_skips
         self._first_poll_skips = None

@@ -72,6 +72,7 @@ from openavc.core.connection_fault import (
     simulator_error_text,
 )
 from openavc.drivers.spec import CHILD_RESERVED_PROPS
+from openavc.drivers.transport_choice import effective_transport
 from openavc.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
@@ -1338,14 +1339,11 @@ class SimulationManager:
 
     @staticmethod
     def _driver_transport_needs_tcp_stand_in(driver: Any) -> bool:
-        """True when the device's effective transport has no simulator server.
-
-        Mirrors BaseDriver.connect's resolution order: an explicit
-        device-config transport wins over the driver's DRIVER_INFO default.
-        """
-        config = getattr(driver, "config", None) or {}
-        driver_info = getattr(driver, "DRIVER_INFO", None) or {}
-        transport = config.get("transport") or driver_info.get("transport", "tcp")
+        """True when the device's effective transport (transport_choice, the
+        one BaseDriver.connect opens) has no simulator server."""
+        transport = effective_transport(
+            getattr(driver, "config", None), getattr(driver, "DRIVER_INFO", None)
+        )
         return transport in SimulationManager._TCP_STAND_IN_TRANSPORTS
 
     def _apply_sim_redirect(

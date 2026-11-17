@@ -9,8 +9,9 @@ Subclasses must:
     2. Implement send_command()
     3. Optionally override connect(), disconnect(), on_data_received(), poll()
 
-Auto-transport: The default connect() reads DRIVER_INFO["transport"] and
-self.config to create a TCP or serial transport automatically. Drivers with
+Auto-transport: The default connect() creates the transport the device
+connects over (drivers/transport_choice.py: the device's config first, else
+the driver's declared transport, else tcp) automatically. Drivers with
 custom connection logic (e.g., PJLink greeting handshake) can override
 connect() as before.
 
@@ -74,6 +75,7 @@ from openavc.drivers.polling import PollLoop
 # The push channel lives in its own module; these two helpers stay importable
 # from here, the path core/push_ports.py and drivers use.
 from openavc.drivers.push import PushChannel, push_port, resolve_push_value  # noqa: F401
+from openavc.drivers.transport_choice import effective_transport
 # Building a device's transport from its config lives in its own module;
 # _ssh_option_list stays importable from here.
 from openavc.drivers.transport_ladder import TransportLadder, _ssh_option_list  # noqa: F401
@@ -601,9 +603,10 @@ class BaseDriver(
 
         A device's config may override the driver's default (e.g. a CLI
         driver that defaults to "ssh" in production but connects over raw
-        "tcp" to a CLI simulator); unset, it is the driver's own.
+        "tcp" to a CLI simulator); unset, it is the driver's own, and tcp for
+        a driver that declares none. The rule is transport_choice's.
         """
-        return self.config.get("transport") or self.DRIVER_INFO.get("transport", "tcp")
+        return effective_transport(self.config, self.DRIVER_INFO)
 
     def _link_alive(self) -> bool:
         """Predicate: is the underlying link (platform transport or

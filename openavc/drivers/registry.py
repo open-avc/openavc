@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Any, TYPE_CHECKING
 
+from openavc.drivers.transport_choice import declared_transport, effective_transport
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -123,16 +124,24 @@ def get_driver_discovery_port(driver_id: str, evidence: list[dict[str, Any]]) ->
 
 
 def get_driver_transport(driver_id: str) -> str:
-    """Return the registered driver's declared transport (``DRIVER_INFO
-    ['transport']``, defaulting to ``tcp`` like the connect path), or ``""``
-    if the driver is unknown. Used to resolve a device's effective transport
-    when its saved config omits one, so a stray ``usb_serial`` on a network
-    device can't hijack its port.
+    """Return the registered driver's declared transport (tcp when it
+    declares none, ``transport_choice.declared_transport``), or ``""`` if the
+    driver is unknown. Used to resolve a device's effective transport when its
+    saved config omits one, so a stray ``usb_serial`` on a network device
+    can't hijack its port.
     """
     cls = _DRIVER_REGISTRY.get(driver_id)
     if cls is None:
         return ""
-    return cls.DRIVER_INFO.get("transport", "tcp")
+    return declared_transport(cls.DRIVER_INFO)
+
+
+def get_device_transport(driver_id: str, config: dict[str, Any] | None) -> str:
+    """The transport a device of this driver with this config connects over
+    (``transport_choice.effective_transport``): its config's choice, else the
+    driver's, else tcp, an unknown driver included."""
+    cls = _DRIVER_REGISTRY.get(driver_id)
+    return effective_transport(config, cls.DRIVER_INFO if cls is not None else None)
 
 
 def get_driver_bridge_ports(driver_id: str) -> dict[str, dict[str, Any]]:
@@ -186,7 +195,7 @@ def _ssh_transports(info: dict[str, Any]) -> tuple[bool, bool]:
     """(connects over ssh, also connects some other way): the driver's
     transport, its ``transports``, and the choices of a ``transport`` field
     in its own schema (a device's Connection setting)."""
-    names = {str(info.get("transport") or "tcp").lower()}
+    names = {declared_transport(info)}
     names.update(str(t).lower() for t in info.get("transports") or [])
     choice = (info.get("config_schema") or {}).get("transport")
     if isinstance(choice, dict):
@@ -231,7 +240,7 @@ def list_registered_drivers() -> list[dict[str, Any]]:
             "description": driver_class.DRIVER_INFO.get("description", ""),
             "version": driver_class.DRIVER_INFO.get("version", ""),
             "author": driver_class.DRIVER_INFO.get("author", ""),
-            "transport": driver_class.DRIVER_INFO.get("transport", "tcp"),
+            "transport": declared_transport(driver_class.DRIVER_INFO),
             # Multi-transport drivers ([tcp, serial]) and bridge port
             # declarations — the connection picker offers "through a bridge"
             # for serial-capable drivers and lists bridge devices + their ports.

@@ -104,6 +104,7 @@ class Rereads:
     config: dict[str, Any]
     transport: Any
     _definition: dict[str, Any]
+    _effective_transport: Callable[[], str]
     _line_gap: Callable[[], float]
     _pace_line: Callable[[], Any]
     _link_open: Callable[[], bool]
@@ -358,7 +359,7 @@ class Rereads:
             key = f"command {entry} {sorted(shared.items(), key=lambda kv: kv[0])!r}"
             return key, ("command", (entry, shared))
         text = self._substitute_for_wire(f"commands.{command}.read_back", entry, all_params)
-        transport_type = self._definition.get("transport")
+        transport_type = self._effective_transport()
         if transport_type in ("osc", "http"):
             return f"{transport_type} {text}", (transport_type, text)
         return f"raw {text}", ("raw", self._raw_bytes(transport_type, text))

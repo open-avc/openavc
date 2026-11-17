@@ -46,6 +46,7 @@ from openavc.core.connection_fault import (
     typed_fault_from_exc,
 )
 from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
+from openavc.drivers.transport_choice import effective_transport
 from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.logger import get_logger
 
@@ -130,15 +131,11 @@ def _kept_silence_verdict(fault: ConnectionFault, driver: Any) -> ConnectionFaul
 
 def connection_descriptor(driver: BaseDriver) -> tuple[str, Any, str]:
     """Return (host, port, transport) for a driver's connection, for the
-    connection-fault classifier's message. Mirrors how BaseDriver.connect()
-    resolves the transport (device config overrides the driver default).
+    connection-fault classifier's message. The transport is the one
+    BaseDriver.connect() opens (transport_choice).
     """
     cfg = getattr(driver, "config", {}) or {}
-    transport = (
-        cfg.get("transport")
-        or driver.DRIVER_INFO.get("transport", "tcp")
-        or ""
-    ).lower()
+    transport = effective_transport(cfg, getattr(driver, "DRIVER_INFO", None))
     if transport == "serial":
         # Serial has no host; its "port" is the COM/tty path.
         return "", cfg.get("port", ""), transport

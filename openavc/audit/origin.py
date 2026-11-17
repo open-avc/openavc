@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from openavc.core.device_config import resolve_device_config
-from openavc.drivers.registry import get_driver_transport
+from openavc.drivers.registry import get_device_transport
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -72,7 +72,7 @@ def device_target(project: Any, device_id: str) -> dict[str, Any] | None:
         log.debug("Could not resolve %s for an audit", device_id, exc_info=True)
         out["reason"] = UNRESOLVED.format(name=name)
         return out
-    transport = str(cfg.get("transport") or get_driver_transport(device.driver) or "tcp").lower()
+    transport = get_device_transport(device.driver, cfg)
     out["transport"] = transport
     bridge_id = cfg.get("bridge")
     if bridge_id:

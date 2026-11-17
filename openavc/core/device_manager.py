@@ -66,6 +66,7 @@ from openavc.core.device_web_ui import DeviceWebUiMixin
 from openavc.core.pending_settings import PendingSettingsMixin
 from openavc.drivers.base import ConnectEndedError
 from openavc.drivers.registry import get_driver_class
+from openavc.drivers.transport_choice import declared_transport
 from openavc.core.device_config import bridge_first
 from openavc.core.event_bus import EventBus
 from openavc.core.installed_equipment import driver_label
@@ -750,7 +751,7 @@ class DeviceManager(
         """
         from openavc.transport.serial_transport import require_usb_adapter
 
-        driver_transport = (getattr(driver, "DRIVER_INFO", None) or {}).get("transport", "tcp")
+        driver_transport = declared_transport(getattr(driver, "DRIVER_INFO", None))
         try:
             followed = require_usb_adapter(driver.config, driver_transport)
         except ConnectionFaultError:

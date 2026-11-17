@@ -59,7 +59,7 @@ from openavc.core.device_manager import DeviceManager
 from openavc.core.device_traffic import TrafficEntry
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.registry import get_driver_class, get_driver_transport
+from openavc.drivers.registry import get_device_transport, get_driver_class
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -227,9 +227,7 @@ class DriverSandbox:
             "config": dict(self.config),
         }
         resolved = resolve_device_config(record, self.project_view)
-        transport = str(
-            resolved["config"].get("transport") or get_driver_transport(self.driver_id) or "tcp"
-        )
+        transport = get_device_transport(self.driver_id, resolved["config"])
         if transport == "serial":
             raise AuditError(SERIAL_REFUSED)
         self.resolved = resolved

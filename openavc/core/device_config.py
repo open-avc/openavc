@@ -36,6 +36,7 @@ from typing import Any, Iterable
 from openavc.core.typed_fields import trim_typed_fields
 from openavc.drivers.registry import (
     get_driver_bridge_ports,
+    get_device_transport,
     get_driver_default_config,
     get_driver_transport,
 )
@@ -282,14 +283,12 @@ def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
 
     ``resolved`` is what :func:`resolve_device_config` returns, which is also
     what the device manager holds for every device it was handed. The
-    transport is the device's own choice, else its driver's, else tcp, the
-    same order ``BaseDriver.connect`` takes.
+    transport is the one ``BaseDriver.connect`` opens (``transport_choice``:
+    the device's own choice, else its driver's, else tcp).
     """
     cfg = resolved.get("config") or {}
     driver = str(resolved.get("driver") or "")
-    transport = str(
-        cfg.get("transport") or get_driver_transport(driver) or "tcp"
-    ).lower()
+    transport = get_device_transport(driver, cfg)
     port = cfg.get("port")
     if transport == "serial":
         port = str(port) if port is not None else None

@@ -48,6 +48,7 @@ from typing import Any
 
 from openavc.core.connection_fault import bridge_port_missing
 from openavc.drivers.registry import get_driver_class, get_driver_default_config
+from openavc.drivers.transport_choice import configured_transport, declared_transport
 
 #: The label a bridge chosen without its port is refused by, as the Edit
 #: Device form names that field. Mirrors missingBridgeFields in
@@ -77,11 +78,11 @@ def connection_kind(config: dict[str, Any], driver_transport: str) -> str:
     Bridged when it names a bridge, its port picked or not yet (the Edit
     Device form is then on Through a bridge and asks for no IP address), or its
     transport is ``bridge`` (an IR device); serial when its transport, else its
-    driver's, is ``serial``.
+    driver's, is ``serial`` (transport_choice).
     """
     if config.get("bridge"):
         return "bridge"
-    transport = str(config.get("transport") or driver_transport or "tcp").lower()
+    transport = configured_transport(config) or declared_transport({"transport": driver_transport})
     if transport == "bridge":
         return "bridge"
     if transport == "serial":
@@ -133,7 +134,7 @@ def missing_for_driver(driver_id: str, config: dict[str, Any]) -> list[tuple[str
     return missing + missing_required_fields(
         info.get("config_schema") or {},
         config,
-        connection_kind(config, str(info.get("transport") or "tcp")),
+        connection_kind(config, declared_transport(info)),
     )
 
 

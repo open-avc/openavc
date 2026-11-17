@@ -34,6 +34,7 @@ from openavc.discovery.tier_matcher import (
     SignalRule,
 )
 from openavc.drivers.spec import DISALLOWED_OPEN_PORTS as _DISALLOWED_OPEN_PORTS
+from openavc.drivers.transport_choice import declared_transport
 
 log = logging.getLogger("discovery.hints")
 
@@ -973,7 +974,7 @@ def parse_driver_discovery(driver_info: dict[str, Any]) -> DiscoveryHint | None:
         driver_name=str(driver_info.get("name") or driver_id),
         manufacturer=str(driver_info.get("manufacturer") or ""),
         category=str(driver_info.get("category") or ""),
-        transport=str(driver_info.get("transport") or "tcp"),
+        transport=declared_transport(driver_info),
     )
 
     # --- Fingerprints -----------------------------------------------------

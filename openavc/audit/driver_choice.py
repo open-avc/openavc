@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.drivers.registry import get_driver_class
+from openavc.drivers.transport_choice import declared_transport
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -128,7 +129,7 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
         "manufacturer": info.get("manufacturer", ""),
         "version": installed_version,
         "format": fmt,
-        "transport": info.get("transport", ""),
+        "transport": declared_transport(info),
         "source": source,
         "files": files,
         "catalog_files_missing": missing,

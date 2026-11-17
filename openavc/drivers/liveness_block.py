@@ -62,6 +62,7 @@ class LivenessBlock:
     config: dict[str, Any]
     transport: Any
     _definition: dict[str, Any]
+    _effective_transport: Callable[[], str]
     HEALTH_INTERVAL_S: float
     HEALTH_TIMEOUT_S: float
     HEALTH_MAX_FAILURES: int
@@ -117,7 +118,7 @@ class LivenessBlock:
 
     async def _send_liveness_probe(self, block: dict[str, Any]) -> None:
         """Send the probe in the form this driver's transport takes."""
-        if self._definition.get("transport") == "osc":
+        if self._effective_transport() == "osc":
             await self.transport.send(self._osc_probe(block))
         else:
             await self.transport.send(self._line_probe(block))
