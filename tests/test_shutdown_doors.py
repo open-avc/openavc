@@ -46,7 +46,12 @@ def doors(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr(main, "_initialize_engine", initialize)
-    monkeypatch.setattr(main.audit_manager, "shutdown", AsyncMock())
+    stopping_at_the_audit: list[bool] = []
+
+    async def end_the_audit():
+        stopping_at_the_audit.append(engine.stopping)
+
+    monkeypatch.setattr(main.audit_manager, "shutdown", AsyncMock(side_effect=end_the_audit))
     monkeypatch.setattr(main.simulator_proxy, "aclose_client", AsyncMock())
     monkeypatch.setattr(restart.threading, "Timer", _Timer)
     monkeypatch.setenv("OPENAVC_SERVICE_MANAGED", "1")
@@ -58,6 +63,7 @@ def doors(tmp_path, monkeypatch):
         return await real_run(self, stage, step)
 
     monkeypatch.setattr(StopRun, "run", record)
+    engine.stopping_at_the_audit = stopping_at_the_audit
     yield engine, stages
     # A restart driven here left its engine stopped; nothing is left running.
 
@@ -85,6 +91,9 @@ async def test_a_restart_and_a_service_stop_run_the_same_stages(doors, monkeypat
     ):
         assert stage in stages
     assert main.audit_manager.shutdown.await_count == 2
+    # The server already says it is stopping when the audit ends, the
+    # restart's door included (it has no stop signal to say so first).
+    assert engine.stopping_at_the_audit == [True, True]
     assert main.simulator_proxy.aclose_client.await_count == 2
 
 

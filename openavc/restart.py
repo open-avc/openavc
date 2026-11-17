@@ -43,6 +43,10 @@ log = get_logger("openavc.main")
 
 # How long after the stop's deadline the watchdog ends the process anyway.
 WATCHDOG_MARGIN_SECONDS = 2.0
+# The longest a process ending for a restart can keep its port after it has
+# spawned its replacement: the stop's deadline, then the watchdog. The
+# replacement retries its port for longer than this (openavc.main).
+LONGEST_EXIT_SECONDS = STOP_SECONDS + WATCHDOG_MARGIN_SECONDS
 
 # The exit under way, held here so it is not collected while it runs.
 _exiting: set[asyncio.Task] = set()
@@ -72,7 +76,7 @@ async def _stop_and_exit(engine) -> None:
     # stop's do, not one level under the request's emit.
     detach_emit_chain()
     deadline = stop_deadline()
-    threading.Timer(STOP_SECONDS + WATCHDOG_MARGIN_SECONDS, lambda: os._exit(0)).start()
+    threading.Timer(LONGEST_EXIT_SECONDS, lambda: os._exit(0)).start()
 
     if not is_service_managed():
         spawn_replacement()

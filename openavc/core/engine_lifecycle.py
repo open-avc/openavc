@@ -513,7 +513,11 @@ class EngineLifecycleMixin:
         client.
 
         Each stage runs on its own (core/stop_stages.py): one that raises or
-        overruns is named and the rest still run. Returns what went wrong."""
+        overruns is named and the rest still run. Returns what went wrong.
+
+        ``stopping`` reads True from its first line, before the server's own
+        pieces end: a restart has no stop signal to say so first."""
+        self._stopping = True
         run = StopRun(deadline)
         await run.run("the server's start", lambda: _cancel_now(self.server_start))
         await run.run("the listen watcher", lambda: _cancel_now(self.listen_watcher))
@@ -603,8 +607,11 @@ class EngineLifecycleMixin:
         # Drain any in-flight state.changed EventBus emissions so they aren't
         # silently dropped mid-shutdown.
         await run.run("the pending events", self.state.flush_pending_events)
-        self.state.set("system.started", False, source="system")
+        await run.run("system.started", self._mark_stopped)
         log.info("Engine stopped")
+
+    def _mark_stopped(self) -> None:
+        self.state.set("system.started", False, source="system")
 
     def _stop_persister(self) -> None:
         if self.persister:

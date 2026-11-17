@@ -7,6 +7,7 @@ Usage:
     python -m openavc.main
 """
 
+import math
 import os
 import sys
 
@@ -882,7 +883,7 @@ def _bind_primary_port(plan):
     from openavc import listen_sockets
 
     port = config.TLS_PORT if config.TLS_ENABLED else config.HTTP_PORT
-    retries = 20 if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
+    retries = _replacement_bind_retries() if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
     try:
         inherited = os.environ.get("OPENAVC_LISTEN_FD")
         if inherited is not None:
@@ -896,6 +897,17 @@ def _bind_primary_port(plan):
         print(f"\n*** {msg} ***\n")
         status_folder.write_startup_error(exc.error_type, msg)
         raise SystemExit(1)
+
+
+def _replacement_bind_retries() -> int:
+    """How many times a restart's replacement tries its port: for as long as
+    the process it replaces may still hold it (restart.LONGEST_EXIT_SECONDS),
+    with two seconds to spare."""
+    from openavc import listen_sockets
+
+    return math.ceil(
+        (restart.LONGEST_EXIT_SECONDS + 2) / listen_sockets.BIND_RETRY_SECONDS
+    )
 
 
 def _settle_listening(plan) -> None:

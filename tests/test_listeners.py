@@ -453,9 +453,13 @@ def test_the_port_80_redirect_runs_beside_plain_http(started, monkeypatch):
 def test_a_restart_retries_the_bind_and_then_forgets_it_is_one(started, monkeypatch):
     import os
 
+    from openavc import listen_sockets, restart
+
     monkeypatch.setenv("OPENAVC_RESTARTING", "1")
     main.main()
-    assert started.binds == [(8080, {"retries": 20})]
+    assert started.binds == [(8080, {"retries": 24})]
+    # Longer than the process it replaces may keep the port.
+    assert 24 * listen_sockets.BIND_RETRY_SECONDS > restart.LONGEST_EXIT_SECONDS
     assert "OPENAVC_RESTARTING" not in os.environ
 
 

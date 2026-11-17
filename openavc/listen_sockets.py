@@ -171,12 +171,16 @@ def inherited_for_plan(value: str, plan: Any, port: int) -> list[socket.socket]:
         raise
 
 
+# How far apart a bind of an address in use is retried.
+BIND_RETRY_SECONDS = 0.5
+
+
 def bind_for_plan(
     plan: Any,
     port: int,
     *,
     retries: int = 1,
-    pause: float = 0.5,
+    pause: float = BIND_RETRY_SECONDS,
     fallback: bool = True,
 ) -> tuple[list[socket.socket], Any]:
     """Bind every host of ``plan`` on ``port``. Returns the sockets and the

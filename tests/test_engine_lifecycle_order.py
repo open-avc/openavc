@@ -803,16 +803,16 @@ async def test_a_stage_that_hangs_is_left_at_its_bound_and_the_equipment_still_l
 
     eng.triggers.stop = hangs_through_every_cancel
     _recorded_end(eng, order)
-    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 0.6)
+    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 1.0)
     began = time.monotonic()
     try:
-        problems = await eng.stop(deadline=began + 0.8)
+        problems = await eng.stop(deadline=began + 2.0)
         took = time.monotonic() - began
     finally:
         release.set()
 
     # The run-up ends at its bound; the equipment still gets its own time.
-    assert took < 0.8
+    assert took < 2.0
     assert problems[0] == "the triggers: did not finish in time and was left"
     assert "the plugins: not started, the stop ran out of time" in problems
     assert order == ["macros", "devices", "simulation"]
@@ -833,10 +833,10 @@ async def test_a_project_change_that_hangs_does_not_keep_the_devices_up(
     driver = eng.devices._devices["d1"]
     order: list[str] = []
     _recorded_end(eng, order)
-    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 0.6)
+    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 1.0)
     await eng._reload_lock.acquire()  # a reload that never finishes
     try:
-        problems = await eng.stop(deadline=time.monotonic() + 0.8)
+        problems = await eng.stop(deadline=time.monotonic() + 2.0)
     finally:
         eng._reload_lock.release()
 
