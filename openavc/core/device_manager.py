@@ -616,9 +616,9 @@ class DeviceManager(
     async def _readd_for_new_driver(self, driver_id: str) -> list[str]:
         """Replace every live device on ``driver_id`` so it picks up the
         reloaded class (:meth:`_replace_device`), and every device the driver
-        could not set up before. The ids re-added; a device that fails
-        is logged (one the driver cannot set up is kept with why) and the
-        rest still run.
+        could not set up before. The ids a driver runs again; a device that
+        fails is logged (one the driver cannot set up is kept with why), one
+        left waiting for a driver is not named, and the rest still run.
 
         Registered, not dialed: the caller asks for the bring-up round, which
         the engine runs after re-applying any simulation redirect to the new
@@ -635,6 +635,8 @@ class DeviceManager(
         for device_id, config in affected:
             try:
                 await self._replace_device(device_id, config, defer_connect=True)
+                if self.status_of(device_id) != RUNNING:
+                    continue
                 readded.append(device_id)
                 log.info(
                     f"Device '{device_id}' picked up the reloaded driver and stayed paused"

@@ -138,3 +138,20 @@ async def test_reload_keeps_a_paused_device_paused_and_undialed(dm, core):
 
     dm._cancel_pause_expiry("dev1")
     await asyncio.sleep(0)
+
+
+async def test_a_device_whose_driver_is_gone_is_not_named_as_reconnected(dm, core):
+    """A driver renamed or taken away leaves its devices waiting for it; the
+    rebuild that follows says so instead of naming them as reconnected."""
+    await dm.add_device(DEVICE_CFG)
+    rounds: list[int] = []
+    dm.request_bringup = lambda: rounds.append(1)
+    _DRIVER_REGISTRY.pop("acme_reload_widget")
+    try:
+        reconnected = await dm.reload_driver("acme_reload_widget")
+    finally:
+        _DRIVER_REGISTRY["acme_reload_widget"] = ReloadTCPDriver
+
+    assert reconnected == []
+    assert dm.status_of("dev1") == "orphaned"
+    assert rounds == []
