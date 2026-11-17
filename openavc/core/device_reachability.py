@@ -127,11 +127,8 @@ async def _test_device(device: Any, engine: Any, subject: str) -> dict[str, Any]
     resolved = resolve_device_config(device, engine.project)
     dialled = _dialled(engine, device.id) or resolved
     binding = bridge_binding(dialled.get("config"))
-    if binding.unresolved:
-        label = _device_name(engine.project, binding.bridge)
-        return _failure(binding.problem(label), connection_of(dialled).address())
-    if binding.emits:
-        return await _through_bridge(binding.bridge, engine, connection_of(dialled).address())
+    if binding.unresolved or binding.emits:
+        return await _bridge_answer(binding, engine, connection_of(dialled).address())
     live = _connections(engine, "live_connections")
     own = next((c for c in live if c.device_id == device.id), None)
     if own is not None and _opens_connection(dialled):
@@ -143,9 +140,26 @@ async def _test_device(device: Any, engine: Any, subject: str) -> dict[str, Any]
         result["error"] = _sent_through(
             result["error"], _device_name(engine.project, binding.bridge),
         )
-    if not connection_of(dialled).simulated:
-        return result
-    where = _where(connection_of(resolved))
+    if connection_of(dialled).simulated:
+        _say_simulated(result, connection_of(resolved), subject)
+    return result
+
+
+async def _bridge_answer(
+    binding: BridgeBinding, engine: Any, address: dict[str, Any],
+) -> dict[str, Any]:
+    """The test of a device whose recorded binding decides it: one that cannot
+    be completed is not tried, and an IR device's bridge is tested instead."""
+    if binding.unresolved:
+        label = _device_name(engine.project, binding.bridge)
+        return _failure(binding.problem(label), address)
+    return await _through_bridge(binding.bridge, engine, address)
+
+
+def _say_simulated(result: dict[str, Any], equipment: Any, subject: str) -> None:
+    """Mark a test that reached the simulator, naming the equipment's own
+    address (``equipment``, the connection the project sets)."""
+    where = _where(equipment)
     who = subject or "This device"
     result["simulated"] = True
     result["note"] = (
@@ -153,7 +167,6 @@ async def _test_device(device: Any, engine: Any, subject: str) -> dict[str, Any]
         f"equipment at {where}." if where else
         f"{who} is simulated, so the test reached the simulator, not the equipment."
     )
-    return result
 
 
 def _device_name(project: Any, device_id: str) -> str:

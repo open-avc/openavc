@@ -200,6 +200,11 @@ def _resolve_named(config: dict, project, bridge_id: str, port_id: str) -> dict:
             bridge_id, bridge_dev.driver, port_id,
         )
         return _recorded(config, PORT_UNKNOWN)
+    return _through_port(config, port_def, bridge_dev, project)
+
+
+def _through_port(config: dict, port_def: dict, bridge_dev, project) -> dict:
+    """A binding to a port the bridge advertises, by the port's kind."""
     kind = port_def.get("kind")
     if kind == "ir":
         # Sends through the live bridge instance at send time

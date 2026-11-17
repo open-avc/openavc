@@ -285,6 +285,12 @@ class DeviceReconnectMixin:
             f"device.{device_id}.reconnect_failed", True, source="device_manager"
         )
 
+    def _nowhere_to_dial(self, device_id: str, driver: BaseDriver | None) -> bool:
+        """No address, or a bridge binding that cannot be completed."""
+        if driver is None:
+            return False
+        return driver.address_missing() or bool(self.bridge_problem(device_id))
+
     def _start_reconnect(self, device_id: str) -> None:
         """Start a background reconnect loop for a device.
 
@@ -300,7 +306,7 @@ class DeviceReconnectMixin:
         if device_id in self._reconnect_tasks:
             return  # Already reconnecting
         driver = self._devices.get(device_id)
-        if driver is not None and (driver.address_missing() or self.bridge_problem(device_id)):
+        if self._nowhere_to_dial(device_id, driver):
             self._stop_reconnect_for_permanent_fault(device_id, INVALID_CONFIG)
             return
         if driver is not None and driver.login_missing():
