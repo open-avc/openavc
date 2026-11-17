@@ -99,10 +99,21 @@ def contract_example(detail: Any) -> str:
         return f'"{detail["rule"]}" ({detail.get("error", "")})'
     if "child_type" in detail:
         return placement_example(detail)
+    return _value_fault_example(detail) or _what_it_names(detail)
+
+
+def _value_fault_example(detail: dict[str, Any]) -> str:
+    """A value that did not convert, with its declared type, or a status
+    value of the wrong type, with what is wrong with it; else ""."""
     if "raw" in detail and "type" in detail:
         return f'"{detail["raw"]}" (declared {detail["type"]})'
     if detail.get("state") and detail.get("problem"):
         return f'{detail["state"]} ({detail["problem"]})'
+    return ""
+
+
+def _what_it_names(detail: dict[str, Any]) -> str:
+    """The reply, the state, the command or the address an event names."""
     return str(
         detail.get("text") or detail.get("state")
         or detail.get("command") or detail.get("address") or ""
