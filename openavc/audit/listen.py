@@ -80,6 +80,9 @@ NOT_CONNECTED = "not_connected"
 DONE = "done"
 FAILED = "failed"
 STOPPED = "stopped"
+# Keep listening reopens a window that ended: listened to the end, or ended
+# before the driver connected.
+_REOPENS = {DONE: LISTENING, FAILED: NOT_CONNECTED}
 
 NO_CONNECTION_SET = "Enter the connection settings first."
 # Keep listening on an attempt whose pass has ended (it failed, or the run
@@ -366,26 +369,29 @@ class ListenPass:
 
     def extend(self, seconds: float = EXTEND_SECONDS) -> None:
         """Keep listening longer, never past ``max_seconds`` from the start."""
-        if self.task is None or self.task.done():
-            raise AuditError(ATTEMPT_ENDED)
-        cap = self.started_at + self.max_seconds
         now = time.time()
-        if now >= cap:
-            raise AuditError(
-                f"The audit listens for {round(self.max_seconds / 60)} minutes at most."
-            )
+        cap = self._extend_cap(now)
         self.ends_at = min(max(self.ends_at or now, now) + seconds, cap)
-        if self.status == DONE:
-            self.status = LISTENING
-            self.finished_at = None
-        elif self.status == FAILED:
-            self.status = NOT_CONNECTED
+        if self.status in _REOPENS:
+            self.status = _REOPENS[self.status]
             self.finished_at = None
         self._timeline(
             "listen.extended",
             f"Listening until {time.strftime('%H:%M:%S', time.localtime(self.ends_at))}.",
         )
         self._dirty = True
+
+    def _extend_cap(self, now: float) -> float:
+        """When the window may be held to, or the refusal: an attempt that
+        has ended has nothing to listen with, and five minutes is the most."""
+        if self.task is None or self.task.done():
+            raise AuditError(ATTEMPT_ENDED)
+        cap = self.started_at + self.max_seconds
+        if now >= cap:
+            raise AuditError(
+                f"The audit listens for {round(self.max_seconds / 60)} minutes at most."
+            )
+        return cap
 
     def end_window_now(self, why: str) -> None:
         """End the listening window early, because the audit is about to send
@@ -434,18 +440,22 @@ class ListenPass:
         it stops, is only logged."""
         if self.status == FAILED and self.error:
             return
-        if isinstance(exc, AuditError):
-            self._fail(str(exc))
-        elif not self.sandbox.started:
-            self._fail(f"The driver could not start: {error_sentence(exc)}")
-        else:
-            self._fail(
-                f"The audit stopped listening: {error_sentence(exc).rstrip('.')}. "
-                "Change the connection settings or connect again."
-            )
+        self._fail(self._failure_sentence(exc))
         if self.sandbox.started:
             ending = self.run.end_attempt() if self.run.listen is self else self.stop()
             self.session.track_task(asyncio.create_task(ending))
+
+    def _failure_sentence(self, exc: BaseException) -> str:
+        """A refusal before the driver started as it is; anything else by
+        whether the driver had started."""
+        if isinstance(exc, AuditError):
+            return str(exc)
+        if not self.sandbox.started:
+            return f"The driver could not start: {error_sentence(exc)}"
+        return (
+            f"The audit stopped listening: {error_sentence(exc).rstrip('.')}. "
+            "Change the connection settings or connect again."
+        )
 
     def _fail(self, message: str) -> None:
         self.status = FAILED
