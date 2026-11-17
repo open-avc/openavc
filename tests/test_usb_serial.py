@@ -460,6 +460,18 @@ def test_the_stored_name_is_dialled_when_this_host_cannot_list_its_ports(monkeyp
     assert st.require_usb_adapter(cfg) is cfg
 
 
+def test_the_stored_name_is_dialled_when_listing_the_ports_fails(monkeypatch):
+    """A listing that raises is the same fact as none: the stored name is
+    dialled, and the record that names it reads without an error."""
+    def broken():
+        raise OSError("the port list could not be read")
+
+    monkeypatch.setattr(list_ports_mod, "comports", broken)
+    cfg = _bound()
+    assert st.require_usb_adapter(cfg) is cfg
+    assert st.resolve_usb_binding(cfg) is cfg
+
+
 @pytest.mark.parametrize(
     "cfg",
     [

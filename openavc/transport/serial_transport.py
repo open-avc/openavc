@@ -71,25 +71,32 @@ def list_serial_ports() -> list[dict[str, Any]]:
     what the connection binds to for a stable identity across reboot/replug —
     cheap CH340-class adapters often expose none, in which case the integrator
     binds to the path and accepts that it may move. Returns an empty list if
-    pyserial's platform enumeration backend can't be imported.
+    pyserial's platform enumeration backend can't be imported or its listing
+    fails.
     """
     ports = _attached_ports()
     if ports is None:
-        log.warning("serial.tools.list_ports unavailable; cannot enumerate serial ports")
+        log.warning("Could not list this host's serial ports")
         return []
     return ports
 
 
 def _attached_ports() -> list[dict[str, Any]] | None:
     """The ports :func:`list_serial_ports` lists, or ``None`` when this host
-    cannot enumerate its ports at all, which is not the same as having none."""
+    cannot enumerate its ports at all, which is not the same as having none:
+    pyserial missing, or its listing raising."""
     try:
         from serial.tools import list_ports
     except ImportError:
         return None
+    try:
+        found = list_ports.comports()
+    except Exception:
+        log.debug("Could not list the serial ports", exc_info=True)
+        return None
 
     ports: list[dict[str, Any]] = []
-    for p in list_ports.comports():
+    for p in found:
         vid = getattr(p, "vid", None)
         pid = getattr(p, "pid", None)
         serial_number = (getattr(p, "serial_number", None) or "").strip()
