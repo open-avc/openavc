@@ -1337,14 +1337,13 @@
    },
    {
     "op": "builder",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
     "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
      "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
     ],
-    "f": "1,2",
+    "f": "1",
     "n": "home||",
-    "b": "h1:text h1:text",
+    "b": "h1:text",
     "v": "font-size: 14px; --panel-bg: #010203; --panel-accent: #123456;",
     "x": {
      "edit": true,
@@ -1367,10 +1366,24 @@
       "textRefusals": {}
      },
      {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "2",
+    "n": "home||",
+    "p": [
+     {
       "type": "openavc:editor-text-defaults",
       "fontSizeRem": {},
       "editableText": [
-       "btn",
        "btn"
       ],
       "textRefusals": {}
@@ -1387,13 +1400,8 @@
    },
    {
     "op": "builder",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "home||",
-    "b": "h1:text",
     "p": [
      {
       "type": "openavc:editor-text-defaults",
@@ -1439,29 +1447,6 @@
    {
     "op": "builder",
     "f": "5",
-    "n": "home||",
-    "p": [
-     {
-      "type": "openavc:editor-text-defaults",
-      "fontSizeRem": {},
-      "editableText": [
-       "btn"
-      ],
-      "textRefusals": {}
-     },
-     {
-      "type": "openavc:editor-ready"
-     }
-    ],
-    "r": [
-     "source",
-     "origin",
-     "data"
-    ]
-   },
-   {
-    "op": "builder",
-    "f": "6",
     "n": "home||",
     "p": [
      {

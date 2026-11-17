@@ -15,15 +15,17 @@
  *
  * The rule worth knowing before changing anything here: element defaults are
  * merged into what each renderer draws, so a theme that moves them only shows
- * on a redraw, and `apply` asks for one -- through the panel, at call time,
- * because tests replace its `renderCurrentPage`. A redraw is itself a draw that
- * applies the theme, so `apply` does nothing while its own redraw runs. And
- * the first page waits for the theme (`drawWhenReady`), for at most
- * FIRST_THEME_WAIT_MS, rather than drawing everything twice.
+ * on a redraw, and `apply` asks the panel for one (`repaint`). Whether a page
+ * is drawn again is the panel's to decide, at its one door into a page draw
+ * (`renderCurrentPage`): a page already up is, a theme put on by the draw in
+ * progress is that draw. A redraw is itself a draw that applies the theme, so
+ * `apply` does nothing while its own redraw runs. And the first page waits for
+ * the theme (`drawWhenReady`), for at most FIRST_THEME_WAIT_MS, rather than
+ * drawing everything twice.
  *
- * The panel lends what this reads (`redraw`, `stateArrived` -- whether the
- * first state snapshot is in, which is what a repaint waits for, not whether a
- * page is up -- and the definition's settings), each at call time.
+ * The panel lends what this asks and reads (`draw`, `repaint` and the
+ * definition's settings), each at call time, because tests replace its
+ * `renderCurrentPage`.
  */
 
 import { assetUrl, basePath } from './base_path.js';
@@ -283,7 +285,7 @@ export class PanelTheme {
         // lands. Only here: the panel's renderCurrentPage() itself still draws
         // when called, which is what every other caller (and every test) expects.
         if (this.firstSettled) {
-            this._host.redraw();
+            this._host.draw();
         } else if (!this._awaitingFirst) {
             this._awaitingFirst = true;
             this._drawWhenThemeArrives();
@@ -316,13 +318,12 @@ export class PanelTheme {
         return null;
     }
 
-    /** Redraw the page when element defaults moved: they only take effect on a draw. */
+    /** Ask for the page again when element defaults moved: they only take effect on a draw. */
     _repaintIfChanged(before, repaint) {
         if (!repaint) return;
         if (before === JSON.stringify(this.elementDefaults || {})) return;
-        if (!this._host.stateArrived()) return;
         this._applying = true;
-        this._host.redraw();
+        this._host.repaint();
         this._applying = false;
     }
 
@@ -342,14 +343,14 @@ export class PanelTheme {
         const drawFirst = () => {
             if (this.firstSettled) return;
             this.firstSettled = true;
-            this._host.redraw();
+            this._host.draw();
         };
         const giveUpWaiting = setTimeout(drawFirst, FIRST_THEME_WAIT_MS);
         this.apply(this._host.settings() || {}, { repaint: false }).then(() => {
             clearTimeout(giveUpWaiting);
             // Already drew without it: this is now an ordinary theme change to
             // a page that is up, which is the repaint apply normally does.
-            if (this.firstSettled) this._host.redraw();
+            if (this.firstSettled) this._host.repaint();
             else drawFirst();
         });
     }

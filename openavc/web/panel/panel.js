@@ -294,11 +294,11 @@ class PanelApp {
         };
     }
 
-    /** What the theme reads from the panel, each at call time. */
+    /** What the theme reads from the panel and asks of it, each at call time. */
     _themeHost() {
         return {
-            redraw: () => this.renderCurrentPage(),
-            stateArrived: () => this.snapshotReceived,
+            draw: () => this.renderCurrentPage(),
+            repaint: () => this._repaint(),
             settings: () => this.uiDef?.settings,
         };
     }
@@ -1066,8 +1066,55 @@ class PanelApp {
         this.navigateToPage(pageId);
     }
 
+    /**
+     * THE door into a page draw. Every way a page comes to be drawn asks
+     * here: a definition (through the theme's first-draw wait), a theme that
+     * lands (`_repaint`), the Programmer's messages, a turn of the glass, a
+     * page change, the idle return, a ui/ file changing.
+     *
+     * One draw at a time. A draw asked for while one runs is drawn when that
+     * one ends, never inside it: a draw inside a draw would leave two pages
+     * stacked in the root, each control bound twice. A theme the draw itself
+     * puts on is the exception, since the draw puts it on before it draws a
+     * control (`_repaint`).
+     */
     renderCurrentPage() {
         if (!this.uiDef) return;
+        if (this._pageDraw) {
+            this._pageDraw.again = true;
+            return;
+        }
+        this._pageDraw = { again: false };
+        try {
+            do {
+                this._pageDraw.again = false;
+                this._drawCurrentPage();
+            } while (this._pageDraw.again);
+        } finally {
+            this._pageDraw = null;
+        }
+    }
+
+    /**
+     * The look changed under the page on screen (a theme landed): the page
+     * drawn again, and each overlay open over it opened again, in order.
+     * Nothing while no page is up, since the first draw reads the theme
+     * anyway, nor while a draw runs: it put this theme on before drawing any
+     * control.
+     */
+    _repaint() {
+        if (this._pageDraw || !this._surfaces.page.nodes.length) return;
+        const open = this.overlayStack;
+        this.renderCurrentPage();
+        const pages = this.uiDef?.pages || [];
+        for (const id of open) {
+            const page = pages.find((p) => p.id === id);
+            if (page && opensOver(page)) this.renderOverlay(page);
+        }
+    }
+
+    /** One draw of the page. */
+    _drawCurrentPage() {
         // Everything below is about to be replaced, including whatever node an
         // in-place edit was holding.
         this._textEditor.release();

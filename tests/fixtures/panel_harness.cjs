@@ -8926,7 +8926,7 @@ function themeMount(pending, { answers = {}, edit = false } = {}) {
         const step = {};
         step.r = document.documentElement.getAttribute('style') || '';
         step.ff = document.body.style.fontFamily;
-        // Every page surface: a draw inside a draw leaves two.
+        // Every page surface, so a draw inside a draw would show as two.
         step.bg = [...app.root.querySelectorAll(':scope > .panel-page')].map(layers);
         step.b = [...app.root.querySelectorAll('[data-element-id="b1"]')].map((b) => b.getAttribute('style'));
         const arcs = [...app.root.querySelectorAll('[data-element-id="g1"] path:last-of-type')];
@@ -9078,7 +9078,7 @@ Object.assign(tests, {
             m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(1000); await m.wait(1500); await m.wait(1000);
         });
         // A page shown by a navigation before any state has arrived: its theme
-        // lands later and does not draw the page again.
+        // lands later and the page is drawn again with it.
         await run('navigated_before_state', { answers: { t1: { after: 200, answer: t1 } } }, async (m) => {
             m.definition({ theme_id: 't1' }); m.app.handleMessage({ type: 'ui.navigate', page_id: 'main' }); m.look();
             await m.wait(200); await m.wait(1000); m.snapshot(); await m.wait(10);
@@ -11592,6 +11592,123 @@ Object.assign(tests, {
         });
         const failures = [...failedChecks(steps), ...steps.filter((s) => s.op !== 'check' && s.threw).map((s) => `${s.op} threw ${s.threw}`)];
         assert(failures.length === 0, failures.join('\n'));
+    },
+});
+
+// --- The doors into a page draw ----------------------------------------------
+//
+// A page is drawn because a definition arrived, a theme landed, the Programmer
+// sent the canvas or the Preview something, the glass turned, or somebody went
+// to a page. Each goes in through one entry: no draw runs inside another, a
+// theme put on by the draw itself is that draw, and a page drawn before its
+// theme landed is drawn again when it does.
+
+/** The theme pages' button and gauge, and a label reading `var.x`, which registers one binding. */
+const DOOR_ELEMENTS = [
+    { id: 'b1', type: 'button', label: 'Go' },
+    { id: 'g1', type: 'gauge', label: 'Level' },
+    { id: 'l1', type: 'label', text: 'x', bindings: { show: { value: { key: 'var.x' } } } },
+];
+
+/** A theme rig's steps from `from` on that leave more than one page, or a binding twice. */
+function stackedDraws(steps, from = 0) {
+    return steps.slice(from).map((s, i) => [i + from, s])
+        .filter(([, s]) => s.bg.length > 1 || s.nb > 1)
+        .map(([i, s]) => `step ${i}: ${s.bg.length} pages, ${s.nb} bindings`);
+}
+
+/** A theme whose button defaults differ from no theme at all. */
+const DOOR_THEME = {
+    id: 'late', name: 'late', variables: { panel_bg: '#101820' },
+    element_defaults: { button: { bg_color: '#123456' } }, page_defaults: {},
+};
+
+Object.assign(tests, {
+    async a_theme_put_on_by_a_page_draw_draws_that_page_once() {
+        const got = {};
+        const t1 = themeFixture('t1');
+        const t2 = themeFixture('t2', { element_defaults: { button: { bg_color: '#654321' } } });
+        // The Theme Studio's working copy, and a change to it that moves a control's defaults.
+        await themeStudioCase(got, 'studio', async (m) => {
+            m.init({ theme_id: 't1' }, t1, { elements: DOOR_ELEMENTS });
+            m.init({ theme_id: 't1' }, { ...t2, id: 't1' }, { elements: DOOR_ELEMENTS });
+        });
+        // A running panel naming the theme in hand again after one that could not be had.
+        await themeCase(got, 'live', { answers: { t1 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }, { elements: DOOR_ELEMENTS }); await m.wait(10);
+            m.definition({ theme_id: 'gone' }, { elements: DOOR_ELEMENTS }); await m.wait(10);
+            m.definition({ theme_id: 't1' }, { elements: DOOR_ELEMENTS }); await m.wait(10);
+        });
+        const failures = [...stackedDraws(got.studio), ...stackedDraws(got.live)];
+        const draws = got.studio.map((s) => s.n);
+        if (JSON.stringify(draws) !== '[1,2]') failures.push(`the Theme Studio drew ${JSON.stringify(draws)} times, not once per message`);
+        const live = got.live.map((s) => s.n);
+        if (live[live.length - 1] - live[live.length - 3] !== 1) failures.push(`the last definition drew ${live[live.length - 1] - live[live.length - 3]} times, not once`);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_page_drawn_before_its_theme_lands_is_drawn_again_when_it_does() {
+        const got = {};
+        const t1 = themeFixture('t1');
+        await themeCase(got, 'navigated', { answers: { t1: { after: 200, answer: t1 } } }, async (m) => {
+            m.definition({ theme_id: 't1' });
+            m.app.handleMessage({ type: 'ui.navigate', page_id: 'main' }); m.look();
+            await m.wait(200);
+        });
+        const last = got.navigated[got.navigated.length - 1];
+        assert(last.n === 2, `the page was drawn ${last.n} times, not again when its theme landed`);
+        assert(/rgb\(18, 52, 86\)/.test(last.b[0] || ''), `the button kept its unthemed look: ${last.b[0]}`);
+    },
+
+    async a_theme_that_lands_after_a_dialog_opened_leaves_it_open() {
+        const failures = [];
+        const fetch = { '/api/themes/late': { ok: true, body: DOOR_THEME } };
+        // The Programmer's Preview, shown the dialog before the theme answers.
+        const preview = await driveCase({
+            ...PREVIEW, fetch,
+            steps: [
+                init(pinUi('pv', PREVIEW_PAGES(), { settings: { theme_id: 'late' } }), { pageId: 'dlg' }), ['check', 'stack', ['dlg']],
+                ['settle'], ['check', 'stack', ['dlg']], ['check', 'overlays', 1], ['check', 'rootHolds', ['h1']],
+            ],
+        });
+        for (const why of failedChecks(preview)) failures.push(`Preview: ${why}`);
+        // A running panel, the dialog opened before the theme answers.
+        const live = await driveCase({
+            ui: pinUi('live', NAV_PAGES(), { settings: { theme_id: 'late' } }), fetch,
+            steps: [['nav', 'dlg'], ['settle'], ['check', 'stack', ['dlg']], ['check', 'overlays', 1], ['check', 'rootHolds', ['h1']]],
+        });
+        for (const why of failedChecks(live)) failures.push(`panel: ${why}`);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    a_draw_asked_for_inside_a_draw_runs_after_it() {
+        const app = mkApp();
+        app.send = () => {};
+        app.uiDef = pinUi('nested', [pinPage('home', {
+            elements: [pinLabel('a', { bindings: { show: { value: { key: 'var.x' } } } }), pinLabel('b')],
+            placements: { a: box(1), b: box(2) },
+        })]);
+        app.currentPage = 'home';
+        app.snapshotReceived = true;
+        // The first control drawn asks for the page again, once.
+        const draw = app.renderElement.bind(app);
+        let asked = false;
+        app.renderElement = (def) => {
+            if (!asked) { asked = true; app.renderCurrentPage(); }
+            return draw(def);
+        };
+        try {
+            app.renderCurrentPage();
+            const pages = app.root.querySelectorAll(':scope > .panel-page');
+            assert(pages.length === 1, `${pages.length} pages in the root, not 1`);
+            const bound = app._surfaces.everyBinding().map((b) => b.elementDef?.id);
+            assert(JSON.stringify(bound) === '["a"]', `bound ${JSON.stringify(bound)}, not a once`);
+            const drawn = Object.keys(app._surfaces.everyControl()).sort();
+            assert(JSON.stringify(drawn) === '["a","b"]', `controls ${JSON.stringify(drawn)}`);
+            assert(pages[0].querySelectorAll('[data-element-id]').length === 2, 'the page holds both controls');
+        } finally {
+            app.root.textContent = '';
+        }
     },
 });
 
