@@ -154,6 +154,29 @@ async def test_a_yaml_driver_with_a_null_transport_connects_over_tcp(registered)
         await server.wait_closed()
 
 
+class _AcmeBuilds(BaseDriver):
+    """Records the transport connect() asks the ladder to build, then stops."""
+
+    DRIVER_INFO = {"id": "acme_builds", "transport": "tcp", "commands": {}, "state_variables": {}}
+
+    async def send_command(self, command: str, params: dict[str, Any] | None = None) -> Any:
+        return None
+
+    async def _create_transport(self, transport_type: str) -> None:
+        self.built = transport_type
+        raise ConnectionError("stop here")
+
+
+@pytest.mark.parametrize("written, built", [("Serial", "serial"), ("TCP", "tcp"), (None, "tcp")])
+async def test_connect_builds_the_transport_the_rule_reads(written, built):
+    """A hand-written project's `Serial` connects as serial, as Edit Device shows it."""
+    driver = _AcmeBuilds("acme1", {"host": "192.0.2.4", "port": "/dev/ttyUSB0", "transport": written},
+                         StateStore(), EventBus())
+    with pytest.raises(ConnectionError):
+        await driver.connect()
+    assert driver.built == built
+
+
 # --- a device that picks another of its driver's transports ----------------
 
 

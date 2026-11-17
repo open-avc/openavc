@@ -8,11 +8,11 @@ key). Else tcp.
 
 A null, a blank or a missing value is no choice, at either level: a driver
 file that writes ``transport: null`` reads as tcp everywhere, as it would with
-the key left out. The driver checker refuses such a file at the doors where a
-driver is written; this is how one already installed is read. A name is read
-lower-cased, as the transports are lower-case words and every transport
-builder is keyed by one, so ``Serial`` in a hand-written project connects as
-serial, the way Edit Device shows it.
+the key left out. The driver checker refuses a YAML file written that way at
+the doors where a driver is written; this is how one already installed is
+read. A name is read lower-cased, as the transports are lower-case words and
+every transport builder is keyed by one, so ``Serial`` in a hand-written
+project connects as serial, the way Edit Device shows it.
 
 Every reader asks this: the connect, the YAML runtime's choice of wire form,
 a device's connection record (``core/device_config.connection_of``), the
