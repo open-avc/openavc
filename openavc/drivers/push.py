@@ -14,7 +14,11 @@ one of five shapes:
 The rules worth knowing before changing anything here:
 
 * A channel that cannot open never takes the device down. Polling still
-  covers it, so each failure is a logged gap and the connect goes on.
+  covers it, so each failure is a logged gap and the connect goes on. The
+  one exception is a refused login: an event stream hands each answer's
+  status to the driver's credential check (``_judge_event_stream``), and a
+  refusal it settles drops the connection as ``auth_failed``, as a refused
+  poll does, since every retry would be one more failed login on the device.
 * Every delivery counts as the device answering (``_counting_push``): the poll
   loop's silence check reads ``_push_receives``, so a device that only pushes
   is not dropped as silent.
@@ -32,19 +36,23 @@ the driver object: Python drivers override ``_handle_push_datagram``,
 ``_handle_push_http`` and ``_on_push_session`` and read ``push_callback_url``
 and ``push_session``. ``BaseDriver.__init__`` calls ``_init_push()``, and
 ``BaseDriver`` supplies what this needs from its host: ``DRIVER_INFO``,
-``device_id``, ``config``, ``transport``, ``_connected``, ``udp_redirect``,
-``send_command()``, ``on_data_received()``, ``_resolve_delimiter()`` and
+``device_id``, ``config``, ``transport``, ``_connected``, ``_last_fault``,
+``udp_redirect``, ``send_command()``, ``on_data_received()``,
+``_resolve_delimiter()``, ``_handle_transport_disconnect()`` and
 ``list_children()``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import re
 from collections.abc import Callable
 from typing import Any
 
 from openavc.core.condition_eval import reads_as_on
+from openavc.core.connection_fault import ConnectionFaultError, typed_fault_from_exc
+from openavc.transport.http_client import StreamOwner
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the driver runtime's name, which the
@@ -348,7 +356,9 @@ class PushChannel:
         SSE rides the driver's own HTTP session (auth + TLS settings apply),
         so it needs the HTTP transport — no listener, no source demux. The
         stream owns reconnect/backoff; a stream that can't connect is a
-        logged gap covered by polling, never a device fault. A ``session:``
+        logged gap covered by polling, and a device fault only when the
+        credential check settles a refused login from its answers
+        (:meth:`_event_stream_answer`). A ``session:``
         block turns the stream into a device session: the stream reports the
         id the device gave it and the registration commands run against it,
         on every (re)open.
@@ -375,11 +385,42 @@ class PushChannel:
                     idle_timeout=idle_timeout,
                     name=self.device_id,
                     session=session,
-                    on_session=self._on_push_session if session else None,
+                    owner=StreamOwner(
+                        on_session=self._on_push_session if session else None,
+                        on_answer=functools.partial(self._event_stream_answer, path),
+                    ),
                 )
             )
         if streams:
             self._push_subscription = streams
+
+    def _event_stream_answer(self, path: str, status: int) -> bool:
+        """One answer the event stream at ``path`` got, for the credential
+        check; True when it settled a refused login, which drops the
+        connection as a refused poll does, and the stream ends. A connection
+        already dropped (another stream's verdict, the poll's) ends the stream
+        without a second drop."""
+        if not self._connected:
+            return True
+        try:
+            self._judge_event_stream(path, status)
+        except ConnectionFaultError as exc:
+            log.warning(
+                f"[{self.device_id}] Event stream {path} refused the "
+                f"credential; dropping the connection"
+            )
+            self._last_fault = typed_fault_from_exc(
+                exc, host=self.config.get("host", ""), port=self.config.get("port"),
+            )
+            self._handle_transport_disconnect()
+            return True
+        return False
+
+    def _judge_event_stream(self, path: str, status: int) -> None:
+        """Raise the typed ``auth_failed`` when an event-stream answer settles
+        a refused login. The base driver settles none (the stream retries);
+        the YAML runtime's credential check (``drivers/http_credential.py``)
+        overrides it."""
 
     def _sse_session(
         self, push_def: dict[str, Any], paths: list[Any],

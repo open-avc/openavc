@@ -730,7 +730,7 @@ def test_the_credential_rules_say_why_they_drop_the_connection(caplog) -> None:
     )
     assert [(r.levelname, r.getMessage()) for r in caplog.records
             if r.name == "openavc.drivers.configurable"] == [
-        ("WARNING", "[dev1] 3 queries refused and none answered; dropping the connection"),
+        ("WARNING", "[dev1] 3 requests refused and none answered; dropping the connection"),
     ]
 
 

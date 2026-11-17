@@ -15,7 +15,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
-from openavc.transport.http_client import HTTPClientTransport
+from openavc.transport.http_client import HTTPClientTransport, StreamOwner
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "dev1"):
@@ -773,7 +773,7 @@ async def test_stream_reads_session_from_header_and_swallows_open_event(
     sessions: list = []
     stream = session_transport.open_event_stream(
         "/api/subscriptions", received.append,
-        session=_SESSION, on_session=sessions.append,
+        session=_SESSION, owner=StreamOwner(on_session=sessions.append),
     )
     await _wait_for(lambda: len(sessions) == 1)
     assert sessions[0] == session_server.sessions[0]
@@ -795,7 +795,7 @@ async def test_stream_falls_back_to_open_event_when_header_absent(
     sessions: list = []
     stream = session_transport.open_event_stream(
         "/api/subscriptions", lambda d: None,
-        session=_SESSION, on_session=sessions.append,
+        session=_SESSION, owner=StreamOwner(on_session=sessions.append),
     )
     await _wait_for(lambda: len(sessions) == 1)
     assert sessions[0] == session_server.sessions[0]
@@ -813,7 +813,7 @@ async def test_stream_pattern_reads_bare_and_path_forms(
     sessions: list = []
     stream = session_transport.open_event_stream(
         "/api/subscriptions", lambda d: None,
-        session=_SESSION, on_session=sessions.append,
+        session=_SESSION, owner=StreamOwner(on_session=sessions.append),
     )
     await _wait_for(lambda: len(sessions) == 1)
     assert sessions[0] == "31875a94-29e6-4fb0-ab4d-7f0bbd6e1bc8"
@@ -829,7 +829,7 @@ async def test_stream_without_pattern_takes_whole_value(
     sessions: list = []
     stream = session_transport.open_event_stream(
         "/api/subscriptions", lambda d: None,
-        session={"header": "Content-Location"}, on_session=sessions.append,
+        session={"header": "Content-Location"}, owner=StreamOwner(on_session=sessions.append),
     )
     await _wait_for(lambda: len(sessions) == 1)
     assert sessions[0] == "session-42"
@@ -843,7 +843,7 @@ async def test_stream_close_event_reopens_and_renames_session(
     sessions: list = []
     stream = session_transport.open_event_stream(
         "/api/subscriptions", lambda d: None,
-        session=_SESSION, on_session=sessions.append,
+        session=_SESSION, owner=StreamOwner(on_session=sessions.append),
     )
     await _wait_for(lambda: len(sessions) == 1)
     first = sessions[0]
@@ -865,7 +865,7 @@ async def test_stream_end_of_connection_ends_session(
     sessions: list = []
     stream = session_transport.open_event_stream(
         "/api/subscriptions", lambda d: None,
-        session=_SESSION, on_session=sessions.append,
+        session=_SESSION, owner=StreamOwner(on_session=sessions.append),
     )
     await _wait_for(lambda: len(sessions) == 1)
     session_server.drop_all()

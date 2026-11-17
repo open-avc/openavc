@@ -468,6 +468,17 @@ def capture_driver_websockets() -> None:
     connect.__init__ = init  # type: ignore[method-assign]
 
 
+@dataclass(frozen=True)
+class StreamOwner:
+    """What an event stream tells its owner besides the events:
+    ``on_session`` gets the device session's id on every (re)open and None
+    when it is gone; ``on_answer`` gets each answer's status and returns True
+    when that settles a refused login, which ends the stream."""
+
+    on_session: Callable[[str | None], Any] | None = None
+    on_answer: Callable[[int], bool] | None = None
+
+
 class SSEEventStream:
     """One persistent Server-Sent-Events subscription (``push: {type: sse}``).
 
@@ -476,7 +487,9 @@ class SSEEventStream:
     own reconnect loop: a dropped or rejected connection is retried with
     exponential backoff (1 s doubling to 30 s, reset once data flows), so a
     device reboot or transient network cut re-establishes the subscription
-    without tearing the driver down — polling covers the gap.
+    without tearing the driver down — polling covers the gap. The one answer
+    that ends it is a refused login its owner settles (``on_answer``), since
+    every retry would be one more failed login on the device.
 
     ``idle_timeout`` (seconds) bounds the silence between received lines;
     when the device promises periodic keepalives, setting it slightly above
@@ -487,7 +500,7 @@ class SSEEventStream:
     session with a handshake: the device names the session in a response
     header (``header``) or in the data of a typed opening event (``event`` +
     ``key``), an optional ``pattern`` picks the id out of that value, and the
-    ``on_session`` callback runs with the id once per (re)open -- that is
+    owner's ``on_session`` runs with the id once per (re)open -- that is
     where the driver arms the subscription. A ``close_event`` ends the
     session from the device side, so the stream reopens at once instead of
     holding a dead connection. The opening and closing events are session
@@ -505,11 +518,12 @@ class SSEEventStream:
         connect_timeout: float = 10.0,
         name: str | None = None,
         session: dict[str, Any] | None = None,
-        on_session: Callable[[str | None], Any] | None = None,
+        owner: StreamOwner | None = None,
     ) -> None:
         self.path = path
         self._client = client
         self._callback = callback
+        self._owner = owner or StreamOwner()
         self._idle_timeout = idle_timeout
         self._connect_timeout = connect_timeout
         self._name = name or path
@@ -517,7 +531,6 @@ class SSEEventStream:
         self._traffic_name = name or ""
         self._closed = False
         self._session = session if isinstance(session, dict) else None
-        self._on_session = on_session
         self.session_id: str | None = None
         # First failure logs at warning; repeats drop to debug until a
         # connection succeeds again, so an unreachable device doesn't flood
@@ -553,12 +566,8 @@ class SSEEventStream:
                 async with self._client.stream(
                     "GET", self.path, headers=headers, timeout=timeout
                 ) as response:
-                    if response.status_code != 200:
-                        await response.aread()
-                        raise ConnectionError(
-                            f"event stream rejected with HTTP "
-                            f"{response.status_code}"
-                        )
+                    if await self._ended_by(response):
+                        return
                     log.info(
                         f"[{self._name}] Event stream open: {self.path}"
                     )
@@ -637,6 +646,20 @@ class SSEEventStream:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
 
+    async def _ended_by(self, response: httpx.Response) -> bool:
+        """The answer, read before the stream opens: True when the owner's
+        credential check settled a refused login (the stream ends for good);
+        any other answer but 200 raises, for the loop to retry."""
+        status = response.status_code
+        on_answer = self._owner.on_answer
+        if on_answer is not None and on_answer(status):
+            self._closed = True
+            return True
+        if status != 200:
+            await response.aread()
+            raise ConnectionError(f"event stream rejected with HTTP {status}")
+        return False
+
     async def _session_event(self, event_type: str, data: str) -> str | None:
         """Consume a session event: ``"close"`` when the device ended the
         session (the caller drops the connection and reopens), ``"open"``
@@ -699,9 +722,9 @@ class SSEEventStream:
             return
         self.session_id = session_id
         log.debug(f"[{self._name}] Event stream session {session_id}")
-        if self._on_session is not None:
+        if self._owner.on_session is not None:
             try:
-                result = self._on_session(session_id)
+                result = self._owner.on_session(session_id)
                 if asyncio.iscoroutine(result):
                     await result
             except Exception:
@@ -713,9 +736,9 @@ class SSEEventStream:
         if self.session_id is None:
             return
         self.session_id = None
-        if self._on_session is not None:
+        if self._owner.on_session is not None:
             try:
-                result = self._on_session(None)
+                result = self._owner.on_session(None)
                 if asyncio.iscoroutine(result):
                     await result
             except Exception:
@@ -841,6 +864,7 @@ class HTTPClientTransport:
         self._last_error = ""
         # The exception behind the last failed verify() (see verify_error).
         self._verify_error: BaseException | None = None
+        self._verify_status: int | None = None
         # Open event-stream subscriptions (push: {type: sse}); closed with
         # the client so a stream's reconnect loop never runs against a
         # closed session.
@@ -926,7 +950,7 @@ class HTTPClientTransport:
         idle_timeout: float = 0.0,
         name: str | None = None,
         session: dict[str, Any] | None = None,
-        on_session: Callable[[str | None], Any] | None = None,
+        owner: StreamOwner | None = None,
     ) -> SSEEventStream:
         """Subscribe to a Server-Sent-Events endpoint (``push: {type: sse}``).
 
@@ -934,9 +958,9 @@ class HTTPClientTransport:
         client session (so auth headers/TLS settings apply) and delivers each
         event's data block to ``callback(bytes)`` (sync or async). The stream
         reconnects on its own with exponential backoff; ``await
-        handle.close()`` (or closing this transport) stops it. ``session`` and
-        ``on_session`` are the device-session handshake
-        (:class:`SSEEventStream`).
+        handle.close()`` (or closing this transport) stops it. ``session`` is
+        the device-session handshake and ``owner`` what the stream tells its
+        owner (:class:`SSEEventStream`, :class:`StreamOwner`).
 
         Raises:
             ConnectionError: If the client is not open.
@@ -954,18 +978,24 @@ class HTTPClientTransport:
             connect_timeout=self.timeout,
             name=name or self._name,
             session=session,
-            on_session=on_session,
+            owner=owner,
         )
         self._event_streams.append(stream)
         return stream
 
     async def verify(self, timeout: float = 5.0) -> bool:
-        """Verify the remote HTTP device is reachable with a HEAD request."""
+        """Verify the remote HTTP device is reachable with a HEAD request.
+
+        Any answer means reachable, a refusal included. What a refusal says
+        about the login is the driver's credential check to decide, so the
+        answer's status is kept for it (:attr:`verify_status`)."""
         self._verify_error = None
+        self._verify_status = None
         if self._client is None:
             return False
         try:
-            await self._client.head("/", timeout=timeout)
+            response = await self._client.head("/", timeout=timeout)
+            self._verify_status = response.status_code
             return True
         except Exception as e:
             # Keep the underlying cause so the connection-fault classifier can
@@ -993,6 +1023,11 @@ class HTTPClientTransport:
         cause chain, which is what the classifier reads.
         """
         return self._verify_error
+
+    @property
+    def verify_status(self) -> int | None:
+        """The status the last :meth:`verify` was answered with, or None."""
+        return self._verify_status
 
     @property
     def last_response(self) -> HTTPResponse | None:

@@ -546,8 +546,6 @@ _AUTH_SIGS = (
     "login incorrect",
     "too many authentication failures",
     "unable to authenticate",
-    "401 unauthorized",
-    "403 forbidden",
     # MQTT CONNACK rejections (rc 4 / rc 5). Checked before the generic
     # "connection refused" bucket so wrong broker credentials read as auth.
     "not authorized",
@@ -920,8 +918,12 @@ def classify_connection_fault(
             f"for it.",
         )
 
-    # 4. Authentication failed.
-    if _has_any(hay, _AUTH_SIGS):
+    # 4. Authentication failed. The HTTP statuses that refuse a login are the
+    #    credential check's own table, imported here because that module
+    #    imports this one through drivers.base.
+    from openavc.drivers.http_credential import REFUSED_LOGIN_TEXTS
+
+    if _has_any(hay, _AUTH_SIGS + REFUSED_LOGIN_TEXTS):
         return ConnectionFault(AUTH_FAILED, _DEFAULT_MESSAGES[AUTH_FAILED])
 
     # 5. Port closed / service off.

@@ -445,6 +445,7 @@ class ConnectLifecycle:
         if self._connect_check_held():
             return
         if await self.transport.verify(timeout=verify_timeout):
+            self._judge_connect_check(getattr(self.transport, "verify_status", None))
             return
         self._raise_if_ended(attempt)
         # Retain the transport's underlying cause (refused / timeout) before
@@ -462,6 +463,11 @@ class ConnectLifecycle:
             self.config.get("host", "?"), self.config.get("port", "?"),
             transport_type,
         ) from cause
+
+    def _judge_connect_check(self, status: int | None) -> None:
+        """What the connect check's answer (an HTTP status, or None) says about
+        the login. The base driver reads nothing into it; the YAML runtime's
+        credential check (``drivers/http_credential.py``) counts a refusal."""
 
     async def _connect_handshake(
         self, attempt: object, hold: bool, transport_type: str,

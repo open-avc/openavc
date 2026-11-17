@@ -391,9 +391,16 @@ async def test_sse_reads_its_paths_timeout_and_session(caplog):
         "[w1] push: event-stream path 'relative' did not resolve to a URL path "
         "(check the device's config fields)",
     ]
+    # Each stream's answers go to the credential check under its own path.
+    owners = [kw.pop("owner") for _, kw in drv.transport.opened]
+    assert [o.on_session for o in owners] == [None, None]
+    assert [(o.on_answer.func, o.on_answer.args) for o in owners] == [
+        (drv._event_stream_answer, ("/a/7",)),
+        (drv._event_stream_answer, ("/b",)),
+    ]
     assert [(p, kw) for p, kw in drv.transport.opened] == [
-        ("/a/7", {"idle_timeout": 0.0, "name": "w1", "session": None, "on_session": None}),
-        ("/b", {"idle_timeout": 0.0, "name": "w1", "session": None, "on_session": None}),
+        ("/a/7", {"idle_timeout": 0.0, "name": "w1", "session": None}),
+        ("/b", {"idle_timeout": 0.0, "name": "w1", "session": None}),
     ]
     assert [h.path for h in drv._push_subscription] == ["/a/7", "/b"]
 
@@ -407,7 +414,7 @@ async def test_sse_with_one_path_keeps_its_session_and_a_numeric_timeout():
     assert path == "/only"
     assert kw["idle_timeout"] == 12.5
     assert kw["session"] is session
-    assert kw["on_session"] == drv._on_push_session
+    assert kw["owner"].on_session == drv._on_push_session
     drv2 = _Acme(push={"type": "sse", "path": "/x", "idle_timeout": None, "session": "yes"})
     drv2.transport = _HttpTransport()
     await drv2._start_push()

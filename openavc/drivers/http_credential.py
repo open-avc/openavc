@@ -1,5 +1,10 @@
 """Whether a YAML driver's HTTP username and password are being refused.
 
+THE refused-login verdict for an HTTP device: every request that can hear a
+refusal asks it (start-up, the poll and ``then_query`` lines, the connect
+check's ``HEAD /``, the event stream), and the connection-fault classifier
+reads which statuses refuse a login from this table (``REFUSED_LOGIN_TEXTS``).
+
 The rules worth knowing before changing anything here:
 
 * **Every refused request is a failed login on the device**, and devices
@@ -25,6 +30,22 @@ The rules worth knowing before changing anything here:
   cycle that sent only such pages is no verdict.
 * **What answered on the last connection proves nothing about this one**:
   the tally starts again at every connect.
+* **Only a query's answer vouches for the credential.** The connect check's
+  ``HEAD /`` and the event stream count when refused, but their answers prove
+  nothing for the queries: a device often serves its root page, or its event
+  endpoint, to anyone, and taking that answer as proof would make every
+  refused query after it a page the account may not read, so a wrong password
+  would never be settled.
+* **The connect check counts a 401 or 407 only.** A 403 on ``/`` is as often
+  a server with no index page as a refused login. HTTP has no sign-in step
+  before it: the credential rides on the ``HEAD`` as on every request.
+* **The event stream is one request sent again and again**, and each refused
+  send is one more failed login. While nothing has answered, each refused
+  attempt counts toward rule 2 on its own, so a device whose only traffic is
+  its stream is settled at the same count. A stream that opened (200) and is
+  now refused 401 or 407 is rule 1; any other answer (a 503 while the device
+  restarts) neither opens it nor counts. A stream refused once a query has
+  answered is a page the account may not read, and keeps retrying.
 
 ``HttpCredential`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. The host calls ``_init_http_credential()`` in
@@ -35,11 +56,15 @@ with ``_open_http_cycle`` and ``_close_http_cycle``, calling
 poll, and a response rule's ``then_query`` lines, which send through
 ``_dispatch_query`` too: one sent while a poll is under way counts in that
 poll's tally, and a refusal it settles ends only its own round (the poll
-that follows judges the connection).
+that follows judges the connection). ``BaseDriver``'s connect check hands its
+status to ``_judge_connect_check`` and the event stream each answer's status
+to ``_judge_event_stream``; the base driver's own versions judge nothing, so
+a Python driver keeps its own reading.
 """
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import Any
 
 from openavc.drivers.base import ConnectionFaultError
@@ -56,6 +81,14 @@ _AUTH_REJECT_STATUS = frozenset({401, 403, 407})
 
 # The two of those that say the credential itself did not authenticate.
 _CREDENTIAL_REFUSED_STATUS = frozenset({401, 407})
+
+# The refusing statuses as an HTTP library words them in an error
+# ("401 unauthorized", as httpx's raise_for_status puts it), for the
+# connection-fault classifier, which reads only text.
+REFUSED_LOGIN_TEXTS = tuple(
+    f"{status} {HTTPStatus(status).phrase}".lower()
+    for status in sorted(_AUTH_REJECT_STATUS)
+)
 
 # Distinct queries refused, with nothing yet answered on the connection, that
 # settle a wrong password. Every refused request counts toward a device's
@@ -78,18 +111,23 @@ class HttpCredential:
     device_id: str
 
     def _init_http_credential(self) -> None:
-        # The queries that answered on this connection, the distinct queries
+        # The queries that answered on this connection, the distinct requests
         # refused while none had, and the poll cycle in flight as
-        # [requests, refusals] (None outside one).
+        # [requests, refusals] (None outside one); the event streams that
+        # answered, and how many stream attempts were refused while nothing had.
         self._http_answered: set[str] = set()
         self._http_refused_unanswered: set[str] = set()
         self._http_cycle: list[int] | None = None
+        self._http_streams_answered: set[str] = set()
+        self._http_stream_refusals = 0
 
     def _reset_http_credential(self) -> None:
         """A new connection: what answered on the last one proves nothing
         about the credential on this one."""
         self._http_answered = set()
         self._http_refused_unanswered = set()
+        self._http_streams_answered = set()
+        self._http_stream_refusals = 0
 
     def _open_http_cycle(self, is_http: bool) -> None:
         """Start counting a poll cycle's answers (an HTTP poll only)."""
@@ -139,11 +177,47 @@ class HttpCredential:
             )
             return
         self._count_in_cycle(refused=True)
-        self._http_refused_unanswered.add(query)
+        self._refused_before_any_answer(query)
+
+    def _judge_connect_check(self, status: int | None) -> None:
+        """The connect check's ``HEAD /``: refused 401 or 407, one request
+        refused before any answer (rule 2); anything else, nothing (the module
+        docstring says why)."""
+        if status in _CREDENTIAL_REFUSED_STATUS and not self._http_answered:
+            self._refused_before_any_answer("HEAD /")
+
+    def _judge_event_stream(self, path: str, status: int) -> None:
+        """Weigh one answer the event stream at ``path`` got, raising
+        ``auth_failed`` the moment rule 1 or 2 settles it (the module
+        docstring says how a stream counts)."""
+        if status == 200:
+            self._http_streams_answered.add(path)
+            return
+        if status not in _AUTH_REJECT_STATUS:
+            return
+        if path in self._http_streams_answered:
+            if status in _CREDENTIAL_REFUSED_STATUS:
+                self._stopped_accepting(f"event stream {path}", status)
+            return
+        if self._http_answered:
+            log.debug(
+                f"[{self.device_id}] event stream {path} refused (HTTP "
+                f"{status}); other queries answer, so the account may not read it"
+            )
+            return
+        self._http_stream_refusals += 1
+        self._refused_before_any_answer(
+            f"event stream {path}, attempt {self._http_stream_refusals}"
+        )
+
+    def _refused_before_any_answer(self, request: str) -> None:
+        """Rule 2: one more distinct request refused with nothing answered on
+        the connection; ``auth_failed`` at the count."""
+        self._http_refused_unanswered.add(request)
         if len(self._http_refused_unanswered) >= _REFUSALS_BEFORE_ANY_ANSWER:
             log.warning(
                 f"[{self.device_id}] {len(self._http_refused_unanswered)} "
-                f"queries refused and none answered; dropping the connection"
+                f"requests refused and none answered; dropping the connection"
             )
             raise ConnectionFaultError(_REFUSED, code="auth_failed")
 
