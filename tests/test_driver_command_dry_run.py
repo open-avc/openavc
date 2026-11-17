@@ -169,7 +169,7 @@ async def test_http_route_reports_target_headers_and_body():
     assert result["success"], result
     assert result["route"] == "http"
     assert result["wire"] == "POST /api/input/04"
-    assert result["headers"] == {"Content-Type": "text/xml"}
+    assert result["headers"]["content-type"] == "text/xml"
     assert result["body"] == "<Input>4</Input>"
 
 
@@ -238,6 +238,106 @@ async def test_http_json_body_is_encoded_the_way_it_is_sent():
     )
     assert result["wire"] == "PUT /api/mute"
     assert result["body"] == '{"mute":1}'
+
+
+# --- an HTTP request as the device gets it ------------------------------------
+
+def _http_command(**command) -> dict:
+    return _definition(
+        transport="http",
+        commands={"set_gain": {"label": "Set Gain", "method": "PUT", "path": "/api/gain",
+                               "body": '{"gain": {level}}',
+                               "params": {"level": {"type": "integer"}}, **command}},
+    )
+
+
+async def test_http_preview_carries_the_headers_the_connection_adds():
+    """The request the device gets carries the connection's default headers,
+    the body's Content-Type and the sign-in header, not only the command's
+    own headers. The token itself is masked, as the traffic view masks it."""
+    result = await _dry_run_command(_request(
+        _http_command(), "set_gain", {"level": 3}, port=80,
+        config_overrides={
+            "auth_type": "bearer", "token": "tok-9f8e7d6c",
+            "default_headers": {"X-Api-Version": "2"},
+        },
+    ))
+    assert result["success"], result
+    assert result["wire"] == "PUT /api/gain"
+    headers = result["headers"]
+    assert headers["x-api-version"] == "2"
+    assert headers["content-type"] == "application/json"
+    assert headers["authorization"] == "Bearer ***"
+    assert headers["host"] == "192.0.2.10"
+    assert "tok-9f8e7d6c" not in str(result)
+
+
+async def test_an_api_key_header_is_shown_with_its_key_masked():
+    result = await _dry_run_command(_request(
+        _http_command(), "set_gain", {"level": 3}, port=80,
+        config_overrides={
+            "auth_type": "api_key", "api_key_header": "X-Device-Key",
+            "api_key": "key-5a4b3c2d",
+        },
+    ))
+    assert result["success"], result
+    assert result["headers"]["x-device-key"] == "***"
+    assert "key-5a4b3c2d" not in str(result)
+
+
+async def test_a_basic_sign_in_header_is_shown_masked():
+    """Basic sign-in is added as the request is sent, not when it is built."""
+    result = await _dry_run_command(_request(
+        _http_command(), "set_gain", {"level": 3}, port=80,
+        config_overrides={"auth_type": "basic", "username": "admin", "password": "pw-1a2b3c4d"},
+    ))
+    assert result["success"], result
+    assert result["headers"]["authorization"] == "Basic ***"
+    assert "pw-1a2b3c4d" not in str(result)
+
+
+async def test_http_preview_names_the_port_it_connects_to():
+    """The Host header is the device's address and port, as connecting
+    builds them: https with no port set connects to 443, so the header
+    carries no port; a port that is not the scheme's own is named."""
+    implied = await _dry_run_command(_request(
+        _http_command(), "set_gain", {"level": 1}, port="",
+        config_overrides={"ssl": True},
+    ))
+    assert implied["success"], implied
+    assert implied["headers"]["host"] == "192.0.2.10"
+    named = await _dry_run_command(_request(_http_command(), "set_gain", {"level": 1}, port=8080))
+    assert named["headers"]["host"] == "192.0.2.10:8080"
+
+
+async def test_an_http_preview_builds_with_an_unfilled_connection_panel():
+    result = await _dry_run_command(
+        _request(_http_command(), "set_gain", {"level": 2}, host="", port="")
+    )
+    assert result["success"], result
+    assert result["wire"] == "PUT /api/gain"
+    assert "host" not in result["headers"]
+
+
+async def test_an_http_preview_sends_nothing_and_records_nothing(monkeypatch):
+    """The stand-in is the device's own HTTP client with only the network
+    taken away: nothing leaves, and the device's traffic view gets nothing."""
+    import httpx
+
+    from openavc.core import device_traffic
+
+    async def _explode(*args, **kwargs):
+        raise AssertionError("a dry run must not send a request")
+
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", _explode)
+    recorded: list[str] = []
+    monkeypatch.setattr(
+        device_traffic._recorder, "record",
+        lambda device_id, *a, **k: recorded.append(device_id),
+    )
+    result = await _dry_run_command(_request(_http_command(), "set_gain", {"level": 2}, port=80))
+    assert result["success"], result
+    assert recorded == []
 
 
 # --- what a dry run must not do -----------------------------------------------

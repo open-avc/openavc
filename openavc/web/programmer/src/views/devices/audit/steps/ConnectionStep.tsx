@@ -18,7 +18,13 @@ import {
   type ColumnDef,
   type TableRow,
 } from "../../ConfigTableEditor";
-import { currentRun, displayBytes, previewStageLabel } from "../auditHelpers";
+import {
+  currentRun,
+  displayBytes,
+  PREVIEW_STAGES,
+  previewRequestLines,
+  previewStageLabel,
+} from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 import { isSecretSetting } from "../../../../components/shared/secretSetting";
@@ -310,7 +316,6 @@ function savedSecretsText(labels: string[]): string {
 
 function PreviewPanel({ connection }: { connection: audit.AuditConnection }) {
   const preview = connection.preview;
-  const stages = ["sign_in", "start_up", "poll", "keep_alive"] as const;
   return (
     <div style={{ ...panelStyle, marginTop: "var(--space-lg)" }}>
       <div style={{ ...labelStyle, marginBottom: "var(--space-sm)" }}>What connecting sends</div>
@@ -329,7 +334,7 @@ function PreviewPanel({ connection }: { connection: audit.AuditConnection }) {
           This driver sends nothing when it connects, and does not poll.
         </div>
       ) : (
-        stages.map((stage) => {
+        PREVIEW_STAGES.map((stage) => {
           const steps = preview.steps.filter((s) => s.stage === stage);
           if (steps.length === 0) return null;
           return (
@@ -347,11 +352,13 @@ function PreviewPanel({ connection }: { connection: audit.AuditConnection }) {
                       overflowWrap: "anywhere",
                     }}
                   >
-                    {s.kind === "wait"
-                      ? `Waits for the device to show ${s.pattern}`
-                      : s.kind === "send"
-                        ? displayBytes(s.text, s.hex)
-                        : `${s.method} ${s.target}${s.body ? ` ${s.body}` : ""}`}
+                    {s.kind === "wait" ? (
+                      `Waits for the device to show ${s.pattern}`
+                    ) : s.kind === "send" ? (
+                      displayBytes(s.text, s.hex)
+                    ) : (
+                      <span style={{ whiteSpace: "pre-wrap" }}>{previewRequestLines(s).join("\n")}</span>
+                    )}
                   </li>
                 ))}
               </ol>

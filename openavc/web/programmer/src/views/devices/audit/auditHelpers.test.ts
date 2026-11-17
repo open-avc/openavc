@@ -27,6 +27,8 @@ import {
   secondsLeft,
   statusValue,
   previewStageLabel,
+  previewRequestLines,
+  PREVIEW_STAGES,
   stepFor,
   summaryLines,
   driverLines,
@@ -475,10 +477,34 @@ describe("showing bytes and the connection preview", () => {
     expect(displayBytes("", "")).toBe("");
   });
   it("names each stage, with its cadence", () => {
+    expect(previewStageLabel("connect_check", 0, 0)).toBe("Connection check");
     expect(previewStageLabel("sign_in", 0, 0)).toBe("Sign in");
     expect(previewStageLabel("poll", 10, 0)).toBe("Status polling, every 10 seconds");
     expect(previewStageLabel("poll", 1, 0)).toBe("Status polling, every second");
     expect(previewStageLabel("keep_alive", 0, 30)).toBe("Keep-alive check, every 30 seconds");
+  });
+  it("shows every stage, the connection check first", () => {
+    expect(PREVIEW_STAGES).toEqual(["connect_check", "sign_in", "start_up", "poll", "keep_alive"]);
+  });
+  it("writes a request out with its headers, then its body", () => {
+    const request = {
+      stage: "poll" as const,
+      kind: "request" as const,
+      method: "PUT",
+      target: "/api/gain",
+      headers: { host: "10.0.0.5", "content-type": "application/json", authorization: "Bearer ***" },
+      body: '{"gain":3}',
+    };
+    expect(previewRequestLines(request)).toEqual([
+      "PUT /api/gain",
+      "host: 10.0.0.5",
+      "content-type: application/json",
+      "authorization: Bearer ***",
+      '{"gain":3}',
+    ]);
+    expect(previewRequestLines({ ...request, method: "HEAD", target: "/", headers: {}, body: "" })).toEqual([
+      "HEAD /",
+    ]);
   });
   it("takes the last run as the current one", () => {
     expect(currentRun(null)).toBeNull();

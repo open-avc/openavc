@@ -111,10 +111,51 @@ async def test_the_preview_is_what_the_runtime_sends_in_order():
 
 
 async def test_an_http_drivers_preview_is_its_requests():
+    """Connecting checks the device answers (HEAD /) before anything else."""
     driver = _build(HTTP_DRIVER, {"host": "10.0.0.5", "port": 80, "poll_interval": 5})
     preview = await preview_connect(driver)
     requests = [(s["stage"], s["method"], s["target"]) for s in preview.steps]
-    assert requests == [("poll", "GET", "/api/status"), ("poll", "GET", "/api/info")]
+    assert requests == [
+        ("connect_check", "HEAD", "/"),
+        ("poll", "GET", "/api/status"),
+        ("poll", "GET", "/api/info"),
+    ]
+
+
+async def test_an_http_preview_shows_the_headers_the_device_gets():
+    driver = _build(HTTP_DRIVER, {
+        "host": "10.0.0.5", "port": 8080, "poll_interval": 5,
+        "auth_type": "bearer", "token": "tok-9f8e7d6c",
+        "default_headers": {"X-Api-Version": "2"},
+    })
+    preview = await preview_connect(driver)
+    for step in preview.steps:
+        assert step["headers"]["host"] == "10.0.0.5:8080"
+        assert step["headers"]["x-api-version"] == "2"
+        assert step["headers"]["authorization"] == "Bearer ***"
+    assert "tok-9f8e7d6c" not in str(preview.steps)
+
+
+async def test_no_connect_check_is_previewed_when_the_device_skips_it():
+    driver = _build(HTTP_DRIVER, {
+        "host": "10.0.0.5", "port": 80, "poll_interval": 5, "verify_timeout": 0,
+    })
+    preview = await preview_connect(driver)
+    assert [s["stage"] for s in preview.steps] == ["poll", "poll"]
+
+
+async def test_an_http_preview_closes_what_it_opened():
+    driver = _build(HTTP_DRIVER, {"host": "10.0.0.5", "port": 80, "poll_interval": 5})
+    await preview_connect(driver)
+    assert driver.transport is None or not driver.transport.connected
+
+
+async def test_an_http_preview_refused_settings_say_why():
+    """Settings a connection cannot be built from are the preview's answer:
+    connecting would be refused for the same reason."""
+    driver = _build(HTTP_DRIVER, {"host": "10.0.0.5", "port": "eighty", "poll_interval": 5})
+    with pytest.raises(Exception, match="eighty"):
+        await preview_connect(driver)
 
 
 async def test_a_python_drivers_steps_are_code():
@@ -158,6 +199,22 @@ async def test_the_connection_is_recorded_with_its_secrets_masked(wired, drivers
     assert session.runs[0].config["password"] == "hunter22"
     assert "hunter22" in session.runs[0].secrets
     assert "connection" in result["session"]["steps"]
+    await wired.manager.shutdown()
+
+
+async def test_an_http_connection_preview_masks_the_sign_in(wired, drivers):  # noqa: F811
+    session_id = await _session_with_driver(wired, "acme_rest")
+    result = await routes.set_session_connection(session_id, AuditConnectionRequest(config={
+        "host": "127.0.0.1", "port": 8080, "auth_type": "api_key",
+        "api_key_header": "X-Device-Key", "api_key": "key-5a4b3c2d",
+    }))
+    (run,) = result["session"]["runs"]
+    steps = run["connection"]["preview"]["steps"]
+    assert [(s["stage"], s["method"], s["target"]) for s in steps][0] == (
+        "connect_check", "HEAD", "/",
+    )
+    assert all(s["headers"]["x-device-key"] == "***" for s in steps)
+    assert "key-5a4b3c2d" not in str(result)
     await wired.manager.shutdown()
 
 

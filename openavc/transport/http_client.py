@@ -847,59 +847,67 @@ class HTTPClientTransport:
         """Create the httpx.AsyncClient session with configured auth and TLS."""
         if self._client is not None:
             return  # Already open
-
-        # Build auth
-        auth = self._build_auth()
-
-        # Build headers
-        headers = dict(self.default_headers)
-
-        # API key goes in headers
-        if self.auth_type == "api_key":
-            header_name = self.credentials.get("header", "X-API-Key")
-            header_value = self.credentials.get("key", "")
-            headers[header_name] = header_value
-
-        # Bearer token goes in Authorization header
-        if self.auth_type == "bearer":
-            token = self.credentials.get("token", "")
-            headers["Authorization"] = f"Bearer {token}"
-
-        transport = None
-        if self._local_address:
-            # httpx ignores the client's own `verify` once it is handed a
-            # transport, so the transport has to carry it.
-            transport = httpx.AsyncHTTPTransport(
-                local_address=self._local_address, verify=self.verify_ssl
-            )
-        elif environment_has_proxy():
-            # A proxy in the environment: a device at a local address is
-            # reached directly, anything else through the proxy (outbound.py).
-            transport = device_transport(self.base_url, verify=self.verify_ssl)
-
-        self._client = httpx.AsyncClient(
-            base_url=self.base_url,
-            auth=auth,
-            headers=headers,
-            verify=self.verify_ssl,
-            timeout=httpx.Timeout(self.timeout),
-            transport=transport,
-        )
-
+        self._client = self._new_client()
         log.info(
             f"HTTP client opened: {self.base_url} "
             f"(auth={self.auth_type}, ssl_verify={self.verify_ssl})"
         )
 
+    def _new_client(self) -> httpx.AsyncClient:
+        """The session every request goes through: the sign-in, the headers
+        every request carries, the certificate check and the timeout, over
+        :meth:`_wire`."""
+        return httpx.AsyncClient(
+            base_url=self.base_url,
+            auth=self._build_auth(),
+            headers=self._session_headers(),
+            verify=self.verify_ssl,
+            timeout=httpx.Timeout(self.timeout),
+            transport=self._wire(),
+        )
+
+    def _session_headers(self) -> dict[str, str]:
+        """The default headers, with an api_key's header or a bearer token's
+        Authorization (basic and digest sign in through ``_build_auth``)."""
+        headers = dict(self.default_headers)
+        if self.auth_type == "api_key":
+            header_name = self.credentials.get("header", "X-API-Key")
+            headers[header_name] = self.credentials.get("key", "")
+        if self.auth_type == "bearer":
+            headers["Authorization"] = f"Bearer {self.credentials.get('token', '')}"
+        return headers
+
+    def _wire(self) -> httpx.AsyncBaseTransport | None:
+        """Where the session's requests go: out through the chosen adapter,
+        or past the environment's proxy to a device at a local address; None
+        for httpx's own way out."""
+        if self._local_address:
+            # httpx ignores the client's own `verify` once it is handed a
+            # transport, so the transport has to carry it.
+            return httpx.AsyncHTTPTransport(
+                local_address=self._local_address, verify=self.verify_ssl
+            )
+        if environment_has_proxy():
+            # A proxy in the environment: a device at a local address is
+            # reached directly, anything else through the proxy (outbound.py).
+            return device_transport(self.base_url, verify=self.verify_ssl)
+        return None
+
     async def close(self) -> None:
         """Close the HTTP session (and any open event streams)."""
+        if await self._end_session():
+            log.info(f"HTTP client closed: {self.base_url}")
+
+    async def _end_session(self) -> bool:
+        """Close the event streams and the session; whether one was open."""
         for stream in list(self._event_streams):
             await stream.close()
         self._event_streams.clear()
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-            log.info(f"HTTP client closed: {self.base_url}")
+        if self._client is None:
+            return False
+        await self._client.aclose()
+        self._client = None
+        return True
 
     def open_event_stream(
         self,

@@ -173,7 +173,8 @@ export interface AuditDriverChoice {
 }
 
 /** One step of what connecting sends, from the driver's own code run
- *  against a transport that records. */
+ *  against a transport that records. A request's headers are the ones the
+ *  device gets, the sign-in header and credentials shown as `***`. */
 export type AuditPreviewStep =
   | { stage: AuditPreviewStage; kind: "wait"; pattern: string }
   | { stage: AuditPreviewStage; kind: "send"; hex: string; text: string }
@@ -186,7 +187,7 @@ export type AuditPreviewStep =
       body: string;
     };
 
-export type AuditPreviewStage = "sign_in" | "start_up" | "poll" | "keep_alive";
+export type AuditPreviewStage = "connect_check" | "sign_in" | "start_up" | "poll" | "keep_alive";
 
 export interface AuditConnectPreview {
   /** false for a driver whose steps are code; `reason` says so. */

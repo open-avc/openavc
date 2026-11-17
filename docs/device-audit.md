@@ -52,7 +52,9 @@ the one before.
 4. **Connection.** The driver's connection settings, filled in from the driver's defaults or
    the paused device's saved settings. The driver always connects to the audited address over
    the network. **Save and show what connecting sends** lists what the
-   driver will send when it connects, before anything is sent.
+   driver will send when it connects, before anything is sent. For a device controlled over
+   HTTP, that starts with the check that the device answers, and each request is shown with
+   the headers the device gets; passwords, tokens and keys show as `***`.
 5. **Connect and listen.** Connects the way adding the device to a space does, sends none of
    the driver's commands, and listens for 45 seconds or three of the driver's status polls,
    whichever is longer (**Keep listening** adds a minute at a time, up to five minutes).

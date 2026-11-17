@@ -515,6 +515,17 @@ _BUILDERS: dict[str, tuple[_Settings, _Dial]] = {
 }
 
 
+async def http_settings(driver: TransportLadder) -> dict[str, Any]:
+    """The keyword arguments ``driver``'s HTTP transport is built with now,
+    after the driver's ``_transport_kwargs`` hook and refused as a connect
+    refuses them, with nothing dialled and no adapter asked: what a stand-in
+    that records instead of sending is built from (``drivers/dry_run.py``),
+    so it carries the headers and sign-in the device will get."""
+    asked = _Asked(frame_parser=None, delimiter=None, control_ip=None)
+    with _refusing_unusable(_SETTINGS_UNUSABLE):
+        return driver._transport_kwargs("http", await _http(driver, asked))
+
+
 class TransportLadder:
     """The transport a device's config builds, and the hooks a driver adjusts
     it with. A mixin ``BaseDriver`` inherits (see the module docstring)."""

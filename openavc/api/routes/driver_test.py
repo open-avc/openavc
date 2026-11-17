@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.models import TestCommandRequest
+from openavc.drivers.dry_run import display_text
 from openavc.core.device_config import (
     device_connections,
     devices_at_host,
@@ -160,10 +161,13 @@ class _TestDriver(NamedTuple):
     transport_type: str
 
 
-def _test_port(port: int | str, transport_type: str, fallback: int | None) -> int | str:
+def _test_port(
+    port: int | str, transport_type: str, fallback: int | str | None,
+) -> int | str:
     """The port a test dials. Serial drivers use `port` as a string path
     (e.g. "COM3"); IP transports need an int, so a numeric string is
-    coerced and anything else takes ``fallback``, or is refused without one."""
+    coerced and anything else takes ``fallback`` ("" leaves it unset), or is
+    refused without one."""
     if transport_type == "serial":
         return port
     try:
@@ -177,7 +181,7 @@ def _test_port(port: int | str, transport_type: str, fallback: int | None) -> in
 
 
 def _build_test_driver(
-    body: TestCommandRequest, port_fallback: int | None = None
+    body: TestCommandRequest, port_fallback: int | str | None = None
 ) -> _TestDriver:
     """Instantiate a one-shot driver from a live-test request.
 
@@ -352,7 +356,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             return {
                 "success": False,
                 "sent": None,
-                "received": [_decode_for_display(b) for b in received_chunks],
+                "received": [display_text(b) for b in received_chunks],
                 "state_changes": {},
                 "error": f"Connect failed: {e}",
                 "contract_errors": contract_errors,
@@ -364,7 +368,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             return {
                 "success": False,
                 "sent": None,
-                "received": [_decode_for_display(b) for b in received_chunks],
+                "received": [display_text(b) for b in received_chunks],
                 "state_changes": {},
                 "error": f"Unknown command '{body.command_name}'",
                 "contract_errors": contract_errors,
@@ -436,29 +440,12 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         # perfectly: the exchange worked, the driver's declarations did not.
         "success": error_text is None and not contract_errors,
         "sent": sent_repr,
-        "received": [_decode_for_display(b) for b in received_chunks],
+        "received": [display_text(b) for b in received_chunks],
         "state_changes": state_changes,
         "error": error_text,
         "contract_errors": contract_errors,
         "unmatched": unmatched,
     }
-
-
-async def _preview_send(driver: Any, command: str, params: dict[str, Any]) -> str | None:
-    """Send the command into the dry run's capture; why it was refused, or None.
-
-    A command with nothing to send yet (being written) previews blank:
-    nothing is what it would send. The capture follows the command's form, so
-    a form the connection cannot carry does not arise here.
-    """
-    from openavc.drivers.command_outcome import outcome_of
-
-    try:
-        await driver.send_command(command, params)
-    except Exception as e:
-        if outcome_of(e) != "not_sent":
-            return str(e)
-    return None
 
 
 async def _dry_run_command(body: TestCommandRequest) -> dict:
@@ -471,12 +458,14 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     of the protocol build would.
 
     No connect, so no socket, no auth handshake and no on_connect — this is
-    the command's wire form, not a connection test.
+    the command's wire form, not a connection test. An HTTP request is built
+    by the device's own HTTP client from the test's settings, so it carries
+    the headers and sign-in header the device would get (masked). A port box
+    still empty or holding a word is left unset, so each transport reads its
+    own default.
     """
-    import asyncio
-
     try:
-        built = _build_test_driver(body, port_fallback=0)
+        built = _build_test_driver(body, port_fallback="")
     except _TestDriverBuildError as e:
         return {"dry_run": True, "success": False, "error": str(e), "route": None}
 
@@ -491,115 +480,13 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
             "route": None,
         }
 
-    # Match the capture to the route the runtime will take, which it picks
+    # The capture follows the route the runtime will take, which it picks
     # from the command's declared fields — not from the driver's transport.
     # The panel reports a shape/transport mismatch on its own; here we follow
     # the command so the author still sees what the command would build.
-    from openavc.drivers.dry_run import capture_command_transport
+    from openavc.drivers.dry_run import preview_command
 
-    captured = capture_command_transport(driver, cmd_def)
-    route, capture, udp_capture = captured.route, captured.transport, captured.udp
-    # A preview records what is sent, not when: the read-back's spacing
-    # from the command is not sat out.
-    driver._pace_lines = False
-
-    refused = await _preview_send(driver, command, body.params or {})
-    if refused is not None:
-        return {"dry_run": True, "success": False, "error": refused, "route": route}
-
-    # What the command's read_back sends after it, recorded on the same
-    # capture once the command's own message is in.
-    own = len(getattr(capture, "requests", None) or getattr(capture, "frames", []))
-    read_back_tasks = list(getattr(driver, "_read_back_tasks", ()))
-    if read_back_tasks:
-        await asyncio.gather(*read_back_tasks, return_exceptions=True)
-
-    result: dict[str, Any] = {
-        "dry_run": True,
-        "success": True,
-        "error": None,
-        "route": route,
-        "wire": "",
-        "wire_hex": None,
-        "headers": None,
-        "body": None,
-        "read_back": [],
-    }
-
-    if route == "http":
-        # One command builds one request; a command that built none (no
-        # method and no path yet) leaves the preview blank.
-        if capture.requests:
-            sent = capture.requests[0]
-            result["wire"] = f"{sent['method']} {sent['target']}"
-            result["headers"] = sent["headers"]
-            result["body"] = sent["body"]
-        result["read_back"] = [
-            {
-                "wire": f"{sent['method']} {sent['target']}",
-                "wire_hex": None,
-                "body": sent["body"] or None,
-            }
-            for sent in capture.requests[own:]
-        ]
-        return result
-
-    if route == "udp":
-        # One command, one datagram (a magic packet is sent twice, to the
-        # broadcast address and to the host; the bytes are the same).
-        if udp_capture is None or not udp_capture.sent:
-            return result
-        data = udp_capture.sent[0][0]
-        result["wire"] = data.decode("utf-8", errors="replace")
-        result["wire_hex"] = data.hex()
-        # Where it goes, each once: a broadcast leaves through every
-        # connected adapter, one datagram each, all to the same address.
-        result["udp_targets"] = list(dict.fromkeys(f"{h}:{p}" for _, h, p in udp_capture.sent))
-        return result
-
-    if not capture.frames:
-        return result
-
-    data = b"".join(capture.frames[:own])
-    result["wire_hex"] = data.hex()
-    result["wire"] = _describe_frame(route, data)
-    result["read_back"] = [
-        {"wire": _describe_frame(route, frame), "wire_hex": frame.hex()}
-        for frame in capture.frames[own:]
-    ]
-    return result
-
-
-def _describe_frame(route: str, data: bytes) -> str:
-    """One captured message as the preview shows it. An OSC packet is read
-    back with the codec's own decoder, so the address and typed args shown
-    are the ones actually encoded rather than a second pass over the
-    templates."""
-    if route == "osc":
-        from openavc.transport.osc_codec import osc_decode_message
-
-        try:
-            address, args = osc_decode_message(data)
-        except Exception:
-            return _decode_for_display(data)
-        rendered = ", ".join(f"{tag}={value}" for tag, value in args)
-        return f"{address} [{rendered}]" if args else address
-    return _decode_for_display(data)
-
-
-def _decode_for_display(data: bytes) -> str:
-    """Best-effort decoding for the test panel UI.
-
-    Tries UTF-8 first; falls back to a hex preview for binary protocols.
-    """
-    try:
-        text = data.decode("utf-8")
-        # If it round-trips and renders, show as text.
-        if text.isprintable() or any(c in text for c in "\r\n\t"):
-            return text
-    except UnicodeDecodeError:
-        pass
-    return data.hex()
+    return await preview_command(driver, command, body.params or {}, cmd_def)
 
 
 def _describe_outgoing(
@@ -714,7 +601,7 @@ async def _test_raw(body: TestCommandRequest) -> dict:
     try:
         cmd_data = body.command_string.encode().decode("unicode_escape").encode()
         response = await transport.send_and_wait(cmd_data, timeout=body.timeout)
-        response_text = _decode_for_display(response)
+        response_text = display_text(response)
     except asyncio.TimeoutError:
         error_text = "Timeout waiting for response"
     except (OSError, ValueError, UnicodeError) as e:
@@ -767,7 +654,7 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
     try:
         cmd_data = body.command_string.encode().decode("unicode_escape").encode()
         response = await transport.send_and_wait(cmd_data, timeout=body.timeout)
-        response_text = _decode_for_display(response)
+        response_text = display_text(response)
     except asyncio.TimeoutError:
         error_text = "Timeout waiting for response"
     except (OSError, ValueError, UnicodeError) as e:
@@ -820,7 +707,7 @@ async def _test_udp_raw(body: TestCommandRequest) -> dict:
     try:
         cmd_data = body.command_string.encode().decode("unicode_escape").encode()
         response = await udp.send_and_wait(cmd_data, timeout=body.timeout)
-        response_text = _decode_for_display(response)
+        response_text = display_text(response)
     except asyncio.TimeoutError:
         error_text = "Timeout waiting for response"
     except (OSError, ValueError, UnicodeError) as e:

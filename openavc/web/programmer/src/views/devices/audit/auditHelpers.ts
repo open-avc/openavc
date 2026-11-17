@@ -17,6 +17,7 @@ import type {
   AuditMovedValue,
   AuditOutage,
   AuditPreviewStage,
+  AuditPreviewStep,
   AuditStatusVariable,
   AuditTrafficEntry,
   AuditReport,
@@ -702,12 +703,22 @@ export function trafficEntryText(entry: {
   return displayBytes(entry.text, entry.hex);
 }
 
+/** The preview's stages, in the order connecting sends them. */
+export const PREVIEW_STAGES: readonly AuditPreviewStage[] = [
+  "connect_check",
+  "sign_in",
+  "start_up",
+  "poll",
+  "keep_alive",
+];
+
 /** What each preview stage is called on screen. */
 export function previewStageLabel(
   stage: AuditPreviewStage,
   pollInterval: number,
   keepAliveInterval: number,
 ): string {
+  if (stage === "connect_check") return "Connection check";
   if (stage === "sign_in") return "Sign in";
   if (stage === "start_up") return "Start-up steps";
   if (stage === "poll") {
@@ -716,6 +727,12 @@ export function previewStageLabel(
   return keepAliveInterval > 0
     ? `Keep-alive check, every ${seconds(keepAliveInterval)}`
     : "Keep-alive check";
+}
+
+/** A previewed HTTP request as lines: the request, each header, the body. */
+export function previewRequestLines(step: Extract<AuditPreviewStep, { kind: "request" }>): string[] {
+  const headers = Object.entries(step.headers ?? {}).map(([name, value]) => `${name}: ${value}`);
+  return [`${step.method} ${step.target}`, ...headers, ...(step.body ? [step.body] : [])];
 }
 
 function seconds(n: number): string {

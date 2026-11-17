@@ -485,11 +485,14 @@ def _http_camera(**extra: Any) -> dict[str, Any]:
 
 
 async def _sent_http(command: str, params: dict[str, Any]) -> list[str]:
-    drv = _build(_http_camera())
-    capture = capture_http_transport()
+    drv = _build(_http_camera(), port=80)
+    capture = await capture_http_transport(drv)
     drv.transport = capture
-    await drv.send_command(command, params)
-    await asyncio.gather(*list(drv._read_back_tasks))
+    try:
+        await drv.send_command(command, params)
+        await asyncio.gather(*list(drv._read_back_tasks))
+    finally:
+        await capture.close()
     return [f"{r['method']} {r['target']}" for r in capture.requests]
 
 
