@@ -899,11 +899,13 @@ def test_export_import_carries_driver_companions(
             ),
             "widget_probe_discovery.py": "async def probe(ctx):\n    return None\n",
         }
+    # As bytes: text mode writes \r\n on Windows, and the bundle carries the
+    # bytes on disk.
     for name, content in files.items():
-        (source / name).write_text(content, encoding="utf-8")
+        (source / name).write_bytes(content.encode("utf-8"))
     # Other installed drivers, private helpers and notes do not travel.
     for name in ("unrelated.py", "unrelated_sim.py", "_helper.py", "notes.txt"):
-        (source / name).write_text("# unrelated\n", encoding="utf-8")
+        (source / name).write_bytes(b"# unrelated\n")
     data = json.loads(_valid_avc("portable"))
     data["devices"] = [{
         "id": "widget", "name": "Widget", "driver": "portable_widget", "config": {},
@@ -929,7 +931,7 @@ def test_export_import_carries_driver_companions(
     assert imported["missing_drivers"] == []
     assert set(registry._DRIVER_REGISTRY) == {"portable_widget"}
     for name, expected in files.items():
-        assert (destination / name).read_text(encoding="utf-8") == expected
+        assert (destination / name).read_bytes() == expected.encode("utf-8")
 
 
 class TestABadBodyIsARequestError:
