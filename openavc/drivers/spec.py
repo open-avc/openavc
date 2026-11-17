@@ -963,7 +963,7 @@ FIELDS = {
     },
     'config_derived': {
         'type': 'object',
-        'doc': 'Computed config values, each a template substituted from other config fields, e.g. {"ws": "/workspace/{workspace_id}"}. If any {field} the template references is empty or missing, the derived value is "" — so an optional prefixed address segment simply disappears. Computed once when the device connects and visible to every command address, on_connect entry, response, and poll query (just like a real config field). Lets one friendly field (e.g. a workspace id) drive both a bare and a prefixed address form without conditional logic in every command.',
+        'doc': 'Computed config values, each a template substituted from other config fields, e.g. {"ws": "/workspace/{workspace_id}"}. If any {field} the template references is empty or missing, the derived value is "", so an optional prefixed address segment simply disappears. Computed once when the device connects and visible to every command address, on_connect entry, response, and poll query (just like a real config field). Lets one friendly field (e.g. a workspace id) drive both a bare and a prefixed address form without conditional logic in every command.',
         'extra': {
             'type': 'string',
         },
@@ -1242,7 +1242,7 @@ DEFS = {
             },
             'control': {
                 'type': 'boolean',
-                'doc': "Marks a variable an integrator would bind a panel control to (a fader level, a mute). The UI Builder's value picker lists flagged variables first. Ordering only — unflagged variables stay pickable.",
+                'doc': "Marks a variable an integrator would bind a panel control to (a fader level, a mute). The UI Builder's value picker lists flagged variables first. Ordering only: unflagged variables stay pickable.",
             },
             'default': ANY,
             'cloud_priority': {
@@ -1365,7 +1365,7 @@ DEFS = {
     },
     'childInstances': {
         'type': 'object',
-        'doc': 'Declarative roster — makes the child type real at runtime for YAML drivers. Exactly one of count (fixed IDs 1..N), count_from (an integer config field), ids_from (a comma-separated config field; sparse IDs), or ids (a literal fixed list; requires platform 0.23.0). An optional count_from_state names a device-reported state var (e.g. num_outputs) the roster follows once connected, with the chosen config source as the offline fallback. Children register on connect, reconcile as a want-set (also whenever count_from_state changes), and back the per-device Refresh from Device button.',
+        'doc': 'Declarative roster. Makes the child type real at runtime for YAML drivers. Exactly one of count (fixed IDs 1..N), count_from (an integer config field), ids_from (a comma-separated config field; sparse IDs), or ids (a literal fixed list; requires platform 0.23.0). An optional count_from_state names a device-reported state var (e.g. num_outputs) the roster follows once connected, with the chosen config source as the offline fallback. Children register on connect, reconcile as a want-set (also whenever count_from_state changes), and back the per-device Refresh from Device button.',
         'fields': {
             'count': {
                 'type': 'integer',
@@ -1374,7 +1374,7 @@ DEFS = {
             },
             'count_from': {
                 'type': 'string',
-                'doc': 'Name of an integer config field (config_schema / default_config) holding the count — lets one driver cover different frame sizes.',
+                'doc': 'Name of an integer config field (config_schema / default_config) holding the count, so one driver can cover different frame sizes.',
             },
             'count_from_state': {
                 'type': 'string',
@@ -1383,12 +1383,12 @@ DEFS = {
             },
             'ids_from': {
                 'type': 'string',
-                'doc': 'Name of a comma-separated config field listing the IDs (e.g. "1,2,4") — for sparse or installer-chosen rosters.',
+                'doc': 'Name of a comma-separated config field listing the IDs (e.g. "1,2,4"), for sparse or installer-chosen rosters.',
             },
             'ids': {
                 'type': 'array',
                 'min_items': 1,
-                'doc': 'Literal fixed roster (e.g. [st, m]) — for protocol-fixed string or sparse-integer IDs that no config field should have to carry.',
+                'doc': 'Literal fixed roster (e.g. [st, m]), for protocol-fixed string or sparse-integer IDs that no config field should have to carry.',
                 'since': '0.23.0',
                 'items': {
                     'one_of': (
@@ -1418,7 +1418,7 @@ DEFS = {
     },
     'childSetEntry': {
         'type': 'object',
-        'doc': "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. json: true rules (platform 0.34.0+): id must be a literal (a JSON body carries no capture to route on, so one entry per child), and state values are JSON paths into the body — the same strings a json set: takes, plain or as {key, type, map}. Values coerce by the child property's declared type.",
+        'doc': "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. json: true rules (platform 0.34.0+): id must be a literal (a JSON body carries no capture to route on, so one entry per child), and state values are JSON paths into the body, the same strings a json set: takes, plain or as {key, type, map}. Values coerce by the child property's declared type.",
         'fields': {
             'type': {
                 'type': 'string',
@@ -1474,7 +1474,7 @@ DEFS = {
                             'segment': {
                                 'type': 'integer',
                                 'min': 0,
-                                'doc': 'OSC rules only: which address segment holds the wire id (0-based over the /-split address — in /ch/07/mix/fader, segment 1 is "07").',
+                                'doc': 'OSC rules only: which address segment holds the wire id (0-based over the /-split address; in /ch/07/mix/fader, segment 1 is "07").',
                             },
                             'map': {
                                 'type': 'object',
@@ -1650,7 +1650,7 @@ DEFS = {
             'send': {
                 'type': 'string',
                 'pattern': '\\{child_id(:[^{}]*)?\\}',
-                'doc': 'Query template; must contain {child_id} (a format spec like {child_id:02d} zero-pads — requires platform 0.23.0).',
+                'doc': 'Query template; must contain {child_id} (a format spec like {child_id:02d} zero-pads; requires platform 0.23.0).',
             },
             'when': {
                 'type': 'string',
@@ -1677,11 +1677,11 @@ DEFS = {
     },
     'queryEntry': {
         'type': 'object',
-        'doc': "A plain query in mapping form so it can carry extra semantics a bare string cannot: when: gates it on a config field (arm a chatty subscription behind an integrator checkbox), when_state: gates it on the device's own state (leave a unit in standby), and query_for: names the state variable the reply reports so the auto-generated simulator answers it without name-guessing. At least one of the three must be present — a mapping with only send: is just a string query written the long way.",
+        'doc': "A plain query in mapping form so it can carry extra semantics a bare string cannot: when: gates it on a config field (arm a chatty subscription behind an integrator checkbox), when_state: gates it on the device's own state (leave a unit in standby), and query_for: names the state variable the reply reports so the auto-generated simulator answers it without name-guessing. At least one of the three must be present: a mapping with only send: is just a string query written the long way.",
         'fields': {
             'send': {
                 'type': 'string',
-                'doc': 'Query sent as authored — a raw protocol string on tcp/serial, a command name or path on http/udp.',
+                'doc': 'Query sent as authored: a raw protocol string on tcp/serial, a command name or path on http/udp.',
             },
             'when': {
                 'type': 'string',
@@ -1723,7 +1723,7 @@ DEFS = {
             },
             'required': {
                 'type': 'boolean',
-                'doc': "The command cannot run without this parameter. Enforced by the runtime at command time for every caller and both driver formats: omitting it (or passing null) is refused with \"'<command>': '<param>' is required\" before the command reaches the driver. A blank string still counts as supplied. Leave it off for a parameter the driver can do without; a value the driver should assume when the user gives none is a default, not a requirement. Enforced from platform 0.24.0 — before that it only drew the asterisk beside the input, and omitting one surfaced as a generic \"Failed to send command\".",
+                'doc': "The command cannot run without this parameter. Enforced by the runtime at command time for every caller and both driver formats: omitting it (or passing null) is refused with \"'<command>': '<param>' is required\" before the command reaches the driver. A blank string still counts as supplied. Leave it off for a parameter the driver can do without; a value the driver should assume when the user gives none is a default, not a requirement. Enforced from platform 0.24.0. Before that it only drew the asterisk beside the input, and omitting one surfaced as a generic \"Failed to send command\".",
             },
             'label': {
                 'type': 'string',
@@ -1808,21 +1808,21 @@ DEFS = {
             },
             'unit': {
                 'type': 'string',
-                'doc': 'Unit shown beside the input when the command is run (e.g. %, ms, dB). Display only — it is never sent on the wire, so the value the device receives is unchanged. Use it where the number alone is ambiguous; the same key on a state variable or device setting means the same thing.',
+                'doc': 'Unit shown beside the input when the command is run (e.g. %, ms, dB). Display only: it is never sent on the wire, so the value the device receives is unchanged. Use it where the number alone is ambiguous; the same key on a state variable or device setting means the same thing.',
             },
             'pattern': {
                 'type': 'string',
                 'format': 'regex',
-                'doc': "Regex a free-text value must fully match — a shape check for values that can't be enumerated (IP, hostname, fixed-length ID). The runtime validates it at command time; the IDE shows an inline error while authoring. Must compile and avoid catastrophic backtracking.",
+                'doc': "Regex a free-text value must fully match: a shape check for values that can't be enumerated (IP, hostname, fixed-length ID). The runtime validates it at command time; the IDE shows an inline error while authoring. Must compile and avoid catastrophic backtracking.",
             },
             'trim': {
                 'type': 'boolean',
-                'doc': 'For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim — for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol).',
+                'doc': 'For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim, for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol).',
                 'since': '0.22.0',
             },
             'secret': {
                 'type': 'boolean',
-                'doc': 'Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing — set it wherever a credential would otherwise sit on screen in plain text.',
+                'doc': 'Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing. Set it wherever a credential would otherwise sit on screen in plain text.',
             },
             'default': ANY,
             'scale': VALUE_SCALE,
@@ -1849,7 +1849,7 @@ DEFS = {
             },
             'description': {
                 'type': 'string',
-                'doc': 'Accepted alias for help — read either, write help.',
+                'doc': 'Accepted alias for help. Read either, write help.',
             },
             'accept': {
                 'type': 'array',
@@ -1969,7 +1969,7 @@ DEFS = {
             },
             'sets': {
                 'type': 'object',
-                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. On a command with exactly one child_id parameter, a key may instead name a state variable of that parameter\'s child type — the effect then applies to the addressed child.',
+                'doc': 'Declared state effect: the state variables this command sets on the device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}" value takes that command parameter\'s value; anything else is a literal. The auto-generated simulator applies these instead of guessing from the command name; keys must name declared state variables. On a command with exactly one child_id parameter, a key may instead name a state variable of that parameter\'s child type, and the effect then applies to the addressed child.',
                 'since': '0.24.0',
                 'extra': {
                     'type': ['string', 'integer', 'number', 'boolean'],
@@ -2004,7 +2004,7 @@ DEFS = {
             },
             'available_offline': {
                 'type': 'boolean',
-                'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state.",
+                'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection. The canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state.",
                 'since': '0.24.0',
             },
             'udp': {
@@ -2015,7 +2015,7 @@ DEFS = {
                 'type': 'integer',
                 'min': 1,
                 'max': 600,
-                'doc': "Seconds this command takes the device's control channel away for, because sending it restarts the device. The mirror of available_offline: that one says a command works while the device is away, this one says a command MAKES it go away. While the window is open the platform reports the device as restarting rather than as a fault — no offline_reason is published, so nothing counts it as an error or alerts on it, and the panel says it is coming back instead of telling somebody to check the network. The window ends the moment the device reconnects, when the seconds run out, or immediately if a fault appears that a person has to fix (a rejected login, an untrusted certificate). Set it only from a MEASURED window on real hardware, round up, and leave it unset when the control channel survives the command — a device that stays reachable in standby, or a projector that reports a warming state, needs nothing here.",
+                'doc': "Seconds this command takes the device's control channel away for, because sending it restarts the device. The mirror of available_offline: that one says a command works while the device is away, this one says a command MAKES it go away. While the window is open the platform reports the device as restarting rather than as a fault: no offline_reason is published, so nothing counts it as an error or alerts on it, and the panel says it is coming back instead of telling somebody to check the network. The window ends the moment the device reconnects, when the seconds run out, or immediately if a fault appears that a person has to fix (a rejected login, an untrusted certificate). Set it only from a MEASURED window on real hardware, round up, and leave it unset when the control channel survives the command: a device that stays reachable in standby, or a projector that reports a warming state, needs nothing here.",
                 'since': '0.34.0',
             },
             'sleeps_device': {
@@ -2088,12 +2088,12 @@ DEFS = {
             },
             'command': {
                 'type': 'string',
-                'doc': 'kind:"command" only — the command id to send. Defaults to the action id.',
+                'doc': 'kind:"command" only: the command id to send. Defaults to the action id.',
             },
             'url': {
                 'type': 'string',
                 'min_len': 1,
-                'doc': 'kind:"link" only — the URL to open. Supports {host}/{port}/{config_key} substitution from the device config. Defaults to https://{host}.',
+                'doc': 'kind:"link" only: the URL to open. Supports {host}/{port}/{config_key} substitution from the device config. Defaults to https://{host}.',
             },
             'params': {
                 'type': 'object',
@@ -2259,7 +2259,7 @@ DEFS = {
             },
             'only_when': {
                 'ref': 'visibleWhen',
-                'doc': "Apply this rule only while this state condition holds. For a device that keeps reporting a table which is only in effect in one of its modes: an HDMI matrix with an extracted-audio matrix reports its audio assignments whether or not the ports are taking from them, so without a gate the platform publishes a routed source that is not what anybody can hear. Evaluated against the state store at the moment the frame arrives, so the mode has to be a state variable this driver reads — poll it, or the gate is stuck at whatever it was on connect. A rule that does not apply is skipped whole, leaving the value it would have written untouched rather than clearing it. Works on regex, json and OSC rules; the condition shape is the one visible_when uses.",
+                'doc': "Apply this rule only while this state condition holds. For a device that keeps reporting a table which is only in effect in one of its modes: an HDMI matrix with an extracted-audio matrix reports its audio assignments whether or not the ports are taking from them, so without a gate the platform publishes a routed source that is not what anybody can hear. Evaluated against the state store at the moment the frame arrives, so the mode has to be a state variable this driver reads. Poll it, or the gate is stuck at whatever it was on connect. A rule that does not apply is skipped whole, leaving the value it would have written untouched rather than clearing it. Works on regex, json and OSC rules; the condition shape is the one visible_when uses.",
                 'since': '0.32.0',
             },
             'require': {
@@ -2274,7 +2274,7 @@ DEFS = {
             },
             'after_json': {
                 'type': 'boolean',
-                'doc': "Regex rules only, and only on a driver that has json: true rules. Keep this rule eligible after a json rule has read the same body. Normally the first json rule to resolve a key consumes the frame and no regex rule sees it, which is right while the json rules read everything the body carries; set this on the one rule that reads something they do not — an error field arriving alongside the values, say. Eligibility is all it changes: the rule still matches, gates and throttles exactly as it would have, and rules that do not declare it still stop at a json rule. Default false.",
+                'doc': "Regex rules only, and only on a driver that has json: true rules. Keep this rule eligible after a json rule has read the same body. Normally the first json rule to resolve a key consumes the frame and no regex rule sees it, which is right while the json rules read everything the body carries; set this on the one rule that reads something they do not (an error field arriving alongside the values, say). Eligibility is all it changes: the rule still matches, gates and throttles exactly as it would have, and rules that do not declare it still stop at a json rule. Default false.",
                 'since': '0.34.0',
             },
             'then_query': {
@@ -2312,7 +2312,7 @@ DEFS = {
     },
     'pushBlock': {
         'type': 'object',
-        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). An sse stream the device treats as a session it names (a Content-Location header, an opening event) declares a session block: the platform reads the id, runs the register command(s) against it ({push_session} substitutes the id into their paths and bodies) on every (re)open, reopens the stream when the device sends the close event, and runs unregister on a graceful disconnect. type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address. type: udp_listener opens a local UDP port the device sends packets to, at an address and port set on the device itself (an SNMP agent's trap destination): the port is shared by every device that sends to it, each datagram feeds the responses rules (split on the driver delimiter first) and is accepted only from the device's own address.",
+        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). An sse stream the device treats as a session it names (a Content-Location header, an opening event) declares a session block: the platform reads the id, runs the register command(s) against it ({push_session} substitutes the id into their paths and bodies) on every (re)open, reopens the stream when the device sends the close event, and runs unregister on a graceful disconnect. type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device. Send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address. type: udp_listener opens a local UDP port the device sends packets to, at an address and port set on the device itself (an SNMP agent's trap destination): the port is shared by every device that sends to it, each datagram feeds the responses rules (split on the driver delimiter first) and is accepted only from the device's own address.",
         'since': '0.23.0',
         'fields': {
             'type': {
@@ -2614,7 +2614,7 @@ DEFS = {
     },
     'sendFrame': {
         'type': 'object',
-        'doc': 'Send-side packet framing — the send twin of frame_parser. Wraps every byte-stream command in a binary header whose data-length is computed per message (e.g. eISCP).',
+        'doc': 'Send-side packet framing, the send twin of frame_parser. Wraps every byte-stream command in a binary header whose data-length is computed per message (e.g. eISCP).',
         'since': '0.23.0',
         'fields': {
             'type': {
@@ -2977,13 +2977,13 @@ DEFS = {
     },
     'routingBlock': {
         'type': 'object',
-        'doc': 'Optional. Says where this driver\'s routing lives, so a Matrix control can be set up from the device instead of typed from the manual. Purely additive: a driver that declares nothing is read by the same inference as before, and nothing about how the driver RUNS changes — this is answered when somebody draws a panel. Declare it when the guess is wrong or incomplete: a routing command that needs a fixed extra parameter the property name cannot supply (a signal/stream selector), a device that routes itself and has no destination child at all, or a driver carrying properties that merely read like routing (a clip indicator, a priority mode). Declaring it REPLACES the guess: these planes are the planes, in this order.',
+        'doc': 'Optional. Says where this driver\'s routing lives, so a Matrix control can be set up from the device instead of typed from the manual. Purely additive: a driver that declares nothing is read by the same inference as before, and nothing about how the driver RUNS changes. This is answered when somebody draws a panel. Declare it when the guess is wrong or incomplete: a routing command that needs a fixed extra parameter the property name cannot supply (a signal/stream selector), a device that routes itself and has no destination child at all, or a driver carrying properties that merely read like routing (a clip indicator, a priority mode). Declaring it REPLACES the guess: these planes are the planes, in this order.',
         'since': '0.27.0',
         'fields': {
             'destination_child_type': {
                 'type': 'string',
                 'min_len': 1,
-                'doc': 'Default child type holding the things routed TO, in the driver\'s own words (output, decoder, rx, window, zone — or input, on an audio processor whose channels each select a source). Must name a declared child_entity_type. Omit it when the device IS the destination: an AVoIP endpoint that routes its own display has no destination child, and its matrix has one row.',
+                'doc': 'Default child type holding the things routed TO, in the driver\'s own words (output, decoder, rx, window, zone, or input on an audio processor whose channels each select a source). Must name a declared child_entity_type. Omit it when the device IS the destination: an AVoIP endpoint that routes its own display has no destination child, and its matrix has one row.',
             },
             'source_child_type': {
                 'type': 'string',
@@ -3007,13 +3007,13 @@ DEFS = {
             },
             'params': {
                 'type': 'object',
-                'doc': 'Fixed extra parameters sent with every route on every plane, on top of the source and destination. Rarely needed at this level — a signal or stream selector belongs on the plane that selects it.',
+                'doc': 'Fixed extra parameters sent with every route on every plane, on top of the source and destination. Rarely needed at this level. A signal or stream selector belongs on the plane that selects it.',
                 'extra': ANY,
             },
             'planes': {
                 'type': 'array',
                 'min_items': 1,
-                'doc': 'The independent things this device routes, in the order they should be offered. Usually one. A decoder that routes video, audio, IR, RS-232, USB and CEC independently declares six, because each is a separate Matrix control watching a different property — one destination with six planes is not one destination.',
+                'doc': 'The independent things this device routes, in the order they should be offered. Usually one. A decoder that routes video, audio, IR, RS-232, USB and CEC independently declares six, because each is a separate Matrix control watching a different property. One destination with six planes is not one destination.',
                 'items': {
                     'ref': 'routingPlane',
                 },
@@ -3034,7 +3034,7 @@ DEFS = {
             'route_property': {
                 'type': 'string',
                 'min_len': 1,
-                'doc': 'The property reporting what is currently routed here — the one a crosspoint lights from. A state variable of the destination child type, or of the device itself when there is no destination child. This is the one field a plane cannot leave out: without it a Matrix can switch and can never show.',
+                'doc': 'The property reporting what is currently routed here, the one a crosspoint lights from. A state variable of the destination child type, or of the device itself when there is no destination child. This is the one field a plane cannot leave out: without it a Matrix can switch and can never show.',
             },
             'destination_child_type': {
                 'type': 'string',
@@ -3063,7 +3063,7 @@ DEFS = {
             },
             'params': {
                 'type': 'object',
-                'doc': 'Fixed extra parameters that select THIS plane, sent with every route on it — a decoder whose one command carries signal: VIDEO / AUDIO / IR, or an encoder whose one command carries stream: usb. This is what a plane name alone cannot supply, and a required parameter left unfilled is a command the device refuses.',
+                'doc': 'Fixed extra parameters that select THIS plane, sent with every route on it: a decoder whose one command carries signal: VIDEO / AUDIO / IR, or an encoder whose one command carries stream: usb. This is what a plane name alone cannot supply, and a required parameter left unfilled is a command the device refuses.',
                 'extra': ANY,
             },
         },

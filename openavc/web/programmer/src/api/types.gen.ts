@@ -306,7 +306,7 @@ export interface DriverParamDef {
    * the command reaches the driver. A blank string still counts as supplied.
    * Leave it off for a parameter the driver can do without; a value the driver
    * should assume when the user gives none is a default, not a requirement.
-   * Enforced from platform 0.24.0 — before that it only drew the asterisk
+   * Enforced from platform 0.24.0. Before that it only drew the asterisk
    * beside the input, and omitting one surfaced as a generic "Failed to send
    * command".
    */
@@ -358,13 +358,13 @@ export interface DriverParamDef {
   decimals?: number;
   /**
    * Unit shown beside the input when the command is run (e.g. %, ms, dB).
-   * Display only — it is never sent on the wire, so the value the device
+   * Display only: it is never sent on the wire, so the value the device
    * receives is unchanged. Use it where the number alone is ambiguous; the
    * same key on a state variable or device setting means the same thing.
    */
   unit?: string;
   /**
-   * Regex a free-text value must fully match — a shape check for values that
+   * Regex a free-text value must fully match: a shape check for values that
    * can't be enumerated (IP, hostname, fixed-length ID). The runtime validates
    * it at command time; the IDE shows an inline error while authoring. Must
    * compile and avoid catastrophic backtracking.
@@ -373,7 +373,7 @@ export interface DriverParamDef {
   /**
    * For string params. Default true: leading/trailing whitespace is trimmed
    * before the value goes on the wire. Set false to pass the value through
-   * verbatim — for raw payloads where edge whitespace is meaningful (typed
+   * verbatim, for raw payloads where edge whitespace is meaningful (typed
    * text, verbatim titles, relay bodies whose trailing terminator is part of
    * the protocol). Requires platform 0.22.0.
    */
@@ -382,7 +382,7 @@ export interface DriverParamDef {
    * Render the input masked when the command is run, for a param that carries
    * a password, PIN or key. Presentation only: the value still goes on the
    * wire as typed, and nothing is stored. The same key on a config_schema
-   * field means the same thing — set it wherever a credential would otherwise
+   * field means the same thing. Set it wherever a credential would otherwise
    * sit on screen in plain text.
    */
   secret?: boolean;
@@ -413,7 +413,7 @@ export interface DriverParamDef {
    * device spells as a word (ON / OFF) or a digit.
    */
   map?: Record<string, string | number>;
-  /** Accepted alias for help — read either, write help. */
+  /** Accepted alias for help. Read either, write help. */
   description?: string;
   /**
    * For a file param: the file-name endings it takes, e.g. [".bin"] or
@@ -512,7 +512,7 @@ export interface DriverCommandDef {
    * The auto-generated simulator applies these instead of guessing from the
    * command name; keys must name declared state variables. On a command with
    * exactly one child_id parameter, a key may instead name a state variable of
-   * that parameter's child type — the effect then applies to the addressed
+   * that parameter's child type, and the effect then applies to the addressed
    * child. Requires platform 0.24.0.
    */
   sets?: Record<string, string | number | boolean>;
@@ -555,7 +555,7 @@ export interface DriverCommandDef {
   /**
    * Let this command run while the device is offline (no live connection).
    * Default false: the platform blocks commands to a disconnected device. Set
-   * true only for a command whose handler needs no connection — the canonical
+   * true only for a command whose handler needs no connection. The canonical
    * case is a Wake-on-LAN power_on that sends a magic packet instead of
    * talking to the device over its (dead) control link. Param validation still
    * runs; the driver's handler must not assume a live transport. When such a
@@ -570,16 +570,15 @@ export interface DriverCommandDef {
    * sending it restarts the device. The mirror of available_offline: that one
    * says a command works while the device is away, this one says a command
    * MAKES it go away. While the window is open the platform reports the device
-   * as restarting rather than as a fault — no offline_reason is published, so
+   * as restarting rather than as a fault: no offline_reason is published, so
    * nothing counts it as an error or alerts on it, and the panel says it is
    * coming back instead of telling somebody to check the network. The window
    * ends the moment the device reconnects, when the seconds run out, or
    * immediately if a fault appears that a person has to fix (a rejected login,
    * an untrusted certificate). Set it only from a MEASURED window on real
    * hardware, round up, and leave it unset when the control channel survives
-   * the command — a device that stays reachable in standby, or a projector
-   * that reports a warming state, needs nothing here. Requires platform
-   * 0.34.0.
+   * the command: a device that stays reachable in standby, or a projector that
+   * reports a warming state, needs nothing here. Requires platform 0.34.0.
    */
   restarts_device_for?: number;
   /**
@@ -669,7 +668,7 @@ export interface DriverResponseMapping {
  * into the /-split address) or a literal; state values are {arg: N}
  * positional-argument specs or literals. json: true rules (platform 0.34.0+):
  * id must be a literal (a JSON body carries no capture to route on, so one
- * entry per child), and state values are JSON paths into the body — the same
+ * entry per child), and state values are JSON paths into the body, the same
  * strings a json set: takes, plain or as {key, type, map}. Values coerce by
  * the child property's declared type.
  */
@@ -798,11 +797,11 @@ export interface DriverResponseDef {
    * whether or not the ports are taking from them, so without a gate the
    * platform publishes a routed source that is not what anybody can hear.
    * Evaluated against the state store at the moment the frame arrives, so the
-   * mode has to be a state variable this driver reads — poll it, or the gate
-   * is stuck at whatever it was on connect. A rule that does not apply is
-   * skipped whole, leaving the value it would have written untouched rather
-   * than clearing it. Works on regex, json and OSC rules; the condition shape
-   * is the one visible_when uses. Requires platform 0.32.0.
+   * mode has to be a state variable this driver reads. Poll it, or the gate is
+   * stuck at whatever it was on connect. A rule that does not apply is skipped
+   * whole, leaving the value it would have written untouched rather than
+   * clearing it. Works on regex, json and OSC rules; the condition shape is
+   * the one visible_when uses. Requires platform 0.32.0.
    */
   only_when?: DriverVisibleWhen;
   /**
@@ -817,8 +816,8 @@ export interface DriverResponseDef {
    * this rule eligible after a json rule has read the same body. Normally the
    * first json rule to resolve a key consumes the frame and no regex rule sees
    * it, which is right while the json rules read everything the body carries;
-   * set this on the one rule that reads something they do not — an error field
-   * arriving alongside the values, say. Eligibility is all it changes: the
+   * set this on the one rule that reads something they do not (an error field
+   * arriving alongside the values, say). Eligibility is all it changes: the
    * rule still matches, gates and throttles exactly as it would have, and
    * rules that do not declare it still stop at a json rule. Default false.
    * Requires platform 0.34.0.
@@ -856,7 +855,7 @@ export interface DriverEachChildQuery {
   each_child: string;
   /**
    * Query template; must contain {child_id} (a format spec like {child_id:02d}
-   * zero-pads — requires platform 0.23.0).
+   * zero-pads; requires platform 0.23.0).
    */
   send: string;
   /**
@@ -888,12 +887,12 @@ export interface DriverEachChildQuery {
  * an integrator checkbox), when_state: gates it on the device's own state
  * (leave a unit in standby), and query_for: names the state variable the reply
  * reports so the auto-generated simulator answers it without name-guessing. At
- * least one of the three must be present — a mapping with only send: is just a
+ * least one of the three must be present: a mapping with only send: is just a
  * string query written the long way.
  */
 export interface DriverQueryEntry {
   /**
-   * Query sent as authored — a raw protocol string on tcp/serial, a command
+   * Query sent as authored: a raw protocol string on tcp/serial, a command
    * name or path on http/udp.
    */
   send: string;
@@ -966,10 +965,10 @@ export interface DriverActionDef {
    * only while offline; always ignores connection state.
    */
   availability?: "online" | "offline" | "always";
-  /** kind:"command" only — the command id to send. Defaults to the action id. */
+  /** kind:"command" only: the command id to send. Defaults to the action id. */
   command?: string;
   /**
-   * kind:"link" only — the URL to open. Supports {host}/{port}/{config_key}
+   * kind:"link" only: the URL to open. Supports {host}/{port}/{config_key}
    * substitution from the device config. Defaults to https://{host}.
    */
   url?: string;
@@ -1218,7 +1217,7 @@ export interface DriverStateVarDef {
   /**
    * Marks a variable an integrator would bind a panel control to (a fader
    * level, a mute). The UI Builder's value picker lists flagged variables
-   * first. Ordering only — unflagged variables stay pickable.
+   * first. Ordering only: unflagged variables stay pickable.
    */
   control?: boolean;
   default?: unknown;
@@ -1327,7 +1326,7 @@ export interface DriverChildIdFormat {
 }
 
 /**
- * Declarative roster — makes the child type real at runtime for YAML drivers.
+ * Declarative roster. Makes the child type real at runtime for YAML drivers.
  * Exactly one of count (fixed IDs 1..N), count_from (an integer config field),
  * ids_from (a comma-separated config field; sparse IDs), or ids (a literal
  * fixed list; requires platform 0.23.0). An optional count_from_state names a
@@ -1341,7 +1340,7 @@ export interface DriverChildInstances {
   count?: number;
   /**
    * Name of an integer config field (config_schema / default_config) holding
-   * the count — lets one driver cover different frame sizes.
+   * the count, so one driver can cover different frame sizes.
    */
   count_from?: string;
   /**
@@ -1353,12 +1352,12 @@ export interface DriverChildInstances {
    */
   count_from_state?: string;
   /**
-   * Name of a comma-separated config field listing the IDs (e.g. "1,2,4") —
-   * for sparse or installer-chosen rosters.
+   * Name of a comma-separated config field listing the IDs (e.g. "1,2,4"), for
+   * sparse or installer-chosen rosters.
    */
   ids_from?: string;
   /**
-   * Literal fixed roster (e.g. [st, m]) — for protocol-fixed string or sparse-
+   * Literal fixed roster (e.g. [st, m]), for protocol-fixed string or sparse-
    * integer IDs that no config field should have to carry. Requires platform
    * 0.23.0.
    */
@@ -1536,7 +1535,7 @@ export interface DriverPushRegisterEntry {
  * the subscription starts before on_connect (and any register command) runs,
  * and stops on disconnect; a dropped SSE stream reconnects with exponential
  * backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks)
- * on a callback path the platform assigns per device — send the URL to the
+ * on a callback path the platform assigns per device. Send the URL to the
  * device from an on_connect registration command, where the token
  * {push_callback_url} substitutes it into command bodies, paths, and headers;
  * request bodies feed the responses rules whole and are accepted only from the
@@ -1678,11 +1677,10 @@ export interface DriverRoutingPlane {
    */
   label?: string;
   /**
-   * The property reporting what is currently routed here — the one a
-   * crosspoint lights from. A state variable of the destination child type, or
-   * of the device itself when there is no destination child. This is the one
-   * field a plane cannot leave out: without it a Matrix can switch and can
-   * never show.
+   * The property reporting what is currently routed here, the one a crosspoint
+   * lights from. A state variable of the destination child type, or of the
+   * device itself when there is no destination child. This is the one field a
+   * plane cannot leave out: without it a Matrix can switch and can never show.
    */
   route_property: string;
   /** Overrides the block's destination child type for this plane. */
@@ -1699,8 +1697,8 @@ export interface DriverRoutingPlane {
   /** Overrides the block's source parameter for this plane. */
   source_param?: string;
   /**
-   * Fixed extra parameters that select THIS plane, sent with every route on it
-   * — a decoder whose one command carries signal: VIDEO / AUDIO / IR, or an
+   * Fixed extra parameters that select THIS plane, sent with every route on
+   * it: a decoder whose one command carries signal: VIDEO / AUDIO / IR, or an
    * encoder whose one command carries stream: usb. This is what a plane name
    * alone cannot supply, and a required parameter left unfilled is a command
    * the device refuses.
@@ -1712,7 +1710,7 @@ export interface DriverRoutingPlane {
  * Optional. Says where this driver's routing lives, so a Matrix control can be
  * set up from the device instead of typed from the manual. Purely additive: a
  * driver that declares nothing is read by the same inference as before, and
- * nothing about how the driver RUNS changes — this is answered when somebody
+ * nothing about how the driver RUNS changes. This is answered when somebody
  * draws a panel. Declare it when the guess is wrong or incomplete: a routing
  * command that needs a fixed extra parameter the property name cannot supply
  * (a signal/stream selector), a device that routes itself and has no
@@ -1723,7 +1721,7 @@ export interface DriverRoutingPlane {
 export interface DriverRoutingDef {
   /**
    * Default child type holding the things routed TO, in the driver's own words
-   * (output, decoder, rx, window, zone — or input, on an audio processor whose
+   * (output, decoder, rx, window, zone, or input on an audio processor whose
    * channels each select a source). Must name a declared child_entity_type.
    * Omit it when the device IS the destination: an AVoIP endpoint that routes
    * its own display has no destination child, and its matrix has one row.
@@ -1756,7 +1754,7 @@ export interface DriverRoutingDef {
   source_param?: string;
   /**
    * Fixed extra parameters sent with every route on every plane, on top of the
-   * source and destination. Rarely needed at this level — a signal or stream
+   * source and destination. Rarely needed at this level. A signal or stream
    * selector belongs on the plane that selects it.
    */
   params?: Record<string, unknown>;
@@ -1764,7 +1762,7 @@ export interface DriverRoutingDef {
    * The independent things this device routes, in the order they should be
    * offered. Usually one. A decoder that routes video, audio, IR, RS-232, USB
    * and CEC independently declares six, because each is a separate Matrix
-   * control watching a different property — one destination with six planes is
+   * control watching a different property. One destination with six planes is
    * not one destination.
    */
   planes: DriverRoutingPlane[];
@@ -1938,7 +1936,7 @@ export interface DriverDefinition {
   /**
    * Computed config values, each a template substituted from other config
    * fields, e.g. {"ws": "/workspace/{workspace_id}"}. If any {field} the
-   * template references is empty or missing, the derived value is "" — so an
+   * template references is empty or missing, the derived value is "", so an
    * optional prefixed address segment simply disappears. Computed once when
    * the device connects and visible to every command address, on_connect
    * entry, response, and poll query (just like a real config field). Lets one
