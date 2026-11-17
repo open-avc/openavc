@@ -12007,6 +12007,26 @@ Object.assign(tests, {
         if (lost.length !== 1) failures.push(`after the save the keypad sent ${JSON.stringify(lost)}, not only what was typed on the dialog opened again`);
         assert(failures.length === 0, failures.join('\n'));
     },
+
+    async a_turn_of_the_glass_keeps_each_open_dialog_open() {
+        const kept = [['check', 'stack', ['dlg', 'side']], ['check', 'overlays', 2], ['check', 'openAtOnce'], ['check', 'stillPage']];
+        const steps = await driveCase(keptCase([
+            ['viewport', ...PORTRAIT, ['resize']], ...kept,
+            ['viewport', 1280, 800, ['orientationchange']], ...kept,
+        ]));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_changed_ui_file_keeps_each_open_dialog_open() {
+        const pages = NAV_PAGES().map((p) => (p.id === 'home' ? { ...p, elements: [...p.elements, customEl('c1')] } : p));
+        const steps = await driveCase(keptCase([
+            ['msg', { type: 'ui.files', version: 2 }],
+            ['check', 'stack', ['dlg', 'side']], ['check', 'overlays', 2], ['check', 'openAtOnce'], ['check', 'stillPage'],
+        ], { ui: keptUi('files', pages) }));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
 });
 
 // --- Layout: which arrangement draws, and where each element goes -----------

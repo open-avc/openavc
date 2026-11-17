@@ -713,8 +713,8 @@ class PanelApp {
      * A file in the project's ui/ tree changed. Nothing about the project
      * moved, so no ui.definition follows and this page would keep drawing the
      * control the browser already has -- for as long as nobody navigated away
-     * and back. The version rides onto each frame's src, so a re-render
-     * re-fetches.
+     * and back. The version rides onto each frame's src, so a redraw in
+     * place re-fetches, each open dialog opened again.
      *
      * Embedded is the Builder's canvas, which runs its own counter over
      * postMessage and would fight this one. Same reason ui.definition is
@@ -724,7 +724,7 @@ class PanelApp {
         if (this.embedded) return;
         this._uiFilesVersion = msg.version;
         if (this.snapshotReceived && pageRunsAuthorMarkup(this.uiDef, this.currentPage)) {
-            this.renderCurrentPage();
+            this.renderCurrentPage({ inPlace: true });
         }
     }
 
@@ -1021,9 +1021,9 @@ class PanelApp {
 
     /**
      * Re-render when the glass changes orientation, so a page with a portrait
-     * layout picks it up. Nothing else needs a re-render: percentage geometry
-     * reflows on its own, and redrawing on every resize tick would restart
-     * entry animations for no reason.
+     * layout picks it up: a redraw in place, each open dialog opened again in
+     * its own arrangement for the new way round. Nothing else needs a
+     * re-render: percentage geometry reflows on its own.
      */
     _setupViewportListener() {
         if (this._viewportListenerSetup) return;
@@ -1033,7 +1033,7 @@ class PanelApp {
             const now = viewportOrientation();
             if (now === last) return;
             last = now;
-            if (this.uiDef) this.renderCurrentPage();
+            if (this.uiDef) this.renderCurrentPage({ inPlace: true });
         };
         window.addEventListener('resize', onChange);
         window.addEventListener('orientationchange', onChange);

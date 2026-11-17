@@ -429,6 +429,9 @@ SCENARIOS = [
     "a_dialog_whose_page_went_or_no_longer_opens_over_is_not_reopened",
     "a_dialog_stays_open_over_the_page_standing_in_for_one_deleted",
     "a_half_typed_entry_on_a_kept_dialog_is_not_sent",
+    # A turn of the glass and a changed ui/ file draw the page in place too.
+    "a_turn_of_the_glass_keeps_each_open_dialog_open",
+    "a_changed_ui_file_keeps_each_open_dialog_open",
     # The surface record (modules/surface.js): its timers cleared and its
     # ends run once, and whatever is given after it ended ended at once; a
     # page that goes starts none of the entry animations it had still to start.
