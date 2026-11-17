@@ -286,6 +286,25 @@ async def test_an_import_with_a_misspelled_key_keeps_the_installed_copy(lib):
     _kept(lib, before, cls)
 
 
+@pytest.mark.parametrize("discovery", [
+    {"mdsn": "_acme._tcp.local."},
+    {"tcp_probe": {"port": 4999, "send_ascii": "ID?\r", "expect": "ACME",
+                   "then": {"send_ascii": "BIG?\r", "expect_silense": True}}},
+], ids=["block", "probe_second_step"])
+@pytest.mark.asyncio
+async def test_an_import_with_a_misspelled_discovery_key_keeps_the_installed_copy(lib, discovery):
+    """The unknown-key gate leaves the discovery block to its reader, which
+    refuses the import itself, naming the key."""
+    cls = _installed_yaml(lib)
+    before = _tree(lib.repo)
+    refusal = await _refused(
+        routes.upload_driver(_form("acme_widget.avcdriver", _yaml(discovery=discovery)))
+    )
+    assert refusal.status_code == 422
+    assert "unknown keys" in str(refusal.detail)
+    _kept(lib, before, cls)
+
+
 @pytest.mark.asyncio
 async def test_an_import_whose_companion_is_not_here_keeps_the_installed_copy(lib):
     cls = _installed_yaml(lib)
