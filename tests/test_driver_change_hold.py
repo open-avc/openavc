@@ -398,7 +398,10 @@ def _assistant() -> AIToolHandler:
 
 
 # Every door that writes, removes, registers or reloads a driver, each as it is
-# called. A door added without the hold fails here.
+# called. A door here without the hold fails the test below; the next test
+# holds this list to every route on the three driver routers that is not a
+# GET, so a new route there is listed or named as no driver change. The
+# assistant's tools are listed by hand.
 _DOORS = {
     "community install": lambda: LIBRARY.install_community_driver(
         CommunityDriverInstallRequest(driver_id=DRIVER_ID, file_url=_INSTALL_URL)
@@ -444,6 +447,29 @@ _DOORS = {
         {"driver_id": DRIVER_ID, "file_url": _INSTALL_URL}
     ),
 }
+
+
+# The routes each entry of _DOORS calls, and the ones that change no driver.
+_HELD_ROUTES = {
+    "install_community_driver", "upload_driver", "upload_driver_bundle", "uninstall_driver",
+    "update_driver", "create_driver_definition", "update_driver_definition",
+    "patch_driver_definition", "delete_driver_definition_endpoint", "reload_driver_definition",
+    "create_python_driver", "save_python_driver_source", "delete_python_driver",
+    "reload_python_driver_endpoint",
+}
+_NO_DRIVER_CHANGE = {"validate_driver_definition_draft"}  # checks a draft, writes nothing
+
+
+def test_every_route_that_can_change_a_driver_is_a_listed_door():
+    routes = {
+        route.endpoint.__name__
+        for router in (LIBRARY.router, BUILDER.router, CODE_VIEW.router)
+        for route in router.routes
+        if set(getattr(route, "methods", ()) or ()) - {"GET", "HEAD"}
+    }
+    assert routes == _HELD_ROUTES | _NO_DRIVER_CHANGE
+    called = set().union(*(door.__code__.co_names for door in _DOORS.values()))
+    assert _HELD_ROUTES <= called
 
 
 @pytest.mark.parametrize("door", sorted(_DOORS))
