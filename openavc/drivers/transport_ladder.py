@@ -131,12 +131,16 @@ def _port_number(port: object) -> int:
     except (TypeError, ValueError):
         number = -1
     if not 0 <= number <= 65535:
-        raise _refused(
-            f"This device's Port setting is {port!r}, which is not a port "
-            f"number. Enter a number from 1 to 65535 in the device's "
-            f"Connection Settings."
-        )
+        raise _not_a_port(port)
     return number
+
+
+def _not_a_port(port: object) -> ConnectionFaultError:
+    return _refused(
+        f"This device's Port setting is {port!r}, which is not a port "
+        f"number. Enter a number from 1 to 65535 in the device's "
+        f"Connection Settings."
+    )
 
 
 def _delimiter_not_text(delimiter: object, from_driver: bool) -> str:
@@ -344,23 +348,19 @@ async def _osc(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
 
 
 async def _http(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
-    from openavc.transport.endpoint import implied_port
+    from openavc.transport.endpoint import UnusablePort, http_endpoint
 
     config = driver.config
-    host = config.get("host", "")
-    # Read without a default: `.get("port", 80)` makes an explicit
-    # `port: 80, ssl: true` indistinguishable from "not set", and the
-    # fallback would silently rewrite it to 443.
-    port = config.get("port")
-    scheme = "https" if config.get("ssl", False) else "http"
-    if port is None:
-        port = implied_port("http", config)
+    try:
+        endpoint = http_endpoint(config.get("host", ""), config)
+    except UnusablePort as unusable:
+        raise _not_a_port(unusable.port) from unusable
     auth_type = config.get("auth_type", "none")
     kwargs = dict(
-        base_url=f"{scheme}://{host}:{port}",
+        base_url=endpoint.base_url,
         auth_type=auth_type,
         credentials=_http_credentials(config, auth_type),
-        verify_ssl=config.get("verify_ssl", True),
+        verify_ssl=endpoint.verify,
         default_headers=config.get("default_headers", {}),
         timeout=config.get("timeout", 10.0),
         name=driver.device_id,

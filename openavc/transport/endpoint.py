@@ -1,12 +1,21 @@
 """The parts of a device's endpoint a transport fills in for itself.
 
-A device's resolved config names a host and usually a port. Two things about
+A device's resolved config names a host and usually a port. Three things about
 the connection its driver opens are not in that config: the port a transport
-falls back to when the config names none, and the local address the socket is
-bound to when Settings names a control interface. ``BaseDriver._create_transport``
-(drivers/transport_ladder.py) asks here for both, and so does anything that has to report or test where a
-device really connects (``core/device_config.connection_of``,
-``core/device_reachability``), so the answer cannot drift from the dial.
+falls back to when the config names none, the local address the socket is
+bound to when Settings names a control interface, and, for an http device,
+the address its requests go to. ``BaseDriver._create_transport``
+(drivers/transport_ladder.py) asks here for all three, and so does anything
+that has to report or test where a device really connects
+(``core/device_config.connection_of``, ``core/device_reachability``), so the
+answer cannot drift from the dial.
+
+THE rule for an http device's address is :func:`http_endpoint`: the scheme
+from ``ssl``, the port as set or the scheme's default, the host as a URL
+writes it (an IPv6 address in brackets) and whether the certificate is
+checked. The HTTP transport's builder, Test Connection, Open Web UI and the
+Driver Builder's raw probe all ask it. ``base_url`` in a config is not read
+here: the transport never reads it.
 
 tcp, udp and osc have no fallback port: the driver must declare one
 (``BaseDriver._required_port``), and a device without one is a config error.
@@ -15,6 +24,8 @@ tcp, udp and osc have no fallback port: the driver must declare one
 from __future__ import annotations
 
 import ipaddress
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.transport.snmp_codec import SNMP_PORT
@@ -29,7 +40,7 @@ _IMPLIED_PORTS: dict[str, int] = {
 }
 
 
-def implied_port(transport: str, config: dict[str, Any]) -> int | None:
+def implied_port(transport: str, config: Mapping[str, Any]) -> int | None:
     """The port ``transport`` dials when ``config`` names none, or None.
 
     None means the transport has no fallback: tcp, udp and osc need a port
@@ -37,8 +48,99 @@ def implied_port(transport: str, config: dict[str, Any]) -> int | None:
     a device path.
     """
     if transport == "http":
-        return 443 if config.get("ssl", False) else 80
+        return 443 if _uses_tls(config) else 80
     return _IMPLIED_PORTS.get(transport)
+
+
+def _uses_tls(config: Mapping[str, Any]) -> bool:
+    """Whether an http device's ``ssl`` is on: by its truth, as every
+    transport reads it."""
+    return bool(config.get("ssl", False))
+
+
+def checks_certificate(config: Mapping[str, Any]) -> bool:
+    """Whether an http device's certificate is checked: ``verify_ssl`` by its
+    truth, as the TCP and MQTT transports read it, and on when it is not set
+    or set to null. Part of :func:`http_endpoint`'s answer; on its own for a
+    caller with a URL of its own and no host."""
+    value = config.get("verify_ssl")
+    return True if value is None else bool(value)
+
+
+def url_host(host: Any) -> str:
+    """``host`` as a URL writes it: an IPv6 address in brackets, its zone's
+    ``%`` written ``%25``; anything else trimmed and as written. A host
+    already in brackets is not bracketed again."""
+    name = str(host or "").strip()
+    bare = name[1:-1] if name.startswith("[") and name.endswith("]") else name
+    try:
+        address = ipaddress.ip_address(bare)
+    except ValueError:
+        return name
+    if address.version == 6:
+        return "[" + bare.replace("%", "%25") + "]"
+    return bare
+
+
+class UnusablePort(ValueError):
+    """A port setting no connection can be made to. ``port`` is the value as
+    written, for the caller to name in its own sentence."""
+
+    def __init__(self, port: Any) -> None:
+        super().__init__(f"the port {port!r} is not a port number")
+        self.port = port
+
+
+def _port_number(port: Any) -> int:
+    """A port setting as a number from 1 to 65535, or :class:`UnusablePort`.
+    Read with ``int()``, as ``connection_of`` and the other transports'
+    builders read one: a number written as text counts, a word does not."""
+    try:
+        number = int(port)
+    except (TypeError, ValueError):
+        raise UnusablePort(port) from None
+    if not 0 < number <= 65535:
+        raise UnusablePort(port)
+    return number
+
+
+@dataclass(frozen=True)
+class HttpEndpoint:
+    """Where an http device's requests go."""
+
+    scheme: str  # "https" when ssl is on, else "http"
+    host: str  # as a URL writes it (url_host)
+    port: int
+    verify: bool  # whether the device's certificate is checked
+
+    @property
+    def base_url(self) -> str:
+        """What the HTTP transport is built with, the port always written."""
+        return f"{self.scheme}://{self.host}:{self.port}"
+
+
+def http_endpoint(host: Any, config: Mapping[str, Any]) -> HttpEndpoint:
+    """Where an http device at ``host`` with ``config`` sends its requests.
+
+    The port is ``config["port"]``, or the scheme's default when it is not
+    set, null or blank; one that is set to anything but a port number raises
+    :class:`UnusablePort`, never falling back to the default, since the
+    device's own connection is refused for it. ``host`` is passed apart from
+    ``config`` because a caller may already know better (a bridge binding
+    that connects nowhere leaves no host).
+    """
+    port = config.get("port")
+    if port is None or port == "":
+        number = implied_port("http", config)
+        assert number is not None  # http always has one
+    else:
+        number = _port_number(port)
+    return HttpEndpoint(
+        scheme="https" if _uses_tls(config) else "http",
+        host=url_host(host),
+        port=number,
+        verify=checks_certificate(config),
+    )
 
 
 _LINK_LOCAL = ipaddress.IPv4Network("169.254.0.0/16")

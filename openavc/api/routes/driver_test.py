@@ -36,6 +36,7 @@ from openavc.core.device_config import (
     same_serial_port,
 )
 from openavc.drivers.transport_choice import effective_transport
+from openavc.transport.endpoint import UnusablePort, http_endpoint
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
 
@@ -849,8 +850,19 @@ async def _test_http_raw(body: TestCommandRequest) -> dict:
             method = parts[0].upper()
             path = parts[1]
 
-    scheme = "https" if body.port == 443 else "http"
-    url = f"{scheme}://{body.host}:{body.port}{path}"
+    try:
+        endpoint = http_endpoint(
+            body.host,
+            {"port": body.port, "ssl": body.ssl, "verify_ssl": body.verify_ssl},
+        )
+    except UnusablePort:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid HTTP port: {body.port!r}",
+        ) from None
+    if not path.startswith("/"):
+        path = "/" + path
+    url = f"{endpoint.base_url}{path}"
     sent = f"{method} {url}"
 
     try:
@@ -858,7 +870,7 @@ async def _test_http_raw(body: TestCommandRequest) -> dict:
             timeout=body.timeout,
             # Directly to equipment at a local address, whatever the proxy
             # settings say (utils/outbound.py); the transport carries verify.
-            transport=device_transport(url, verify=body.verify_ssl),
+            transport=device_transport(url, verify=endpoint.verify),
         ) as client:
             resp = await client.request(method, url)
             return {

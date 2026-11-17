@@ -2403,8 +2403,8 @@ These fields in `config_schema` are recognized by the HTTP transport:
 
 | Field | Description |
 |-------|-------------|
-| `host` | Device IP or hostname (required) |
-| `port` | Port number (default: 80) |
+| `host` | Device IP address (IPv4 or IPv6) or hostname (required) |
+| `port` | Port number (default: 80, or 443 when `ssl` is on) |
 | `ssl` | Use HTTPS (default: false) |
 | `auth_type` | `"none"`, `"basic"`, `"bearer"`, `"api_key"`, `"digest"` |
 | `username` | For basic/digest auth |

@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from openavc.api.models import TestCommandRequest
@@ -77,7 +78,8 @@ def captured_httpx(monkeypatch) -> dict:
 
 async def test_raw_http_test_verifies_tls_by_default(captured_httpx):
     body = TestCommandRequest(
-        host="10.0.0.5", port=443, transport="http", command_string="GET /status"
+        host="10.0.0.5", port=443, transport="http", command_string="GET /status",
+        ssl=True,
     )
     result = await _test_http_raw(body)
     assert result["success"] is True
@@ -89,10 +91,49 @@ async def test_raw_http_test_verifies_tls_by_default(captured_httpx):
 async def test_raw_http_test_honors_verify_ssl_opt_out(captured_httpx):
     body = TestCommandRequest(
         host="10.0.0.5", port=443, transport="http",
-        command_string="GET /status", verify_ssl=False,
+        command_string="GET /status", ssl=True, verify_ssl=False,
     )
     await _test_http_raw(body)
     assert captured_httpx["transport"]._pool._ssl_context.verify_mode == ssl.CERT_NONE
+
+
+@pytest.mark.parametrize(
+    ("host", "port", "use_ssl", "sent"),
+    [
+        # HTTPS on a port of the device's own, as its driver reaches it.
+        ("10.0.0.5", 8443, True, "GET https://10.0.0.5:8443/status"),
+        # Port 443 alone does not make it HTTPS: the driver's ssl setting does.
+        ("10.0.0.5", 443, False, "GET http://10.0.0.5:443/status"),
+        ("10.0.0.5", "", True, "GET https://10.0.0.5:443/status"),
+        ("2001:db8::5", 8080, False, "GET http://[2001:db8::5]:8080/status"),
+    ],
+)
+async def test_raw_http_probe_goes_where_the_driver_connects(
+    captured_httpx, host, port, use_ssl, sent,
+):
+    body = TestCommandRequest(
+        host=host, port=port, transport="http", command_string="GET /status", ssl=use_ssl,
+    )
+    result = await _test_http_raw(body)
+    assert result["sent"] == sent
+
+
+async def test_raw_http_probe_path_without_a_slash(captured_httpx):
+    body = TestCommandRequest(
+        host="10.0.0.5", port=80, transport="http", command_string="GET status",
+    )
+    result = await _test_http_raw(body)
+    assert result["sent"] == "GET http://10.0.0.5:80/status"
+
+
+async def test_raw_http_probe_refuses_a_port_that_is_not_a_number():
+    body = TestCommandRequest(
+        host="10.0.0.5", port="web", transport="http", command_string="GET /status",
+    )
+    with pytest.raises(HTTPException) as caught:
+        await _test_http_raw(body)
+    assert caught.value.status_code == 422
+    assert "'web'" in caught.value.detail
 
 
 def _engine_with_http_device(device_id: str, config: dict):

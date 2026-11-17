@@ -258,8 +258,10 @@ class TestCommandRequest(BaseModel):
     # responses so the UI can show what was actually sent.
     command_string: str = ""
     delimiter: str = "\\r"
-    # Raw HTTP probes only. Definition-mode tests go through the real HTTP
-    # transport, which reads verify_ssl from the driver config instead.
+    # Raw HTTP probes only: the driver's ssl and verify_ssl, so the probe goes
+    # where the driver's own connection does (transport/endpoint.py's
+    # http_endpoint). Definition-mode tests read both from the driver config.
+    ssl: bool = False
     verify_ssl: bool = True
 
 

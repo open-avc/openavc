@@ -109,10 +109,12 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   });
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [rawString, setRawString] = useState("");
-  // Raw HTTPS probes verify the device certificate by default; AV gear
-  // often ships self-signed, so offer the same opt-out the driver config
-  // has (verify_ssl).
-  const [rawVerifySsl, setRawVerifySsl] = useState(true);
+  // Raw HTTPS probes verify the device certificate as the driver does,
+  // checked unless the driver turns it off; AV gear often ships self-signed,
+  // so offer the same opt-out the driver config has (verify_ssl).
+  const [rawVerifySsl, setRawVerifySsl] = useState(
+    draft.default_config?.verify_ssl !== false,
+  );
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [sending, setSending] = useState(false);
   // What the command asks before it is sent, while asking.
@@ -455,6 +457,8 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               command_string: rawString,
               delimiter: draft.delimiter,
               timeout: 5,
+              // HTTPS when the driver's own connection is, on any port.
+              ssl: Boolean(draft.default_config?.ssl),
               verify_ssl: rawVerifySsl,
             }
           : {

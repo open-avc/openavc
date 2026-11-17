@@ -382,6 +382,42 @@ async def test_http_scheme_and_port(monkeypatch, control_ip, config, url):
 
 
 @pytest.mark.parametrize(
+    ("config", "url"),
+    [
+        ({"host": "2001:db8::40"}, "http://[2001:db8::40]:80"),
+        ({"host": "[2001:db8::40]", "ssl": True}, "https://[2001:db8::40]:443"),
+        ({"host": "192.0.2.40", "port": ""}, "http://192.0.2.40:80"),
+        ({"host": "192.0.2.40", "port": "8443", "ssl": True}, "https://192.0.2.40:8443"),
+    ],
+)
+async def test_http_url_for_any_address_and_a_blank_port(monkeypatch, control_ip, config, url):
+    _, built = await _build_constructed(
+        monkeypatch, "openavc.transport.http_client.HTTPClientTransport", "http", config,
+    )
+    assert built.kwargs["base_url"] == url
+
+
+async def test_http_port_that_is_not_a_number_is_refused_naming_it(monkeypatch, control_ip):
+    made = _constructed(monkeypatch, "openavc.transport.http_client.HTTPClientTransport")
+    with pytest.raises(ConnectionFaultError) as caught:
+        await _driver({"host": "192.0.2.40", "port": "web"})._create_transport("http")
+    assert caught.value.fault_code == "invalid_config"
+    assert "Port setting is 'web', which is not a port number" in str(caught.value)
+    assert made == []
+
+
+@pytest.mark.parametrize(("verify_ssl", "verify"), [(None, True), (0, False), ("false", True)])
+async def test_http_certificate_check_is_read_as_a_switch(
+    monkeypatch, control_ip, verify_ssl, verify,
+):
+    _, built = await _build_constructed(
+        monkeypatch, "openavc.transport.http_client.HTTPClientTransport", "http",
+        {"host": "192.0.2.40", "verify_ssl": verify_ssl},
+    )
+    assert built.kwargs["verify_ssl"] is verify
+
+
+@pytest.mark.parametrize(
     ("config", "credentials"),
     [
         ({"auth_type": "basic", "username": "admin", "password": "pw"},

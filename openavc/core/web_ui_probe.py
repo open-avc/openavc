@@ -11,7 +11,8 @@ Detection has three sources, cheapest first (the caller picks whichever applies)
 
 * HTTP-transport devices resolve their URL straight from config — the control
   endpoint *is* the web server — with no network probe (see
-  ``web_ui_url_for_http_config``).
+  ``web_ui_url_for_http_config``): the address the device's own connection
+  sends to (``transport/endpoint.http_endpoint``).
 * A device that was just discovered already carries its open ports, so
   ``web_ui_url_from_open_ports`` turns that into a URL with no extra traffic.
 * Anything else gets a light TCP probe of the usual web ports
@@ -26,6 +27,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
+from openavc.transport.endpoint import UnusablePort, http_endpoint, url_host
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -50,6 +52,7 @@ _PROBE_TIMEOUT = 1.5
 
 def _format_url(host: str, port: int, scheme: str) -> str:
     """Build a browser URL, omitting the port when it's the scheme default."""
+    host = url_host(host)
     if port == _DEFAULT_PORT.get(scheme):
         return f"{scheme}://{host}"
     return f"{scheme}://{host}:{port}"
@@ -59,22 +62,20 @@ def web_ui_url_for_http_config(config: dict) -> str | None:
     """Derive an HTTP-transport device's web URL from its own connection config.
 
     The device's control endpoint is already a web server, so we know the URL
-    outright — no probe needed. Mirrors the base_url assembly in
-    ``BaseDriver.connect`` (host + optional port + ``ssl`` scheme).
+    outright — no probe needed. It is where the device's own connection
+    sends its requests (``http_endpoint``), the port left out when it is the
+    scheme's default. A port setting that is not a port number gives no URL:
+    the device's connection is refused for it, and the default port would be
+    a guess.
     """
     host = config.get("host")
     if not host:
         return None
-    use_ssl = bool(config.get("ssl", False))
-    scheme = "https" if use_ssl else "http"
-    port = config.get("port")
-    if port is None:
-        port = _DEFAULT_PORT[scheme]
     try:
-        port = int(port)
-    except (TypeError, ValueError):
-        port = _DEFAULT_PORT[scheme]
-    return _format_url(str(host), port, scheme)
+        endpoint = http_endpoint(host, config)
+    except UnusablePort:
+        return None
+    return _format_url(endpoint.host, endpoint.port, endpoint.scheme)
 
 
 def web_ui_url_from_open_ports(host: str, open_ports: Iterable[int]) -> str | None:

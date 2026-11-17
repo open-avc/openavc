@@ -14,9 +14,10 @@ as the project sets it. Each probe opens what that transport opens in
 speaking the protocol:
 
 - tcp, ssh, mqtt, OSC over TCP: a TCP connection, closed at once.
-- http: a HEAD request to the URL the transport builds from host, port and
-  ``ssl``, with the certificate checked per ``verify_ssl``. A ``base_url`` in
-  the config is used only when there is no host: the transport never reads it.
+- http: a HEAD request to the address the transport is built with
+  (``transport/endpoint.http_endpoint``: host, port and ``ssl``, the
+  certificate checked per ``verify_ssl``). A ``base_url`` in the config is
+  used only when there is no host: the transport never reads it.
 - serial: the port opened and closed. A device bound to a USB adapter's
   serial number opens the port that adapter has now, and one whose adapter is
   not plugged in is refused without opening anything
@@ -86,7 +87,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.discovery.network_scanner import resolve_address
 from openavc.discovery.port_guard import held_ports
-from openavc.transport.endpoint import control_bind_address
+from openavc.transport.endpoint import checks_certificate, control_bind_address, http_endpoint
 from openavc.transport.serial_transport import require_usb_adapter
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
@@ -472,14 +473,18 @@ async def _point_datagram_socket(host: str, port: Any, cfg: dict[str, Any]) -> s
 
 
 async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
-    scheme = "https" if cfg.get("ssl", False) else "http"
     if host:
-        url = f"{scheme}://{host}:{port}"
+        problem = _port_problem(port, cfg)
+        if problem:
+            return problem
+        # The address the HTTP transport is built with, from the same config.
+        endpoint = http_endpoint(host, cfg)
+        url, verify = endpoint.base_url, endpoint.verify
     else:
         url = str(cfg.get("base_url") or cfg.get("url") or "")
         if not url:
             return _NO_HOST
-    verify = bool(cfg.get("verify_ssl", True))
+        verify = checks_certificate(cfg)
     kwargs: dict[str, Any] = {"timeout": _CONNECT_TIMEOUT_S, "verify": verify}
     bind, refused = _bind_for(host)
     if refused:

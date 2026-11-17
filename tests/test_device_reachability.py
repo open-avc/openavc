@@ -244,6 +244,37 @@ async def test_http_host_wins_over_a_stale_base_url(drivers, captured_httpx):
     assert captured_httpx["url"] == "http://192.0.2.21:8080"
 
 
+@pytest.mark.parametrize(("config", "url", "verify"), [
+    ({"host": "2001:db8::20", "port": 8080}, "http://[2001:db8::20]:8080", True),
+    ({"host": "192.0.2.22", "port": "8443", "ssl": True}, "https://192.0.2.22:8443", True),
+    ({"host": "192.0.2.22", "port": "", "verify_ssl": None}, "http://192.0.2.22:80", True),
+])
+async def test_http_tests_the_address_the_transport_sends_to(
+    drivers, captured_httpx, config, url, verify,
+):
+    drivers("acme_reach_http_addr", "http", {})
+    device = DeviceConfig(id="ha", driver="acme_reach_http_addr", name="HA", config={})
+    project = _project(device, connections={"ha": config})
+
+    result = await _test(device, project)
+
+    assert result["success"] is True, result
+    assert captured_httpx["url"] == url
+    assert captured_httpx["verify"] is verify
+
+
+async def test_http_port_that_is_not_a_number_is_named(drivers, captured_httpx):
+    drivers("acme_reach_http_badport", "http", {})
+    device = DeviceConfig(id="hp", driver="acme_reach_http_badport", name="HP", config={})
+    project = _project(device, connections={"hp": {"host": "192.0.2.23", "port": "web"}})
+
+    result = await _test(device, project)
+
+    assert result["success"] is False
+    assert "'web' is not a number" in result["error"]
+    assert "url" not in captured_httpx
+
+
 # --- bridges -----------------------------------------------------------------
 
 async def test_an_ir_device_tests_the_bridge_it_sends_through(drivers, listener):

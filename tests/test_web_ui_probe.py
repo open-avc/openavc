@@ -68,6 +68,31 @@ def test_http_config_string_port_coerced():
     )
 
 
+def test_http_config_ipv6_host_is_bracketed():
+    assert (
+        web_ui_url_for_http_config({"host": "2001:db8::5", "port": 8080})
+        == "http://[2001:db8::5]:8080"
+    )
+    assert (
+        web_ui_url_for_http_config({"host": "2001:db8::5", "ssl": True})
+        == "https://[2001:db8::5]"
+    )
+
+
+def test_http_config_blank_port_is_the_scheme_default():
+    assert web_ui_url_for_http_config({"host": "host", "ssl": True, "port": ""}) == "https://host"
+
+
+def test_http_config_port_that_is_not_a_number_gives_no_link():
+    """The device's own connection is refused for that port, so there is no
+    page to open, and a link to the default port would be a guess."""
+    assert web_ui_url_for_http_config({"host": "host", "port": "web"}) is None
+
+
+def test_from_open_ports_ipv6_host_is_bracketed():
+    assert web_ui_url_from_open_ports("2001:db8::5", [8080]) == "http://[2001:db8::5]:8080"
+
+
 def test_http_config_no_host_returns_none():
     assert web_ui_url_for_http_config({"port": 80}) is None
 
