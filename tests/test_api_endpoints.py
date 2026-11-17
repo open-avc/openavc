@@ -35,6 +35,9 @@ def _make_mock_engine():
     engine.devices = MagicMock()
     engine.devices.list_devices.return_value = []
     engine.devices.get_device_info.return_value = None
+    # No driver runs a device here: each is answered as the project sets it.
+    engine.devices.dialled_record.return_value = None
+    engine.devices.connections_now.return_value = []
     engine.triggers = MagicMock()
     engine.triggers.list_triggers.return_value = []
     engine.scripts = MagicMock()
