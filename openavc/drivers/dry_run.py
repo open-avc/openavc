@@ -128,7 +128,9 @@ async def capture_http_transport(driver: Any) -> Any:
             self.requests.append({
                 "method": request.method,
                 "target": request_target(request),
-                "headers": dict(masked.value(header_pairs(request.headers))),
+                "headers": dict(masked.value(
+                    header_pairs(request.headers, self.credential_headers),
+                )),
                 "body": request.content.decode("utf-8", "replace"),
             })
             return httpx.Response(200)

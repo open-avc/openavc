@@ -46,7 +46,7 @@ import inspect
 import json as json_module
 import re
 import zlib
-from collections.abc import AsyncIterator, Awaitable
+from collections.abc import AsyncIterator, Awaitable, Iterable
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -80,9 +80,12 @@ def request_target(req: httpx.Request, fallback: str = "") -> str:
         return fallback
 
 
-def record_http_request(name: str, req: httpx.Request, target: str) -> None:
+def record_http_request(
+    name: str, req: httpx.Request, target: str, credential_headers: Iterable[str] = (),
+) -> None:
     """Record ``req`` under ``name`` as it is sent: method, target, headers
-    (credentials masked) and the body, up to ``BODY_LIMIT``."""
+    (credentials masked, ``credential_headers`` too) and the body, up to
+    ``BODY_LIMIT``."""
     try:
         content = bytes(req.content)
     except Exception:  # a streamed body not read yet
@@ -91,7 +94,7 @@ def record_http_request(name: str, req: httpx.Request, target: str) -> None:
     meta: dict[str, Any] = {
         "method": req.method,
         "target": target,
-        "headers": header_pairs(req.headers),
+        "headers": header_pairs(req.headers, credential_headers),
     }
     if cut:
         meta["truncated"] = True
@@ -870,12 +873,19 @@ class HTTPClientTransport:
         """The default headers, with an api_key's header or a bearer token's
         Authorization (basic and digest sign in through ``_build_auth``)."""
         headers = dict(self.default_headers)
-        if self.auth_type == "api_key":
-            header_name = self.credentials.get("header", "X-API-Key")
+        for header_name in self.credential_headers:
             headers[header_name] = self.credentials.get("key", "")
         if self.auth_type == "bearer":
             headers["Authorization"] = f"Bearer {self.credentials.get('token', '')}"
         return headers
+
+    @property
+    def credential_headers(self) -> tuple[str, ...]:
+        """The header an API key goes in, which the traffic view masks by name
+        as it masks Authorization; none for any other sign-in."""
+        if self.auth_type == "api_key":
+            return (self.credentials.get("header", "X-API-Key"),)
+        return ()
 
     def _wire(self) -> httpx.AsyncBaseTransport | None:
         """Where the session's requests go: out through the chosen adapter,
@@ -1195,7 +1205,7 @@ class HTTPClientTransport:
         if not self._traffic_name:
             return path
         target = request_target(req, path)
-        record_http_request(self._traffic_name, req, target)
+        record_http_request(self._traffic_name, req, target, self.credential_headers)
         return target
 
     def _record_response(

@@ -285,6 +285,14 @@ async def test_an_api_key_header_is_shown_with_its_key_masked():
     assert "key-5a4b3c2d" not in str(result)
 
 
+async def test_a_short_api_key_is_masked_all_the_same():
+    result = await _dry_run_command(_request(
+        _http_command(), "set_gain", {"level": 3}, port=80,
+        config_overrides={"auth_type": "api_key", "api_key_header": "X-Key", "api_key": "abc"},
+    ))
+    assert result["headers"]["x-key"] == "***"
+
+
 async def test_a_basic_sign_in_header_is_shown_masked():
     """Basic sign-in is added as the request is sent, not when it is built."""
     result = await _dry_run_command(_request(

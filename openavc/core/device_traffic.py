@@ -359,17 +359,20 @@ def record_chunk(device_id: str | None, data: bytes, *, channel: str) -> None:
         log.debug("Traffic chunk record failed", exc_info=True)
 
 
-def header_pairs(headers: Any) -> list[list[str]]:
+def header_pairs(headers: Any, credential_headers: Iterable[str] = ()) -> list[list[str]]:
     """A request's or response's headers as ``[name, value]`` pairs, in order,
-    with credential headers masked down to their scheme word."""
+    with credential headers masked down to their scheme word:
+    ``Authorization``, ``Proxy-Authorization`` and any the caller names (the
+    header an API key goes in)."""
     try:
         items = headers.multi_items() if hasattr(headers, "multi_items") else list(headers.items())
     except Exception:
         return []
+    masked = _MASKED_HEADERS | {str(n).lower() for n in credential_headers}
     out: list[list[str]] = []
     for name, value in items:
         name, value = str(name), str(value)
-        if name.lower() in _MASKED_HEADERS:
+        if name.lower() in masked:
             scheme = value.split(" ", 1)[0] if " " in value else ""
             value = f"{scheme} ***" if scheme else "***"
         out.append([name, value])

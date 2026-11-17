@@ -359,6 +359,25 @@ async def test_http_records_request_response_and_failure():
     assert failed.data == b"" and "refused" in failed.meta["error"]
 
 
+async def test_http_masks_the_header_an_api_key_goes_in():
+    """By name, as Authorization is: a key too short to be matched by its
+    value is masked all the same."""
+    from openavc.transport.http_client import HTTPClientTransport
+
+    t = HTTPClientTransport(
+        base_url="http://device", name="acme_key", auth_type="api_key",
+        credentials={"header": "X-Device-Key", "key": "abc"},
+    )
+    t._wire = lambda: httpx.MockTransport(lambda request: httpx.Response(200))
+    await t.open()
+    try:
+        await t.get("/api/status")
+    finally:
+        await t.close()
+    tx = _entries("acme_key")[0]
+    assert ["x-device-key", "***"] in tx.meta["headers"]
+
+
 async def test_ssh_and_mqtt_record_their_payloads():
     from openavc.transport.mqtt import MQTTTransport
     from openavc.transport.ssh import SSHTransport
