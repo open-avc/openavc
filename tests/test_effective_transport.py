@@ -260,48 +260,63 @@ _CONTRACT = (
 )
 
 
-def _transport_reads(tree: ast.AST):
-    """Each expression that reads a ``transport`` key: ``x.get("transport")``
-    or ``x["transport"]``, never a write."""
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-            and node.args[0].value == "transport"
-        ):
-            yield node
-        elif (
-            isinstance(node, ast.Subscript)
-            and isinstance(node.ctx, ast.Load)
-            and isinstance(node.slice, ast.Constant)
-            and node.slice.value == "transport"
-        ):
-            yield node
+def _names_transport(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and node.value == "transport"
+
+
+def _is_get(node: ast.AST) -> bool:
+    """``x.get("transport", ...)``"""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and bool(node.args)
+        and _names_transport(node.args[0])
+    )
+
+
+def _is_index(node: ast.AST) -> bool:
+    """``x["transport"]`` read, never written."""
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.ctx, ast.Load)
+        and _names_transport(node.slice)
+    )
+
+
+def _transport_reads(source: str) -> list[tuple[int, str]]:
+    """(line, expression) for each read of a ``transport`` key in ``source``."""
+    return [
+        (node.lineno, ast.get_source_segment(source, node))
+        for node in ast.walk(ast.parse(source))
+        if _is_get(node) or _is_index(node)
+    ]
+
+
+def _scanned():
+    """Each module the scan reads, by its path inside the package."""
+    for path in sorted(PACKAGE.rglob("*.py")):
+        rel = path.relative_to(PACKAGE).as_posix()
+        if rel != "drivers/transport_choice.py" and not rel.startswith(_CONTRACT):
+            yield rel, path.read_text(encoding="utf-8")
 
 
 def test_no_module_resolves_a_transport_itself():
     """Every reader asks transport_choice; none reads the key and decides."""
-    offenders = []
-    for path in sorted(PACKAGE.rglob("*.py")):
-        rel = path.relative_to(PACKAGE).as_posix()
-        if rel == "drivers/transport_choice.py" or rel.startswith(_CONTRACT):
-            continue
-        source = path.read_text(encoding="utf-8")
-        for node in _transport_reads(ast.parse(source)):
-            read = ast.get_source_segment(source, node)
-            if (rel, read) not in _NOT_A_RESOLUTION:
-                offenders.append(f"{rel}:{node.lineno}: {read}")
+    offenders = [
+        f"{rel}:{line}: {read}"
+        for rel, source in _scanned()
+        for line, read in _transport_reads(source)
+        if (rel, read) not in _NOT_A_RESOLUTION
+    ]
     assert offenders == [], "\n".join(offenders)
 
 
 def test_every_exception_is_still_there():
     """An exception whose read has gone is removed from the list."""
-    found = set()
-    for rel, _ in _NOT_A_RESOLUTION:
-        source = (PACKAGE / rel).read_text(encoding="utf-8")
-        for node in _transport_reads(ast.parse(source)):
-            found.add((rel, ast.get_source_segment(source, node)))
+    found = {
+        (rel, read)
+        for rel in {rel for rel, _ in _NOT_A_RESOLUTION}
+        for _, read in _transport_reads((PACKAGE / rel).read_text(encoding="utf-8"))
+    }
     assert _NOT_A_RESOLUTION - found == set()

@@ -156,6 +156,22 @@ class _TestDriver(NamedTuple):
     transport_type: str
 
 
+def _test_port(port: int | str, transport_type: str, fallback: int | None) -> int | str:
+    """The port a test dials. Serial drivers use `port` as a string path
+    (e.g. "COM3"); IP transports need an int, so a numeric string is
+    coerced and anything else takes ``fallback``, or is refused without one."""
+    if transport_type == "serial":
+        return port
+    try:
+        return int(port)
+    except (TypeError, ValueError):
+        if fallback is None:
+            raise _TestDriverBuildError(
+                f"Invalid port for {transport_type}: {port!r}"
+            ) from None
+        return fallback
+
+
 def _build_test_driver(
     body: TestCommandRequest, port_fallback: int | None = None
 ) -> _TestDriver:
@@ -178,28 +194,14 @@ def _build_test_driver(
 
     definition = dict(body.definition or {})
     default_config = dict(definition.get("default_config") or {})
-    # Serial drivers use `port` as a string path (e.g. "COM3"); IP transports
-    # need an int. Coerce numeric strings for IP, leave serial strings alone.
-    # The transport is the one the test driver connects over: the config's
-    # choice, else the draft's, else tcp (transport_choice).
-    transport_type = effective_transport(
-        {**default_config, **(body.config_overrides or {})}, definition
-    )
-    port_value: int | str = body.port
-    if transport_type != "serial":
-        try:
-            port_value = int(body.port)
-        except (TypeError, ValueError):
-            if port_fallback is None:
-                raise _TestDriverBuildError(
-                    f"Invalid port for {transport_type}: {body.port!r}"
-                ) from None
-            port_value = port_fallback
+    chosen = {**default_config, **(body.config_overrides or {})}
+    # The transport the test driver connects over: the config's choice, else
+    # the draft's, else tcp (transport_choice).
+    transport_type = effective_transport(chosen, definition)
     config = {
-        **default_config,
-        **(body.config_overrides or {}),
+        **chosen,
         "host": body.host,
-        "port": port_value,
+        "port": _test_port(body.port, transport_type, port_fallback),
         "poll_interval": 0,
     }
     # Patch the definition so the runtime sees poll-off.
