@@ -1201,14 +1201,14 @@
    },
    {
     "op": "nav",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Ready</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-macro-busy=\"m1\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Warming up</div></div></div>",
     "f": "2",
     "n": "main||home",
     "b": "p_run:macro_progress"
    },
    {
     "op": "msg",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Lights</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-macro-busy=\"m1\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Lights</div></div></div>",
     "f": "2",
     "n": "main||home"
    },
@@ -1232,13 +1232,12 @@
    },
    {
     "op": "render",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Ready</div></div></div>",
     "f": "3",
     "n": "main||home"
    },
    {
     "op": "msg",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Projector on</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-macro-busy=\"m1\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Projector on</div></div></div>",
     "f": "3",
     "n": "main||home"
    },

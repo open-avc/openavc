@@ -988,6 +988,7 @@ class PanelApp {
 
         // Evaluate bindings for new elements
         this.evaluateAllBindings();
+        this.macroRuns.drawInFlight();
     }
 
     // --- Layout ---
@@ -1160,6 +1161,7 @@ class PanelApp {
         this.root.appendChild(surface);
         applyCoordinateSpaces(surface);
         this.evaluateAllBindings();
+        this.macroRuns.drawInFlight();
 
         // Theme Studio direct manipulation — click any element in the preview
         // to jump to its section in the editor. Hover shows an outline + type label.

@@ -11797,6 +11797,29 @@ Object.assign(tests, {
         }
     },
 
+    async a_page_drawn_while_a_macro_runs_draws_its_busy_buttons_and_its_step() {
+        const steps = await driveCase({
+            ui: RUN_PAGES(),
+            steps: [
+                M1_STARTED(3), M1_STEP('Warming up', 0, 3),
+                // A page gone to while it runs.
+                ['nav', 'main'], ['check', 'busy', 'b_run', 'm1'], ['check', 'shows', 'p_run', 'Warming up'],
+                // A dialog opened over it while it runs.
+                ['nav', 'dlg'], ['check', 'busy', 'd_run', 'm1'], ['check', 'overlayShows', 'd_prog', 'Warming up'],
+                ['check', 'busy', 'b_run', 'm1'],
+                // The page drawn again while it runs (a save, a theme that lands).
+                ['render'], ['check', 'busy', 'b_run', 'm1'], ['check', 'shows', 'p_run', 'Warming up'],
+                // It ends, and a page drawn after it is not busy.
+                M1_ENDED, ['check', 'busy', 'b_run', null], ['check', 'shows', 'p_run', 'Ready'],
+                ['render'], ['check', 'busy', 'b_run', null], ['check', 'shows', 'p_run', 'Ready'],
+                // A run whose steps have not reported yet reads its first step.
+                M1_STARTED(2), ['render'], ['check', 'busy', 'b_run', 'm1'], ['check', 'shows', 'p_run', 'Step 1 of 2'],
+            ],
+        });
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
     async a_dropped_connection_marks_no_run_it_can_no_longer_hear_end() {
         const steps = await driveCase({
             ui: RUN_PAGES(),

@@ -20,9 +20,11 @@
  * an id like `constructor` reads as not running and `__proto__` is an
  * ordinary key rather than Object.prototype.
  *
- * What is in flight holds only while the socket does. A dropped connection
- * forgets every run (`forgetRuns`): the ends it cannot hear would otherwise
- * leave buttons busy for good.
+ * THE rule for what a run draws, and when: a frame of the run draws it, and so
+ * does every page and overlay drawn while it is in flight (`drawInFlight`), so
+ * a control drawn mid-run shows the run at once rather than at its next frame.
+ * A dropped connection forgets every run (`forgetRuns`): the ends it cannot
+ * hear would otherwise leave buttons busy for good.
  *
  * The panel lends `host`: `elementMap()` and `bindings()`, read at call time
  * (both are rebuilt with the page); `recordSource(node, path)`, where a
@@ -180,6 +182,16 @@ export class MacroRuns {
     ended(msg) {
         this._endRun(msg.macro_id);
         this._draw(msg.macro_id);
+    }
+
+    /**
+     * Every run in flight, drawn on what is on screen: asked by a page and by
+     * an overlay once it is drawn. The frames that drew a run so far drew it
+     * on the controls that were there then, and the next may be a long Wait
+     * Until away.
+     */
+    drawInFlight() {
+        for (const macroId of Object.keys(this.running)) this._draw(macroId);
     }
 
     /**
