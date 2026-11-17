@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from openavc import config, main, runtime_flags
+from openavc.core.stop_stages import STOP_SECONDS
+from openavc.restart import WATCHDOG_MARGIN_SECONDS
 
 
 class _Exited(BaseException):
@@ -59,7 +61,7 @@ def boot(monkeypatch, tmp_path):
     calls: dict[str, list] = {}
     engine = SimpleNamespace(
         start=AsyncMock(side_effect=lambda: order.append("engine.start")),
-        stop=AsyncMock(),
+        shutdown=AsyncMock(),
         events=SimpleNamespace(on=Mock(), emit=AsyncMock()),
         get_status=Mock(return_value={"local_ip": ""}),
     )
@@ -317,7 +319,7 @@ async def test_an_engine_that_fails_to_start_leaves_its_error_for_the_splash(boo
     assert boot.app.state.engine_ready is False
     assert "confirm_startup" not in boot.order
     assert "Engine startup failed: project unreadable" in [r.getMessage() for r in caplog.records]
-    assert not hasattr(boot.app.state, "listen_watcher")
+    assert not hasattr(boot.engine, "listen_watcher")
 
 
 async def test_discovery_gets_the_registered_drivers_and_both_driver_folders(boot):
@@ -343,7 +345,7 @@ async def test_the_restart_request_is_wired_to_the_engine_events(boot):
 
 async def test_the_listen_watcher_restarts_through_the_restart_request(boot):
     await boot.run()
-    await boot.app.state.listen_watcher
+    await boot.engine.listen_watcher
 
     restart = boot.watcher.call_args.args[0]
     await restart("adapter gone")
@@ -619,7 +621,7 @@ def restart(boot, monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "Popen", popen)
     monkeypatch.setattr("openavc.system_config.get_data_dir", lambda: tmp_path)
     monkeypatch.setenv("OPENAVC_SERVICE_MANAGED", "1")
-    boot.engine.stop.side_effect = lambda: seen.order.append("stop")
+    boot.engine.shutdown.side_effect = lambda deadline: seen.order.append("stop")
 
     def unmanaged():
         monkeypatch.delenv("OPENAVC_SERVICE_MANAGED", raising=False)
@@ -629,9 +631,8 @@ def restart(boot, monkeypatch, tmp_path):
             os.path, "exists", lambda p: False if p == "/.dockerenv" else real_exists(p),
         )
 
-    async def fire(data, *, ready=True):
+    async def fire(data):
         await boot.run()
-        boot.app.state.engine_ready = ready
         with pytest.raises(_Exited) as exited:
             await _restart_handler(boot)("system.restart_requested", data)
         return exited.value.code
@@ -648,7 +649,8 @@ async def test_a_graceful_restart_waits_arms_the_watchdog_stops_and_exits(restar
     assert code == 0
     assert restart.sleeps == [2]
     (timer,) = restart.timers
-    assert timer.interval == 7.0 and timer.started
+    # A little after the stop's deadline: the one every stop has.
+    assert timer.interval == STOP_SECONDS + WATCHDOG_MARGIN_SECONDS == 10.0 and timer.started
     with pytest.raises(_Exited) as watchdog:
         timer.function()
     assert watchdog.value.code == 0
@@ -689,31 +691,15 @@ async def test_a_service_manager_relaunches_so_nothing_is_spawned(restart, monke
     assert restart.order == ["stop"]
 
 
-async def test_an_engine_that_never_got_ready_is_not_stopped(restart, boot):
-    assert await restart.fire({}, ready=False) == 0
-    boot.engine.stop.assert_not_awaited()
-
-
-async def test_a_stop_that_overruns_five_seconds_is_abandoned(restart, monkeypatch, caplog):
-    import asyncio
-
-    timeouts = []
-
-    async def overrun(awaitable, timeout):
-        awaitable.close()
-        timeouts.append(timeout)
-        raise asyncio.TimeoutError
-
-    monkeypatch.setattr(asyncio, "wait_for", overrun)
-    with caplog.at_level(logging.WARNING, logger="openavc.main"):
-        assert await restart.fire({}) == 0
-
-    assert timeouts == [5.0]
-    assert "Graceful shutdown exceeded 5s — forcing exit" in _messages(caplog)
+async def test_the_stop_is_the_engines_shutdown_against_the_one_deadline(
+        restart, boot, monkeypatch):
+    monkeypatch.setattr("openavc.restart.stop_deadline", lambda: 1234.5)
+    assert await restart.fire({}) == 0
+    boot.engine.shutdown.assert_awaited_once_with(1234.5)
 
 
 async def test_a_stop_that_fails_is_logged_and_the_process_still_exits(restart, boot, caplog):
-    boot.engine.stop.side_effect = RuntimeError("driver hung")
+    boot.engine.shutdown.side_effect = RuntimeError("driver hung")
     with caplog.at_level(logging.WARNING, logger="openavc.main"):
         assert await restart.fire({}) == 0
 

@@ -275,7 +275,7 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
     ):
         watcher.return_value.run = AsyncMock()
         await main._initialize_engine(app)
-        await app.state.listen_watcher
+        await main.engine.listen_watcher
         # Firmware ownership only changes updater behavior. The network
         # watcher's later tick must still read the server configuration.
         await watcher.call_args.kwargs["on_tick"]()

@@ -8,13 +8,20 @@ systemd, Docker's restart policy) starts the next one; a dev session
 replacement first. ``exit_for_restart`` is the request's handler, wired by
 ``openavc.main`` once the engine is up.
 
+The stop is the engine's ``shutdown``, the same one the lifespan runs at a
+service stop (core/engine_lifecycle.py), within the same deadline
+(core/stop_stages.py ``STOP_SECONDS``). It runs in a task of its own: the
+request arrives inside whoever emitted it, and the shutdown ends some of them
+(the listen watcher, the cloud agent's command handling), which would
+otherwise cancel the stop and the exit with them.
+
 The rule worth knowing before changing it: the exit never depends on the event
 loop being healthy. ``EventBus.emit`` nests ``asyncio.gather()`` when handlers
 emit events, and cancelling that chain at shutdown can recurse past Python's
-stack limit, leaving ``engine.stop()`` (and a ``wait_for`` around it) unable to
-finish. So a watchdog thread exits the process 7 s after the request whatever
-the graceful stop is doing, and the replacement is spawned before the stop is
-tried, so a dev session comes back even when the watchdog is what ends it.
+stack limit, leaving the stop unable to finish. So a watchdog thread exits the
+process a little after the stop's deadline whatever the stop is doing, and the
+replacement is spawned before the stop is tried, so a dev session comes back
+even when the watchdog is what ends it.
 """
 
 from __future__ import annotations
@@ -27,19 +34,26 @@ import threading
 from datetime import datetime
 
 from openavc import system_config
+from openavc.core.event_bus import detach_emit_chain
+from openavc.core.stop_stages import STOP_SECONDS, stop_deadline
 from openavc.utils.logger import get_logger
 
 # Logged under the entry point's name, where these lines have always been filed.
 log = get_logger("openavc.main")
 
+# How long after the stop's deadline the watchdog ends the process anyway.
+WATCHDOG_MARGIN_SECONDS = 2.0
 
-async def exit_for_restart(data: dict | None, engine, app_state) -> None:
+# The exit under way, held here so it is not collected while it runs.
+_exiting: set[asyncio.Task] = set()
+
+
+async def exit_for_restart(data: dict | None, engine) -> None:
     """End this process for a restart request; returns only through ``os._exit``.
 
     ``data`` is the event's payload: ``mode`` ("graceful" waits 2 s so the
     request's own reply and log line get out first, "hard" does not) and
-    ``source`` (who asked, for the log). The engine is stopped only if it
-    finished starting (``app_state.engine_ready``).
+    ``source`` (who asked, for the log).
     """
     mode = (data or {}).get("mode", "graceful")
     source = (data or {}).get("source", "unknown")
@@ -47,26 +61,27 @@ async def exit_for_restart(data: dict | None, engine, app_state) -> None:
         "Restart requested (source=%s, mode=%s); exiting in 2s", source, mode,
     )
     await asyncio.sleep(0 if mode == "hard" else 2)
+    exiting = asyncio.create_task(_stop_and_exit(engine))
+    _exiting.add(exiting)
+    exiting.add_done_callback(_exiting.discard)
+    await asyncio.shield(exiting)
 
-    threading.Timer(7.0, lambda: os._exit(0)).start()
+
+async def _stop_and_exit(engine) -> None:
+    # A root of its own: the shutdown's events run at the depth a service
+    # stop's do, not one level under the request's emit.
+    detach_emit_chain()
+    deadline = stop_deadline()
+    threading.Timer(STOP_SECONDS + WATCHDOG_MARGIN_SECONDS, lambda: os._exit(0)).start()
 
     if not is_service_managed():
         spawn_replacement()
 
-    await _stop_engine(engine, app_state)
-    os._exit(0)
-
-
-async def _stop_engine(engine, app_state) -> None:
-    """Best-effort graceful stop. The timeout covers a stop that hangs but
-    can still be cancelled; the watchdog covers one that cannot."""
     try:
-        if app_state.engine_ready:
-            await asyncio.wait_for(engine.stop(), timeout=5.0)
-    except asyncio.TimeoutError:
-        log.warning("Graceful shutdown exceeded 5s — forcing exit")
+        await engine.shutdown(deadline)
     except Exception:
         log.exception("Error during graceful shutdown before restart")
+    os._exit(0)
 
 
 def is_service_managed() -> bool:

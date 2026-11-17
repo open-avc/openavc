@@ -1,8 +1,12 @@
 """How the engine starts and stops, the part of Engine a restart runs:
-``start``, ``stop`` and the teardown behind it, one method per stage.
+``start``, ``stop`` and the teardown behind it, one method per stage, and
+``shutdown``: THE stop for a process exit, which the lifespan and the restart
+(openavc/restart.py) both run, so a stop finishes the same stages however it
+was asked, within one deadline.
 
 The order is the contract, and it is written once in each direction, as the
-list of stages in ``start`` and in ``_stop_inner``. A start settles the
+list of stages in ``start`` and in ``shutdown`` (the server's own pieces
+around ``_stop_inner``'s). A start settles the
 system's own decisions and registers the drivers before the project loads
 (resolving a device asks the registry), loads macros before triggers and
 devices and variables before scripts (scripts subscribe to ``var.*`` /
@@ -23,6 +27,11 @@ error), the same surface a project change's outcome reads; nothing counts
 them. Each step that settles a decision or converts something on disk before
 the project loads (``prepare_host``) is logged and never fatal, but not named.
 
+A stage of the stop that raises or overruns is named in one warning too, and
+the stages after it still run (core/stop_stages.py runs each on its own,
+against the one deadline), so devices are disconnected and the simulator
+ended whatever an earlier stage did.
+
 Mixed into Engine (core/engine.py). Logs under the engine's name.
 """
 
@@ -35,6 +44,7 @@ from pathlib import Path
 from openavc import runtime_flags
 from openavc.core.device_sync import add_devices, work_out_each
 from openavc.core.script_engine import ScriptEngine
+from openavc.core.stop_stages import StopRun
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
 
@@ -69,6 +79,28 @@ async def _cancel_and_wait(task: asyncio.Task | None) -> bool:
     except asyncio.CancelledError:
         pass
     return True
+
+
+def _cancel_now(task: asyncio.Task | None):
+    """A stage that cancels ``task`` as it is called, before the stop yields,
+    so a task that has not run yet never starts; the stage then waits for it
+    to end."""
+    if task is None or task.done():
+        return None
+    task.cancel()
+    return _cancel_and_wait(task)
+
+
+async def _stop_push_listeners() -> None:
+    from openavc.listen_sockets import push_listeners
+
+    await push_listeners.stop()
+
+
+async def _close_simulator_proxy() -> None:
+    from openavc.api import simulator_proxy
+
+    await simulator_proxy.aclose_client()
 
 
 # --- Before the project loads ------------------------------------------------
@@ -216,7 +248,8 @@ def prepare_host(project_dir: Path):
 
 
 class EngineLifecycleMixin:
-    """``start``, ``stop`` and ``_stop_inner``, each a list of stages.
+    """``start``, ``shutdown``, ``stop`` and ``_stop_inner``, each a list of
+    stages.
 
     From its host (Engine) it uses nearly everything: the subsystems built in
     ``Engine.__init__``, the project load and the login moves
@@ -228,6 +261,10 @@ class EngineLifecycleMixin:
     """
 
     _stopping = False  # stop() has begun; read through ``stopping``
+    # The server's pieces a shutdown also ends (attach_server).
+    server_start: asyncio.Task | None = None
+    audit = None
+    listen_watcher: asyncio.Task | None = None
 
     @property
     def stopping(self) -> bool:
@@ -452,66 +489,134 @@ class EngineLifecycleMixin:
         if startup_errors:
             log.warning(f"Engine started with {len(startup_errors)} error(s): {'; '.join(startup_errors)}")
 
-    async def stop(self) -> None:
-        """Stop the engine gracefully."""
+    def attach_server(self, *, start: asyncio.Task | None = None, audit=None) -> None:
+        """What the server around the engine runs that a shutdown also ends:
+        the task starting the engine in the background (``start``), and the
+        device audit (``audit``). Set once by ``openavc.main`` as its lifespan
+        begins; the listen watcher is set there (``listen_watcher``) once the
+        engine is up."""
+        self.server_start = start
+        self.audit = audit
+
+    async def shutdown(self, deadline: float) -> list[str]:
+        """End everything this process runs, for a process exit, within one
+        ``deadline`` (``time.monotonic()``; ``core/stop_stages.stop_deadline``).
+        The lifespan runs it at a service stop and ``openavc/restart.py`` at a
+        restart, so both finish the same stages, in this order:
+
+        the server's start if it is still running (cancelled before anything
+        else, so one that has not begun never does, and what it acquired is
+        released below), the listen watcher (it may be the start's: no restart
+        request from it from here on), the push listeners (no device push
+        comes in), the device audit (it holds project devices paused), the
+        engine's own stop (``stop``'s stages), and the simulator proxy's
+        client.
+
+        Each stage runs on its own (core/stop_stages.py): one that raises or
+        overruns is named and the rest still run. Returns what went wrong."""
+        run = StopRun(deadline)
+        await run.run("the server's start", lambda: _cancel_now(self.server_start))
+        await run.run("the listen watcher", lambda: _cancel_now(self.listen_watcher))
+        await run.run("the push listeners", _stop_push_listeners)
+        await run.run("the device audit", self._end_audit)
+        await self._stop_stages(run)
+        await run.run("the simulator proxy", _close_simulator_proxy)
+        run.report("OpenAVC stopped")
+        return run.problems
+
+    async def stop(self, deadline: float | None = None) -> list[str]:
+        """Stop the engine: ``shutdown``'s engine stages alone, each on its
+        own; bounded by ``deadline`` when one is given. Returns what went
+        wrong."""
+        run = StopRun(deadline)
+        await self._stop_stages(run)
+        run.report("Engine stopped")
+        return run.problems
+
+    async def _end_audit(self) -> None:
+        if self.audit is not None:
+            await self.audit.shutdown()
+
+    async def _stop_stages(self, run: StopRun) -> None:
         log.info("Engine stopping...")
         self._stopping = True
         self._running = False
-        await self._stop_bringup()
+        await run.run("the device bring-up", self._stop_bringup)
         # Drain any queued bookkeeping persist before teardown so a
         # just-applied pending-settings clear or plugin-config save isn't
         # lost when the loop closes.
-        await self._drain_bookkeeping("before")
+        await run.run("the bookkeeping save", lambda: self._drain_bookkeeping("before"))
         # Serialize teardown against an in-flight reload_project (reachable
         # from REST, the cloud command handler, and AI tools). Tearing
         # subsystems down while a hot-reload runs interleaves trigger and
-        # subscription start/stop. Wait for any reload to finish first.
-        async with self._reload_lock:
-            await self._stop_inner()
+        # subscription start/stop. Wait for any reload to finish first, until
+        # the stop's bound: a reload that hangs does not keep the devices up.
+        async with run.holding(self._reload_lock, "the project change still running"):
+            await self._stop_inner(run)
         # A bookkeeping write scheduled DURING teardown (e.g. a plugin
         # on_stop calling save_config) spawned a flush task that queued
         # behind the lock held above. Drain it now that the lock is free so
         # the write persists before the process exits.
-        await self._drain_bookkeeping("after")
+        await run.run(
+            "the bookkeeping save after the stop", lambda: self._drain_bookkeeping("after"),
+        )
 
-    async def _stop_inner(self) -> None:
-        """Tear down all subsystems. Caller holds _reload_lock."""
-        await self._stop_update_manager()
-        await self._stop_panel_software()
-        self.learned_config.stop()
+    async def _stop_inner(self, run: StopRun) -> None:
+        """Tear down all subsystems, one stage each. Caller holds
+        _reload_lock (or waited its bound for it)."""
+        await run.run("the update manager", self._stop_update_manager)
+        await run.run("panel software updates", self._stop_panel_software)
+        await run.run("learned config", self.learned_config.stop)
         # Unsubscribe all event/state handlers to prevent leaks on reload
-        self._drop_subscriptions()
+        await run.run("the engine's subscriptions", self._drop_subscriptions)
         # Flush and stop state persister
-        if self.persister:
-            self.persister.stop()
-        await self.events.emit("system.stopping")
-        await self.triggers.stop()
-        await self._stop_network_services()
-        if self.scripts:
-            self.scripts.unload_all()
-        await self.plugin_loader.stop_all()
+        await run.run("the state persister", self._stop_persister)
+        await run.run("system.stopping", lambda: self.events.emit("system.stopping"))
+        await run.run("the triggers", self.triggers.stop)
+        await run.run("the cloud agent", self._stop_cloud_agent)
+        await run.run("the mDNS advertiser", self._stop_mdns_advertiser)
+        await run.run("ISC", self._stop_isc_if_running)
+        await run.run("the scripts", self._unload_scripts)
+        await run.run("the plugins", self.plugin_loader.stop_all)
         # Stop batch task (its unwind flushes what is still batched)
-        await self.ws.stop_state_flush()
-        await self._stop_background_tasks()
+        await run.run("the state flush", self.ws.stop_state_flush)
+        await run.run("the periodic backup", lambda: _cancel_and_wait(self._periodic_backup_task))
+        await run.run("the panel sweep", self._end_panel_sweep)
+        await run.run("the programs installer", self._end_os_programs)
+        # Everything that can fire a macro (triggers, scripts, plugins) has
+        # stopped. From here the stages let go of the equipment, and each may
+        # run to the deadline itself.
+        run.hand_over()
         # Cancel in-flight macros (with the engine's grace drain) before the
         # devices they command are torn down — a macro racing disconnect_all
         # would error its remaining steps into a half-stopped engine. Late on
-        # purpose: every subsystem that can fire a macro (triggers, scripts,
-        # plugins) is already stopped, so nothing restarts one after this.
-        await self.macros.cancel_all()
+        # purpose: nothing that could restart one is still running.
+        await run.run("the macros", self.macros.cancel_all)
         # Stop file commands still running, then delete every staged file.
-        await self.command_runs.stop()
-        await self.file_staging.stop()
-        await self.devices.disconnect_all()
+        await run.run("the file commands", self.command_runs.stop)
+        await run.run("the staged files", self.file_staging.stop)
+        await run.run("the devices", self.devices.disconnect_all)
         # Then end the simulator: SimulationManager.end(EndReason.SHUTDOWN),
         # which hands nothing back to the real equipment and keeps the record,
         # so simulation comes back when the server starts again.
-        await self.simulation.shutdown()
+        await run.run("the simulator", self.simulation.shutdown)
         # Drain any in-flight state.changed EventBus emissions so they aren't
         # silently dropped mid-shutdown.
-        await self.state.flush_pending_events()
+        await run.run("the pending events", self.state.flush_pending_events)
         self.state.set("system.started", False, source="system")
         log.info("Engine stopped")
+
+    def _stop_persister(self) -> None:
+        if self.persister:
+            self.persister.stop()
+
+    async def _stop_isc_if_running(self) -> None:
+        if self.isc:
+            await self._stop_isc()
+
+    def _unload_scripts(self) -> None:
+        if self.scripts:
+            self.scripts.unload_all()
 
     def _drop_subscriptions(self) -> None:
         for sub_id in self._state_sub_ids:
@@ -521,11 +626,12 @@ class EngineLifecycleMixin:
             self.events.off(sub_id)
         self._event_sub_ids.clear()
 
-    async def _stop_background_tasks(self) -> None:
-        """The periodic backup, the panel sweep and the programs installer.
-        The backup's slot keeps its ended task; the other two are emptied."""
-        await _cancel_and_wait(self._periodic_backup_task)
+    async def _end_panel_sweep(self) -> None:
+        """The panel sweep's slot is emptied; the periodic backup's keeps its
+        ended task."""
         if await _cancel_and_wait(self._panel_sweep_task):
             self._panel_sweep_task = None
-        await _cancel_and_wait(self._os_programs_task)
-        self._os_programs_task = None
+
+    async def _end_os_programs(self) -> None:
+        task, self._os_programs_task = self._os_programs_task, None
+        await _cancel_and_wait(task)

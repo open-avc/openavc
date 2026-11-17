@@ -721,3 +721,125 @@ async def test_after_a_stop_state_changes_no_longer_reach_the_websocket_hub(tmp_
     pushed.clear()
     eng.state.set("var.v", "after", source="ui")
     assert pushed == []
+
+
+# ===========================================================================
+# a stage that raises or hangs: the stages after it still run
+# ===========================================================================
+
+
+def _recorded_end(eng, order):
+    """Record the stages that let go of the equipment as they run."""
+    _spy(order, eng.macros, "cancel_all", "macros")
+    _spy(order, eng.devices, "disconnect_all", "devices")
+    _spy(order, eng.simulation, "shutdown", "simulation")
+
+
+@pytest.mark.asyncio
+async def test_a_stage_that_raises_is_named_and_the_devices_and_simulator_still_end(
+        tmp_path, acme_driver, no_update_checks, caplog):
+    eng = Engine(_project(tmp_path, devices=["d1"]))
+    _quiet_services(eng, [])
+    await eng.start()
+    driver = eng.devices._devices["d1"]
+    assert driver._connected
+    order: list[str] = []
+
+    async def refuses():
+        raise RuntimeError("plugin stop refused")
+
+    async def fails_on_its_way_out():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            raise RuntimeError("sweep broke on cancel")
+
+    eng.plugin_loader.stop_all = refuses
+    eng.cloud_agent = SimpleNamespace(stop=refuses, _connected=False)
+    eng._panel_sweep_task = asyncio.create_task(fails_on_its_way_out())
+    await asyncio.sleep(0)
+    _recorded_end(eng, order)
+
+    with caplog.at_level(logging.WARNING, logger=ENGINE_LOG):
+        problems = await eng.stop()
+
+    assert order == ["macros", "devices", "simulation"]
+    assert not driver._connected
+    assert eng.state.get("system.started") is False
+    assert problems == [
+        "the cloud agent: plugin stop refused",
+        "the plugins: plugin stop refused",
+        "the panel sweep: sweep broke on cancel",
+    ]
+    assert (
+        "Engine stopped with 3 problem(s): the cloud agent: plugin stop refused; "
+        "the plugins: plugin stop refused; the panel sweep: sweep broke on cancel"
+    ) in [r.getMessage() for r in caplog.records]
+    # The background tasks after the one that broke were still ended.
+    assert eng._os_programs_task is None
+
+
+@pytest.mark.asyncio
+async def test_a_stage_that_hangs_is_left_at_its_bound_and_the_equipment_still_lets_go(
+        tmp_path, monkeypatch, acme_driver, no_update_checks):
+    import time
+
+    from openavc.core import stop_stages
+
+    eng = Engine(_project(tmp_path, devices=["d1"]))
+    _quiet_services(eng, [])
+    await eng.start()
+    driver = eng.devices._devices["d1"]
+    order: list[str] = []
+    release = asyncio.Event()
+
+    async def hangs_through_every_cancel():
+        # Swallows the cancel the way a careless stop does, and goes on waiting.
+        while not release.is_set():
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                continue
+
+    eng.triggers.stop = hangs_through_every_cancel
+    _recorded_end(eng, order)
+    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 0.6)
+    began = time.monotonic()
+    try:
+        problems = await eng.stop(deadline=began + 0.8)
+        took = time.monotonic() - began
+    finally:
+        release.set()
+
+    # The run-up ends at its bound; the equipment still gets its own time.
+    assert took < 0.8
+    assert problems[0] == "the triggers: did not finish in time and was left"
+    assert "the plugins: not started, the stop ran out of time" in problems
+    assert order == ["macros", "devices", "simulation"]
+    assert not driver._connected
+    assert eng.state.get("system.started") is False
+
+
+@pytest.mark.asyncio
+async def test_a_project_change_that_hangs_does_not_keep_the_devices_up(
+        tmp_path, monkeypatch, acme_driver, no_update_checks):
+    import time
+
+    from openavc.core import stop_stages
+
+    eng = Engine(_project(tmp_path, devices=["d1"]))
+    _quiet_services(eng, [])
+    await eng.start()
+    driver = eng.devices._devices["d1"]
+    order: list[str] = []
+    _recorded_end(eng, order)
+    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 0.6)
+    await eng._reload_lock.acquire()  # a reload that never finishes
+    try:
+        problems = await eng.stop(deadline=time.monotonic() + 0.8)
+    finally:
+        eng._reload_lock.release()
+
+    assert problems[0] == "the project change still running: did not finish in time and was left"
+    assert order == ["macros", "devices", "simulation"]
+    assert not driver._connected

@@ -457,7 +457,7 @@ async def test_the_shutdown_unplugs_the_isc_endpoint_and_proxy_from_the_stopped_
     isc_ws.set_isc_manager(mesh)
     isc_proxy._bind(mesh)
     try:
-        await eng._stop_network_services()
+        await eng.stop()
         assert stopped == ["isc"]
         assert eng.isc is None
         assert isc_ws._isc_manager is None

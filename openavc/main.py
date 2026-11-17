@@ -88,6 +88,7 @@ from openavc.api.routes import root as root_routes
 from openavc.api.routes import setup as setup_routes
 from openavc.audit.session import AuditManager
 from openavc.core.engine import Engine
+from openavc.core.stop_stages import stop_deadline
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.redirects import build_http_listener_app, build_redirect_app, certified_host_for
 from openavc.drivers.registry import list_registered_drivers
@@ -367,10 +368,10 @@ async def _initialize_engine(app: FastAPI) -> None:
         # A restart request (Settings, the cloud agent, the listen watcher
         # below) ends this process: openavc/restart.py.
         async def _on_restart_requested(_event: str, data: dict) -> None:
-            await restart.exit_for_restart(data, engine, app.state)
+            await restart.exit_for_restart(data, engine)
 
         engine.events.on("system.restart_requested", _on_restart_requested)
-        app.state.listen_watcher = _watch_listen_choice()
+        engine.listen_watcher = _watch_listen_choice()
 
         app.state.engine_ready = True
         _log_banner(plan)
@@ -399,34 +400,14 @@ async def lifespan(app: FastAPI):
 
     # Run engine initialization in background so HTTP is available immediately
     init_task = asyncio.create_task(_initialize_engine(app))
+    engine.attach_server(start=init_task, audit=audit_manager)
 
     try:
         yield
     finally:
-        watcher = getattr(app.state, "listen_watcher", None)
-        if watcher is not None:
-            watcher.cancel()
-        from openavc.listen_sockets import push_listeners
-        await push_listeners.stop()
-        # Shutdown: wait for init to finish (or cancel if still running)
-        if not init_task.done():
-            init_task.cancel()
-            try:
-                await init_task
-            except asyncio.CancelledError:
-                pass
-        # End an audit first: it holds project devices paused and its own
-        # listeners open, and both are released before the engine goes down.
-        try:
-            await audit_manager.shutdown()
-        except Exception:
-            log.exception("Ending the device audit at shutdown failed")
-        # Startup may acquire device/plugin clients before readiness.
-        # The cancelled initializer has unwound; tear down those resources too.
-        try:
-            await engine.stop()
-        finally:
-            await simulator_proxy.aclose_client()
+        # The same stop a restart runs (openavc/restart.py), within the same
+        # deadline: core/engine_lifecycle.py has the stages and their order.
+        await engine.shutdown(stop_deadline())
         log.info("OpenAVC stopped")
 
 

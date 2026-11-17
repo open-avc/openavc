@@ -7,7 +7,9 @@ the ISC mesh and the advertiser follow a settings change without a restart
 project edit that touches ISC reloads it through the reconcile).
 
 Every one isolates its own failure: a service that cannot start is logged and
-left as ``None``, and the engine runs on without it. The two updaters start
+left as ``None``, and the engine runs on without it. A stop here may raise: the
+engine's stop runs each as a stage of its own (core/stop_stages.py), and a
+reconcile that stops one wants to know. The two updaters start
 after the cloud agent, so a running agent's command handler is handed each as
 it starts (``_cloud_command_handler``); a system paired while running hands
 them over when the agent is built. The ISC and advertise
@@ -58,13 +60,6 @@ class RuntimeServicesMixin:
         from openavc.cloud.config import apply_saved_cloud_config
         apply_saved_cloud_config()
         await self._start_cloud_agent()
-
-    async def _stop_network_services(self) -> None:
-        """The cloud agent, the mDNS advertiser, then ISC."""
-        await self._stop_cloud_agent()
-        await self._stop_mdns_advertiser()
-        if self.isc:
-            await self._stop_isc()
 
     def isc_gates(self) -> tuple[bool, bool]:
         """The two switches ISC runs behind: (system config, this project).

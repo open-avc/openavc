@@ -168,13 +168,14 @@ async def test_the_engine_stopping_during_a_start_leaves_no_simulator_running(ri
     start = asyncio.ensure_future(eng.simulation.start())
     await _until(lambda: rig.spawn_waiting)
     stop = asyncio.ensure_future(eng.stop())
-    for _ in range(20):
-        await asyncio.sleep(0)
+    # The engine's stop reaches the simulation while the start is still held:
+    # its end tells the start to give up.
+    await _until(lambda: eng.simulation._run.give_up)
     released.set()
     started, stopped = await asyncio.wait_for(
         asyncio.gather(start, stop, return_exceptions=True), 10,
     )
-    assert stopped is None
+    assert stopped == []  # the stop named nothing that went wrong
     assert not eng.simulation.active
     assert all(process.returncode is not None for process in rig.processes)
     assert isinstance(started, RuntimeError), started
