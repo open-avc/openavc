@@ -135,11 +135,8 @@ async def _test_device(device: Any, engine: Any, subject: str) -> dict[str, Any]
         return _connected_now(own, resolved, subject)
     held, _unresolved = await held_ports(_connections(engine, "network_connections"))
     result = await check_reachability(dialled, held=held)
-    if binding.passthrough and not result["success"]:
-        # The address in the sentence is the bridge's, never entered here.
-        result["error"] = _sent_through(
-            result["error"], _device_name(engine.project, binding.bridge),
-        )
+    if binding.passthrough:
+        _name_the_bridge(result, _device_name(engine.project, binding.bridge))
     if connection_of(dialled).simulated:
         _say_simulated(result, connection_of(resolved), subject)
     return result
@@ -154,6 +151,13 @@ async def _bridge_answer(
         label = _device_name(engine.project, binding.bridge)
         return _failure(binding.problem(label), address)
     return await _through_bridge(binding.bridge, engine, address)
+
+
+def _name_the_bridge(result: dict[str, Any], bridge_label: str) -> None:
+    """A failed test of a device on a bridge's pass-through names the bridge:
+    the address in the sentence is the bridge's, never entered on the device."""
+    if not result["success"]:
+        result["error"] = _sent_through(result["error"], bridge_label)
 
 
 def _say_simulated(result: dict[str, Any], equipment: Any, subject: str) -> None:
@@ -376,8 +380,7 @@ async def _through_bridge(
     label = bridge.name or bridge.id
     result = await _test_device(bridge, engine, subject=label)
     result["connection"] = {**result["connection"], "bridge": bridge.id}
-    if not result["success"]:
-        result["error"] = _sent_through(result["error"], label)
+    _name_the_bridge(result, label)
     return result
 
 
