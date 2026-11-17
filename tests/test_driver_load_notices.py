@@ -19,7 +19,7 @@ import yaml
 
 from openavc.api.routes import drivers as routes
 from openavc.core import project_library
-from openavc.drivers import driver_loader, refused_files, registry
+from openavc.drivers import driver_change, driver_loader, refused_files, registry
 
 DRIVER_ID = "acme_widget"
 ON_CONNECT = "on_connect: must be a list; write a single entry as a one-item list"
@@ -41,8 +41,7 @@ def repo(tmp_path, monkeypatch):
     async def _nothing(*_args: Any, **_kwargs: Any) -> list[Any]:
         return []
 
-    monkeypatch.setattr(routes, "_activate_waiting_devices", _nothing)
-    monkeypatch.setattr(routes, "announce_drivers_changed", _nothing)
+    monkeypatch.setattr(driver_change, "_running_engine", lambda: None)
     monkeypatch.setattr("openavc.api.discovery.refresh_all_device_matches", _nothing)
     modules_before = {n: m for n, m in sys.modules.items() if "acme" in n}
     yield folder

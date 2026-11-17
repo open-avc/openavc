@@ -82,12 +82,19 @@ def stub_engine_wiring(monkeypatch):
     # The community update rebuilds the devices running the driver. Default to
     # a fleet that has none; the tests that care set both of these themselves.
     fake_engine.devices.reload_driver = AsyncMock(return_value=[])
-    # Both route modules under test here read the engine through their own
-    # module namespace — install/uninstall from routes.drivers, delete from
-    # routes.python_drivers — so a single patch would leave one of them
-    # reaching for the real (unstarted) engine.
+    fake_engine.devices.status_of = lambda device_id: "running"
+    fake_engine.simulation.drivers_changed = AsyncMock(return_value=False)
+    fake_engine.ws.broadcast = AsyncMock(return_value=None)
+    # Each module under test reads the engine through its own namespace: the
+    # uninstall's in-use check from routes.drivers, the delete from
+    # routes.python_drivers, and what follows every change from the
+    # driver-change step, so a single patch would leave one of them reaching
+    # for the real (unstarted) engine.
     monkeypatch.setattr(
         "openavc.api.routes.drivers._get_engine", lambda: fake_engine
+    )
+    monkeypatch.setattr(
+        "openavc.drivers.driver_change._running_engine", lambda: fake_engine
     )
     monkeypatch.setattr(
         "openavc.api.routes.python_drivers._get_engine", lambda: fake_engine

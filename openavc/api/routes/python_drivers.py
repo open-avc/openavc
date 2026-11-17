@@ -36,6 +36,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
+from openavc.drivers.driver_change import changed
 from openavc.drivers.driver_loader import (
     AmbiguousDriverFile,
     driver_companions,
@@ -347,9 +348,7 @@ async def delete_python_driver(driver_id: str) -> dict:
 
     log.info(f"Deleted Python driver: {driver_id}")
     # Discovery stops suggesting it, and stops running its discovery check.
-    from openavc.api.discovery import refresh_all_device_matches
-    await refresh_all_device_matches()
-    await _announce(driver_id)
+    await changed(gone=[driver_id])
     return {"status": "deleted", "driver_id": driver_id, "removed_companions": removed_companions}
 
 

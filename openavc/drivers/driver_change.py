@@ -1,11 +1,12 @@
-"""THE step that puts a driver on this server from outside it: ``admit``.
+"""THE two steps of a driver change: ``admit``, which puts a driver file on
+this server, and ``changed``, which follows every change at every door.
 
-Every door that brings in a driver file (the community install and update,
-the single-file and bundle imports) hands ``admit`` the whole change, every
-file it brings and every file it removes, and gets back the registered class,
-or a refusal that left the driver folder, the registry and ``sys.modules``
-exactly as they were. A person who imports a newer copy of their driver with a
-mistake in it keeps the copy that worked.
+Every door that writes a driver file (the community install and update, the
+single-file and bundle imports, the Driver Builder's saves) hands ``admit``
+the whole change, every file it brings and every file it removes, and gets
+back the registered class, or a refusal that left the driver folder, the
+registry and ``sys.modules`` exactly as they were. A person who imports a
+newer copy of their driver with a mistake in it keeps the copy that worked.
 
 ``admit`` runs these steps in order, with no ``await`` anywhere in it, so no
 other request ever sees a change half made:
@@ -37,12 +38,20 @@ unregistered, so it goes on serving. A Python driver's conventional companions
 (``_sim.py``, ``_discovery.py``, found by name) are optional: one that cannot
 be put in place is left out with a warning, and the driver goes in without it.
 
-What follows a change (rebuilding devices, Discovery, the announcement) is the
-door's, after ``admit`` returns. There is no FastAPI here: ``admit`` raises
-``DriverRefused`` (a status, a sentence, and the loader's reasons when it
-refused the file) for its own refusals, and a door's gates raise what the door
-raises. Logs as ``openavc.api.routes.drivers``,
-where the install doors' lines have always been filed.
+What follows a change is ``changed``, which every door calls once the folder
+and the registry say what serves each id now (after ``admit``, a delete, a
+reload, an uninstall): the running simulation reads its drivers again and
+restarts the simulated devices on the id, the devices on it are built again
+and the waiting ones come up, Discovery matches its found devices again, and
+every open Programmer is told (``announce``). A door names the ids a driver
+arrived for or changed, and the ids it took away (``gone``), whose devices it
+leaves as they are.
+
+There is no FastAPI here: ``admit`` raises ``DriverRefused`` (a status, a
+sentence, and the loader's reasons when it refused the file) for its own
+refusals, and a door's gates raise what the door raises. ``changed`` raises
+nothing. Logs as ``openavc.api.routes.drivers``, where the install doors'
+lines have always been filed.
 """
 
 from __future__ import annotations
@@ -54,7 +63,7 @@ import shutil
 import sys
 import tempfile
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -444,3 +453,145 @@ def _forget_bytecode(path: Path) -> None:
     except NotImplementedError:
         return
     Path(cached).unlink(missing_ok=True)
+
+
+# --- changed -----------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Changed:
+    """What a driver change did to this server's devices: ``reconnected``, the
+    devices on a changed id built again (a waiting one on it that came up among
+    them); ``activated``, every device that was waiting for its driver and now
+    runs; ``not_reconnected``, the devices on a changed id that did neither."""
+
+    reconnected: list[str] = field(default_factory=list)
+    activated: list[str] = field(default_factory=list)
+    not_reconnected: list[str] = field(default_factory=list)
+
+
+async def changed(*driver_ids: str, gone: Collection[str] = ()) -> Changed:
+    """Follow a driver change, once the driver folder and the registry say
+    what serves each id now: ``driver_ids`` a driver arrived for or changed,
+    ``gone`` the ids a door took away.
+
+    1. **The simulation.** A running simulator reads its driver folders again,
+       and each simulated device on one of ``driver_ids`` is started again from
+       the file there now, in the next bring-up round.
+    2. **The devices.** Each device on one of ``driver_ids`` is built again
+       from the class that serves it now, and one waiting for it comes up
+       (``reload_driver``); then every device waiting for a driver that is
+       registered now comes up. A device on a ``gone`` id is left as it is.
+    3. **Discovery.** Its driver hints and discovery files are read again, and
+       every device a scan found is matched again.
+    4. **The announcement** to every open Programmer (``announce``), naming
+       the first id.
+
+    Each part that fails is logged and the next still runs: the change is made
+    by now, and a door that answered it as not made would be pressed again.
+    """
+    engine = _running_engine()
+    outcome = Changed()
+    if engine is not None:
+        restarting = await _tell_the_simulation(engine, driver_ids)
+        if driver_ids:
+            outcome = await _rebuild_devices(engine.devices, driver_ids)
+        if restarting:
+            _ask_for_a_bringup_round(engine.devices)
+    await _refresh_discovery()
+    await announce(next(iter((*driver_ids, *gone)), None))
+    return outcome
+
+
+async def announce(driver_id: str | None = None) -> None:
+    """Tell every open Programmer that the drivers on this server changed.
+
+    The IDE keeps its driver lists (Drivers > Installed, the Builder's
+    definitions) in a store that only reloads when that store does the
+    installing. Many installs happen elsewhere: Discovery's Install & Add, a
+    device page's Install, the AI's install tool, an upload, a Builder save,
+    a Python driver edit, a project that brings its own drivers, another
+    browser. So the server says it once, at every door that writes a driver,
+    and every Programmer refreshes. ``driver_id`` is left out when a door
+    wrote several (or cannot say which).
+    """
+    engine = _running_engine()
+    if engine is None:
+        return
+    try:
+        message: dict[str, Any] = {"type": "drivers.changed"}
+        if driver_id:
+            message["driver_id"] = driver_id
+        await engine.ws.broadcast(message, client_type="programmer")
+    except Exception:
+        log.exception("Could not announce the driver change for '%s'", driver_id)
+
+
+def _running_engine() -> Any:
+    """The engine, or None before it has started (and in a bare test)."""
+    from openavc.api._engine import get_engine_optional
+
+    return get_engine_optional()
+
+
+async def _tell_the_simulation(engine: Any, driver_ids: Collection[str]) -> bool:
+    """Tell a running simulation the drivers changed; whether it has simulated
+    devices to start again on ``driver_ids``."""
+    simulation = getattr(engine, "simulation", None)
+    if simulation is None:
+        return False
+    try:
+        return bool(await simulation.drivers_changed(driver_ids))
+    except Exception:
+        log.exception("The simulation could not be told that the drivers changed")
+        return False
+
+
+async def _rebuild_devices(devices: Any, driver_ids: Collection[str]) -> Changed:
+    """Build every device on ``driver_ids`` again and bring up every device
+    waiting for a driver that is registered now; what came of each."""
+    from openavc.core.device_records import ORPHANED, SETTINGS_FAILED
+
+    try:
+        using = [d for driver_id in driver_ids for d in devices.get_devices_using_driver(driver_id)]
+        waiting = {d for d in using if devices.status_of(d) in (ORPHANED, SETTINGS_FAILED)}
+    except Exception:
+        log.exception("Could not read which devices use the changed drivers")
+        using, waiting = [], set()
+    reconnected: list[str] = []
+    for driver_id in driver_ids:
+        try:
+            reconnected += await devices.reload_driver(driver_id)
+        except Exception:
+            log.exception("Driver '%s' changed, but its devices could not be built again", driver_id)
+    try:
+        swept = await devices.retry_all_orphans()
+    except Exception:
+        log.exception("Could not bring up the devices waiting for a driver")
+        swept = []
+    activated = list(dict.fromkeys([d for d in reconnected if d in waiting] + list(swept)))
+    not_reconnected = [d for d in using if d not in reconnected and d not in activated]
+    return Changed(reconnected, activated, not_reconnected)
+
+
+def _ask_for_a_bringup_round(devices: Any) -> None:
+    """Ask for the bring-up round in which the simulation starts its devices
+    on a changed driver again, when no rebuild asked for one already."""
+    request = getattr(devices, "request_bringup", None)
+    if request is None:
+        return
+    try:
+        request()
+    except Exception:
+        log.exception("Could not ask for a bring-up round after a driver change")
+
+
+async def _refresh_discovery() -> None:
+    """Discovery's driver hints and discovery files read again, and every
+    found device matched again."""
+    from openavc.api.discovery import refresh_all_device_matches
+
+    try:
+        await refresh_all_device_matches()
+    except Exception:
+        log.exception("Discovery could not match its devices again after a driver change")

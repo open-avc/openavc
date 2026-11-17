@@ -10,9 +10,10 @@ keeps is its own: the files it brings (a catalog driver's come through
 `driver_catalog.CatalogFiles`, which checks every download against the
 catalog's hashes; a hand-imported file has no catalog entry to hash against),
 its gates (the unknown-key gate for an import, the id it asked for at an
-install), its sentences, and what follows the change (devices, Discovery, the
-announcement). `tests/test_driver_install_doors_pins.py` holds each door as it
-is. The Driver Builder's save doors ask the same floor (`enforce_declared_floor`).
+install) and its sentences. What follows every change, here and at the
+Builder's doors, is `driver_change.changed`: the simulation, the devices,
+Discovery and the announcement, in one order for every door.
+`tests/test_driver_install_doors_pins.py` holds each door as it is.
 
 Four neighbours are *not* here: `api/driver_catalog.py` (the community
 catalog: its addresses, hashes and downloads), `routes/driver_definitions.py`
@@ -20,8 +21,9 @@ catalog: its addresses, hashes and downloads), `routes/driver_definitions.py`
 and dry-run harness) and `routes/python_drivers.py` (``.py`` source
 management). This module calls into the last for `remove_python_companions`,
 since a Python driver's file set is that module's rule to own.
-`announce_drivers_changed` is here because every door that writes a driver,
-in any of them, ends with it.
+`announce_drivers_changed` is `driver_change.announce`, under the name the
+doors that do not call `changed` yet (the Code view's, the AI's driver tools,
+a project's) import it by.
 """
 
 import re
@@ -51,9 +53,12 @@ from openavc.drivers.driver_change import (
     DriverRefused,
     Gates,
     admit,
+    changed,
     check_driver_file,
     floor_refusal,
 )
+# Re-exported for the doors that do not call ``changed`` yet (module docstring).
+from openavc.drivers.driver_change import announce as announce_drivers_changed  # noqa: F401
 from openavc.drivers.driver_loader import (
     COMPANION_SUFFIXES,
     DISCOVERY_COMPANION_SUFFIX,
@@ -75,31 +80,6 @@ from openavc.drivers.registry import (
 
 log = get_logger(__name__)
 
-
-async def announce_drivers_changed(driver_id: str | None = None) -> None:
-    """Tell every open Programmer that the drivers on this server changed.
-
-    The IDE keeps its driver lists (Drivers > Installed, the Builder's
-    definitions) in a store that only reloads when that store does the
-    installing. Many installs happen elsewhere: Discovery's Install & Add, a
-    device page's Install, the AI's install tool, an upload, a Builder save,
-    a Python driver edit, a project that brings its own drivers, another
-    browser. So the server says it once, at every door that writes a driver,
-    and every Programmer refreshes. ``driver_id`` is left out when a door
-    wrote several (or cannot say which).
-    """
-    from openavc.api._engine import get_engine_optional
-
-    engine = get_engine_optional()
-    if engine is None:
-        return
-    try:
-        message: dict[str, Any] = {"type": "drivers.changed"}
-        if driver_id:
-            message["driver_id"] = driver_id
-        await engine.ws.broadcast(message, client_type="programmer")
-    except Exception:
-        log.exception("Could not announce the driver change for '%s'", driver_id)
 
 router = APIRouter(route_class=ProgrammerRoute)
 
@@ -345,19 +325,12 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
         Gates(driver_class=lambda cls: _enforce_driver_id_match(cls, files.driver_id)),
         failed=f"Failed to load driver '{files.driver_id}'",
     )
-
-    # Refresh discovery engine with new driver hints
-    from openavc.api.discovery import refresh_all_device_matches
-    await refresh_all_device_matches()
-
-    activated = await _activate_waiting_devices("install")
-
-    await announce_drivers_changed(body.driver_id)
+    outcome = await changed(body.driver_id)
     return {
         "status": "installed",
         "driver_id": body.driver_id,
         "file": files.file_name,
-        "activated_devices": activated,
+        "activated_devices": outcome.activated,
     }
 
 
@@ -430,19 +403,6 @@ async def _uploaded_file(request: Request) -> Any:
     return upload
 
 
-async def _activate_waiting_devices(after: str) -> list[str]:
-    """Bring up the project devices that were waiting for a driver that has
-    now arrived, and name them. Without this a person would reload the project
-    (or restart) to see the device come online. A failure is logged and never
-    the door's: the driver is in place either way."""
-    try:
-        engine = _get_engine()
-        return await engine.devices.retry_all_orphans()
-    except Exception:
-        log.exception("Failed to retry orphans after %s", after)
-        return []
-
-
 @router.post("/drivers/upload")
 async def upload_driver(request: Request) -> dict[str, Any]:
     """Upload a driver file (.avcdriver or .py) from the user's computer."""
@@ -483,17 +443,12 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     )
     driver_id = admitted.driver_class.DRIVER_INFO.get("id", filename)
     _remove_other_copies(driver_repo, driver_id, driver_repo / filename)
-
-    # Promote any project devices waiting on this driver — same flow as
-    # /drivers/install so manual uploads behave identically.
-    activated = await _activate_waiting_devices("upload")
-
-    await announce_drivers_changed(driver_id)
+    outcome = await changed(driver_id)
     return {
         "status": "uploaded",
         "driver_id": driver_id,
         "file": filename,
-        "activated_devices": activated,
+        "activated_devices": outcome.activated,
         "notices": list(admitted.notices),
     }
 
@@ -540,19 +495,12 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     )
     driver_id = admitted.driver_class.DRIVER_INFO.get("id", main_name)
     _remove_other_copies(driver_repo, driver_id, driver_repo / main_name)
-
-    # Refresh discovery hints + promote any devices waiting on this driver,
-    # matching the single-file upload / community install paths.
-    from openavc.api.discovery import refresh_all_device_matches
-    await refresh_all_device_matches()
-    activated = await _activate_waiting_devices("bundle upload")
-
-    await announce_drivers_changed(driver_id)
+    outcome = await changed(driver_id)
     return {
         "status": "uploaded",
         "driver_id": driver_id,
         "files": sorted(entries.keys()),
-        "activated_devices": activated,
+        "activated_devices": outcome.activated,
         "notices": list(admitted.notices),
     }
 
@@ -775,12 +723,7 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     for deleted_file in driver_files:
         _remove_installed_file(deleted_file, driver_repo)
     unregister_driver(driver_id)
-
-    # Refresh discovery engine so stale matches are cleared
-    from openavc.api.discovery import refresh_all_device_matches
-    await refresh_all_device_matches()
-
-    await announce_drivers_changed(driver_id)
+    await changed(gone=[driver_id])
     return {"status": "uninstalled", "driver_id": driver_id}
 
 
@@ -840,34 +783,6 @@ def _what_an_update_removes(
     return removes
 
 
-async def _rebuild_devices(driver_id: str) -> tuple[list[str], list[str]]:
-    """Rebuild the devices running a driver that was just replaced: the ones
-    that came back, and the ones that were running it and did not.
-
-    A device already running the driver was built from the old class and goes
-    on using it until something rebuilds it, so an update only reaches the
-    fleet after this swap. It is the same one the Code editor's hot-reload
-    does, and the same one the two driver-definition writers do.
-
-    Nothing here may fail the request: the new file is written and registered
-    by this point, so an error would report an update that did happen as one
-    that did not, and the caller would press Update again. ``reload_driver``
-    logs each device's own failure and leaves it out of what it returns.
-    """
-    reconnected: list[str] = []
-    using_before: list[str] = []
-    try:
-        engine = _get_engine()
-        using_before = engine.devices.get_devices_using_driver(driver_id)
-        reconnected = await engine.devices.reload_driver(driver_id)
-    except Exception:
-        log.exception(
-            "Driver '%s' was updated, but its devices could not be rebuilt",
-            driver_id,
-        )
-    return reconnected, [d for d in using_before if d not in reconnected]
-
-
 @router.post("/drivers/installed/{driver_id}/update")
 async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     """Update an installed community driver to a newer version."""
@@ -919,16 +834,14 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     for name in admitted.removed:
         if name in download.unpublished:
             log.info("Removed %s — no longer published for driver '%s'", name, driver_id)
-    reconnected, not_reconnected = await _rebuild_devices(driver_id)
-
-    from openavc.api.discovery import refresh_all_device_matches
-    await refresh_all_device_matches()
-
-    await announce_drivers_changed(driver_id)
+    # A device already running the driver was built from the old class and
+    # goes on using it until it is built again, so an update only reaches the
+    # fleet here.
+    outcome = await changed(driver_id)
     return {
         "status": "updated",
         "driver_id": driver_id,
         "file": files.file_name,
-        "devices_reconnected": reconnected,
-        "devices_not_reconnected": not_reconnected,
+        "devices_reconnected": outcome.reconnected,
+        "devices_not_reconnected": outcome.not_reconnected,
     }

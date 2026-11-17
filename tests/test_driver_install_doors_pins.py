@@ -166,15 +166,21 @@ def world(tmp_path, monkeypatch):
         events.append(("using", driver_id))
         return state.using.get(driver_id, [])
 
+    async def _simulation(driver_ids):
+        events.append(("simulation", tuple(driver_ids)))
+        return False
+
     engine.devices.retry_all_orphans = _retry
     engine.devices.reload_driver = _reload
     engine.devices.get_devices_using_driver = _using
+    engine.simulation.drivers_changed = _simulation
     monkeypatch.setattr(routes, "_get_engine", lambda: engine)
+    monkeypatch.setattr(driver_change, "_running_engine", lambda: engine)
 
     async def _announce(driver_id=None):
         events.append(("announce", driver_id))
 
-    monkeypatch.setattr(routes, "announce_drivers_changed", _announce)
+    monkeypatch.setattr(driver_change, "announce", _announce)
     yield state
     for name in [n for n in sys.modules if n.startswith("openavc_driver_")]:
         if "acme" in name or "helper_tool" in name:
@@ -219,6 +225,20 @@ def _python(driver_id: str = DRIVER_ID, mark: str = "new") -> bytes:
 
 
 COMPANION = b"async def probe(ctx):\n    return None\n"
+
+
+def _followed(driver_id: str = DRIVER_ID) -> list:
+    """What follows every door's change of ``driver_id``, in order: the
+    simulation told, the devices on it read and built again, the waiting
+    devices brought up, Discovery matched again, every Programmer told."""
+    return [
+        ("simulation", (driver_id,)),
+        ("using", driver_id),
+        ("reload", driver_id),
+        ("retry",),
+        ("refresh",),
+        ("announce", driver_id),
+    ]
 
 
 class _Upload:
@@ -385,9 +405,7 @@ async def test_install_of_a_yaml_driver_and_its_companion_in_order(world):
         ("get", "acme_widget.avcdriver"),
         ("get", "acme_widget_discovery.py"),
         ("register", DRIVER_ID),
-        ("refresh",),
-        ("retry",),
-        ("announce", DRIVER_ID),
+        *_followed(),
     ]
     assert set(_tree(world.repo)) == {"acme_widget.avcdriver", "acme_widget_discovery.py"}
 
@@ -502,9 +520,7 @@ async def test_install_of_a_python_driver_fetches_its_companions_before_register
         ("get", "acme_widget_discovery.py"),
         ("get", "acme_widget_sim.py"),
         ("register", DRIVER_ID),
-        ("refresh",),
-        ("retry",),
-        ("announce", DRIVER_ID),
+        *_followed(),
     ]
     assert set(_tree(world.repo)) == {"acme_widget.py", "acme_widget_sim.py"}
 
@@ -619,10 +635,7 @@ async def test_update_finds_a_yaml_by_the_id_it_declares_and_removes_the_old_nam
     assert world.events == [
         ("get", "acme_widget.avcdriver"),
         ("register", DRIVER_ID),
-        ("using", DRIVER_ID),
-        ("reload", DRIVER_ID),
-        ("refresh",),
-        ("announce", DRIVER_ID),
+        *_followed(),
     ]
     assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml(version="2.0.0")}
 
@@ -910,7 +923,7 @@ async def test_upload_of_a_yaml_whose_companion_is_here(world):
         "activated_devices": ["waiting_device"],
         "notices": [],
     }
-    assert world.events == [("register", DRIVER_ID), ("retry",), ("announce", DRIVER_ID)]
+    assert world.events == [("register", DRIVER_ID), *_followed()]
 
 
 @pytest.mark.asyncio
@@ -952,7 +965,7 @@ async def test_upload_whose_orphan_retry_fails(world):
     world.retry_fails = True
     result = await upload_driver(_form("acme_widget.py", _python()))
     assert result["activated_devices"] == []
-    assert world.events == [("register", DRIVER_ID), ("retry",), ("announce", DRIVER_ID)]
+    assert world.events == [("register", DRIVER_ID), *_followed()]
 
 
 # --- bundle upload -----------------------------------------------------------
@@ -1009,9 +1022,7 @@ async def test_bundle_of_a_yaml_driver_renames_the_main_and_keeps_the_companion_
         "activated_devices": ["waiting_device"],
         "notices": [],
     }
-    assert world.events == [
-        ("register", DRIVER_ID), ("refresh",), ("retry",), ("announce", DRIVER_ID),
-    ]
+    assert world.events == [("register", DRIVER_ID), *_followed()]
 
 
 @pytest.mark.asyncio
@@ -1090,7 +1101,9 @@ async def test_uninstall_with_a_project_no_device_of_which_uses_it(world):
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     result = await uninstall_driver(DRIVER_ID)
     assert result == {"status": "uninstalled", "driver_id": DRIVER_ID}
-    assert world.events == [("unregister", DRIVER_ID), ("refresh",), ("announce", DRIVER_ID)]
+    assert world.events == [
+        ("unregister", DRIVER_ID), ("simulation", ()), ("refresh",), ("announce", DRIVER_ID),
+    ]
     assert _tree(world.repo) == {}
 
 

@@ -26,7 +26,7 @@ from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.installed_equipment import missing_driver_reason
 from openavc.core.state_store import StateStore
-from openavc.drivers import driver_loader, refused_files, registry
+from openavc.drivers import driver_change, driver_loader, refused_files, registry
 from openavc.drivers.driver_change import DriverChange, DriverRefused, admit
 from openavc.drivers.python_modules import NO_DRIVER_CLASS
 
@@ -384,8 +384,7 @@ def doors(repo, monkeypatch):
     async def _nothing(*_args, **_kwargs):
         return []
 
-    monkeypatch.setattr(routes, "_activate_waiting_devices", _nothing)
-    monkeypatch.setattr(routes, "announce_drivers_changed", _nothing)
+    monkeypatch.setattr(driver_change, "_running_engine", lambda: None)
     monkeypatch.setattr("openavc.api.discovery.refresh_all_device_matches", _nothing)
     return repo
 
