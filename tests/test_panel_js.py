@@ -432,6 +432,8 @@ SCENARIOS = [
     # A turn of the glass and a changed ui/ file draw the page in place too.
     "a_turn_of_the_glass_keeps_each_open_dialog_open",
     "a_changed_ui_file_keeps_each_open_dialog_open",
+    # ...and redraws a dialog whose own control runs the file.
+    "a_changed_ui_file_redraws_an_open_dialog_running_it",
     # The surface record (modules/surface.js): its timers cleared and its
     # ends run once, and whatever is given after it ended ended at once; a
     # page that goes starts none of the entry animations it had still to start.

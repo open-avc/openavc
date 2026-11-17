@@ -111,14 +111,15 @@ export function pageDrawsNothing(page, masters) {
 }
 
 /**
- * Is anything on the page showing now drawn from a file in `ui/`?
+ * Is anything on this page drawn from a file in `ui/`?
  *
- * Asked before re-rendering on a ui.files push, so a panel showing a page
- * with no author markup on it does not redraw -- a redraw is cheap but not
- * free, and it is visible: it restarts page-enter animations and drops any
- * transient state a control was holding. A master element can be a custom
- * control too, and one draws on every page it names, so a panel sitting on a
- * plain page still redraws when the logo strip's markup changes.
+ * Asked of the page showing and of each dialog open over it before
+ * re-rendering on a ui.files push, so a panel showing nothing with author
+ * markup does not redraw -- a redraw is cheap but not free, and it is
+ * visible: every frame on screen loads again and a control drops any
+ * transient state it was holding. A master element can be a custom control
+ * too, and one draws on every page it names, so a panel sitting on a plain
+ * page still redraws when the logo strip's markup changes.
  */
 export function pageRunsAuthorMarkup(ui, currentId) {
     const page = (ui?.pages || []).find(p => p.id === currentId);

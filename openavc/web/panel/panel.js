@@ -711,9 +711,9 @@ class PanelApp {
 
     /**
      * A file in the project's ui/ tree changed. Nothing about the project
-     * moved, so no ui.definition follows and this page would keep drawing the
-     * control the browser already has -- for as long as nobody navigated away
-     * and back. The version rides onto each frame's src, so a redraw in
+     * moved, so no ui.definition follows and the page and each dialog open
+     * over it would keep drawing the control the browser already has -- for
+     * as long as nobody navigated away and back. The version rides onto each frame's src, so a redraw in
      * place re-fetches, each open dialog opened again.
      *
      * Embedded is the Builder's canvas, which runs its own counter over
@@ -723,7 +723,8 @@ class PanelApp {
     _takeFilesVersion(msg) {
         if (this.embedded) return;
         this._uiFilesVersion = msg.version;
-        if (this.snapshotReceived && pageRunsAuthorMarkup(this.uiDef, this.currentPage)) {
+        const shown = [this.currentPage, ...this.overlayStack];
+        if (this.snapshotReceived && shown.some((id) => pageRunsAuthorMarkup(this.uiDef, id))) {
             this.renderCurrentPage({ inPlace: true });
         }
     }

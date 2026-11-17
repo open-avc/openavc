@@ -11443,6 +11443,12 @@ const PANEL_CHECKS = {
         const late = boxes.filter((o) => !o.classList.contains('active') || o.classList.contains('dismissing') || o.style.pointerEvents === 'none');
         assert(late.length === 0, `overlays not open at once: ${JSON.stringify(late.map((o) => `${o.dataset.pageId} ${o.className} ${o.style.pointerEvents}`))}`);
     },
+    // The frame inside the first node `selector` finds loads an address holding `part`.
+    frameLoads: (m, selector, part) => {
+        const frame = document.querySelector(`${selector} iframe`);
+        const src = frame ? frame.getAttribute('src') || '' : null;
+        assert(src !== null && src.includes(part), `the frame at ${selector} loads ${JSON.stringify(src)}, not an address with ${JSON.stringify(part)}`);
+    },
     // The Page Nav `id` is lit (`lit`), as it is while its page is showing.
     navLit: (m, id, lit) => {
         const node = m.app.root.querySelector(`[data-element-id="${id}"]`);
@@ -12014,6 +12020,18 @@ Object.assign(tests, {
             ['viewport', ...PORTRAIT, ['resize']], ...kept,
             ['viewport', 1280, 800, ['orientationchange']], ...kept,
         ]));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_changed_ui_file_redraws_an_open_dialog_running_it() {
+        const pages = NAV_PAGES().map((p) => (p.id === 'dlg'
+            ? { ...p, elements: [...p.elements, customEl('c1')], layouts: [{ ...p.layouts[0], placements: { ...p.layouts[0].placements, c1: box(40) } }] }
+            : p));
+        const steps = await driveCase(keptCase([
+            ['msg', { type: 'ui.files', version: 2 }],
+            ['check', 'stack', ['dlg']], ['check', 'openAtOnce'], ['check', 'frameLoads', '.panel-overlay [data-element-id="c1"]', 'v=2'],
+        ], { ui: keptUi('dialog files', pages), open: ['dlg'] }));
         const failures = failedChecks(steps);
         assert(failures.length === 0, failures.join('\n'));
     },
