@@ -183,6 +183,45 @@ async def test_a_sleeping_device_replaced_on_its_driver_stays_asleep(dm, setup, 
     _reads_asleep(dm)
 
 
+async def test_a_device_found_awake_at_its_first_connect_is_no_longer_asleep(dm):
+    """The edited display was woken by its own remote meanwhile: the new
+    instance connects, the sleep is over, and its next outage reads as the
+    fault it is."""
+    await _asleep(dm)
+
+    await _edit(dm)
+
+    assert dm.state.get("device.w.connected") is True
+    assert dm.sleep_of("w") is None
+    assert dm.state.get("device.w.asleep") is None
+    await _gone_away_after(dm, "power_on")
+    assert dm.state.get("device.w.offline_reason") == UNREACHABLE
+    assert not dm.away_on_purpose("w")
+
+
+async def test_a_sleep_recorded_before_a_restart_ends_when_the_device_answers_at_start(dm):
+    """device_sleep.json says asleep, but the computer was switched on before
+    OpenAVC came back: its first connect ends the sleep, as a reconnect does."""
+    dm._sleep.arm("w", "power_on", "Power On", DRIVER)
+    dm._sleep.mark_asleep("w")
+
+    await dm.add_device(_cfg())
+
+    assert dm.state.get("device.w.connected") is True
+    assert dm.sleep_of("w") is None
+
+
+async def test_a_device_back_from_a_commanded_restart_at_its_first_connect_has_no_window(dm):
+    await dm.add_device(_cfg())
+    await _gone_away_after(dm, "reboot")
+
+    await _edit(dm)
+
+    assert dm.state.get("device.w.connected") is True
+    assert dm.restart_seconds_left("w") is None
+    assert dm.state.get("device.w.restarting") is None
+
+
 async def test_a_device_restarting_on_command_is_still_restarting_after_an_edit(dm):
     await dm.add_device(_cfg())
     await _gone_away_after(dm, "reboot")

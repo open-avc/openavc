@@ -314,6 +314,9 @@ class DeviceManager(
             await self._connect_driver(device_id, driver)
             if not await self._discard_if_superseded(device_id, driver):
                 return
+            # It answered: a sleep or restart window it was replaced in, or
+            # one recorded before a restart, is over, as at a reconnect.
+            self._clear_offline_reason(device_id)
             # Apply pending settings after successful connect
             await self._apply_pending_settings(device_id)
             self._note_bridge_offline_if_down(device_id, driver, config)
