@@ -28,6 +28,7 @@ To regenerate both fixtures after an intentional rule or message change:
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -1140,36 +1141,62 @@ def test_cases_fixture_matches_case_table():
     )
 
 
-def test_the_recorded_messages_carry_no_em_dash():
+def test_the_recorded_messages_read_plainly():
     """The Driver Builder shows these to an author as they are."""
     recorded = json.loads(FIXTURE.read_text(encoding="utf-8"))
     dashed = [m for messages in recorded.values() for m in messages if "\u2014" in m]
     assert dashed == []
 
 
-def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
-    """The corpus reaches only some rules, so read every string the
-    validators build: any literal that is not a docstring is message text."""
+# Where an author's driver is judged: drivers.check, the loader's validate
+# (the Builder's Validate and save, the AI's driver tool) and the simulator
+# validator. Whatever loads with them can put a sentence in front of the
+# author, so the scan reads every module they import, not a list of files.
+_AUTHOR_CHECKS = (
+    "openavc.drivers.check",
+    "openavc.drivers.driver_loader",
+    "openavc.simulator.validate",
+)
+
+
+def _modules_an_author_check_loads() -> list[Path]:
+    """This checkout's modules a fresh interpreter holds once the author
+    checks are imported."""
+    program = (
+        "import importlib, json, sys\n"
+        f"sys.path.insert(0, {str(_ROOT)!r})\n"
+        "for name in sys.argv[1:]:\n"
+        "    importlib.import_module(name)\n"
+        "print(json.dumps(sorted(\n"
+        "    m.__file__ for n, m in list(sys.modules.items())\n"
+        "    if n.split('.')[0] == 'openavc' and getattr(m, '__file__', None)\n"
+        ")))\n"
+    )
+    ran = subprocess.run(
+        [sys.executable, "-c", program, *_AUTHOR_CHECKS],
+        capture_output=True, text=True, cwd=_ROOT, check=True,
+    )
+    loaded = [Path(name).resolve() for name in json.loads(ran.stdout)]
+    package = _ROOT / "openavc"
+    assert all(path.is_relative_to(package) for path in loaded), (
+        "the checks loaded another tree's openavc package"
+    )
+    return loaded
+
+
+def test_every_message_an_author_check_can_show_reads_plainly():
+    """The corpus reaches only some rules, so read every string the modules
+    behind the author's checks build: any literal that is not a docstring is
+    message text (a check's sentence, a log line, a schema description)."""
     import ast
 
-    sources = [
-        _ROOT / "openavc" / "drivers" / name
-        for name in (
-            "action_checks.py",
-            "avcdriver_semantic.py", "child_type_checks.py", "command_checks.py",
-            "condition_checks.py", "conversion_checks.py",
-            "declared_names.py", "discovery_block.py", "driver_warnings.py", "framing_checks.py",
-            "liveness_checks.py",
-            "param_aid_checks.py",
-            "push_block_checks.py",
-            "query_entry_checks.py", "reply_name_checks.py", "response_rule_checks.py",
-            "child_fault_checks.py", "serial_line.py",
-            "routing_checks.py", "setting_checks.py",
-            "sign_in_checks.py", "state_variable_checks.py", "substitution_checks.py",
-            "python_info.py",
-            "check.py",
-        )
-    ]
+    sources = _modules_an_author_check_loads()
+    names = {path.relative_to(_ROOT).as_posix() for path in sources}
+    assert {
+        "openavc/drivers/avcdriver_semantic.py",
+        "openavc/drivers/python_info.py",
+        "openavc/simulator/validate.py",
+    } <= names, "the scan must read the checks themselves"
     dashed = []
     for path in sources:
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -1182,7 +1209,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
             and isinstance(node.body[0].value, ast.Constant)
         }
         dashed += [
-            f"{path.name}:{node.lineno}: {node.value!r}"
+            f"{path.relative_to(_ROOT).as_posix()}:{node.lineno}: {node.value!r}"
             for node in ast.walk(tree)
             if isinstance(node, ast.Constant)
             and isinstance(node.value, str)
