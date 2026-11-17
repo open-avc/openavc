@@ -147,6 +147,15 @@ class SimulatorManager:
         )
         return dict(self._available)
 
+    def rescan(self) -> dict[str, SimulatorInfo]:
+        """Read the driver folders again (``discover``), as a driver change on
+        the server asks: a renamed driver file, a new or changed ``_sim.py``.
+        A running device goes on as it is until it is started again. Nothing
+        is forgotten before a first scan."""
+        if not self._driver_paths:
+            return dict(self._available)
+        return self.discover(self._driver_paths)
+
     def _scan_directory(self, root: Path) -> None:
         """Scan a directory tree for drivers and simulators."""
         # Find all .avcdriver files (YAML auto-gen)

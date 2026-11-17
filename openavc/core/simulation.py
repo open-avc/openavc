@@ -66,6 +66,7 @@ import os
 import socket
 import sys
 import tempfile
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -561,6 +562,10 @@ class SimulationManager:
         # credential) gets its simulator restarted with the new one, so the
         # simulated device is the one the project now describes.
         self._sim_payloads: dict[str, dict] = {}
+        # Simulated devices whose driver changed since their simulator was
+        # started (drivers_changed): the next sync() starts each again, from
+        # the file there now, as it does a device whose config changed.
+        self._driver_restarts: set[str] = set()
         # device_id -> why the simulator is not running it: (cause, detail),
         # as the simulator said or as this side heard it. Kept until the
         # device gets a port, leaves the run, or the run ends.
@@ -1264,6 +1269,7 @@ class SimulationManager:
 
         self._sim_ports.clear()
         self._sim_payloads.clear()
+        self._driver_restarts.clear()
         self._refusals.clear()
         self._sim_tls.clear()
         self._original_configs.clear()
@@ -1602,12 +1608,13 @@ class SimulationManager:
         # started (a declared-module table, a channel count, a credential)
         # needs that simulator restarted with the new payload, or the
         # simulated device keeps answering for the design the project no
-        # longer describes. It goes through the remove and add paths below,
+        # longer describes. So does one whose driver changed
+        # (drivers_changed). It goes through the remove and add paths below,
         # so it is left out of the redirect-and-reconnect pass here (the add
         # path reconnects it once, on its new port).
         changed = {
             device_id for device_id in simulated_ids & current_device_ids
-            if self._payload_changed(device_id)
+            if device_id in self._driver_restarts or self._payload_changed(device_id)
         }
 
         # Re-apply redirects to existing simulated devices whose driver
@@ -1650,6 +1657,48 @@ class SimulationManager:
             "Simulation sync complete: +%d -%d ~%d devices",
             len(added), len(removed), len(changed),
         )
+
+    async def drivers_changed(self, driver_ids: Collection[str]) -> bool:
+        """The driver files changed, and with them the drivers serving
+        ``driver_ids``: the simulator reads its driver folders again (a
+        renamed driver file, a new or changed ``_sim.py``), and each simulated
+        device on one of those ids is started again from the file there now,
+        at the next sync. True when a device on one of them waits for that
+        sync (a simulated one, or one refused a simulator, which every sync
+        tries again), so the caller asks for a bring-up round; False while no
+        simulation runs.
+
+        A simulator that does not answer is logged, and the devices are
+        started again all the same: an edited YAML driver is read at every
+        start."""
+        if not self.active or not self._process or self._process.returncode is not None:
+            return False
+        await self._ask_to_rescan()
+        dm = self.engine.devices
+        on_them = {
+            device_id for device_id in self._project_device_ids()
+            if (dm.get_device_config(device_id) or {}).get("driver") in driver_ids
+        }
+        self._driver_restarts |= on_them & set(self._sim_ports)
+        return bool(on_them)
+
+    async def _ask_to_rescan(self) -> None:
+        """Ask the simulator to read its driver folders again."""
+        import aiohttp
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                resp = await session.post(
+                    f"{self._sim_ui_url}/api/drivers/rescan",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                )
+                if resp.status != 200:
+                    log.warning(
+                        "The simulator did not read its drivers again: it answered %s",
+                        resp.status,
+                    )
+        except Exception as e:
+            log.warning("The simulator could not be asked to read its drivers again: %s", e)
 
     def _payload_changed(self, device_id: str) -> bool:
         """Has this simulated device's launch payload drifted from the
@@ -1702,6 +1751,7 @@ class SimulationManager:
             self._original_configs.pop(device_id, None)
             self._sim_ports.pop(device_id, None)
             self._sim_payloads.pop(device_id, None)
+            self._driver_restarts.discard(device_id)
             self._refusals.pop(device_id, None)
 
     async def _sync_add_device(

@@ -4,6 +4,7 @@ REST API + WebSocket for the simulator.
 Endpoints:
   GET  /api/status              — overall status
   GET  /api/available           — discovered simulators
+  POST /api/drivers/rescan      — read the driver folders again (a driver changed)
   GET  /api/devices             — running simulator instances
   GET  /api/devices/{id}        — single device state
   POST /api/devices/{id}/start  — start simulating a device
@@ -167,6 +168,13 @@ async def get_available():
             for info in available.values()
         ]
     }
+
+
+@router.post("/drivers/rescan")
+async def rescan_drivers():
+    """Read the driver folders again: OpenAVC asks after a driver changed, so
+    the next start of a device builds it from the file there now."""
+    return {"simulators": len(_get_manager().rescan())}
 
 
 @router.get("/devices")
