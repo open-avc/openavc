@@ -26,6 +26,11 @@ The rules worth knowing before changing anything here:
   types any ``ValueError`` or ``TypeError`` they raise; the checks below that
   know the setting raise the typed refusal themselves, in words. The dial is
   outside it: a failure once a transport opens is the transport's to word.
+* THE line settings a serial port opens with are
+  :func:`serial_line_settings`' (read by the contract's table in
+  ``serial_line.py``, refused as above). The tests that open a port without
+  the driver, the Driver Builder's raw Send and Test Connection, ask it too,
+  so a test opens and refuses what the connect does.
 * Each transport class, and ``transport/endpoint.py``, is imported when a
   connection is built, not when this module loads: a test that replaces one
   of those module attributes reaches the connect.
@@ -222,6 +227,31 @@ def _note_unread_flow(driver: TransportLadder) -> None:
     log.warning(
         "[%s] %s It opens with no flow control.",
         driver.device_id, _serial_refused("flow_control", written),
+    )
+
+
+def serial_line_settings(config: dict[str, Any]) -> dict[str, Any]:
+    """THE line settings a serial port is opened with for ``config``: the
+    ``baudrate``, ``bytesize``, ``parity``, ``stopbits``, ``rtscts`` and
+    ``xonxoff`` keyword arguments the transport and pyserial take.
+
+    Each setting is read by the contract's one table
+    (``serial_line.read_line_setting``), an absent one as the table's
+    default, and one with no reading is refused as ``invalid_config``, naming
+    the setting as the device form does, checked in the order above; flow
+    control with no reading opens with none (``_serial_flow``). The connect
+    asks this, and so does every test that opens a port without the driver:
+    the Driver Builder's raw Send (from the draft's ``default_config``) and
+    Test Connection (from the device's resolved config).
+    """
+    baudrate, bytesize, parity, stopbits = (
+        _serial_setting(config, key)
+        for key in ("baudrate", "bytesize", "parity", "stopbits")
+    )
+    rtscts, xonxoff = _serial_flow(config)
+    return dict(
+        baudrate=baudrate, bytesize=bytesize, parity=parity,
+        stopbits=stopbits, rtscts=rtscts, xonxoff=xonxoff,
     )
 
 
@@ -703,20 +733,12 @@ class TransportLadder:
 
         Project config is untyped JSON, so an integrator, the AI or a
         hand-edit can store ``bytesize: "8"``, ``parity: "Even"`` or a value
-        no port takes, and pyserial does exact membership tests. Each setting
-        is read by the contract's one table (``serial_line.read_line_setting``), and
-        one with no reading is refused as ``invalid_config``, naming the
-        setting as the device form does, checked in the order returned; flow
-        control falls back to none (``_serial_flow``).
+        no port takes, and pyserial does exact membership tests. The reading
+        and its refusals are :func:`serial_line_settings`'.
 
         Returns ``(baudrate, bytesize, parity, stopbits, rtscts, xonxoff)``.
         """
-        baudrate, bytesize, parity, stopbits = (
-            _serial_setting(config, key)
-            for key in ("baudrate", "bytesize", "parity", "stopbits")
-        )
-        rtscts, xonxoff = _serial_flow(config)
-        return baudrate, bytesize, parity, stopbits, rtscts, xonxoff
+        return tuple(serial_line_settings(config).values())  # type: ignore[return-value]
 
     def _required_port(self) -> int:
         """Return ``config['port']`` for TCP/UDP/OSC, or refuse it.

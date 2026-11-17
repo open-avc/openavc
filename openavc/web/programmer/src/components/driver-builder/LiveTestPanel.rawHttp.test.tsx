@@ -59,6 +59,20 @@ describe("Live Test's raw HTTP request", () => {
     expect(sent).toMatchObject({ port: 8443, ssl: true, verify_ssl: false });
   });
 
+  it("goes to 443 when the driver turns HTTPS on and names no port", async () => {
+    render(<LiveTestPanel draft={draft({ ssl: true })} />);
+    expect(screen.getByDisplayValue("443")).toBeInTheDocument();
+    const sent = await sendRaw();
+    expect(sent).toMatchObject({ port: 443, ssl: true });
+  });
+
+  it("goes to 80 when the driver names no port and leaves HTTPS off", async () => {
+    render(<LiveTestPanel draft={draft({})} />);
+    expect(screen.getByDisplayValue("80")).toBeInTheDocument();
+    const sent = await sendRaw();
+    expect(sent).toMatchObject({ port: 80, ssl: false });
+  });
+
   it("is plain HTTP with the certificate checked when the driver sets neither", async () => {
     render(<LiveTestPanel draft={draft({ port: 443 })} />);
     expect(screen.getByRole("checkbox", { name: /Verify TLS certificate/ })).toBeChecked();

@@ -17,7 +17,10 @@ Three ways to run a command, in descending fidelity:
   transport, so the preview cannot drift from the send the way a second
   implementation of the protocol build would. No socket, no device.
 * **Raw probe** (`command_string`) — open a transport, send bytes, wait. No
-  definition, no auth, no on_connect: "what does this device say if I send X".
+  commands, no auth, no on_connect: "what does this device say if I send X".
+  A serial port still opens with the line settings a connect would use, read
+  from the draft's `default_config` and the panel's overrides when the request
+  carries a `definition` (`transport_ladder.serial_line_settings`).
 
 Split out of `routes/drivers.py`: this is a third of that file behind two
 routes, and it shares nothing with driver installation or definition CRUD.
@@ -180,6 +183,14 @@ def _test_port(
         return fallback
 
 
+def _drafted_config(body: TestCommandRequest) -> dict[str, Any]:
+    """The config a test reads before the panel's host and port: the draft's
+    ``default_config``, then the panel's overrides. Every way of testing a
+    draft reads it, so a raw probe and a defined command open the same line."""
+    default_config = (body.definition or {}).get("default_config") or {}
+    return {**default_config, **(body.config_overrides or {})}
+
+
 def _build_test_driver(
     body: TestCommandRequest, port_fallback: int | str | None = None
 ) -> _TestDriver:
@@ -202,7 +213,7 @@ def _build_test_driver(
 
     definition = dict(body.definition or {})
     default_config = dict(definition.get("default_config") or {})
-    chosen = {**default_config, **(body.config_overrides or {})}
+    chosen = _drafted_config(body)
     # The transport the test driver connects over: the config's choice, else
     # the draft's, else tcp (transport_choice).
     transport_type = effective_transport(chosen, definition)
@@ -620,8 +631,13 @@ async def _test_raw(body: TestCommandRequest) -> dict:
 
 
 async def _test_serial_raw(body: TestCommandRequest) -> dict:
-    """Raw serial probe — open SerialTransport with the port path in body.port."""
+    """Raw serial probe — open SerialTransport with the port path in body.port,
+    at the line settings a connect of the draft opens it with (the draft's
+    ``default_config`` and the panel's overrides, read by the transport
+    ladder). A setting the connect refuses is refused here in its words,
+    before the port is opened."""
     import asyncio
+    from openavc.drivers.transport_ladder import serial_line_settings
     from openavc.transport.serial_transport import SerialTransport
 
     port_path = str(body.port)
@@ -642,6 +658,7 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
             on_disconnect=lambda: None,
             delimiter=delimiter,
             timeout=body.timeout,
+            **serial_line_settings(_drafted_config(body)),
         )
     except (OSError, ConnectionError) as e:
         return {

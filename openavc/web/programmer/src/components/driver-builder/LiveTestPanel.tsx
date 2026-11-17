@@ -23,7 +23,7 @@ import type {
   TestCommandResult,
   TestPanelConflict,
 } from "../../api/driverClient";
-import { commandShapeMismatch } from "./liveTestHelpers";
+import { commandShapeMismatch, defaultTestPort, driverTls } from "./liveTestHelpers";
 import { valueText } from "../shared/booleanWords";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { isSecretSetting } from "../shared/secretSetting";
@@ -81,29 +81,10 @@ const RAW_COMMAND = "__raw__";
  * A "raw" mode is also available for one-off probes that aren't yet declared
  * as commands. Raw mode skips auth/on_connect.
  */
-/** The driver's own HTTPS settings, which a raw HTTP request follows: HTTPS
- *  when `ssl` is on, the certificate checked unless `verify_ssl` is false. */
-function driverTls(draft: DriverDraft): { ssl: boolean; verifySsl: boolean } {
-  const config = draft.default_config ?? {};
-  return { ssl: Boolean(config.ssl), verifySsl: config.verify_ssl !== false };
-}
-
 export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   const transport = draft.transport || "tcp";
   const isSerial = transport === "serial";
-  // Serial transports store a port path (e.g. "COM3", "/dev/ttyUSB0") in
-  // default_config.port. IP transports store a numeric port.
-  const defaultPort: number | string = isSerial
-    ? typeof draft.default_config?.port === "string"
-      ? (draft.default_config.port as string)
-      : ""
-    : typeof draft.default_config?.port === "number"
-      ? (draft.default_config.port as number)
-      : transport === "http"
-        ? 80
-        : transport === "osc"
-          ? 8000
-          : 23;
+  const defaultPort = defaultTestPort(draft);
 
   const [host, setHost] = useState("");
   const [port, setPort] = useState(String(defaultPort));
@@ -462,6 +443,10 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               command_string: rawString,
               delimiter: draft.delimiter,
               timeout: 5,
+              // The draft and the overrides: a serial port opens at the line
+              // settings the driver's own connection reads from them.
+              definition: draft,
+              config_overrides: overrides,
               // HTTPS when the driver's own connection is, on any port.
               ssl: driverTls(draft).ssl,
               verify_ssl: rawVerifySsl,

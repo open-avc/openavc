@@ -7,10 +7,19 @@ and each door's own test pins that the door asks it.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from openavc.core.device_config import connection_of
-from openavc.transport.endpoint import UnusablePort, http_endpoint, url_host
+from openavc.transport.endpoint import UnusablePort, http_endpoint, implied_port, url_host
+
+LIVE_TEST_HELPERS = (
+    Path(__file__).resolve().parents[1]
+    / "openavc" / "web" / "programmer" / "src" / "components" / "driver-builder"
+    / "liveTestHelpers.ts"
+)
 
 
 @pytest.mark.parametrize(
@@ -89,3 +98,15 @@ def test_the_port_is_the_one_a_device_connection_reports(port):
     except UnusablePort:
         dialled = None
     assert dialled == reported
+
+
+def test_the_driver_builders_live_test_starts_at_the_same_ports():
+    """Live Test's port box starts an http draft that names no port where the
+    connection dials (liveTestHelpers.ts keeps the two numbers); a copy that
+    drifts sends the test to a port the device never uses."""
+    source = LIVE_TEST_HELPERS.read_text(encoding="utf-8")
+    written = dict(re.findall(r"export const (HTTPS?_PORT) = (\d+);", source))
+    assert written == {
+        "HTTP_PORT": str(implied_port("http", {})),
+        "HTTPS_PORT": str(implied_port("http", {"ssl": True})),
+    }

@@ -231,7 +231,10 @@ class TestCommandRequest(BaseModel):
 
     2. Raw mode (legacy fallback): caller provides `command_string` and
        a transport. The endpoint opens a transport, sends the bytes, and
-       returns whatever comes back. No auth or on_connect.
+       returns whatever comes back. No auth or on_connect. A serial port
+       opens at the line settings a connect would use: the `definition`'s
+       `default_config` with `config_overrides` over it, refused as the
+       connect refuses them; 9600 8N1 when no `definition` is sent.
     """
 
     # Common — host is unused for serial; port carries the serial-port path
