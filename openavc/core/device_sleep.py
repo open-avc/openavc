@@ -18,8 +18,10 @@ The lifecycle, driven from the device manager's away status (``core/device_away.
    publishes as itself.
 3. **Ends** on a reconnect, on a successful send of the wake command (which
    opens that command's own ``restarts_device_for`` window, so a device that
-   does not come back reads as the real fault), and on pause, removal or
-   re-registration.
+   does not come back reads as the real fault), on a permanent fault, on the
+   device's removal, and when a replacement moves it to another driver. A
+   replacement on the same driver (an edit, a driver reload, its driver
+   arriving) keeps it: core/device_manager.py ``_replace_device``.
 4. **Disarmed without sleeping.** A device still connected
    :data:`DROP_WINDOW_SECONDS` after the sleeping command stayed reachable, so
    a later drop is a fault.

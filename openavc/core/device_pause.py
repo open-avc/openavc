@@ -11,10 +11,10 @@ on the device page.
 The rule worth knowing before changing it: a pause belongs to whoever took it,
 and ends only when they resume it, a Reconnect overrides it, or its backstop
 runs out (``PAUSE_TTL``, renewed while the holder stays open, so a closed tab
-cannot leave a production device offline for good). Removing the device and
-adding it again (an edit, a driver reload) is none of those, so the pause is
-carried across with the time its backstop had left (``_pause_to_carry``, then
-``_hold_carried_pause``).
+cannot leave a production device offline for good). Replacing the device's
+instance (an edit, a driver reload: core/device_manager.py ``_replace_device``)
+is none of those, so the pause is carried across with the time its backstop
+had left (``_pause_to_carry``, then ``_hold_carried_pause``).
 
 Mixed into DeviceManager (core/device_manager.py), which re-exports the
 constants. Logs under the device manager's name, which is how the log view
@@ -145,9 +145,9 @@ class DevicePauseMixin:
         return bool(self.state.get(f"device.{device_id}.paused"))
 
     def _pause_to_carry(self, device_id: str) -> tuple[float | None, str | None]:
-        """The pause a device keeps across being removed and added again (an
-        edit, a driver reload): the seconds its backstop has left, and who
-        holds it. Read before the removal, which deletes both.
+        """The pause a device keeps across a replacement (an edit, a driver
+        reload: ``_replace_device``): the seconds its backstop has left, and
+        who holds it. Read before the take-down, which deletes both.
 
         The pause belongs to whoever took it, still holding the competing
         session (the Driver Builder's Live Test, an audit), and ends when they

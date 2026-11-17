@@ -138,14 +138,14 @@ async def test_a_reload_leaves_other_drivers_and_disabled_devices_alone(dm):
 async def test_one_device_failing_to_re_add_does_not_stop_the_rest(dm, monkeypatch):
     await dm.add_device(_cfg("first"))
     await dm.add_device(_cfg("second"))
-    remove = dm.remove_device
+    take_down = dm._take_down
 
-    async def remove_device(device_id: str) -> None:
+    async def stuck_take_down(device_id: str) -> None:
         if device_id == "first":
             raise RuntimeError("stuck")
-        await remove(device_id)
+        await take_down(device_id)
 
-    monkeypatch.setattr(dm, "remove_device", remove_device)
+    monkeypatch.setattr(dm, "_take_down", stuck_take_down)
 
     assert await dm.reload_driver(DRIVER) == ["second"]
 

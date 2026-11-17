@@ -175,7 +175,8 @@ class DeviceAwayMixin:
         self._sleep = SleepBook()
 
     def _forget_away(self, device_id: str) -> None:
-        """Drop a removed device's window and sleep."""
+        """Drop the device's window and sleep: it was removed, or replaced
+        onto another driver (core/device_manager.py ``_replace_device``)."""
         self._end_restart_window(device_id)
         self._sleep.end(device_id)
 

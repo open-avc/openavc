@@ -20,7 +20,7 @@ The rule worth knowing before changing it: a running device is one with a live
 driver (``_devices``), and every other state is written into ``_not_running``
 by the door that decided it (``add_device``'s disabled path,
 ``_register_orphan``, ``_keep_build_failure``, ``keep_unresolved``) and dropped
-by ``remove_device``. Readers ask ``device_record``, ``device_records`` and
+when the device is taken down (``remove_device``, or a replacement). Readers ask ``device_record``, ``device_records`` and
 ``runs``, never the stores, so "disabled" is decided once, where the
 project's switch is read, and never as whatever is left over.
 
@@ -121,8 +121,8 @@ class DeviceRecordsMixin:
 
     Its state is set up by ``_init_records``. From its host (DeviceManager)
     it reads ``state``, ``installed_equipment``, ``request_bringup``,
-    ``_devices`` and ``_device_configs``, and asks ``add_device``,
-    ``remove_device`` and ``_publish_offline`` (core/device_away.py).
+    ``_devices`` and ``_device_configs``, and asks ``_replace_device``,
+    ``_take_down`` and ``_publish_offline`` (core/device_away.py).
     """
 
     state: StateStore
@@ -208,7 +208,9 @@ class DeviceRecordsMixin:
         if self._not_running.get(device_id) == kept:
             return True
         if device_id in self._not_running:
-            await self.remove_device(device_id)
+            # The same device, kept in another state: what it was is taken
+            # down, never forgotten (core/device_manager.py _replace_device).
+            await self._take_down(device_id)
         self._keep_record(device_id, SETTINGS_FAILED, entry, fault)
         prefix = f"device.{device_id}."
         self.state.set(f"{prefix}name", entry.get("name") or device_id, source="config")
@@ -253,15 +255,14 @@ class DeviceRecordsMixin:
             return False
 
     async def _set_up_again(self, config: dict[str, Any]) -> bool:
-        """Set a device no driver runs up again from ``config``, leaving
-        dialing it to a bring-up round when one can be asked for. One its
-        driver cannot set up is kept with why. True when a driver runs it
-        after."""
+        """Set a device no driver runs up again from ``config`` (a
+        replacement, so it keeps what one keeps), leaving dialing it to a
+        bring-up round when one can be asked for. One its driver cannot set
+        up is kept with why. True when a driver runs it after."""
         device_id = config["id"]
         ask_for_round = self.request_bringup is not None
-        await self.remove_device(device_id)
         try:
-            await self.add_device(config, defer_connect=ask_for_round)
+            await self._replace_device(device_id, config, defer_connect=ask_for_round)
         except DriverBuildError:
             return False
         if ask_for_round:

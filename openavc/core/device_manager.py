@@ -6,7 +6,9 @@ edit, remove, shutdown), the config it was handed and the live driver it built
 from it, a driver reload, the connect and drop events, and the one dial every
 door goes through (``_connect_driver``): a missing simulator never falls
 through to physical control, and a USB-serial device is dialled only through
-its own adapter.
+its own adapter. Every door that swaps a device's instance (an edit, a driver
+reload, its driver arriving, a retry) is ``_replace_device``, which says what
+the device keeps across it; ``remove_device`` forgets it all.
 
 The rule worth knowing before changing it: a driver gets its OWN copy of its
 config, because the copy kept here is what the project reconcile compares
@@ -189,9 +191,9 @@ class DeviceManager(
         Args:
             device_config: Dict with id, driver, name, config keys.
             carry_pause: Seconds left on a pause this device is being re-added
-                under (see ``update_device``). The driver is registered but not
-                connected, and the pause is re-armed for that long. Only the
-                remove-and-re-add paths pass it; a genuine add is never paused.
+                under. The driver is registered but not connected, and the
+                pause is re-armed for that long. Only :meth:`_replace_device`
+                passes it; a genuine add is never paused.
             carry_pause_for: Who held that pause (``paused_for``), carried with it.
             defer_connect: Register the device but leave it on the deferred
                 list for :meth:`bring_up` to dial. The project reconcile uses
@@ -413,7 +415,20 @@ class DeviceManager(
             )
 
     async def remove_device(self, device_id: str) -> None:
-        """Disconnect and remove a device (handles both active and orphaned)."""
+        """Disconnect and remove a device for good, in any state.
+
+        Everything it had goes with it, why it was away on purpose included
+        (a sleep, a commanded-restart window): a device added under this id
+        later is a different device, and would inherit a suppression it never
+        asked for. The same device on a fresh instance is
+        :meth:`_replace_device`.
+        """
+        await self._take_down(device_id)
+        self._forget_away(device_id)
+
+    async def _take_down(self, device_id: str) -> None:
+        """Disconnect a device and drop what belongs to its instance: the
+        part of a removal a replacement shares."""
         # Cancel reconnect if running — await so reconnect loop finishes
         await self._cancel_reconnect(device_id)
         # Drop pause bookkeeping: the TTL backstop must not fire a resume for
@@ -426,14 +441,10 @@ class DeviceManager(
         # dialed afterwards — bring_up re-checks the registry, but dropping the
         # entry here keeps a removed id from surviving in the set at all.
         self._deferred_connects.discard(device_id)
-        # Forget the flap history too — a device re-added under the same id is
-        # a fresh device, and inheriting a backoff it never earned would make
-        # its first reconnect mysteriously slow.
+        # Forget the flap history too — a fresh instance, and inheriting a
+        # backoff it never earned would make its first reconnect mysteriously
+        # slow.
         self._forget_flap_history(device_id)
-        # Same reasoning for a restart window and a sleep: a device re-added
-        # under this id while the old one's window was open, or while it
-        # slept, would inherit a suppression it never asked for.
-        self._forget_away(device_id)
         # Forget this device's credentials, so a password that is no longer
         # configured anywhere stops masking text in an unrelated device's log.
         get_secret_registry().forget(device_id)
@@ -480,10 +491,8 @@ class DeviceManager(
 
         Handles every device the system has (``device_record``): a running
         one, one waiting for its driver (driver reassignment), one its driver
-        or its settings failed, which this tries again, and a disabled one,
-        whose record alone goes, since nothing ran it.
-
-        A pause survives the swap (:meth:`_pause_to_carry`).
+        or its settings failed, which this tries again, and a disabled one.
+        What the device keeps across it is :meth:`_replace_device`.
 
         Args:
             device_id: The existing device ID.
@@ -491,21 +500,47 @@ class DeviceManager(
             defer_connect: Passed through to :meth:`add_device` — leave the
                 re-added device for :meth:`bring_up` to dial.
         """
-        carry_pause, carry_pause_for = self._pause_to_carry(device_id)
-        status = self.status_of(device_id)
-        if status is None:
+        await self._replace_device(device_id, new_config, defer_connect=defer_connect)
+
+    async def _replace_device(
+        self, device_id: str, config: dict[str, Any], *, defer_connect: bool = False,
+    ) -> None:
+        """Replace a device the system has with a fresh instance built from
+        ``config``: an edit, a driver reload, its driver arriving, a retry of
+        one its driver or its settings failed. THE rule for what a device
+        keeps across it, since it is the same device:
+
+        - its pause, with the time its backstop had left and who holds it
+          (:meth:`_pause_to_carry`), while a driver runs it after: a device
+          the replacement leaves disabled, waiting for its driver or failed
+          has nothing for a pause to hold off the wire;
+        - why it is away on purpose, a sleep and a commanded-restart window,
+          while it stays on the same driver, whose commands declared them;
+          each still ends by its own rules (core/device_away.py);
+        - its queued settings, in ``config``, checked against the driver's
+          declaration before any is sent (core/pending_settings.py).
+
+        Its connection, flap history, read-back watcher, detected web page,
+        recent traffic and state keys start fresh. A disabled device's record
+        alone goes, since nothing ran it. Raises DriverBuildError when the
+        new driver cannot set the device up (it is kept, with why).
+        """
+        before = self.device_record(device_id)
+        if before is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        if status == DISABLED:
+        seconds_left, held_for = self._pause_to_carry(device_id)
+        if before.status == DISABLED:
             self._forget_record(device_id)
         else:
-            await self.remove_device(device_id)
-        # A device the edit disables has no instance to resume into, so the
-        # pause has nothing left to protect: let add_device take its disabled
-        # path and leave the backstop cancelled.
-        if not new_config.get("enabled", True):
-            carry_pause = None
+            await self._take_down(device_id)
+        if before.config.get("driver") != config.get("driver"):
+            self._forget_away(device_id)
+        if not config.get("enabled", True):
+            # The disabled path builds nothing to hold paused; the backstop
+            # stays cancelled.
+            seconds_left = None
         await self.add_device(
-            new_config, carry_pause=carry_pause, carry_pause_for=carry_pause_for,
+            config, carry_pause=seconds_left, carry_pause_for=held_for,
             defer_connect=defer_connect,
         )
 
@@ -593,9 +628,9 @@ class DeviceManager(
         return reconnected
 
     async def _readd_for_new_driver(self, driver_id: str) -> list[str]:
-        """Remove and re-add every live device on ``driver_id`` so it picks up
-        the reloaded class, a paused one staying paused, and every device the
-        driver could not set up before. The ids re-added; a device that fails
+        """Replace every live device on ``driver_id`` so it picks up the
+        reloaded class (:meth:`_replace_device`), and every device the driver
+        could not set up before. The ids re-added; a device that fails
         is logged (one the driver cannot set up is kept with why) and the
         rest still run.
 
@@ -613,18 +648,12 @@ class DeviceManager(
         readded: list[str] = []
         for device_id, config in affected:
             try:
-                carry_pause, carry_pause_for = self._pause_to_carry(device_id)
-                await self.remove_device(device_id)
-                await self.add_device(
-                    config, carry_pause=carry_pause, carry_pause_for=carry_pause_for,
-                    defer_connect=True,
-                )
+                await self._replace_device(device_id, config, defer_connect=True)
                 readded.append(device_id)
                 log.info(
-                    f"Reconnected device '{device_id}' after driver reload"
-                    if carry_pause is None
-                    else f"Device '{device_id}' picked up the reloaded driver "
-                         f"and stayed paused"
+                    f"Device '{device_id}' picked up the reloaded driver and stayed paused"
+                    if self.is_paused(device_id)
+                    else f"Reconnected device '{device_id}' after driver reload"
                 )
             except DriverBuildError as error:
                 # Its traceback is already in the log, with the device kept.

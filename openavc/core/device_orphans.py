@@ -42,9 +42,9 @@ class DeviceOrphansMixin:
 
     Holds no state of its own: an orphan is a record in the ``orphaned``
     state (core/device_records.py). From its host (DeviceManager) it reads
-    ``state``, ``events`` and ``request_bringup``, and asks ``add_device``,
-    ``remove_device``, ``device_record``, ``status_of``, ``_records_in`` and
-    ``_keep_record``.
+    ``state``, ``events`` and ``request_bringup``, and asks
+    ``_replace_device``, ``device_record``, ``status_of``, ``_records_in``
+    and ``_keep_record``.
     """
 
     state: StateStore
@@ -102,9 +102,13 @@ class DeviceOrphansMixin:
         # A caller that asked for the deferral owns its own round (the engine's
         # reconcile does); one that did not gets it asked for here, or the
         # device would sit registered and never dialed.
+        #
+        # It is the same device on a fresh instance, so it keeps what a
+        # replacement keeps (a sleep recorded before a restart, its queue).
         ask_for_round = not defer_connect and self.request_bringup is not None
-        await self.remove_device(device_id)
-        await self.add_device(config, defer_connect=defer_connect or ask_for_round)
+        await self._replace_device(
+            device_id, config, defer_connect=defer_connect or ask_for_round,
+        )
         activated = self.status_of(device_id) != ORPHANED
         if activated and ask_for_round:
             self.request_bringup()
