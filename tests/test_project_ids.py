@@ -154,7 +154,7 @@ async def test_failed_reconcile_keeps_ownership_on_the_runtime_project(host, mon
     engine.project = project
     proposed = ProjectConfig(project={"id": "next", "name": "Next"}, devices=[
         DeviceConfig(id="local", name="Other equipment", driver="generic_tcp", enabled=False)])
-    async def fail(diff, origin):
+    async def fail(run):
         assert engine.installed_equipment.owns("local_2")
         assert not engine.installed_equipment.owns("amplifier")
         raise RuntimeError("injected reconcile failure")

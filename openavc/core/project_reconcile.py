@@ -1,13 +1,27 @@
-"""How the running system follows the project: the reconcile by section after
-an applied change, the narrower re-sync a failed one is rolled back with, the
-device and plugin syncs both use, and the bring-up worker that puts the
-devices a sync registered on the wire.
+"""How the running system follows the project: one table of stages, each
+with its undo, run forward after an applied change and backwards when that
+fails; the device and plugin syncs the stages use; and the bring-up worker
+that puts the devices a sync registered on the wire.
 
-The entry points are ``_reconcile`` and ``_rollback_reconcile``, called by
-``core/project_changes.py`` once the new project is the running one; nothing
-here saves, mints a revision or announces. The order inside ``_reconcile`` is
-the contract (its docstring), and ``core/engine_lifecycle.py``'s start runs the
-same steps in the same order, so a change to one is checked against the other.
+``RECONCILE_STAGES`` is the reconcile, in order, and the order is the
+contract: triggers stop before any stage deletes state keys, variables and
+devices come before the scripts that subscribe to their keys at import, and
+macros load before the triggers rebuild. ``core/engine_lifecycle.py``'s start
+runs the same steps in the same order, so a change to one is checked against
+the other. A stage runs when the change touches what it follows, and is
+entered in the change's ``ReconcileRun`` before it runs, so a stage that
+raises half-way is undone too. ``_rollback_reconcile`` runs the undo of every
+stage the run entered, last first, once ``core/project_changes.py`` has put
+the previous project back; an undo that fails is logged and the rest still
+run. A stage is added with both directions: tests/test_reconcile_stages.py
+fails the apply at each one in turn and checks the system is back where it
+was.
+
+What an undo cannot give back: a macro run the change cancelled stays
+cancelled, and drivers a load found on disk stay registered. The advertised
+name and ``system.project_name`` move only once a change is running (its
+announcement, in ``core/project_changes.py``), so a failed one never moved
+them. Nothing here saves the project, mints a revision or announces.
 
 A reconcile registers devices and returns: nothing here dials one inside the
 request that saved the project. ``_schedule_device_bringup`` asks the one
@@ -21,6 +35,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple
 
 from openavc.core.device_sync import (
     add_devices,
@@ -36,8 +53,61 @@ from openavc.utils.logger import get_logger
 log = get_logger("openavc.core.engine")
 
 
+@dataclass
+class ReconcileRun:
+    """One change's pass through the stages: what changed and how it
+    arrived, the stages entered so far in order, and what the variable
+    stages kept for their undo. Made fresh for each apply."""
+
+    diff: ProjectDiff
+    origin: ProjectOrigin
+    entered: list[Stage] = field(default_factory=list)
+    # The var.* values and the persisted key set from before the change.
+    variables_before: tuple[dict[str, Any], frozenset[str] | None] | None = None
+    # The values of the variables the change binds, before a binding wrote them.
+    bound_before: dict[str, Any] = field(default_factory=dict)
+
+
+class Stage(NamedTuple):
+    """One stage of the reconcile: when a change needs it, and the engine
+    methods (each given the run) that take the running system forward and
+    back. Named, not bound, so a method replaced on the engine is the one
+    that runs."""
+
+    name: str
+    needed: Callable[[ReconcileRun], bool]
+    forward: str
+    undo: str
+
+
+RECONCILE_STAGES: tuple[Stage, ...] = (
+    Stage("driver library", lambda run: run.origin is ProjectOrigin.LOAD,
+          "_rescan_driver_library", "_keep_found_drivers"),
+    Stage("trigger pause", lambda run: run.diff.requires_trigger_rebuild,
+          "_stop_triggers", "_restart_previous_triggers"),
+    Stage("macro cancel", lambda run: run.diff.macros or run.diff.device_groups,
+          "_cancel_running_macros", "_leave_macros_cancelled"),
+    Stage("variables", lambda run: run.diff.variables,
+          "_follow_variables", "_restore_variables"),
+    Stage("devices", lambda run: run.diff.devices_to_sync,
+          "_reconcile_devices", "_resync_devices"),
+    Stage("plugins", lambda run: run.diff.plugins,
+          "_follow_plugins", "_follow_plugins"),
+    Stage("macro definitions", lambda run: run.diff.macros or run.diff.device_groups,
+          "_follow_definitions", "_follow_definitions"),
+    Stage("trigger restart", lambda run: run.diff.requires_trigger_rebuild,
+          "_start_changed_triggers", "_stop_triggers"),
+    Stage("variable bindings", lambda run: run.diff.variables,
+          "_follow_bindings", "_restore_bindings"),
+    Stage("scripts", lambda run: run.diff.scripts,
+          "_follow_scripts", "_restore_scripts"),
+    Stage("ISC", lambda run: run.diff.isc, "_follow_isc", "_follow_isc"),
+)
+
+
 class ProjectReconcileMixin:
-    """The reconcile, the device and plugin syncs, and the device bring-up."""
+    """The reconcile and its undo, the device and plugin syncs, and the
+    device bring-up."""
 
     def _init_reconcile(self) -> None:
         # Device bring-up after a project change (see
@@ -47,71 +117,87 @@ class ProjectReconcileMixin:
         self._bringup_task: asyncio.Task | None = None
         self._bringup_requested = False
 
-    async def _reconcile(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
-        """Reconcile the running subsystems to ``self.project``, touching only
-        the sections ``diff`` marks dirty.
+    async def _reconcile(self, run: ReconcileRun) -> None:
+        """Take the running subsystems to ``self.project``: each stage the
+        change needs, in order, entered in ``run`` before it runs."""
+        for stage in RECONCILE_STAGES:
+            if stage.needed(run):
+                run.entered.append(stage)
+                await getattr(self, stage.forward)(run)
 
-        The ordering is load-bearing: triggers stop before any state-key
-        cleanup, macros load before triggers rebuild, scripts load after
-        variables and devices (they subscribe to ``var.*`` / ``device.*``
-        keys at import).
-        """
-        # LOAD only: pick up out-of-band driver files copied straight into
-        # driver_repo/ on the filesystem. API-driven installs register their
+    async def _rollback_reconcile(self, run: ReconcileRun) -> None:
+        """Undo every stage ``run`` entered, last first, against the project
+        put back. An undo that fails is logged and the ones before it in the
+        table still run: a broken ISC reload must not leave the triggers
+        stopped or a deleted variable gone."""
+        for stage in reversed(run.entered):
+            try:
+                await getattr(self, stage.undo)(run)
+            except Exception:
+                log.exception(f"Rollback could not undo the {stage.name} stage")
+
+    # --- The stages, each forward beside its undo. An undo that is its own
+    # forward follows the project again, which by then is the previous one.
+
+    async def _rescan_driver_library(self, run: ReconcileRun) -> None:
+        # A whole new project only: pick up out-of-band driver files copied
+        # straight into driver_repo/. API-driven installs register their
         # driver themselves, so an edit-save never pays for a library rescan.
-        if origin is ProjectOrigin.LOAD:
-            self._load_project_drivers()
+        self._load_project_drivers()
 
-        triggers_stopped = await self._pause_for_reconcile(diff)
-        await self._reconcile_sections(diff)
+    async def _keep_found_drivers(self, run: ReconcileRun) -> None:
+        """Nothing to undo: a driver found on disk is the library's, and the
+        previous project can use it as well."""
 
-        if triggers_stopped:
-            # The rebuild is loss-free: cooldown and cron-dedup baselines are
-            # restored from the state store for surviving trigger ids.
-            # Startup triggers re-fire only when a whole new project arrives;
-            # an edit-save must not re-run power-on automation.
-            await self._restart_triggers(fire_startup=(origin is ProjectOrigin.LOAD))
+    async def _stop_triggers(self, run: ReconcileRun) -> None:
+        # Before any stage that deletes state keys (var.*, device.*,
+        # plugin.*), so a state_change trigger cannot fire on a key that is
+        # mid-cleanup. Macro changes land here too: the trigger definitions
+        # live in the macros.
+        await self.triggers.stop()
 
-        if diff.variables:
-            self._rebind_variables()
+    async def _restart_previous_triggers(self, run: ReconcileRun) -> None:
+        # stop() first: the stop this undoes may have raised half-way, and
+        # start() on triggers already started would stack a second set of
+        # subscriptions, so every trigger fired twice per change. Never
+        # re-fire startup triggers: the previous project was already running.
+        await self.triggers.stop()
+        await self._restart_triggers(fire_startup=False)
 
-        if diff.scripts and self.scripts:
-            self._reconcile_scripts(diff, origin)
-
-        if diff.isc:
-            await self._reload_isc()
-
-    async def _pause_for_reconcile(self, diff: ProjectDiff) -> bool:
-        """Stop what must not run while the change lands; True when the
-        triggers were stopped (and so must be restarted)."""
-        # Stop triggers before any reconcile step that deletes state keys
-        # (var.*, device.*, plugin.*) so a state_change trigger can't fire
-        # on a key that is mid-cleanup. Macro changes land here too: the
-        # trigger definitions live in the macros.
-        triggers_stopped = False
-        if diff.requires_trigger_rebuild:
-            await self.triggers.stop()
-            triggers_stopped = True
-
+    async def _cancel_running_macros(self, run: ReconcileRun) -> None:
         # Swapping macro/group definitions under a running macro would
         # half-execute it against the new definition (nested macro and
-        # group.command steps re-resolve mid-flight) — cancel only when
-        # those definitions actually changed.
-        if diff.macros or diff.device_groups:
-            await self.macros.cancel_all()
-        return triggers_stopped
+        # group.command steps re-resolve mid-flight).
+        await self.macros.cancel_all()
 
-    async def _reconcile_sections(self, diff: ProjectDiff) -> None:
-        """Variables, devices, plugins, then the macro and group definitions."""
-        if diff.variables:
-            self._reconcile_variables()
-        if diff.devices_to_sync:
-            await self._reconcile_devices()
-        if diff.plugins:
-            await self._sync_plugins()
-        self._load_macro_definitions(macros=diff.macros, groups=diff.device_groups)
+    async def _leave_macros_cancelled(self, run: ReconcileRun) -> None:
+        """Nothing to undo: a cancelled macro run is not resumed."""
 
-    async def _reconcile_devices(self) -> None:
+    async def _follow_variables(self, run: ReconcileRun) -> None:
+        persister = self.persister
+        run.variables_before = (
+            self.state.get_namespace("var."),
+            persister.persistent_keys if persister else None,
+        )
+        self._reconcile_variables()
+
+    async def _restore_variables(self, run: ReconcileRun) -> None:
+        """A key the change deleted comes back with its value and a key it
+        seeded goes; the persister watches the keys it watched, and
+        state.json is written now, so a value the change pruned from the file
+        is back in it before a restart could read it."""
+        if run.variables_before is None:
+            return
+        before, persisted = run.variables_before
+        now = self.state.get_namespace("var.")
+        for var_id in now.keys() - before.keys():
+            self.state.delete(f"var.{var_id}")
+        for var_id in before.keys() - now.keys():
+            self.state.set(f"var.{var_id}", before[var_id], source="system")
+        if self.persister and persisted is not None:
+            self.persister.restore_keys(persisted)
+
+    async def _reconcile_devices(self, run: ReconcileRun) -> None:
         # Always the whole sync, never a per-device diff: a bridge edit
         # changes the resolved host/port of every device bound through
         # it, so cross-row effects only surface when every device's
@@ -137,26 +223,92 @@ class ProjectReconcileMixin:
         # already failed against the device's real address.
         self._schedule_device_bringup()
 
-    def _reconcile_scripts(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
-        if origin is ProjectOrigin.LOAD:
+    async def _resync_devices(self, run: ReconcileRun) -> None:
+        """The devices back on the previous project's, dialed by the
+        bring-up like any other change."""
+        await self._sync_devices(defer_connect=True)
+        self._schedule_device_bringup()
+
+    async def _follow_plugins(self, run: ReconcileRun) -> None:
+        await self._sync_plugins()
+
+    async def _follow_definitions(self, run: ReconcileRun) -> None:
+        self._load_macro_definitions(
+            macros=run.diff.macros, groups=run.diff.device_groups,
+        )
+
+    async def _start_changed_triggers(self, run: ReconcileRun) -> None:
+        # The rebuild is loss-free: cooldown and cron-dedup baselines are
+        # restored from the state store for surviving trigger ids. Startup
+        # triggers re-fire only when a whole new project arrives; an
+        # edit-save must not re-run power-on automation.
+        await self._restart_triggers(fire_startup=run.origin is ProjectOrigin.LOAD)
+
+    async def _follow_bindings(self, run: ReconcileRun) -> None:
+        # A binding writes its source's value into the variable at once.
+        values = self.state.get_namespace("var.")
+        run.bound_before = {
+            v.id: values[v.id] for v in self.project.variables
+            if v.source_key and v.id in values
+        }
+        self._rebind_variables()
+
+    async def _restore_bindings(self, run: ReconcileRun) -> None:
+        """Each variable the change bound back on the value it had, then the
+        previous project's bindings, which write their own sources' values."""
+        for var_id, value in run.bound_before.items():
+            self.state.set(f"var.{var_id}", value, source="system")
+        self._rebind_variables()
+
+    async def _follow_scripts(self, run: ReconcileRun) -> None:
+        if not self.scripts:
+            return
+        if run.origin is ProjectOrigin.LOAD:
             # A new project can replace script FILES while the configs
             # stay identical (library open, backup restore) — only a
             # full reload is safe here.
-            self.scripts.reload_scripts(
-                [s.model_dump() for s in self.project.scripts]
-            )
+            self._reload_every_script()
             return
         # Per-script: unchanged scripts keep their handlers and
         # timer phase; a failed re-import keeps the old version.
-        for script_id in diff.scripts_to_unload:
+        for script_id in run.diff.scripts_to_unload:
             self.scripts.unload_script(script_id)
-        for cfg in diff.scripts_to_reload:
-            result = self.scripts.reload_script(cfg)
-            if result.get("status") == "error":
-                log.error(
-                    f"Script '{cfg.get('id')}' failed to reload: "
-                    f"{result.get('error')}"
-                )
+        for cfg in run.diff.scripts_to_reload:
+            self._reload_script(cfg)
+
+    async def _restore_scripts(self, run: ReconcileRun) -> None:
+        """After a load, every script reloaded from the previous project;
+        after an edit, each script it touched back on its previous config,
+        or unloaded when the edit added it."""
+        if not self.scripts:
+            return
+        if run.origin is ProjectOrigin.LOAD:
+            self._reload_every_script()
+            return
+        previous = {s.id: s.model_dump() for s in self.project.scripts}
+        touched = [*run.diff.scripts_to_unload,
+                   *(cfg["id"] for cfg in run.diff.scripts_to_reload)]
+        for script_id in touched:
+            if script_id in previous:
+                self._reload_script(previous[script_id])
+            else:
+                self.scripts.unload_script(script_id)
+
+    def _reload_every_script(self) -> None:
+        self.scripts.reload_scripts([s.model_dump() for s in self.project.scripts])
+
+    def _reload_script(self, cfg: dict) -> None:
+        result = self.scripts.reload_script(cfg)
+        if result.get("status") == "error":
+            log.error(
+                f"Script '{cfg.get('id')}' failed to reload: "
+                f"{result.get('error')}"
+            )
+
+    async def _follow_isc(self, run: ReconcileRun) -> None:
+        await self._reload_isc()
+
+    # --- Shared with the start ------------------------------------------
 
     def _load_macro_definitions(self, *, macros: bool, groups: bool) -> None:
         """Hand the macro engine the project's macros, its device groups, or
@@ -175,37 +327,6 @@ class ProjectReconcileMixin:
     async def _restart_triggers(self, *, fire_startup: bool) -> None:
         self._load_triggers()
         await self.triggers.start(fire_startup=fire_startup)
-
-    async def _rollback_reconcile(self, diff: ProjectDiff) -> None:
-        """Best-effort re-sync after a failed reconcile, scoped to the same
-        sections the failed pass may have partially applied, against the
-        restored ``self.project``.
-
-        Deliberately narrower than the forward pass (unchanged from the
-        pre-reconciler rollback): deleted ``var.*`` keys stay deleted,
-        persister keys, scripts, ISC, and mDNS are not restored, and the new
-        bytes stay on disk.
-        """
-        if diff.devices_to_sync:
-            await self._sync_devices(defer_connect=True)
-            self._schedule_device_bringup()
-        if diff.plugins:
-            await self._sync_plugins()
-
-        self._load_macro_definitions(macros=diff.macros, groups=diff.device_groups)
-
-        if diff.requires_trigger_rebuild:
-            # The forward pass may have failed before or after restarting
-            # triggers. stop() first: calling start() on already-started
-            # triggers would stack a second set of state/event subscriptions
-            # and every trigger would fire twice per change. Never re-fire
-            # startup triggers while recovering — the restored project was
-            # already running.
-            await self.triggers.stop()
-            await self._restart_triggers(fire_startup=False)
-
-        if diff.variables:
-            self._rebind_variables()
 
     async def _sync_devices(self, *, defer_connect: bool = False) -> None:
         """Sync running devices with project config (add new, remove deleted, update changed).

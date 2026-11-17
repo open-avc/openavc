@@ -35,6 +35,7 @@ from openavc.core.project_loader import (
     refresh_crash_copy,
     save_project_async,
 )
+from openavc.core.project_reconcile import ReconcileRun
 from openavc.core.project_update import MigrationNotes
 from openavc.core.saved_values import refuse_new_words
 from openavc.core.typed_fields import trim_device_settings
@@ -302,6 +303,9 @@ class ProjectChangesMixin:
             self.project, self._project_revision, self._revision_counter,
             self._dirty_since_backup,
         )
+        # Fresh for this apply: a swap that fails before the reconcile has
+        # entered no stage, so the rollback undoes none.
+        run = ReconcileRun(diff, origin)
         try:
             # Swapping self.project IS the UI reload: UI dispatch looks
             # elements up at event time, so a UI-only change needs nothing
@@ -310,19 +314,21 @@ class ProjectChangesMixin:
             self._apply_project_settings()
             self._project_revision = self._new_revision()
             self._dirty_since_backup = True
-            await self._reconcile(diff, origin)
+            await self._reconcile(run)
         except Exception:
             log.error("Project apply failed, rolling back to previous "
                       "project state", exc_info=True)
-            await self._roll_back(previous, diff)
+            await self._roll_back(previous, run)
             raise
 
-    async def _roll_back(self, previous: tuple, diff: ProjectDiff) -> None:
+    async def _roll_back(self, previous: tuple, run: ReconcileRun) -> None:
         """The runtime back on the project it ran before a failed swap or
         reconcile. The project, revision, count and backup flag go back
         first, so a failure in what follows cannot leave the new revision on
-        the old project; the settings and the re-sync are each logged on a
-        failure and never raise, so the caller hears the original one."""
+        the old project; then the settings, then each reconcile stage the
+        change entered is undone, last first (``core/project_reconcile.py``).
+        Each is logged on a failure and never raises, so the caller hears
+        the original one."""
         self.project, revision, counter, dirty = previous
         # The counter goes back too, so it stays a count of COMMITTED
         # saves. The token minted above never left the process (nothing
@@ -340,7 +346,7 @@ class ProjectChangesMixin:
         # of truth and the user's edit must survive a runtime hiccup.
         # Rollback restores the RUNTIME to the previous project.
         await _call_logged(
-            partial(self._rollback_reconcile, diff), "Rollback re-sync also failed",
+            partial(self._rollback_reconcile, run), "Rollback re-sync also failed",
         )
 
     async def _announce_applied(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:

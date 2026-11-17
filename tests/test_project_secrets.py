@@ -85,7 +85,7 @@ async def test_a_failed_reconcile_puts_the_previous_key_back(engine, monkeypatch
     engine.project = _project("mesh-key-4417")
     engine._apply_project_settings()
 
-    async def broken(diff, origin):
+    async def broken(run):
         raise RuntimeError("reconcile failed")
 
     monkeypatch.setattr(engine, "_reconcile", broken)

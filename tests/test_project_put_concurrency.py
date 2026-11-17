@@ -54,7 +54,7 @@ def _stub_persistence(engine, monkeypatch, save_delay: float = 0.0):
 
     monkeypatch.setattr("openavc.core.project_changes.save_project_async", fake_save)
 
-    async def fake_reconcile(diff, origin):
+    async def fake_reconcile(run):
         pass
 
     monkeypatch.setattr(engine, "_reconcile", fake_reconcile)

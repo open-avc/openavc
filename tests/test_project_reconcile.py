@@ -12,8 +12,9 @@ Pins the scoped-reconcile contract of Engine.apply_project:
 - variable edits seed/sweep var.* keys and rebuild bindings without a
   device sync
 - script edits reload only the scripts that actually changed
-- a reconcile failure rolls the runtime back scoped to the sections the
-  failed pass touched, while the saved bytes stay on disk (persist-first)
+- a reconcile failure undoes only the stages the failed pass entered,
+  while the saved bytes stay on disk (persist-first); every stage failing
+  in turn is tests/test_reconcile_stages.py
 - the optimistic-concurrency compare-and-set lives inside apply_project
 - ProjectDiff classifies section changes and ignores derived fields
 """

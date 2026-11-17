@@ -21,6 +21,7 @@ from openavc.core.engine import Engine
 from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import load_project
+from openavc.core.project_reconcile import ReconcileRun
 
 ENGINE_LOG = "openavc.core.engine"
 
@@ -196,7 +197,7 @@ async def test_a_removed_device_with_no_state_logs_nothing(tmp_path, caplog):
 async def test_running_macros_are_cancelled_only_when_their_definitions_change(tmp_path, diff, cancelled):
     eng = _engine(tmp_path, [])
     eng.macros.cancel_all = AsyncMock()
-    await eng._reconcile(diff, ProjectOrigin.EDIT)
+    await eng._reconcile(ReconcileRun(diff, ProjectOrigin.EDIT))
     assert eng.macros.cancel_all.await_count == (1 if cancelled else 0)
 
 
@@ -206,7 +207,7 @@ async def test_a_variable_reconcile_logs_the_keys_it_cleaned_up(tmp_path, caplog
     eng.state.set("var.left_over", 1, source="system")
     eng.state.set("var.also_gone", 2, source="system")
     with caplog.at_level(logging.INFO, logger=ENGINE_LOG):
-        await eng._reconcile(ProjectDiff(variables=True), ProjectOrigin.EDIT)
+        await eng._reconcile(ReconcileRun(ProjectDiff(variables=True), ProjectOrigin.EDIT))
     assert "Cleaned up 2 orphaned variable state key(s)" in [
         r.getMessage() for r in caplog.records if r.name == ENGINE_LOG
     ]
@@ -223,7 +224,7 @@ async def test_a_variable_reconcile_seeds_new_variables_and_keeps_the_rest(tmp_p
         VariableConfig(id="new", type="string", default="d2"),
     ]
     eng.state.set("var.kept", "running", source="ui")
-    await eng._reconcile(ProjectDiff(variables=True), ProjectOrigin.EDIT)
+    await eng._reconcile(ReconcileRun(ProjectDiff(variables=True), ProjectOrigin.EDIT))
     assert eng.state.get("var.kept") == "running"
     assert eng.state.get("var.new") == "d2"
 
@@ -238,7 +239,7 @@ async def test_a_script_that_fails_to_reload_is_logged(tmp_path, caplog):
     diff = ProjectDiff(scripts=True, scripts_to_reload=[{"id": "broken"}, {"id": "fine"}],
                        scripts_to_unload=["old"])
     with caplog.at_level(logging.ERROR, logger=ENGINE_LOG):
-        await eng._reconcile(diff, ProjectOrigin.EDIT)
+        await eng._reconcile(ReconcileRun(diff, ProjectOrigin.EDIT))
     eng.scripts.unload_script.assert_called_once_with("old")
     assert [c.args[0]["id"] for c in eng.scripts.reload_script.call_args_list] == ["broken", "fine"]
     assert [r.getMessage() for r in caplog.records if r.name == ENGINE_LOG] == [
@@ -267,7 +268,7 @@ async def test_a_device_change_syncs_then_promotes_orphans_then_asks_for_a_bring
     eng = _engine(tmp_path, [])
     order = []
     _recording(eng, order)
-    await eng._reconcile(diff, ProjectOrigin.EDIT)
+    await eng._reconcile(ReconcileRun(diff, ProjectOrigin.EDIT))
     assert order == ["sync defer=True", "orphans defer=True", "bring-up"]
 
 
@@ -276,7 +277,10 @@ async def test_a_rollback_re_syncs_devices_and_asks_for_a_bring_up_without_orpha
     eng = _engine(tmp_path, [])
     order = []
     _recording(eng, order)
-    await eng._rollback_reconcile(ProjectDiff(devices=True))
+    run = ReconcileRun(ProjectDiff(devices=True), ProjectOrigin.EDIT)
+    await eng._reconcile(run)
+    order.clear()
+    await eng._rollback_reconcile(run)
     assert order == ["sync defer=True", "bring-up"]
 
 
@@ -292,10 +296,12 @@ async def test_only_the_changed_definitions_are_handed_to_the_macro_engine(
     eng.project.device_groups = []
     eng.macros.load_macros = MagicMock()
     eng.macros.load_groups = MagicMock()
+    run = ReconcileRun(diff, ProjectOrigin.EDIT)
+    await eng._reconcile(run)
     if rollback:
-        await eng._rollback_reconcile(diff)
-    else:
-        await eng._reconcile(diff, ProjectOrigin.EDIT)
+        eng.macros.load_macros.reset_mock()
+        eng.macros.load_groups.reset_mock()
+        await eng._rollback_reconcile(run)
     assert eng.macros.load_macros.call_count == (1 if macros else 0)
     assert eng.macros.load_groups.call_count == (1 if groups else 0)
     if groups:
@@ -309,8 +315,13 @@ async def test_a_rollback_restarts_triggers_without_startup_triggers(tmp_path):
     eng.triggers.stop = AsyncMock(side_effect=lambda: order.append("stop"))
     eng.triggers.load_triggers = MagicMock(side_effect=lambda macros: order.append("load"))
     eng.triggers.start = AsyncMock(side_effect=lambda **k: order.append(f"start {k}"))
-    await eng._rollback_reconcile(ProjectDiff(macros=True))
-    assert order == ["stop", "load", "start {'fire_startup': False}"]
+    run = ReconcileRun(ProjectDiff(macros=True), ProjectOrigin.EDIT)
+    await eng._reconcile(run)
+    order.clear()
+    await eng._rollback_reconcile(run)
+    # The restart's undo stops them; the pause's undo stops them again (its
+    # own stop may have raised half-way) and starts the previous ones.
+    assert order == ["stop", "stop", "load", "start {'fire_startup': False}"]
 
 
 @pytest.mark.parametrize("rollback", [False, True])
@@ -320,8 +331,9 @@ async def test_a_variable_change_rebinds_and_rewatches_the_variables(tmp_path, r
     order = []
     eng._bind_variable_sources = lambda: order.append("bind")
     eng._register_variable_validation = lambda: order.append("validate")
+    run = ReconcileRun(ProjectDiff(variables=True), ProjectOrigin.EDIT)
+    await eng._reconcile(run)
     if rollback:
-        await eng._rollback_reconcile(ProjectDiff(variables=True))
-    else:
-        await eng._reconcile(ProjectDiff(variables=True), ProjectOrigin.EDIT)
+        order.clear()
+        await eng._rollback_reconcile(run)
     assert order == ["bind", "validate"]

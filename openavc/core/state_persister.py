@@ -139,6 +139,19 @@ class StatePersister:
         if removed and self._state_file.exists():
             self._write()
 
+    @property
+    def persistent_keys(self) -> frozenset[str]:
+        """The keys watched and saved now."""
+        return frozenset(self._persistent_keys)
+
+    def restore_keys(self, persistent_keys: set[str] | frozenset[str]) -> None:
+        """Put back the key set a failed project change replaced: watched
+        again, and state.json written from the store now. ``update_keys``
+        writes only when keys leave, so on its own a value the change pruned
+        from the file would stay out of it until the next change."""
+        self.update_keys(set(persistent_keys))
+        self._write()
+
     def _on_state_change(self, key: str, old_value: Any, new_value: Any, source: str) -> None:
         """Called when a persistent variable changes."""
         self._dirty = True

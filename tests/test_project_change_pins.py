@@ -82,7 +82,7 @@ async def test_a_failed_reconcile_puts_the_backup_flag_back(tmp_path):
     eng = _engine(tmp_path)
     eng._dirty_since_backup = False
 
-    async def boom(diff, origin):
+    async def boom(run):
         raise RuntimeError("reconcile failed")
 
     eng._reconcile = boom
@@ -106,10 +106,10 @@ async def test_a_clean_apply_marks_the_project_for_the_next_backup(tmp_path):
 async def test_a_rollback_that_fails_too_still_raises_the_reconcile_failure(tmp_path, caplog):
     eng = _engine(tmp_path)
 
-    async def boom(diff, origin):
+    async def boom(run):
         raise RuntimeError("the reconcile's own failure")
 
-    async def rollback_boom(diff):
+    async def rollback_boom(run):
         raise ValueError("the rollback's failure")
 
     eng._reconcile = boom
@@ -161,10 +161,10 @@ async def test_a_rollback_whose_settings_fail_still_restores_the_revision(tmp_pa
     revision = eng._project_revision
     resynced = []
 
-    async def boom(diff, origin):
+    async def boom(run):
         raise RuntimeError("the reconcile's own failure")
 
-    async def resync(diff):
+    async def resync(run):
         resynced.append(eng.project.project.name)
 
     eng._reconcile = boom
