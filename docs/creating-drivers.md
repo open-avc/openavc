@@ -2403,7 +2403,7 @@ These fields in `config_schema` are recognized by the HTTP transport:
 
 | Field | Description |
 |-------|-------------|
-| `host` | Device IP address (IPv4 or IPv6) or hostname (required). A URL such as `https://device.local:8443/api` also works: its scheme, port and path are used, and `port` and `ssl` are not read |
+| `host` | Device IP address (IPv4 or IPv6) or hostname (required). A URL such as `https://device.local:8443/api` also works: its scheme, port and path are used, and `port` and `ssl` are not read. OpenAVC 0.40.0 and earlier do not connect to a URL here, so a driver for the community library asks for the address and uses `port` and `ssl` |
 | `port` | Port number (default: 80, or 443 when `ssl` is on) |
 | `ssl` | Use HTTPS (default: false) |
 | `auth_type` | `"none"`, `"basic"`, `"bearer"`, `"api_key"`, `"digest"` |

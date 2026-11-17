@@ -99,6 +99,25 @@ async def test_a_port_that_is_not_a_number_is_left_to_the_connect(manager, dials
     assert dials == []
 
 
+@pytest.mark.parametrize("port", [0, 70000, -1])
+async def test_a_port_out_of_range_is_left_to_the_connect(manager, dials, port):
+    driver = _running(manager, "acme1", {"host": "192.0.2.30", "transport": "ssh", "port": port})
+
+    assert await manager._probe_failure("acme1", driver) is None
+    assert dials == []
+
+
+@pytest.mark.parametrize("host", ["http://[::1", "https://[acme]"])
+async def test_a_url_host_no_reader_can_take_apart_is_dialed_as_written(manager, dials, host):
+    """Asking where such a device connects never fails: the check dials the
+    host as written and the device reads as unreachable, so its retries go
+    on until the host is corrected."""
+    driver = _running(manager, "acme1", {"host": host, "transport": "http"})
+
+    assert await manager._probe_failure("acme1", driver) is not None
+    assert dials == [(host, 80)]
+
+
 async def test_a_simulated_device_is_checked_at_the_simulator(manager, dials):
     """While a simulation points the device at the simulator, the check dials
     the simulator, never the equipment's own address."""

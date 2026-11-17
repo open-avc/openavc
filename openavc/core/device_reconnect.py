@@ -405,12 +405,13 @@ class DeviceReconnectMixin:
         ``device_config.connection_of``): the transport's own port when the
         device names none, the name and port a URL host names, the simulator
         while a simulation points the device there. A port that is not a
-        number is never dialed: the connect refuses it as a setting to fix.
+        number, or one outside 1-65535, is never dialed: the connect refuses
+        it as a setting to fix.
         """
         host, port, transport = connection_descriptor(driver)
         if transport not in _PROBE_FIRST_TRANSPORTS:
             return None
-        if not host or not isinstance(port, int):
+        if not host or not isinstance(port, int) or not 0 < port <= 65535:
             return None
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address

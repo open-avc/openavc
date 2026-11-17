@@ -141,18 +141,25 @@ def url_address(host: Any) -> UrlAddress | None:
 
     A host is a URL when it holds ``://``. Read as a client reads the URL:
     the scheme and name lower-cased, the port as written, the path without
-    its query or a trailing ``/``.
+    its query or a trailing ``/``. One no URL reader can take apart (an
+    IPv6 address with no closing bracket) is not read as a URL: it is dialed
+    as it is written, and fails there in the device's own words, never in
+    whatever is asking where it connects.
     """
     text = str(host or "").strip()
     if "://" not in text:
         return None
-    parts = urlsplit(text)
+    try:
+        parts = urlsplit(text)
+        name = parts.hostname or ""
+    except ValueError:
+        return None
     # After any login, then after an IPv6 address's closing bracket.
     hostinfo = parts.netloc.rpartition("@")[2]
     after_name = hostinfo.partition("]")[2] if hostinfo.startswith("[") else hostinfo
     return UrlAddress(
         scheme=parts.scheme.lower(),
-        name=parts.hostname or "",
+        name=name,
         written_port=after_name.partition(":")[2],
         path=parts.path.rstrip("/"),
     )

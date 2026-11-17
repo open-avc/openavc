@@ -26,7 +26,7 @@ computer while a simulation points it there (``DeviceConnection.simulated``).
 The device manager asks ``dialled_record`` for its running devices
 (``DeviceManager.dialled_record``, ``connections_now``), and the connection
 test (``core/device_reachability``) dials that. A caller that holds the
-running driver asks ``driver_connection``, the same answer read from the
+running driver asks ``driver_connection``, the same address read from the
 driver's own config: the reconnect check (``core/device_reconnect``) dials
 it, and the device card's reason sentence (``core/device_away``) names it.
 Either reading names a host written as a URL by the name and port it names
@@ -291,8 +291,10 @@ def driver_connection(driver: Any) -> DeviceConnection:
 
     For a caller holding the driver (the reconnect check, the device card's
     reason sentence). A running simulation has pointed that config at the
-    simulator, so this is :func:`dialled_record`'s answer for the same
-    driver, read without the device manager's record.
+    simulator, so the transport, host and port are the ones
+    :func:`dialled_record` names for the same driver, read without the
+    device manager's record. Unlike that record it is not marked
+    ``simulated``, and it keeps a bridge binding the driver's config carries.
     """
     info = getattr(driver, "DRIVER_INFO", None) or {}
     record = {

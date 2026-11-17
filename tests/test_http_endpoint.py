@@ -7,12 +7,20 @@ and each door's own test pins that the door asks it.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from openavc.api.models import TestCommandRequest
+from openavc.api.routes.driver_test import _raw_http_endpoint
 from openavc.core.device_config import connection_of
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.core.web_ui_probe import web_ui_url_for_http_config
+from openavc.drivers.base import BaseDriver
 from openavc.transport.endpoint import UnusablePort, http_endpoint, implied_port, url_host
 
 LIVE_TEST_HELPERS = (
@@ -167,3 +175,51 @@ def test_a_url_hosts_port_is_the_one_a_device_connection_reports(host):
     except UnusablePort:
         dialled = None
     assert dialled == reported
+
+
+class _AcmeHttp(BaseDriver):
+    DRIVER_INFO: dict[str, Any] = {"id": "acme_url_host", "transport": "http"}
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+async def test_a_device_on_the_http_transport_sends_to_the_url_its_host_names():
+    """The connect builds the HTTP connection from the URL: its scheme and
+    port over Use HTTPS and Port, and its path ahead of every request's."""
+    paths: list[str] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        paths.append((await reader.readline()).decode().split()[1])
+        while (await reader.readline()) not in (b"\r\n", b""):
+            pass
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    driver = _AcmeHttp(
+        "acme1", {"host": f"http://127.0.0.1:{port}/api/", "port": 9, "ssl": True},
+        StateStore(), EventBus(),
+    )
+    try:
+        await driver._create_transport("http")
+        response = await driver.transport.get("/status")
+    finally:
+        if driver.transport is not None:
+            await driver.transport.close()
+        server.close()
+        await server.wait_closed()
+    assert response.status_code == 200
+    assert paths[-1] == "/api/status"
+
+
+def test_open_web_ui_opens_the_url_a_host_names():
+    config = {"host": "https://acme.example:8443/api", "port": 80, "ssl": False}
+    assert web_ui_url_for_http_config(config) == "https://acme.example:8443"
+
+
+def test_the_builders_raw_probe_goes_where_a_url_host_names():
+    body = TestCommandRequest(host="http://acme.example:8080/api", port=443, transport="http", ssl=True)
+    assert _raw_http_endpoint(body).base_url == "http://acme.example:8080/api"
