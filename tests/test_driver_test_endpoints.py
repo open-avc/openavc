@@ -118,6 +118,42 @@ async def test_raw_http_probe_goes_where_the_driver_connects(
     assert result["sent"] == sent
 
 
+class _FakeTcp:
+    async def send_and_wait(self, data: bytes, timeout: float = 5.0) -> bytes:
+        return b"OK\r"
+
+    async def close(self) -> None:
+        return None
+
+
+@pytest.mark.parametrize(
+    ("use_ssl", "verify_ssl"),
+    [(False, True), (True, True), (True, False)],
+)
+async def test_raw_tcp_probe_wraps_tls_as_the_driver_does(monkeypatch, use_ssl, verify_ssl):
+    """A driver that turns on ssl talks TLS over TCP; a raw probe of it does too,
+    checking the certificate unless the driver turns that off."""
+    from openavc.api.routes.driver_test import _test_raw
+    from openavc.transport import tcp
+
+    opened: list[dict] = []
+
+    async def create(**kwargs):
+        opened.append(kwargs)
+        return _FakeTcp()
+
+    monkeypatch.setattr(tcp.TCPTransport, "create", staticmethod(create))
+    body = TestCommandRequest(
+        host="10.0.0.5", port=4352, transport="tcp", command_string="%1POWR ?\r",
+        ssl=use_ssl, verify_ssl=verify_ssl,
+    )
+
+    result = await _test_raw(body)
+
+    assert result["success"] is True, result
+    assert (opened[0].get("ssl"), opened[0].get("ssl_verify")) == (use_ssl, verify_ssl)
+
+
 async def test_raw_http_probe_path_without_a_slash(captured_httpx):
     body = TestCommandRequest(
         host="10.0.0.5", port=80, transport="http", command_string="GET status",

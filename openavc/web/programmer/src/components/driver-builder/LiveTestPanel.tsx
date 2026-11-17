@@ -447,7 +447,8 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               // settings the driver's own connection reads from them.
               definition: draft,
               config_overrides: overrides,
-              // HTTPS when the driver's own connection is, on any port.
+              // HTTPS, or TLS over TCP, when the driver's own connection is,
+              // on any port.
               ssl: driverTls(draft).ssl,
               verify_ssl: rawVerifySsl,
             }
@@ -721,7 +722,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               fontSize: "var(--font-size-sm)",
             }}
           />
-          {transport === "http" && (
+          {(transport === "http" || (transport === "tcp" && driverTls(draft).ssl)) && (
             <label
               style={{
                 display: "flex", alignItems: "center", gap: 6,

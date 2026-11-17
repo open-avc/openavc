@@ -600,6 +600,10 @@ async def _test_raw(body: TestCommandRequest) -> dict:
             on_disconnect=lambda: None,
             delimiter=delimiter,
             timeout=body.timeout,
+            # TLS over TCP when the driver's own connection is (its ssl and
+            # verify_ssl, as the transport ladder builds a TCP connection).
+            ssl=body.ssl,
+            ssl_verify=body.verify_ssl,
         )
     except ConnectionError as e:
         return {
