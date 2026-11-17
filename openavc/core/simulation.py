@@ -11,6 +11,11 @@ servers. This module handles:
   - Preventing duplicate simulator processes
   - Bringing simulation back when the server starts again
 
+**This is the one way a device runs without its equipment, a serial device
+included:** its connection is redirected to the simulator's TCP stand-in for
+it. A serial port typed as ``SIM:<name>`` is refused rather than simulated
+(``transport/serial_transport.serial_port_refusal``).
+
 **Simulation that is on stays on across a restart, until somebody stops it.**
 A run that starts writes ``simulation.json`` in the data directory (per box,
 not per project: a project switch keeps simulating), and only Stop Simulation
