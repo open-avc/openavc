@@ -90,6 +90,12 @@ def _device_id_of(event: str) -> str | None:
     return parts[2] if len(parts) == 3 else None
 
 
+def _log_bring_up_failures(failures) -> None:
+    """Log each (device id, error) a bring-up round could not dial."""
+    for did, error in failures:
+        log.error(f"Bringing up device '{did}' failed: {error}")
+
+
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
     DeviceBridgesMixin, DevicePauseMixin, DeviceOrphansMixin, DeviceInfoMixin,
@@ -386,16 +392,16 @@ class DeviceManager(
             if did in self._device_configs
         }
         batches, unsplit = bridges_first(configs)
-        for did, error in unsplit.items():
-            log.error(f"Bringing up device '{did}' failed: {error}")
+        _log_bring_up_failures(unsplit.items())
         for batch in batches:
             results = await asyncio.gather(
                 *(self._bring_up_device(did) for did in batch),
                 return_exceptions=True,
             )
-            for did, result in zip(batch, results):
-                if isinstance(result, Exception):
-                    log.error(f"Bringing up device '{did}' failed: {result}")
+            _log_bring_up_failures(
+                (did, result) for did, result in zip(batch, results)
+                if isinstance(result, Exception)
+            )
 
     async def remove_device(self, device_id: str) -> None:
         """Disconnect and remove a device (handles both active and orphaned)."""
