@@ -475,15 +475,19 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
         # run of the server. A change that was not applied reaches the
         # server's own handler (main.py) in the same wording.
         raise change_failure_error(e) from e
+    return _saved_answer(engine, outcome, imported=mode == "import")
+
+
+def _saved_answer(engine: Any, outcome: Any, *, imported: bool) -> JSONResponse:
+    """What a save that was applied answers: its revision as the ETag; each
+    part it could not start, in the words that part's own surface shows; and
+    for an import, a project from somewhere else, the devices and plugins
+    whose login this system does not have."""
     content: dict[str, Any] = {"status": "saved"}
-    # Applied, with a part it could not start: each one, in the words its own
-    # surface shows.
     not_running = describe_not_running(outcome.failed)
     if not_running:
         content["not_running"] = not_running
-    if mode == "import":
-        # A project from somewhere else: the devices whose login this system
-        # does not have, for the import's result to name.
+    if imported:
         content["needs_login"] = engine.logins_needed()
         content["plugins_need_login"] = engine.plugin_logins_needed()
     return JSONResponse(content=content, headers={"ETag": f'"{outcome.revision}"'})

@@ -385,21 +385,7 @@ class AIToolHandler(
             await self._send_result(request_id, False, result={"error": problem}, error=problem)
             return
         try:
-            with collecting_not_running() as not_running:
-                if tool_name in self._CONCURRENT_SAFE_TOOLS:
-                    result = await handler(tool_input)
-                else:
-                    # Project-mutating tool: serialize on the project lock so two
-                    # concurrent tools can't interleave on engine.project, and run
-                    # the one-time pre-AI backup under the same lock so it happens
-                    # exactly once even under concurrency.
-                    async with self._project_lock:
-                        await self._maybe_create_pre_ai_backup()
-                        result = await handler(tool_input)
-            # The change ran, so the answer is not a failure; it names each
-            # part the change could not start, as Save does.
-            if not_running and isinstance(result, dict):
-                result = {**result, "not_running": describe_not_running(not_running)}
+            result = await self._run_tool(tool_name, handler, tool_input)
             # A tool that returns an {"error": ...} / {"success": False} dict
             # has failed even though it didn't raise — report it as a failure
             # (carrying the body) so the model gets a structured error signal
@@ -420,6 +406,25 @@ class AIToolHandler(
             # Worded before it leaves the local trust boundary: the answer is
             # kept in the cloud chat history.
             await self._send_result(request_id, False, error=describe_tool_failure(e))
+
+    async def _run_tool(self, tool_name: str, handler: Any, tool_input: dict) -> Any:
+        """The tool's own answer. A project change it made that could not
+        start a part is still applied, so the answer is not a failure: it
+        names each such part under ``not_running``, as Save does."""
+        with collecting_not_running() as not_running:
+            if tool_name in self._CONCURRENT_SAFE_TOOLS:
+                result = await handler(tool_input)
+            else:
+                # Project-mutating tool: serialize on the project lock so two
+                # concurrent tools can't interleave on engine.project, and run
+                # the one-time pre-AI backup under the same lock so it happens
+                # exactly once even under concurrency.
+                async with self._project_lock:
+                    await self._maybe_create_pre_ai_backup()
+                    result = await handler(tool_input)
+        if not_running and isinstance(result, dict):
+            return {**result, "not_running": describe_not_running(not_running)}
+        return result
 
     async def _maybe_create_pre_ai_backup(self) -> None:
         """Create one backup before the first project-mutating tool in an AI
