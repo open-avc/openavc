@@ -170,8 +170,8 @@ def _unregister(driver_id: str):
 async def _settle_drop(driver: BaseDriver) -> None:
     """Run the drop's deferred cleanup, which emits device.disconnected and
     so runs the device manager's handler."""
-    while driver._bg_tasks:
-        await asyncio.gather(*list(driver._bg_tasks))
+    while driver._drop_cleanups:
+        await asyncio.gather(*list(driver._drop_cleanups))
 
 
 async def test_add_device_auth_failure_does_not_start_reconnect(dm):

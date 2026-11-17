@@ -82,7 +82,7 @@ def _driver(link: _Link) -> tuple[AcmeSessionDriver, list[str]]:
 
 async def _drop(drv: AcmeSessionDriver) -> None:
     drv._handle_transport_disconnect()
-    await asyncio.gather(*drv._bg_tasks)
+    await asyncio.gather(*drv._drop_cleanups)
 
 
 async def test_a_drop_closes_and_forgets_the_transport_and_keeps_its_last_words():

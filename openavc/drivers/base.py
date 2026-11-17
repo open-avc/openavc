@@ -270,16 +270,13 @@ class BaseDriver(
         # reconnect). Beats string classification; same lifecycle as
         # _last_transport_error.
         self._last_fault: ConnectionFault | None = None
-        # Strong refs to fire-and-forget tasks (disconnect cleanup) so the GC
-        # can't collect them mid-run — a bare create_task is only weakly held.
-        self._bg_tasks: set[asyncio.Task] = set()
         # The push channel, closed (drivers/push.py).
         self._init_push()
         # The liveness probe and the hold after a device stopped answering
         # (drivers/liveness.py).
         self._init_liveness()
-        # The connect in flight, and a drop while it runs
-        # (drivers/connect_lifecycle.py).
+        # The connect in flight, a drop while it runs, and the tasks the
+        # driver spawns for its connection (drivers/connect_lifecycle.py).
         self._init_connect_lifecycle()
         # The registered child entities (drivers/child_entities.py).
         self._init_child_entities()

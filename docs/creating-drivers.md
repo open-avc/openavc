@@ -3144,6 +3144,36 @@ async def _initial_sync(self) -> None:
 
 A `poll()` that returns from `_initial_sync()` counts as the first poll cycle: the poll loop polls next one full interval later. Leave it out and the loop polls as soon as it starts instead, so state is read at connect either way.
 
+### Work the driver starts and does not wait for: `spawn_task`
+
+A read-back a moment after a write, a resubscribe loop, an event fired from inside `on_data_received()`: work a driver starts and does not wait for belongs to the connection it was started on. Start it with `self.spawn_task(coro)`. The platform holds the task while it runs and cancels it when that connection closes, whether the device dropped, was disconnected, or connects again. An exception the task does not handle is logged against the device. It returns the task, so a driver that runs one loop at a time can keep it and check `task.done()` before starting another.
+
+```python
+async def on_data_received(self, data: bytes) -> None:
+    if data.startswith(b"PWR=ON"):
+        # The input reads back wrong until the device has settled.
+        self.spawn_task(self._read_input_later(2.0))
+```
+
+By the time `_close_session()` runs these tasks are already cancelled, so it has nothing to cancel for them. Never cancel a task you did not start: the platform's own work for the device (polling, the liveness probe, the cleanup after a drop) is not the driver's to end, and on OpenAVC 0.40.0 and earlier a driver that cancels the cleanup leaves the device offline after a drop until someone presses Reconnect.
+
+`spawn_task` arrived after OpenAVC 0.40.0, and the check that computes `min_platform_version` reads only what a driver declares, not the methods it calls. A driver that should still install on 0.40.0 or earlier asks for it, and there falls back to a set of its own that its `_close_session()` cancels:
+
+```python
+def _spawn(self, coro):
+    spawn_task = getattr(self, "spawn_task", None)
+    if spawn_task is not None:
+        return spawn_task(coro)
+    task = asyncio.ensure_future(coro)
+    self._own_tasks.add(task)          # a set made in __init__
+    task.add_done_callback(self._own_tasks.discard)
+    return task
+
+async def _close_session(self) -> None:
+    for task in list(self._own_tasks):  # empty where spawn_task exists
+        task.cancel()
+```
+
 ### Driver-owned HTTP sessions (httpx)
 
 REST devices with real session semantics (cookies, tokens, digest auth, connection pooling quirks) are best served by the driver owning an `httpx.AsyncClient` directly — this is the standard pattern for Python HTTP drivers. Build the client in `_create_transport()` and leave `self.transport` as `None`, then give the platform the three pieces it can't infer:

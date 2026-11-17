@@ -23,6 +23,15 @@ The rules worth knowing before changing anything here:
   answering, drivers/liveness.py) is up but not announced: ``connected`` and
   its event wait for the device's first answer, and when it comes down
   nothing is emitted; the reconnect loop waiting on it is told instead.
+* THE session scope: what ends a driver's own work. A task a driver spawns
+  for its connection (``spawn_task``) is ended by every close of that
+  connection: a drop, a disconnect, a connect that fails or is ended, and
+  the clean slate of the next connect, all through ``_end_session``, which
+  then runs the driver's ``_close_session`` hook. The cleanup a drop runs is
+  the platform's own and is held apart (``_drop_cleanups``), so a driver
+  that cancels every task it was given cannot cancel it: the drop is still
+  reported and the reconnect still starts. ``_bg_tasks`` is the session's
+  set under the name driver files written before ``spawn_task`` use.
 
 ``ConnectLifecycle`` is a mixin ``BaseDriver`` inherits, so every name stays
 on the driver object: drivers override ``connect``, ``disconnect`` and
@@ -39,6 +48,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Coroutine
 from typing import Any, NoReturn
 
 from openavc.core.connection_fault import (
@@ -164,6 +174,54 @@ class ConnectLifecycle:
         # next one builds anything, so it can only close what it built.
         self._connect_attempt: object | None = None
         self._connect_lock = asyncio.Lock()
+        # The tasks the driver spawned for this connection (spawn_task), held
+        # while they run (a bare task is only weakly held) and ended by every
+        # close of the session (_end_session).
+        self._session_tasks: set[asyncio.Task] = set()
+        # The same set under the name driver files written before spawn_task
+        # put their tasks in, so those end with the connection too. A driver
+        # that assigns its own set here keeps it; the close reads the set
+        # above, never this name.
+        self._bg_tasks: set[asyncio.Task] = self._session_tasks
+        # The cleanup a drop runs, held apart from the session's tasks so no
+        # driver's close can cancel it before it reports the drop.
+        self._drop_cleanups: set[asyncio.Task] = set()
+
+    def spawn_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
+        """Run ``coro`` as a task of this connection and return the task.
+
+        The platform holds it while it runs and cancels it when the
+        connection closes: a drop, a disconnect, or the next connect, for a
+        task spawned while the device was offline. A failure the task does
+        not handle is logged against the device. A task that closes the
+        connection itself (it calls ``disconnect()``) is left to finish.
+        """
+        task = asyncio.ensure_future(coro)
+        self._session_tasks.add(task)
+        task.add_done_callback(self._session_task_done)
+        return task
+
+    def _session_task_done(self, task: asyncio.Task) -> None:
+        self._session_tasks.discard(task)
+        if task.cancelled():
+            return
+        failure = task.exception()
+        if failure is not None:
+            log.warning(
+                f"[{self.device_id}] A background task failed: {failure}",
+                exc_info=failure,
+            )
+
+    async def _end_session(self) -> None:
+        """End this connection's session: cancel the tasks the driver spawned
+        for it, then run the driver's ``_close_session`` hook. The task
+        running this close is not cancelled, since a spawned task may be the
+        one closing the connection."""
+        running = asyncio.current_task()
+        for task in list(self._session_tasks):
+            if task is not running:
+                task.cancel()
+        await self._close_session()
 
     async def connect(self) -> None:
         """
@@ -257,7 +315,7 @@ class ConnectLifecycle:
         still be closing it too, so a second close that fails is not this
         connect's failure."""
         try:
-            await self._close_session()
+            await self._end_session()
         except Exception:
             log.debug(f"[{self.device_id}] {failure_note}", exc_info=True)
 
@@ -339,7 +397,7 @@ class ConnectLifecycle:
         # a driver-owned session (an httpx client, a secondary socket) left
         # behind by a previous attempt.
         await self._stop_push()
-        await self._close_session()
+        await self._end_session()
         if self.transport:
             try:
                 await self.transport.close()
@@ -500,7 +558,7 @@ class ConnectLifecycle:
         # in ssh's log on the transport, not in this exception).
         self._stash_transport_error()
         await self._close_platform_transport()
-        await self._close_session()
+        await self._end_session()
         self._connected = False
 
     def _connect_is_held(self, hold: bool) -> bool:
@@ -568,7 +626,7 @@ class ConnectLifecycle:
             self._last_fault = typed
         await self._stop_push()
         await self._close_transport_quietly()
-        await self._close_session()
+        await self._end_session()
         self._connected = False
         self.set_state("connected", False)
         await self._report_connection_down()
@@ -603,7 +661,7 @@ class ConnectLifecycle:
         await self._stop_push()
         await self.stop_polling()
         await self._close_platform_transport()
-        await self._close_session()
+        await self._end_session()
         self._connected = False
         # A deliberate disconnect ends any hold: whatever connects next is a
         # fresh attempt, announced as soon as it is up.
@@ -723,10 +781,11 @@ class ConnectLifecycle:
             return
         # Keep a strong reference until the task finishes — a bare create_task
         # is only weakly held and can be GC'd before it runs, orphaning the
-        # poll loop or skipping the disconnect event.
+        # poll loop or skipping the disconnect event. Held apart from the
+        # session's tasks, which the cleanup itself ends.
         task = loop.create_task(self._on_disconnect_cleanup())
-        self._bg_tasks.add(task)
-        task.add_done_callback(self._bg_tasks.discard)
+        self._drop_cleanups.add(task)
+        task.add_done_callback(self._drop_cleanups.discard)
 
     async def _on_disconnect_cleanup(self) -> None:
         """Stop polling, close the dead transport, and emit the disconnect event.

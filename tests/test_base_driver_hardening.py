@@ -129,15 +129,15 @@ class TestDisconnectCleanup:
         drv._handle_transport_disconnect()
 
         # the cleanup task is strongly referenced while pending.
-        assert len(drv._bg_tasks) == 1
-        task = next(iter(drv._bg_tasks))
+        assert len(drv._drop_cleanups) == 1
+        task = next(iter(drv._drop_cleanups))
         await task
 
         assert drv._connected is False
         assert fake.closed is True          # transport closed
         assert drv.transport is None        # ref nulled for reconnect
         assert fired == [True]              # emit actually ran
-        assert len(drv._bg_tasks) == 0     # done-callback drained the set
+        assert len(drv._drop_cleanups) == 0     # done-callback drained the set
 
     async def test_disconnect_without_running_loop_is_safe(self):
         # Sanity: a disconnect with no loop logs and returns, no crash.
@@ -147,7 +147,7 @@ class TestDisconnectCleanup:
         # and still flips connected synchronously.
         drv._handle_transport_disconnect()
         assert drv._connected is False
-        for t in list(drv._bg_tasks):
+        for t in list(drv._drop_cleanups):
             await t
 
     async def test_watchdog_disconnect_closes_transport(self):

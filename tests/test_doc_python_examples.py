@@ -85,7 +85,10 @@ EXAMPLE_HELPERS = {
     "_identify": "The example driver's identity read, called from _initial_sync.",
     "_login": "The example driver's authentication step, called from "
               "_post_connect.",
+    "_own_tasks": "The spawn_task example driver's own task set, its fallback "
+                  "on a platform that predates spawn_task.",
     "_parse_status": "The controller example's roster parser.",
+    "_read_input_later": "The spawn_task example driver's delayed read-back.",
     "_read_configuration": "The file example driver's own read of the unit's "
                            "configuration, handed back as a DeviceFile.",
     "_refresh_state": "The example driver's post-command state refresh.",
