@@ -9,7 +9,10 @@ whatever the stage does with a raise, a hang or a cancel, the stop goes on:
   stage runs;
 - a stage still running at its bound is cancelled, left behind, named, and the
   next stage runs, even when the stage swallows the cancel;
-- a stage whose turn comes after its bound is not started, and is named.
+- a stage whose turn comes after its bound is not started, and is named. A
+  stage left at the bound has reached it, whatever the clock then reads: the
+  event loop may end a wait one clock tick early (about 15 ms on Windows), and
+  the stages after it must not start on that sliver.
 
 The bound is the stop's one deadline less ``EQUIPMENT_SECONDS``, until the
 stop hands over (``StopRun.hand_over``) to the stages that let go of the
@@ -66,16 +69,20 @@ class StopRun:
     def __init__(self, deadline: float | None) -> None:
         self.deadline = deadline
         self._bound = None if deadline is None else deadline - EQUIPMENT_SECONDS
+        self._bound_reached = False
         self.problems: list[str] = []
 
     def hand_over(self) -> None:
         """From here on the stages let go of the equipment: each may run to
         the deadline itself."""
         self._bound = self.deadline
+        self._bound_reached = False
 
     def _time_left(self) -> float | None:
         if self._bound is None:
             return None
+        if self._bound_reached:
+            return 0.0
         return self._bound - time.monotonic()
 
     def _name(self, stage: str, what: str) -> None:
@@ -105,6 +112,7 @@ class StopRun:
             task.cancel()
             raise
         if not done:
+            self._bound_reached = True
             task.cancel()
             task.add_done_callback(_retrieve)
             self._name(stage, "did not finish in time and was left")
