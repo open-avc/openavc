@@ -5,9 +5,9 @@ import { render, screen } from "@testing-library/react";
 // does not offer the setting there; TCP, serial, UDP and OSC devices keep it.
 
 import { SimulatorEditor } from "./SimulatorEditor";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(transport: string): DriverDefinition {
+function draft(transport: string): DriverDraft {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -20,7 +20,7 @@ function draft(transport: string): DriverDefinition {
     state_variables: {},
     commands: {},
     responses: [],
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 describe("the Simulation tab's Capacity", () => {

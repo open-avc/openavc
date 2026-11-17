@@ -6,12 +6,13 @@ import {
   applyStateVarTypeChange,
   nextStateVariableName,
 } from "./stateVariableHelpers";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const sanitizeVariableName = (raw: string) =>
   raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
 
 interface StateVariableEditorProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
 
@@ -139,7 +140,7 @@ export function StateVariableEditor({
                 style={{ fontSize: "var(--font-size-sm)" }}
               />
               <select
-                value={v.type}
+                value={v.type ?? "string"}
                 onChange={(e) => {
                   // One atomic write: type switch + stripping type-incompatible
                   // fields together, so no update clobbers another.

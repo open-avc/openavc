@@ -20,13 +20,14 @@ import { DriverEditor } from "./DriverEditor";
 import { addMissingConnectionFields } from "./transportPickerHelpers";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const NETWORK = {
   host: { type: "string", required: true, label: "IP Address" },
   port: { type: "integer", required: true, label: "Port" },
 };
 
-function definition(over: Record<string, unknown>): DriverDefinition {
+function definition(over: Record<string, unknown>): DriverDraft {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -43,7 +44,7 @@ function definition(over: Record<string, unknown>): DriverDefinition {
     polling: {},
     source: "user",
     ...over,
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 function open(def: DriverDefinition) {

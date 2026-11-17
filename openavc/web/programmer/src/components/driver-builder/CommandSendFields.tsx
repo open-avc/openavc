@@ -14,6 +14,7 @@ import { FIELD_HINT, FIELD_LABEL, FlagField } from "./commandFieldParts";
 import { HttpCommandFields } from "./HttpCommandFields";
 import { OscArgsEditor } from "./OscArgsEditor";
 import { UdpSendFields } from "./UdpSendFields";
+import { oscArgsAsText } from "./fieldText";
 
 /** An OSC command: its address and typed arguments. */
 function OscSendFields({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: CommandUpdate }) {
@@ -30,7 +31,7 @@ function OscSendFields({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: Com
         OSC address path. Use {"{param_name}"} for parameter substitution.
       </div>
       <OscArgsEditor
-        args={cmd.args ?? []}
+        args={oscArgsAsText(cmd.args)}
         onChange={(args) => onUpdate({ args })}
       />
     </div>

@@ -318,7 +318,7 @@ export function draftCommandRenamed(
   from: string,
   to: string,
 ): RenameResult & { update?: Partial<DriverDefinition> } {
-  const result = commandsRenamed(draft.commands, from, to);
+  const result = commandsRenamed(draft.commands ?? {}, from, to);
   if (!result.commands) return { ok: result.ok, reason: result.reason };
   const update: Record<string, unknown> = { commands: result.commands };
   for (const [section, edits] of Object.entries(SECTIONS_NAMING_A_COMMAND)) {
@@ -339,7 +339,7 @@ export function draftCommandRemoved(
   id: string,
 ): { uses: string[]; update: Partial<DriverDefinition> } {
   const sections = sectionsDropped(draft, id);
-  const commands = commandsDropped(draft.commands, id);
+  const commands = commandsDropped(draft.commands ?? {}, id);
   return {
     uses: [...sections.uses, ...commands.uses],
     update: { ...sections.next, commands: commands.next } as Partial<DriverDefinition>,

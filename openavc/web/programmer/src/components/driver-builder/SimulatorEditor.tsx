@@ -7,6 +7,7 @@ import {
   addErrorModeStateEntry,
   applyErrorModeBehavior,
   coerceSimStateValue,
+  errorModesOf,
   removeErrorModeStateEntry,
   renameErrorModeStateVar,
   setCapacityNumber,
@@ -16,9 +17,10 @@ import {
   type SimCapacity,
   type SimErrorMode,
 } from "./simulatorEditorHelpers";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 interface SimulatorEditorProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
 
@@ -140,7 +142,7 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
                     varDef.type === "boolean"
                       ? "true / false"
                       : varDef.type === "enum"
-                        ? (varDef.values ?? [])[0] ?? ""
+                        ? String((varDef.values ?? [])[0] ?? "")
                         : ""
                   }
                   style={{
@@ -177,7 +179,7 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
           <input
             type="number"
-            value={sim.delays?.command_response ?? ""}
+            value={String(sim.delays?.command_response ?? "")}
             onChange={(e) =>
               update({ delays: setCommandResponseDelay(sim.delays, e.target.value) })
             }
@@ -441,10 +443,10 @@ function ErrorModesEditor({
 }: {
   sim: DriverSimulatorDef;
   onUpdate: (partial: Partial<DriverSimulatorDef>) => void;
-  stateVariables: DriverDefinition["state_variables"];
+  stateVariables: DriverDraft["state_variables"];
 }) {
   const [newMode, setNewMode] = useState("");
-  const errorModes = sim.error_modes ?? {};
+  const errorModes = errorModesOf(sim.error_modes);
   const stateVarNames = Object.keys(stateVariables);
 
   const addMode = () => {

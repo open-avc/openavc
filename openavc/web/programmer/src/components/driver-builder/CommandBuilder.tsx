@@ -17,9 +17,10 @@ import { CommandSendFields, UdpToggle } from "./CommandSendFields";
 import { FIELD_HINT, FIELD_LABEL } from "./commandFieldParts";
 import { CommandSemanticsEditor } from "./CommandSemanticsEditor";
 import { ParamEditor } from "./ParamEditor";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 interface CommandBuilderProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
 
@@ -144,7 +145,7 @@ function CommandCard({
 }: {
   name: string;
   cmd: DriverCommandDef;
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: CommandUpdate;
   onRename: (next: string) => RenameResult;
 }) {
@@ -318,7 +319,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
           >
             <CommandHeader
               name={name}
-              label={commands[name].label}
+              label={commands[name].label ?? ""}
               isOpen={isOpen}
               onToggle={() => setExpanded(isOpen ? null : name)}
               onRemove={() => removeCommand(name)}

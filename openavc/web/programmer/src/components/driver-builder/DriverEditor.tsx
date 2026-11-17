@@ -49,6 +49,7 @@ import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
 import { parseApiError } from "../../api/errors";
 import { saveErrorText, type SaveRefusal } from "./saveRefusal";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 type TabId =
   | "general"
@@ -72,7 +73,7 @@ function addedFieldsNote(keys: string[], draft: DriverDefinition): string {
 }
 
 interface DriverEditorProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   dirty: boolean;
   saving: boolean;
   error: string | null;
@@ -1106,7 +1107,7 @@ function HelpFieldsSection({
   draft,
   onUpdate,
 }: {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }) {
   const help = draft.help ?? {};
@@ -1212,7 +1213,7 @@ function PublishingSection({
   draft,
   onUpdate,
 }: {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }) {
   // Comma-separated text -> string[] helper.
@@ -1395,7 +1396,7 @@ function CommandFramingEditor({
   draft,
   onUpdate,
 }: {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }) {
   const helpStyle: React.CSSProperties = {

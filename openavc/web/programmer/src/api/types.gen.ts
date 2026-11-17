@@ -202,7 +202,7 @@ export const SERIAL_LINE_SETTINGS: Readonly<Record<SerialLineKey, SerialLineSett
  * is shown in pickers (and read in macros) while the value goes on the wire. A
  * plain scalar means value == label.
  */
-export type EnumOption = string | { value: string; label?: string };
+export type EnumOption = string | number | boolean | { value: string | number | boolean; label?: string };
 
 /**
  * The long-form child_set id: which capture group (regex rules) or address
@@ -235,14 +235,26 @@ export type DriverVisibleWhen = DriverVisibleWhenCondition | { any: DriverVisibl
  */
 export type DriverWhenState = Record<string, string | number | boolean | (string | number | boolean)[]>;
 
+/**
+ * A frame_parser block as the Builder holds it: its type and whatever keys
+ * that type reads.
+ */
+export type DriverFrameParserShape = { type: string; [key: string]: unknown };
+
+/**
+ * A send_frame block as the Builder holds it: its type, when it names one, and
+ * whatever keys that type reads.
+ */
+export type DriverSendFrameShape = { type?: string; [key: string]: unknown };
+
 /** One typed OSC argument (type tag + value; see OSC_ARG_TYPES). */
 export interface DriverOscArg {
   /**
    * OSC type tag: f=float32, i=int32, s=string, h=int64, d=float64, T=true,
    * F=false, N=nil.
    */
-  type: string;
-  value: string;
+  type?: string;
+  value?: unknown;
 }
 
 /** Cascade: source this param's options from a sibling param's chosen value. */
@@ -286,7 +298,7 @@ export interface DriverParamDef {
    * receives as a CommandFile. A command with a file parameter runs only from
    * Send Command on the device page and from a Device Audit.
    */
-  type: string;
+  type?: string;
   /**
    * The command cannot run without this parameter. Enforced by the runtime at
    * command time for every caller and both driver formats: omitting it (or
@@ -318,14 +330,14 @@ export interface DriverParamDef {
    */
   options_state?: string;
   /** Cascade: source this param's options from a sibling param's chosen value. */
-  options_from?: { param: string; source: "child_schema"; types?: ("string" | "integer" | "number" | "boolean" | "enum" | "float")[]; units?: string[] };
+  options_from?: ParamOptionsFrom;
   /**
    * Make this param's input type follow the control chosen in a sibling
    * cascade. The named param is itself an options_from child_schema cascade;
    * this param then renders as that control's type (number+range, Yes/No,
    * etc.).
    */
-  type_from?: { param: string };
+  type_from?: ParamTypeFrom;
   /**
    * Minimum for an integer/number param. Enforced by the runtime at command
    * time; the IDE also flags violations while authoring.
@@ -464,13 +476,13 @@ export interface DriverUdpSend {
  * address (OSC), or udp (a datagram beside the main transport).
  */
 export interface DriverCommandDef {
-  label: string;
+  label?: string;
   help?: string;
   /**
    * Raw bytes to send (TCP/serial/UDP). {param} and {config} placeholders
    * substituted at runtime.
    */
-  send: string;
+  send?: string;
   /**
    * Send this command's send string exactly as written, skipping the driver's
    * command_prefix / command_suffix framing. Use it for the odd command that
@@ -484,15 +496,15 @@ export interface DriverCommandDef {
   /** HTTP request body. Parsed as JSON when valid, otherwise sent raw. */
   body?: string;
   /** HTTP query parameters with {param} substitution. */
-  query_params?: Record<string, string>;
+  query_params?: Record<string, unknown>;
   /** Per-request HTTP headers with {param} substitution. */
-  headers?: Record<string, string>;
+  headers?: Record<string, unknown>;
   /** OSC address pattern. */
   address?: string;
   /** OSC typed arguments. */
   args?: DriverOscArg[];
   /** Parameter definitions, keyed by {placeholder} name. */
-  params: Record<string, DriverParamDef>;
+  params?: Record<string, DriverParamDef>;
   /**
    * Declared state effect: the state variables this command sets on the
    * device, e.g. {power: true} or {master_volume: "{level}"}. A "{param}"
@@ -612,7 +624,7 @@ export interface DriverCommandDef {
 
 export interface DriverResponseMapping {
   /** Regex capture group index (1-based; 0 is the whole match). */
-  group: number;
+  group?: number;
   /**
    * json: true rules only: the JSON field to read (dot path allowed), the
    * mappings-list form of a set: value. The Driver Builder writes this form
@@ -620,11 +632,11 @@ export interface DriverResponseMapping {
    */
   key?: string;
   /** State variable to update. */
-  state: string;
+  state?: string;
   /** Coercion applied to the captured value. */
   type?: string;
   /** Lookup table translating raw captured values to friendly values. */
-  map?: Record<string, string>;
+  map?: Record<string, unknown>;
   value?: unknown;
   /** OSC argument index (for OSC responses). */
   arg?: number;
@@ -972,7 +984,7 @@ export interface DriverActionDef {
 
 export interface DriverDiscoveryMdnsFingerprint {
   service: string;
-  txt?: Record<string, string>;
+  txt?: Record<string, unknown>;
   cross_vendor?: boolean;
 }
 
@@ -1059,9 +1071,9 @@ export interface DriverDiscoveryConfig {
    * cleanly. Rarely hand-authored.
    */
   requires?: string;
-  mdns?: Array<string | DriverDiscoveryMdnsFingerprint>;
-  ssdp?: Array<string | DriverDiscoverySsdpFingerprint>;
-  amx_ddp?: DriverDiscoveryAmxDdpFingerprint[];
+  mdns?: string | DriverDiscoveryMdnsFingerprint | (string | DriverDiscoveryMdnsFingerprint)[];
+  ssdp?: string | DriverDiscoverySsdpFingerprint | (string | DriverDiscoverySsdpFingerprint)[];
+  amx_ddp?: DriverDiscoveryAmxDdpFingerprint | DriverDiscoveryAmxDdpFingerprint[];
   tcp_probe?: DriverDiscoveryProbe;
   udp_probe?: DriverDiscoveryProbe;
   python?: string | DriverDiscoveryPython;
@@ -1087,7 +1099,7 @@ export interface DriverDeviceSettingWrite {
   method?: string;
   path?: string;
   body?: string;
-  headers?: Record<string, string>;
+  headers?: Record<string, unknown>;
   /** OSC address. */
   address?: string;
   args?: DriverOscArg[];
@@ -1098,8 +1110,8 @@ export interface DriverDeviceSettingWrite {
  * only the write definition.
  */
 export interface DriverDeviceSettingDef {
-  type: string;
-  label: string;
+  type?: string;
+  label?: string;
   help?: string;
   /** State variable providing the current value. Defaults to the setting key. */
   state_key?: string;
@@ -1144,9 +1156,9 @@ export interface DriverSimulatorDef {
   /** Override initial state values. */
   initial_state?: Record<string, unknown>;
   /** Response delays in seconds, e.g. {command_response: 0.05}. */
-  delays?: Record<string, number>;
+  delays?: Record<string, unknown>;
   /** Named error behaviors selectable in the simulator UI. */
-  error_modes?: Record<string, { behavior?: string; description?: string; set_state?: Record<string, unknown> }>;
+  error_modes?: Record<string, unknown>;
   /**
    * The controls the Simulator UI draws on this device's page, in place of the
    * ones it builds from the state variables.
@@ -1184,12 +1196,12 @@ export interface DriverSimulatorDef {
 }
 
 export interface DriverStateVarDef {
-  type: string;
+  type?: string;
   /** Human-readable label. Required for top-level state variables. */
   label: string;
   help?: string;
   /** Allowed values for enum type. */
-  values?: string[];
+  values?: unknown[];
   min?: number;
   max?: number;
   /**
@@ -1245,10 +1257,10 @@ export interface DriverStateVarDef {
  * keeps your definition; the rest are still added.
  */
 export interface DriverChildStateVarDef {
-  type: string;
+  type?: string;
   label?: string;
   help?: string;
-  values?: string[];
+  values?: unknown[];
   min?: number;
   max?: number;
   /**
@@ -1303,7 +1315,7 @@ export interface DriverChildIdFormat {
    * pair with an instances ids_from roster (letter-addressed matrix outputs)
    * or a literal ids list (main buses st/m; platform 0.23.0+).
    */
-  type: "integer" | "string";
+  type?: "integer" | "string";
   min?: number;
   max?: number;
   pad_width?: number;
@@ -1371,8 +1383,8 @@ export interface DriverChildInstances {
 export interface DriverChildEntityType {
   label?: string;
   label_plural?: string;
-  id_format: DriverChildIdFormat;
-  state_variables: Record<string, DriverChildStateVarDef>;
+  id_format?: DriverChildIdFormat;
+  state_variables?: Record<string, DriverChildStateVarDef>;
   summary_fields?: string[];
   label_field?: string;
   /**
@@ -1579,7 +1591,7 @@ export interface DriverPushDef {
    * stream, independent of the control transport's framing. Omit to dispatch
    * raw reads.
    */
-  frame_parser?: { type: string; [key: string]: unknown } | null;
+  frame_parser?: DriverFrameParserShape | null;
   /**
    * tcp_listener and sse, optional: the command(s) that register with the
    * device -- for a dial-back listener the command that tells the device where
@@ -1788,10 +1800,7 @@ export interface DriverBridgeDef {
   ports: DriverBridgePortDef[];
 }
 
-/**
- * A full driver definition — the .avcdriver document (or a Python driver's
- * DRIVER_INFO) as the Builder edits it.
- */
+/** A full driver definition — the .avcdriver document as the Builder edits it. */
 export interface DriverDefinition {
   /** Unique driver identifier. Lowercase alphanumeric with underscores. */
   id: string;
@@ -1801,13 +1810,13 @@ export interface DriverDefinition {
    * Manufacturer name. Must exist in manufacturers.json for catalog
    * submission.
    */
-  manufacturer: string;
+  manufacturer?: string;
   /** Driver category. One of the ten catalog categories. */
-  category: string;
+  category?: string;
   /** Semantic version, e.g. 1.0.0. */
-  version: string;
+  version?: string;
   /** Driver author. */
-  author: string;
+  author?: string;
   /**
    * Transport the driver uses to reach the device. Use "bridge" for a device
    * that has no address of its own and emits through a live bridge instance
@@ -1834,7 +1843,7 @@ export interface DriverDefinition {
    */
   bridge?: DriverBridgeDef;
   /** Brief description of what the driver controls. */
-  description: string;
+  description?: string;
   /**
    * Protocol reference or product documentation URL. Must start with http://
    * or https://.
@@ -1844,7 +1853,7 @@ export interface DriverDefinition {
    * Message delimiter. Default "\r". Use "\r\n" for CRLF. Escape sequences \r
    * and \n are interpreted.
    */
-  delimiter: string;
+  delimiter?: string;
   /**
    * Opt-in constant string prepended to every command's send string (a fixed
    * packet header). Set it once instead of repeating it on each command. Byte-
@@ -1925,7 +1934,7 @@ export interface DriverDefinition {
    * Default values for config fields (e.g. host, port, poll_interval,
    * inter_command_delay).
    */
-  default_config: Record<string, unknown>;
+  default_config?: Record<string, unknown>;
   /**
    * Computed config values, each a template substituted from other config
    * fields, e.g. {"ws": "/workspace/{workspace_id}"}. If any {field} the
@@ -1941,7 +1950,7 @@ export interface DriverDefinition {
    * Per-device connection settings shown in the Add Device dialog. Keyed by
    * config field name.
    */
-  config_schema: Record<string, unknown>;
+  config_schema?: Record<string, unknown>;
   /**
    * Configurable values that live on the device hardware (polled + writable).
    * Keyed by setting name.
@@ -1951,14 +1960,14 @@ export interface DriverDefinition {
    * Read-only state properties this driver exposes. Keyed by state variable
    * name.
    */
-  state_variables: Record<string, DriverStateVarDef>;
+  state_variables?: Record<string, DriverStateVarDef>;
   /**
    * Sub-units this device manages (encoders, decoders, zones, presets). Keyed
    * by child type name.
    */
   child_entity_types?: Record<string, DriverChildEntityType>;
   /** Commands this driver can send. Keyed by command name. */
-  commands: Record<string, DriverCommandDef>;
+  commands?: Record<string, DriverCommandDef>;
   /**
    * Command ids promoted to one-click Quick Action buttons at the top of the
    * device view. Sugar for actions of kind "command". Each id must name a
@@ -1978,7 +1987,7 @@ export interface DriverDefinition {
    * applies all of its field mappings, so a multi-field JSON reply fully
    * populates.
    */
-  responses: DriverResponseDef[];
+  responses?: DriverResponseDef[];
   /**
    * Commands sent immediately after connect, before polling. Strings for
    * TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC
@@ -1995,7 +2004,7 @@ export interface DriverDefinition {
    * and rejected by the catalog validator; set the cadence via
    * default_config.poll_interval instead.
    */
-  polling: { queries?: (string | DriverEachChildQuery | DriverQueryEntry)[]; when_state?: DriverWhenState };
+  polling?: { queries?: (string | DriverEachChildQuery | DriverQueryEntry)[]; when_state?: DriverWhenState };
   auth?: DriverAuthDef;
   liveness?: DriverLivenessDef;
   push?: DriverPushDef;
@@ -2004,8 +2013,8 @@ export interface DriverDefinition {
    * length_prefix / fixed_length only; struct_frame is push-only
    * (push.frame_parser, for tcp_listener dial-back frames).
    */
-  frame_parser?: { type: string; [key: string]: unknown } | null;
-  send_frame?: { type: string; [key: string]: unknown } | null;
+  frame_parser?: DriverFrameParserShape | null;
+  send_frame?: DriverSendFrameShape | null;
   simulator?: DriverSimulatorDef;
   discovery?: DriverDiscoveryConfig;
   routing?: DriverRoutingDef;

@@ -4,6 +4,7 @@
 import type { DriverDeviceSettingDef } from "../../api/types";
 import { normalizeOptionList } from "../shared/paramOptions";
 import { BOOLEAN_OPTIONS } from "../shared/booleanWords";
+import { oscArgsAsText } from "./fieldText";
 
 export interface RenameResult {
   ok: boolean;
@@ -89,8 +90,8 @@ export function writeHasForeignKeys(
 export function oscWriteOmitsValue(write: WriteDef | undefined): boolean {
   if (!write) return true;
   const addrHasValue = (write.address ?? "").includes("{value}");
-  const argHasValue = (write.args ?? []).some((a) =>
-    (a?.value ?? "").includes("{value}"),
+  const argHasValue = oscArgsAsText(write.args).some((a) =>
+    a.value.includes("{value}"),
   );
   return !addrHasValue && !argHasValue;
 }

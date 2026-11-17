@@ -21,9 +21,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { CommandPreview, seedParamValues } from "./LiveTestPanel";
 import type { DriverCommandDef } from "../../api/types";
 
-// No send in these commands: the picker reads only the params, and the
-// generated command type requires send of every command.
-
 /** A required enum with NO default, whose first option's wire value is "0" —
  *  the exact shape that reproduced it. */
 const SET_SOURCE: DriverCommandDef = {
@@ -40,7 +37,7 @@ const SET_SOURCE: DriverCommandDef = {
       ],
     },
   },
-} as unknown as DriverCommandDef;
+};
 
 /** The same enum, not required — where "(none)" is a real choice. */
 const OPTIONAL_SOURCE: DriverCommandDef = {
@@ -56,7 +53,7 @@ const OPTIONAL_SOURCE: DriverCommandDef = {
       ],
     },
   },
-} as unknown as DriverCommandDef;
+};
 
 function renderForm(
   command: DriverCommandDef,
@@ -150,7 +147,7 @@ describe("what the form starts with", () => {
           ],
         },
       },
-    } as unknown as DriverCommandDef;
+    };
     expect(seedParamValues(withDefault)).toEqual({ mode: "1" });
   });
 

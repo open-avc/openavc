@@ -10,8 +10,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { CommandBuilder } from "./CommandBuilder";
 import { draftCommandRemoved } from "./commandEdits";
 import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(extra: Partial<DriverDefinition> = {}): DriverDefinition {
+function draft(extra: Partial<DriverDefinition> = {}): DriverDraft {
   return {
     id: "acme_display",
     name: "Acme Display",
@@ -29,7 +30,7 @@ function draft(extra: Partial<DriverDefinition> = {}): DriverDefinition {
     responses: [],
     polling: { queries: [] },
     ...extra,
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 describe("What a removal takes with it, one section at a time", () => {
@@ -155,7 +156,7 @@ describe("What a removal takes with it, one section at a time", () => {
 });
 
 describe("The remove button on the Commands tab", () => {
-  function removeThroughTheBuilder(d: DriverDefinition, name: string) {
+  function removeThroughTheBuilder(d: DriverDraft, name: string) {
     const onUpdate = vi.fn();
     render(<CommandBuilder draft={d} onUpdate={onUpdate} />);
     const row = Object.keys(d.commands).indexOf(name);

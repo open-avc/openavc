@@ -43,7 +43,7 @@ export function formatUnknownCodes(codes: unknown): string {
  * sequence of updateVariable() calls that each read a stale snapshot and
  * clobbered the type back to its previous value.
  */
-export function applyStateVarTypeChange<T extends { type: string }>(
+export function applyStateVarTypeChange<T extends { type?: string }>(
   current: T,
   newType: string,
 ): T {

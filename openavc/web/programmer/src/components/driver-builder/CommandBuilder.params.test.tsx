@@ -12,10 +12,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { CommandBuilder } from "./CommandBuilder";
 import { ParamEditor } from "./ParamEditor";
 import type { DriverCommandDef, DriverDefinition, DriverParamDef } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 type Params = Record<string, Partial<DriverParamDef>>;
 
-function draftWith(params: Params, extra: Partial<DriverDefinition> = {}): DriverDefinition {
+function draftWith(params: Params, extra: Partial<DriverDefinition> = {}): DriverDraft {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -29,10 +30,10 @@ function draftWith(params: Params, extra: Partial<DriverDefinition> = {}): Drive
     commands: { go: { label: "Go", send: "GO {a}\r", params } },
     responses: [],
     ...extra,
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
-function Host({ initial, seen }: { initial: DriverDefinition; seen: (d: DriverDefinition) => void }) {
+function Host({ initial, seen }: { initial: DriverDraft; seen: (d: DriverDraft) => void }) {
   const [draft, setDraft] = useState(initial);
   return (
     <CommandBuilder

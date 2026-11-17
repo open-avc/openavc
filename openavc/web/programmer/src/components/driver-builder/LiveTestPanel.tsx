@@ -7,10 +7,7 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import type {
-  DriverDefinition,
-  DriverCommandDef,
-} from "../../api/types";
+import type { DriverCommandDef } from "../../api/types";
 import * as api from "../../api/restClient";
 import { CommandParamForm } from "../shared/CommandParamForm";
 import {
@@ -30,6 +27,7 @@ import { commandShapeMismatch } from "./liveTestHelpers";
 import { valueText } from "../shared/booleanWords";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { isSecretSetting } from "../shared/secretSetting";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 // Re-pause cadence while devices stay paused. The server expires a pause
 // after its TTL (device_manager.PAUSE_TTL, 10 min) so an abandoned pause
@@ -43,7 +41,7 @@ const PAUSE_KEEPALIVE_MS = 4 * 60 * 1000;
 const WIRE_PREVIEW_DEBOUNCE_MS = 200;
 
 interface LiveTestPanelProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
 }
 
 interface ResultEntry {

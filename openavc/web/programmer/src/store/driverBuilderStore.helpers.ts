@@ -86,15 +86,14 @@ export function importedDriverCopy(definition: DriverDefinition, siblings: Drive
 }
 
 /**
- * Collections `DriverDefinition` declares as always-present and the editors
- * therefore index without a guard (`draft.default_config[key]`,
- * `Object.keys(draft.commands)`).
+ * Collections every editor draft holds, so the editors index them without a
+ * guard (`draft.default_config[key]`, `Object.keys(draft.commands)`).
  *
- * The type is a promise about an editor DRAFT, not about a driver on disk:
- * only id/name/transport are required by the contract, so a hand-authored
- * .avcdriver, an imported file, or a driver created through the API can
- * legitimately omit any of these. Whatever the type says, the value can be
- * undefined at runtime, and TypeScript cannot catch the difference.
+ * A driver on disk need not have them: only id/name/transport are required
+ * by the contract, so a hand-authored .avcdriver, an imported file, or a
+ * driver created through the API can omit any of these, and
+ * `DriverDefinition` says so. `cloneDraft` fills each one in, which is what
+ * `DriverDraft` promises.
  */
 const DRAFT_COLLECTIONS = [
   "default_config",
@@ -104,6 +103,12 @@ const DRAFT_COLLECTIONS = [
   "responses",
   "polling",
 ] as const;
+
+/** A definition as the editor holds it: every member as the contract says,
+ *  except the collections `cloneDraft` fills in (`DRAFT_COLLECTIONS`). */
+export type DriverDraft = DriverDefinition & {
+  [K in (typeof DRAFT_COLLECTIONS)[number]]-?: NonNullable<DriverDefinition[K]>;
+};
 
 /**
  * Clone a definition into an editor draft, filling in the collections the
@@ -119,14 +124,14 @@ const DRAFT_COLLECTIONS = [
  * Appends a key only when absent, so the YAML key order of well-formed
  * drivers is untouched on re-export.
  */
-export function cloneDraft(definition: DriverDefinition): DriverDefinition {
+export function cloneDraft(definition: DriverDefinition): DriverDraft {
   const draft = structuredClone(definition);
   const slots = draft as unknown as Record<string, unknown>;
   for (const key of DRAFT_COLLECTIONS) {
     // responses is the one list; the rest are keyed maps.
     if (slots[key] == null) slots[key] = key === "responses" ? [] : {};
   }
-  return draft;
+  return draft as DriverDraft;
 }
 
 /**

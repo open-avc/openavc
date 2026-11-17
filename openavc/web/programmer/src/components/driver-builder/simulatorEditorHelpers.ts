@@ -9,6 +9,20 @@ export interface SimErrorMode {
   set_state?: Record<string, unknown>;
 }
 
+/** Each error mode as the simulator reads it: a mode is a mapping, and one
+ *  written as anything else holds none of its settings. */
+export function errorModesOf(
+  modes: Readonly<Record<string, unknown>> | undefined,
+): Record<string, SimErrorMode> {
+  return Object.fromEntries(
+    Object.entries(modes ?? {}).map(([key, mode]) => [key, isMapping(mode) ? mode : {}]),
+  );
+}
+
+function isMapping(value: unknown): value is SimErrorMode {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** The wire-level behaviors the simulator transports actually read
  *  (has_error_behavior in the TCP/UDP/HTTP/OSC/MQTT servers). "" is the
  *  state-change-only form: the mode carries no behavior key and only
@@ -27,9 +41,9 @@ export const SIM_ERROR_BEHAVIORS: ReadonlyArray<{ value: string; label: string }
  * Returns undefined when no delays remain so the YAML stays clean.
  */
 export function setCommandResponseDelay(
-  delays: Record<string, number> | undefined,
+  delays: Record<string, unknown> | undefined,
   raw: string,
-): Record<string, number> | undefined {
+): Record<string, unknown> | undefined {
   const next = { ...delays };
   const n = parseFloat(raw);
   if (Number.isFinite(n) && n >= 0) {

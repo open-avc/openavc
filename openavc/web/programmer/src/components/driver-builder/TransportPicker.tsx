@@ -11,9 +11,10 @@ import {
   parseNumericField,
   switchConnectionFields,
 } from "./transportPickerHelpers";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 interface TransportPickerProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
 
@@ -600,7 +601,7 @@ function AlsoUsableOver({
   draft,
   onUpdate,
 }: {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }) {
   const declared = draft.transports ?? [];

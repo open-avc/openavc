@@ -15,6 +15,7 @@ import {
   PARAM_TYPE_OPTIONS,
   newParamName,
   paramMerged,
+  paramType,
   paramsRenamed,
   retyped,
   showsTextAids,
@@ -128,7 +129,7 @@ function ParamHeader({
       <div>
         <span style={PARAM_CAPTION}>Type</span>
         <select
-          value={def.type}
+          value={paramType(def)}
           onChange={(e) => onUpdate(retyped(def, e.target.value, childTypes))}
           style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
         >

@@ -52,6 +52,7 @@ import {
 import { parseApiError } from "../../api/errors";
 import { QueryListEditor } from "./QueryListEditor";
 import type { QueryEntry } from "./queryEntryHelpers";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 /** Coercion types offered on a JSON field row (what coerce_json_value
  *  distinguishes). A loaded rule may carry another spelling ("number",
@@ -78,7 +79,7 @@ function _captureTitle(group: number): string {
 }
 
 interface ResponseBuilderProps {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
 
@@ -1488,7 +1489,7 @@ function ValueMapEditor({
               />
               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
               <input
-                value={value}
+                value={value == null ? "" : String(value)}
                 onChange={(e) => setEntryValue(key, e.target.value)}
                 placeholder="mapped"
                 style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "11px" }}
@@ -1624,7 +1625,7 @@ function ThenQueryEditor({
   resp,
   onChange,
 }: {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   resp: DriverResponseDef;
   onChange: (queries: NonNullable<DriverResponseDef["then_query"]>) => void;
 }) {

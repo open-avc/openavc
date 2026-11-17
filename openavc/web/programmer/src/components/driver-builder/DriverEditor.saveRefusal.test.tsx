@@ -10,8 +10,8 @@ vi.mock("../../api/restClient", () => ({
 }));
 
 import { DriverEditor } from "./DriverEditor";
-import type { DriverDefinition } from "../../api/types";
 import type { SaveRefusal } from "./saveRefusal";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const ERROR =
   "commands.command_1.send: '{lvel}' resolves to nothing (did you mean 'lvl'?). It names no " +
@@ -32,9 +32,9 @@ const DRAFT = {
   state_variables: {},
   responses: [],
   commands: { command_1: { label: "Level", send: "LVL {lvel}\r", params: { lvl: { type: "integer" } } } },
-} as unknown as DriverDefinition;
+} as unknown as DriverDraft;
 
-function editor(draft: DriverDefinition, refusal: SaveRefusal | null) {
+function editor(draft: DriverDraft, refusal: SaveRefusal | null) {
   return (
     <DriverEditor
       draft={draft}

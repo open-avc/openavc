@@ -85,9 +85,15 @@ function belongs(field: TypeField, type: string): boolean {
   return (TYPE_FIELDS[field] as readonly string[]).includes(type);
 }
 
+/** The parameter's type as the driver reads it: a parameter that names none
+ *  is a string. */
+export function paramType(def: DriverParamDef): string {
+  return def.type ?? "string";
+}
+
 /** Whether the parameter's type has `field`. */
 export function typeHas(def: DriverParamDef, field: TypeField): boolean {
-  return belongs(field, def.type);
+  return belongs(field, paramType(def));
 }
 
 /** The Type select's word for each type the driver contract lets a parameter
@@ -135,7 +141,7 @@ const isTypeField = (box: ValueBox): box is ValueBox & TypeField => box in TYPE_
  *  the others always. */
 export function valueBoxes(def: DriverParamDef): ValueBox[] {
   return VALUE_BOX_ORDER.filter((box) => {
-    if (box === "unit") return NUMERIC.includes(def.type) || def.unit !== undefined;
+    if (box === "unit") return NUMERIC.includes(paramType(def)) || def.unit !== undefined;
     return !isTypeField(box) || typeHas(def, box);
   });
 }
@@ -143,7 +149,7 @@ export function valueBoxes(def: DriverParamDef): ValueBox[] {
 /** Whether the free-text aids (pattern, trim, masked) show: on a string,
  *  where the runtime applies them, and on any parameter already carrying one. */
 export function showsTextAids(def: DriverParamDef): boolean {
-  if (def.type === "string") return true;
+  if (paramType(def) === "string") return true;
   return def.pattern !== undefined || def.trim !== undefined || def.secret !== undefined;
 }
 
@@ -161,14 +167,14 @@ const DEFAULT_READERS = new Map<string, (raw: string) => unknown>([
  *  true only for "true". */
 export function defaultFromText(def: DriverParamDef, raw: string): unknown {
   if (!raw) return undefined;
-  const read = DEFAULT_READERS.get(def.type);
+  const read = DEFAULT_READERS.get(paramType(def));
   return read ? read(raw) : raw;
 }
 
 /** A min or max as typed: blank removes it; an integer's drops any fraction. */
 export function boundFromText(def: DriverParamDef, raw: string): number | undefined {
   if (raw === "") return undefined;
-  return def.type === "integer" ? parseInt(raw, 10) : parseFloat(raw);
+  return paramType(def) === "integer" ? parseInt(raw, 10) : parseFloat(raw);
 }
 
 /** Decimals as typed: blank removes it. */
@@ -183,5 +189,5 @@ const DEFAULT_HINTS = new Map([
 ]);
 
 export function defaultHint(def: DriverParamDef): string {
-  return DEFAULT_HINTS.get(def.type) ?? "";
+  return DEFAULT_HINTS.get(paramType(def)) ?? "";
 }

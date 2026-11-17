@@ -38,11 +38,9 @@ describe("what a command form starts with, sends, and refuses", () => {
   it("fills a choice from the driver's default before the first option", () => {
     const params: Params = {
       color: { type: "enum", values: ["black", "white"], default: "white" },
-      // Numeric values, which the driver schema allows; the IDE's EnumOption
-      // type says string only.
       speed: {
         type: "enum",
-        values: [{ value: 1, label: "Slow" }, { value: 2, label: "Fast" }] as unknown as DriverParamDef["values"],
+        values: [{ value: 1, label: "Slow" }, { value: 2, label: "Fast" }],
       },
       stale: { type: "enum", values: ["a", "b"], default: "gone", required: true },
       zoom: { type: "boolean", default: true },

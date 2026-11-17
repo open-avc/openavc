@@ -3,12 +3,19 @@
 Produces ``openavc/web/programmer/src/api/types.gen.ts``: the driver-definition
 interfaces the Builder edits, plus the validator constant tables, all from
 the field registry in ``openavc/drivers/spec.py``. The registry decides
-WHAT exists (fields, accepted values, docs); the tables in this module
-decide only how each member is presented in TypeScript (optionality
-conventions for drafts, ``Record`` shapes, named sub-interfaces). A field
-added to the registry therefore appears in the generated types
-automatically — mechanically mapped when no presentation override names
-it.
+WHAT exists (fields, accepted values, which members a driver must write,
+docs); the tables in this module decide only how each member is spelled in
+TypeScript (a string enum as ``string``, a block by an interface's name, a
+loose ``Record``). A field added to the registry therefore appears in the
+generated types automatically — mechanically mapped when no presentation
+override names it.
+
+The types say what a driver file may hold, not what an editor draft holds
+(the Builder's ``DriverDraft`` adds the collections its draft fills in). So
+a spelling may be wider than the contract, never narrower, and a member is
+required only where the registry requires it or every door refuses a driver
+without it (``RUNTIME_REQUIRED``). ``render_types_ts`` refuses to render
+anything else: ``ts_type_check`` holds THE rule.
 
 Part of ``python -m openavc.drivers.contract_gen``; pure stdlib.
 """
@@ -17,9 +24,10 @@ from __future__ import annotations
 
 import json
 import textwrap
+from dataclasses import dataclass
 from typing import Any, Callable
 
-from openavc.drivers import serial_line, spec
+from openavc.drivers import serial_line, spec, ts_type_check
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
@@ -63,21 +71,13 @@ DEF_TS_NAMES: dict[str, str] = {
     "routingBlock": "DriverRoutingDef",
     "routingPlane": "DriverRoutingPlane",
     "discoveryBlock": "DriverDiscoveryConfig",
-    "mdnsItem": "DriverDiscoveryMdnsFingerprint",
-    "ssdpItem": "DriverDiscoverySsdpFingerprint",
     "amxDdpItem": "DriverDiscoveryAmxDdpFingerprint",
     "extractField": "DriverDiscoveryExtractRule",
     "tcpProbe": "DriverDiscoveryProbe",
     "udpProbe": "DriverDiscoveryProbe",
-    "pythonProbe": "DriverDiscoveryPython",
     "frameParser": "DriverFrameParserShape",
     "sendFrame": "DriverSendFrameShape",
 }
-
-# Loose builder shapes for framing blocks: the editors treat them as a type
-# tag plus free-form keys, so a hand-authored variant round-trips.
-_FRAME_SHAPE = "{ type: string; [key: string]: unknown } | null"
-
 
 def _doc_block(doc: str, indent: str) -> str:
     wrapped = textwrap.wrap(doc, width=76 - len(indent))
@@ -128,11 +128,14 @@ def _scalar_ts(type_name: str, node: dict[str, Any]) -> str:
 
 
 def _mechanical_ts(node: dict[str, Any]) -> str:
-    """Default registry-node -> TypeScript type mapping."""
-    if node.get("any") is True:
-        return "unknown"
+    """Default registry-node -> TypeScript type mapping: a node an interface
+    presents by that interface's name, a definition DEF_TS_NAMES names by
+    its name, any other definition written out."""
+    named = _named_ts(node)
+    if named is not None:
+        return named
     if "ref" in node:
-        return DEF_TS_NAMES[node["ref"]]
+        return _ref_ts(node["ref"])
     for comb in ("one_of", "any_of"):
         if comb in node:
             return _union([_mechanical_ts(sub) for sub in node[comb]])
@@ -144,15 +147,49 @@ def _mechanical_ts(node: dict[str, Any]) -> str:
     return _scalar_ts(node_type, node)
 
 
+def _named_ts(node: dict[str, Any]) -> str | None:
+    """``unknown`` for a node that takes anything, an interface's name for
+    the node it presents, else None."""
+    if node.get("any") is True:
+        return "unknown"
+    return _interface_presenting(node)
+
+
+def _ref_ts(ref: str) -> str:
+    """A definition by its name when DEF_TS_NAMES gives one, else written
+    out; inside itself, ``unknown`` (no narrower)."""
+    if ref in DEF_TS_NAMES:
+        return DEF_TS_NAMES[ref]
+    if ref in _EXPANDING:
+        return "unknown"
+    _EXPANDING.add(ref)
+    try:
+        return _mechanical_ts(spec.DEFS[ref])
+    finally:
+        _EXPANDING.discard(ref)
+
+
+_PRESENTED: list[tuple[dict[str, Any], str]] = []
+_EXPANDING: set[str] = set()
+
+
+def _interface_presenting(node: dict[str, Any]) -> str | None:
+    """The interface whose source is this very node, if one is."""
+    if not _PRESENTED:
+        _PRESENTED.extend((getter(), name) for name, getter, *_ in INTERFACES)
+    return next((name for source, name in _PRESENTED if source is node), None)
+
+
 # --- interface emission table ------------------------------------------------
 #
 # (interface name, node getter, member presentation overrides, options)
 #
-# Member override keys: "type" (TS type text), "req" (True/False forces
-# requiredness), "doc" (replaces the registry doc), "skip" (omit member).
-# Options: "all_optional" (draft-friendly: every member optional unless a
-# member override forces it), "extra_members" (TS-only members appended),
-# "doc" (interface JSDoc; defaults to the node's doc).
+# Member override keys: "type" (TS type text, no narrower than the node),
+# "doc" (replaces the registry doc), "skip" (omit member). Requiredness is
+# never an override: it is the node's own, plus RUNTIME_REQUIRED.
+# Options: "all_optional" (every member optional), "extra_members" (TS-only
+# members appended, never required), "doc" (interface JSDoc; defaults to the
+# node's doc).
 
 _D = dict  # keep the table compact
 
@@ -171,8 +208,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         "DriverOscArg",
         lambda: spec.DEFS["oscArg"],
         {
-            "type": _D(req=True, type="string"),
-            "value": _D(req=True, type="string"),
+            "type": _D(type="string"),
         },
         _D(doc="One typed OSC argument (type tag + value; see OSC_ARG_TYPES)."),
     ),
@@ -192,42 +228,27 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         "DriverParamDef",
         lambda: spec.DEFS["paramEntry"],
         {
-            "type": _D(req=True, type="string"),
-            "values": _D(type="EnumOption[]"),
-            "default": _D(type="unknown"),
-            "map": _D(type="Record<string, string | number>"),
+            "type": _D(type="string"),
         },
         _D(),
     ),
     (
         "DriverUdpSend",
         lambda: spec.DEFS["udpSendEntry"],
-        {
-            "port": _D(type="number | string"),
-        },
+        {},
         _D(all_optional=True),
     ),
     (
         "DriverCommandDef",
         lambda: spec.DEFS["commandEntry"],
-        {
-            "label": _D(req=True, type="string"),
-            "send": _D(req=True, type="string"),
-            "headers": _D(type="Record<string, string>"),
-            "query_params": _D(type="Record<string, string>"),
-            "params": _D(req=True, type="Record<string, DriverParamDef>"),
-        },
+        {},
         _D(),
     ),
     (
         "DriverResponseMapping",
         lambda: spec.DEFS["mappingEntry"],
         {
-            "group": _D(req=True),
-            "state": _D(req=True),
             "type": _D(type="string"),
-            "value": _D(type="unknown"),
-            "map": _D(type="Record<string, string>"),
         },
         _D(),
     ),
@@ -236,7 +257,6 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         lambda: spec.DEFS["childSetEntry"],
         {
             "id": _D(type="string | number | DriverChildSetIdSpec"),
-            "state": _D(type="Record<string, unknown>"),
         },
         _D(),
     ),
@@ -244,10 +264,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         "DriverChildListEntry",
         lambda: spec.DEFS["childListEntry"],
         {
-            "group": _D(type="number | string"),
             "id": _D(type="string | DriverChildSetIdSpec"),
-            "start": _D(type="number | string"),
-            "state": _D(type="Record<string, unknown>"),
         },
         _D(),
     ),
@@ -272,7 +289,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverOscConnectItem",
         lambda: spec.FIELDS["on_connect"]["items"]["one_of"][3],
-        {"args": _D(type="DriverOscArg[]")},
+        {},
         _D(doc=(
             "An OSC on_connect item that carries typed arguments — a "
             "bring-up message that isn't a bare subscription address. "
@@ -282,22 +299,19 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverVisibleWhenCondition",
         lambda: spec.DEFS["visibleWhenCondition"],
-        {"value": _D(type="unknown")},
+        {},
         _D(),
     ),
     (
         "DriverActionDef",
         lambda: spec.DEFS["actionEntry"],
-        {
-            "params": _D(type="Record<string, DriverParamDef>"),
-            "visible_when": _D(type="DriverVisibleWhen"),
-        },
+        {},
         _D(),
     ),
     (
         "DriverDiscoveryMdnsFingerprint",
         lambda: spec.DEFS["mdnsItem"]["any_of"][1],
-        {"txt": _D(type="Record<string, string>")},
+        {},
         _D(),
     ),
     (
@@ -315,9 +329,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverDiscoveryProbe",
         lambda: _either_probe(),
-        {
-            "extract": _D(type="Record<string, DriverDiscoveryExtractRule>"),
-        },
+        {},
         _D(doc=(
             "A tcp_probe / udp_probe declaration. tls, cert_subject and then "
             "apply to TCP probes only, reply_port to UDP probes only; UDP "
@@ -333,34 +345,20 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverDiscoveryConfig",
         lambda: spec.DEFS["discoveryBlock"],
-        {
-            "mdns": _D(type="Array<string | DriverDiscoveryMdnsFingerprint>"),
-            "ssdp": _D(type="Array<string | DriverDiscoverySsdpFingerprint>"),
-            "amx_ddp": _D(type="DriverDiscoveryAmxDdpFingerprint[]"),
-            "tcp_probe": _D(type="DriverDiscoveryProbe"),
-            "udp_probe": _D(type="DriverDiscoveryProbe"),
-            "python": _D(type="string | DriverDiscoveryPython"),
-        },
+        {},
         _D(),
     ),
     (
         "DriverDeviceSettingWrite",
         lambda: spec.DEFS["deviceSettingWrite"],
-        {
-            "headers": _D(type="Record<string, string>"),
-            "args": _D(type="DriverOscArg[]"),
-        },
+        {},
         _D(),
     ),
     (
         "DriverDeviceSettingDef",
         lambda: spec.DEFS["deviceSettingEntry"],
         {
-            "label": _D(req=True, type="string"),
-            "type": _D(req=True, type="string"),
-            "values": _D(type="EnumOption[]"),
-            "default": _D(type="unknown"),
-            "write": _D(type="DriverDeviceSettingWrite"),
+            "type": _D(type="string"),
         },
         _D(),
     ),
@@ -368,16 +366,9 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         "DriverSimulatorDef",
         lambda: spec.DEFS["simulatorSection"],
         {
-            "initial_state": _D(type="Record<string, unknown>"),
-            "delays": _D(type="Record<string, number>"),
             "controls": _D(type="Array<Record<string, unknown>>"),
             "command_handlers": _D(type="Array<Record<string, unknown>>"),
-            "error_modes": _D(type=(
-                "Record<string, { behavior?: string; description?: string; "
-                "set_state?: Record<string, unknown> }>"
-            )),
             "state_machines": _D(type="Record<string, Record<string, unknown>>"),
-            "notifications": _D(type="Record<string, unknown>"),
         },
         _D(),
     ),
@@ -385,10 +376,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         "DriverStateVarDef",
         lambda: spec.DEFS["stateVariableEntry"],
         {
-            "type": _D(req=True, type="string"),
-            "label": _D(req=True),
-            "values": _D(type="string[]"),
-            "default": _D(type="unknown"),
+            "type": _D(type="string"),
         },
         _D(),
     ),
@@ -396,16 +384,14 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         "DriverChildStateVarDef",
         lambda: spec.DEFS["childStateVariableEntry"],
         {
-            "type": _D(req=True, type="string"),
-            "values": _D(type="string[]"),
-            "default": _D(type="unknown"),
+            "type": _D(type="string"),
         },
         _D(),
     ),
     (
         "DriverChildIdFormat",
         lambda: spec.DEFS["childEntityType"]["fields"]["id_format"],
-        {"type": _D(req=True)},
+        {},
         _D(),
     ),
     (
@@ -417,14 +403,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverChildEntityType",
         lambda: spec.DEFS["childEntityType"],
-        {
-            "id_format": _D(req=True, type="DriverChildIdFormat"),
-            "state_variables": _D(
-                req=True, type="Record<string, DriverChildStateVarDef>"
-            ),
-            "summary_fields": _D(type="string[]"),
-            "instances": _D(type="DriverChildInstances"),
-        },
+        {},
         _D(),
     ),
     (
@@ -462,7 +441,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         lambda: spec.DEFS["pushBlock"],
         {
             "type": _D(type="string"),
-            "frame_parser": _D(type=_FRAME_SHAPE),
+            "frame_parser": _D(type="DriverFrameParserShape | null"),
         },
         _D(all_optional=True),
     ),
@@ -475,16 +454,13 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverRoutingPlane",
         lambda: spec.DEFS["routingPlane"],
-        {"params": _D(type="Record<string, unknown>")},
+        {},
         _D(),
     ),
     (
         "DriverRoutingDef",
         lambda: spec.DEFS["routingBlock"],
-        {
-            "planes": _D(type="DriverRoutingPlane[]"),
-            "params": _D(type="Record<string, unknown>"),
-        },
+        {},
         _D(),
     ),
     (
@@ -496,54 +472,33 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     (
         "DriverBridgeDef",
         lambda: spec.FIELDS["bridge"],
-        {"ports": _D(type="DriverBridgePortDef[]")},
+        {},
         _D(),
     ),
     (
         "DriverDefinition",
-        lambda: {"type": "object", "fields": spec.FIELDS},
+        # A driver is refused at every door without the fields REQUIRED_FIELDS
+        # names; the published schema's other required fields are the
+        # catalog's, which a driver on this system may leave out.
+        lambda: {
+            "type": "object", "fields": spec.FIELDS, "required": spec.REQUIRED_FIELDS, "extra": False,
+        },
         {
-            "id": _D(req=True),
-            "name": _D(req=True),
-            "manufacturer": _D(req=True, type="string"),
-            "category": _D(req=True, type="string"),
-            "version": _D(req=True),
-            "author": _D(req=True),
-            "description": _D(req=True),
-            "transport": _D(req=True, type="string"),
-            "delimiter": _D(req=True),
+            "category": _D(type="string"),
+            "transport": _D(type="string"),
             "transports": _D(type="string[]"),
-            "bridge": _D(type="DriverBridgeDef"),
-            "default_config": _D(req=True, type="Record<string, unknown>"),
-            "config_derived": _D(type="Record<string, string>"),
-            "config_schema": _D(req=True, type="Record<string, unknown>"),
-            "device_settings": _D(type="Record<string, DriverDeviceSettingDef>"),
-            "state_variables": _D(req=True, type="Record<string, DriverStateVarDef>"),
-            "child_entity_types": _D(type="Record<string, DriverChildEntityType>"),
-            "commands": _D(req=True, type="Record<string, DriverCommandDef>"),
-            "quick_actions": _D(type="string[]"),
-            "actions": _D(type="DriverActionDef[]"),
-            "responses": _D(req=True, type="DriverResponseDef[]"),
+            "config_schema": _D(type="Record<string, unknown>"),
             "on_connect": _D(type=(
                 "(string | DriverEachChildQuery | DriverQueryEntry | "
                 "DriverOscConnectItem | Record<string, unknown>)[]"
             )),
-            "polling": _D(req=True, type=(
-                "{ queries?: (string | DriverEachChildQuery | "
-                "DriverQueryEntry)[]; when_state?: DriverWhenState }"
-            )),
-            "frame_parser": _D(type=_FRAME_SHAPE),
-            "send_frame": _D(type=_FRAME_SHAPE),
-            "help": _D(type="DriverHelpDef"),
-            "ports": _D(type="number[]"),
-            "protocols": _D(type="string[]"),
-            "tags": _D(type="string[]"),
-            "compatible_models": _D(type="DriverCompatibleModelsEntry[]"),
+            "frame_parser": _D(type="DriverFrameParserShape | null"),
+            "send_frame": _D(type="DriverSendFrameShape | null"),
         },
         _D(
             doc=(
-                "A full driver definition — the .avcdriver document (or a "
-                "Python driver's DRIVER_INFO) as the Builder edits it."
+                "A full driver definition — the .avcdriver document as the "
+                "Builder edits it."
             ),
             extra_members=(
                 (
@@ -560,40 +515,81 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     ),
 )
 
-# Type aliases that present a registry union in its idiomatic TS form.
-ALIASES: tuple[tuple[str, str, Callable[[], str]], ...] = (
-    (
-        "EnumOption",
-        "string | { value: string; label?: string }",
-        lambda: spec.DEFS["enumValue"]["doc"],
-    ),
-    (
+# Members every door refuses a driver without, though the registry node they
+# sit on leaves them optional: the definition walk's own rules, not the shape
+# walk's. Each renders required, and tests/test_driver_types_contract.py
+# proves each one with a driver missing it that the loader refuses.
+RUNTIME_REQUIRED: dict[str, tuple[str, ...]] = {
+    # state_variable_checks: "State variable '<name>': missing 'label'"
+    "DriverStateVarDef": ("label",),
+    # framing_checks: "frame_parser: missing 'type'" (top level and push:)
+    "DriverFrameParserShape": ("type",),
+}
+
+
+@dataclass(frozen=True)
+class Alias:
+    """A type alias in the rendered file. ``source`` names the registry
+    definition it presents: rendered from it when ``ts`` is None, and
+    checked against it either way. One with no ``source`` presents a shape
+    the Builder edits several definitions through, checked wherever a
+    member uses it."""
+
+    name: str
+    doc: Callable[[], str]
+    source: str | None = None
+    ts: str | None = None
+
+    def text(self) -> str:
+        if self.ts is not None:
+            return self.ts
+        assert self.source is not None
+        return _mechanical_ts(spec.DEFS[self.source])
+
+
+ALIASES: tuple[Alias, ...] = (
+    Alias("EnumOption", lambda: spec.DEFS["enumValue"]["doc"], source="enumValue"),
+    Alias(
         "DriverChildSetIdSpec",
-        "{ group?: number | string; segment?: number; "
-        "map?: Record<string, string | number> }",
         lambda: (
             "The long-form child_set id: which capture group (regex rules) "
             "or address segment (OSC rules) holds the wire id, with an "
             "optional wire-id -> local-id translation map."
         ),
+        ts=(
+            "{ group?: number | string; segment?: number; "
+            "map?: Record<string, string | number> }"
+        ),
     ),
-    (
+    Alias(
         "DriverDiscoveryExtractRule",
-        "string | { regex: string; group?: number }",
         lambda: (
             "An extract: rule — a static literal, or a regex capture "
             "against the probe response."
         ),
+        source="extractField",
     ),
-    (
-        "DriverVisibleWhen",
-        "DriverVisibleWhenCondition | { any: DriverVisibleWhenCondition[] } "
-        "| { all: DriverVisibleWhenCondition[] }",
-        lambda: spec.DEFS["visibleWhen"]["doc"],
-    ),    (
-        "DriverWhenState",
-        "Record<string, string | number | boolean | (string | number | boolean)[]>",
-        lambda: spec.DEFS["whenStateGate"]["doc"],
+    Alias("DriverVisibleWhen", lambda: spec.DEFS["visibleWhen"]["doc"], source="visibleWhen"),
+    Alias("DriverWhenState", lambda: spec.DEFS["whenStateGate"]["doc"], source="whenStateGate"),
+    # Framing blocks as the editors hold them: a type tag plus free-form
+    # keys, so a hand-authored variant round-trips.
+    Alias(
+        "DriverFrameParserShape",
+        lambda: (
+            "A frame_parser block as the Builder holds it: its type and "
+            "whatever keys that type reads."
+        ),
+        source="frameParser",
+        ts="{ type: string; [key: string]: unknown }",
+    ),
+    Alias(
+        "DriverSendFrameShape",
+        lambda: (
+            "A send_frame block as the Builder holds it: its type, when it "
+            "names one, and whatever keys that type reads."
+        ),
+        source="sendFrame",
+        ts="{ type?: string; [key: string]: unknown }",
     ),
 )
 
@@ -792,23 +788,70 @@ def _serial_line_settings() -> str:
     return out
 
 
-def _render_member(
-    name: str,
-    node: dict[str, Any],
-    override: dict[str, Any],
-    required: bool,
-) -> str:
-    if override.get("skip"):
-        return ""
-    if "req" in override:
-        required = override["req"]
-    ts = override.get("type") or _mechanical_ts(node)
+@dataclass(frozen=True)
+class _Member:
+    """One member as the interface renders it."""
+
+    name: str
+    node: dict[str, Any]
+    ts: str
+    required: bool
+    doc: str
+
+
+_OVERRIDE_KEYS = frozenset({"type", "doc", "skip"})
+
+
+def _check_overrides(ts_name: str, fields: dict[str, Any], overrides: dict[str, dict]) -> None:
+    """Refuse an override for a member the node lacks, or one that is more
+    than presentation."""
+    unknown = set(overrides) - set(fields)
+    if unknown:
+        raise ValueError(f"{ts_name}: overrides for unknown members {sorted(unknown)}")
+    for member, override in overrides.items():
+        extra = set(override) - _OVERRIDE_KEYS
+        if extra:
+            raise ValueError(
+                f"{ts_name}.{member}: override keys {sorted(extra)} are not presentation "
+                f"(type, doc, skip); requiredness comes from the registry or RUNTIME_REQUIRED"
+            )
+
+
+def _member(name: str, node: dict[str, Any], override: dict[str, Any], required: bool) -> _Member:
     # The Builder edits .avcdriver files, so a member's floors are the YAML
     # enum's -- never python_enum's, whose values it cannot offer.
-    doc = override.get("doc", spec.node_doc(node, node.get("enum")))
-    out = _doc_block(doc, "  ") if doc else ""
-    opt = "" if required else "?"
-    return out + f"  {name}{opt}: {ts};\n"
+    return _Member(
+        name,
+        node,
+        override.get("type") or _mechanical_ts(node),
+        required,
+        override.get("doc", spec.node_doc(node, node.get("enum"))),
+    )
+
+
+def _members(
+    ts_name: str,
+    node: dict[str, Any],
+    overrides: dict[str, dict],
+    options: dict[str, Any],
+) -> list[_Member]:
+    """The members one interface renders, in the registry's order: each
+    one's TypeScript type (its override's spelling, else the mechanical
+    mapping) and whether it is required (the node's ``required``, plus
+    ``RUNTIME_REQUIRED``; none in an ``all_optional`` interface)."""
+    fields = node.get("fields")
+    if not isinstance(fields, dict):
+        raise ValueError(f"{ts_name}: source node has no fields")
+    _check_overrides(ts_name, fields, overrides)
+    required = (
+        set() if options.get("all_optional")
+        else set(node.get("required", ())) | set(RUNTIME_REQUIRED.get(ts_name, ()))
+    )
+    return [
+        _member(name, sub, overrides.get(name, {}), name in required)
+        for name, sub in fields.items()
+        if not overrides.get(name, {}).get("skip")
+    ]
 
 
 def _render_interface(
@@ -817,21 +860,12 @@ def _render_interface(
     overrides: dict[str, dict],
     options: dict[str, Any],
 ) -> str:
-    fields = node.get("fields")
-    if not isinstance(fields, dict):
-        raise ValueError(f"{ts_name}: source node has no fields")
-    unknown = set(overrides) - set(fields)
-    if unknown:
-        raise ValueError(f"{ts_name}: overrides for unknown members {sorted(unknown)}")
-    schema_required = set(node.get("required", ()))
     doc = options.get("doc", spec.node_doc(node))
     out = _doc_block(doc, "") if doc else ""
     out += f"export interface {ts_name} {{\n"
-    for member, sub in fields.items():
-        required = (
-            False if options.get("all_optional") else member in schema_required
-        )
-        out += _render_member(member, sub, overrides.get(member, {}), required)
+    for member in _members(ts_name, node, overrides, options):
+        out += _doc_block(member.doc, "  ") if member.doc else ""
+        out += f"  {member.name}{'' if member.required else '?'}: {member.ts};\n"
     for extra_name, extra_type, extra_doc, extra_opt in options.get(
         "extra_members", ()
     ):
@@ -839,6 +873,30 @@ def _render_interface(
         out += f"  {extra_name}{'?' if extra_opt else ''}: {extra_type};\n"
     out += "}\n"
     return out
+
+
+def contract_narrowings() -> list[str]:
+    """Where the rendered types promise more than the contract, one
+    sentence each (``ts_type_check``); [] when nowhere."""
+    interfaces: dict[str, dict[str, tuple[str, bool]]] = {}
+    members: list[tuple[str, str, Any]] = []
+    sources: list[tuple[str, dict[str, Any]]] = []
+    for ts_name, getter, overrides, options in INTERFACES:
+        node = getter()
+        rendered = _members(ts_name, node, overrides, options)
+        interfaces[ts_name] = {m.name: (m.ts, m.required) for m in rendered}
+        for extra_name, extra_type, _doc, extra_opt in options.get("extra_members", ()):
+            interfaces[ts_name][extra_name] = (extra_type, not extra_opt)
+        members.extend((f"{ts_name}.{m.name}", m.ts, m.node) for m in rendered)
+        sources.append((ts_name, node))
+    table = ts_type_check.TypeTable(
+        interfaces,
+        {alias.name: alias.text() for alias in ALIASES},
+        spec.DEFS,
+        RUNTIME_REQUIRED,
+    )
+    presented = [(a.name, spec.DEFS[a.source]) for a in ALIASES if a.source]
+    return ts_type_check.narrowings(table, members, sources, presented)
 
 
 def render_types_ts() -> str:
@@ -853,23 +911,35 @@ def render_types_ts() -> str:
 
     sections.append("// --- driver definition types ---\n\n")
     rendered = {name for name, *_ in INTERFACES}
-    for alias_name, alias_type, doc_getter in ALIASES:
-        sections.append(_doc_block(doc_getter(), ""))
-        sections.append(f"export type {alias_name} = {alias_type};\n\n")
-        rendered.add(alias_name)
+    for alias in ALIASES:
+        sections.append(_doc_block(alias.doc(), ""))
+        sections.append(f"export type {alias.name} = {alias.text()};\n\n")
+        rendered.add(alias.name)
     for ts_name, getter, overrides, options in INTERFACES:
         sections.append(
             _render_interface(ts_name, getter(), overrides, options) + "\n"
         )
 
     text = "".join(sections).rstrip("\n") + "\n"
-
-    # Every type name the emitted members reference must be defined in the
-    # file — an override typo would otherwise only surface at tsc time.
-    for name in set(DEF_TS_NAMES.values()) | rendered:
-        if name in text and (
-            f"export interface {name} " not in text
-            and f"export type {name} =" not in text
-        ):
-            raise ValueError(f"type {name} is referenced but never rendered")
+    _check_rendered(text, rendered)
     return text
+
+
+def _named_not_defined(name: str, text: str) -> bool:
+    defined = f"export interface {name} " in text or f"export type {name} =" in text
+    return name in text and not defined
+
+
+def _check_rendered(text: str, rendered: set[str]) -> None:
+    """Refuse a rendered file that names a type it never defines (an
+    override typo would otherwise only surface at tsc time), or whose types
+    promise more than the contract (code reading a value a driver may not
+    have)."""
+    for name in set(DEF_TS_NAMES.values()) | rendered:
+        if _named_not_defined(name, text):
+            raise ValueError(f"type {name} is referenced but never rendered")
+    narrowed = contract_narrowings()
+    if narrowed:
+        raise ValueError(
+            "the driver types promise more than the contract:\n  " + "\n  ".join(narrowed)
+        )

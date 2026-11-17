@@ -6,9 +6,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // argument the driver reads, and a mapping added after it takes the next one.
 
 import { ResponseBuilder } from "./ResponseBuilder";
-import type { DriverDefinition, DriverResponseDef } from "../../api/types";
+import type { DriverResponseDef } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(mappings: unknown[]): DriverDefinition {
+function draft(mappings: unknown[]): DriverDraft {
   return {
     id: "acme_mixer",
     name: "Acme Mixer",
@@ -20,7 +21,7 @@ function draft(mappings: unknown[]): DriverDefinition {
     commands: {},
     responses: [{ address: "/ch/1/level", mappings }],
     polling: {},
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 describe("An OSC reply mapping's argument", () => {

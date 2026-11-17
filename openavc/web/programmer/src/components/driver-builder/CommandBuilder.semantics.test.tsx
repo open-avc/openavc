@@ -9,11 +9,12 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { CommandBuilder } from "./CommandBuilder";
 import type { DriverCommandDef, DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 function draftWith(
   commands: Record<string, Partial<DriverCommandDef>>,
   extra: Partial<DriverDefinition> = {},
-): DriverDefinition {
+): DriverDraft {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -27,10 +28,10 @@ function draftWith(
     commands,
     responses: [],
     ...extra,
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
-function Host({ initial, seen }: { initial: DriverDefinition; seen: (d: DriverDefinition) => void }) {
+function Host({ initial, seen }: { initial: DriverDraft; seen: (d: DriverDraft) => void }) {
   const [draft, setDraft] = useState(initial);
   return (
     <CommandBuilder
@@ -47,7 +48,7 @@ function Host({ initial, seen }: { initial: DriverDefinition; seen: (d: DriverDe
 }
 
 /** The editor over `initial`, with its first command opened. */
-function host(initial: DriverDefinition) {
+function host(initial: DriverDraft) {
   const seen = vi.fn();
   const view = render(<Host initial={initial} seen={seen} />);
   const name = Object.keys(initial.commands)[0];

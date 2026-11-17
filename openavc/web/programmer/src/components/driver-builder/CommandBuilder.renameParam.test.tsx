@@ -7,7 +7,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { CommandBuilder } from "./CommandBuilder";
 import { renamePlaceholder } from "./commandEdits";
-import type { DriverCommandDef, DriverDefinition } from "../../api/types";
+import type { DriverCommandDef } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const DRAFT = {
   id: "acme_widget",
@@ -33,7 +34,7 @@ const DRAFT = {
     },
   },
   responses: [],
-} as unknown as DriverDefinition;
+} as unknown as DriverDraft;
 
 describe("renaming a parameter", () => {
   it("renames its placeholder in that command's send string and Sets State", () => {

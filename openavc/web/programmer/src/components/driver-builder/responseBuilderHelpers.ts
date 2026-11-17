@@ -118,6 +118,17 @@ export function canUseSetShorthand(
   return true;
 }
 
+/** The `set:` shorthand of mappings that fit it (`canUseSetShorthand`): a
+ *  literal value as written, a capture as its `$N` reference. */
+function setShorthand(mappings: DriverResponseMapping[]): Record<string, unknown> {
+  const set: Record<string, unknown> = {};
+  for (const m of mappings) {
+    if (!m.state) continue; // the driver reads no mapping without a state
+    set[m.state] = m.group === 0 && m.value !== undefined ? m.value : `$${mappingGroup(m)}`;
+  }
+  return set;
+}
+
 /** Build a response def, preserving the original form (set: shorthand or
  *  mappings:) of the loaded response when the new mappings still fit.
  *  `child_set`, `throttle`, `after_json`, `then_query`, and the json-rule
@@ -175,15 +186,7 @@ export function buildResponse(
   // to the explicit mappings form.
   const originalWasSet = original.set !== undefined && original.mappings === undefined;
   if (originalWasSet && canUseSetShorthand(mappings, stateVariables)) {
-    const set: Record<string, unknown> = {};
-    for (const m of mappings) {
-      if (m.group === 0 && m.value !== undefined) {
-        set[m.state] = m.value;
-      } else {
-        set[m.state] = `$${mappingGroup(m)}`;
-      }
-    }
-    return { match: pattern, set, ...childSet, ...carry };
+    return { match: pattern, set: setShorthand(mappings), ...childSet, ...carry };
   }
   return { match: pattern, mappings, ...childSet, ...carry };
 }
@@ -202,8 +205,9 @@ export interface JsonRuleRow {
   path: string;
   /** Effective coercion type (what the runtime will actually apply). */
   type: string;
-  /** Optional lookup table translating raw values to friendly values. */
-  map?: Record<string, string>;
+  /** Optional lookup table translating raw values to friendly values (a
+   *  driver file may map to a number or a boolean as well as text). */
+  map?: Record<string, unknown>;
   /** Optional: store whether the value at `path` holds this (membership
    *  in an array, a key of an object, a substring) instead of the value
    *  itself -- how an array of flag names becomes one boolean per flag.
@@ -415,12 +419,12 @@ export function checkValueMapKeyRename(
 
 /** Rename a value-map key, preserving entry order. Callers validate with
  *  checkValueMapKeyRename first. */
-export function renameValueMapKey(
-  map: Record<string, string>,
+export function renameValueMapKey<V>(
+  map: Record<string, V>,
   oldKey: string,
   newKey: string,
-): Record<string, string> {
-  const next: Record<string, string> = {};
+): Record<string, V> {
+  const next: Record<string, V> = {};
   for (const [k, v] of Object.entries(map)) {
     next[k === oldKey ? newKey : k] = v;
   }
@@ -430,9 +434,9 @@ export function renameValueMapKey(
 /** Add a blank draft row ("" → "") unless one is already pending — spreading
  *  a second "" key into the record would silently reset the first draft's
  *  value. Returns null when a draft row already exists. */
-export function addValueMapEntry(
-  map: Record<string, string>,
-): Record<string, string> | null {
+export function addValueMapEntry<V>(
+  map: Record<string, V | string>,
+): Record<string, V | string> | null {
   if ("" in map) return null;
   return { ...map, "": "" };
 }

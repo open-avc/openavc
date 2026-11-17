@@ -11,6 +11,7 @@ import {
   cloneDraft,
   driverFileDefinition,
   serializeDriverDefinition,
+  type DriverDraft,
 } from "./driverBuilderStore.helpers";
 import {
   addMissingConnectionFields,
@@ -18,7 +19,7 @@ import {
   secretFieldsInConfig,
 } from "../components/driver-builder/transportPickerHelpers";
 
-const EMPTY_DEFINITION: DriverDefinition = {
+const EMPTY_DEFINITION: DriverDraft = {
   id: "",
   name: "",
   manufacturer: "Generic",
@@ -65,7 +66,7 @@ interface DriverBuilderState {
   /** Selection in the Installed tab — separate from the editor's selectedId
    *  so navigating between tabs preserves both contexts independently. */
   installedDriverId: string | null;
-  draft: DriverDefinition;
+  draft: DriverDraft;
   dirty: boolean;
   saving: boolean;
   loading: boolean;
@@ -102,7 +103,7 @@ interface DriverBuilderState {
   selectDriver: (id: string | null) => void;
   setInstalledDriverId: (id: string | null) => void;
   newDriver: () => void;
-  updateDraft: (partial: Partial<DriverDefinition>) => void;
+  updateDraft: (partial: Partial<DriverDraft>) => void;
   save: () => Promise<void>;
   deleteDriver: (id: string) => Promise<void>;
   importDriver: (definition: DriverDefinition, updateExisting?: boolean) => Promise<void>;
@@ -126,7 +127,7 @@ interface DriverBuilderState {
  *  connection fields it lacks, so Add Device can take its address. A built-in
  *  is read-only and is shown as it is. */
 function draftForEditing(definition: DriverDefinition): {
-  draft: DriverDefinition;
+  draft: DriverDraft;
   added: string[];
 } {
   const draft = cloneDraft(driverFileDefinition(definition));
@@ -135,7 +136,7 @@ function draftForEditing(definition: DriverDefinition): {
     draft.config_schema as Record<string, unknown> | undefined,
     draft.transport,
   );
-  if (added.length > 0) draft.config_schema = schema as DriverDefinition["config_schema"];
+  if (added.length > 0) draft.config_schema = schema as DriverDraft["config_schema"];
   return { draft, added };
 }
 

@@ -8,8 +8,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { CommandBuilder } from "./CommandBuilder";
 import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(optionsFrom: Record<string, unknown>): DriverDefinition {
+function draft(optionsFrom: Record<string, unknown>): DriverDraft {
   return {
     id: "acme_dsp",
     name: "Acme DSP",
@@ -38,7 +39,7 @@ function draft(optionsFrom: Record<string, unknown>): DriverDefinition {
       },
     },
     responses: [],
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 function written(onUpdate: ReturnType<typeof vi.fn>) {
@@ -46,7 +47,7 @@ function written(onUpdate: ReturnType<typeof vi.fn>) {
   return call.commands.toggle.params.control.options_from;
 }
 
-function open(d: DriverDefinition, onUpdate: (partial: Partial<DriverDefinition>) => void) {
+function open(d: DriverDraft, onUpdate: (partial: Partial<DriverDefinition>) => void) {
   render(<CommandBuilder draft={d} onUpdate={onUpdate} />);
   fireEvent.click(screen.getByText("toggle"));
 }

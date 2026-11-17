@@ -11,7 +11,7 @@ import { TransportPicker } from "./TransportPicker";
 import { connectionFieldsFor, switchConnectionFields } from "./transportPickerHelpers";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const NETWORK = {
   host: { type: "string", required: true, label: "IP Address" },
@@ -69,7 +69,7 @@ describe("switching the transport", () => {
       state_variables: {},
       commands: {},
       responses: [],
-    } as unknown as DriverDefinition;
+    } as unknown as DriverDraft;
     render(<TransportPicker draft={draft} onUpdate={onUpdate} />);
     fireEvent.change(screen.getByDisplayValue("TCP"), { target: { value: "serial" } });
     expect(onUpdate).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ describe("a serial driver's default line settings", () => {
       state_variables: {},
       commands: {},
       responses: [],
-    }) as unknown as DriverDefinition;
+    }) as unknown as DriverDraft;
 
   it("are the Connection tab's own, never Configuration Fields", () => {
     for (const key of ["baudrate", "bytesize", "parity", "stopbits", "flow_control"]) {

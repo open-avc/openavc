@@ -13,6 +13,7 @@ import type {
 // Single source of truth for the disallowed-open-ports rule (mirrors
 // openavc/discovery/hints.py), shared with the driver validator.
 import { DISALLOWED_OPEN_PORTS } from "./validateDriver";
+import { valuesAsText } from "./fieldText";
 
 /** A fingerprint field as the platform reads it: one entry written on its
  *  own is a list of one. */
@@ -285,7 +286,7 @@ function MdnsList({
             <RemoveButton onClick={() => remove(i)} />
           </div>
           <TxtFilterEditor
-            txt={item.txt}
+            txt={item.txt === undefined ? undefined : valuesAsText(item.txt)}
             onChange={(txt) => setAt(i, { txt })}
           />
         </div>

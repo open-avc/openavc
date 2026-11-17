@@ -11,11 +11,12 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { CommandBuilder } from "./CommandBuilder";
 import { readBackValue } from "./ReadBackField";
 import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 function draftWith(
   commands: DriverDefinition["commands"],
   transport = "tcp",
-): DriverDefinition {
+): DriverDraft {
   return {
     id: "acme_display",
     name: "Acme Display",
@@ -28,7 +29,7 @@ function draftWith(
     state_variables: { volume: { type: "integer", label: "Volume" } },
     commands,
     responses: [],
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 function openCommand(id: string) {

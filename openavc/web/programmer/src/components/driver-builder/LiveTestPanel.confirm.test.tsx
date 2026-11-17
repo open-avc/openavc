@@ -18,7 +18,7 @@ vi.mock("../../api/restClient", () => ({
 import { LiveTestPanel } from "./LiveTestPanel";
 import { CommandConfirmField } from "./CommandConfirmField";
 import { commandConfirmMessage } from "../shared/commandParams";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const DRAFT = {
   id: "acme_widget",
@@ -41,7 +41,7 @@ const DRAFT = {
     },
     power_on: { label: "Power On", send: "PWR 1\\r", params: {} },
   },
-} as unknown as DriverDefinition;
+} as unknown as DriverDraft;
 
 function sendButton(): HTMLElement {
   return screen.getAllByRole("button", { name: /^Send$/ })[0];
@@ -83,7 +83,7 @@ describe("Live Test asks before a command that declares confirm", () => {
 
   it("sends a command without confirm at once", async () => {
     const draft = { ...DRAFT, commands: { power_on: DRAFT.commands.power_on } };
-    render(<LiveTestPanel draft={draft as DriverDefinition} />);
+    render(<LiveTestPanel draft={draft} />);
     fireEvent.change(screen.getByPlaceholderText("192.168.1.100"), {
       target: { value: "127.0.0.1" },
     });

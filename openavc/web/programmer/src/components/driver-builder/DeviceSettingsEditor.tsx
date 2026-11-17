@@ -18,6 +18,7 @@ import {
 } from "./deviceSettingsHelpers";
 import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEditor";
 import { BooleanOptions } from "../shared/BooleanOptions";
+import { oscArgsAsText, valuesAsText } from "./fieldText";
 
 interface DeviceSettingsEditorProps {
   draft: DriverDefinition;
@@ -429,7 +430,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                         }}
                       />
                       <OscArgsEditor
-                        args={(setting.write?.args ?? []) as OscArg[]}
+                        args={oscArgsAsText(setting.write?.args)}
                         onChange={(args) => setWrite(key, { args: args.length ? args : undefined })}
                       />
                       {oscWriteOmitsValue(setting.write) && (
@@ -506,7 +507,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                         Headers (optional)
                       </label>
                       <HttpHeadersEditor
-                        headers={setting.write?.headers ?? {}}
+                        headers={valuesAsText(setting.write?.headers)}
                         onChange={(headers) =>
                           setWrite(key, {
                             headers: Object.keys(headers).length ? headers : undefined,

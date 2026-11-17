@@ -9,8 +9,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { CommandBuilder } from "./CommandBuilder";
 import { draftCommandRenamed } from "./commandEdits";
 import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(extra: Partial<DriverDefinition>): DriverDefinition {
+function draft(extra: Partial<DriverDefinition>): DriverDraft {
   return {
     id: "acme_display",
     name: "Acme Display",
@@ -28,10 +29,10 @@ function draft(extra: Partial<DriverDefinition>): DriverDefinition {
     responses: [],
     polling: { queries: [] },
     ...extra,
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
-function renameThroughTheBuilder(d: DriverDefinition, from: string, to: string) {
+function renameThroughTheBuilder(d: DriverDraft, from: string, to: string) {
   const onUpdate = vi.fn();
   render(<CommandBuilder draft={d} onUpdate={onUpdate} />);
   fireEvent.click(screen.getByText(from));

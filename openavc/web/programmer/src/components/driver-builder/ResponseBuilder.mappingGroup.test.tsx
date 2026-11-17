@@ -7,9 +7,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // capture group rather than a number it cannot work out.
 
 import { ResponseBuilder } from "./ResponseBuilder";
-import type { DriverDefinition, DriverResponseDef } from "../../api/types";
+import type { DriverResponseDef } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(): DriverDefinition {
+function draft(): DriverDraft {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -21,7 +22,7 @@ function draft(): DriverDefinition {
     commands: {},
     responses: [{ match: "PWR=\\w+", mappings: [{ state: "power" }] }],
     polling: {},
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 describe("A mapping with no capture group", () => {

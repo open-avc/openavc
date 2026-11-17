@@ -103,6 +103,9 @@ NOT_AN_IMPLEMENTATION = frozenset({
     "openavc/drivers/spec.py",
     "openavc/drivers/contract_gen.py",
     "openavc/drivers/contract_gen_ts.py",
+    # Checks what contract_gen_ts renders against the registry, by the
+    # registry's own keys: it reads no driver.
+    "openavc/drivers/ts_type_check.py",
     # The project-file format migration, and its 0.8.0 layout step. The step
     # reads the 0.7.0 UI page grid, whose `columns`/`rows` share a spelling
     # with a config table's, so it supplies configSchemaEntry's anchor while

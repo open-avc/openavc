@@ -5,6 +5,7 @@ import type {
   DriverQueryEntry,
   DriverWhenState,
 } from "../../api/types";
+import { oscArgsAsText, type OscArgText } from "./fieldText";
 
 /**
  * Shape helpers for the entries in `polling.queries`, `on_connect` and a
@@ -105,10 +106,8 @@ export function queryQueryFor(q: QueryEntry): string {
 
 /** Typed OSC args on an entry, or `undefined` when it isn't an OSC args item.
  *  Bare strings, each_child, and gated entries have no args. */
-export function queryArgs(
-  q: QueryEntry,
-): { type: string; value: string }[] | undefined {
-  if (isOscItem(q)) return q.args ?? [];
+export function queryArgs(q: QueryEntry): OscArgText[] | undefined {
+  if (isOscItem(q)) return oscArgsAsText(q.args);
   return undefined;
 }
 

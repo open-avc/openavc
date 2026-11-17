@@ -6,7 +6,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // must show its card, not crash the Devices view.
 
 import { CommandBuilder } from "./CommandBuilder";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const DRAFT = {
   id: "acme_widget",
@@ -20,7 +20,7 @@ const DRAFT = {
   state_variables: { power: { type: "boolean", label: "Power" } },
   commands: { power_on: { label: "Power On", send: "PWR 1\r" } },
   responses: [],
-} as unknown as DriverDefinition;
+} as unknown as DriverDraft;
 
 describe("a command with no params", () => {
   it("opens, and adding a parameter starts it from nothing", () => {

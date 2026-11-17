@@ -9,6 +9,7 @@ import type { DriverValidationIssue } from "../../api/driverClient";
 import { CHILD_RESERVED_PROPS, DISALLOWED_OPEN_PORTS } from "../../api/types";
 import { parseApiError } from "../../api/errors";
 import { isSecretSetting } from "../shared/secretSetting";
+import { oscArgsAsText } from "./fieldText";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
 // authoring time.
@@ -772,10 +773,8 @@ function collectWireStrings(
       out.push(`${k}=${v}`);
     }
   }
-  if (cmd.args) {
-    for (const a of cmd.args) {
-      if (a.value) out.push(a.value);
-    }
+  for (const a of oscArgsAsText(cmd.args)) {
+    if (a.value) out.push(a.value);
   }
   return out;
 }

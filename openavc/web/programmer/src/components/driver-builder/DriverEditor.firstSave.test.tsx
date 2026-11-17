@@ -13,7 +13,7 @@ vi.mock("../../api/restClient", () => ({
 }));
 
 import { DriverEditor } from "./DriverEditor";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const WARNING = "Command 'set_level' parameter 'lvl' has no label.";
 
@@ -31,9 +31,9 @@ const DRAFT = {
   responses: [],
   commands: {},
   polling: { interval: 5, queries: ["Q1\r", "Q2\r", "Q3\r"] },
-} as unknown as DriverDefinition;
+} as unknown as DriverDraft;
 
-function editor(props: { isNew: boolean; originalId: string | null; draft?: DriverDefinition }) {
+function editor(props: { isNew: boolean; originalId: string | null; draft?: DriverDraft }) {
   return (
     <DriverEditor
       draft={props.draft ?? DRAFT}
@@ -86,7 +86,7 @@ describe("Driver Builder issues on a new driver", () => {
     await waitFor(() => expect(screen.getByText(WARNING)).toBeTruthy(), { timeout: 1500 });
 
     validateDriverDefinition.mockReturnValue(new Promise(() => {}));
-    const other = { ...DRAFT, id: "acme_other", name: "Acme Other" } as DriverDefinition;
+    const other = { ...DRAFT, id: "acme_other", name: "Acme Other" };
     rerender(editor({ isNew: false, originalId: "acme_other", draft: other }));
     expect(screen.queryByText(WARNING)).toBeNull();
   });

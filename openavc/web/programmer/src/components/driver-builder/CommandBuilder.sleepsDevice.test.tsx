@@ -9,11 +9,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // renaming the wake command keeps the reference pointing at it.
 
 import { CommandBuilder } from "./CommandBuilder";
-import type { DriverCommandDef, DriverDefinition } from "../../api/types";
+import type { DriverCommandDef } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-// Partial: a udp: command has no send, which the generated command type
-// requires of every command.
-function draftWith(commands: Record<string, Partial<DriverCommandDef>>): DriverDefinition {
+function draftWith(commands: Record<string, DriverCommandDef>): DriverDraft {
   return {
     id: "acme_display",
     name: "Acme Display",
@@ -26,7 +25,8 @@ function draftWith(commands: Record<string, Partial<DriverCommandDef>>): DriverD
     state_variables: { power: { type: "boolean", label: "Power" } },
     commands,
     responses: [],
-  } as unknown as DriverDefinition;
+    polling: {},
+  };
 }
 
 const WAKE = {

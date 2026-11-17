@@ -5,9 +5,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 // tab offers Connections there and nowhere else.
 
 import { SimulatorEditor } from "./SimulatorEditor";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
-function draft(transport: string, simulator?: Record<string, unknown>): DriverDefinition {
+function draft(transport: string, simulator?: Record<string, unknown>): DriverDraft {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -21,7 +21,7 @@ function draft(transport: string, simulator?: Record<string, unknown>): DriverDe
     commands: {},
     responses: [],
     ...(simulator ? { simulator } : {}),
-  } as unknown as DriverDefinition;
+  } as unknown as DriverDraft;
 }
 
 describe("the Simulation tab's Connections", () => {

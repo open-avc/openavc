@@ -9,6 +9,7 @@ import type { DriverCommandDef } from "../../api/types";
 import { type CommandUpdate } from "./commandEdits";
 import { FIELD_HINT, FIELD_LABEL } from "./commandFieldParts";
 import { KeyValueList } from "./KeyValueList";
+import { valuesAsText } from "./fieldText";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
@@ -34,7 +35,7 @@ function RequestMapField({
     <div style={{ marginTop: "var(--space-md)" }}>
       <label style={FIELD_LABEL}>{caption}</label>
       <KeyValueList
-        values={cmd[field] ?? {}}
+        values={valuesAsText(cmd[field])}
         onChange={(map) => onUpdate({ [field]: Object.keys(map).length ? map : undefined })}
         keyPlaceholder={keyPlaceholder}
         valuePlaceholder={valuePlaceholder}

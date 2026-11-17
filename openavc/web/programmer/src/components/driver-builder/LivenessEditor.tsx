@@ -1,5 +1,6 @@
 import type { DriverDefinition, DriverLivenessDef } from "../../api/types";
 import { OscArgsEditor } from "./OscArgsEditor";
+import { oscArgsAsText } from "./fieldText";
 
 interface LivenessEditorProps {
   draft: DriverDefinition;
@@ -141,9 +142,7 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
             <div style={{ marginTop: "var(--space-md)" }}>
               <label style={labelStyle}>Probe Arguments</label>
               <OscArgsEditor
-                args={
-                  (liveness?.args ?? []) as { type: string; value: string }[]
-                }
+                args={oscArgsAsText(liveness?.args)}
                 onChange={(args) =>
                   update({
                     args: args.length
