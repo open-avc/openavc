@@ -17,7 +17,7 @@ on all three of the surfaces that hang off one declaration:
   phone, and used to quote all seventeen digits of it;
 * the **cloud health card**, which renders through the vendored byte copy of
   ``core/monitors.py`` -- so what is pinned here is that the declaration is
-  carried to it, the copy itself being ``scripts/vendor_monitor_rule.py``'s job.
+  carried to it, the copy itself being the cloud's vendoring script's job.
 
 The rounding is a statement about a QUANTITY. A word the author wrote for a
 value, a boolean and any text the device reports are shown exactly as they are,

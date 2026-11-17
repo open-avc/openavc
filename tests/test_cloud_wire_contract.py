@@ -10,10 +10,12 @@ let an older release keep working with a newer cloud.
 from __future__ import annotations
 
 import base64
+import json
 
 import pytest
 
 from openavc.cloud import protocol, wire_tables
+from openavc.cloud.contract_gen import render
 from openavc.cloud.protocol import (
     CAPABILITY_GATED, MESSAGE_PRIORITY, REQUEST_ANSWERS, ProtocolError,
     read_message, read_payload, read_tunnel_data,
@@ -344,6 +346,9 @@ def test_config_update_fills_nothing_so_only_what_it_carries_changes():
 @pytest.mark.parametrize("code,sent", [
     (1000, 1000), (1001, 1001), (1011, 1011), (4001, 4001), (4010, 4010), (4013, 4013),
     (1005, 1000), (1006, 1014), (1015, 1014), (None, 1014), (999, 1014), (5000, 1014),
+    # The edges of each range the contract gives a close frame.
+    (1003, 1003), (1004, 1014), (1007, 1007), (1014, 1014), (2999, 1014), (3000, 3000),
+    (4999, 4999),
 ])
 def test_a_close_code_is_passed_on_when_a_close_frame_may_carry_it(code, sent):
     assert protocol.ws_close_code(code) == sent
@@ -360,6 +365,28 @@ def test_the_codes_this_instance_sends_are_the_vocabulary():
 ])
 def test_only_a_sendable_received_code_closes_the_local_socket(code, usable):
     assert protocol.sendable_close_code(code) == usable
+
+
+def _contract() -> dict:
+    """The contract as the cloud reads it: the generated file, parsed."""
+    return json.loads(render())
+
+
+def test_the_contract_carries_the_close_frame_rule_for_the_cloud():
+    """The cloud closes a browser's socket with the code the agent passes on,
+    so it reads which codes a close frame may carry, and how long a reason may
+    be, from the contract rather than writing its own."""
+    limits = _contract()["limits"]
+    assert limits["ws_close_sendable_codes"]["value"] == [[1000, 1003], [1007, 1014], [3000, 4999]]
+    assert limits["ws_close_reason_max_bytes"]["value"] == 123
+
+
+def test_a_field_drawn_from_a_vocabulary_names_it():
+    """So a reader projecting the contract to an older release can drop the
+    values that release did not have yet."""
+    hello = _contract()["messages"]["hello"]["payload"]["properties"]
+    assert hello["capabilities"]["x-vocabulary"] == "capabilities"
+    assert hello["deployment_mode"]["x-vocabulary"] == "deployment_modes"
 
 
 def test_a_close_reason_is_cut_to_what_a_close_frame_carries():

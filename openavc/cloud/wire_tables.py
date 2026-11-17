@@ -804,7 +804,7 @@ VOCABULARIES: dict[str, tuple[Entry, ...]] = {
 
 # --- Limits ---
 
-LIMITS: dict[str, tuple[int, str]] = {
+LIMITS: dict[str, tuple[Any, str]] = {
     "protocol_version": (1, "The wire version this agent prefers."),
     "min_protocol_version": (1, "The oldest wire version it still speaks."),
     "max_message_bytes": (2**20, "The largest message either side takes."),
@@ -814,4 +814,10 @@ LIMITS: dict[str, tuple[int, str]] = {
     "tunnel_data_max_bytes": (2**24, "The largest message on a tunnel's data socket."),
     "tunnel_stream_idle_seconds": (300, "How long a streamed response may sit idle."),
     "room_name_max_chars": (200, "The longest room name pairing sends."),
+    "ws_close_sendable_codes": (
+        ((1000, 1003), (1007, 1014), (3000, 4999)),
+        "The close codes a close frame may carry, as inclusive ranges. A socket that ended with "
+        "any other code (1005, 1006, 1015) closed with no code or dropped.",
+    ),
+    "ws_close_reason_max_bytes": (123, "The longest close reason a close frame carries, in UTF-8 bytes."),
 }

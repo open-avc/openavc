@@ -256,8 +256,10 @@ WS_CLOSE_LOCAL_UNREACHABLE = 1014
 # 1005 (no code given) reads as a normal close; 1006 and 1015 never appear in
 # a close frame, so a socket that ended that way was dropped, not closed.
 _NO_STATUS = 1005
-_SENDABLE_CLOSE_CODES = (
-    set(range(1000, 1004)) | set(range(1007, 1015)) | set(range(3000, 5000))
+_SENDABLE_CLOSE_CODES = frozenset(
+    code
+    for low, high in wire_tables.LIMITS["ws_close_sendable_codes"][0]
+    for code in range(low, high + 1)
 )
 
 
@@ -822,8 +824,8 @@ def build_ws_frame(ws_id: str, data_b64: str, binary: bool) -> dict[str, Any]:
     return {"type": WS_FRAME, "id": ws_id, "data": data_b64, "binary": binary}
 
 
-# A close frame's reason is at most 123 bytes of UTF-8.
-_MAX_CLOSE_REASON_BYTES = 123
+# A close frame's reason is at most this many bytes of UTF-8.
+_MAX_CLOSE_REASON_BYTES = _limit("ws_close_reason_max_bytes")
 
 
 def close_reason(reason: str) -> str:

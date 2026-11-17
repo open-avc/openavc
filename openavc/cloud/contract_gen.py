@@ -85,7 +85,10 @@ def _vocabulary_values(name: str) -> list[Any]:
 
 
 def _apply_vocabulary(schema: dict[str, Any], f: Field) -> None:
+    """The field's values, and the vocabulary they come from, so a reader can
+    drop the values a release did not have yet."""
     values = _vocabulary_values(f.vocabulary)
+    schema["x-vocabulary"] = f.vocabulary
     if "items" in schema:
         schema["items"]["enum"] = values
         return
