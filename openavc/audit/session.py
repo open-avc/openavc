@@ -29,9 +29,11 @@ that keep an audit from leaving anything behind:
 - **A step that raises fails in its own words.** Every step's background work
   (connect and listen, a command, a setting, a power test, the network check)
   runs as a tracked task, and ``track_task`` is the one place its exception is
-  caught: the step that started it is handed the exception and fails with it,
-  on its own screen and in the timeline, so nothing is left waiting on work
-  that has stopped. A step does not catch its own.
+  caught (``guard_callback`` for a handler the event bus or a state store
+  calls, which would only log it): the step that started it is handed the
+  exception and fails with it, on its own screen and in the timeline, so
+  nothing is left waiting on work that has stopped. A step does not catch its
+  own.
 
 Everything else a session holds (the network check, the listeners, the report)
 is attached by the modules that build it: ``track_task`` for work to cancel
@@ -388,16 +390,41 @@ class AuditSession:
         task.add_done_callback(lambda done: self._task_done(done, fails))
         return task
 
+    def guard_callback(self, callback: Callable[..., Any], *, fails: StepFailure) -> Callable[..., Any]:
+        """``callback`` as the event bus or a state store calls it, with
+        whatever it raises handed to ``fails`` as a tracked task's is: the bus
+        and the store only log a raise, and a step whose handler stopped
+        part-way would wait on it for ever."""
+        if asyncio.iscoroutinefunction(callback):
+            async def guarded_async(*args: Any) -> None:
+                try:
+                    await callback(*args)
+                except Exception as exc:
+                    self._step_raised(callback, exc, fails)
+
+            return guarded_async
+
+        def guarded(*args: Any) -> None:
+            try:
+                callback(*args)
+            except Exception as exc:
+                self._step_raised(callback, exc, fails)
+
+        return guarded
+
     def _task_done(self, task: asyncio.Task, fails: StepFailure | None) -> None:
         self._tasks.discard(task)
         if task.cancelled():
             return
         exc = task.exception()
-        if exc is None:
-            return
+        if exc is not None:
+            self._step_raised(task.get_coro(), exc, fails)
+
+    def _step_raised(self, where: Any, exc: BaseException, fails: StepFailure | None) -> None:
+        """Log what a step's work raised, then hand it to the step."""
         log.error(
             "Device audit %s: %s raised", self.id,
-            getattr(task.get_coro(), "__qualname__", None) or task.get_name(),
+            getattr(where, "__qualname__", None) or repr(where),
             exc_info=(type(exc), exc, exc.__traceback__),
         )
         if fails is None:

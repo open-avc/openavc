@@ -281,9 +281,12 @@ class ListenPass:
         health = getattr(sb.driver, "_health_enabled", None)
         if callable(health) and health():
             self.liveness_every = float(getattr(sb.driver, "HEALTH_INTERVAL_S", 0) or 0)
-        sb.events.on(f"device.connected.{device_id}", self._on_connected)
-        sb.events.on(f"device.disconnected.{device_id}", self._on_disconnected)
-        sb.state.subscribe(f"device.{device_id}.*", self._on_state)
+        guard = self.session.guard_callback
+        sb.events.on(f"device.connected.{device_id}", guard(self._on_connected, fails=self.failed))
+        sb.events.on(
+            f"device.disconnected.{device_id}", guard(self._on_disconnected, fails=self.failed),
+        )
+        sb.state.subscribe(f"device.{device_id}.*", guard(self._on_state, fails=self.failed))
         where = sb.resolved["config"].get("host") or sb.resolved["config"].get("port") or ""
         port = sb.resolved["config"].get("port") if sb.resolved["config"].get("host") else ""
         self._timeline(
@@ -423,9 +426,12 @@ class ListenPass:
         self._flush_now()
 
     def failed(self, exc: BaseException) -> None:
-        """The pass raised: it fails with what it raised, and a driver it
-        had started stops, since nothing watches it any more. Called by the
-        session with the tracked task's exception."""
+        """The pass, or one of its handlers, raised: it fails with what it
+        raised, and a driver it had started stops, since nothing watches it
+        any more. Called by the session with the exception; a later raise,
+        while it stops, is only logged."""
+        if self.status == FAILED and self.error:
+            return
         if isinstance(exc, AuditError):
             self._fail(str(exc))
         elif not self.sandbox.started:

@@ -554,3 +554,27 @@ async def test_a_driver_that_cannot_start_fails_the_listen_in_its_words(driver, 
     assert listen.error == "The driver could not start: no room for it"
     with pytest.raises(AuditError, match="Connect again"):
         listen.extend()
+
+
+async def test_a_handler_that_raises_fails_the_listen_instead_of_hanging_it(driver, monkeypatch):
+    """The connected handler runs under the event bus, which only logs a
+    raise: one that stopped part-way left the window with no end, so the
+    wizard said Listening for ever. It fails the step instead."""
+    from openavc.audit.listen import ListenPass
+
+    async def broken(self, _event, _payload=None):
+        raise ValueError("invalid literal for int() with base 10: 'abc'")
+
+    monkeypatch.setattr(ListenPass, "_on_connected", broken)
+    server, port = await _fake_device()
+    session, run, _ = _session_and_run(port)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == FAILED)
+        assert listen.error.startswith("The audit stopped listening: invalid literal for int()")
+        await _until(lambda: not listen.sandbox.started)
+        await _until(lambda: listen.task.done())
+        assert [e.kind for e in session.timeline].count("listen.failed") == 1
+    finally:
+        await run.stop()
+        server.close()
