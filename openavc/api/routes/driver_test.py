@@ -26,7 +26,7 @@ Split out of `routes/drivers.py`: this is a third of that file behind two
 routes, and it shares nothing with driver installation or definition CRUD.
 """
 
-from typing import Any, Awaitable, Callable, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
@@ -556,13 +556,20 @@ async def _test_raw(body: TestCommandRequest) -> dict:
             status_code=422,
             detail="Provide either a definition + command_name or a command_string",
         )
-    probe = _RAW_PROBES.get(body.transport)
-    if probe is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Only TCP, UDP, serial, HTTP, and OSC test connections are supported",
-        )
-    return await probe(body)
+    if body.transport == "tcp":
+        return await _test_tcp_raw(body)
+    if body.transport == "serial":
+        return await _test_serial_raw(body)
+    if body.transport == "udp":
+        return await _test_udp_raw(body)
+    if body.transport == "http":
+        return await _test_http_raw(body)
+    if body.transport == "osc":
+        return await _test_osc_raw(body)
+    raise HTTPException(
+        status_code=422,
+        detail="Only TCP, UDP, serial, HTTP, and OSC test connections are supported",
+    )
 
 
 def _not_opened(body: TestCommandRequest, error: BaseException) -> dict:
@@ -793,13 +800,3 @@ async def _test_osc_raw(body: TestCommandRequest) -> dict:
         "state_changes": {},
         "error": error_text,
     }
-
-
-# The raw probe for each transport a Live Test raw Send can open.
-_RAW_PROBES: dict[str, Callable[[TestCommandRequest], Awaitable[dict]]] = {
-    "tcp": _test_tcp_raw,
-    "serial": _test_serial_raw,
-    "udp": _test_udp_raw,
-    "http": _test_http_raw,
-    "osc": _test_osc_raw,
-}
