@@ -14,6 +14,13 @@ import type {
 // openavc/discovery/hints.py), shared with the driver validator.
 import { DISALLOWED_OPEN_PORTS } from "./validateDriver";
 
+/** A fingerprint field as the platform reads it: one entry written on its
+ *  own is a list of one. */
+function asList<T>(value: T | T[] | undefined): T[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
 // Style tokens.
 const SECTION: React.CSSProperties = {
   marginBottom: "var(--space-lg)",
@@ -147,9 +154,12 @@ export function DiscoveryHintsEditor({
     // `requires` is catalog-stamped, not authored here — but it must survive
     // edits to the other discovery fields (this rebuild used to drop it).
     if (next.requires) t.requires = next.requires;
-    if (next.mdns?.length) t.mdns = next.mdns;
-    if (next.ssdp?.length) t.ssdp = next.ssdp;
-    if (next.amx_ddp?.length) t.amx_ddp = next.amx_ddp;
+    const mdns = asList(next.mdns);
+    const ssdp = asList(next.ssdp);
+    const amxDdp = asList(next.amx_ddp);
+    if (mdns.length) t.mdns = mdns;
+    if (ssdp.length) t.ssdp = ssdp;
+    if (amxDdp.length) t.amx_ddp = amxDdp;
     if (next.tcp_probe) t.tcp_probe = next.tcp_probe;
     if (next.udp_probe) t.udp_probe = next.udp_probe;
     if (next.python) t.python = next.python;
@@ -208,15 +218,15 @@ function FingerprintsSection({
       </div>
 
       <MdnsList
-        items={(cfg.mdns ?? []).map(readMdns)}
+        items={asList(cfg.mdns).map(readMdns)}
         onChange={(next) => update({ ...cfg, mdns: next.map(writeMdns) })}
       />
       <SsdpList
-        items={(cfg.ssdp ?? []).map(readSsdp)}
+        items={asList(cfg.ssdp).map(readSsdp)}
         onChange={(next) => update({ ...cfg, ssdp: next.map(writeSsdp) })}
       />
       <AmxDdpList
-        items={cfg.amx_ddp ?? []}
+        items={asList(cfg.amx_ddp)}
         onChange={(next) => update({ ...cfg, amx_ddp: next })}
       />
       <ProbeBlock
