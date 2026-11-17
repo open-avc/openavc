@@ -73,6 +73,18 @@ export function nextMappingGroup(mappings: { group?: number }[]): number {
   return mappings.length > 0 ? Math.max(...mappings.map(mappingGroup)) + 1 : 1;
 }
 
+/** The message argument an OSC rule's mapping reads, as the driver reads it:
+ *  its `arg`, else the first (0). An OSC mapping's `group` is not read. */
+export function mappingArg(mapping: { arg?: number }): number {
+  return mapping.arg ?? 0;
+}
+
+/** The argument a mapping added to an OSC rule takes: the one after the
+ *  highest any of its mappings reads, else the first. */
+export function nextMappingArg(mappings: { arg?: number }[]): number {
+  return mappings.length > 0 ? Math.max(...mappings.map(mappingArg)) + 1 : 0;
+}
+
 /** True if every mapping fits the `set:` shorthand — i.e. writing the set:
  *  form would leave runtime behavior identical. A shorthand entry coerces by
  *  the state variable's declared type, while an explicit mapping coerces by

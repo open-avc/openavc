@@ -32,7 +32,9 @@ import {
   containsToText,
   jsonChildPropFromText,
   jsonChildPropToText,
+  mappingArg,
   mappingGroup,
+  nextMappingArg,
   nextMappingGroup,
   oscChildIdFromParts,
   oscChildIdToText,
@@ -576,10 +578,10 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                   whiteSpace: "nowrap",
                 }}
                 title={draft.transport === "osc"
-                  ? `Argument index ${mapping.arg ?? mapping.group} from the OSC message`
+                  ? `Argument index ${mappingArg(mapping)} from the OSC message`
                   : _captureTitle(mappingGroup(mapping))}
               >
-                {draft.transport === "osc" ? `Arg ${mapping.arg ?? mapping.group}` : _captureName(mappingGroup(mapping))} →
+                {draft.transport === "osc" ? `Arg ${mappingArg(mapping)}` : _captureName(mappingGroup(mapping))} →
               </label>
               <select
                 value={mapping.state}
@@ -652,14 +654,11 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           <button
             onClick={() => {
               if (draft.transport === "osc") {
-                const nextArg = mappings.length > 0
-                  ? Math.max(...mappings.map((m) => m.arg ?? m.group ?? 0)) + 1
-                  : 0;
                 updateResponse(i, buildResponse(
                   resp.address ?? pattern,
                   [
                     ...mappings,
-                    { group: 0, arg: nextArg, state: "", type: "float" },
+                    { group: 0, arg: nextMappingArg(mappings), state: "", type: "float" },
                   ],
                   resp,
                   stateVars,
