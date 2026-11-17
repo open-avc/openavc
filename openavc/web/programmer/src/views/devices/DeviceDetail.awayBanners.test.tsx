@@ -379,6 +379,23 @@ describe("the Offline banner", () => {
     });
   });
 
+  it("a device its driver could not set up says why, offers Reconnect and Report a problem", async () => {
+    const why = "The driver 'acme_amp' could not set up this device (TypeError: responses must be a list).";
+    setInfo({ driver_info: {} });
+    setLive({
+      "device.amp.connected": false,
+      "device.amp.offline_reason": "driver_failed",
+      "device.amp.offline_detail": why,
+      "device.amp.reconnect_failed": true,
+    });
+    await showPage();
+    expect(bannersShown()).toEqual(["offline"]);
+    expect(outsideTable(why)).toHaveLength(1);
+    expect(screen.getByText(/Not retrying: this won't clear on its own\. Fix the cause above, then press Reconnect\./)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Reconnect/ })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Report a problem" })).toHaveLength(2);
+  });
+
   it("offers no Report a problem for a fault no driver change fixes", async () => {
     setLive({ ...offline, "device.amp.offline_reason": "unreachable" });
     await showPage();

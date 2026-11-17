@@ -58,6 +58,22 @@ class DeviceNotOrphanedError(ValueError):
         self.device_id = device_id
 
 
+class DriverBuildError(Exception):
+    """The device's driver raised while the device was being set up, so no
+    driver runs it. The device manager keeps the device with the reason
+    (``driver_failed``) before raising this, so it is still listed.
+
+    Not a ValueError or a ConnectionError: a door that answers those for a
+    device ("not found", "not connected") must not answer this one. The
+    driver's own exception is ``__cause__``; the message names the driver and
+    the device, then what the driver raised, for the log.
+    """
+
+    def __init__(self, device_id: str, driver: str, detail: str) -> None:
+        super().__init__(f"The {driver} could not set up device '{device_id}': {detail}")
+        self.device_id = device_id
+
+
 def device_restarting(device_id: str, seconds_left: int) -> ConnectionError:
     """The "we asked it to restart, it is not back yet" refusal.
 

@@ -171,10 +171,12 @@ def delete_device_keys(state, device_id: str) -> None:
 async def update_changed_devices(devices, device_ids, project_devices, *, defer_connect) -> None:
     """Re-add, in parallel, each of ``device_ids`` whose running config
     differs from its project one in a field add_device acts on
-    (``needs_readd``); ``update_device`` is remove + add."""
+    (``needs_readd``), and each its driver could not set up, which every sync
+    tries again; ``update_device`` is remove + add."""
     changed_ids = [
         did for did in device_ids
-        if needs_readd(devices.get_device_config(did) or {}, project_devices[did])
+        if devices.build_failed(did)
+        or needs_readd(devices.get_device_config(did) or {}, project_devices[did])
     ]
     if not changed_ids:
         return

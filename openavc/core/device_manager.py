@@ -22,7 +22,8 @@ manager: sending a command (device_commands.py), retrying a dropped device
 writing settings, live or queued (pending_settings.py), the Open Web UI page
 (device_web_ui.py), devices on a bridge port (device_bridges.py), a device
 paused on purpose (device_pause.py), devices waiting for their driver
-(device_orphans.py) and what the manager says about its devices, their
+(device_orphans.py), devices their driver could not set up
+(device_build_failures.py) and what the manager says about its devices, their
 settings included (device_info.py). The checks a command passes before its
 driver are core/command_gates.py, and what the doors raise is
 core/device_errors.py, whose names this module re-exports.
@@ -44,9 +45,11 @@ from openavc.core.connection_fault import (
 )
 from openavc.core.device_away import DeviceAwayMixin
 from openavc.core.device_bridges import DeviceBridgesMixin
+from openavc.core.device_build_failures import DeviceBuildFailuresMixin
 from openavc.core.device_commands import DeviceCommandsMixin
 from openavc.core.device_errors import (  # noqa: F401  (re-exported: the path the platform imports)
     DeviceNotFoundError,
+    DriverBuildError,
     NoSimulatorError,
     device_asleep,
     device_restarting,
@@ -98,8 +101,8 @@ def _log_bring_up_failures(failures) -> None:
 
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
-    DeviceBridgesMixin, DevicePauseMixin, DeviceOrphansMixin, DeviceInfoMixin,
-    DeviceCommandsMixin, DeviceManualReconnectMixin,
+    DeviceBridgesMixin, DevicePauseMixin, DeviceOrphansMixin, DeviceBuildFailuresMixin,
+    DeviceInfoMixin, DeviceCommandsMixin, DeviceManualReconnectMixin,
 ):
     """Manages all device driver instances."""
 
@@ -115,6 +118,7 @@ class DeviceManager(
         self._device_configs: dict[str, dict[str, Any]] = {}
         self._init_reconnect()
         self._init_orphans()
+        self._init_build_failures()
         self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
         # Registered but not yet dialed — see add_device(defer_connect=True)
         # and bring_up(). A project save registers its devices inside the
@@ -229,9 +233,10 @@ class DeviceManager(
         # child_entities map (user labels, per-child config) which
         # register_child consults to seed the platform-managed `label`
         # state key. Done post-construction so existing driver subclasses
-        # with a fixed __init__ signature don't need to change.
-        driver = driver_class(device_id, config, self.state, self.events)
-        driver.set_project_child_entities(device_config.get("child_entities") or {})
+        # with a fixed __init__ signature don't need to change. A driver that
+        # raises doing either leaves the device kept with why
+        # (core/device_build_failures.py) and raises DriverBuildError.
+        driver = self._build_driver(device_config, driver_class, config)
         self._devices[device_id] = driver
         self._device_configs[device_id] = device_config
 
@@ -436,8 +441,9 @@ class DeviceManager(
             except Exception:
                 log.exception(f"Error disconnecting '{device_id}'")
 
-        # Also clean up orphan tracking
+        # Also clean up orphan tracking, and a driver that could not set it up
         self._orphaned_devices.pop(device_id, None)
+        self._build_failures.pop(device_id, None)
         # And its recent traffic, after the disconnect's last bytes: a device
         # re-added under this id starts a fresh record (a reader still
         # subscribed keeps its subscription).
@@ -468,7 +474,8 @@ class DeviceManager(
         """
         Update a device by disconnecting and re-adding with new config.
 
-        Handles both active devices and orphaned devices (driver reassignment).
+        Handles active devices, orphaned devices (driver reassignment) and
+        devices their driver could not set up, which this tries again.
 
         A pause survives the swap (:meth:`_pause_to_carry`).
 
@@ -479,7 +486,7 @@ class DeviceManager(
                 re-added device for :meth:`bring_up` to dial.
         """
         carry_pause, carry_pause_for = self._pause_to_carry(device_id)
-        if device_id in self._devices or device_id in self._orphaned_devices:
+        if self._has_driver_record(device_id):
             await self.remove_device(device_id)
         elif device_id in self._device_configs:
             # Disabled device — just clean up config
@@ -494,6 +501,14 @@ class DeviceManager(
         await self.add_device(
             new_config, carry_pause=carry_pause, carry_pause_for=carry_pause_for,
             defer_connect=defer_connect,
+        )
+
+    def _has_driver_record(self, device_id: str) -> bool:
+        """Run by its driver, waiting for its driver, or kept because its
+        driver could not set it up: every kept device but a disabled one."""
+        return (
+            device_id in self._devices or device_id in self._orphaned_devices
+            or self.build_failed(device_id)
         )
 
     def get_device_configs(self) -> dict[str, dict[str, Any]]:
@@ -528,7 +543,8 @@ class DeviceManager(
         """The device's live driver, for a door that acts on it.
 
         :class:`DeviceNotFoundError` when no device by that id has one: never
-        added, removed, disabled, or waiting for its driver to be installed.
+        added, removed, disabled, waiting for its driver to be installed, or
+        kept because its driver could not set it up.
         """
         driver = self._devices.get(device_id)
         if driver is None:
@@ -537,7 +553,8 @@ class DeviceManager(
 
     def get_driver(self, device_id: str) -> BaseDriver | None:
         """Return the live driver instance for a device, or ``None`` if the
-        device is unknown, orphaned (driver not installed), or disabled.
+        device is unknown, orphaned (driver not installed), disabled, or kept
+        because its driver could not set it up.
 
         Exposes the driver for callers that need to read driver-declared
         schema (child_entity_types, commands) or invoke public driver
@@ -552,7 +569,8 @@ class DeviceManager(
 
         Finds all active devices using the specified driver_id, disconnects them,
         and re-adds them so they pick up the new driver class from the registry.
-        Also retries any orphaned devices that were waiting for this driver.
+        A device the driver could not set up before is set up again. Also
+        retries any orphaned devices that were waiting for this driver.
 
         Returns a list of device IDs that were reconnected.
         """
@@ -575,8 +593,10 @@ class DeviceManager(
 
     async def _readd_for_new_driver(self, driver_id: str) -> list[str]:
         """Remove and re-add every live device on ``driver_id`` so it picks up
-        the reloaded class, a paused one staying paused. The ids re-added; a
-        device that fails is logged and the rest still run.
+        the reloaded class, a paused one staying paused, and every device the
+        driver could not set up before. The ids re-added; a device that fails
+        is logged (one the driver cannot set up is kept with why) and the
+        rest still run.
 
         Registered, not dialed: the caller asks for the bring-up round, which
         the engine runs after re-applying any simulation redirect to the new
@@ -586,7 +606,8 @@ class DeviceManager(
         affected = [
             (did, cfg)
             for did, cfg in self._device_configs.items()
-            if cfg.get("driver") == driver_id and did in self._devices
+            if cfg.get("driver") == driver_id
+            and (did in self._devices or self.build_failed(did))
         ]
         readded: list[str] = []
         for device_id, config in affected:
@@ -604,6 +625,9 @@ class DeviceManager(
                     else f"Device '{device_id}' picked up the reloaded driver "
                          f"and stayed paused"
                 )
+            except DriverBuildError as error:
+                # Its traceback is already in the log, with the device kept.
+                log.error(f"Failed to reconnect '{device_id}' after driver reload: {error}")
             except Exception:
                 log.exception(f"Failed to reconnect '{device_id}' after driver reload")
         return readded

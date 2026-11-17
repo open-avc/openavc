@@ -49,8 +49,9 @@ class DeviceManualReconnectMixin:
     ``_paused_for_refused_login`` (core/device_reconnect.py); ``_set_offline_reason``,
     ``_clear_offline_reason`` and ``_failure_text`` (core/device_away.py);
     ``_note_bridge_offline_if_down`` (core/device_bridges.py);
-    ``_apply_pending_settings`` (core/pending_settings.py) and
-    ``_schedule_web_ui_probe`` (core/device_web_ui.py).
+    ``_apply_pending_settings`` (core/pending_settings.py),
+    ``_schedule_web_ui_probe`` (core/device_web_ui.py), and ``build_failed``
+    and ``_retry_build`` (core/device_build_failures.py).
     """
 
     state: StateStore
@@ -58,7 +59,11 @@ class DeviceManualReconnectMixin:
     _intentional_disconnect: set[str]
 
     async def reconnect_device(self, device_id: str) -> None:
-        """Force disconnect and reconnect a device."""
+        """Force disconnect and reconnect a device. A device its driver could
+        not set up is set up again (core/device_build_failures.py)."""
+        if self.build_failed(device_id):
+            await self._retry_build(device_id)
+            return
         driver = self._live_driver(device_id)
         # A manual reconnect overrides a test-panel pause — clear the pause
         # bookkeeping so the flag can't go stale and the TTL backstop can't

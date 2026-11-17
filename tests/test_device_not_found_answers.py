@@ -37,7 +37,7 @@ from fastapi.testclient import TestClient
 
 from openavc.api import rest, ws
 from openavc.core import device_manager as device_manager_module
-from openavc.core.device_errors import DeviceNotOrphanedError
+from openavc.core.device_errors import DeviceNotOrphanedError, DriverBuildError
 from openavc.core.device_manager import DeviceManager, DeviceNotFoundError
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -187,7 +187,7 @@ async def test_a_driver_that_will_not_build_the_device_is_not_called_not_orphane
     """Retry builds the device, so a driver's own ValueError comes out of the
     same call as "not orphaned" does. They have to be told apart by type: the
     one says the device has nothing to retry, the other that its driver
-    refused it."""
+    refused it, with the driver's own error as its cause."""
     state, events = core
     dm = DeviceManager(state, events)
     await dm.add_device({"id": "dev1", "driver": "acme_unbuildable", "name": "Widget"})
@@ -195,11 +195,12 @@ async def test_a_driver_that_will_not_build_the_device_is_not_called_not_orphane
 
     register_driver(_AcmeUnbuildable)
     try:
-        with pytest.raises(ValueError) as caught:
+        with pytest.raises(DriverBuildError) as caught:
             await dm.retry_orphaned_device("dev1")
     finally:
         unregister_driver("acme_unbuildable")
     assert not isinstance(caught.value, DeviceNotOrphanedError)
+    assert isinstance(caught.value.__cause__, ValueError)
     assert "unknown Acme model" in str(caught.value)
 
 

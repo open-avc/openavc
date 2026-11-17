@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from openavc.core.connection_fault import UNREACHABLE
+from openavc.core.device_errors import DriverBuildError
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.installed_equipment import InstalledEquipmentError
@@ -190,16 +191,21 @@ async def test_an_edit_can_leave_the_device_for_the_bring_up_round(dm):
 
 
 async def test_editing_a_disabled_device_drops_its_old_entry_first(dm, monkeypatch):
+    """The edit's own entry replaces the disabled one: a driver that cannot
+    set the device up leaves the device kept with the new settings and why,
+    never the old disabled entry."""
     await dm.add_device(_cfg("dev", enabled=False))
 
     def broken(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("driver would not build")
 
     monkeypatch.setitem(_DRIVER_REGISTRY, DRIVER, broken)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(DriverBuildError):
         await dm.update_device("dev", _cfg("dev"))
 
-    assert dm.get_device_config("dev") is None
+    assert dm.get_device_config("dev") == _cfg("dev")
+    assert dm.build_failed("dev")
+    assert dm.state.get("device.dev.enabled") is True
 
 
 # --- an orphan's activation --------------------------------------------------

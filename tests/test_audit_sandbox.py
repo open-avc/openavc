@@ -127,6 +127,27 @@ async def test_the_driver_runs_as_a_project_device_would(driver_class):
     assert "hunter22" in sandbox.observer.secrets
 
 
+async def test_a_driver_that_cannot_set_the_device_up_leaves_nothing_behind(driver_class):
+    """The audit says what the driver raised, and the device it could not set
+    up is not kept: no state, and no login left registered for masking."""
+
+    class _Refusing(driver_class):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            raise TypeError("responses must be a list")
+
+    _DRIVER_REGISTRY[DRIVER_ID] = _Refusing
+    sandbox = DriverSandbox(
+        audit_device_id("s9"), DRIVER_ID,
+        {"host": "127.0.0.1", "port": 1, "password": "hunter22"},
+    )
+    with pytest.raises(TypeError, match="responses must be a list"):
+        await sandbox.start()
+    assert sandbox.device_state() == {}
+    assert sandbox.manager.list_devices() == []
+    assert get_secret_registry().secrets_for("audit-s9") == set()
+
+
 async def test_the_audit_device_reaches_nothing_else(driver_class):
     """The engine's state and event bus (what the WebSocket fan-out, the cloud
     relay, the alert monitor, triggers and scripts hear) never see it."""

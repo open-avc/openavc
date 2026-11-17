@@ -104,6 +104,7 @@ async def test_sync_devices_no_change_does_not_reapply(tmp_path):
     devices = MagicMock()
     devices.get_device_configs.return_value = {"d1": json.loads(json.dumps(resolved))}
     devices.get_device_config.return_value = json.loads(json.dumps(resolved))
+    devices.build_failed.return_value = False
     devices.update_device = AsyncMock()
     devices.add_device = AsyncMock()
     devices.remove_device = AsyncMock()

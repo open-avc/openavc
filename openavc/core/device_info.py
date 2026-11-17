@@ -5,9 +5,10 @@ device connects now (``dialled_record``, ``connections_now``), each connected
 one (``live_connections``) and, less the simulated ones, the ports held on the
 network (``network_connections``). Read-only: nothing here changes a device.
 
-Three kinds of device are described: one with a live driver, one waiting for its
-driver to be installed (an orphan, core/device_orphans.py) and one that is
-disabled. Product hardware adds its own facts on top (installed equipment).
+Four kinds of device are described: one with a live driver, one waiting for its
+driver to be installed (an orphan, core/device_orphans.py), one its driver
+could not set up (core/device_build_failures.py), and one that is disabled.
+Product hardware adds its own facts on top (installed equipment).
 
 The rule worth knowing before changing it: where a device connects is read from
 the record the manager was handed (``core.device_config.connection_of``). A
@@ -99,9 +100,9 @@ class DeviceInfoMixin:
     Holds no state of its own. From its host (DeviceManager) it reads
     ``state``, ``installed_equipment``, ``real_connection``,
     ``simulation_redirect``, ``_devices``, ``_device_configs``,
-    ``_orphaned_devices`` (core/device_orphans.py) and
-    ``_detected_web_ui_urls`` (core/device_web_ui.py), and asks
-    ``_live_driver``.
+    ``_orphaned_devices`` (core/device_orphans.py), ``_build_failures``
+    (core/device_build_failures.py) and ``_detected_web_ui_urls``
+    (core/device_web_ui.py), and asks ``_live_driver``.
     """
 
     state: StateStore
@@ -111,6 +112,7 @@ class DeviceInfoMixin:
     _devices: dict[str, BaseDriver]
     _device_configs: dict[str, dict[str, Any]]
     _orphaned_devices: dict[str, dict[str, Any]]
+    _build_failures: dict[str, dict[str, Any]]
     _detected_web_ui_urls: dict[str, str]
 
     def get_device_info(self, device_id: str) -> dict[str, Any]:
@@ -142,7 +144,8 @@ class DeviceInfoMixin:
         return result
 
     def _device_info(self, device_id: str) -> dict[str, Any]:
-        """Build metadata for active, disabled and missing-driver devices."""
+        """Build metadata for active, disabled, missing-driver devices and
+        ones their driver could not set up."""
         # Check if orphaned first
         if device_id in self._orphaned_devices:
             config = self._orphaned_devices[device_id]
@@ -161,7 +164,8 @@ class DeviceInfoMixin:
 
         driver = self._devices.get(device_id)
         if driver is None:
-            # A disabled device
+            # A disabled device, or one its driver could not set up: why is
+            # in its state (offline_reason, offline_detail).
             if device_id not in self._device_configs:
                 raise DeviceNotFoundError(f"Device '{device_id}' not found")
             return {
@@ -282,21 +286,26 @@ class DeviceInfoMixin:
         return items
 
     def _list_devices(self) -> list[dict[str, Any]]:
-        """List all devices with summary info (including orphaned and disabled)."""
+        """List all devices with summary info (including orphaned, disabled,
+        and ones their driver could not set up)."""
         live = [self._live_summary(device_id) for device_id in self._devices]
         orphans = [
             _orphan_summary(device_id, config)
             for device_id, config in self._orphaned_devices.items()
             if device_id not in self._devices
         ]
+        unbuilt = [
+            _summary_without_driver(device_id, config)
+            for device_id, config in self._build_failures.items()
+        ]
         # What is left has no driver because it is disabled.
-        listed = set(self._devices) | set(self._orphaned_devices)
+        listed = set(self._devices) | set(self._orphaned_devices) | set(self._build_failures)
         disabled = [
             {**_summary_without_driver(device_id, config), "enabled": False}
             for device_id, config in self._device_configs.items()
             if device_id not in listed
         ]
-        return live + orphans + disabled
+        return live + orphans + unbuilt + disabled
 
     def _live_summary(self, device_id: str) -> dict[str, Any]:
         """A device with a live driver, as the listing gives it: the summary,

@@ -55,6 +55,7 @@ from typing import Any, Callable
 from openavc.audit.observe import AuditObserver, ContractEvent
 from openavc.audit.session import AuditError
 from openavc.core.device_config import devices_at_host, resolve_device_config
+from openavc.core.device_errors import DriverBuildError
 from openavc.core.device_manager import DeviceManager
 from openavc.core.device_traffic import TrafficEntry
 from openavc.core.event_bus import EventBus
@@ -250,7 +251,7 @@ class DriverSandbox:
         resolved = self.resolved or self.prepare()
         self.observer.start()
         try:
-            await self.manager.add_device(resolved, defer_connect=True)
+            await self._add_device(resolved)
         except Exception:
             self.observer.stop()
             raise
@@ -264,6 +265,16 @@ class DriverSandbox:
             self.device_id, self.driver_id, resolved["config"].get("host")
             or resolved["config"].get("port"),
         )
+
+    async def _add_device(self, resolved: dict[str, Any]) -> None:
+        """Register the device with the private manager, not yet dialed. A
+        driver that cannot set it up raises its own error, and the device the
+        manager kept with why is removed: an audit keeps nothing."""
+        try:
+            await self.manager.add_device(resolved, defer_connect=True)
+        except DriverBuildError as error:
+            await self.manager.remove_device(self.device_id)
+            raise (error.__cause__ or error) from None
 
     async def connect(self) -> None:
         """Dial the device the way the engine's reconcile does. Never raises

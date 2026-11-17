@@ -54,6 +54,7 @@ TRANSPORT_DISCONNECTED = "transport_disconnected"  # generic fallback
 BRIDGE_OFFLINE = "bridge_offline"  # a device bound to a bridge port whose bridge is down
 NO_SIMULATOR = "no_simulator"  # simulating, but nothing simulates this device (SimulatorGap says why)
 LOGIN_MISSING = "login_missing"  # the project says a login is saved here, and none is
+DRIVER_FAILED = "driver_failed"  # its driver raised setting it up (core/device_build_failures.py)
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,9 @@ class ConnectionFault:
 
 # Codes a driver may declare on a ConnectionFaultError. bridge_offline is
 # excluded on purpose — it is the DeviceManager's to assign, because only it
-# knows whether the bridge is up, and never raised from inside a driver.
+# knows whether the bridge is up, and never raised from inside a driver. So is
+# driver_failed: a driver that raised while being set up has no instance to
+# raise anything from.
 _DRIVER_FAULT_CODES = frozenset({
     AUTH_FAILED,
     CONNECTION_REFUSED,
@@ -235,6 +238,7 @@ _PERMANENT_FAULT_CODES = frozenset({
     INVALID_CONFIG,
     CLIENT_MISSING,
     LOGIN_MISSING,
+    DRIVER_FAILED,
 })
 
 
@@ -1100,7 +1104,7 @@ def _first_line(text: str) -> str:
     return ""
 
 
-def _card_detail(detail: str) -> str:
+def card_detail(detail: str) -> str:
     """A refusal's detail as the card shows it: one line, bounded, with no
     closing full stop (it is set in brackets inside a sentence)."""
     line = _first_line(detail).rstrip(".")
@@ -1170,7 +1174,7 @@ def no_simulator_fault(
     the programmer cannot edit, so it is never told to change the driver.
     """
     gap = gap or SimulatorGap("")
-    detail = _card_detail(gap.detail)
+    detail = card_detail(gap.detail)
     because = f" ({detail})" if detail else ""
     sentence = _SIMULATOR_SENTENCES.get(gap.cause, _not_running_sentence)
     return ConnectionFault(

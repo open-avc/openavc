@@ -33,7 +33,7 @@ from openavc.core import connection_fault as cf
 # held to the sentence rule below — classify_connection_fault() words most of
 # them richly at the branch, but anything calling default_fault_message() on one
 # must not get the generic drop wording back.
-_INTERNAL_ONLY = frozenset({cf.BRIDGE_OFFLINE, cf.NO_SIMULATOR})
+_INTERNAL_ONLY = frozenset({cf.BRIDGE_OFFLINE, cf.NO_SIMULATOR, cf.DRIVER_FAILED})
 
 
 def _device_level_codes() -> set[str]:
@@ -167,6 +167,7 @@ _RECONCILED_CODES = frozenset({
     "bridge_offline",
     "client_missing",
     "connection_refused",
+    "driver_failed",
     "host_key_rejected",
     "invalid_config",
     "login_missing",

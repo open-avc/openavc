@@ -46,6 +46,7 @@ def _manager(running: dict[str, dict]) -> MagicMock:
     devices = MagicMock()
     devices.get_device_configs.return_value = running
     devices.get_device_config.side_effect = running.get
+    devices.build_failed.return_value = False
     devices.update_device = AsyncMock()
     devices.add_device = AsyncMock()
     devices.remove_device = AsyncMock()

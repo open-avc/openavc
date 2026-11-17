@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasSignInFields, offlineNextStep } from "./deviceAway";
+import { hasSignInFields, offlineNextStep, reportableOffline } from "./deviceAway";
 
 // The last line of the device page's Offline banner: what happens next and
 // what to do. It names the button that is on the page, and says nothing that
@@ -32,6 +32,13 @@ describe("the Offline banner's next step", () => {
     expect(offlineNextStep("login_missing", true, true)).toBe(
       "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect.",
     );
+  });
+
+  it("stops on a device its driver could not set up, and offers Report a problem for it", () => {
+    expect(offlineNextStep("driver_failed", true, true)).toBe(
+      "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect.",
+    );
+    expect(reportableOffline("driver_failed")).toBe(true);
   });
 
   it("keeps retrying a device that is simply not there", () => {

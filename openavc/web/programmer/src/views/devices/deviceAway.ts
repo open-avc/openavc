@@ -106,6 +106,7 @@ const PERMANENT_OFFLINE_REASONS = new Set([
   "invalid_config",
   "client_missing",
   "login_missing",
+  "driver_failed",
 ]);
 
 /** The driver's own troubleshooting line for a device that will not connect
