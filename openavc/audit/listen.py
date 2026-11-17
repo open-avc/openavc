@@ -427,9 +427,11 @@ class ListenPass:
 
     def failed(self, exc: BaseException) -> None:
         """The pass, or one of its handlers, raised: it fails with what it
-        raised, and a driver it had started stops, since nothing watches it
-        any more. Called by the session with the exception; a later raise,
-        while it stops, is only logged."""
+        raised, and the attempt ends as Connect again ends it (a test or a
+        command stops and every setting the audit changed goes back while the
+        connection is up, then the driver stops), since nothing watches it any
+        more. Called by the session with the exception; a later raise, while
+        it stops, is only logged."""
         if self.status == FAILED and self.error:
             return
         if isinstance(exc, AuditError):
@@ -442,12 +444,14 @@ class ListenPass:
                 "Change the connection settings or connect again."
             )
         if self.sandbox.started:
-            self.session.track_task(asyncio.create_task(self.stop()))
+            ending = self.run.end_attempt() if self.run.listen is self else self.stop()
+            self.session.track_task(asyncio.create_task(ending))
 
     def _fail(self, message: str) -> None:
         self.status = FAILED
         self.error = message
-        self.finished_at = time.time()
+        # A window that had already ended keeps when it did.
+        self.finished_at = self.finished_at or time.time()
         self._timeline("listen.failed", message)
         self._flush_now()
 

@@ -512,3 +512,42 @@ async def test_a_setting_that_fails_before_it_is_written_says_why(driver):
     finally:
         await run.stop()
         server.close()
+
+
+async def test_a_listen_that_fails_puts_every_changed_setting_back_first(driver):
+    """A failed listen ends the attempt as Connect again does: a setting the
+    audit changed goes back while the connection is still up, then the
+    driver stops. A window that had already ended keeps when it did."""
+    from openavc.audit.listen import DONE as LISTEN_DONE, FAILED
+
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port)
+    try:
+        listen = run.listen
+        await _until(lambda: listen.status == LISTEN_DONE)
+        window_ended = listen.finished_at
+        settings = settings_for(session, run)
+        manager = listen.sandbox.manager
+        real = manager.await_setting_readback
+        calls: list = []
+
+        async def raises_once(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise RuntimeError("the read-back broke")
+            return await real(*args, **kwargs)
+
+        manager.await_setting_readback = raises_once
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: "stopped" in trial.write)
+        await _until(lambda: device["name"] == "Boardroom")
+
+        listen.failed(RuntimeError("a handler broke"))
+        await _until(lambda: not listen.sandbox.started)
+        assert device["name"] == "Lobby" and trial.restore["automatic"]
+        assert listen.status == FAILED and listen.finished_at == window_ended
+        assert listen.error.startswith("The audit stopped listening: a handler broke.")
+    finally:
+        await run.stop()
+        server.close()

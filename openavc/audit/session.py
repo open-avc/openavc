@@ -29,11 +29,11 @@ that keep an audit from leaving anything behind:
 - **A step that raises fails in its own words.** Every step's background work
   (connect and listen, a command, a setting, a power test, the network check)
   runs as a tracked task, and ``track_task`` is the one place its exception is
-  caught (``guard_callback`` for a handler the event bus or a state store
-  calls, which would only log it): the step that started it is handed the
-  exception and fails with it, on its own screen and in the timeline, so
-  nothing is left waiting on work that has stopped. A step does not catch its
-  own.
+  caught: the step that started it is handed the exception and fails with it,
+  on its own screen and in the timeline, so nothing is left waiting on work
+  that has stopped. A step does not catch its own. ``guard_callback`` does the
+  same for a handler the event bus or a state store calls, which would only
+  log it; Connect and listen's handlers use it.
 
 Everything else a session holds (the network check, the listeners, the report)
 is attached by the modules that build it: ``track_task`` for work to cancel
