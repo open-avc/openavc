@@ -201,32 +201,6 @@ def bridge_port_missing_message() -> str:
     return _BRIDGE_PORT_MISSING_MESSAGE
 
 
-_SIM_PORT_MESSAGE = (
-    "SIM: is not a serial port. To test without the device, save the driver, "
-    "add a device that uses it, then Start Simulation."
-)
-_SERIAL_SUPPORT_MISSING_MESSAGE = (
-    "This system cannot open serial ports because the pyserial-asyncio "
-    "package is not installed. Install it with pip install pyserial-asyncio, "
-    "then restart OpenAVC."
-)
-
-
-def sim_port_message() -> str:
-    """What a serial port typed as ``SIM:<name>`` says: on its card (an
-    ``invalid_config`` fault the serial transport raises before opening
-    anything), from Live Test and from the connection test, one sentence for
-    all three (``transport.serial_transport.serial_port_refusal``)."""
-    return _SIM_PORT_MESSAGE
-
-
-def serial_support_missing_message() -> str:
-    """What a serial device says on a system without the serial support
-    package: a ``client_missing`` fault, raised and worded as
-    :func:`sim_port_message` is."""
-    return _SERIAL_SUPPORT_MISSING_MESSAGE
-
-
 def usb_adapter_missing_message(usb_serial: str) -> str:
     """What a device bound to a USB-to-serial adapter that is not plugged in
     says: on its card (an ``unreachable`` fault, raised before anything is

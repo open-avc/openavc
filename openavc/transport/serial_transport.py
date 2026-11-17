@@ -24,8 +24,6 @@ from openavc.core.connection_fault import (
     UNREACHABLE,
     ConnectionFault,
     ConnectionFaultError,
-    serial_support_missing_message,
-    sim_port_message,
     typed_fault_from_exc,
     usb_adapter_missing_message,
 )
@@ -239,22 +237,58 @@ def resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
         return config
 
 
+SIM_PORT_MESSAGE = (
+    "SIM: is not a serial port. To test without the device, save the driver, "
+    "add a device that uses it, then Start Simulation."
+)
+SERIAL_SUPPORT_MISSING_MESSAGE = (
+    "This system cannot open serial ports because the pyserial-asyncio "
+    "package is not installed. Install it with pip install pyserial-asyncio, "
+    "then restart OpenAVC."
+)
+
+
 def serial_port_refusal(port: str) -> ConnectionFaultError | None:
     """Why this system will not open ``port`` before trying it, or ``None``.
 
-    THE rule for a serial port that is not one to open. A port typed as
-    ``SIM:<name>`` is a setting error (``invalid_config``): the Simulator is
-    the one way to run a serial device without the equipment, so the sentence
-    names Start Simulation. A system without pyserial-asyncio can open no
-    serial port at all (``client_missing``). Asked by the transport before it
-    opens anything, which the connect and Live Test's raw Send build, and by
-    the connection test, which opens the port with pyserial itself.
+    THE rule for a serial port that is not one to open, and its sentences,
+    which the device card, Live Test and the connection test all show. A port
+    typed as ``SIM:<name>`` is a setting error (``invalid_config``): the
+    Simulator is the one way to run a serial device without the equipment, so
+    the sentence names Start Simulation. A system without pyserial-asyncio can
+    open no serial port at all (``client_missing``). Asked by the transport
+    before it opens anything, which the connect and Live Test's raw Send
+    build, and by the connection test, which opens the port with pyserial
+    itself.
     """
     if port.strip().upper().startswith("SIM:"):
-        return ConnectionFaultError(sim_port_message(), code=INVALID_CONFIG)
+        return ConnectionFaultError(SIM_PORT_MESSAGE, code=INVALID_CONFIG)
     if not HAS_SERIAL:
-        return ConnectionFaultError(serial_support_missing_message(), code=CLIENT_MISSING)
+        return ConnectionFaultError(SERIAL_SUPPORT_MISSING_MESSAGE, code=CLIENT_MISSING)
     return None
+
+
+def _require_openable(port: object, simulate: bool) -> None:
+    """Refuse a port the transport cannot open, before anything is built.
+
+    A serial port is a device path ("COM3", "/dev/ttyUSB0"), never a number.
+    A numeric value means the device was configured with a TCP port: a
+    permanent config error that used to die on a string operation with a
+    bare AttributeError, leaving the device card showing a generic reconnect
+    instead of the fix. Then :func:`serial_port_refusal`, unless the caller
+    asked for the stand-in.
+    """
+    if not isinstance(port, str):
+        raise ConnectionFaultError(
+            f"Serial port must be a device path such as COM3 or "
+            f"/dev/ttyUSB0, not {port!r}. Set the device's port to the "
+            f"serial device path (or use a TCP transport for a network "
+            f"device).",
+            code=INVALID_CONFIG,
+        )
+    refused = None if simulate else serial_port_refusal(port)
+    if refused is not None:
+        raise refused
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -308,28 +342,11 @@ class SerialTransport:
         # names, never the port-name fallback.
         self._traffic_name = name or ""
 
-        # A serial port is a device path ("COM3", "/dev/ttyUSB0"), never a
-        # number. A numeric value means the device was configured with a TCP
-        # port — a permanent config error that used to die on the string
-        # operation below with a bare AttributeError, leaving the device card
-        # showing a generic reconnect instead of the fix.
-        if not isinstance(port, str):
-            raise ConnectionFaultError(
-                f"Serial port must be a device path such as COM3 or "
-                f"/dev/ttyUSB0, not {port!r}. Set the device's port to the "
-                f"serial device path (or use a TCP transport for a network "
-                f"device).",
-                code=INVALID_CONFIG,
-            )
-
         # The stand-in (sends recorded, nothing answers unless sim_receive
         # feeds it) only when the caller asks for it: a SIM: port or a missing
         # serial package is refused, never a device that reads connected.
+        _require_openable(port, simulate)
         self._simulate = simulate
-        if not simulate:
-            refused = serial_port_refusal(port)
-            if refused is not None:
-                raise refused
 
         # Resolve frame parser (same logic as TCP, empty delimiter included)
         if frame_parser is not None:

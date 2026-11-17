@@ -24,20 +24,19 @@ import serial
 import openavc.transport.serial_transport as st
 from openavc.api.models import TestCommandRequest
 from openavc.api.routes import driver_test
-from openavc.core.connection_fault import (
-    CLIENT_MISSING,
-    INVALID_CONFIG,
-    ConnectionFaultError,
-    serial_support_missing_message,
-    sim_port_message,
-)
+from openavc.core.connection_fault import CLIENT_MISSING, INVALID_CONFIG, ConnectionFaultError
 from openavc.core.device_manager import DeviceManager
 from openavc.core.device_reachability import check_reachability
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import _DRIVER_REGISTRY
-from openavc.transport.serial_transport import SerialTransport, serial_port_refusal
+from openavc.transport.serial_transport import (
+    SERIAL_SUPPORT_MISSING_MESSAGE,
+    SIM_PORT_MESSAGE,
+    SerialTransport,
+    serial_port_refusal,
+)
 
 PORT = "/dev/ttyACME0"
 SIM_PORT = "SIM:projector"
@@ -57,11 +56,11 @@ def test_a_sim_port_is_refused_as_a_setting(port):
     refused = serial_port_refusal(port)
     assert isinstance(refused, ConnectionFaultError)
     assert refused.fault_code == INVALID_CONFIG
-    assert str(refused) == sim_port_message()
+    assert str(refused) == SIM_PORT_MESSAGE
 
 
 def test_the_sentence_names_the_way_to_test_without_the_device():
-    sentence = sim_port_message()
+    sentence = SIM_PORT_MESSAGE
     assert sentence.startswith("SIM: is not a serial port.")
     assert "Start Simulation" in sentence
 
@@ -75,12 +74,12 @@ def test_a_missing_serial_package_is_refused(no_serial_package):
     refused = serial_port_refusal(PORT)
     assert isinstance(refused, ConnectionFaultError)
     assert refused.fault_code == CLIENT_MISSING
-    assert str(refused) == serial_support_missing_message()
+    assert str(refused) == SERIAL_SUPPORT_MISSING_MESSAGE
 
 
 def test_a_sim_port_is_named_before_the_missing_package(no_serial_package):
     """The setting is what the author can fix in the form in front of them."""
-    assert str(serial_port_refusal(SIM_PORT)) == sim_port_message()
+    assert str(serial_port_refusal(SIM_PORT)) == SIM_PORT_MESSAGE
 
 
 # --- The transport -------------------------------------------------------------
@@ -92,7 +91,7 @@ async def test_the_transport_refuses_a_sim_port():
             SIM_PORT, on_data=lambda d: None, on_disconnect=lambda: None,
         )
     assert caught.value.fault_code == INVALID_CONFIG
-    assert str(caught.value) == sim_port_message()
+    assert str(caught.value) == SIM_PORT_MESSAGE
 
 
 async def test_the_transport_refuses_every_port_without_the_serial_package(no_serial_package):
@@ -101,7 +100,7 @@ async def test_the_transport_refuses_every_port_without_the_serial_package(no_se
             PORT, on_data=lambda d: None, on_disconnect=lambda: None,
         )
     assert caught.value.fault_code == CLIENT_MISSING
-    assert str(caught.value) == serial_support_missing_message()
+    assert str(caught.value) == SERIAL_SUPPORT_MISSING_MESSAGE
 
 
 async def test_the_stand_in_opens_only_when_asked_for(no_serial_package):
@@ -163,7 +162,7 @@ async def test_a_device_on_a_sim_port_is_offline_with_the_sentence(device_manage
 
     assert dm.state.get("device.w1.connected") is False
     assert dm.state.get("device.w1.offline_reason") == INVALID_CONFIG
-    assert dm.state.get("device.w1.offline_detail") == sim_port_message()
+    assert dm.state.get("device.w1.offline_detail") == SIM_PORT_MESSAGE
 
 
 async def test_a_serial_device_without_the_package_is_offline_with_the_sentence(
@@ -174,7 +173,7 @@ async def test_a_serial_device_without_the_package_is_offline_with_the_sentence(
 
     assert dm.state.get("device.w1.connected") is False
     assert dm.state.get("device.w1.offline_reason") == CLIENT_MISSING
-    assert dm.state.get("device.w1.offline_detail") == serial_support_missing_message()
+    assert dm.state.get("device.w1.offline_detail") == SERIAL_SUPPORT_MISSING_MESSAGE
 
 
 # --- The Driver Builder's Live Test --------------------------------------------
@@ -199,7 +198,7 @@ async def test_live_tests_raw_send_refuses_a_sim_port():
 
     assert result["success"] is False
     assert result["received"] == []
-    assert result["error"] == sim_port_message()
+    assert result["error"] == SIM_PORT_MESSAGE
 
 
 async def test_live_tests_defined_command_refuses_a_sim_port():
@@ -209,7 +208,7 @@ async def test_live_tests_defined_command_refuses_a_sim_port():
 
     assert result["success"] is False
     assert result["received"] == []
-    assert result["error"] == f"Connect failed: {sim_port_message()}"
+    assert result["error"] == f"Connect failed: {SIM_PORT_MESSAGE}"
 
 
 async def test_live_tests_raw_send_refuses_without_the_package(no_serial_package):
@@ -218,7 +217,7 @@ async def test_live_tests_raw_send_refuses_without_the_package(no_serial_package
     ))
 
     assert result["success"] is False
-    assert result["error"] == serial_support_missing_message()
+    assert result["error"] == SERIAL_SUPPORT_MISSING_MESSAGE
 
 
 # --- Test Connection -----------------------------------------------------------
@@ -253,7 +252,7 @@ async def test_test_connection_refuses_a_sim_port_in_the_cards_words(probed):
     result = await check_reachability(_device(SIM_PORT))
 
     assert result["success"] is False
-    assert result["error"] == sim_port_message()
+    assert result["error"] == SIM_PORT_MESSAGE
     assert probed == []
 
 
@@ -261,7 +260,7 @@ async def test_test_connection_refuses_without_the_package(probed, no_serial_pac
     result = await check_reachability(_device(PORT))
 
     assert result["success"] is False
-    assert result["error"] == serial_support_missing_message()
+    assert result["error"] == SERIAL_SUPPORT_MISSING_MESSAGE
     assert probed == []
 
 
