@@ -163,6 +163,9 @@ class PanelApp {
         // bindings, their element maps (element_id -> {el, elementDef}), their
         // timers and what else each ends.
         this._surfaces = new Surfaces();
+        // The page draw under way, if any, and whether another was asked for
+        // while it ran (renderCurrentPage).
+        this._pageDraw = null;
         // Whether what a control shows can be believed and whether a press on
         // it can land, and Preview's copy of what each press reaches
         // (modules/availability.js).

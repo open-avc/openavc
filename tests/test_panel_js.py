@@ -413,6 +413,7 @@ SCENARIOS = [
     "a_theme_that_lands_after_a_dialog_opened_leaves_it_open",
     "a_definition_with_no_pages_ends_the_page_and_every_dialog",
     "a_draw_asked_for_inside_a_draw_runs_after_it",
+    "a_draw_that_fails_leaves_the_next_one_free_to_draw",
     # The surface record (modules/surface.js): its timers cleared and its
     # ends run once, and whatever is given after it ended ended at once; a
     # page that goes starts none of the entry animations it had still to start.

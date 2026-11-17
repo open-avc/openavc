@@ -11760,6 +11760,32 @@ Object.assign(tests, {
             app.root.textContent = '';
         }
     },
+
+    a_draw_that_fails_leaves_the_next_one_free_to_draw() {
+        const app = mkApp();
+        app.send = () => {};
+        app.uiDef = pinUi('fails', [pinPage('home', { elements: [pinLabel('a')], placements: { a: box(1) } })]);
+        app.currentPage = 'home';
+        app.snapshotReceived = true;
+        // The first control drawn fails, once.
+        const draw = app.renderElement.bind(app);
+        let failed = false;
+        app.renderElement = (def) => {
+            if (!failed) { failed = true; throw new Error('a control failed to draw'); }
+            return draw(def);
+        };
+        try {
+            let threw = false;
+            try { app.renderCurrentPage(); } catch (e) { threw = true; }
+            assert(threw, 'the failing draw did not fail');
+            app.renderCurrentPage();
+            const pages = app.root.querySelectorAll(':scope > .panel-page');
+            assert(pages.length === 1, `${pages.length} pages in the root after the next draw, not 1`);
+            assert(pages[0].querySelector('[data-element-id="a"]'), 'the next draw did not draw the page');
+        } finally {
+            app.root.textContent = '';
+        }
+    },
 });
 
 // --- Layout: which arrangement draws, and where each element goes -----------
