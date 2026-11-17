@@ -1357,6 +1357,56 @@ class TestCommandHandler:
         assert applied == []
         assert sent and sent[-1][1]["success"] is True
 
+    @pytest.mark.parametrize("failure,says", [
+        ("write", "Not applied: Could not save the project. The disk is full. "
+                  "Free up disk space and try again."),
+        ("reconcile", "Not applied: the reconcile failed"),
+    ])
+    @pytest.mark.asyncio
+    async def test_a_push_the_system_does_not_run_answers_not_applied(self, tmp_path, failure, says):
+        """The apply failed, so the project before the push still runs and
+        its file is as it was: the answer says the push was not applied and
+        why, with no path on this system in it."""
+        import errno
+        import json
+        from openavc.cloud.command_handler import CommandHandler
+        from openavc.core.device_manager import DeviceManager
+        from openavc.core.event_bus import EventBus
+        from openavc.core.project_loader import ProjectSaveError
+        from openavc.core.state_store import StateStore
+
+        sent = []
+
+        class MockAgent:
+            async def send_message(self, msg_type, payload):
+                sent.append((msg_type, payload))
+
+        project_path = tmp_path / "project.avc"
+        project_path.write_text(
+            json.dumps({"openavc_version": "0.7.0", "project": {"id": "old", "name": "Old"}}),
+            encoding="utf-8",
+        )
+
+        async def apply_fn(project, **kwargs):
+            if failure == "write":
+                raise ProjectSaveError(OSError(errno.ENOSPC, "No space left on device", str(project_path)))
+            raise RuntimeError("the reconcile failed")
+
+        events = EventBus()
+        handler = CommandHandler(
+            MockAgent(), DeviceManager(StateStore(), events), events,
+            apply_fn=apply_fn, project_path=str(project_path),
+        )
+        await handler._handle_config_push(
+            {"project_json": {"openavc_version": "0.7.0", "project": {"id": "pushed", "name": "Room"}},
+             "mode": "full_replace"},
+            "req-cfg3", "tech@x.com",
+        )
+
+        assert sent[-1][1]["success"] is False
+        assert sent[-1][1]["error"] == says
+        assert str(tmp_path) not in sent[-1][1]["error"]
+
 
 # ===========================================================================
 # State Relay Tests

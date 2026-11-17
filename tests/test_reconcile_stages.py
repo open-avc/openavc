@@ -6,8 +6,10 @@ last first, the one that raised included. The parametrized test fails the
 apply right after each stage in turn, for an edit and for a whole new
 project, and compares what the system runs (variables and their saved
 values, devices, plugins, macros, groups, triggers, scripts, the mesh
-settings, the advertised name) with what it ran before. A stage added without an undo that puts
-back what it changed fails here.
+settings, the advertised name, the project file) with what it ran before. A
+stage added without an undo that puts back what it changed fails here. The
+file is written only once every stage has run, so a change whose write fails
+(a full disk) is undone the same way.
 
 The saved-value tests are the case that went wrong: a deleted variable's
 saved value was gone from state.json after a failed apply, and the next edit
@@ -17,6 +19,7 @@ brought the variable back on its default.
 from __future__ import annotations
 
 import copy
+import errno
 import json
 import textwrap
 
@@ -28,7 +31,7 @@ from openavc.core import project_reconcile
 from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.engine import Engine
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
-from openavc.core.project_loader import ProjectConfig, load_project
+from openavc.core.project_loader import ProjectConfig, ProjectSaveError, load_project
 from openavc.core.project_reconcile import RECONCILE_STAGES, ReconcileRun
 from openavc.core.script_engine import ScriptEngine
 
@@ -237,6 +240,7 @@ def _what_runs(eng) -> dict:
         "scripts": {sid: sorted(names) for sid, names in eng.scripts._handler_names.items()},
         "mesh": eng.isc.settings.get("shared_state_patterns"),
         "project name": eng.state.get("system.project_name"),
+        "project file": eng.project_path.read_bytes(),
     }
 
 
@@ -281,6 +285,32 @@ async def test_a_change_that_fails_after_any_stage_leaves_the_system_as_it_was(
     # The binding follows its source again, the previous project's.
     eng.state.set("var.poke", "pressed", source="test")
     assert eng.state.get("var.mirror") == "pressed"
+    await eng.triggers.stop()
+    eng.scripts.unload_all()
+
+
+@pytest.mark.parametrize("origin", list(ProjectOrigin))
+@pytest.mark.asyncio
+async def test_a_change_whose_file_cannot_be_written_leaves_the_system_as_it_was(
+    tmp_path, monkeypatch, origin,
+):
+    """Every stage ran, then the write failed (a full disk): each stage is
+    undone, and the save's own error is what the caller hears."""
+    eng = await _running_engine(tmp_path)
+    before = _what_runs(eng)
+    previous = eng.project
+
+    async def no_room(path, project):
+        raise ProjectSaveError(OSError(errno.ENOSPC, "No space left on device"))
+
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", no_room)
+
+    with pytest.raises(ProjectSaveError, match="disk is full"):
+        await eng.apply_project(ProjectConfig(**_after()), origin=origin)
+
+    assert eng.project is previous
+    assert _what_runs(eng) == before
+    eng.mdns_advertiser.update_name.assert_not_called()
     await eng.triggers.stop()
     eng.scripts.unload_all()
 

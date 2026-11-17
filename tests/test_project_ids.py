@@ -160,10 +160,11 @@ async def test_failed_reconcile_keeps_ownership_on_the_runtime_project(host, mon
         raise RuntimeError("injected reconcile failure")
     monkeypatch.setattr(engine, "_reconcile", fail)
     monkeypatch.setattr(engine, "_rollback_reconcile", AsyncMock())
+    before = path.read_bytes()
     with pytest.raises(RuntimeError, match="injected reconcile failure"):
         await engine.apply_project(proposed, origin=ProjectOrigin.LOAD)
     assert engine.project is project and engine.installed_equipment.owns("amplifier")
     assert not engine.installed_equipment.owns("local_2")
-    # Ordinary core preserves the new file while rolling back runtime state.
-    assert any(d.id == "local_2" for d in load_project(path).devices)
+    # The file is written only once a change runs: it still holds the project put back.
+    assert path.read_bytes() == before
     engine._rollback_reconcile.assert_awaited_once()

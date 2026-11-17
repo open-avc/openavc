@@ -103,6 +103,27 @@ async def test_a_clean_apply_marks_the_project_for_the_next_backup(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_the_project_is_marked_for_a_backup_only_once_its_file_holds_the_change(tmp_path):
+    """The timed backup copies the file without the reload lock: one taken
+    while the change is still being reconciled copies the file before it,
+    so the change is not marked until it is written."""
+    eng = _engine(tmp_path)
+    eng._dirty_since_backup = False
+    seen = []
+    reconcile = eng._reconcile
+
+    async def look(run):
+        await reconcile(run)
+        seen.append(eng._dirty_since_backup)
+
+    eng._reconcile = look
+    await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
+
+    assert seen == [False]
+    assert eng._dirty_since_backup is True
+
+
+@pytest.mark.asyncio
 async def test_a_rollback_that_fails_too_still_raises_the_reconcile_failure(tmp_path, caplog):
     eng = _engine(tmp_path)
 

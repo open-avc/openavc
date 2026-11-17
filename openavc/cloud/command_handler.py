@@ -34,6 +34,15 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 
+def _not_applied_reason(exc: Exception) -> str:
+    """Why a config push was not applied, for the cloud to show: a failed
+    save says why without this system's path or the operating system's
+    text."""
+    from openavc.core.project_loader import ProjectSaveError
+
+    return exc.reason if isinstance(exc, ProjectSaveError) else str(exc)
+
+
 class CommandHandler:
     """
     Handles incoming commands from the cloud and delegates to local subsystems.
@@ -247,10 +256,13 @@ class CommandHandler:
 
                 # Include previous config in result for rollback
                 result_data = {"previous_project_json": previous_json} if previous_json else "Config applied"
-                await self._send_result(request_id, True, result=result_data)
             except Exception as e:
-                # Catch-all: config push involves file I/O, validation, and engine reload
-                await self._send_result(request_id, False, error=str(e))
+                # A push that fails anywhere (the backup, the apply, its write)
+                # was not taken in: the project before it still runs, and its
+                # file is as it was.
+                await self._send_result(request_id, False, error=f"Not applied: {_not_applied_reason(e)}")
+                return
+            await self._send_result(request_id, True, result=result_data)
         else:
             await self._send_result(request_id, False, error="Reload not available")
 

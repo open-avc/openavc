@@ -36,6 +36,7 @@ from openavc.core.device_logins import (
     PARAM,
     SAVED_LOGIN,
     FoundLogin,
+    LoginChange,
     StoreView,
     held_as_saved,
     in_project,
@@ -177,6 +178,23 @@ class ProjectLoginsMixin:
         except Exception:  # a move that fails leaves every login where it was
             log.exception("Could not move the device logins out of the project")
             return project
+
+    def _move_logins_recorded(self, project: ProjectConfig, *, typed: bool) -> tuple[ProjectConfig, LoginChange]:
+        """``_move_logins``, and what it wrote to the login file: a project
+        change files its logins before it runs (its devices dial with them),
+        and ``_take_back_logins`` gives them back when it does not run."""
+        return self.device_logins.recorded(functools.partial(self._move_logins, project, typed=typed))
+
+    def _take_back_logins(self, change: LoginChange) -> None:
+        """Put back what a change that did not run filed in the login file,
+        before the previous project's devices dial again. Logged, never
+        raised: the caller is already answering the change's own failure."""
+        if not change:
+            return
+        try:
+            self.device_logins.take_back(change)
+        except Exception:
+            log.exception("Could not put the login file back after a project change that did not run")
 
     async def _adopt_moved_logins(self, moved: ProjectConfig) -> bool:
         """``moved`` (a ``_move_logins`` of the running project) as the

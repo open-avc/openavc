@@ -2,10 +2,12 @@
 engine runs, and the revision every such change is saved under.
 
 Two kinds of change. An **applied** one (``apply_project`` and the doors
-built on it) is taken in, saved, compared with the running project, swapped
-in and reconciled (``core/project_reconcile.py``), undone on the runtime if the
-swap or the reconcile fails, and then announced; the announcement cannot turn
-a change that is already running into a failure. What an applied change did
+built on it) is taken in, compared with the running project, swapped in,
+reconciled (``core/project_reconcile.py``) and only then saved, so the file
+always holds what runs: a failure in the swap, the reconcile or the write (a
+full disk) puts the runtime and the logins the change filed back, with the
+file not written, and the change is not applied. Then it is announced; the
+announcement cannot turn a change that is already running into a failure. What an applied change did
 is its ``ApplyOutcome``, THE answer every door gives from: the revision it
 runs under and each part of it the system could not run (a device, a plugin,
 a script), with why. A part that failed is said by its own surface until it
@@ -33,6 +35,7 @@ from typing import Any
 
 from openavc.core import project_update
 from openavc.core.client_origin import reload_origin
+from openavc.core.device_logins import LoginChange
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import (
     ProjectConfig,
@@ -61,6 +64,20 @@ class ApplyOutcome:
 
     revision: str
     failed: tuple[FailedPart, ...] = ()
+
+
+@dataclass(frozen=True)
+class _TakenIn:
+    """A project change as this system will run it, before it runs:
+    ``as_given`` has the installed equipment composed in, ``project`` also
+    has its logins moved out (the same object when none moved), ``logins``
+    is what that move filed in the login file (taken back if the change does
+    not run), and ``write`` is whether the file is saved once it runs."""
+
+    as_given: ProjectConfig
+    project: ProjectConfig
+    logins: LoginChange
+    write: bool
 
 
 async def _call(callback) -> None:
@@ -142,9 +159,10 @@ class ProjectChangesMixin:
         """The one way a project change enters the engine.
 
         Checks optimistic concurrency (``expected_revision=None`` skips the
-        check), persists the bytes, swaps the in-memory project, bumps the
-        revision, and reconciles only the subsystems the change actually
-        touches. Returns its outcome.
+        check), swaps the in-memory project, bumps the revision, reconciles
+        only the subsystems the change actually touches, and then saves the
+        bytes. Returns its outcome; raises, with the previous project running
+        and the file as it was, when the change could not be taken in.
 
         The revision compare must happen under the same lock that increments
         ``_project_revision``. Checked outside it, two concurrent saves can
@@ -243,36 +261,34 @@ class ProjectChangesMixin:
         reassigned_equipment: str | None = None,
     ) -> ApplyOutcome:
         """Body of :meth:`apply_project` once any revision is checked; caller
-        holds ``_reload_lock``. The project is taken in (and saved), compared
-        with the running one, swapped in and reconciled (all of it undone on
-        a failure), and then announced. Returns the outcome, which a failure
-        in the announcing no longer changes: the change is running."""
-        as_given, new_project = await self._take_in(
-            new_project, origin, persist, reassigned_equipment
-        )
+        holds ``_reload_lock``. The project is taken in, compared with the
+        running one, swapped in, reconciled and saved (all of it undone on a
+        failure, the file never written), and then announced. Returns the
+        outcome, which a failure in the announcing no longer changes: the
+        change is running."""
+        taken = self._take_in(new_project, origin, persist, reassigned_equipment)
         if origin is ProjectOrigin.LOAD:
             diff = ProjectDiff.all_dirty()
         else:
             # Against the project as it was given: a login typed over the
             # marker leaves the marker in place, and the device still has to
             # reconnect with the new login.
-            diff = ProjectDiff.compute(self.project, as_given)
-        run = await self._swap_in(new_project, diff, origin)
+            diff = ProjectDiff.compute(self.project, taken.as_given)
+        run = await self._swap_in(taken, diff, origin)
         outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
         await self._announce_applied(diff, origin, outcome)
         return outcome
 
-    async def _take_in(
+    def _take_in(
         self,
         new_project: ProjectConfig,
         origin: ProjectOrigin,
         persist: bool,
         reassigned_equipment: str | None,
-    ) -> tuple[ProjectConfig, ProjectConfig]:
-        """The project as this system will run it, saved: ``(as_given,
-        project)``, where ``as_given`` has the installed equipment composed in
-        and ``project`` also has its logins moved out (the same object when
-        none moved)."""
+    ) -> _TakenIn:
+        """The project as this system will run it, not yet running or saved
+        (``_TakenIn``): the installed equipment composed in and its logins
+        moved into the login file, which its devices dial with."""
         if persist:
             # Every door that saves a device's settings ends here, so this is
             # where a stray space typed around an address or a login comes off
@@ -283,7 +299,6 @@ class ProjectChangesMixin:
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
             # A word a later release saved stays; one this edit adds is refused.
             refuse_new_words(self.project, new_project)
-        loaded_project = new_project
         as_given = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
         # Every project that comes in ends here, so this is where a login it
         # holds in the clear moves into this system's login file and the
@@ -292,30 +307,23 @@ class ProjectChangesMixin:
         # import, a push) only fills a gap. No backup is taken here, unlike at
         # start: the copy that came in is still where it came from (the
         # backup restored, the library, the cloud), and its logins are in the
-        # file, read back, before the marker is written.
-        project = self._move_logins(as_given, typed=origin is ProjectOrigin.EDIT)
+        # file, read back, before the marker is written. Before the swap, as
+        # the devices dial with them; taken back if the change does not run.
+        project, logins = self._move_logins_recorded(as_given, typed=origin is ProjectOrigin.EDIT)
         # A file reload can insert host equipment too. Preserve that reference
         # on disk even when the caller did not request another project save.
-        if persist or project != loaded_project:
-            # save_project stamps the derived dependency lists onto the
-            # object in place, so after this await the project matches the
-            # bytes on disk exactly — no re-read or re-validation needed.
-            await save_project_async(self.project_path, project)
-            # The crash copy is the file this save replaced, which held the
-            # logins just moved when they came in on disk (a backup restored,
-            # a bare push).
-            if project is not as_given:
-                await asyncio.to_thread(refresh_crash_copy, self.project_path)
-        return as_given, project
+        return _TakenIn(as_given, project, logins, write=persist or project != new_project)
 
     async def _swap_in(
-        self, new_project: ProjectConfig, diff: ProjectDiff, origin: ProjectOrigin
+        self, taken: _TakenIn, diff: ProjectDiff, origin: ProjectOrigin
     ) -> ReconcileRun:
-        """Make ``new_project`` the running project under a new revision and
-        reconcile to it; the reconcile's run, with the parts it could not
-        run. Everything from the swap on is inside the guard: a failure in
-        the swap, the settings, the revision or the reconcile puts the
-        runtime back on the project it ran before, and raises."""
+        """Make ``taken.project`` the running project under a new revision,
+        reconcile to it, and then save it; the reconcile's run, with the
+        parts it could not run. The file is written last, so it always holds
+        what runs. Everything from the swap on is inside the guard: a failure
+        in the swap, the settings, the revision, the reconcile or the write
+        (a full disk) puts the runtime and the login file back on the project
+        before, with the file not written, and raises."""
         previous = (
             self.project, self._project_revision, self._revision_counter,
             self._dirty_since_backup,
@@ -327,30 +335,45 @@ class ProjectChangesMixin:
             # Swapping self.project IS the UI reload: UI dispatch looks
             # elements up at event time, so a UI-only change needs nothing
             # beyond this swap and the ui.definition broadcast after it.
-            self.project = new_project
+            self.project = taken.project
             self._apply_project_settings()
             self._project_revision = self._new_revision()
-            self._dirty_since_backup = True
             await self._reconcile(run)
+            if taken.write:
+                # save_project stamps the derived dependency lists onto the
+                # running project in place, so after this await it matches
+                # the bytes on disk exactly.
+                await save_project_async(self.project_path, taken.project)
+            # Once the file holds the change: the timed backup does not take
+            # the reload lock, and one taken mid-apply copies the file before.
+            self._dirty_since_backup = True
         except Exception:
             log.error("Project apply failed, rolling back to previous "
                       "project state", exc_info=True)
-            await self._roll_back(previous, run)
+            await self._roll_back(previous, run, taken.logins)
             raise
+        if taken.write and taken.project is not taken.as_given:
+            # The crash copy is the file this save replaced, which held the
+            # logins just moved when they came in on disk (a backup restored,
+            # a bare push). The save has landed, so a failure here is logged.
+            await _call_logged(
+                partial(asyncio.to_thread, refresh_crash_copy, self.project_path),
+                "Project applied, but its crash copy still holds the logins it moved",
+            )
         return run
 
-    async def _roll_back(self, previous: tuple, run: ReconcileRun) -> None:
-        """The runtime back on the project it ran before a failed swap or
-        reconcile. The project, revision, count and backup flag go back
-        first, so a failure in what follows cannot leave the new revision on
-        the old project; then the settings, then each reconcile stage the
-        change entered is undone, last first (``core/project_reconcile.py``).
-        Each is logged on a failure and never raises, so the caller hears
-        the original one."""
+    async def _roll_back(self, previous: tuple, run: ReconcileRun, logins: LoginChange) -> None:
+        """The runtime back on the project it ran before a failed swap,
+        reconcile or write. The project, revision, count and backup flag go
+        back first, so a failure in what follows cannot leave the new
+        revision on the old project; then the settings and the logins the
+        change filed, then each reconcile stage the change entered is
+        undone, last first (``core/project_reconcile.py``). Each is logged on
+        a failure and never raises, so the caller hears the original one."""
         self.project, revision, counter, dirty = previous
         # The counter goes back too, so it stays a count of COMMITTED
         # saves. The token minted above never left the process (nothing
-        # is broadcast or returned until the reconcile succeeds), so the
+        # is broadcast or returned until the change is saved), so the
         # next save may safely mint it again.
         self._project_revision = revision
         self._revision_counter = counter
@@ -359,10 +382,10 @@ class ProjectChangesMixin:
             self._apply_project_settings,
             "Rollback could not put the previous project's settings back",
         )
-
-        # The new bytes stay on disk deliberately: the file is the source
-        # of truth and the user's edit must survive a runtime hiccup.
-        # Rollback restores the RUNTIME to the previous project.
+        # Before the stages: the devices' undo dials them again, with the
+        # logins in the file.
+        self._take_back_logins(logins)
+        # Nothing was written: the file still holds the project put back.
         await _call_logged(
             partial(self._rollback_reconcile, run), "Rollback re-sync also failed",
         )

@@ -181,8 +181,10 @@ async def test_a_save_answers_while_its_devices_are_still_connecting(
         await asyncio.wait_for(eng.apply_project(new), timeout=5)
 
         assert eng.devices.get_driver("d1") is not None, "device is registered"
+        # Not connected: its connect is held at the gate. Whether the
+        # bring-up has picked it up yet is not pinned: it may start while the
+        # project file is written, which comes after the reconcile.
         assert eng.state.get("device.d1.connected") is False
-        assert eng.devices.is_connect_deferred("d1")
 
         slow_driver.gate.set()
         await asyncio.wait_for(eng.wait_for_device_bringup(), timeout=5)

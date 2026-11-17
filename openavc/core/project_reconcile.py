@@ -245,9 +245,9 @@ class ProjectReconcileMixin:
         #
         # Nothing here dials a device. Registration is in-memory and
         # instant; connecting is a network wait per device, and a save
-        # that holds it is a save that can be reported as FAILED by a
-        # client timeout after the bytes are already on disk. The
-        # bring-up runs after this reconcile answers — see
+        # that holds it is a save a client timeout can report as FAILED
+        # though it went through. The bring-up runs after this reconcile
+        # answers (it may start while the project file is written) — see
         # _schedule_device_bringup.
         await self._sync_devices(defer_connect=True)
 

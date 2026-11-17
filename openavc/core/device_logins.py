@@ -141,7 +141,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, TypeVar
 
 from openavc.core import plugin_secrets, saved_params
 from openavc.drivers.registry import get_driver_class
@@ -185,6 +185,7 @@ ISC_FIELD = "auth_key"
 
 #: An entry's key: (library id or None for the running project, *owner).
 _Key = tuple[str | None, str, str, str]
+T = TypeVar("T")
 
 
 def device_owner(device_id: str, driver: str) -> Owner:
@@ -209,6 +210,22 @@ class LoginFileUnreadable(RuntimeError):
 class _Entry:
     fields: dict[str, str]
     removed_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class LoginChange:
+    """What one write did to the login file (``DeviceLogins.recorded``): each
+    entry it touched, as it was before and after. False when it changed
+    nothing."""
+
+    before: dict[_Key, _Entry | None]
+    after: dict[_Key, _Entry | None]
+
+    def __bool__(self) -> bool:
+        return bool(self.before)
+
+
+NO_LOGIN_CHANGE = LoginChange({}, {})
 
 
 @dataclass(frozen=True)
@@ -422,6 +439,41 @@ class DeviceLogins:
                     entries[key] = _Entry(saved, None)
                     changed = True
             if changed:
+                self._commit(entries)
+
+    # --- a change taken back ---------------------------------------------------
+
+    def recorded(self, write: Callable[[], T]) -> tuple[T, LoginChange]:
+        """Run ``write`` holding this file, and what it changed in it:
+        ``write``'s result, and a ``LoginChange`` that ``take_back`` puts back.
+        For a project change that files its logins before it runs, and must
+        give them back when it does not."""
+        with self._lock:
+            self._load()
+            start = self._entries
+            result = write()
+            end = self._entries
+        keys = {key for key in start.keys() | end.keys() if start.get(key) != end.get(key)}
+        return result, LoginChange(
+            {key: start.get(key) for key in keys}, {key: end.get(key) for key in keys},
+        )
+
+    def take_back(self, change: LoginChange) -> None:
+        """Put each login ``change`` wrote back as it was before it (one it
+        replaced comes back, one it added goes), except where something has
+        changed it since. Raises LoginFileUnreadable when the file cannot be
+        written."""
+        with self._lock:
+            self._load()
+            entries = dict(self._entries)
+            for key, was in change.before.items():
+                if entries.get(key) != change.after.get(key):
+                    continue
+                if was is None:
+                    entries.pop(key, None)
+                else:
+                    entries[key] = was
+            if entries != self._entries:
                 self._commit(entries)
 
     def adopt_library(self, library: str, owners: Presence) -> None:

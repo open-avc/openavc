@@ -521,6 +521,157 @@ async def test_a_typed_login_replaces_the_saved_one_and_the_device_reconnects_wi
         await _stop(engine)
 
 
+def _fail_after_devices(engine, monkeypatch) -> None:
+    """The change's devices are synced, then the reconcile raises."""
+    forward = engine._reconcile_devices
+
+    async def then_fail(run):
+        await forward(run)
+        raise RuntimeError("the reconcile failed")
+
+    monkeypatch.setattr(engine, "_reconcile_devices", then_fail)
+
+
+def _fail_the_write(engine, monkeypatch) -> None:
+    """The change runs, then the project file cannot be written."""
+    import errno
+
+    from openavc.core.project_loader import ProjectSaveError
+
+    async def no_room(path, project):
+        raise ProjectSaveError(OSError(errno.ENOSPC, "No space left on device"))
+
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", no_room)
+
+
+_FAILURES = {"reconcile": (_fail_after_devices, "the reconcile failed"),
+             "write": (_fail_the_write, "disk is full")}
+
+
+@pytest.mark.parametrize("failure", list(_FAILURES))
+async def test_a_typed_login_in_a_change_that_does_not_run_is_taken_back(engine, data, monkeypatch, failure):
+    """The saved login is the one the device keeps dialing, and the project
+    file is as it was."""
+    from openavc.core.project_loader import save_project
+
+    engine.project = _project(SAVED_LOGIN)
+    save_project(engine.project_path, engine.project)
+    before = engine.project_path.read_bytes()
+    engine.device_logins.save("proj1", DRIVER, {"password": "Old-Pass"})
+    fail, says = _FAILURES[failure]
+    try:
+        with patch("openavc.transport.tcp.TCPTransport.create", AsyncMock()):
+            await engine._sync_devices(defer_connect=True)
+            fail(engine, monkeypatch)
+            with pytest.raises(Exception, match=says):
+                await engine.apply_project(_project("New-Pass"))
+
+        assert DeviceLogins(data).login("proj1", DRIVER, "password") == "Old-Pass"
+        assert engine.devices.get_device_config("proj1")["config"]["password"] == "Old-Pass"
+        assert engine.project_path.read_bytes() == before
+    finally:
+        await _stop(engine)
+
+
+@pytest.mark.parametrize("failure", list(_FAILURES))
+async def test_a_new_login_in_a_change_that_does_not_run_is_not_kept(engine, data, monkeypatch, failure):
+    from openavc.core.project_loader import save_project
+
+    engine.project = ProjectConfig(project=ProjectMeta(id="p1", name="Hall"))
+    save_project(engine.project_path, engine.project)
+    before = engine.project_path.read_bytes()
+    fail, says = _FAILURES[failure]
+    try:
+        with patch("openavc.transport.tcp.TCPTransport.create", AsyncMock()):
+            fail(engine, monkeypatch)
+            with pytest.raises(Exception, match=says):
+                await engine.apply_project(_project("First-Pass"))
+
+        assert DeviceLogins(data).login("proj1", DRIVER, "password") is None
+        assert engine.project.devices == []
+        assert engine.project_path.read_bytes() == before
+    finally:
+        await _stop(engine)
+
+
+async def test_a_file_holding_a_login_leaves_none_in_its_crash_copy_once_saved(engine, data):
+    """A bare push or a hand-edited file: the reload moves the login out and
+    saves, and the crash copy is then the file as saved, not the one with
+    the login in it."""
+    _write(engine.project_path, _document("Disk-Pass"))
+    try:
+        with patch("openavc.transport.tcp.TCPTransport.create", AsyncMock()):
+            await engine.reload_project()
+
+        crash_copy = engine.project_path.with_suffix(".avc.bak")
+        assert "Disk-Pass" not in crash_copy.read_text(encoding="utf-8")
+        assert _on_disk(engine.project_path)["connections"]["proj1"]["password"] == SAVED_LOGIN
+    finally:
+        await _stop(engine)
+
+
+async def test_a_crash_copy_that_cannot_be_refreshed_leaves_the_change_applied(engine, data, monkeypatch):
+    def refused(path):
+        raise PermissionError("the crash copy is read-only")
+
+    monkeypatch.setattr("openavc.core.project_changes.refresh_crash_copy", refused)
+    _write(engine.project_path, _document("Disk-Pass"))
+    try:
+        with patch("openavc.transport.tcp.TCPTransport.create", AsyncMock()):
+            await engine.reload_project()
+
+        assert engine.project.connections["proj1"]["password"] == SAVED_LOGIN
+        assert _on_disk(engine.project_path)["connections"]["proj1"]["password"] == SAVED_LOGIN
+        assert DeviceLogins(data).login("proj1", DRIVER, "password") == "Disk-Pass"
+        assert engine._revision_counter == 1
+    finally:
+        await _stop(engine)
+
+
+def test_taking_back_a_move_puts_each_login_back_as_it_was(tmp_path):
+    """A login it replaced comes back, one it added goes, one removed stays
+    removed, and the others are left alone."""
+    store = DeviceLogins(tmp_path)
+    store.save("proj1", DRIVER, {"password": "Old-Pass"})
+    store.save("gone", DRIVER, {"password": "Gone-Pass"})
+    store.sweep([("proj1", DRIVER)], now=NOW)
+    store.save("other", DRIVER, {"password": "Other-Pass"})
+    project = _project("New-Pass", api_key="k-new")
+    project.devices.append(DeviceConfig(id="gone", driver=DRIVER, name="Gone"))
+    project.connections["gone"] = {"host": "192.0.2.11", "password": "Back-Pass"}
+    before = DeviceLogins(tmp_path)._read()
+
+    moved, change = store.recorded(lambda: move_logins(project, store, typed=True))
+    assert moved is not project
+    assert DeviceLogins(tmp_path).login("gone", DRIVER, "password") == "Back-Pass"
+
+    store.take_back(change)
+
+    assert DeviceLogins(tmp_path)._read() == before
+    assert store.login("proj1", DRIVER, "password") == "Old-Pass"
+    assert store.login("proj1", DRIVER, "api_key") is None
+
+
+def test_taking_back_a_move_leaves_a_login_changed_since_as_it_is(tmp_path):
+    store = DeviceLogins(tmp_path)
+    store.save("proj1", DRIVER, {"password": "Old-Pass"})
+    _moved, change = store.recorded(lambda: move_logins(_project("New-Pass"), store, typed=True))
+    store.save("proj1", DRIVER, {"password": "Typed-Since"})
+
+    store.take_back(change)
+
+    assert DeviceLogins(tmp_path).login("proj1", DRIVER, "password") == "Typed-Since"
+
+
+def test_a_move_that_wrote_nothing_has_nothing_to_take_back(tmp_path):
+    store = DeviceLogins(tmp_path)
+    moved, change = store.recorded(lambda: move_logins(_project(SAVED_LOGIN), store, typed=True))
+
+    assert not change
+    store.take_back(change)
+    assert list(tmp_path.iterdir()) == []
+
+
 async def test_a_save_that_sends_the_marker_back_keeps_the_saved_login(engine, data):
     engine.project = _project(SAVED_LOGIN)
     engine.device_logins.save("proj1", DRIVER, {"password": "Kept-Pass"})

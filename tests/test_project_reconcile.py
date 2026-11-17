@@ -13,8 +13,9 @@ Pins the scoped-reconcile contract of Engine.apply_project:
   device sync
 - script edits reload only the scripts that actually changed
 - a reconcile failure undoes only the stages the failed pass entered,
-  while the saved bytes stay on disk (persist-first); every stage failing
-  in turn is tests/test_reconcile_stages.py
+  and the file is left as it was: it is written only once the running
+  system has taken the change, and a write that fails puts the running
+  system back; every stage failing in turn is tests/test_reconcile_stages.py
 - the optimistic-concurrency compare-and-set lives inside apply_project
 - ProjectDiff classifies section changes and ignores derived fields
 """
@@ -216,7 +217,7 @@ async def test_ui_edit_does_not_disturb_runtime(tmp_path):
     assert types == ["ui.definition", "project.reloaded"]
     assert broadcasts[1]["revision"] == eng._project_revision
 
-    # The bytes landed on disk (persist-first).
+    # The bytes landed on disk once the change was running.
     on_disk = json.loads(Path(eng.project_path).read_text(encoding="utf-8"))
     assert on_disk["ui"]["pages"][0]["elements"][0]["id"] == "btn1"
 
@@ -443,8 +444,8 @@ async def test_apply_project_occ_conflict(tmp_path):
 @pytest.mark.asyncio
 async def test_failed_variable_edit_rolls_back_scoped(tmp_path):
     """A reconcile failure on a variables-only edit restores the runtime
-    (project, revision, trigger listeners) without re-syncing devices —
-    and the new bytes stay on disk (the file is the source of truth)."""
+    (project, revision, trigger listeners) without re-syncing devices, and
+    the file still holds the project that runs."""
     eng = _make_engine(
         tmp_path,
         variables=[{"id": "v1", "type": "number", "default": 1}],
@@ -484,9 +485,91 @@ async def test_failed_variable_edit_rolls_back_scoped(tmp_path):
     assert "sync_devices" not in counters, "scoped rollback synced devices"
     assert len(eng.triggers._state_sub_ids) == baseline_subs
 
-    # Persist-first: the user's edit survived on disk despite the rollback.
+    # Nothing was written: the file is what runs.
     on_disk = json.loads(Path(eng.project_path).read_text(encoding="utf-8"))
-    assert on_disk["variables"][0]["default"] == 2
+    assert on_disk["variables"][0]["default"] == 1
     assert fire_count["n"] == 0, "no macro may fire during a rollback"
 
     await eng.triggers.stop()
+
+
+def _crash_copy(eng) -> Path:
+    return Path(eng.project_path).with_suffix(".avc.bak")
+
+
+@pytest.mark.asyncio
+async def test_the_file_is_written_once_the_running_system_has_taken_the_change(tmp_path):
+    """While the reconcile runs, the file still holds the project before it;
+    once the change runs, the file holds it."""
+    eng = _make_engine(tmp_path, variables=[{"id": "v1", "type": "number", "default": 1}])
+    seen_during: list = []
+    follow = eng._follow_variables
+
+    async def look_at_the_file(run):
+        await follow(run)
+        seen_during.append(json.loads(Path(eng.project_path).read_text())["variables"][0]["default"])
+
+    eng._follow_variables = look_at_the_file
+
+    await eng.apply_project(ProjectConfig(**_project_dict(
+        variables=[{"id": "v1", "type": "number", "default": 2}],
+    )))
+
+    assert seen_during == [1]
+    on_disk = json.loads(Path(eng.project_path).read_text(encoding="utf-8"))
+    assert on_disk["variables"][0]["default"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_change_that_fails_leaves_the_crash_copy_as_it_was(tmp_path):
+    eng = _make_engine(tmp_path, variables=[{"id": "v1", "type": "number", "default": 1}])
+    _crash_copy(eng).write_text("the copy from the last save", encoding="utf-8")
+
+    def boom():
+        raise RuntimeError("validation rebuild failed")
+
+    eng._register_variable_validation = boom
+    with pytest.raises(RuntimeError, match="validation rebuild failed"):
+        await eng.apply_project(ProjectConfig(**_project_dict(
+            variables=[{"id": "v1", "type": "number", "default": 2}],
+        )))
+
+    assert _crash_copy(eng).read_text(encoding="utf-8") == "the copy from the last save"
+
+
+@pytest.mark.asyncio
+async def test_a_write_that_fails_puts_the_running_system_back(tmp_path, monkeypatch):
+    """A full disk after the system took the change: the runtime goes back
+    to the project before it, the save's own error is raised, the revision
+    does not move and nothing is announced."""
+    import errno
+
+    from openavc.core.project_loader import ProjectSaveError
+
+    eng = _make_engine(tmp_path, variables=[{"id": "v1", "type": "number", "default": 1}])
+    eng._start_variables()
+    before_bytes = Path(eng.project_path).read_bytes()
+    broadcasts = []
+
+    async def record_broadcast(msg):
+        broadcasts.append(msg)
+
+    async def no_room(path, project):
+        raise ProjectSaveError(OSError(errno.ENOSPC, "No space left on device"))
+
+    eng.broadcast_ws = record_broadcast
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", no_room)
+    before = eng._project_revision
+
+    with pytest.raises(ProjectSaveError, match="disk is full"):
+        await eng.apply_project(ProjectConfig(**_project_dict(
+            variables=[{"id": "v1", "type": "number", "default": 1},
+                       {"id": "v2", "type": "number", "default": 7}],
+        )))
+
+    assert [v.id for v in eng.project.variables] == ["v1"]
+    assert not eng.state.has("var.v2")
+    assert eng._project_revision == before
+    assert eng._revision_counter == 0
+    assert broadcasts == []
+    assert Path(eng.project_path).read_bytes() == before_bytes
