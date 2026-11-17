@@ -86,8 +86,8 @@ router = APIRouter(route_class=ProgrammerRoute)
 
 def _enforce_min_platform_version(required: str) -> None:
     """Raise HTTPException 422 if the running OpenAVC is older than
-    ``required``: the floor a request names, and the Builder's
-    (``enforce_declared_floor``). The rule is ``driver_change.floor_refusal``."""
+    ``required``, the floor a request names. The rule is
+    ``driver_change.floor_refusal``."""
     refusal = floor_refusal(required)
     if refusal:
         raise HTTPException(status_code=422, detail=refusal)
@@ -126,19 +126,6 @@ def _refusal_answer(refusal: DriverRefused) -> HTTPException:
             list(refusal.errors), preamble=refusal.detail, status_code=refusal.status_code
         )
     return HTTPException(status_code=refusal.status_code, detail=refusal.detail)
-
-
-def enforce_declared_floor(declared: object) -> None:
-    """Refuse a driver this platform is too old to run, whatever door it came in.
-
-    Every door that puts a driver on this box asks this one question, so a
-    hand-import and a Browse Community install answer it the same way. The
-    import doors are the ones with *less* context — no catalog entry, no
-    version column, nothing on screen saying what the file needs — so they are
-    the last place that should have been the permissive one.
-    """
-    if isinstance(declared, str) and declared:
-        _enforce_min_platform_version(declared)
 
 
 def _enforce_driver_id_match(driver_class: Any, expected_id: str) -> None:

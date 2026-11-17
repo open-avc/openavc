@@ -77,8 +77,7 @@ def driver_dirs(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
         return 0
 
     monkeypatch.setattr(
-        definition_routes,
-        "_get_engine",
+        "openavc.drivers.driver_change._running_engine",
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )
     return builtin_dir, repo_dir

@@ -45,8 +45,7 @@ def repo_dir(tmp_path: Path, monkeypatch) -> Path:
         return 0
 
     monkeypatch.setattr(
-        definition_routes,
-        "_get_engine",
+        "openavc.drivers.driver_change._running_engine",
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )
     return repo

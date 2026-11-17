@@ -43,7 +43,7 @@ def hub(monkeypatch) -> _Hub:
         ws=hub, devices=SimpleNamespace(reload_driver=_reload_driver),
     )
     monkeypatch.setattr(engine_slot, "get_engine_optional", lambda: fake)
-    monkeypatch.setattr(definition_routes, "_get_engine", lambda: fake)
+    monkeypatch.setattr("openavc.drivers.driver_change._running_engine", lambda: fake)
     return hub
 
 

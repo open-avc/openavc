@@ -4,15 +4,19 @@ lists, reads, checks, saves, deletes and reloads.
 Create, replace and patch each refuse what is theirs to refuse (an id already
 taken; a definition that is not there, a built-in, a rename onto another
 driver's id), then save through one function, ``_save_definition``: the strict
-contract check, the platform floor, the write to the user driver folder before
-any other copy of the id is removed, the registration, the devices on it
-reconnected, and the announcement to every open Programmer. A shipped built-in
-in the read-only definitions folder is never written or deleted here; a user
-copy that overrides one can be, and the built-in serves the id again after.
+contract check, then ``driver_change.admit`` (the platform floor, the file
+written beside, the loader's own check on it, the swap that puts it in place
+and takes the replaced copy of the id away, the registration), then
+``driver_change.changed`` (the simulation, the devices, Discovery, the
+announcement), as every door that writes a driver does. A save the loader
+would skip at the next start is refused now, with the copy that was there
+unchanged. A shipped built-in in the read-only definitions folder is never
+written or deleted here; a user copy that overrides one can be, and the
+built-in serves the id again after.
 
-Installing, uploading and removing drivers is ``routes/drivers.py``; the floor
-check and the refusal for an invalid definition live there because its import
-doors ask them too.
+Installing, uploading and removing drivers is ``routes/drivers.py``; the
+refusal for an invalid definition lives there because its import doors ask it
+too.
 """
 
 from pathlib import Path
@@ -20,17 +24,15 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, endpoint_policy
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes.drivers import (
-    announce_drivers_changed,
-    definition_invalid,
-    enforce_declared_floor,
-)
+from openavc.api.errors import api_error
+from openavc.api.routes.drivers import definition_invalid
 from openavc.core.host_policy import HostCategory
+from openavc.core.installed_equipment import InstalledEquipmentError
+from openavc.drivers.driver_change import DriverChange, DriverRefused, admit, changed
 from openavc.drivers.registry import register_driver
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -151,7 +153,20 @@ async def validate_driver_definition_draft(
 
     # strict: this is an authoring surface, so an undeclared key is a typo to
     # show now rather than a mystery when the save refuses it.
-    return {"issues": validate_driver_issues(draft, strict=True)}
+    issues = validate_driver_issues(draft, strict=True)
+    return {"issues": issues + _missing_companion_issues(draft)}
+
+
+def _missing_companion_issues(draft: dict[str, Any]) -> list[dict[str, str]]:
+    """The discovery file the draft names and the driver folder lacks, as the
+    issue the save would refuse it for (``missing_companion``)."""
+    from openavc.drivers.driver_loader import missing_companion
+    from openavc.system_config import DRIVER_REPO_DIR
+
+    missing = missing_companion(draft, Path(DRIVER_REPO_DIR))
+    if missing is None:
+        return []
+    return [{"severity": "error", "message": missing, "path": "discovery.python.file"}]
 
 
 def _definition_not_found(driver_id: str) -> HTTPException:
@@ -206,48 +221,65 @@ async def _save_definition(
     The three save doors (create, replace, patch) refuse what is theirs to
     refuse first, then all come here. The contract check is strict: this is an
     authoring gate, so an undeclared key is a typo to reject now, not a mystery
-    to debug later. The platform floor comes after it, so an author holding a
-    broken draft still gets the errors that describe the draft; it is read off
+    to debug later. Then ``driver_change.admit``: the platform floor, read off
     the definition in hand, never the stored copy, so lowering a floor that
-    blocks the save is always possible, and it is checked at every save
-    because a save is what registers the driver (the Builder's "import a
-    definition" lands here too).
+    blocks the save is always possible (the Builder's "import a definition"
+    lands here too); the file written beside the folder and held to the
+    loader's own check, which refuses a definition naming a discovery file the
+    folder lacks; the swap, which puts it in place and takes away the copy of
+    ``replacing`` it replaces in one step; the registration. A refusal or a
+    failure leaves the folder and the registry as they were.
 
-    The new file is written to the user driver folder first, replacing a
-    same-named old one in place, and only then are other copies of
-    ``replacing`` removed, so the driver is never absent from disk. The devices
-    on it reconnect to the new class without a project reload. A rename leaves
-    devices on the old id waiting: if the removed file was overriding a shipped
-    built-in, the built-in is registered again so the old id keeps working,
-    otherwise its registration is dropped, and those devices are retried too.
+    A rename leaves devices on the old id waiting: if the removed file was
+    overriding a shipped built-in, the built-in is registered again so the old
+    id keeps working, otherwise its registration is dropped. Then
+    ``driver_change.changed`` for the new id and the old: the devices on each
+    are built again from what serves it now.
     """
     from openavc.drivers.driver_loader import (
-        delete_driver_definition,
+        definition_file,
+        replaced_definition,
         restore_driver_registration,
-        save_driver_definition,
         validate_driver_definition,
     )
-    from openavc.drivers.configurable import create_configurable_driver_class
 
     errors = validate_driver_definition(driver_def, strict=True)
     if errors:
         raise definition_invalid(errors)
-    enforce_declared_floor(driver_def.get("min_platform_version"))
 
-    saved = save_driver_definition(driver_def, dirs[1])  # driver_repo/
-    if replacing is not None:
-        delete_driver_definition(replacing, dirs, keep=saved)
+    repo = Path(dirs[1])  # driver_repo/
+    repo.mkdir(parents=True, exist_ok=True)
+    name, data = definition_file(driver_def)
+    replaced = (
+        replaced_definition(replacing, dirs, keep=repo / name) if replacing is not None else None
+    )
+    _admit_definition(
+        DriverChange(repo, name, {name: data}, removes=[replaced.name] if replaced else [])
+    )
 
-    register_driver(create_configurable_driver_class(driver_def))
-    engine = _get_engine()
     new_id = driver_def["id"]
-    reconnected = await engine.devices.reload_driver(new_id)
-    if replacing is not None and new_id != replacing:
-        restore_driver_registration(replacing, dirs)
-        reconnected = reconnected + await engine.devices.reload_driver(replacing)
+    renamed = [replacing] if replacing is not None and replacing != new_id else []
+    for old_id in renamed:
+        restore_driver_registration(old_id, dirs)
+    outcome = await changed(new_id, *renamed)
+    return {"driver_id": new_id, "devices_reconnected": outcome.reconnected}
 
-    await announce_drivers_changed(new_id)
-    return {"driver_id": new_id, "devices_reconnected": reconnected}
+
+def _admit_definition(change: DriverChange) -> None:
+    """``driver_change.admit`` as the Builder answers it: the loader's reasons
+    beneath the save's own heading, the floor's sentence as it is, a
+    protected identity as it was raised, and any other failure as a save not
+    made."""
+    try:
+        admit(change)
+    except DriverRefused as e:
+        if e.errors:
+            raise definition_invalid(list(e.errors), status_code=e.status_code)
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    except (HTTPException, InstalledEquipmentError):
+        raise
+    except Exception as e:
+        raise api_error(500, "The driver was not saved, and the copy you had is unchanged.", e)
 
 
 def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:
@@ -347,13 +379,14 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     if not deleted:
         raise _definition_not_found(driver_id)
     # The deleted file may have been a user copy overriding a shipped
-    # built-in: re-register the built-in so the id keeps working, or drop
-    # the stale registration when nothing serves the id anymore.
+    # built-in: re-register the built-in so the id keeps working, and build
+    # its devices again on it; or drop the stale registration when nothing
+    # serves the id anymore, and leave its devices as they are.
     restored = restore_driver_registration(driver_id, dirs)
     if restored:
-        # Reconnect devices on this driver so they pick up the restored class.
-        await _get_engine().devices.reload_driver(driver_id)
-    await announce_drivers_changed(driver_id)
+        await changed(driver_id)
+    else:
+        await changed(gone=[driver_id])
     return {"status": "deleted", "driver_id": driver_id, "builtin_restored": restored}
 
 
@@ -392,20 +425,17 @@ async def reload_driver_definition(driver_id: str) -> dict:
             ),
         )
 
-    # Re-register, then reconnect live devices so they pick up the disk version
-    # without a full project reload (mirrors the Python hot-reload path).
+    # Re-register, then build the devices again so they pick up the disk
+    # version without a full project reload. A renamed id on disk leaves
+    # devices on the requested id orphaned, so they are built again too.
     driver_class = create_configurable_driver_class(driver_def)
     register_driver(driver_class)
-
-    engine = _get_engine()
-    reconnected = await engine.devices.reload_driver(driver_def["id"])
-    # A renamed id on disk leaves devices on the requested id orphaned — retry.
-    if driver_def["id"] != driver_id:
-        reconnected = reconnected + await engine.devices.reload_driver(driver_id)
+    renamed = [driver_id] if driver_def["id"] != driver_id else []
+    outcome = await changed(driver_def["id"], *renamed)
 
     return {
         "status": "reloaded",
         "driver_id": driver_def["id"],
         "file": filepath.name,
-        "devices_reconnected": reconnected,
+        "devices_reconnected": outcome.reconnected,
     }

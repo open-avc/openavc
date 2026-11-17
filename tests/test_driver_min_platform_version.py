@@ -307,7 +307,7 @@ def driver_dirs(tmp_path, monkeypatch):
 
     fake_engine = MagicMock()
     fake_engine.devices.reload_driver = _reload_driver
-    monkeypatch.setattr(definition_routes, "_get_engine", lambda: fake_engine)
+    monkeypatch.setattr("openavc.drivers.driver_change._running_engine", lambda: fake_engine)
     return builtin_dir, repo_dir
 
 

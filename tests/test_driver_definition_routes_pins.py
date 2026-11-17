@@ -28,7 +28,7 @@ import openavc.system_config as system_config
 from openavc.api.models import DriverDefinitionRequest
 from openavc.api.routes import driver_definitions as ROUTES
 from openavc.api.routes import drivers as INSTALL_ROUTES
-from openavc.drivers import refused_files
+from openavc.drivers import driver_change, refused_files
 from openavc.drivers.driver_loader import save_driver_definition
 
 WIDGET = {"id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
@@ -40,7 +40,9 @@ TOO_NEW = "99.0.0"
 
 class Env(SimpleNamespace):
     def files(self) -> list[str]:
-        return sorted(p.name for p in self.repo.iterdir())
+        """The files in the driver folder (the staging folder a save writes
+        beside them while it runs aside)."""
+        return sorted(p.name for p in self.repo.iterdir() if p.is_file())
 
 
 @pytest.fixture()
@@ -67,6 +69,17 @@ def env(tmp_path: Path, monkeypatch) -> Env:
         e.events.append(("reload", driver_id))
         return [f"{driver_id}-dev"]
 
+    async def _retry() -> list[str]:
+        e.events.append(("retry",))
+        return []
+
+    async def _simulation(driver_ids) -> bool:
+        e.events.append(("simulation", tuple(driver_ids)))
+        return False
+
+    async def _refresh() -> None:
+        e.events.append(("refresh",))
+
     async def _announce(driver_id: str | None = None) -> None:
         e.events.append(("announce", driver_id))
 
@@ -74,14 +87,36 @@ def env(tmp_path: Path, monkeypatch) -> Env:
         e.events.append(("restore", driver_id, tuple(Path(d) for d in dirs)))
         return e.restored
 
-    monkeypatch.setattr(ROUTES, "register_driver", _register)
-    monkeypatch.setattr(
-        ROUTES, "_get_engine",
-        lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
+    e.engine = SimpleNamespace(
+        devices=SimpleNamespace(
+            reload_driver=_reload_driver,
+            retry_all_orphans=_retry,
+            get_devices_using_driver=lambda driver_id: [],
+            status_of=lambda device_id: "running",
+            request_bringup=None,
+        ),
+        simulation=SimpleNamespace(drivers_changed=_simulation),
     )
-    monkeypatch.setattr(ROUTES, "announce_drivers_changed", _announce)
+    monkeypatch.setattr(ROUTES, "register_driver", _register)
+    monkeypatch.setattr(driver_change, "register_driver", _register)
+    monkeypatch.setattr(driver_change, "_running_engine", lambda: e.engine)
+    monkeypatch.setattr(driver_change, "announce", _announce)
+    monkeypatch.setattr("openavc.api.discovery.refresh_all_device_matches", _refresh)
     monkeypatch.setattr(driver_loader, "restore_driver_registration", _restore)
     return e
+
+
+def _followed(*driver_ids: str) -> list:
+    """What follows every Builder door's change (``driver_change.changed``):
+    the simulation told, the devices on each id built again, the waiting
+    devices brought up, Discovery matched again, every Programmer told."""
+    return [
+        ("simulation", driver_ids),
+        *[("reload", driver_id) for driver_id in driver_ids],
+        ("retry",),
+        ("refresh",),
+        ("announce", driver_ids[0]),
+    ]
 
 
 def _refusal(exc: pytest.ExceptionInfo[HTTPException]) -> tuple[int, str, list[str] | None]:
@@ -181,8 +216,7 @@ async def test_create_saves_registers_reconnects_and_announces_in_that_order(env
     }
     assert env.events == [
         ("register", "acme_gadget", ("acme_gadget.avcdriver",)),
-        ("reload", "acme_gadget"),
-        ("announce", "acme_gadget"),
+        *_followed("acme_gadget"),
     ]
     saved = _saved(env, "acme_gadget.avcdriver")
     assert "source" not in saved and "_source_file" not in saved
@@ -345,8 +379,7 @@ async def test_replace_in_place_removes_other_copies_and_reconnects_once(env):
     }
     assert env.events == [
         ("register", "acme_widget", ("acme_widget.avcdriver",)),
-        ("reload", "acme_widget"),
-        ("announce", "acme_widget"),
+        *_followed("acme_widget"),
     ]
     assert _saved(env, "acme_widget.avcdriver")["name"] == "Acme Widget 2"
     assert "source" not in _saved(env, "acme_widget.avcdriver")
@@ -365,26 +398,99 @@ async def test_a_rename_restores_the_old_id_and_reconnects_both(env):
     }
     assert env.events == [
         ("register", "acme_widget_two", ("acme_widget_two.avcdriver",)),
-        ("reload", "acme_widget_two"),
         ("restore", "acme_widget", (env.builtin, env.repo)),
-        ("reload", "acme_widget"),
-        ("announce", "acme_widget_two"),
+        *_followed("acme_widget_two", "acme_widget"),
     ]
 
 
-async def test_a_class_that_fails_to_register_after_the_save_leaves_the_new_file(env):
+async def test_a_class_that_fails_to_register_keeps_the_copy_that_worked(env):
     save_driver_definition(dict(WIDGET), env.repo)
     (env.repo / "widget_copy.avcdriver").write_text(yaml.safe_dump(WIDGET), encoding="utf-8")
     env.register_error = RuntimeError("no class")
 
-    with pytest.raises(RuntimeError, match="no class"):
+    with pytest.raises(HTTPException) as exc:
         await ROUTES.update_driver_definition(
             "acme_widget", DriverDefinitionRequest(**{**WIDGET, "name": "Acme Widget 2"})
         )
 
-    assert env.files() == ["acme_widget.avcdriver"]
-    assert _saved(env, "acme_widget.avcdriver")["name"] == "Acme Widget 2"
+    assert (exc.value.status_code, exc.value.detail) == (
+        500, "The driver was not saved, and the copy you had is unchanged.",
+    )
+    assert env.files() == ["acme_widget.avcdriver", "widget_copy.avcdriver"]
+    assert _saved(env, "acme_widget.avcdriver") == WIDGET
     assert env.events == [("register", "acme_widget", ("acme_widget.avcdriver",))]
+
+
+# --- a discovery file the definition names ------------------------------------
+
+
+def _naming_a_discovery_file(definition: dict) -> dict:
+    return {**definition, "discovery": {"python": {"file": "./acme_widget_discovery.py"}}}
+
+
+def _loader_refused(definition: dict) -> list[str]:
+    """The loader's reasons for ``definition`` alone in a folder, asked of the
+    loader rather than copied."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = save_driver_definition(definition, Path(tmp))
+        return list(driver_loader.read_driver_file(path).reasons)
+
+
+@pytest.mark.parametrize("door", ["create", "replace", "patch"])
+async def test_a_save_naming_a_discovery_file_not_here_is_refused_and_keeps_what_was_there(env, door):
+    """The loader would skip the driver at the next start, so the save says so
+    now, in the import's words, with the copy that was there unchanged."""
+    if door != "create":
+        save_driver_definition(dict(WIDGET), env.repo)
+    named = _naming_a_discovery_file(WIDGET)
+
+    with pytest.raises(HTTPException) as exc:
+        if door == "create":
+            await ROUTES.create_driver_definition(DriverDefinitionRequest(**named))
+        elif door == "replace":
+            await ROUTES.update_driver_definition("acme_widget", DriverDefinitionRequest(**named))
+        else:
+            await ROUTES.patch_driver_definition("acme_widget", {"discovery": named["discovery"]})
+
+    reasons = _loader_refused(named)
+    assert reasons == [
+        "It names the discovery file './acme_widget_discovery.py' (discovery.python.file), "
+        "which is not in the driver folder. Add that file first."
+    ]
+    assert _refusal(exc) == (
+        422, "The driver was not saved. Fix this first:\n" + reasons[0], reasons,
+    )
+    assert env.files() == ([] if door == "create" else ["acme_widget.avcdriver"])
+    if door != "create":
+        assert _saved(env, "acme_widget.avcdriver") == WIDGET
+    assert env.events == []
+
+
+async def test_a_save_naming_a_discovery_file_that_is_here_is_saved(env):
+    (env.repo / "acme_widget_discovery.py").write_text("async def probe(ctx):\n    return None\n")
+    named = _naming_a_discovery_file(WIDGET)
+
+    await ROUTES.create_driver_definition(DriverDefinitionRequest(**named))
+
+    assert env.files() == ["acme_widget.avcdriver", "acme_widget_discovery.py"]
+    assert _saved(env, "acme_widget.avcdriver") == named
+
+
+async def test_the_check_names_a_discovery_file_not_here_as_the_save_does(env, monkeypatch):
+    monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", env.repo)
+    named = _naming_a_discovery_file(WIDGET)
+
+    issues = (await ROUTES.validate_driver_definition_draft(named))["issues"]
+
+    assert issues == [{
+        "severity": "error",
+        "message": _loader_refused(named)[0],
+        "path": "discovery.python.file",
+    }]
+    (env.repo / "acme_widget_discovery.py").write_text("async def probe(ctx):\n    return None\n")
+    assert (await ROUTES.validate_driver_definition_draft(named))["issues"] == []
 
 
 # --- PATCH /driver-definitions/{id} --------------------------------------------
@@ -452,8 +558,7 @@ async def test_patch_keeps_the_id_strips_the_listing_keys_and_saves_the_merge(en
     }
     assert env.events == [
         ("register", "acme_widget", ("acme_widget.avcdriver",)),
-        ("reload", "acme_widget"),
-        ("announce", "acme_widget"),
+        *_followed("acme_widget"),
     ]
     assert _saved(env, "acme_widget.avcdriver") == {**WIDGET, "name": "Patched"}
 
@@ -479,13 +584,12 @@ async def test_a_built_in_that_does_not_load_is_not_found_before_it_is_read_only
 @pytest.mark.parametrize("door", ["create", "replace", "patch"])
 async def test_the_engine_is_asked_only_once_the_class_is_registered(env, monkeypatch, door):
     asked: list[list] = []
-    engine = SimpleNamespace(devices=SimpleNamespace(reload_driver=ROUTES._get_engine().devices.reload_driver))
 
-    def _get_engine():
+    def _running_engine():
         asked.append(list(env.events))
-        return engine
+        return env.engine
 
-    monkeypatch.setattr(ROUTES, "_get_engine", _get_engine)
+    monkeypatch.setattr(driver_change, "_running_engine", _running_engine)
     if door != "create":
         save_driver_definition(dict(WIDGET), env.repo)
 
@@ -538,8 +642,10 @@ async def test_delete_restores_reconnects_only_a_restored_id_and_announces(env, 
     assert env.files() == []
     assert env.events == [
         ("restore", "acme_widget", (env.builtin, env.repo)),
-        *([("reload", "acme_widget")] if restored else []),
-        ("announce", "acme_widget"),
+        *(
+            _followed("acme_widget") if restored
+            else [("simulation", ()), ("refresh",), ("announce", "acme_widget")]
+        ),
     ]
 
 
@@ -593,7 +699,7 @@ async def test_reload_of_a_file_that_does_not_load_names_the_file(env, monkeypat
     assert env.events == []
 
 
-async def test_reload_registers_and_reconnects_without_announcing(env):
+async def test_reload_registers_reconnects_and_announces(env):
     save_driver_definition(dict(WIDGET), env.repo)
 
     answer = await ROUTES.reload_driver_definition("acme_widget")
@@ -604,7 +710,7 @@ async def test_reload_registers_and_reconnects_without_announcing(env):
     }
     assert env.events == [
         ("register", "acme_widget", ("acme_widget.avcdriver",)),
-        ("reload", "acme_widget"),
+        *_followed("acme_widget"),
     ]
 
 
@@ -620,8 +726,7 @@ async def test_reload_of_a_file_now_declaring_another_id_reconnects_both(env, mo
     }
     assert env.events == [
         ("register", "acme_renamed", ("acme_renamed.avcdriver",)),
-        ("reload", "acme_renamed"),
-        ("reload", "acme_widget"),
+        *_followed("acme_renamed", "acme_widget"),
     ]
 
 

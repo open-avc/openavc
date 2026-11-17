@@ -357,27 +357,32 @@ def _definition_refusals(
     for message in _unknown_key_errors(driver_def):
         log.warning(f"Driver definition {filepath}: {message}")
 
-    # Companion existence check: a ``python:`` declaration that points at
-    # a missing file would auto-register two SignalRules under
-    # ``custom_<id>_companion_(udp|tcp)`` at hint-load time, but no
-    # evidence producer would ever fire — the device would be matchable
-    # in theory and silently invisible in practice. Reject up front.
-    companion_relpath = companion_relpath_from_def(driver_def)
-    if companion_relpath:
-        companion_path = (filepath.parent / companion_relpath).resolve()
-        if not companion_path.is_file():
-            log.warning(
-                f"Driver {filepath.name} declares discovery.python "
-                f"file={companion_relpath!r} but no such file exists "
-                f"at {companion_path}; skipping driver"
-            )
-            return (
-                f"It names the discovery file {companion_relpath!r} "
-                "(discovery.python.file), which is not in the driver folder. "
-                "Add that file first.",
-            ), ()
+    missing = missing_companion(driver_def, filepath.parent)
+    if missing:
+        log.warning(f"Driver {filepath.name}: {missing} Skipping driver")
+        return (missing,), ()
 
     return (), tuple(verdict.notices)
+
+
+def missing_companion(driver_def: dict[str, Any], folder: Path) -> str | None:
+    """THE rule for a definition whose discovery file is missing: the sentence
+    saying the file it names (``discovery.python.file``) is not in ``folder``,
+    the folder the definition is in, or None when it names none or the file
+    is there. The loader refuses such a definition, and the Driver Builder's
+    check names it before a save.
+
+    A declaration pointing at a missing file would register its discovery
+    rules at hint-load time with nothing to produce their evidence: the device
+    would be matchable in theory and invisible in practice."""
+    companion_relpath = companion_relpath_from_def(driver_def)
+    if not companion_relpath or (folder / companion_relpath).resolve().is_file():
+        return None
+    return (
+        f"It names the discovery file {companion_relpath!r} "
+        "(discovery.python.file), which is not in the driver folder. "
+        "Add that file first."
+    )
 
 
 def _python_driver_id(filepath: Path) -> str | None:
@@ -776,33 +781,40 @@ def load_builtin_drivers() -> int:
     return loaded
 
 
-def save_driver_definition(
-    driver_def: dict[str, Any],
-    directory: Path | str,
-) -> Path:
-    """
-    Save a driver definition as a .avcdriver YAML file.
-
-    The filename is derived from the driver's id field.
-    Returns the path to the saved file.
-    """
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-
-    driver_id = driver_def.get("id", "unknown")
-    from openavc.drivers.registry import require_mutable_driver
-    require_mutable_driver(driver_id)
-    # Sanitize filename
-    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
-    filepath = directory / f"{safe_id}{DRIVER_EXTENSION}"
-
+def definition_file(driver_def: dict[str, Any]) -> tuple[str, bytes]:
+    """THE file a definition is saved as: its name, the driver's id with each
+    character a driver file name cannot hold made ``_``, and its bytes, YAML
+    in the definition's own key order."""
+    driver_id = str(driver_def.get("id", "unknown"))
+    safe_id = "".join(c if (c.isascii() and c.isalnum()) or c in "-_" else "_" for c in driver_id)
     text = yaml.dump(
         driver_def,
         default_flow_style=False,
         allow_unicode=True,
         sort_keys=False,
     )
-    atomic_write_text(filepath, text)
+    return f"{safe_id}{DRIVER_EXTENSION}", text.encode("utf-8")
+
+
+def save_driver_definition(
+    driver_def: dict[str, Any],
+    directory: Path | str,
+) -> Path:
+    """
+    Save a driver definition as a .avcdriver YAML file (``definition_file``).
+
+    Returns the path to the saved file. The Driver Builder's saves go through
+    ``driver_change.admit`` instead, which checks the file before it is in
+    place.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    from openavc.drivers.registry import require_mutable_driver
+    require_mutable_driver(driver_def.get("id", "unknown"))
+    name, data = definition_file(driver_def)
+    filepath = directory / name
+    atomic_write_text(filepath, data.decode("utf-8"))
 
     log.info(f"Saved driver definition: {filepath}")
     return filepath
@@ -942,14 +954,37 @@ def delete_driver_definition(
     return False
 
 
+def replaced_definition(
+    driver_id: str,
+    directories: Sequence[Path | str],
+    *,
+    keep: Path | str,
+) -> Path | None:
+    """The definition file a save of ``driver_id`` to ``keep`` replaces: the
+    one ``delete_driver_definition`` would remove, the first other file
+    declaring the id that is not a shipped built-in. None when there is none."""
+    kept = Path(keep).resolve()
+    for filepath in _definitions_declaring(directories, driver_id):
+        if _removable_definition(filepath, kept):
+            return filepath
+    return None
+
+
+def _removable_definition(filepath: Path, kept: Path | None) -> bool:
+    """Whether a definition file may go: not the one being kept, nor a
+    shipped built-in."""
+    if kept is not None and filepath.resolve() == kept:
+        return False
+    return not is_builtin_definition_path(filepath)
+
+
 def _delete_definition_file(filepath: Path, kept: Path | None) -> bool:
     """Remove one definition file unless it is the one being kept or a
     shipped built-in; whether it was removed. An ``OSError`` reaches the
     caller, which goes on to the next file."""
-    if kept is not None and filepath.resolve() == kept:
-        return False
-    if is_builtin_definition_path(filepath):
-        log.warning(f"Refusing to delete built-in driver definition: {filepath}")
+    if not _removable_definition(filepath, kept):
+        if is_builtin_definition_path(filepath):
+            log.warning(f"Refusing to delete built-in driver definition: {filepath}")
         return False
     filepath.unlink()
     log.info(f"Deleted driver definition: {filepath}")
