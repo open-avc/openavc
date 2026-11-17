@@ -19,6 +19,8 @@ pytest.importorskip("playwright.sync_api")
 
 from playwright.sync_api import Page, expect  # noqa: E402
 
+from tests.e2e._held_saves import HeldSaves  # noqa: E402
+
 RAIL_TIMEOUT = 20_000
 
 
@@ -64,17 +66,20 @@ def _save_as_another_session(page: Page, base_url: str, label: str) -> None:
 def test_ctrl_z_after_reload_project_leaves_the_reloaded_project(server_factory, page: Page) -> None:
     handle = server_factory(project_overrides=_project())
     page.set_viewport_size({"width": 1600, "height": 1000})
+    saves = HeldSaves(page)
     page.goto(f"{handle.base_url}/programmer/", wait_until="domcontentloaded")
     page.locator("nav button").first.wait_for(state="visible", timeout=RAIL_TIMEOUT)
     page.evaluate("""() => document.querySelector('nav button[aria-label="UI Builder"]')?.click()""")
     control = page.locator('[data-canvas-element="btn"]')
     control.wait_for(state="visible", timeout=RAIL_TIMEOUT)
 
-    # The Builder's edit, held for its save while another session saves first.
+    # The Builder's edit, its save held while another session saves first.
     control.click()
     page.keyboard.press("Delete")
     control.wait_for(state="detached", timeout=5_000)
+    saves.wait_for()
     _save_as_another_session(page, handle.base_url, "Theirs")
+    saves.release()
 
     banner = page.get_by_text("Conflict:")
     banner.wait_for(state="visible", timeout=10_000)
