@@ -161,12 +161,8 @@ async def test_the_resend_answers_what_the_save_did(engine, runs):
     """The resend hears the same answer the lost one held, its revision and
     the parts it could not run included."""
     base = engine._project_revision
-    first = await engine.apply_project(
-        ProjectConfig(**BODY), expected_revision=base, operation="op-1",
-    )
-    again = await engine.apply_project(
-        ProjectConfig(**BODY), expected_revision=base, operation="op-1",
-    )
+    first = await engine.apply_named_save(ProjectConfig(**BODY), base, "op-1")
+    again = await engine.apply_named_save(ProjectConfig(**BODY), base, "op-1")
 
     assert again == first
     assert runs.applied == 1

@@ -84,13 +84,11 @@ interface FailedTry {
 }
 
 function judgeFailure(
-  deps: SaveAttemptDeps,
-  e: unknown,
+  message: string,
   kind: SaveFailureKind,
   previousNotTaken: string | null,
   outOfTries: boolean,
 ): FailedTry {
-  const message = deps.failureMessage(e);
   const notTaken = kind === "not_taken" ? message : null;
   // A save the server did not take, answered the same way twice, would be
   // answered so again.
@@ -150,7 +148,7 @@ export async function runSaveWithRetry(
         });
         return "conflict";
       }
-      const failed = judgeFailure(deps, e, kind, previousNotTaken, attempt >= maxRetries);
+      const failed = judgeFailure(deps.failureMessage(e), kind, previousNotTaken, attempt >= maxRetries);
       if (failed.final) {
         deps.setState({ error: failed.message, saving: false, saveRetryIn: null });
         return "failed";

@@ -37,7 +37,7 @@ from contextvars import ContextVar
 CLIENT_HEADER = "X-OpenAVC-Client"
 
 # Names one save: a tab sends the same save again under the same id when its
-# answer was lost (core/project_changes.py, ``apply_project``'s operation).
+# answer was lost (core/project_changes.py, ``apply_named_save``).
 OPERATION_HEADER = "X-OpenAVC-Operation"
 
 # Short and opaque: the Programmer sends a random id. Anything else is

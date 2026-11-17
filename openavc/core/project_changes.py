@@ -189,7 +189,6 @@ class ProjectChangesMixin:
         expected_revision: str | None = None,
         origin: ProjectOrigin = ProjectOrigin.EDIT,
         persist: bool = True,
-        operation: str | None = None,
     ) -> ApplyOutcome:
         """The one way a project change enters the engine.
 
@@ -206,18 +205,25 @@ class ProjectChangesMixin:
         both pass the compare and the loser's edit is silently overwritten —
         the exact race the 409 contract exists to prevent. Raises
         :class:`ProjectRevisionConflictError` on mismatch.
-
-        ``operation`` names the save (the Programmer's id for it). The same
-        save sent again under the same id, because its answer was lost, is
-        answered with what it did rather than applied twice or refused as
-        another session's change (:meth:`_resent_outcome`).
         """
+        async with self._reload_lock:
+            self._check_revision(expected_revision)
+            return await self._apply_project_locked(new_project, origin, persist)
+
+    async def apply_named_save(
+        self, new_project: ProjectConfig, expected_revision: str | None, operation: str | None,
+    ) -> ApplyOutcome:
+        """An edit applied as :meth:`apply_project` applies it, named by
+        ``operation`` (the Programmer's id for one save). The same save sent
+        again under the same id, because its answer was lost, is answered
+        with what it did rather than applied twice or refused as another
+        session's change (:meth:`_resent_outcome`)."""
         async with self._reload_lock:
             resent = self._resent_outcome(operation)
             if resent is not None:
                 return resent
             self._check_revision(expected_revision)
-            outcome = await self._apply_project_locked(new_project, origin, persist)
+            outcome = await self._apply_project_locked(new_project, ProjectOrigin.EDIT, True)
             self._last_named_save = _NamedSave(operation, outcome) if operation else None
             return outcome
 
@@ -228,12 +234,8 @@ class ProjectChangesMixin:
         answer of "saved" with the newer revision would let its sender save
         over that change without seeing it. Caller holds ``_reload_lock``."""
         last = self._last_named_save
-        if (
-            operation is None
-            or last is None
-            or last.operation != operation
-            or last.outcome.revision != self._project_revision
-        ):
+        current = (operation, self._project_revision)
+        if last is None or (last.operation, last.outcome.revision) != current:
             return None
         log.info("A save sent again after its answer was lost was already applied")
         return last.outcome
