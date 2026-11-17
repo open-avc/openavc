@@ -85,45 +85,50 @@ def _attached_ports() -> list[dict[str, Any]] | None:
     """The ports :func:`list_serial_ports` lists, or ``None`` when this host
     cannot enumerate its ports at all, which is not the same as having none:
     pyserial missing, or its listing raising."""
+    found = _listed_ports()
+    if found is None:
+        return None
+    ports = [_port_entry(p) for p in found]
+    # USB adapters first (the common case), then by device path for stability.
+    ports.sort(key=lambda x: (not x["usb"], x["device"]))
+    return ports
+
+
+def _listed_ports() -> list[Any] | None:
+    """pyserial's own listing of this host's ports, or ``None`` when it is
+    missing or the listing raises."""
     try:
         from serial.tools import list_ports
     except ImportError:
         return None
     try:
-        found = list_ports.comports()
+        return list(list_ports.comports())
     except Exception:
         log.debug("Could not list the serial ports", exc_info=True)
         return None
 
-    ports: list[dict[str, Any]] = []
-    for p in found:
-        vid = getattr(p, "vid", None)
-        pid = getattr(p, "pid", None)
-        serial_number = (getattr(p, "serial_number", None) or "").strip()
-        manufacturer = (getattr(p, "manufacturer", None) or "").strip()
-        description = (getattr(p, "description", None) or "").strip()
-        # pyserial reports "n/a" for ports it can't describe (common on Linux
-        # for built-in UARTs) — fall back to the device path so the label reads.
-        if description.lower() in ("", "n/a"):
-            description = p.device
-        ports.append(
-            {
-                "device": p.device,
-                "description": description,
-                "manufacturer": manufacturer,
-                "vid": vid,
-                "pid": pid,
-                "serial_number": serial_number,
-                "hwid": (getattr(p, "hwid", None) or "").strip(),
-                "usb": vid is not None,
-                "label": _serial_port_label(
-                    p.device, description, manufacturer, serial_number
-                ),
-            }
-        )
-    # USB adapters first (the common case), then by device path for stability.
-    ports.sort(key=lambda x: (not x["usb"], x["device"]))
-    return ports
+
+def _port_entry(p: Any) -> dict[str, Any]:
+    """One listed port, as the connection picker and the USB binding read it."""
+    vid = getattr(p, "vid", None)
+    serial_number = (getattr(p, "serial_number", None) or "").strip()
+    manufacturer = (getattr(p, "manufacturer", None) or "").strip()
+    description = (getattr(p, "description", None) or "").strip()
+    # pyserial reports "n/a" for ports it can't describe (common on Linux
+    # for built-in UARTs) — fall back to the device path so the label reads.
+    if description.lower() in ("", "n/a"):
+        description = p.device
+    return {
+        "device": p.device,
+        "description": description,
+        "manufacturer": manufacturer,
+        "vid": vid,
+        "pid": getattr(p, "pid", None),
+        "serial_number": serial_number,
+        "hwid": (getattr(p, "hwid", None) or "").strip(),
+        "usb": vid is not None,
+        "label": _serial_port_label(p.device, description, manufacturer, serial_number),
+    }
 
 
 def require_usb_adapter(config: dict, driver_transport: str = "") -> dict:
