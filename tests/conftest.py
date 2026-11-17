@@ -113,6 +113,18 @@ def pytest_addoption(parser):
     )
 
 
+def xdist_group_for(module) -> str | None:
+    """The xdist group a test file's tests run in, or None to spread them.
+
+    The file's own name, unless it sets ``XDIST_SPREAD = True`` (spread across
+    workers) or ``XDIST_GROUP = "<name>"`` (one group shared with every other
+    file that names it, so none of them ever runs beside another).
+    """
+    if getattr(module, "XDIST_SPREAD", False):
+        return None
+    return getattr(module, "XDIST_GROUP", module.__name__)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
     """Under ``pytest -n auto --dist loadgroup``, keep each file on one worker.
@@ -122,7 +134,8 @@ def pytest_collection_modifyitems(config, items):
     the machine holds none of something. So each file is one xdist group,
     unless it sets ``XDIST_SPREAD = True``: every test in it builds its own
     world (its own simulator on its own port), and it is long enough that
-    keeping it on one worker would make the whole run wait for it.
+    keeping it on one worker would make the whole run wait for it. Files that
+    must not run at the same moment as each other share an ``XDIST_GROUP``.
 
     tryfirst, because xdist reads the groups in its own hook of the same name.
     """
@@ -130,9 +143,9 @@ def pytest_collection_modifyitems(config, items):
         return
     for item in items:
         module = getattr(item, "module", None)
-        if module is None or getattr(module, "XDIST_SPREAD", False):
-            continue
-        item.add_marker(pytest.mark.xdist_group(module.__name__))
+        group = None if module is None else xdist_group_for(module)
+        if group is not None:
+            item.add_marker(pytest.mark.xdist_group(group))
 
 
 #: pytest writes each test's id into the PYTEST_CURRENT_TEST environment

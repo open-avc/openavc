@@ -24,6 +24,10 @@ pytestmark = pytest.mark.skipif(
     reason=f"changes the host firewall; set {gates.HOST_FIREWALL}=1 on a disposable machine",
 )
 
+# Shared with the files whose connections a firewall change stalls, so none of
+# them runs while these change the rules.
+XDIST_GROUP = "host_firewall"
+
 # Ports no plugin declares, so nothing here can collide with a real rule.
 SERVER_PORT = 47991
 UNINSTALL_UDP = 47992

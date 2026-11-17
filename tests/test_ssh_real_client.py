@@ -24,6 +24,12 @@ from openavc.transport.ssh import SSHTransport
 
 pytestmark = pytest.mark.skipif(shutil.which("ssh") is None, reason="no ssh client")
 
+# Every Windows CI failure of the first test read so far ran while
+# test_windows_firewall_live.py was adding and removing real firewall rules on
+# another worker, and in one the connection reached the device below 15 s after
+# ssh started. So the two files run on one worker, in turn.
+XDIST_GROUP = "host_firewall"
+
 # Current key exchange, host key and MAC; only an old cipher.
 OFFER = {
     "kex": "curve25519-sha256",
