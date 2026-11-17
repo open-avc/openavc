@@ -298,10 +298,10 @@ async def test_a_queue_stored_while_the_driver_was_missing_meets_it_before_anyth
     assert saved[-1]["remaining"] == {}
     assert sorted(saved[-1]["refused"]) == ["label", "levle"]
     assert errors == [
-        "Pending setting 'levle' was taken off the queue without being sent: "
-        "Unknown device setting 'levle' for device 'w'",
-        "Pending setting 'label' was taken off the queue without being sent: "
-        "Unknown device setting 'label' for device 'w'",
+        "Pending setting 'levle' was not sent: Unknown device setting 'levle' "
+        "for device 'w'. It is no longer queued.",
+        "Pending setting 'label' was not sent: Unknown device setting 'label' "
+        "for device 'w'. It is no longer queued.",
     ]
 
 
@@ -321,6 +321,6 @@ async def test_a_queued_value_its_driver_refuses_is_not_retried_at_every_connect
     assert _Widget.written == []
     assert dm.get_device_config("w").get("pending_settings") is None
     assert errors == [
-        "Pending setting 'level' was taken off the queue without being sent: "
-        "'level' must be at most 100, got 250",
+        "Pending setting 'level' was not sent: 'level' must be at most 100, got 250. "
+        "It is no longer queued.",
     ]

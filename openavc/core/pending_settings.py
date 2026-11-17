@@ -399,7 +399,7 @@ class PendingSettingsMixin:
         log.warning(f"[{run.device_id}] Pending setting '{key}' was not sent: {refusal}")
         await self._report_pending_error(
             run.device_id,
-            f"Pending setting '{key}' was taken off the queue without being sent: {refusal}",
+            f"Pending setting '{key}' was not sent: {refusal}. It is no longer queued.",
         )
 
     async def _report_pending_error(self, device_id: str, error: str) -> None:
