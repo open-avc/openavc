@@ -131,6 +131,12 @@ class _ReconnectRun:
     noisy: bool = True  # whether this attempt is said in the log
 
 
+def _dialable(host: str, port: Any) -> bool:
+    """Whether the reconnect check can dial ``host`` at ``port``: a host, and
+    a port number from 1 to 65535. Anything else is the connect's to refuse."""
+    return bool(host) and isinstance(port, int) and 0 < port <= 65535
+
+
 def _probe_fault(
     exc: BaseException, host: str, port: Any, transport: str,
 ) -> ConnectionFaultError:
@@ -409,9 +415,7 @@ class DeviceReconnectMixin:
         it as a setting to fix.
         """
         host, port, transport = connection_descriptor(driver)
-        if transport not in _PROBE_FIRST_TRANSPORTS:
-            return None
-        if not host or not isinstance(port, int) or not 0 < port <= 65535:
+        if transport not in _PROBE_FIRST_TRANSPORTS or not _dialable(host, port):
             return None
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address
