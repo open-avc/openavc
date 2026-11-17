@@ -144,9 +144,14 @@ export async function saveProject(
 
   const result = await res.json();
   const newEtag = res.headers.get("etag") ?? undefined;
-  // An import also names the devices that wait for their login.
+  // An import also names the devices and plugins that wait for their login.
   return Array.isArray(result.needs_login)
-    ? { status: result.status, etag: newEtag, needs_login: result.needs_login }
+    ? {
+        status: result.status,
+        etag: newEtag,
+        needs_login: result.needs_login,
+        plugins_need_login: Array.isArray(result.plugins_need_login) ? result.plugins_need_login : [],
+      }
     : { status: result.status, etag: newEtag };
 }
 
