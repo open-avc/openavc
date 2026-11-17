@@ -514,6 +514,53 @@ async def test_the_check_names_a_discovery_file_not_here_as_the_save_does(env, m
     assert (await ROUTES.validate_driver_definition_draft(named))["issues"] == []
 
 
+@pytest.mark.parametrize("where", ["above", "absolute", "below"])
+async def test_the_check_names_a_discovery_file_outside_the_driver_folder_as_not_here(
+    env, monkeypatch, where,
+):
+    """Only a file beside the driver travels with it and is found by the
+    loader, so a path that leaves the folder, or goes down into a folder of
+    its own, is not the driver's discovery file wherever it points; and the
+    check never says whether a file exists anywhere else on the server."""
+    monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", env.repo)
+    elsewhere = {
+        "above": env.repo.parent / "acme_widget_discovery.py",
+        "absolute": env.repo.parent / "acme_widget_discovery.py",
+        "below": env.repo / "sub" / "acme_widget_discovery.py",
+    }[where]
+    elsewhere.parent.mkdir(exist_ok=True)
+    elsewhere.write_text("async def probe(ctx):\n    return None\n")
+    named_path = {
+        "above": "../acme_widget_discovery.py",
+        "absolute": str(elsewhere),
+        "below": "sub/acme_widget_discovery.py",
+    }[where]
+    named = {**WIDGET, "discovery": {"python": {"file": named_path}}}
+
+    issues = (await ROUTES.validate_driver_definition_draft(named))["issues"]
+
+    assert issues == [{
+        "severity": "error",
+        "message": (
+            f"It names the discovery file {named_path!r} (discovery.python.file), "
+            "which is not in the driver folder. Add that file first."
+        ),
+        "path": "discovery.python.file",
+    }]
+    assert _loader_refused(named) == [issues[0]["message"]]
+
+
+@pytest.mark.parametrize("named_path", ["./acme_widget_discovery.py", "acme_widget_discovery.py"])
+async def test_the_check_takes_a_discovery_file_beside_the_driver_written_either_way(
+    env, monkeypatch, named_path,
+):
+    monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", env.repo)
+    (env.repo / "acme_widget_discovery.py").write_text("async def probe(ctx):\n    return None\n")
+    named = {**WIDGET, "discovery": {"python": named_path}}
+
+    assert (await ROUTES.validate_driver_definition_draft(named))["issues"] == []
+
+
 # --- PATCH /driver-definitions/{id} --------------------------------------------
 
 

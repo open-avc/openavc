@@ -143,12 +143,24 @@ def _declared_companion(main_path: Path) -> list[Path]:
     except (OSError, ValueError, yaml.YAMLError):
         return []
     relpath = companion_relpath_from_def(definition) if isinstance(definition, dict) else None
-    if not relpath:
+    name = _companion_name(relpath) if relpath else None
+    if name is None:
         return []
+    return [main_path.with_name(name)]
+
+
+def _companion_name(relpath: str) -> str | None:
+    """THE rule for where a definition's discovery file may be: one file
+    beside the driver, written as its name or as ``./<name>``. That name, or
+    None for a path anywhere else (an absolute path, another folder, ``..``).
+    Only a file beside the driver travels with it and is found by the
+    discovery scan, so the installer and ``missing_companion`` both ask this."""
     relative = Path(relpath)
     if relative.is_absolute() or relative.parent != Path("."):
-        return []
-    return [main_path.with_name(relative.name)]
+        return None
+    if relative.name in ("", ".."):
+        return None
+    return relative.name
 
 
 def _is_driver_file(filepath: Path) -> bool:
@@ -370,13 +382,18 @@ def missing_companion(driver_def: dict[str, Any], folder: Path) -> str | None:
     saying the file it names (``discovery.python.file``) is not in ``folder``,
     the folder the definition is in, or None when it names none or the file
     is there. The loader refuses such a definition, and the Driver Builder's
-    check names it before a save.
+    check names it before a save. A path outside the folder is not there,
+    whatever it points at (``_companion_name``), so the check never says
+    whether a file exists anywhere else.
 
     A declaration pointing at a missing file would register its discovery
     rules at hint-load time with nothing to produce their evidence: the device
     would be matchable in theory and invisible in practice."""
     companion_relpath = companion_relpath_from_def(driver_def)
-    if not companion_relpath or (folder / companion_relpath).resolve().is_file():
+    if not companion_relpath:
+        return None
+    name = _companion_name(companion_relpath)
+    if name is not None and (folder / name).is_file():
         return None
     return (
         f"It names the discovery file {companion_relpath!r} "
