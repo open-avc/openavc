@@ -12,6 +12,7 @@ door rather than an empty reading.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -246,12 +247,21 @@ def test_an_upload_the_import_cannot_decode_is_refused_and_writes_nothing(driver
 
 @pytest.fixture
 def code_view(tmp_path, monkeypatch):
+    """The Code view's folder. A driver it creates is imported and registered:
+    both are put back afterwards, so no later test finds the module or the
+    class."""
     import openavc.system_config as system_config
 
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", repo)
-    return repo
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", dict(registry._DRIVER_REGISTRY))
+    module = "openavc_driver_acme_widget"
+    before = sys.modules.pop(module, None)
+    yield repo
+    sys.modules.pop(module, None)
+    if before is not None:
+        sys.modules[module] = before
 
 
 async def test_the_code_view_opens_a_latin_1_driver_as_text(code_view):
@@ -332,3 +342,8 @@ async def test_a_new_driver_is_written_in_the_encoding_its_coding_line_names(cod
     source = _latin_1_driver().decode("latin-1")
     await routes.create_python_driver(PythonDriverCreateRequest(id="acme_widget", source=source))
     assert (code_view / "acme_widget.py").read_bytes() == _latin_1_driver()
+
+
+def test_the_code_view_leaves_no_driver_module_behind():
+    """Runs after the test above: the driver it created is not still imported."""
+    assert "openavc_driver_acme_widget" not in sys.modules
