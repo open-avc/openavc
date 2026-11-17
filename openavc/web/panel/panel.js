@@ -540,6 +540,7 @@ class PanelApp {
         const code = event.code;
         this.setConnectionStatus(false);
         this._endAllHolds();
+        this.macroRuns.forgetRuns();
         if (this.access.showRefusal(code)) return;
         if (code === NOT_APPROVED_CLOSE) {
             // The server took the handshake and then refused this device:

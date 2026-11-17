@@ -414,6 +414,9 @@ SCENARIOS = [
     "a_definition_with_no_pages_ends_the_page_and_every_dialog",
     "a_draw_asked_for_inside_a_draw_runs_after_it",
     "a_draw_that_fails_leaves_the_next_one_free_to_draw",
+    # A dropped connection forgets the macro runs, whose ends it can no
+    # longer hear: none of their buttons stays busy.
+    "a_dropped_connection_marks_no_run_it_can_no_longer_hear_end",
     # The surface record (modules/surface.js): its timers cleared and its
     # ends run once, and whatever is given after it ended ended at once; a
     # page that goes starts none of the entry animations it had still to start.

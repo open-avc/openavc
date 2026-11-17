@@ -10524,6 +10524,8 @@ const PANEL_STEPS = {
     // Somebody used the panel.
     activity: (m) => m.app.resetIdleTimer(),
     connection: (m, up) => m.app.setConnectionStatus(up),
+    // The socket drops, the way a network blink drops it (no refusal).
+    drop: (m) => m.app._socketClosed({ code: 1006 }),
     // The glass changes size and fires `events`, in order, at the window.
     viewport: (m, w, h, events) => {
         setViewport(w, h);
@@ -11409,6 +11411,14 @@ const PANEL_CHECKS = {
         const have = Object.keys(m.app._surfaces.everyControl()).sort();
         assert(JSON.stringify(have) === JSON.stringify(want), `the controls on screen are ${JSON.stringify(have)}, not ${JSON.stringify(want)}`);
     },
+    // The control `id` on screen, on the page or the overlay showing, is
+    // marked busy with the macro `macro` (`null`: not marked).
+    busy: (m, id, macro) => {
+        const nodes = [...document.querySelectorAll(`[data-element-id="${id}"]`)].filter((n) => !n.closest('.panel-overlay.dismissing'));
+        assert(nodes.length === 1, `${nodes.length} controls ${id} on screen, not 1`);
+        const have = nodes[0].classList.contains('macro-busy') ? nodes[0].getAttribute('data-macro-busy') : null;
+        assert(have === macro, `${id} is busy with ${JSON.stringify(have)}, not ${JSON.stringify(macro)}`);
+    },
 };
 
 /** A failed check's message, else nothing: each step's `threw`. */
@@ -11786,7 +11796,42 @@ Object.assign(tests, {
             app.root.textContent = '';
         }
     },
+
+    async a_dropped_connection_marks_no_run_it_can_no_longer_hear_end() {
+        const steps = await driveCase({
+            ui: RUN_PAGES(),
+            steps: [
+                ['nav', 'main'], M1_STARTED(3), M1_STEP('Warming up', 0, 3), ['check', 'busy', 'b_run', 'm1'],
+                // The socket drops: the run may end while the panel is away,
+                // and its end would reach nobody.
+                ['drop'], ['check', 'busy', 'b_run', null], ['check', 'shows', 'p_run', 'Ready'],
+                // The page drawn again when it connects: still not busy.
+                ['render'], ['check', 'busy', 'b_run', null], ['check', 'shows', 'p_run', 'Ready'],
+                // A run that starts once it is back is drawn, and ends.
+                M1_STARTED(2), ['check', 'busy', 'b_run', 'm1'],
+                M1_ENDED, ['check', 'busy', 'b_run', null], ['check', 'shows', 'p_run', 'Ready'],
+            ],
+        });
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
 });
+
+/** The macro pages, and a dialog holding a button that runs m1 and m1's progress line. */
+const RUN_PAGES = () => pinUi('runs', [
+    ...MACRO_PAGES().pages,
+    pinPage('dlg', {
+        page_type: 'overlay',
+        elements: [
+            { id: 'd_run', type: 'button', label: 'Run', bindings: { do: { press: [{ action: 'macro', macro: 'm1' }] } } },
+            { id: 'd_prog', type: 'label', text: '', bindings: { show: { value: { source: 'macro_progress', macro: 'm1', idle_text: 'Idle' } } } },
+        ],
+        placements: { d_run: box(2), d_prog: box(40) },
+    }),
+]);
+const M1_STARTED = (total) => ['msg', { type: 'macro.started', macro_id: 'm1', total_steps: total }];
+const M1_STEP = (description, index, total) => ['msg', { type: 'macro.progress', macro_id: 'm1', description, step_index: index, total_steps: total }];
+const M1_ENDED = ['msg', { type: 'macro.completed', macro_id: 'm1' }];
 
 // --- Layout: which arrangement draws, and where each element goes -----------
 

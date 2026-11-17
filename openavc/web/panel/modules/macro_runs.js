@@ -20,6 +20,10 @@
  * an id like `constructor` reads as not running and `__proto__` is an
  * ordinary key rather than Object.prototype.
  *
+ * What is in flight holds only while the socket does. A dropped connection
+ * forgets every run (`forgetRuns`): the ends it cannot hear would otherwise
+ * leave buttons busy for good.
+ *
  * The panel lends `host`: `elementMap()` and `bindings()`, read at call time
  * (both are rebuilt with the page); `recordSource(node, path)`, where a
  * progress label's words came from for the in-place editor; `showFailure(text)`
@@ -142,8 +146,7 @@ export class MacroRuns {
             step_index: 0,
             total_steps: msg.total_steps || 0,
         };
-        this.showBusy(msg.macro_id);
-        this.showProgress(msg.macro_id);
+        this._draw(msg.macro_id);
     }
 
     /** `macro.progress`: the step a run is on. */
@@ -176,8 +179,28 @@ export class MacroRuns {
      */
     ended(msg) {
         this._endRun(msg.macro_id);
-        this.showBusy(msg.macro_id);
-        this.showProgress(msg.macro_id);
+        this._draw(msg.macro_id);
+    }
+
+    /**
+     * The connection dropped: no run is in flight as far as this panel knows,
+     * and what the runs drew goes. A run that ends while the panel is away
+     * sends its end to nobody, and nothing on the next connection says which
+     * runs are still going, so a run kept here would keep its buttons busy
+     * (which takes no press) for good. A run still going reads idle from here
+     * on. Claims keep their own age-out (MACRO_CLAIM_MAX_AGE_MS).
+     */
+    forgetRuns() {
+        const drawn = Object.keys(this.running);
+        this.running = Object.create(null);
+        this._runs = Object.create(null);
+        for (const macroId of drawn) this._draw(macroId);
+    }
+
+    /** What one macro's runs draw: busy on its buttons, its step on its progress lines. */
+    _draw(macroId) {
+        this.showBusy(macroId);
+        this.showProgress(macroId);
     }
 
     _endRun(macroId) {
