@@ -149,6 +149,17 @@ def test_a_label_the_driver_declares_wins_and_a_bare_key_is_made_readable():
     assert caught.value.param == "level_value"
 
 
+def test_the_contract_quotes_the_refusal_the_runtime_gives():
+    """An author reads the required field's help in an editor that loads the
+    published schema, so it quotes the sentence the runtime refuses with."""
+    from openavc.drivers.param_validation import required_param_sentence
+    from openavc.drivers.spec import DEFS
+
+    doc = DEFS["paramEntry"]["fields"]["required"]["doc"]
+    assert required_param_sentence("Set Level", "Level Value") in doc
+    assert "' is required" not in doc
+
+
 def test_the_other_refusals_carry_no_parameter_key():
     """Only the missing-parameter refusal says which key; a range or format
     refusal still names it in its own sentence."""
