@@ -433,7 +433,9 @@ async def test_a_class_that_fails_to_register_keeps_the_copy_that_worked(env):
         )
 
     assert (exc.value.status_code, exc.value.detail) == (
-        500, "The driver was not saved, and the copy you had is unchanged.",
+        500,
+        "The driver was not saved, and the copy you had is unchanged. "
+        "The Programmer's Log has the details.",
     )
     assert env.files() == ["acme_widget.avcdriver", "widget_copy.avcdriver"]
     assert _saved(env, "acme_widget.avcdriver") == WIDGET

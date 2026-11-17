@@ -259,7 +259,7 @@ async def _save_definition(
     admit_or_answer(
         DriverChange(repo, name, {name: data}, removes=[replaced.name] if replaced else []),
         _SAVE_GATES,
-        failed="The driver was not saved, and the copy you had is unchanged.",
+        failed="The driver was not saved, and the copy you had is unchanged. The Programmer's Log has the details.",
     )
 
     new_id = driver_def["id"]

@@ -29,7 +29,7 @@ Simulation stays on until you stop it, including through a restart of the server
 
 If simulation cannot come back after a restart (the simulator's port is taken by another program, for example), the devices connect to the real equipment and the bar says why. Click **Start Simulation** to choose devices and try again, or **Turn Off Simulation** so the next restart does not simulate either. The same bar appears if the simulator stops by itself while it is running.
 
-A driver you change while simulation is on reaches the simulated devices too: save it in the Driver Builder, import a new copy, or install or update it from the community library, and each simulated device that uses it is started again from the new file. Its simulated state starts over, as it does when you stop and start simulation.
+When you change a driver while simulation is on (save it in the Driver Builder, import a new copy, or install or update it from the community library), each simulated device that uses it is started again from the new file, and its simulated state starts over.
 
 ### Standalone
 
