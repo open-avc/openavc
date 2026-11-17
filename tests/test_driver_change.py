@@ -159,6 +159,30 @@ def test_the_files_a_change_removes_go_and_are_named(folder):
     assert set(_tree(folder)) == {"acme_widget.avcdriver"}
 
 
+def _ignores_case(folder: Path) -> bool:
+    probe = folder / "Case_Probe"
+    probe.write_bytes(b"")
+    try:
+        return (folder / "case_probe").exists()
+    finally:
+        probe.unlink()
+
+
+def test_a_removal_that_is_the_placed_file_under_another_case_is_kept(folder):
+    """On a folder that ignores case (macOS and Windows by default), the copy
+    a change replaces can be the very file it just wrote under another case:
+    it is the driver now, and stays."""
+    if not _ignores_case(folder):
+        pytest.skip("this folder tells names apart by case")
+    (folder / "Acme_Widget.avcdriver").write_bytes(_yaml(name="Old"))
+    admitted = admit(_change(
+        folder, {"acme_widget.avcdriver": _yaml()}, removes=("Acme_Widget.avcdriver",),
+    ))
+    assert admitted.removed == []
+    assert list(_tree(folder).values()) == [_yaml()]
+    assert registry.get_driver_class(DRIVER_ID) is admitted.driver_class
+
+
 def test_a_leftover_staging_folder_is_swept(folder):
     leftover = folder / ".staging-crashed"
     leftover.mkdir()

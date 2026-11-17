@@ -387,6 +387,7 @@ class _Swap:
         self.module = module_name(self.main) if self.main.suffix == ".py" else None
         self.old_module = sys.modules.get(self.module) if self.module else None
         self.applied: list[_Before] = []
+        self.removed: list[str] = []
 
     def register(
         self, driver_class: type, gates: Gates, notices: tuple[str, ...] = ()
@@ -407,7 +408,7 @@ class _Swap:
         refused_files.record_notices(
             self.main, driver_class.DRIVER_INFO.get("id") or self.main.stem, notices
         )
-        return Admitted(driver_class, [path.name for path in self.removals], notices)
+        return Admitted(driver_class, self.removed, notices)
 
     def _place(self) -> None:
         """Each staged file over its target. An optional file that cannot be
@@ -426,10 +427,17 @@ class _Swap:
             _forget_bytecode(target)
 
     def _remove(self) -> None:
+        """Each file the change removes, unless it is now one the change put
+        in place: in a folder that ignores case (macOS and Windows by
+        default), ``Acme.avcdriver`` and ``acme.avcdriver`` are one file."""
+        placed = [before.path for before in self.applied]
         for path in self.removals:
+            if any(_same_file(path, target) for target in placed):
+                continue
             before = _Before(path)
             path.unlink()
             self.applied.append(before)
+            self.removed.append(path.name)
 
     def _put_back(self) -> None:
         for before in reversed(self.applied):
@@ -440,6 +448,15 @@ class _Swap:
             sys.modules[self.module] = self.old_module
         else:
             sys.modules.pop(self.module, None)
+
+
+def _same_file(path: Path, other: Path) -> bool:
+    """Whether two names in the folder are one file; False when either is
+    gone."""
+    try:
+        return os.path.samefile(path, other)
+    except OSError:
+        return False
 
 
 def _forget_bytecode(path: Path) -> None:

@@ -403,6 +403,25 @@ async def test_a_rename_restores_the_old_id_and_reconnects_both(env):
     ]
 
 
+async def test_a_rename_that_changes_only_the_case_of_the_id_keeps_the_saved_file(env):
+    """Where the folder ignores case, the old id's file is the new one's: the
+    save must not take away the file it just wrote."""
+    probe = env.repo / "Case_Probe"
+    probe.write_text("")
+    ignores_case = (env.repo / "case_probe").exists()
+    probe.unlink()
+    if not ignores_case:
+        pytest.skip("this folder tells names apart by case")
+    (env.repo / "Acme_Widget.avcdriver").write_text(
+        yaml.safe_dump({**WIDGET, "id": "Acme_Widget"}), encoding="utf-8")
+
+    await ROUTES.update_driver_definition("Acme_Widget", DriverDefinitionRequest(**WIDGET))
+
+    assert [p.name.lower() for p in env.repo.iterdir() if p.is_file()] == ["acme_widget.avcdriver"]
+    saved = next(p for p in env.repo.iterdir() if p.is_file())
+    assert yaml.safe_load(saved.read_text(encoding="utf-8"))["id"] == "acme_widget"
+
+
 async def test_a_class_that_fails_to_register_keeps_the_copy_that_worked(env):
     save_driver_definition(dict(WIDGET), env.repo)
     (env.repo / "widget_copy.avcdriver").write_text(yaml.safe_dump(WIDGET), encoding="utf-8")
