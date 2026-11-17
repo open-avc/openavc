@@ -5,8 +5,10 @@ ones whose settings changed, and cleaning up after one that left.
 The rules worth knowing before changing it. Each device is worked out on its
 own (``resolve_each``) and split into its batch on its own: one whose settings
 cannot be worked out, or whose driver cannot say whether it is a bridge, is
-reported failed with why (``UnresolvedDevice``) and never costs the others
-theirs. Devices are added bridges first and then the devices that route
+reported failed with why (``UnresolvedDevice``), kept by the device manager
+with that reason (``DeviceManager.keep_unresolved``, core/device_records.py)
+and never costs the others theirs. ``work_out`` asks both questions of one
+device, for the device manager to try one such device again. Devices are added bridges first and then the devices that route
 through them, each batch in parallel, and a device that fails to add never
 stops the others. A running device is
 re-added only when a field ``add_device`` acts on changed (``needs_readd``):
@@ -48,15 +50,34 @@ def needs_readd(old: dict, new: dict) -> bool:
     return any((old.get(field) or {}) != (new.get(field) or {}) for field in _READD_MAPS)
 
 
+def _entry_of(device: Any) -> dict[str, Any]:
+    """The project's own facts about a device (a project device or a
+    resolved record): what its record keeps when it cannot be worked out."""
+    def read(key: str, default: Any = None) -> Any:
+        if isinstance(device, dict):
+            return device.get(key, default)
+        return getattr(device, key, default)
+
+    device_id = read("id")
+    return {
+        "id": device_id,
+        "name": read("name") or device_id,
+        "driver": read("driver") or "",
+        "enabled": read("enabled", True) is not False,
+    }
+
+
 class UnresolvedDevice(Exception):
     """A project device that could not be handed to the device manager,
     because working it out raised: its settings, or whether its driver is a
-    bridge. ``device_id`` names it; the message says which of the two failed,
-    then what raised (also its ``__cause__``)."""
+    bridge. ``device_id`` names it and ``entry`` holds the project's id,
+    name, driver and enabled for it; the message says which of the two
+    failed, then what raised (also its ``__cause__``)."""
 
-    def __init__(self, device_id: str, step: str, cause: BaseException) -> None:
+    def __init__(self, device: Any, step: str, cause: BaseException) -> None:
         super().__init__(f"{step}: {cause}")
-        self.device_id = device_id
+        self.entry = _entry_of(device)
+        self.device_id = self.entry["id"]
         self.__cause__ = cause
 
 
@@ -85,7 +106,7 @@ def resolve_each(devices: Iterable[Any], resolve: Callable[[Any], dict[str, Any]
             configs[device.id] = resolve(device)
         except Exception as error:  # Catch-all: one device's settings never cost the others theirs
             failed[device.id] = UnresolvedDevice(
-                device.id, "its settings could not be worked out", error,
+                device, "its settings could not be worked out", error,
             )
     return ResolvedDevices(configs, failed)
 
@@ -109,26 +130,40 @@ def bridges_first(resolved: dict[str, dict[str, Any]]) -> tuple[list[list[str]],
             is_bridge = device_config.is_bridge_config(cfg)
         except Exception as error:  # Catch-all: one driver's bridge block never costs the others their start
             failed[did] = UnresolvedDevice(
-                did, "its driver could not say whether it is a bridge", error,
+                cfg, "its driver could not say whether it is a bridge", error,
             )
             continue
         (bridges if is_bridge else others).append(did)
     return [batch for batch in (bridges, others) if batch], failed
 
 
+def work_out(device: Any, resolve: Callable[[Any], dict[str, Any]]) -> dict[str, Any]:
+    """One project device worked out as a start or a save works each out
+    (``resolve_each``, then ``bridges_first``): its resolved record, or
+    :class:`UnresolvedDevice` with why it cannot be."""
+    resolved = resolve_each([device], resolve)
+    if resolved.failed:
+        raise resolved.failed[device.id]
+    _, unsplit = bridges_first(resolved.configs)
+    if unsplit:
+        raise unsplit[device.id]
+    return resolved.configs[device.id]
+
+
 def log_failed_sync_add(device_id: str, error: Exception) -> None:
     log.error(f"Failed to add device '{device_id}' during sync: {error}")
 
 
-def log_unresolved_at_sync(failed: dict[str, UnresolvedDevice], running_ids: set[str]) -> None:
-    """Say why each device a sync could not work out was left as it is: one
-    not running is not added, one running keeps the settings it runs with,
-    since it is still in the project and nothing better is known."""
+async def keep_unresolved_at_sync(devices, failed: dict[str, UnresolvedDevice]) -> None:
+    """Keep each device a sync could not work out, with why
+    (``DeviceManager.keep_unresolved``), and say so. One a driver runs keeps
+    running with the settings it has, since it is still in the project and
+    nothing better is known."""
     for did, error in failed.items():
-        if did in running_ids:
-            log.error(f"Device '{did}' keeps running with the settings it had: {error}")
-        else:
+        if await devices.keep_unresolved(error):
             log_failed_sync_add(did, error)
+        else:
+            log.error(f"Device '{did}' keeps running with the settings it had: {error}")
 
 
 async def add_devices(devices, resolved: dict[str, dict], *, defer_connect, on_failure) -> None:
@@ -141,10 +176,12 @@ async def add_devices(devices, resolved: dict[str, dict], *, defer_connect, on_f
     timeouts (5 s each), so N offline devices would hold a start for N x 5 s;
     each add writes only its own device's keys, so gathering them is safe. A
     device that fails, to be split into its batch or to be added, goes to
-    ``on_failure(device_id, error)``, and the rest are still added.
+    ``on_failure(device_id, error)``, and the rest are still added; one that
+    cannot be split is kept by the device manager with why.
     """
     batches, unsplit = bridges_first(resolved)
     for did, error in unsplit.items():
+        await devices.keep_unresolved(error)
         on_failure(did, error)
     for batch in batches:
         results = await asyncio.gather(
@@ -172,7 +209,9 @@ async def update_changed_devices(devices, device_ids, project_devices, *, defer_
     """Re-add, in parallel, each of ``device_ids`` whose running config
     differs from its project one in a field add_device acts on
     (``needs_readd``), and each its driver could not set up, which every sync
-    tries again; ``update_device`` is remove + add."""
+    tries again; ``update_device`` is remove + add. A device whose settings
+    could not be worked out before has no config to compare, so it is
+    re-added whenever they can be now."""
     changed_ids = [
         did for did in device_ids
         if devices.build_failed(did)

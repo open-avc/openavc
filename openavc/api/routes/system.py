@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBasicCredentials
 
 from openavc.api._engine import _get_engine
+from openavc.core.device_records import DISABLED, ORPHANED
 from openavc.core.host_policy import HostCategory
 from openavc.api.auth import _basic, local_console_auth_satisfied, programmer_auth_satisfied
 from openavc.utils.request_origin import (
@@ -90,9 +91,11 @@ async def health_check() -> dict[str, Any]:
     status = engine.get_status()
     devices_list = engine.devices.list_devices() if engine.devices else []
     total = len(devices_list)
+    # Counted by each device's state as the device manager records it; one
+    # its driver or its settings failed is among the disconnected.
     connected = sum(1 for d in devices_list if d.get("connected"))
-    orphaned = sum(1 for d in devices_list if d.get("orphaned"))
-    disabled = sum(1 for d in devices_list if d.get("enabled") is False)
+    orphaned = sum(1 for d in devices_list if d.get("status") == ORPHANED)
+    disabled = sum(1 for d in devices_list if d.get("status") == DISABLED)
     # Cached available-update version maintained by the periodic auto-check
     # (empty when up to date). Read from state — never triggers a network
     # check here, so monitoring callers and the tray can poll it cheaply.

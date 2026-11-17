@@ -27,6 +27,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
 
@@ -84,6 +85,9 @@ async def test_sync_devices_reapplies_enabled_child_pending(tmp_path, field, old
     devices.update_device = AsyncMock()
     devices.add_device = AsyncMock()
     devices.remove_device = AsyncMock()
+    devices.device_records.side_effect = lambda: [
+        DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
+    ]
     eng.devices = devices
 
     await eng._sync_devices()
@@ -108,6 +112,9 @@ async def test_sync_devices_no_change_does_not_reapply(tmp_path):
     devices.update_device = AsyncMock()
     devices.add_device = AsyncMock()
     devices.remove_device = AsyncMock()
+    devices.device_records.side_effect = lambda: [
+        DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
+    ]
     eng.devices = devices
 
     await eng._sync_devices()

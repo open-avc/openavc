@@ -186,15 +186,10 @@ class HeartbeatCollector:
             return 0  # DeviceManager may not be fully initialized
 
     def _get_devices_connected(self) -> int:
-        """Number of devices currently connected."""
+        """Number of devices currently connected, as the device manager
+        lists them."""
         try:
-            count = 0
-            for device in self._devices.list_devices():
-                device_id = device.get("id", "")
-                status = self._state.get(f"device.{device_id}.connected")
-                if status:
-                    count += 1
-            return count
+            return sum(1 for device in self._devices.list_devices() if device.get("connected"))
         except (AttributeError, TypeError):
             return 0  # DeviceManager or StateStore may not be fully initialized
 

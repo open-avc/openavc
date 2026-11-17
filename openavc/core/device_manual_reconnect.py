@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from openavc.core.device_records import DRIVER_FAILED, SETTINGS_FAILED
 from openavc.drivers.base import ConnectEndedError
 from openavc.utils.logger import get_logger
 
@@ -50,8 +51,9 @@ class DeviceManualReconnectMixin:
     ``_clear_offline_reason`` and ``_failure_text`` (core/device_away.py);
     ``_note_bridge_offline_if_down`` (core/device_bridges.py);
     ``_apply_pending_settings`` (core/pending_settings.py),
-    ``_schedule_web_ui_probe`` (core/device_web_ui.py), and ``build_failed``
-    and ``_retry_build`` (core/device_build_failures.py).
+    ``_schedule_web_ui_probe`` (core/device_web_ui.py), ``status_of`` and
+    ``_retry_settings`` (core/device_records.py), and ``_retry_build``
+    (core/device_build_failures.py).
     """
 
     state: StateStore
@@ -60,9 +62,14 @@ class DeviceManualReconnectMixin:
 
     async def reconnect_device(self, device_id: str) -> None:
         """Force disconnect and reconnect a device. A device its driver could
-        not set up is set up again (core/device_build_failures.py)."""
-        if self.build_failed(device_id):
-            await self._retry_build(device_id)
+        not set up is set up again (core/device_build_failures.py), and one
+        whose settings could not be worked out is worked out again
+        (core/device_records.py)."""
+        retry = {
+            DRIVER_FAILED: self._retry_build, SETTINGS_FAILED: self._retry_settings,
+        }.get(self.status_of(device_id))
+        if retry is not None:
+            await retry(device_id)
             return
         driver = self._live_driver(device_id)
         # A manual reconnect overrides a test-panel pause — clear the pause

@@ -26,6 +26,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
 from openavc.drivers.configurable import create_configurable_driver_class
@@ -72,6 +73,9 @@ def _mock_devices(running: dict) -> MagicMock:
     devices.add_device = AsyncMock()
     devices.update_device = AsyncMock()
     devices.remove_device = AsyncMock()
+    devices.device_records.side_effect = lambda: [
+        DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
+    ]
     return devices
 
 

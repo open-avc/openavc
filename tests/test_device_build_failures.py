@@ -120,8 +120,8 @@ async def test_a_device_its_driver_cannot_set_up_is_listed_with_why(dm):
 
     listed = {entry["id"]: entry for entry in dm.list_devices()}
     assert listed["dev"] == {
-        "id": "dev", "name": "Dev", "driver": DRIVER, "connected": False,
-        "connection": dm.get_device_info("dev")["connection"],
+        "id": "dev", "name": "Dev", "driver": DRIVER, "status": "driver_failed",
+        "connected": False, "connection": dm.get_device_info("dev")["connection"],
     }
     info = dm.get_device_info("dev")
     assert info["commands"] == {} and info["driver_info"] == {}

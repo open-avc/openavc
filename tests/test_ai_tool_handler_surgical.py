@@ -119,6 +119,7 @@ def mock_agent():
 def mock_devices():
     devices = MagicMock()
     devices.list_devices.return_value = []
+    devices.device_record.return_value = None  # no device applied yet
     devices.add_device = AsyncMock()
     devices.remove_device = AsyncMock()
     devices.send_command = AsyncMock()

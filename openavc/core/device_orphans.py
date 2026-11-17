@@ -25,6 +25,7 @@ from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.device_errors import DeviceNotFoundError, DeviceNotOrphanedError
+from openavc.core.device_records import ORPHANED
 from openavc.core.installed_equipment import missing_driver_reason
 from openavc.drivers.registry import is_driver_registered
 from openavc.utils.logger import get_logger
@@ -39,18 +40,16 @@ log = get_logger("openavc.core.device_manager")
 class DeviceOrphansMixin:
     """Keeping a device whose driver is missing, and activating it later.
 
-    Its state is set up by ``_init_orphans``. From its host (DeviceManager) it
-    reads ``state``, ``events``, ``_device_configs`` and ``request_bringup``, and
-    asks ``add_device`` and ``remove_device``.
+    Holds no state of its own: an orphan is a record in the ``orphaned``
+    state (core/device_records.py). From its host (DeviceManager) it reads
+    ``state``, ``events`` and ``request_bringup``, and asks ``add_device``,
+    ``remove_device``, ``device_record``, ``status_of``, ``_records_in`` and
+    ``_keep_record``.
     """
 
     state: StateStore
     events: EventBus
-    _device_configs: dict[str, dict[str, Any]]
     request_bringup: Callable[[], None] | None
-
-    def _init_orphans(self) -> None:
-        self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
 
     async def _register_orphan(
         self, device_id: str, device_config: dict[str, Any], name: str,
@@ -59,8 +58,7 @@ class DeviceOrphansMixin:
         It activates when the driver arrives (retry_all_orphans)."""
         driver_id = device_config["driver"]
         log.warning(f"Device '{device_id}' is orphaned: {missing_driver_reason(driver_id)}")
-        self._orphaned_devices[device_id] = device_config
-        self._device_configs[device_id] = device_config
+        self._keep_record(device_id, ORPHANED, device_config)
         self.state.set(f"device.{device_id}.name", name, source="config")
         self.state.set(f"device.{device_id}.connected", False, source="config")
         self.state.set(f"device.{device_id}.orphaned", True, source="config")
@@ -107,7 +105,7 @@ class DeviceOrphansMixin:
         ask_for_round = not defer_connect and self.request_bringup is not None
         await self.remove_device(device_id)
         await self.add_device(config, defer_connect=defer_connect or ask_for_round)
-        activated = device_id not in self._orphaned_devices
+        activated = self.status_of(device_id) != ORPHANED
         if activated and ask_for_round:
             self.request_bringup()
         return activated
@@ -121,11 +119,12 @@ class DeviceOrphansMixin:
         its own type, because the retry that follows builds the device, and a
         driver's constructor can raise a ValueError of its own.
         """
-        if device_id in self._orphaned_devices:
-            return self._orphaned_devices[device_id]
-        if device_id not in self._device_configs:
+        record = self.device_record(device_id)
+        if record is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        raise DeviceNotOrphanedError(device_id)
+        if record.status != ORPHANED:
+            raise DeviceNotOrphanedError(device_id)
+        return record.config
 
     async def retry_all_orphans(self, *, defer_connect: bool = False) -> list[str]:
         """Promote every orphan whose driver is now in the registry.
@@ -149,8 +148,8 @@ class DeviceOrphansMixin:
         ``note`` ends each "Activated" log line, with ``{driver}`` filled in.
         """
         activated: list[str] = []
-        # Snapshot before iterating — retry_orphaned_device mutates the dict
-        for device_id, config in list(self._orphaned_devices.items()):
+        # A snapshot: activating one changes the records.
+        for device_id, config in self._records_in(ORPHANED).items():
             driver_id = config.get("driver", "")
             if wanted(driver_id) and await self._try_orphan(device_id, defer_connect):
                 activated.append(device_id)
@@ -169,7 +168,7 @@ class DeviceOrphansMixin:
         """Return the unique driver IDs that orphaned devices are waiting for."""
         seen: set[str] = set()
         result: list[str] = []
-        for cfg in self._orphaned_devices.values():
+        for cfg in self._records_in(ORPHANED).values():
             driver_id = cfg.get("driver", "")
             if driver_id and driver_id not in seen:
                 seen.add(driver_id)

@@ -778,6 +778,14 @@ class SimulationManager:
         equipment."""
         return bool(getattr(self.engine, "stopping", False))
 
+    def _project_device_ids(self) -> list[str]:
+        """The devices a simulation simulates: every device the device manager
+        has a worked-out record of (``get_device_configs``), disabled and
+        waiting ones too, so enabling one or installing its driver needs no
+        restart. One whose settings could not be worked out has none, so it
+        is not simulated."""
+        return list(self.engine.devices.get_device_configs())
+
     def _device_sim_payload(self, device_id: str, cfg: dict) -> dict:
         """Build the launch/sync payload for one device.
 
@@ -821,7 +829,7 @@ class SimulationManager:
 
         # Determine which devices to simulate
         if device_ids is None:
-            device_ids = list(dm._device_configs.keys())
+            device_ids = self._project_device_ids()
 
         if not device_ids and not allow_empty:
             raise RuntimeError("No devices in project to simulate")
@@ -829,7 +837,7 @@ class SimulationManager:
         # Build simulator config
         devices_config = []
         for device_id in device_ids:
-            cfg = dm._device_configs.get(device_id)
+            cfg = dm.get_device_config(device_id)
             if not cfg:
                 log.warning("Device %s not found, skipping simulation", device_id)
                 continue
@@ -1575,7 +1583,7 @@ class SimulationManager:
             return
 
         dm = self.engine.devices
-        current_device_ids = set(dm._device_configs.keys())
+        current_device_ids = set(self._project_device_ids())
         if self._selection is not None:
             current_device_ids.intersection_update(self._selection)
         simulated_ids = set(self._sim_ports.keys())
@@ -1646,7 +1654,7 @@ class SimulationManager:
         recorded = self._sim_payloads.get(device_id)
         if recorded is None:
             return False
-        cfg = self.engine.devices._device_configs.get(device_id)
+        cfg = self.engine.devices.get_device_config(device_id)
         if not cfg:
             return False
         return self._device_sim_payload(device_id, cfg) != recorded
@@ -1703,7 +1711,7 @@ class SimulationManager:
         import aiohttp
 
         dm = self.engine.devices
-        cfg = dm._device_configs.get(device_id)
+        cfg = dm.get_device_config(device_id)
         if not cfg:
             return
         recorded = self._device_sim_payload(device_id, cfg)

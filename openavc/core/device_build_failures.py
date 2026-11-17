@@ -19,16 +19,18 @@ cleared before the record publishes its own, and its logins are registered
 again from the device's settings, since a constructor can raise before it
 registers them and the error's text can carry one.
 
-How the device is described (listed, its details) is core/device_info.py.
+Its record (the ``driver_failed`` state, with the fault as its reason) is
+core/device_records.py; how the device is described (listed, its details) is
+core/device_info.py.
 Mixed into DeviceManager (core/device_manager.py). Logs under the device
 manager's name, which is how the log view files a line as the device's.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
+from openavc.core import device_records
 from openavc.core.connection_fault import (
     DRIVER_FAILED,
     ConnectionFault,
@@ -90,26 +92,21 @@ class DeviceBuildFailuresMixin:
     """Building a device's driver, keeping a device its driver could not set
     up, and trying it again.
 
-    Its state is set up by ``_init_build_failures``. From its host
-    (DeviceManager) it reads ``state``, ``events``, ``installed_equipment``,
-    ``_device_configs`` and ``request_bringup``, and asks ``add_device``,
-    ``remove_device`` and ``_publish_offline`` (core/device_away.py).
+    Holds no state of its own: such a device is a record in the
+    ``driver_failed`` state (core/device_records.py). From its host
+    (DeviceManager) it reads ``state``, ``events`` and
+    ``installed_equipment``, and asks ``status_of``, ``_keep_record``,
+    ``_set_up_again`` and ``_publish_offline`` (core/device_away.py).
     """
 
     state: StateStore
     events: EventBus
     installed_equipment: Any
-    _device_configs: dict[str, dict[str, Any]]
-    request_bringup: Callable[[], None] | None
-
-    def _init_build_failures(self) -> None:
-        # Device id -> the device config its driver could not set up.
-        self._build_failures: dict[str, dict[str, Any]] = {}
 
     def build_failed(self, device_id: str) -> bool:
         """True while ``device_id`` is kept because its driver could not set
         it up."""
-        return device_id in self._build_failures
+        return self.status_of(device_id) == device_records.DRIVER_FAILED
 
     def _build_driver(
         self, device_config: dict[str, Any], driver_class: type, config: dict[str, Any],
@@ -144,8 +141,9 @@ class DeviceBuildFailuresMixin:
             f"{simulator_error_text(error)}",
             exc_info=error,
         )
-        self._build_failures[device_id] = device_config
-        self._device_configs[device_id] = device_config
+        product = bool(self.installed_equipment and self.installed_equipment.owns(device_id))
+        fault = driver_failed_fault(driver_id, error, product=product)
+        self._keep_record(device_id, device_records.DRIVER_FAILED, device_config, fault)
         prefix = f"device.{device_id}."
         for key in self.state.get_namespace(prefix):
             self.state.delete(f"{prefix}{key}")
@@ -154,19 +152,11 @@ class DeviceBuildFailuresMixin:
         self.state.set(f"{prefix}enabled", True, source="config")
         self.state.set(f"{prefix}connected", False, source="device_manager")
         self.state.set(f"{prefix}reconnect_failed", True, source="device_manager")
-        product = bool(self.installed_equipment and self.installed_equipment.owns(device_id))
-        self._publish_offline(device_id, None, driver_failed_fault(driver_id, error, product=product))
+        self._publish_offline(device_id, None, fault)
 
-    async def _retry_build(self, device_id: str) -> None:
+    async def _retry_build(self, device_id: str) -> bool:
         """Reconnect for a device its driver could not set up: set it up
         again, and leave dialing it to a bring-up round. One that fails again
-        is kept with the new error, which is what the device page shows."""
-        config = self._build_failures[device_id]
-        ask_for_round = self.request_bringup is not None
-        await self.remove_device(device_id)
-        try:
-            await self.add_device(config, defer_connect=ask_for_round)
-        except DriverBuildError:
-            return
-        if ask_for_round:
-            self.request_bringup()
+        is kept with the new error, which is what the device page shows.
+        True when a driver runs it after."""
+        return await self._set_up_again(self.device_record(device_id).config)

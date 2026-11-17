@@ -310,7 +310,7 @@ class TestOrphanedDevices:
             "config": {},
         })
 
-        assert "orphan1" in manager._orphaned_devices
+        assert manager.status_of("orphan1") == "orphaned"
         assert state.get("device.orphan1.orphaned") is True
         assert "nonexistent_driver_xyz" in state.get("device.orphan1.orphan_reason")
 
@@ -358,11 +358,11 @@ class TestOrphanedDevices:
             "name": "Ghost",
             "config": {},
         })
-        assert "orphan1" in manager._orphaned_devices
+        assert manager.status_of("orphan1") == "orphaned"
 
         await manager.remove_device("orphan1")
 
-        assert "orphan1" not in manager._orphaned_devices
+        assert manager.status_of("orphan1") is None
         assert "orphan1" not in manager._device_configs
         assert len(manager.list_devices()) == 0
 
@@ -377,7 +377,7 @@ class TestOrphanedDevices:
             "name": "Was Orphan",
             "config": {},
         })
-        assert "dev1" in manager._orphaned_devices
+        assert manager.status_of("dev1") == "orphaned"
 
         # Update to use a real driver (generic_tcp is always registered)
         assert "generic_tcp" in _DRIVER_REGISTRY  # sanity check
@@ -389,7 +389,7 @@ class TestOrphanedDevices:
         })
 
         # Should no longer be orphaned
-        assert "dev1" not in manager._orphaned_devices
+        assert manager.status_of("dev1") == "running"
         assert "dev1" in manager._devices
         assert state.get("device.dev1.name") == "Now Active"
         await manager.disconnect_all()

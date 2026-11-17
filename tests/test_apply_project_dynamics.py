@@ -26,6 +26,7 @@ from httpx import ASGITransport, AsyncClient
 
 from openavc.drivers.registry import register_driver, unregister_driver
 from openavc.core.engine import Engine, ProjectRevisionConflictError
+from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.project_diff import ProjectDiff
 from openavc.core.project_loader import ProjectConfig, VariableConfig, load_project
 from openavc.drivers.configurable import create_configurable_driver_class
@@ -438,6 +439,9 @@ def _mock_devices(running: dict) -> MagicMock:
     devices.update_device = AsyncMock()
     devices.remove_device = AsyncMock()
     devices.retry_all_orphans = AsyncMock()
+    devices.device_records.side_effect = lambda: [
+        DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
+    ]
     return devices
 
 
@@ -512,8 +516,8 @@ async def test_devices_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
     # second apply.
     eng = await _primed_engine(tmp_path)
     eng.devices = _mock_devices({})
-    eng.devices.get_device_configs = MagicMock(
-        side_effect=[RuntimeError("injected reconcile failure"), {}, {}]
+    eng.devices.device_records = MagicMock(
+        side_effect=[RuntimeError("injected reconcile failure"), [], []]
     )
     prev_project = eng.project
     prev_revision = eng._project_revision

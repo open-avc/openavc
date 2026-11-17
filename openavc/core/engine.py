@@ -124,6 +124,9 @@ class Engine(
         # round, so the simulation redirect lands before the first connect.
         self.devices.request_bringup = self._schedule_device_bringup
         self.devices.on_driver_reloaded = self._record_push_ports
+        # Reconnect, or a reload of its driver, works a device whose settings
+        # could not be worked out again, as the start and a save do.
+        self.devices.work_out = self._work_out_device
         # "Ask for help" — raised by a macro step, never a stock control.
         self.help = HelpRequests(self)
         self.macros = MacroEngine(
@@ -273,6 +276,19 @@ class Engine(
         if installed is not None:
             return installed
         return fill_saved_logins(resolve_device_config(device, self.project), self.device_logins)
+
+    def _work_out_device(self, device_id: str) -> dict:
+        """One project device worked out again by its id, as the start and a
+        save work each one out (``core.device_sync.work_out``): its resolved
+        record, or ``UnresolvedDevice`` with why it still cannot be."""
+        from openavc.core.device_errors import DeviceNotFoundError
+        from openavc.core.device_sync import work_out
+
+        devices = self.project.devices if self.project else []
+        device = next((d for d in devices if d.id == device_id), None)
+        if device is None:
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        return work_out(device, self.resolved_device_config)
 
     # --- UI Event Handling ---
 

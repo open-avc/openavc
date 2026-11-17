@@ -5,10 +5,12 @@ device connects now (``dialled_record``, ``connections_now``), each connected
 one (``live_connections``) and, less the simulated ones, the ports held on the
 network (``network_connections``). Read-only: nothing here changes a device.
 
-Four kinds of device are described: one with a live driver, one waiting for its
-driver to be installed (an orphan, core/device_orphans.py), one its driver
-could not set up (core/device_build_failures.py), and one that is disabled.
-Product hardware adds its own facts on top (installed equipment).
+Every device is described from its record (core/device_records.py), which
+says its state: running, disabled, waiting for its driver to be installed
+(orphaned, core/device_orphans.py), its driver could not set it up
+(core/device_build_failures.py), or its settings could not be worked out.
+Each answer carries that state as ``status``. Product hardware adds its own
+facts on top (installed equipment).
 
 The rule worth knowing before changing it: where a device connects is read from
 the record the manager was handed (``core.device_config.connection_of``). A
@@ -33,6 +35,7 @@ from typing import Any, TYPE_CHECKING
 from openavc.core.device_config import DeviceConnection, connection_of, dialled_record
 from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
+from openavc.core.device_records import ORPHANED, RUNNING, DeviceRecord
 from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
 from openavc.drivers.refused_files import refusal_for
 # The device.<id>.<key> keys the device manager writes for every device: the
@@ -56,28 +59,34 @@ _redact_config = redact_config
 
 
 # What every listing gives each device, live or not.
-_SUMMARY_KEYS = ("id", "name", "driver", "connected", "connection")
+_SUMMARY_KEYS = ("id", "name", "driver", "status", "connected", "connection")
 
 
-def _summary_without_driver(device_id: str, config: dict[str, Any]) -> dict[str, Any]:
-    """The summary of a device with no live driver (disabled, or its driver
-    not installed): never connected, and where it would connect."""
-    return {
-        "id": device_id,
-        "name": config.get("name", device_id),
+def _summary_without_driver(record: DeviceRecord) -> dict[str, Any]:
+    """The summary of a device no driver runs: its state, never connected,
+    and where it would connect (none when its settings could not be worked
+    out). ``enabled`` is there, False, only when the project turns it off."""
+    config = record.config
+    summary = {
+        "id": record.device_id,
+        "name": config.get("name", record.device_id),
         "driver": config.get("driver", ""),
+        "status": record.status,
         "connected": False,
-        "connection": connection_of(config).address(),
+        "connection": connection_of(config).address() if record.resolved else None,
     }
+    if config.get("enabled", True) is False:
+        summary["enabled"] = False
+    return summary
 
 
-def _orphan_summary(device_id: str, config: dict[str, Any]) -> dict[str, Any]:
+def _orphan_summary(record: DeviceRecord) -> dict[str, Any]:
     """The summary of a device waiting for its driver, and why: the sentence
     (``orphan_reason``), and, only when the driver's file is installed but did
     not load, its reasons alone (``driver_load_error``)."""
-    driver_id = config.get("driver", "")
+    driver_id = record.config.get("driver", "")
     summary = {
-        **_summary_without_driver(device_id, config),
+        **_summary_without_driver(record),
         "orphaned": True,
         "orphan_reason": missing_driver_reason(driver_id),
     }
@@ -99,10 +108,10 @@ class DeviceInfoMixin:
 
     Holds no state of its own. From its host (DeviceManager) it reads
     ``state``, ``installed_equipment``, ``real_connection``,
-    ``simulation_redirect``, ``_devices``, ``_device_configs``,
-    ``_orphaned_devices`` (core/device_orphans.py), ``_build_failures``
-    (core/device_build_failures.py) and ``_detected_web_ui_urls``
-    (core/device_web_ui.py), and asks ``_live_driver``.
+    ``simulation_redirect``, ``_devices``, ``_device_configs`` and
+    ``_detected_web_ui_urls`` (core/device_web_ui.py), and asks
+    ``_live_driver``, ``device_record`` and ``device_records``
+    (core/device_records.py).
     """
 
     state: StateStore
@@ -111,8 +120,6 @@ class DeviceInfoMixin:
     simulation_redirect: Callable[[str], dict[str, Any] | None] | None
     _devices: dict[str, BaseDriver]
     _device_configs: dict[str, dict[str, Any]]
-    _orphaned_devices: dict[str, dict[str, Any]]
-    _build_failures: dict[str, dict[str, Any]]
     _detected_web_ui_urls: dict[str, str]
 
     def get_device_info(self, device_id: str) -> dict[str, Any]:
@@ -144,13 +151,14 @@ class DeviceInfoMixin:
         return result
 
     def _device_info(self, device_id: str) -> dict[str, Any]:
-        """Build metadata for active, disabled, missing-driver devices and
-        ones their driver could not set up."""
-        # Check if orphaned first
-        if device_id in self._orphaned_devices:
-            config = self._orphaned_devices[device_id]
+        """Build metadata for a device in any state (its record)."""
+        record = self.device_record(device_id)
+        if record is None:
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        if record.status == ORPHANED:
+            config = record.config
             return {
-                **_orphan_summary(device_id, config),
+                **_orphan_summary(record),
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
                 "driver_info": {},
@@ -162,14 +170,11 @@ class DeviceInfoMixin:
                 "config": _orphan_config(config.get("config", {})),
             }
 
-        driver = self._devices.get(device_id)
-        if driver is None:
-            # A disabled device, or one its driver could not set up: why is
-            # in its state (offline_reason, offline_detail).
-            if device_id not in self._device_configs:
-                raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        if record.status != RUNNING:
+            # Disabled, or its driver or its settings failed: why is in its
+            # state (offline_reason, offline_detail).
             return {
-                **_summary_without_driver(device_id, self._device_configs[device_id]),
+                **_summary_without_driver(record),
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
                 "driver_info": {},
@@ -177,11 +182,13 @@ class DeviceInfoMixin:
 
         from openavc.drivers.actions import resolve_device_actions
 
+        driver = self._devices[device_id]
         config = self._device_configs.get(device_id, {})
         info = {
             "id": device_id,
             "name": config.get("name", device_id),
             "driver": config.get("driver", ""),
+            "status": RUNNING,
             "connected": driver.get_state("connected"),
             "connection": connection_of(config).address(),
             "state": self.state.get_namespace(f"device.{device_id}"),
@@ -286,26 +293,15 @@ class DeviceInfoMixin:
         return items
 
     def _list_devices(self) -> list[dict[str, Any]]:
-        """List all devices with summary info (including orphaned, disabled,
-        and ones their driver could not set up)."""
-        live = [self._live_summary(device_id) for device_id in self._devices]
-        orphans = [
-            _orphan_summary(device_id, config)
-            for device_id, config in self._orphaned_devices.items()
-            if device_id not in self._devices
-        ]
-        unbuilt = [
-            _summary_without_driver(device_id, config)
-            for device_id, config in self._build_failures.items()
-        ]
-        # What is left has no driver because it is disabled.
-        listed = set(self._devices) | set(self._orphaned_devices) | set(self._build_failures)
-        disabled = [
-            {**_summary_without_driver(device_id, config), "enabled": False}
-            for device_id, config in self._device_configs.items()
-            if device_id not in listed
-        ]
-        return live + orphans + unbuilt + disabled
+        """Every device the system has, each with its state (its record)."""
+        return [self._summary_of(record) for record in self.device_records()]
+
+    def _summary_of(self, record: DeviceRecord) -> dict[str, Any]:
+        if record.status == RUNNING:
+            return self._live_summary(record.device_id)
+        if record.status == ORPHANED:
+            return _orphan_summary(record)
+        return _summary_without_driver(record)
 
     def _live_summary(self, device_id: str) -> dict[str, Any]:
         """A device with a live driver, as the listing gives it: the summary,
@@ -318,4 +314,4 @@ class DeviceInfoMixin:
                 entry["commands"] = list(info["commands"].keys())
             return entry
         except Exception:
-            return {"id": device_id, "name": device_id, "connected": False}
+            return {"id": device_id, "name": device_id, "status": RUNNING, "connected": False}

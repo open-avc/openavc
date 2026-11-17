@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from openavc.core.engine import Engine
+from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import load_project
 
@@ -46,6 +47,9 @@ def _manager(running: dict[str, dict]) -> MagicMock:
     devices = MagicMock()
     devices.get_device_configs.return_value = running
     devices.get_device_config.side_effect = running.get
+    devices.device_records.side_effect = lambda: [
+        DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
+    ]
     devices.build_failed.return_value = False
     devices.update_device = AsyncMock()
     devices.add_device = AsyncMock()

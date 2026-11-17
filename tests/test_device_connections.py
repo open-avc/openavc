@@ -172,13 +172,17 @@ def test_an_ir_device_still_sends_through_its_bridge():
 
 
 class _Running:
-    """The device manager's half: where each device it runs connects now."""
+    """The device manager's half: where each device it runs connects now. It
+    keeps no record of any other device (a save not applied yet)."""
 
     def __init__(self, *connections):
         self._connections = list(connections)
 
     def connections_now(self):
         return list(self._connections)
+
+    def device_record(self, device_id):
+        return None
 
 
 def test_a_running_device_is_answered_where_its_driver_connects_now():

@@ -286,25 +286,30 @@ class RunningDevices(Protocol):
 
     def connections_now(self) -> list[DeviceConnection]: ...
 
+    def device_record(self, device_id: str) -> Any: ...
+
 
 def device_connections(
     project, devices: RunningDevices | None = None,
 ) -> list[DeviceConnection]:
     """The effective connection of every enabled device in ``project``.
 
-    ``devices`` is the engine's device manager. Each device it runs is
+    ``devices`` is the engine's device manager, and its record of each device
+    (``device_record``) says whether it connects. Each device it runs is
     answered where it connects now (``connections_now``: its record and the
     simulation redirect on its driver), so a simulated device holds its
     simulator's port and not its own, and a project edit not applied yet
     does not hide the port the running driver holds; a running device the
     project no longer has, or has disabled, still holds it and is answered
-    too. A project device nothing runs (its driver not installed, or not yet
-    applied) is answered as it is set to. Without ``devices`` every device is
-    answered as it is set to in ``project``.
+    too. One waiting for its driver, or for its driver to set it up, is
+    answered as its record sets it; one disabled, or whose settings could not
+    be worked out, holds nothing and is left out. A project device the
+    manager has no record of yet (an edit not applied) is answered as the
+    project sets it. Without ``devices`` every device is answered as it is
+    set to in ``project``, a disabled one left out.
 
-    A disabled device has no driver running, so it holds no connection and
-    is left out. A device whose config cannot be resolved is left out too
-    (the reconcile reports it; this answers a question about live devices).
+    A device whose config cannot be resolved is left out (the reconcile
+    reports it; this answers a question about live devices).
     """
     running = (
         {conn.device_id: conn for conn in devices.connections_now()}
@@ -313,20 +318,31 @@ def device_connections(
     out: list[DeviceConnection] = []
     for device in getattr(project, "devices", None) or []:
         now = running.pop(getattr(device, "id", None), None)
-        if now is not None:
-            out.append(now)
-            continue
-        if not getattr(device, "enabled", True):
-            continue
-        try:
-            resolved = resolve_device_config(device, project)
-        except Exception:  # an unresolvable device is not a live connection
-            log.debug("Could not resolve %s's connection", getattr(device, "id", "?"),
-                      exc_info=True)
-            continue
-        out.append(connection_of(resolved))
+        conn = now if now is not None else _connection_not_running(device, project, devices)
+        if conn is not None:
+            out.append(conn)
     out.extend(running.values())
     return out
+
+
+def _connection_not_running(
+    device, project, devices: RunningDevices | None,
+) -> DeviceConnection | None:
+    """Where a project device no driver runs would connect, or None when it
+    holds nothing: as the device manager's record sets it, or, with no record
+    yet, as the project does. Disabled, or whose settings could not be worked
+    out, it holds nothing."""
+    record = devices.device_record(device.id) if devices is not None else None
+    if record is not None:
+        return connection_of(record.config) if record.connects else None
+    if not getattr(device, "enabled", True):
+        return None
+    try:
+        return connection_of(resolve_device_config(device, project))
+    except Exception:  # an unresolvable device is not a live connection
+        log.debug("Could not resolve %s's connection", getattr(device, "id", "?"),
+                  exc_info=True)
+        return None
 
 
 def _same_host(a: str, b: str) -> bool:

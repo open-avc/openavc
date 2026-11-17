@@ -37,6 +37,12 @@ class _FakeDeviceManager:
     def is_connect_deferred(self, device_id):
         return device_id in self.deferred
 
+    def get_device_configs(self):
+        return dict(self._device_configs)
+
+    def get_device_config(self, device_id):
+        return self._device_configs.get(device_id)
+
 
 class _FakeEngine:
     def __init__(self, dm):

@@ -672,7 +672,7 @@ Platform notes:
 }
 ```
 
-`update_available` is the version of a newer release if the periodic update check has found one, or an empty string when the server is up to date. It reflects the last cached check result and never triggers a network check itself. The device counts add up to `total`: `connected` and `disconnected` cover enabled devices (a device whose driver could not set it up counts as disconnected), `orphaned` counts devices whose driver is not installed, and `disabled` counts devices turned off in the project.
+`update_available` is the version of a newer release if the periodic update check has found one, or an empty string when the server is up to date. It reflects the last cached check result and never triggers a network check itself. The device counts add up to `total`: `connected` and `disconnected` cover enabled devices (a device whose driver could not set it up, or whose settings could not be worked out, counts as disconnected), `orphaned` counts devices whose driver is not installed, and `disabled` counts devices turned off in the project.
 
 ## Security Notes
 

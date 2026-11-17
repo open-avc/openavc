@@ -355,9 +355,9 @@ async def test_start_refuses_when_no_port_in_the_span_will_bind(monkeypatch):
     mgr.engine = MagicMock()
     mgr.engine.wait_for_device_bringup = AsyncMock()
     mgr.engine.project = {"project": {"name": "Scratch"}}
-    mgr.engine.devices._device_configs = {
-        "dev1": {"driver": "acme_widget", "name": "Dev 1", "config": {}},
-    }
+    configs = {"dev1": {"driver": "acme_widget", "name": "Dev 1", "config": {}}}
+    mgr.engine.devices.get_device_configs.return_value = configs
+    mgr.engine.devices.get_device_config.side_effect = configs.get
 
     with pytest.raises(RuntimeError, match="could be opened"):
         await mgr.start()
@@ -401,9 +401,9 @@ async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch, probe
         mgr.engine = MagicMock()
         mgr.engine.wait_for_device_bringup = AsyncMock()
         mgr.engine.project = {"project": {"name": "Scratch"}}
-        mgr.engine.devices._device_configs = {
-            "dev1": {"driver": "acme_widget", "name": "Dev 1", "config": {}},
-        }
+        configs = {"dev1": {"driver": "acme_widget", "name": "Dev 1", "config": {}}}
+        mgr.engine.devices.get_device_configs.return_value = configs
+        mgr.engine.devices.get_device_config.side_effect = configs.get
 
         with pytest.raises(RuntimeError):
             await mgr.start()

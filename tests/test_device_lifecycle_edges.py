@@ -291,11 +291,11 @@ async def test_the_listing_names_each_kind_of_device_in_full(dm, monkeypatch):
     assert listed["live"]["commands"] == ["power_on", "mute"]
     connection = dm.get_device_info("off")["connection"]
     assert listed["off"] == {
-        "id": "off", "name": "Off", "driver": DRIVER, "connected": False,
+        "id": "off", "name": "Off", "driver": DRIVER, "status": "disabled", "connected": False,
         "connection": connection, "enabled": False,
     }
     assert set(listed["lost"]) == {
-        "id", "name", "driver", "connected", "connection", "orphaned", "orphan_reason",
+        "id", "name", "driver", "status", "connected", "connection", "orphaned", "orphan_reason",
     }
     assert [entry["id"] for entry in dm.list_devices()] == ["live", "lost", "off"]
 
@@ -308,7 +308,9 @@ async def test_a_device_whose_info_fails_is_still_listed(dm, monkeypatch):
 
     monkeypatch.setattr(dm, "get_device_info", broken)
 
-    assert dm._list_devices() == [{"id": "live", "name": "live", "connected": False}]
+    assert dm._list_devices() == [
+        {"id": "live", "name": "live", "status": "running", "connected": False},
+    ]
 
 
 async def test_device_info_for_a_disabled_and_an_orphaned_device(dm):
@@ -324,7 +326,7 @@ async def test_device_info_for_a_disabled_and_an_orphaned_device(dm):
     assert lost["orphaned"] is True
     assert lost["orphan_reason"]
     assert list(lost) == [
-        "id", "name", "driver", "connected", "connection", "orphaned", "orphan_reason",
+        "id", "name", "driver", "status", "connected", "connection", "orphaned", "orphan_reason",
         "state", "commands", "driver_info", "config",
     ]
 
@@ -372,12 +374,14 @@ async def test_the_handlers_ignore_an_event_with_no_device_id(dm):
 
 async def test_a_disabled_device_dropping_starts_no_reconnect_loop(dm):
     await dm.add_device(_cfg("dev"))
-    dm._device_configs["dev"] = _cfg("dev", enabled=False)
-    dm.get_driver("dev")._connected = False
-    dm.get_driver("dev").set_state("connected", False)
+    driver = dm.get_driver("dev")
+    # Disabled by an edit while the old driver's drop is still on its way.
+    await dm.update_device("dev", _cfg("dev", enabled=False))
+    driver._connected = False
 
     await dm._on_device_disconnected("device.disconnected.dev", {})
 
+    assert dm.status_of("dev") == "disabled"
     assert "dev" not in dm._reconnect_tasks
 
 

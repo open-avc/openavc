@@ -4,24 +4,25 @@ from typing import Any
 
 from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
-from openavc.core.device_config import connection_of, resolve_device_config
-from openavc.utils.logger import get_logger
-
-log = get_logger(__name__)
+from openavc.core.device_config import connection_of
 
 
-def _device_summary(device: Any, project: Any) -> dict[str, Any]:
-    """One device's line in the summary, with where it connects.
+def _device_summary(device: Any, devices: Any) -> dict[str, Any]:
+    """One device's line in the summary, with its state and where it
+    connects, from the device manager's record of it (``device_record``).
 
-    The address is the resolved one (driver default port, device config,
+    The address is the record's (driver default port, device config,
     connections table), so what the AI reads back is what it set and what
-    the device manager dials.
+    the device manager dials. A device whose settings could not be worked
+    out has no address; one the manager has no record of yet (an edit not
+    applied) has its line alone.
     """
     entry: dict[str, Any] = {"id": device.id, "name": device.name, "driver": device.driver}
-    try:
-        entry["connection"] = connection_of(resolve_device_config(device, project)).address()
-    except Exception:  # an unresolvable device still gets its line
-        log.debug("Could not resolve %s's connection", device.id, exc_info=True)
+    record = devices.device_record(device.id) if devices is not None else None
+    if record is not None:
+        entry["status"] = record.status
+        if record.resolved:
+            entry["connection"] = connection_of(record.config).address()
     return entry
 
 
@@ -35,7 +36,7 @@ class ProjectToolsMixin:
         p = engine.project
         result = {
             "project": {"id": p.project.id, "name": p.project.name},
-            "devices": [_device_summary(d, p) for d in p.devices],
+            "devices": [_device_summary(d, self._devices) for d in p.devices],
             "device_groups": [
                 {"id": g.id, "name": g.name, "device_ids": g.device_ids}
                 for g in p.device_groups

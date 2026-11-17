@@ -86,7 +86,7 @@ def unregistered_driver():
 
 async def _orphan(dm) -> None:
     await dm.add_device(dict(DEVICE_CFG))
-    assert "dev1" in dm._orphaned_devices
+    assert dm.status_of("dev1") == "orphaned"
 
 
 def _install_driver() -> None:
@@ -161,7 +161,7 @@ async def test_retry_all_orphans_still_reports_what_it_activated(
     dm.request_bringup = lambda: None
 
     assert await dm.retry_all_orphans() == ["dev1"]
-    assert dm._orphaned_devices == {}
+    assert dm.get_missing_drivers() == []
 
 
 async def test_an_orphan_whose_driver_is_still_missing_stays_orphaned(
@@ -170,5 +170,5 @@ async def test_an_orphan_whose_driver_is_still_missing_stays_orphaned(
     await _orphan(dm)
 
     assert await dm.retry_orphaned_device("dev1") is False
-    assert "dev1" in dm._orphaned_devices
+    assert dm.status_of("dev1") == "orphaned"
     assert not dm.is_connect_deferred("dev1")

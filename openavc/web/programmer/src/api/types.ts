@@ -715,8 +715,13 @@ export interface DeviceInfo {
   id: string;
   name: string;
   driver: string;
+  /** The device's state as the server records it: a driver runs it, the
+   *  project disables it, its driver is not installed, its driver could not
+   *  set it up, or its settings could not be worked out. */
+  status?: "running" | "disabled" | "orphaned" | "driver_failed" | "settings_failed";
   connected: boolean;
-  connection?: DeviceAddress;
+  /** Null when the device's settings could not be worked out. */
+  connection?: DeviceAddress | null;
   orphaned?: boolean;
   /** Why the device waits for its driver, in the server's words. */
   orphan_reason?: string;

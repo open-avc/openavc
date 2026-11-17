@@ -376,7 +376,8 @@ class EngineLifecycleMixin:
         merged into each one's config, connected unless a simulation is coming
         back; then the ports they push to. A device that cannot be worked out
         or added is counted among the start's errors, by id with why, and the
-        others still start (``core/device_sync.py``)."""
+        others still start (``core/device_sync.py``); one that cannot be
+        worked out is kept by the device manager with why on its card."""
         self._sweep_device_logins()
         resolved = resolve_each(self.project.devices, self.resolved_device_config)
         # A simulation that was on when the server stopped comes back
@@ -390,6 +391,7 @@ class EngineLifecycleMixin:
             log.error(f"Failed to add device '{device_id}': {error}")
 
         for device_id, error in resolved.failed.items():
+            await self.devices.keep_unresolved(error)
             failed(device_id, error)
         await add_devices(
             self.devices, resolved.configs, defer_connect=resume_simulation, on_failure=failed,
