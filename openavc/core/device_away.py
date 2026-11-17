@@ -462,10 +462,17 @@ class DeviceAwayMixin:
 
         Also ends any commanded-restart window and any sleep: the device came
         back, which is the outcome both existed to wait for.
+
+        A device with none of the keys holding anything has nothing to clear,
+        and nothing is written: writing ``None`` to a key the store does not
+        hold creates it, so every device's first connect would add five empty
+        rows to its page and fire a trigger watching any of them.
         """
         self._end_restart_window(device_id)
         self._sleep.end(device_id)
-        self._publish_status(device_id, _AwayStatus())
+        back = _AwayStatus()
+        if any(self.state.get(key) is not None for key in back.state_keys(device_id)):
+            self._publish_status(device_id, back)
 
     def _publish_status(self, device_id: str, status: _AwayStatus) -> None:
         """Write why a device is away, all five keys in one batch, the

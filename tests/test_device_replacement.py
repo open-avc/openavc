@@ -222,6 +222,35 @@ async def test_a_device_back_from_a_commanded_restart_at_its_first_connect_has_n
     assert dm.state.get("device.w.restarting") is None
 
 
+_AWAY_KEYS = ("restarting", "asleep", "wake_command", "offline_reason", "offline_detail")
+
+
+async def test_a_device_never_away_has_no_away_keys_after_its_first_connect(dm):
+    """Nothing to end, so nothing is written: the device page lists no
+    empty away rows, and a trigger on one of them does not fire."""
+    changed: list[str] = []
+    dm.state.subscribe("device.w.*", lambda key, *_: changed.append(key))
+
+    await dm.add_device(_cfg())
+    await _edit(dm)
+
+    assert dm.state.get("device.w.connected") is True
+    assert [k for k in _AWAY_KEYS if dm.state.has(f"device.w.{k}")] == []
+    assert not any(key.rsplit(".", 1)[1] in _AWAY_KEYS for key in changed)
+
+
+async def test_a_device_back_from_a_fault_has_its_away_keys_cleared(dm):
+    await dm.add_device(_cfg())
+    await _gone_away_after(dm, "power_on")
+    assert dm.state.get("device.w.offline_reason") == UNREACHABLE
+
+    await _edit(dm)
+
+    assert dm.state.get("device.w.connected") is True
+    assert dm.state.get("device.w.offline_reason") is None
+    assert dm.state.get("device.w.offline_detail") is None
+
+
 async def test_a_device_restarting_on_command_is_still_restarting_after_an_edit(dm):
     await dm.add_device(_cfg())
     await _gone_away_after(dm, "reboot")
