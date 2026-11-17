@@ -199,19 +199,45 @@ async def preview_command(
     ``driver`` is a fresh instance nobody else holds (it is consumed). The
     command's own message comes first (``wire``, ``wire_hex``, and on HTTP
     ``headers`` and ``body``), then what its ``read_back`` sends after it.
-    Settings an HTTP request cannot be built from (a port out of range) are
-    refused with the connect's own sentence.
+    The preview is of the command, so it is shown whatever the address boxes
+    hold: an HTTP request that cannot be addressed to the test's host and
+    port (a host still being typed, a serial port name, a port out of range)
+    is built with the address left out, as for an empty host box, and only
+    settings no request can be built from at all are refused, with the
+    connect's own sentence.
     """
-    from openavc.core.connection_fault import ConnectionFaultError
-
+    unaddressable = _unaddressable()
     try:
-        captured = await capture_command_transport(driver, cmd_def)
-    except ConnectionFaultError as e:
+        captured = await _capture_for_preview(driver, cmd_def, unaddressable)
+    except unaddressable as e:
         return _command_answer("http", str(e))
     try:
         return await _run_command(driver, command, params, captured)
     finally:
         await captured.transport.close()
+
+
+def _unaddressable() -> tuple[type[Exception], ...]:
+    """What building an HTTP request's session raises for settings it cannot
+    use: the connect's refusal, and httpx's for an address that is no URL."""
+    import httpx
+
+    from openavc.core.connection_fault import ConnectionFaultError
+
+    return (ConnectionFaultError, httpx.InvalidURL)
+
+
+async def _capture_for_preview(
+    driver: Any, cmd_def: dict[str, Any], unaddressable: tuple[type[Exception], ...],
+) -> CommandCapture:
+    """The command's capture; built again with the address left out when the
+    test's host and port cannot address it."""
+    try:
+        return await capture_command_transport(driver, cmd_def)
+    except unaddressable:
+        driver.config["host"] = ""
+        driver.config.pop("port", None)
+    return await capture_command_transport(driver, cmd_def)
 
 
 async def _send_into(driver: Any, command: str, params: dict[str, Any]) -> str | None:

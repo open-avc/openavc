@@ -319,6 +319,37 @@ async def test_an_http_preview_builds_with_an_unfilled_connection_panel():
     assert "host" not in result["headers"]
 
 
+@pytest.mark.parametrize("host", ["10.0.0.5:80", "[::1", "10.0.0.5:"])
+async def test_an_http_preview_builds_while_the_address_is_being_typed(host: str):
+    """A host box that does not hold an address yet leaves the address out of
+    the preview, as an empty one does: the command's wire form still shows."""
+    result = await _dry_run_command(
+        _request(_http_command(), "set_gain", {"level": 2}, host=host, port=80)
+    )
+    assert result["success"], result
+    assert result["wire"] == "PUT /api/gain"
+    assert "host" not in result["headers"]
+
+
+async def test_an_http_preview_builds_with_a_port_no_connection_takes():
+    result = await _dry_run_command(
+        _request(_http_command(), "set_gain", {"level": 2}, port=70000)
+    )
+    assert result["success"], result
+    assert result["wire"] == "PUT /api/gain"
+    assert "host" not in result["headers"]
+
+
+async def test_a_serial_draft_previews_its_http_shaped_command():
+    """The panel names the mismatch; the dry run still shows what the
+    command would build."""
+    definition = {**_http_command(), "transport": "serial"}
+    body = _request(definition, "set_gain", {"level": 2}, host="", port="COM3")
+    result = await _dry_run_command(body)
+    assert result["success"], result
+    assert result["wire"] == "PUT /api/gain"
+
+
 async def test_an_http_preview_sends_nothing_and_records_nothing(monkeypatch):
     """The stand-in is the device's own HTTP client with only the network
     taken away: nothing leaves, and the device's traffic view gets nothing."""

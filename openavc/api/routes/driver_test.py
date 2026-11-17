@@ -462,7 +462,8 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     by the device's own HTTP client from the test's settings, so it carries
     the headers and sign-in header the device would get (masked). A port box
     still empty or holding a word is left unset, so each transport reads its
-    own default.
+    own default, and an address an HTTP request cannot be sent to is left out
+    of it (``preview_command``).
     """
     try:
         built = _build_test_driver(body, port_fallback="")
