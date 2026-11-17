@@ -129,8 +129,7 @@ async def _test_device(device: Any, engine: Any, subject: str) -> dict[str, Any]
     binding = bridge_binding(dialled.get("config"))
     if binding.unresolved or binding.emits:
         return await _bridge_answer(binding, engine, connection_of(dialled).address())
-    live = _connections(engine, "live_connections")
-    own = next((c for c in live if c.device_id == device.id), None)
+    own = _own_connection(engine, device.id)
     if own is not None and _opens_connection(dialled):
         return _connected_now(own, resolved, subject)
     held, _unresolved = await held_ports(_connections(engine, "network_connections"))
@@ -187,6 +186,13 @@ def _dialled(engine: Any, device_id: str) -> dict[str, Any] | None:
     engine has no device manager to ask."""
     read = getattr(getattr(engine, "devices", None), "dialled_record", None)
     return read(device_id) if read is not None else None
+
+
+def _own_connection(engine: Any, device_id: str) -> Any:
+    """The device's own connection, when its driver is connected now
+    (``live_connections``), else None."""
+    live = _connections(engine, "live_connections")
+    return next((c for c in live if c.device_id == device_id), None)
 
 
 def _connections(engine: Any, which: str) -> list[Any]:
