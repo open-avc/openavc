@@ -617,12 +617,9 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         if conn_overrides:
             project.connections[device_id] = conn_overrides
 
-    try:
-        await _app_engine.apply_project_edit(mutate)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise _api_error(500, f"Failed to add device '{device_id}'", e)
+    # A change that was not applied is answered by the server's own handler
+    # (main.py), in the words every door uses.
+    await _app_engine.apply_project_edit(mutate)
 
     # Seed the Open Web UI URL from the ports the scan already found open, so the
     # button shows immediately without waiting on (or repeating) the add-time

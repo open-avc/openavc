@@ -23,7 +23,12 @@ from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
 from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy
 from openavc.core.host_policy import HostCategory
-from openavc.api.error_messages import describe_command_failure, device_error_label, friendly_error
+from openavc.api.error_messages import (
+    describe_change_failure,
+    describe_command_failure,
+    device_error_label,
+    friendly_error,
+)
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.panel_devices import (
@@ -949,9 +954,15 @@ async def _handle_message(
         try:
             await engine.reload_project()
         except Exception as e:
-            # Catch-all: reload involves file I/O, JSON parsing, driver init, plugin loading
+            # Catch-all: reload involves file I/O, JSON parsing, driver init,
+            # plugin loading. A project the running system could not take is
+            # said in the words every door that changes the project uses.
             log.error(f"project.reload failed: {e}")
-            await _send_ws_error(ws, msg_type, f"Reload failed: {friendly_error(e)}")
+            failure = describe_change_failure(e)
+            await _send_ws_error(
+                ws, msg_type,
+                failure.sentence if failure else f"Reload failed: {friendly_error(e)}",
+            )
 
     elif msg_type == "log.subscribe":
         ws_id = id(ws)

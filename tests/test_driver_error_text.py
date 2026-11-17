@@ -318,8 +318,8 @@ async def test_a_failed_save_says_why_without_the_path(engine, cause, sentence):
 
 
 async def test_a_write_tool_whose_save_fails_says_why(engine, monkeypatch):
-    """Through a real write tool, the engine's edit and the real save: nothing
-    between them rewraps the failure."""
+    """Through a real write tool, the engine's edit and the real save: the
+    change was not applied, said in the words every door uses."""
     real_replace = project_loader.os.replace
 
     def replace(src, dst):
@@ -338,7 +338,8 @@ async def test_a_write_tool_whose_save_fails_says_why(engine, monkeypatch):
     payload = send.await_args.args[1]
     assert payload["success"] is False
     assert payload["error"] == (
-        "Could not save the project. The disk is full. Free up disk space and try again."
+        "Not applied: the project file could not be written. The disk is full. "
+        "Free up disk space and try again. The previous project is still running."
     )
     _assert_private(payload)
 

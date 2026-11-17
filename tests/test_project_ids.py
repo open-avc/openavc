@@ -16,6 +16,7 @@ from openavc.core.engine import Engine
 from openavc.core.project_diff import ProjectOrigin
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, load_project, save_project
 from openavc.drivers import registry
+from openavc.core.project_changes import ProjectNotAppliedError
 
 
 DRIVER = 'openavc_builtin_3ccbe3eec92b9c851f9e57dff5ed9d4341894e5c3f04d86298e76db04f296232'
@@ -161,7 +162,7 @@ async def test_failed_reconcile_keeps_ownership_on_the_runtime_project(host, mon
     monkeypatch.setattr(engine, "_reconcile", fail)
     monkeypatch.setattr(engine, "_rollback_reconcile", AsyncMock())
     before = path.read_bytes()
-    with pytest.raises(RuntimeError, match="injected reconcile failure"):
+    with pytest.raises(ProjectNotAppliedError, match="injected reconcile failure"):
         await engine.apply_project(proposed, origin=ProjectOrigin.LOAD)
     assert engine.project is project and engine.installed_equipment.owns("amplifier")
     assert not engine.installed_equipment.owns("local_2")

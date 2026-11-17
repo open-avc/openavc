@@ -31,6 +31,7 @@ import pytest
 from openavc.api import rest
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core.project_loader import ProjectConfig, ProjectMeta, ScriptConfig
+from openavc.core.project_changes import ApplyOutcome
 
 LIGHTS = "from openavc import log\n\ndef lights_on():\n    log.info('on')\n"
 
@@ -55,7 +56,7 @@ def harness(tmp_path):
             extra(new_project)
         mutate(new_project)
         engine.project = new_project
-        return 1
+        return ApplyOutcome("1")
 
     engine.apply_project_edit = AsyncMock(side_effect=apply_edit)
     rest.set_engine(engine)

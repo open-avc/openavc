@@ -17,6 +17,7 @@ import pytest
 
 from openavc.core.project_loader import ISCConfig, ProjectConfig, ProjectMeta
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.core.project_changes import ProjectNotAppliedError
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +90,7 @@ async def test_a_failed_reconcile_puts_the_previous_key_back(engine, monkeypatch
         raise RuntimeError("reconcile failed")
 
     monkeypatch.setattr(engine, "_reconcile", broken)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ProjectNotAppliedError):
         await engine.apply_project(_project("mesh-key-9902", name="Hall B"))
 
     assert engine.project.isc.auth_key == "mesh-key-4417"

@@ -2,7 +2,9 @@
 User-friendly error message mapping.
 
 Maps common Python exceptions to actionable messages that AV integrators
-can understand and act on, instead of raw tracebacks.
+can understand and act on, instead of raw tracebacks. THE words for what a
+project change did (``describe_change_failure``, ``describe_not_running``):
+every door that changes the project answers from them.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from __future__ import annotations
 import errno
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 import httpx
 
@@ -19,6 +21,7 @@ from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from openavc.core.project_loader import ProjectConfig
+    from openavc.core.project_reconcile import FailedPart
     from openavc.core.state_store import StateStore
 
 # Logs only device command and setting failures, each under "[<device_id>]", and is
@@ -381,15 +384,14 @@ def friendly_error(
     return f"Unexpected error: {exc}"
 
 
-_SAVE_REFUSED = (
-    "Could not save the project. Permission denied. "
-    "Ensure the project directory has write permissions."
-)
+_SAVE_FAILED = "Could not save the project."
+_SAVE_REFUSED = "Permission denied. Ensure the project directory has write permissions."
+_SAVE_UNWORDED = "Check disk space and directory permissions."
 
-#: The save failures worded without the operating system's own text, by errno.
+#: Why a save failed, worded without the operating system's own text, by errno.
 _SAVE_FAILURES = {
-    errno.ENOSPC: "Could not save the project. The disk is full. Free up disk space and try again.",
-    errno.EROFS: "Could not save the project. The file system is read-only.",
+    errno.ENOSPC: "The disk is full. Free up disk space and try again.",
+    errno.EROFS: "The file system is read-only.",
 }
 
 
@@ -399,14 +401,11 @@ def friendly_save_error(exc: Exception) -> str:
     module does not word carries the exception's own text, path included:
     :func:`save_error_reason` is the same answer without it.
     """
-    worded = _worded_save_error(exc)
+    worded = _worded_save_why(exc)
     if worded:
-        return worded
+        return f"{_SAVE_FAILED} {worded}"
     if isinstance(exc, OSError):
-        return (
-            f"Could not save the project: {exc}. "
-            "Check disk space and directory permissions."
-        )
+        return f"Could not save the project: {exc}. {_SAVE_UNWORDED}"
     return f"Could not save the project: {exc}"
 
 
@@ -414,17 +413,93 @@ def save_error_reason(exc: Exception) -> str:
     """Why a project save failed, in a sentence that names no path and quotes
     none of the operating system's text: what a reader off this system (the
     cloud AI's chat history) is told."""
-    return _worded_save_error(exc) or (
-        "Could not save the project. Check disk space and directory permissions."
-    )
+    return f"{_SAVE_FAILED} {_save_why(exc)}"
 
 
-def _worded_save_error(exc: Exception) -> str | None:
+def _save_why(exc: Exception) -> str:
+    """Why a save failed, with no path and none of the operating system's
+    text: the reason and the remedy when this module words it."""
+    return _worded_save_why(exc) or _SAVE_UNWORDED
+
+
+def _worded_save_why(exc: Exception) -> str | None:
     if isinstance(exc, PermissionError):
         return _SAVE_REFUSED
     if isinstance(exc, OSError):
         return _SAVE_FAILURES.get(getattr(exc, "errno", None))
     return None
+
+
+# --- What a project change did, in the words every door answers with ---
+
+
+@dataclass(frozen=True)
+class ChangeFailure:
+    """A project change that did not run, as every door answers it: the
+    HTTP status a route answers with, the ``code`` a client branches on
+    (``conflict``, ``refused`` or ``not_applied``), and the sentence."""
+
+    status: int
+    code: str
+    sentence: str
+
+
+#: Why a change was not applied when the running system, not the file's
+#: write, could not take it. The cause is in the log the sentence names.
+_NOT_TAKEN = "the running system could not take the change. The Programmer's Log has the details."
+
+
+def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
+    """THE words for a project change that did not run, at every door that
+    changes the project: Save and the section routes, a reload, the cloud
+    AI's edit tools and a cloud config push.
+
+    A conflict with a newer revision and a refusal of the change itself (the
+    installed equipment, a word this version does not know) keep their own
+    sentence, which was written for the reader. A change the running system
+    could not take (``ProjectNotAppliedError``) says it was not applied, why,
+    and that the previous project is still running: a write that failed says
+    why without the path or the operating system's text, and any other cause
+    sends the reader to the Programmer's Log, where it is logged. ``None``
+    for an exception that is not one of these.
+    """
+    from openavc.core.installed_equipment import InstalledEquipmentError
+    from openavc.core.project_changes import ProjectNotAppliedError, ProjectRevisionConflictError
+    from openavc.core.project_loader import ProjectSaveError
+    from openavc.core.saved_values import UnknownWordError
+
+    if isinstance(exc, ProjectRevisionConflictError):
+        return ChangeFailure(409, "conflict", str(exc))
+    if isinstance(exc, InstalledEquipmentError):
+        return ChangeFailure(409, "refused", str(exc))
+    if isinstance(exc, UnknownWordError):
+        return ChangeFailure(422, "refused", str(exc))
+    if not isinstance(exc, ProjectNotAppliedError):
+        return None
+    cause = exc.cause
+    why = (
+        f"the project file could not be written. {_save_why(cause.cause)}"
+        if isinstance(cause, ProjectSaveError) else _NOT_TAKEN
+    )
+    return ChangeFailure(500, "not_applied", not_applied(why))
+
+
+def not_applied(why: str) -> str:
+    """The sentence for a project change that was not applied, around its
+    ``why`` (lower case, a full stop at the end): every door's, so it reads
+    the same wherever the reader meets it."""
+    return f"Not applied: {why} The previous project is still running."
+
+
+def describe_not_running(failed: Iterable[FailedPart]) -> list[dict[str, str]]:
+    """The parts of an applied change the system could not run, as every
+    door that answers an applied change lists them: each part's kind, its
+    id, the reason as a stable code, and the sentence its own surface shows.
+    Empty when every part runs."""
+    return [
+        {"kind": part.kind, "id": part.part_id, "reason": part.reason, "detail": part.detail}
+        for part in failed
+    ]
 
 
 def _matches_errno(exc: Exception, code: int) -> bool:

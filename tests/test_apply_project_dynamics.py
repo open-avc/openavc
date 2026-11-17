@@ -30,6 +30,7 @@ from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.project_diff import ProjectDiff
 from openavc.core.project_loader import ProjectConfig, VariableConfig, load_project
 from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.core.project_changes import ProjectNotAppliedError
 
 DIFF_SECTIONS = (
     "devices", "connections", "device_groups", "variables", "macros",
@@ -529,7 +530,7 @@ async def test_devices_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
         connections={"d1": {"host": "192.0.2.10", "port": 23}},
     )
 
-    with pytest.raises(RuntimeError, match="injected reconcile failure"):
+    with pytest.raises(ProjectNotAppliedError, match="injected reconcile failure"):
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project
@@ -565,7 +566,7 @@ async def test_plugins_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
         eng, plugins={"acme_plugin": {"enabled": True, "config": {"level": 1}}}
     )
 
-    with pytest.raises(RuntimeError, match="injected reconcile failure"):
+    with pytest.raises(ProjectNotAppliedError, match="injected reconcile failure"):
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project
@@ -602,7 +603,7 @@ async def test_macros_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp_
         eng, macros=[_BASELINE_MACRO, new_macro]
     )
 
-    with pytest.raises(RuntimeError, match="injected reconcile failure"):
+    with pytest.raises(ProjectNotAppliedError, match="injected reconcile failure"):
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project
@@ -636,7 +637,7 @@ async def test_variables_reconcile_failure_rolls_back_then_next_apply_succeeds(t
         ],
     )
 
-    with pytest.raises(RuntimeError, match="injected reconcile failure"):
+    with pytest.raises(ProjectNotAppliedError, match="injected reconcile failure"):
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project

@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core.project_loader import ProjectConfig
+from openavc.core.project_changes import ApplyOutcome
 
 from tests.test_ui_tools_lookups_pinned import _Devices, _Plugins
 
@@ -77,7 +78,7 @@ def _engine(project: dict | None = None):
         new_project = engine.project.model_copy(deep=True)
         mutate(new_project)
         engine.project = new_project
-        return 1
+        return ApplyOutcome("1")
 
     engine.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return engine

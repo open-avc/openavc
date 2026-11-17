@@ -19,6 +19,7 @@ from openavc.cloud.protocol import AI_TOOL_CALL, _now_iso
 from openavc.core import project_loader
 from openavc.core.macro_validation import macro_issues, validate_macro
 from openavc.core.project_loader import ProjectConfig, ProjectMeta, TriggerConfig
+from openavc.core.project_changes import ApplyOutcome
 
 FIELDS = ("delay_seconds", "debounce_seconds", "cooldown_seconds")
 OUT_OF_BOUND = [-5, -0.5, float("nan"), float("inf"), float("-inf")]
@@ -110,7 +111,7 @@ def engine():
         mutate(new_project)
         engine.project = new_project
         engine._project_revision += 1
-        return engine._project_revision
+        return ApplyOutcome(str(engine._project_revision))
 
     engine.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return engine

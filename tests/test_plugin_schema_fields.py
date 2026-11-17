@@ -28,6 +28,7 @@ from openavc.core.project_loader import (
     get_plugin_setup_fields,
 )
 from openavc.core.state_store import StateStore
+from openavc.core.project_changes import ApplyOutcome
 from tests.test_ai_tool_handler_surgical import _make_project
 
 _INFO = {
@@ -131,6 +132,7 @@ def engine():
         new_project = eng.project.model_copy(deep=True)
         mutate(new_project)
         eng.project = new_project
+        return ApplyOutcome("1")
 
     eng.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return eng

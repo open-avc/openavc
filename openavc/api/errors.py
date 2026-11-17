@@ -91,6 +91,28 @@ async def structured_api_error_handler(request: Request, exc: StructuredApiError
     )
 
 
+def change_failure_error(exc: BaseException) -> StructuredApiError | None:
+    """A project change that did not run (a conflict, a refusal, or a change
+    the running system could not take), as the route answers it: the status
+    and sentence of ``error_messages.describe_change_failure``, with its
+    ``code`` beside the sentence. ``None`` for any other exception."""
+    from openavc.api.error_messages import describe_change_failure
+
+    failure = describe_change_failure(exc)
+    if failure is None:
+        return None
+    return StructuredApiError(failure.status, failure.sentence, code=failure.code)
+
+
+async def project_not_applied_handler(request: Request, exc: Exception) -> JSONResponse:
+    """A project change the running system could not take
+    (``core/project_changes.ProjectNotAppliedError``), from any route: a 500
+    whose ``detail`` says it was not applied and why, ``code`` ``not_applied``.
+    The cause was logged where the change was put back."""
+    answer = change_failure_error(exc)
+    return await structured_api_error_handler(request, answer)
+
+
 async def unknown_word_handler(request: Request, exc: Exception) -> JSONResponse:
     """An edit that adds a fixed choice this version does not know
     (``core/saved_values.UnknownWordError``): 422 with its sentence."""

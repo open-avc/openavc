@@ -385,17 +385,13 @@ async def remove_plugin_config(plugin_id: str) -> dict[str, Any]:
             if d.plugin_id != plugin_id
         ]
 
-    try:
-        # The plugins-section reconcile stops a running plugin and drops its
-        # missing/incompatible tracking + broadcast state keys, and the
-        # revision bump 409s an open editor's stale full-project PUT instead
-        # of letting it restore the entry.
-        await engine.apply_project_edit(mutate)
-        return {"status": "removed", "plugin_id": plugin_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise _api_error(500, f"Failed to remove plugin config for '{plugin_id}'", e)
+    # The plugins-section reconcile stops a running plugin and drops its
+    # missing/incompatible tracking + broadcast state keys, and the revision
+    # bump 409s an open editor's stale full-project PUT instead of letting it
+    # restore the entry. A change that was not applied is answered by the
+    # server's own handler (main.py).
+    await engine.apply_project_edit(mutate)
+    return {"status": "removed", "plugin_id": plugin_id}
 
 
 # ──── Health ────
@@ -714,27 +710,28 @@ async def uninstall_plugin_endpoint(
         result = await uninstall_plugin(
             plugin_id, project_plugins, remove_data=remove_data
         )
-
-        # Remove from project file so it doesn't show as "missing" on restart.
-        # The apply bumps the revision (a stale editor PUT would otherwise
-        # silently restore the entry) and its plugin reconcile clears the
-        # loader tracking for ids the project no longer references.
-        if engine.project and plugin_id in engine.project.plugins:
-            def mutate(project):
-                project.plugins.pop(plugin_id, None)
-                project.plugin_dependencies = [
-                    d for d in project.plugin_dependencies
-                    if d.plugin_id != plugin_id
-                ]
-
-            await engine.apply_project_edit(mutate)
-
-        # Clear tracking directly too: the files are gone even when the
-        # plugin was never referenced by the project (no entry to diff).
-        engine.plugin_loader.remove_plugin_tracking(plugin_id)
-
-        return result
     except ValueError as e:
         raise _api_error(422, f"Failed to uninstall plugin '{plugin_id}'", e)
     except Exception as e:
         raise _api_error(500, f"Failed to uninstall plugin '{plugin_id}'", e)
+
+    # Remove from project file so it doesn't show as "missing" on restart.
+    # The apply bumps the revision (a stale editor PUT would otherwise
+    # silently restore the entry) and its plugin reconcile clears the
+    # loader tracking for ids the project no longer references. A change
+    # that was not applied is answered by the server's own handler (main.py).
+    if engine.project and plugin_id in engine.project.plugins:
+        def mutate(project):
+            project.plugins.pop(plugin_id, None)
+            project.plugin_dependencies = [
+                d for d in project.plugin_dependencies
+                if d.plugin_id != plugin_id
+            ]
+
+        await engine.apply_project_edit(mutate)
+
+    # Clear tracking directly too: the files are gone even when the
+    # plugin was never referenced by the project (no entry to diff).
+    engine.plugin_loader.remove_plugin_tracking(plugin_id)
+
+    return result

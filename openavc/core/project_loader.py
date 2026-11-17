@@ -1286,12 +1286,15 @@ def refresh_crash_copy(path: str | Path) -> None:
 class ProjectSaveError(OSError):
     """A project save that failed. Its text is what the Programmer shows,
     which may quote the operating system and the file's path; ``reason`` is
-    the same answer without either, for a reader off this system."""
+    the same answer without either, for a reader off this system. ``cause``
+    is the operating system's error, which a change that was not applied
+    words its own why from (``api/error_messages.describe_change_failure``)."""
 
     def __init__(self, cause: OSError) -> None:
         from openavc.api.error_messages import friendly_save_error, save_error_reason
 
         super().__init__(friendly_save_error(cause))
+        self.cause = cause
         self.reason = save_error_reason(cause)
 
 

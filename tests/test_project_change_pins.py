@@ -19,6 +19,7 @@ from openavc.core.client_origin import client_origin
 from openavc.core.engine import Engine
 from openavc.core.project_loader import ProjectConfig, load_project
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.core.project_changes import ProjectNotAppliedError
 
 
 def _project_dict(*, name="P", plugins=None, elements=None, variables=None):
@@ -86,7 +87,7 @@ async def test_a_failed_reconcile_puts_the_backup_flag_back(tmp_path):
         raise RuntimeError("reconcile failed")
 
     eng._reconcile = boom
-    with pytest.raises(RuntimeError, match="reconcile failed"):
+    with pytest.raises(ProjectNotAppliedError, match="reconcile failed"):
         await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
 
     assert eng._dirty_since_backup is False
@@ -136,7 +137,7 @@ async def test_a_rollback_that_fails_too_still_raises_the_reconcile_failure(tmp_
     eng._reconcile = boom
     eng._rollback_reconcile = rollback_boom
     with caplog.at_level(logging.ERROR):
-        with pytest.raises(RuntimeError, match="the reconcile's own failure"):
+        with pytest.raises(ProjectNotAppliedError, match="the reconcile's own failure"):
             await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
 
     assert any("Rollback re-sync also failed" in r.getMessage() for r in caplog.records)
@@ -166,7 +167,7 @@ async def test_a_swap_that_fails_before_the_reconcile_puts_the_previous_project_
     revision = eng._project_revision
     _settings_that_fail_on(eng, {1})
 
-    with pytest.raises(RuntimeError, match="settings failed on call 1"):
+    with pytest.raises(ProjectNotAppliedError, match="settings failed on call 1"):
         await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
 
     assert eng.project.project.name == "P"
@@ -192,7 +193,7 @@ async def test_a_rollback_whose_settings_fail_still_restores_the_revision(tmp_pa
     eng._rollback_reconcile = resync
     _settings_that_fail_on(eng, {2})
     with caplog.at_level(logging.ERROR):
-        with pytest.raises(RuntimeError, match="the reconcile's own failure"):
+        with pytest.raises(ProjectNotAppliedError, match="the reconcile's own failure"):
             await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
 
     assert eng.project.project.name == "P"

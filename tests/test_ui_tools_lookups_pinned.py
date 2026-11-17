@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.project_changes import ApplyOutcome
 
 from tests.test_ai_ui_write_guards import _drain, _tool_call
 
@@ -124,7 +125,7 @@ def _make_engine(project_path):
         new_project = engine.project.model_copy(deep=True)
         mutate(new_project)
         engine.project = new_project
-        return 1
+        return ApplyOutcome("1")
 
     engine.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return engine

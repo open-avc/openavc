@@ -34,6 +34,7 @@ from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import ProjectConfig, ProjectSaveError, load_project
 from openavc.core.project_reconcile import RECONCILE_STAGES, ReconcileRun
 from openavc.core.script_engine import ScriptEngine
+from openavc.core.project_changes import ProjectNotAppliedError
 
 
 class _Devices:
@@ -274,7 +275,7 @@ async def test_a_change_that_fails_after_any_stage_leaves_the_system_as_it_was(
     previous = eng.project
     _fail_right_after(eng, stage_name)
 
-    with pytest.raises(RuntimeError, match=f"failed after {stage_name}"):
+    with pytest.raises(ProjectNotAppliedError, match=f"failed after {stage_name}"):
         await eng.apply_project(ProjectConfig(**_after()), origin=origin)
 
     assert eng.project is previous
@@ -305,7 +306,7 @@ async def test_a_change_whose_file_cannot_be_written_leaves_the_system_as_it_was
 
     monkeypatch.setattr("openavc.core.project_changes.save_project_async", no_room)
 
-    with pytest.raises(ProjectSaveError, match="disk is full"):
+    with pytest.raises(ProjectNotAppliedError, match="disk is full"):
         await eng.apply_project(ProjectConfig(**_after()), origin=origin)
 
     assert eng.project is previous
@@ -346,7 +347,7 @@ async def test_the_undo_runs_each_entered_stage_last_first(tmp_path, monkeypatch
         setattr(eng, f"_undo {stage.name}", undo)
     monkeypatch.setattr(project_reconcile, "RECONCILE_STAGES", tuple(stages))
 
-    with pytest.raises(RuntimeError, match="the scripts stage failed"):
+    with pytest.raises(ProjectNotAppliedError, match="the scripts stage failed"):
         await eng.apply_project(ProjectConfig(**_after()))
 
     # An edit: every stage but the driver library's, which a load alone runs.
@@ -367,7 +368,7 @@ async def test_an_undo_that_fails_does_not_stop_the_ones_before_it(tmp_path, cap
         raise RuntimeError("the mesh is down")
 
     eng._reload_isc = mesh_down
-    with pytest.raises(RuntimeError, match="the mesh is down"):
+    with pytest.raises(ProjectNotAppliedError, match="the mesh is down"):
         await eng.apply_project(ProjectConfig(**_after()))
 
     assert any("Rollback could not undo the ISC stage" in r.getMessage()
@@ -413,7 +414,7 @@ async def test_a_deleted_variables_saved_value_survives_a_failed_apply(tmp_path)
     # The bindings stage runs after the variables stage has deleted the key.
     _fail_once(eng, "_register_variable_validation")
 
-    with pytest.raises(RuntimeError, match="_register_variable_validation failed"):
+    with pytest.raises(ProjectNotAppliedError, match="_register_variable_validation failed"):
         await eng.apply_project(_without_volume(eng))
 
     assert _saved(eng)["var.volume"] == 42
@@ -438,7 +439,7 @@ async def test_a_value_a_failed_apply_stopped_persisting_stays_saved(tmp_path):
     edited = eng.project.model_copy(deep=True)
     edited.variables[1].persist = False
 
-    with pytest.raises(RuntimeError, match="_register_variable_validation failed"):
+    with pytest.raises(ProjectNotAppliedError, match="_register_variable_validation failed"):
         await eng.apply_project(edited)
 
     assert _saved(eng)["var.volume"] == 42
@@ -456,7 +457,7 @@ async def test_a_value_a_failed_apply_bound_to_a_source_is_put_back(tmp_path):
     # The bindings stage fails once the new binding has written the value.
     _fail_once(eng, "_register_variable_validation")
 
-    with pytest.raises(RuntimeError, match="_register_variable_validation failed"):
+    with pytest.raises(ProjectNotAppliedError, match="_register_variable_validation failed"):
         await eng.apply_project(edited)
 
     assert eng.state.get("var.volume") == 42
@@ -474,7 +475,7 @@ async def test_a_variable_a_failed_apply_added_is_gone_again(tmp_path):
     _fail_once(eng, "_register_variable_validation")
     edited = ProjectConfig(**{**_before(), "variables": _after()["variables"]})
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ProjectNotAppliedError):
         await eng.apply_project(edited)
 
     assert eng.state.get("var.fresh") is None

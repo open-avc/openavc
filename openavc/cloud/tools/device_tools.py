@@ -22,7 +22,7 @@ field still blank, so the model can ask for it.
 from typing import Any
 
 from openavc.cloud.state_relay import cloud_state_value
-from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.cloud.tools import ToolEditError, apply_tool_edit, note_applied
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, login_settings_in, marked_fields
 from openavc.core.device_config import split_connection_fields
 from openavc.core.device_manager import DeviceNotFoundError
@@ -229,7 +229,9 @@ async def _reassign_product_hardware(engine: Any, device_id: str, input: dict) -
     if input.get("config"):
         return {"error": "Product hardware uses its manufacturer connection. Select it without connection overrides."}
     try:
-        await engine.reassign_installed_equipment(device_id, name=input.get("name"), enabled=input.get("enabled"))
+        note_applied(await engine.reassign_installed_equipment(
+            device_id, name=input.get("name"), enabled=input.get("enabled"),
+        ))
     except ValueError as error:
         return {"error": str(error)}
     return {"status": "updated", "device_id": device_id}

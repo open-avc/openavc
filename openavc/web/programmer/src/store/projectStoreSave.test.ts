@@ -67,6 +67,16 @@ describe("saveFailureMessage", () => {
     ).toBe("Project name is required");
   });
 
+  it("shows a change the running system could not take in the server's words", () => {
+    const sentence =
+      "Not applied: the project file could not be written. The disk is full. " +
+      "Free up disk space and try again. The previous project is still running.";
+    const message = saveFailureMessage(
+      new ApiError(500, JSON.stringify({ detail: sentence, code: "not_applied" })),
+    );
+    expect(message).toBe(sentence);
+  });
+
   it("keeps a plain Error's message", () => {
     expect(saveFailureMessage(new Error("Failed to fetch"))).toBe("Failed to fetch");
   });

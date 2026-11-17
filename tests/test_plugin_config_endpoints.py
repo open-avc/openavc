@@ -23,6 +23,7 @@ from openavc.core.plugin_config import missing_required_fields, validate_plugin_
 from openavc.core.plugin_loader import PluginLoader
 from openavc.core.project_loader import PluginConfig, ProjectConfig, ProjectMeta
 from openavc.core.state_store import StateStore
+from openavc.core.project_changes import ApplyOutcome
 
 
 class _AcmeWidgetPlugin:
@@ -86,7 +87,7 @@ def _engine(monkeypatch, *, restart_outcome="restarted"):
         mutate(new_project)
         engine.project = new_project
         engine._project_revision += 1
-        return engine._project_revision
+        return ApplyOutcome(str(engine._project_revision))
 
     engine.apply_project_edit = _apply_edit
     monkeypatch.setattr("openavc.api.plugins._engine", engine)
@@ -321,7 +322,7 @@ def _removal_engine(monkeypatch):
         calls["applied"].append(new_project)
         engine.project = new_project
         engine._project_revision += 1
-        return engine._project_revision
+        return ApplyOutcome(str(engine._project_revision))
 
     engine.apply_project_edit = _apply_edit
     monkeypatch.setattr("openavc.api.plugins._engine", engine)

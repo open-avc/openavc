@@ -28,6 +28,7 @@ from openavc.core.project_loader import ProjectConfig, load_project
 from openavc.core.script_engine import ScriptEngine
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import _DRIVER_REGISTRY
+from openavc.core.project_changes import ProjectNotAppliedError
 
 DRIVER = "acme_parts_widget"
 ABSENT_PLUGIN = "acme_absent_plugin"
@@ -268,7 +269,7 @@ async def test_a_change_that_fails_leaves_no_part_it_marked(tmp_path):
         macros=[{"id": "m1", "name": "M1", "steps": []}],
     )
     try:
-        with pytest.raises(RuntimeError, match="failed after the plugins"):
+        with pytest.raises(ProjectNotAppliedError, match="failed after the plugins"):
             await eng.apply_project(ProjectConfig(**changed))
         assert eng.state.get(f"plugin.{ABSENT_PLUGIN}.missing") is None
         assert ABSENT_PLUGIN not in {p["plugin_id"] for p in eng.plugin_loader.list_plugins()}

@@ -29,6 +29,7 @@ import pytest
 from openavc.core.engine import Engine, ProjectRevisionConflictError
 from openavc.core.project_diff import ProjectDiff
 from openavc.core.project_loader import ProjectConfig, load_project
+from openavc.core.project_changes import ProjectNotAppliedError
 from tests.helpers import wait_for_condition
 
 STARTUP_MACRO = {
@@ -471,7 +472,7 @@ async def test_failed_variable_edit_rolls_back_scoped(tmp_path):
     eng._register_variable_validation = boom
 
     before = eng._project_revision
-    with pytest.raises(RuntimeError, match="validation rebuild failed"):
+    with pytest.raises(ProjectNotAppliedError, match="validation rebuild failed"):
         await eng.apply_project(ProjectConfig(**_project_dict(
             variables=[{"id": "v1", "type": "number", "default": 2}],
             macros=eng.project.model_dump(mode="json")["macros"],
@@ -529,7 +530,7 @@ async def test_a_change_that_fails_leaves_the_crash_copy_as_it_was(tmp_path):
         raise RuntimeError("validation rebuild failed")
 
     eng._register_variable_validation = boom
-    with pytest.raises(RuntimeError, match="validation rebuild failed"):
+    with pytest.raises(ProjectNotAppliedError, match="validation rebuild failed"):
         await eng.apply_project(ProjectConfig(**_project_dict(
             variables=[{"id": "v1", "type": "number", "default": 2}],
         )))
@@ -561,7 +562,7 @@ async def test_a_write_that_fails_puts_the_running_system_back(tmp_path, monkeyp
     monkeypatch.setattr("openavc.core.project_changes.save_project_async", no_room)
     before = eng._project_revision
 
-    with pytest.raises(ProjectSaveError, match="disk is full"):
+    with pytest.raises(ProjectNotAppliedError, match="disk is full"):
         await eng.apply_project(ProjectConfig(**_project_dict(
             variables=[{"id": "v1", "type": "number", "default": 1},
                        {"id": "v2", "type": "number", "default": 7}],

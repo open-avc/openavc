@@ -501,6 +501,7 @@ app.include_router(network_routes.router)
 # every other API error instead of a wall of Pydantic JSON.
 from openavc.api.errors import (
     StructuredApiError,
+    project_not_applied_handler,
     request_validation_exception_handler,
     structured_api_error_handler,
     unknown_word_handler,
@@ -524,6 +525,12 @@ app.add_exception_handler(StructuredApiError, structured_api_error_handler)
 from openavc.core.saved_values import UnknownWordError
 
 app.add_exception_handler(UnknownWordError, unknown_word_handler)
+
+# A project change the running system could not take, from any route that
+# changes the project: "Not applied" and why, never a bare server error.
+from openavc.core.project_changes import ProjectNotAppliedError
+
+app.add_exception_handler(ProjectNotAppliedError, project_not_applied_handler)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).

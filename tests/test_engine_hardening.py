@@ -29,6 +29,7 @@ import pytest
 from openavc.core.device_records import RUNNING, DeviceRecord
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
+from openavc.core.project_changes import ProjectNotAppliedError
 
 
 def _write_project(tmp_path, *, variables=None, devices=None, ui_pages=None,
@@ -468,7 +469,7 @@ async def test_reload_rollback_resyncs_devices_and_plugins(tmp_path):
 
     eng._reload_isc = boom  # fails after the normal-path syncs
 
-    with pytest.raises(RuntimeError, match="late reload failure"):
+    with pytest.raises(ProjectNotAppliedError, match="late reload failure"):
         await eng.reload_project()
 
     # One sync in the normal path, one in the rollback path.

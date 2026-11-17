@@ -6,12 +6,15 @@ built on it) is taken in, compared with the running project, swapped in,
 reconciled (``core/project_reconcile.py``) and only then saved, so the file
 always holds what runs: a failure in the swap, the reconcile or the write (a
 full disk) puts the runtime and the logins the change filed back, with the
-file not written, and the change is not applied. Then it is announced; the
-announcement cannot turn a change that is already running into a failure. What an applied change did
-is its ``ApplyOutcome``, THE answer every door gives from: the revision it
-runs under and each part of it the system could not run (a device, a plugin,
-a script), with why. A part that failed is said by its own surface until it
-is fixed, never as a count a later change resets. A **bookkeeping** one is a change the
+file not written, and raises ``ProjectNotAppliedError``. Then it is
+announced; the announcement cannot turn a change that is already running
+into a failure. What an applied change did is its ``ApplyOutcome``, THE
+answer every door gives from: the revision it runs under and each part of it
+the system could not run (a device, a plugin, a script), with why. A part
+that failed is said by its own surface until it is fixed, never as a count a
+later change resets. The words every door answers an outcome in, the change
+that was not applied, a conflict and a refusal included, are
+``api/error_messages.py``'s. A **bookkeeping** one is a change the
 runtime already has (a device's pending settings cleared, a plugin's own
 ``save_config``): it is only saved and announced, never reconciled, and the
 code that makes one may be running inside a reconcile, which is why it can
@@ -54,6 +57,21 @@ log = get_logger("openavc.core.engine")
 
 class ProjectRevisionConflictError(Exception):
     """A revision-checked save found a newer project revision on the server."""
+
+
+class ProjectNotAppliedError(Exception):
+    """A change the running system was given and could not take: the swap,
+    the reconcile or the file's write failed, and everything was put back,
+    so the project before it is still running and the file was not
+    written. ``cause`` is what failed (also the ``__cause__``); every door
+    answers it in one wording (``api/error_messages.describe_change_failure``),
+    never with the cause's own text. A refusal of the change itself (a word
+    this version does not know, the installed equipment) is raised as it is,
+    before the change is taken in."""
+
+    def __init__(self, cause: Exception) -> None:
+        super().__init__(f"Project change not applied: {type(cause).__name__}: {cause}")
+        self.cause = cause
 
 
 @dataclass(frozen=True)
@@ -161,8 +179,10 @@ class ProjectChangesMixin:
         Checks optimistic concurrency (``expected_revision=None`` skips the
         check), swaps the in-memory project, bumps the revision, reconciles
         only the subsystems the change actually touches, and then saves the
-        bytes. Returns its outcome; raises, with the previous project running
-        and the file as it was, when the change could not be taken in.
+        bytes. Returns its outcome. A change refused before it is taken in
+        raises its own refusal; one the running system could not take raises
+        :class:`ProjectNotAppliedError`, with the previous project running
+        and the file as it was.
 
         The revision compare must happen under the same lock that increments
         ``_project_revision``. Checked outside it, two concurrent saves can
@@ -323,7 +343,8 @@ class ProjectChangesMixin:
         what runs. Everything from the swap on is inside the guard: a failure
         in the swap, the settings, the revision, the reconcile or the write
         (a full disk) puts the runtime and the login file back on the project
-        before, with the file not written, and raises."""
+        before, with the file not written, and raises
+        :class:`ProjectNotAppliedError` from it."""
         previous = (
             self.project, self._project_revision, self._revision_counter,
             self._dirty_since_backup,
@@ -347,11 +368,11 @@ class ProjectChangesMixin:
             # Once the file holds the change: the timed backup does not take
             # the reload lock, and one taken mid-apply copies the file before.
             self._dirty_since_backup = True
-        except Exception:
+        except Exception as failure:
             log.error("Project apply failed, rolling back to previous "
                       "project state", exc_info=True)
             await self._roll_back(previous, run, taken.logins)
-            raise
+            raise ProjectNotAppliedError(failure) from failure
         if taken.write and taken.project is not taken.as_given:
             # The crash copy is the file this save replaced, which held the
             # logins just moved when they came in on disk (a backup restored,

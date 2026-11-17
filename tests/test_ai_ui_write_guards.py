@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from openavc.cloud.ai_tool_handler import AIToolHandler, _tool_result_is_error
+from openavc.core.project_changes import ApplyOutcome
 
 
 class _FakeDriver:
@@ -135,7 +136,7 @@ def mock_engine():
         mutate(new_project)
         engine.project = new_project
         engine._project_revision += 1
-        return engine._project_revision
+        return ApplyOutcome(str(engine._project_revision))
 
     engine.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return engine

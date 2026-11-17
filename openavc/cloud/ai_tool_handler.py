@@ -24,6 +24,8 @@ from typing import Any, TYPE_CHECKING
 from openavc.cloud.protocol import (
     AI_TOOL_CALL, AI_TOOL_RESULT, build_ai_tool_result_payload, read_as,
 )
+from openavc.api.error_messages import describe_not_running
+from openavc.cloud.tools import collecting_not_running
 from openavc.cloud.tools.catalog_tools import CatalogToolsMixin
 from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
 from openavc.cloud.tools.device_tools import DeviceToolsMixin
@@ -87,14 +89,16 @@ def describe_tool_failure(exc: Exception) -> str:
     reaches it only when the platform wrote that text for a reader: a typed
     refusal, which tells the model what to change in its next call. The
     project's validation errors are reduced to each field and its message,
-    and a failed project save says why without the file's path. Anything
+    a project change that did not run is said in the words every door uses
+    (``describe_change_failure``), and a failed project save says why
+    without the file's path. Anything
     else (an operating system or library error that may hold a local path or
     an address, a driver's or a plugin's own text, Python's own message for a
     mistake) gets :data:`TOOL_FAILED`.
     """
     from pydantic import ValidationError
 
-    from openavc.api.error_messages import friendly_error
+    from openavc.api.error_messages import describe_change_failure, friendly_error
     from openavc.core.device_manager import DeviceNotFoundError
     from openavc.core.installed_equipment import InstalledEquipmentError
     from openavc.core.isc import ISCRemoteError
@@ -114,6 +118,9 @@ def describe_tool_failure(exc: Exception) -> str:
 
     if isinstance(exc, ValidationError):
         return _field_problems(exc)
+    change = describe_change_failure(exc)
+    if change is not None:
+        return change.sentence
     if isinstance(exc, ProjectSaveError):
         return exc.reason
     if isinstance(exc, WakeAddressError):
@@ -378,16 +385,21 @@ class AIToolHandler(
             await self._send_result(request_id, False, result={"error": problem}, error=problem)
             return
         try:
-            if tool_name in self._CONCURRENT_SAFE_TOOLS:
-                result = await handler(tool_input)
-            else:
-                # Project-mutating tool: serialize on the project lock so two
-                # concurrent tools can't interleave on engine.project, and run
-                # the one-time pre-AI backup under the same lock so it happens
-                # exactly once even under concurrency.
-                async with self._project_lock:
-                    await self._maybe_create_pre_ai_backup()
+            with collecting_not_running() as not_running:
+                if tool_name in self._CONCURRENT_SAFE_TOOLS:
                     result = await handler(tool_input)
+                else:
+                    # Project-mutating tool: serialize on the project lock so two
+                    # concurrent tools can't interleave on engine.project, and run
+                    # the one-time pre-AI backup under the same lock so it happens
+                    # exactly once even under concurrency.
+                    async with self._project_lock:
+                        await self._maybe_create_pre_ai_backup()
+                        result = await handler(tool_input)
+            # The change ran, so the answer is not a failure; it names each
+            # part the change could not start, as Save does.
+            if not_running and isinstance(result, dict):
+                result = {**result, "not_running": describe_not_running(not_running)}
             # A tool that returns an {"error": ...} / {"success": False} dict
             # has failed even though it didn't raise — report it as a failure
             # (carrying the body) so the model gets a structured error signal

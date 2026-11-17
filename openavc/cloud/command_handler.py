@@ -34,13 +34,37 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 
-def _not_applied_reason(exc: Exception) -> str:
-    """Why a config push was not applied, for the cloud to show: a failed
-    save says why without this system's path or the operating system's
-    text."""
-    from openavc.core.project_loader import ProjectSaveError
+#: Why a push was not applied when it failed before the project was handed
+#: to the running system (its backup, say). The cause is in the local log.
+_NOT_REACHED = "the system could not prepare the change. The Programmer's Log has the details."
 
-    return exc.reason if isinstance(exc, ProjectSaveError) else str(exc)
+
+def _not_applied_answer(exc: Exception) -> str:
+    """What the cloud is told about a config push that was not applied, in
+    the words every door that changes the project uses
+    (``describe_change_failure``): never the exception's own text or a path
+    on this system, which the cloud keeps."""
+    from openavc.api.error_messages import describe_change_failure, not_applied
+
+    failure = describe_change_failure(exc)
+    if failure is None:
+        log.error(f"Config push not applied: {type(exc).__name__}: {exc}")
+        return not_applied(_NOT_REACHED)
+    if failure.code == "not_applied":
+        return failure.sentence
+    return f"Not applied: {failure.sentence}"
+
+
+def _schema_problems(exc: Exception) -> str:
+    """A pushed project that is not valid, as each field and its message:
+    never the value, which may be a login."""
+    from pydantic import ValidationError
+
+    from openavc.api.errors import validation_error_lines
+
+    if isinstance(exc, ValidationError):
+        return "; ".join(validation_error_lines(exc.errors(include_url=False, include_input=False)))
+    return str(exc)
 
 
 class CommandHandler:
@@ -234,7 +258,9 @@ class CommandHandler:
                         migrated_json, _ = migrate_project(project_json, update_notes)
                         project = ProjectConfig.model_validate(migrated_json)
                     except (ValueError, TypeError) as ve:
-                        await self._send_result(request_id, False, error=f"Invalid project schema: {ve}")
+                        await self._send_result(
+                            request_id, False, error=f"Invalid project schema: {_schema_problems(ve)}",
+                        )
                         return
 
                     # Create backup before overwriting
@@ -258,9 +284,8 @@ class CommandHandler:
                 result_data = {"previous_project_json": previous_json} if previous_json else "Config applied"
             except Exception as e:
                 # A push that fails anywhere (the backup, the apply, its write)
-                # was not taken in: the project before it still runs, and its
-                # file is as it was.
-                await self._send_result(request_id, False, error=f"Not applied: {_not_applied_reason(e)}")
+                # was not taken in: the project before it still runs.
+                await self._send_result(request_id, False, error=_not_applied_answer(e))
                 return
             await self._send_result(request_id, True, result=result_data)
         else:

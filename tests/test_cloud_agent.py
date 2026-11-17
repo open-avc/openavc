@@ -1358,9 +1358,12 @@ class TestCommandHandler:
         assert sent and sent[-1][1]["success"] is True
 
     @pytest.mark.parametrize("failure,says", [
-        ("write", "Not applied: Could not save the project. The disk is full. "
-                  "Free up disk space and try again."),
-        ("reconcile", "Not applied: the reconcile failed"),
+        ("write", "Not applied: the project file could not be written. The disk is full. "
+                  "Free up disk space and try again. The previous project is still running."),
+        ("reconcile", "Not applied: the running system could not take the change. The "
+                      "Programmer's Log has the details. The previous project is still running."),
+        ("backup", "Not applied: the system could not prepare the change. The Programmer's "
+                   "Log has the details. The previous project is still running."),
     ])
     @pytest.mark.asyncio
     async def test_a_push_the_system_does_not_run_answers_not_applied(self, tmp_path, failure, says):
@@ -1372,6 +1375,9 @@ class TestCommandHandler:
         from openavc.cloud.command_handler import CommandHandler
         from openavc.core.device_manager import DeviceManager
         from openavc.core.event_bus import EventBus
+        from unittest.mock import MagicMock, patch
+
+        from openavc.core.project_changes import ProjectNotAppliedError
         from openavc.core.project_loader import ProjectSaveError
         from openavc.core.state_store import StateStore
 
@@ -1388,20 +1394,27 @@ class TestCommandHandler:
         )
 
         async def apply_fn(project, **kwargs):
+            # As the engine raises it: the change was put back.
             if failure == "write":
-                raise ProjectSaveError(OSError(errno.ENOSPC, "No space left on device", str(project_path)))
-            raise RuntimeError("the reconcile failed")
+                cause = ProjectSaveError(OSError(errno.ENOSPC, "No space left on device", str(project_path)))
+                raise ProjectNotAppliedError(cause) from cause
+            raise ProjectNotAppliedError(RuntimeError(f"the reconcile failed at {project_path}"))
+
+        def backup_fails(path, reason, **kwargs):
+            raise OSError(errno.EIO, "Input/output error", str(path))
 
         events = EventBus()
         handler = CommandHandler(
             MockAgent(), DeviceManager(StateStore(), events), events,
             apply_fn=apply_fn, project_path=str(project_path),
         )
-        await handler._handle_config_push(
-            {"project_json": {"openavc_version": "0.7.0", "project": {"id": "pushed", "name": "Room"}},
-             "mode": "full_replace"},
-            "req-cfg3", "tech@x.com",
-        )
+        with patch("openavc.core.backup_manager.create_backup",
+                   backup_fails if failure == "backup" else MagicMock()):
+            await handler._handle_config_push(
+                {"project_json": {"openavc_version": "0.7.0", "project": {"id": "pushed", "name": "Room"}},
+                 "mode": "full_replace"},
+                "req-cfg3", "tech@x.com",
+            )
 
         assert sent[-1][1]["success"] is False
         assert sent[-1][1]["error"] == says

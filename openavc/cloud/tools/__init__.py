@@ -1,5 +1,34 @@
 """Shared helpers for the AI tool mixins."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+#: The parts each project change made by the tool call running now could not
+#: start; set by the dispatcher around one call (``collecting_not_running``).
+_not_running: ContextVar[list | None] = ContextVar("ai_tool_not_running", default=None)
+
+
+@contextmanager
+def collecting_not_running() -> Iterator[list]:
+    """Collect the parts the project changes made inside this block could
+    not start (``note_applied``), for the tool call's answer to name. Each
+    tool call is its own task, so a tool running beside it adds nothing."""
+    parts: list = []
+    token = _not_running.set(parts)
+    try:
+        yield parts
+    finally:
+        _not_running.reset(token)
+
+
+def note_applied(outcome) -> None:
+    """Keep what an applied project change (its ``ApplyOutcome``) could not
+    start, for the answer of the tool call that made it."""
+    parts = _not_running.get()
+    if parts is not None:
+        parts.extend(outcome.failed)
+
 
 class ToolEditError(Exception):
     """Abort an ``apply_project_edit`` mutate with a structured tool result.
@@ -18,10 +47,12 @@ async def apply_tool_edit(engine, mutate) -> dict | None:
     """Run ``engine.apply_project_edit(mutate)`` for an AI tool.
 
     Returns the :class:`ToolEditError` result dict when the mutate aborted,
-    else None. Any other exception propagates to the tool dispatcher.
+    else None. Any other exception propagates to the tool dispatcher, which
+    words a change that was not applied. A change that ran with a part it
+    could not start is noted for the tool's answer (``note_applied``).
     """
     try:
-        await engine.apply_project_edit(mutate)
+        note_applied(await engine.apply_project_edit(mutate))
     except ToolEditError as e:
         return e.result
     except ValueError as e:

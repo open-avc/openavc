@@ -11,6 +11,7 @@ import json
 import pytest
 
 from openavc.core.engine import Engine
+from openavc.core.project_changes import ProjectNotAppliedError
 
 
 def _project_with_state_trigger(tmp_path):
@@ -80,7 +81,7 @@ async def test_rollback_does_not_double_register_trigger_listeners(tmp_path, mon
 
     monkeypatch.setattr(eng, "_reload_isc", boom)
 
-    with pytest.raises(RuntimeError, match="simulated late-reload failure"):
+    with pytest.raises(ProjectNotAppliedError, match="simulated late-reload failure"):
         await eng.reload_project()
 
     # Project should be rolled back to its previous value, and the trigger

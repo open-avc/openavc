@@ -9,7 +9,8 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from openavc.api._engine import _get_engine
-from openavc.api.errors import api_error as _api_error, validation_failed
+from openavc.api.error_messages import describe_not_running
+from openavc.api.errors import api_error as _api_error, change_failure_error, validation_failed
 from openavc.api.models import (
     LibraryDuplicateRequest,
     LibraryOpenRequest,
@@ -378,6 +379,9 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     since this client last loaded — returns 409 Conflict. The Import action
     passes mode=import to load a replacement project; ordinary saves retain
     active built-in reference protections. Both paths validate before writing.
+    A change the running system could not take is a 500 that says so
+    (``code`` ``not_applied``); one that runs with a part it could not start
+    lists each under ``not_running``.
     """
     max_body = 10 * 1024 * 1024
     content_length = request.headers.get("content-length")
@@ -468,9 +472,15 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     except ProjectRevisionConflictError as e:
         # The engine's own sentence: it is the half that knows whether another
         # writer landed a save or the caller's token is simply from an earlier
-        # run of the server.
-        raise HTTPException(status_code=409, detail=str(e))
+        # run of the server. A change that was not applied reaches the
+        # server's own handler (main.py) in the same wording.
+        raise change_failure_error(e) from e
     content: dict[str, Any] = {"status": "saved"}
+    # Applied, with a part it could not start: each one, in the words its own
+    # surface shows.
+    not_running = describe_not_running(outcome.failed)
+    if not_running:
+        content["not_running"] = not_running
     if mode == "import":
         # A project from somewhere else: the devices whose login this system
         # does not have, for the import's result to name.
