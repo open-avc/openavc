@@ -347,3 +347,28 @@ def test_the_engine_tells_its_devices_which_are_simulated(tmp_path):
     assert engine.devices.redirected_to_simulator == engine.simulation.is_redirected
     assert engine.devices.simulation_redirect == engine.simulation.redirect_of
     assert engine.devices.real_connection == engine.simulation.real_connection_of
+
+
+@pytest.mark.asyncio
+async def test_a_paused_device_stays_paused_when_simulation_starts_and_stops(rig):
+    """Held disconnected on purpose (a device audit, Live Test), a device is
+    pointed at the simulator and handed back without being dialed, so the
+    test that paused it keeps the equipment to itself. Its resume connects
+    it wherever it then points."""
+    manager, simulator = rig
+    ordinary = manager._devices["ordinary"]
+    await manager.pause_device("ordinary")
+
+    await simulator._redirect_connections()
+    assert manager.is_paused("ordinary")
+    assert ordinary.connects == 0
+    assert ordinary.config["port"] == 19000
+
+    await simulator._restore_connections()
+    assert manager.is_paused("ordinary")
+    assert ordinary.connects == 0
+    assert ordinary.config["port"] == 9000
+
+    await manager.resume_device("ordinary")
+    assert ordinary.connects == 1
+    assert not manager.is_paused("ordinary")

@@ -1460,13 +1460,24 @@ class SimulationManager:
         )
         await self._reconnect_all(redirected, "to simulator")
 
-    async def _reconnect_all(self, device_ids: list[str], what: str) -> None:
-        """Reconnect every named device concurrently, logging failures.
+    def _left_undialed(self, device_id: str) -> bool:
+        """A device the simulation points without dialing it, at both doors
+        that dial (:meth:`_reconnect_all`, :meth:`_reconnect_quietly`).
 
-        A device registered but not yet dialed is left out: the bring-up round
-        that follows dials it once, on whatever address it now has."""
+        One registered but not yet dialed: the bring-up round that follows
+        dials it once, on whatever address it now has. One paused on purpose
+        (a device audit, Live Test): reconnecting would end the pause and put
+        its driver back on the equipment beside the test, so it keeps the
+        address it now has for its resume to dial.
+        """
         dm = self.engine.devices
-        device_ids = [did for did in device_ids if not dm.is_connect_deferred(did)]
+        return dm.is_connect_deferred(device_id) or dm.is_paused(device_id)
+
+    async def _reconnect_all(self, device_ids: list[str], what: str) -> None:
+        """Reconnect every named device concurrently, logging failures, but
+        none :meth:`_left_undialed`."""
+        dm = self.engine.devices
+        device_ids = [did for did in device_ids if not self._left_undialed(did)]
         if not device_ids:
             return
         results = await asyncio.gather(
@@ -1598,16 +1609,6 @@ class SimulationManager:
             if driver.config.get("host") != _SIM_HOST or driver.config.get("port") != sim_port:
                 self._apply_sim_redirect(driver, device_id, sim_port)
                 log.info("Re-applied simulation redirect for %s to port %d", device_id, sim_port)
-                if dm.is_paused(device_id):
-                    # Held disconnected on purpose (driver test panel). The
-                    # redirect is in place for whenever it resumes; reconnecting
-                    # here would release the pause the same way the save used to.
-                    continue
-                if dm.is_connect_deferred(device_id):
-                    # Registered by this save and not yet dialed. The bring-up
-                    # that runs straight after this will open it once, on the
-                    # redirect we just applied.
-                    continue
                 to_reconnect.append(device_id)
         await self._reconnect_all(to_reconnect, "to simulator after reload")
 
@@ -1731,7 +1732,7 @@ class SimulationManager:
             if started_ok and device_id not in self._sim_ports:
                 await self._best_effort_stop(sim_api, device_id)
         finally:
-            if device_id not in self._sim_ports and not dm.is_connect_deferred(device_id):
+            if device_id not in self._sim_ports:
                 # The manager disconnects existing hardware and publishes the
                 # missing-simulator reason; the active guard refuses a redial.
                 await self._reconnect_quietly(device_id)
@@ -1747,12 +1748,9 @@ class SimulationManager:
                 self._note_refusal(device_id, SimulatorCause.REFUSED, "it reported no port")
                 return
             self._redirect_device_to_sim(device_id, sim_port, bool(data.get("tls")))
-            if not self.engine.devices.is_connect_deferred(device_id):
-                # A device registered by this save has never been dialed; the
-                # bring-up right after this opens it on the redirect we just
-                # applied. Anything else is already on the wire and has to be
-                # moved.
-                await self._reconnect_quietly(device_id)
+            # Already on the wire, it has to be moved; one this save registered
+            # is opened by the bring-up right after (_left_undialed).
+            await self._reconnect_quietly(device_id)
             log.info("Simulation sync: %s on port %d", device_id, sim_port)
             return
         if resp.status == 400 and await self._adopt_existing_sim(sim_api, device_id):
@@ -1784,6 +1782,10 @@ class SimulationManager:
             self._apply_sim_redirect(driver, device_id, sim_port)
 
     async def _reconnect_quietly(self, device_id: str) -> None:
+        """Reconnect one device, logging a failure, unless it is
+        :meth:`_left_undialed`."""
+        if self._left_undialed(device_id):
+            return
         try:
             await self.engine.devices.reconnect_device(device_id)
         except Exception as e:
@@ -1806,8 +1808,7 @@ class SimulationManager:
                     self._redirect_device_to_sim(
                         device_id, dev["port"], bool(dev.get("tls"))
                     )
-                    if not self.engine.devices.is_connect_deferred(device_id):
-                        await self._reconnect_quietly(device_id)
+                    await self._reconnect_quietly(device_id)
                     log.info(
                         "Adopted orphaned simulator instance for %s on port %d",
                         device_id, dev["port"],

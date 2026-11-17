@@ -41,6 +41,9 @@ class _FakeDeviceManager:
     def is_connect_deferred(self, device_id):
         return False
 
+    def is_paused(self, device_id):
+        return False
+
 
 class _FakeEngine:
     def __init__(self, dm):
