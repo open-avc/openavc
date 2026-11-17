@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 
 from openavc import runtime_flags
-from openavc.core.device_sync import add_devices
+from openavc.core.device_sync import add_devices, resolve_each
 from openavc.core.script_engine import ScriptEngine
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -372,11 +372,11 @@ class EngineLifecycleMixin:
     async def _add_devices_at_start(self, startup_errors: list[str]) -> None:
         """Add every project device, in parallel with the connection table
         merged into each one's config, connected unless a simulation is coming
-        back; then the ports they push to."""
+        back; then the ports they push to. A device that cannot be worked out
+        or added is counted among the start's errors, by id with why, and the
+        others still start (``core/device_sync.py``)."""
         self._sweep_device_logins()
-        resolved = {
-            d.id: self.resolved_device_config(d) for d in self.project.devices
-        }
+        resolved = resolve_each(self.project.devices, self.resolved_device_config)
         # A simulation that was on when the server stopped comes back
         # (core/simulation.py). Its devices register undialed, and the
         # bring-up round below starts the simulator and redirects them before
@@ -387,8 +387,10 @@ class EngineLifecycleMixin:
             startup_errors.append(f"Device '{device_id}': {error}")
             log.error(f"Failed to add device '{device_id}': {error}")
 
+        for device_id, error in resolved.failed.items():
+            failed(device_id, error)
         await add_devices(
-            self.devices, resolved, defer_connect=resume_simulation, on_failure=failed,
+            self.devices, resolved.configs, defer_connect=resume_simulation, on_failure=failed,
         )
         if resume_simulation:
             self._schedule_device_bringup()

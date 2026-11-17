@@ -47,6 +47,7 @@ from openavc.core.device_logins import (
     saved_isc_key,
     saved_logins_of,
 )
+from openavc.core.device_sync import resolve_each
 from openavc.core.project_loader import ProjectConfig, refresh_crash_copy, save_project_async
 from openavc.drivers.registry import is_driver_registered
 from openavc.utils.log_redaction import get_secret_registry, project_secret_values
@@ -131,13 +132,18 @@ class ProjectLoginsMixin:
         device has tried to connect."""
         if self.project is None:
             return []
-        needed = []
-        for device in self.project.devices:
-            if not device.enabled or not is_driver_registered(device.driver):
-                continue
-            if marked_fields(self.resolved_device_config(device).get("config")):
-                needed.append({"id": device.id, "name": device.name or device.id})
-        return needed
+        waiting = [
+            device for device in self.project.devices
+            if device.enabled and is_driver_registered(device.driver)
+        ]
+        # Each worked out on its own: one that cannot be (core/device_sync.py)
+        # is not listed, since it waits for its settings, not a login.
+        resolved = resolve_each(waiting, self.resolved_device_config).configs
+        return [
+            {"id": device.id, "name": device.name or device.id}
+            for device in waiting
+            if device.id in resolved and marked_fields(resolved[device.id].get("config"))
+        ]
 
     def plugin_logins_needed(self) -> list[dict[str, str]]:
         """The plugins that wait for somebody to enter a login, in project

@@ -26,6 +26,8 @@ from openavc.core.device_sync import (
     add_devices,
     delete_device_keys,
     log_failed_sync_add,
+    log_unresolved_at_sync,
+    resolve_each,
     update_changed_devices,
 )
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
@@ -211,21 +213,28 @@ class ProjectReconcileMixin:
         ``defer_connect`` registers the added/changed devices without dialing
         them, leaving that to ``DeviceManager.bring_up`` — see
         :meth:`_schedule_device_bringup`.
+
+        Each device is worked out on its own (``core/device_sync.py``): one
+        that cannot be is logged with why and left as it is, so it is not
+        added, or, already running, keeps the settings it runs with. It is
+        still in the project, so it is never removed as one that left.
         """
         if not self.project:
             return
 
         self._sweep_device_logins()
         # Build merged configs (device.config + connection table overrides)
-        project_devices = {d.id: self.resolved_device_config(d) for d in self.project.devices}
+        resolved = resolve_each(self.project.devices, self.resolved_device_config)
+        project_devices = resolved.configs
         running_ids = set(self.devices.get_device_configs().keys())
-        project_ids = set(project_devices.keys())
+        project_ids = {d.id for d in self.project.devices}
 
         for device_id in running_ids - project_ids:
             await self.devices.remove_device(device_id)
             delete_device_keys(self.state, device_id)
 
-        new_device_ids = list(project_ids - running_ids)
+        log_unresolved_at_sync(resolved.failed, running_ids)
+        new_device_ids = [did for did in project_devices if did not in running_ids]
         if new_device_ids:
             await add_devices(
                 self.devices, {did: project_devices[did] for did in new_device_ids},
@@ -233,7 +242,8 @@ class ProjectReconcileMixin:
             )
 
         await update_changed_devices(
-            self.devices, running_ids & project_ids, project_devices, defer_connect=defer_connect,
+            self.devices, running_ids & project_devices.keys(), project_devices,
+            defer_connect=defer_connect,
         )
 
     async def _sync_plugins(self) -> None:
