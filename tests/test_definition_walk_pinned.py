@@ -8,13 +8,13 @@ the connection's blocks, the actions, the state variables, the framing, the
 child types, the query entries, the routing block and the placeholders) and
 asks the check module for each. What it decides itself is the order, the tag
 each message carries, whether a part that is not the shape it should be is
-refused or read as empty, and where the discovery check it is handed runs.
+refused or read as empty, and where the discovery block's reader runs.
 
 Each case is a set of top-level keys over one driver. The expected value is
 every issue ``validate_driver_issues`` reports for the whole definition, in
 order, each with its severity and the section tag the Driver Builder anchors
 it to, lenient and strict; a part the walk could not check is one of those
-issues. The discovery hook, the tagged list itself and the issue records'
+issues. The discovery block's place, the tagged list itself and the issue records'
 fallback are pinned directly.
 
 These record what the walk does today, so a restructuring that keeps the
@@ -1827,101 +1827,111 @@ def test_a_definition_that_is_not_a_mapping(value: Any) -> None:
         ]
 
 
-# --- the discovery check the walk is handed ----------------------------------
+# --- the discovery block, read by its one reader ------------------------------
 
-
-class _Recorder:
-    def __init__(self, answer: list[str]) -> None:
-        self.answer = answer
-        self.seen: list[Any] = []
-
-    def __call__(self, definition: dict[str, Any]) -> list[str]:
-        self.seen.append(definition)
-        return list(self.answer)
+# A block with two problems: every one is said, in the order the reader finds them.
+BROKEN_DISCOVERY = {"tcp_probe": {"port": "x", "send_hex": "zz", "expect": "A"}}
+BROKEN_SAYS = [
+    "discovery.tcp_probe.port must be an integer",
+    "discovery.tcp_probe.send_hex is not valid hex: non-hexadecimal number found in fromhex() arg at position 0",
+]
 
 
 def test_the_discovery_check_runs_after_the_settings_and_before_the_push_block() -> None:
-    definition = _definition("everything")
-    hook = _Recorder(["discovery: from the hook", "discovery: and again"])
-    errors = validate_driver_definition(definition, discovery_validator=hook)
-    assert hook.seen == [definition] and hook.seen[0] is definition
+    definition = {**_definition("everything"), "discovery": BROKEN_DISCOVERY}
+    errors = validate_driver_definition(definition)
     tagged = list(zip(errors.tags, errors))  # type: ignore[attr-defined]
-    at = tagged.index(("discovery", "discovery: from the hook"))
-    assert tagged[at + 1] == ("discovery", "discovery: and again")
+    at = tagged.index(("discovery", BROKEN_SAYS[0]))
+    assert tagged[at + 1] == ("discovery", BROKEN_SAYS[1])
     before = [tag for tag, _ in tagged[:at]]
     after = [tag for tag, _ in tagged[at + 2:]]
     assert before[-1] == "device_settings.mode"
     assert after[0] == "push"
     without = list(zip(
-        validate_driver_definition(definition).tags,  # type: ignore[attr-defined]
-        validate_driver_definition(definition),
+        validate_driver_definition(_definition("everything")).tags,  # type: ignore[attr-defined]
+        validate_driver_definition(_definition("everything")),
     ))
     assert tagged[:at] + tagged[at + 2:] == without
 
 
 def test_the_discovery_check_runs_on_the_lenient_and_strict_walk_alike() -> None:
-    hook = _Recorder(["discovery: x"])
-    strict = validate_driver_definition(_definition("clean"), discovery_validator=hook, strict=True)
-    lenient = validate_driver_definition(_definition("clean"), discovery_validator=hook)
-    assert list(strict) == list(lenient) == ["discovery: x"]
-    assert strict.tags == lenient.tags == ["discovery"]  # type: ignore[attr-defined]
-    assert len(hook.seen) == 2
+    definition = {**_definition("clean"), "discovery": BROKEN_DISCOVERY}
+    strict = validate_driver_definition(definition, strict=True)
+    lenient = validate_driver_definition(definition)
+    assert list(strict) == list(lenient) == BROKEN_SAYS
+    assert strict.tags == lenient.tags == ["discovery", "discovery"]  # type: ignore[attr-defined]
+
+
+def test_what_only_the_author_s_doors_refuse_is_a_notice_where_a_driver_loads() -> None:
+    definition = {**_definition("clean"), "discovery": {"requires": "latest", "mdns": {"service": "_a._tcp", "name": "x"}}}
+    said = [
+        'discovery.requires must be a version string like "0.23.0", got \'latest\'',
+        "discovery.mdns entry has unknown keys: ['name']",
+    ]
+    strict = check_driver_definition(definition, strict=True)
+    assert list(strict.errors) == said and strict.errors.tags == ["discovery", "discovery"]  # type: ignore[attr-defined]
+    lenient = check_driver_definition(definition)
+    assert list(lenient.errors) == [] and list(lenient.notices) == said
+
+
+def test_a_block_written_for_a_newer_platform_is_not_read_by_an_older_one() -> None:
+    """The loader judges as the release it is; the catalog, with no release,
+    reads every block."""
+    definition = {**_definition("clean"), "discovery": {"requires": "99.0.0", "fingerprint_9": {}}}
+    unknown = "discovery has unknown keys: ['fingerprint_9']. Known keys: "
+    assert validate_driver_definition(definition, platform_version="0.40.0") == []
+    assert [m[:len(unknown)] for m in validate_driver_definition(definition)] == [unknown]
+    assert validate_driver_definition(definition, platform_version="99.0.0")[0].startswith(unknown)
 
 
 @pytest.mark.parametrize("driver_id", ["generic_tcp", "generic_", "generic_anything"])
-def test_a_template_is_not_handed_to_the_discovery_check(driver_id: str) -> None:
-    hook = _Recorder(["discovery: x"])
-    errors = validate_driver_definition({**BASE, "id": driver_id}, discovery_validator=hook)
-    assert hook.seen == []
+def test_a_template_s_discovery_block_is_not_read(driver_id: str) -> None:
+    errors = validate_driver_definition({**BASE, "id": driver_id, "discovery": BROKEN_DISCOVERY})
     assert list(errors) == []
 
 
 @pytest.mark.parametrize(
     "over", [{"id": ""}, {"id": None}, {"id": DROP}, {"id": "acme_generic_tcp"}, {"id": "Generic_tcp"}]
 )
-def test_anything_else_is_handed_to_the_discovery_check(over: dict[str, Any]) -> None:
-    hook = _Recorder(["discovery: x"])
-    definition = dict(BASE)
+def test_anything_else_has_its_discovery_block_read(over: dict[str, Any]) -> None:
+    definition = {**BASE, "discovery": BROKEN_DISCOVERY}
     for key, value in over.items():
         if value == DROP:
             definition.pop(key)
         else:
             definition[key] = value
-    errors = validate_driver_definition(definition, discovery_validator=hook)
-    assert hook.seen == [definition]
-    assert "discovery: x" in list(errors)
-    assert errors.tags[list(errors).index("discovery: x")] == "discovery"  # type: ignore[attr-defined]
+    errors = validate_driver_definition(definition)
+    assert BROKEN_SAYS[0] in list(errors)
+    assert errors.tags[list(errors).index(BROKEN_SAYS[0])] == "discovery"  # type: ignore[attr-defined]
 
 
-def test_a_discovery_check_that_raises_is_reported_in_its_place() -> None:
-    def hook(definition: dict[str, Any]) -> list[str]:
+def test_a_discovery_reader_that_raises_is_reported_in_its_place(monkeypatch) -> None:
+    from openavc.drivers import avcdriver_semantic
+
+    def broke(*_args, **_kwargs):
         raise RuntimeError("discovery parser broke")
 
-    errors = validate_driver_definition(_definition("everything"), discovery_validator=hook)
+    monkeypatch.setattr(avcdriver_semantic, "read_discovery_block", broke)
+    errors = validate_driver_definition(_definition("everything"))
     tagged = list(zip(errors.tags, errors))  # type: ignore[attr-defined]
     at = [i for i, (_, m) in enumerate(tagged) if "discovery parser broke" in m]
     assert len(at) == 1 and tagged[at[0]][0] == "discovery"
     assert tagged[at[0] - 1][0] == "device_settings.mode"
     assert tagged[at[0] + 1][0] == "push"
-    issues = validate_driver_issues(_definition("clean"), discovery_validator=hook)
+    issues = validate_driver_issues(_definition("clean"))
     assert [i["path"] for i in issues] == ["discovery"]
     assert issues[0]["message"].startswith("discovery: could not be checked (discovery parser broke). ")
 
 
-def test_a_number_for_an_id_is_refused_in_its_own_words_with_or_without_a_discovery_check() -> None:
-    hook = _Recorder([])
-    without = validate_driver_definition({**BASE, "id": 5})
-    with_hook = validate_driver_definition({**BASE, "id": 5}, discovery_validator=hook)
-    assert list(without) == list(with_hook) == ["id: must be a string; put it in quotes"]
-    assert without.tags == with_hook.tags == ["id"]  # type: ignore[attr-defined]
-    # An id that is not text is no template, so its discovery block is checked.
-    assert len(hook.seen) == 1
+def test_a_number_for_an_id_is_refused_in_its_own_words_and_its_block_is_read() -> None:
+    errors = validate_driver_definition({**BASE, "id": 5, "discovery": BROKEN_DISCOVERY})
+    assert list(errors) == ["id: must be a string; put it in quotes", *BROKEN_SAYS]
+    assert errors.tags == ["id", "discovery", "discovery"]  # type: ignore[attr-defined]
 
 
-def test_a_discovery_check_message_is_carried_by_the_issue_records() -> None:
-    hook = _Recorder(["discovery: x"])
-    issues = validate_driver_issues(_definition("clean"), discovery_validator=hook, strict=True)
-    assert issues == [{"severity": "error", "message": "discovery: x", "path": "discovery"}]
+def test_a_discovery_message_is_carried_by_the_issue_records() -> None:
+    issues = validate_driver_issues({**_definition("clean"), "discovery": BROKEN_DISCOVERY}, strict=True)
+    assert issues == [{"severity": "error", "message": m, "path": "discovery"} for m in BROKEN_SAYS]
 
 
 # --- the tagged list ---------------------------------------------------------

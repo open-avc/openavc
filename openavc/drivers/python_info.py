@@ -50,6 +50,7 @@ from openavc.drivers.avcdriver_semantic import (
 from openavc.drivers.child_type_checks import RosterNames, child_type_errors
 from openavc.drivers.command_checks import SharedCommandChecks, state_name_errors
 from openavc.drivers.declared_names import DeclaredSections
+from openavc.drivers.discovery_block import discovery_refusals
 from openavc.drivers.param_aid_checks import one_param_aid_errors, sibling_refs
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.python_source import SourceDecodeError, python_source
@@ -283,7 +284,7 @@ def check_python_driver_info(
     both kinds of driver declare alike (``_SHARED_SECTIONS``: the state
     variables, the child types, each command's parameter aids and its
     ``sets:`` and ``query_for:``, the push block, the serial line settings in
-    ``default_config``; the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
+    ``default_config``, the ``discovery:`` block; the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
     (``drivers.check``, catalog CI, the Code view's save). Where a driver is
     loaded or a device connects they are the ``notices``, so a driver that
     worked before still does and the door can say what is wrong with it. A
@@ -612,20 +613,23 @@ def _line_setting_section(info: dict[str, Any], coverage: _Coverage) -> list[str
     return [message for _, message in line_setting_errors(seen)]
 
 
-def _push_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
-    """The push block, by ``push_block_checks``."""
-    block = info.get("push")
-    if block is None or not coverage.judged("push", block, _push_reads(block)):
-        return []
-    return push_block_errors(info)
+# A block judged whole by ``check`` (push_block_checks, discovery_block), unless
+# the reader could not see it or a section it names into (``reads``).
+def _whole_block(name: str, check: Callable[[dict[str, Any]], list[str]], reads=lambda _: ()):
+    def section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
+        block = info.get(name)
+        judged = block is not None and coverage.judged(name, block, reads(block))
+        return check(info) if judged else []
+    return section
 
 
 _SHARED_SECTIONS: tuple[tuple[str, Callable[[dict[str, Any], _Coverage], list[str]]], ...] = (
     ("state_variables", _state_variable_section),
     ("child_entity_types", _child_type_section),
     ("commands", _command_section),
-    ("push", _push_section),
+    ("push", _whole_block("push", push_block_errors, lambda block: _push_reads(block))),
     ("default_config", _line_setting_section),
+    ("discovery", _whole_block("discovery", discovery_refusals)),
 )
 
 

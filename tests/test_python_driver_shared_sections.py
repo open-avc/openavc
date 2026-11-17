@@ -340,3 +340,27 @@ def test_a_section_of_another_kind_never_raises(value: Any) -> None:
     for section in ("state_variables", "child_entity_types", "commands", "push", "routing", "default_config"):
         python_driver_info_issues(info(**{section: value}))
         python_driver_reference_skips(info(**{section: value}))
+
+
+# --- the discovery block -------------------------------------------------------
+
+DISCOVERY_SAYS = [
+    "discovery.tcp_probe.cert_subject requires tls: true (the certificate is only read on a TLS probe)",
+    "discovery.mdns entry has unknown keys: ['name']",
+]
+
+
+def test_a_discovery_block_is_refused_where_written_and_a_notice_where_it_loads() -> None:
+    info = {**BASE, "discovery": {
+        "mdns": {"service": "_acme._tcp", "name": "x"},
+        "tcp_probe": {"port": 443, "cert_subject": "CN=Acme", "expect": "x"},
+    }}
+    strict = check_python_driver_info(info, strict=True)
+    assert sorted(strict.errors) == sorted(DISCOVERY_SAYS)
+    lenient = check_python_driver_info(info)
+    assert list(lenient.errors) == [] and sorted(lenient.notices) == sorted(DISCOVERY_SAYS)
+
+
+def test_a_discovery_block_the_reader_could_not_see_is_not_judged() -> None:
+    info = {**BASE, "discovery": {"tcp_probe": {"port": UNEVALUATED, "cert_subject": "("}}}
+    assert list(check_python_driver_info(info, strict=True).errors) == []

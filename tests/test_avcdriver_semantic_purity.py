@@ -2,7 +2,7 @@
 
 ``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py`` and the
 check modules it imports (``action_checks``, ``command_checks``, ``condition_checks``,
-``child_fault_checks``, ``child_type_checks``, ``conversion_checks``, ``declared_names``, ``driver_warnings``, ``framing_checks``,
+``child_fault_checks``, ``child_type_checks``, ``conversion_checks``, ``declared_names``, ``discovery_block``, ``discovery_hint``, ``driver_warnings``, ``framing_checks``,
 ``liveness_checks``,
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``,
 ``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``serial_line``, ``setting_checks``,
@@ -35,6 +35,8 @@ ALLOWED = {
     "openavc.drivers.condition_checks",
     "openavc.drivers.conversion_checks",
     "openavc.drivers.declared_names",
+    "openavc.drivers.discovery_block",
+    "openavc.drivers.discovery_hint",
     "openavc.drivers.driver_warnings",
     "openavc.drivers.framing_checks",
     "openavc.drivers.liveness_checks",
@@ -52,6 +54,7 @@ ALLOWED = {
     "openavc.drivers.sign_in_checks",
     "openavc.drivers.state_variable_checks",
     "openavc.drivers.substitution_checks",
+    "openavc.drivers.transport_choice",
     "openavc.utils",
     "openavc.utils.regex_safety",
 }

@@ -339,12 +339,14 @@ def test_the_published_schemas_are_valid_json_schema(name: str) -> None:
     Draft202012Validator.check_schema(schema)
 
 
-def test_the_discovery_block_is_left_to_the_discovery_parser() -> None:
-    """The same verdict with the parser handed in or not: a catalog copy of
-    the checker, which has no parser, says what the platform does."""
+def test_the_discovery_block_is_left_to_its_reader() -> None:
+    """The shape walk says nothing a discovery block's reader says: every
+    copy of the checker runs that reader, so it speaks for the block."""
     definition = {**BASE, "discovery": {"tcp_probe": {"port": "x"}}}
     assert shape_refusals(definition) == []
-    assert list(check_driver_definition(definition, strict=True).errors) == []
+    assert list(check_driver_definition(definition, strict=True).errors) == [
+        "discovery.tcp_probe.port must be an integer"
+    ]
 
 
 def test_a_python_driver_s_schema_takes_no_null_the_registry_does_not_declare() -> None:

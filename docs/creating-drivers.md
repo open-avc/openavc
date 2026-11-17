@@ -1972,7 +1972,9 @@ The `discovery:` block tells the matcher which network signals identify your dev
 
 **Choosing a fingerprint type.** Most AV devices announce themselves passively over one of three multicast channels. Pick the one your device actually emits. `mdns:` matches the device's Bonjour / Avahi service-type announcement (e.g. `_pjlink._tcp.local.`) and is the common case for projectors, displays, and networked audio gear. `ssdp:` matches the UPnP device-type URN advertised in SSDP announcements (e.g. `urn:acme-com:device:Switcher:1`) and shows up on media renderers, smart displays, and consumer-grade AV devices; when a vendor's whole product family advertises one URN, add a `model:` (or `manufacturer:` / `friendly_name:`) filter to the entry — it matches the device-description XML the scanner fetches, so each model can map to its own driver. `amx_ddp:` matches the AMXB make / model beacon many AV control-system devices emit on multicast `239.255.250.250:9131`; provide a `make` string and an optional `model_pattern` glob. When the device doesn't announce, fall back to `tcp_probe:` or `udp_probe:` to actively send a control-port query and match the response. Reach for `python:` only when the wire format is too dynamic for the declarative blocks (multi-step handshakes, binary parsing, broadcast-then-per-host TCP follow-ups).
 
-A driver with no `discovery:` block at all is invisible to the matcher (still installable manually). The loader logs a warning so you notice.
+A driver with no `discovery:` block at all is invisible to the matcher and still installable by hand; that is the normal state for a serial device, so nothing warns about it. A block that is there but declares nothing to match on gets a warning in the server log and in the driver library's build, and so does an `oui` entry that names no prefix (it is left out).
+
+Validate, `python -m openavc.drivers.check` and the driver catalog list every problem in the block, not just the first. A YAML driver whose block is malformed does not load. A few problems stop a driver from saving but not from loading: a `requires:` that is not a version, an empty `mdns` or `ssdp` string, a key an `mdns`, `ssdp` or `amx_ddp` entry does not read, or a `hostname` pattern that is not a valid regular expression. A driver that already has one of these still loads, and the problem is shown on its entry in Installed. Inside a probe or an entry, a setting written with no value, such as `timeout_ms:` left empty, reads as not set.
 
 The matcher is deterministic: there is no scoring. A signal either fires or it does not. Fingerprints always beat hint accumulation when both fire. When fingerprints from more than one driver fire on the same device, the Discovery card offers every one of those drivers in a dropdown and the user picks, so a probe that a sibling product also answers should expect something only your device says.
 
@@ -2192,6 +2194,12 @@ path: it resolves relative to the driver file, so a Python driver at
 the file is missing the driver is refused at load with a message naming the
 path it looked for, rather than loading into a state where the device is
 theoretically matchable and never actually found.
+
+A Python driver's block is checked by the same rules as a YAML one, and
+`python -m openavc.drivers.check` and the catalog refuse the same problems. A
+Python driver that is already installed still loads with a malformed block:
+the problem is shown on its entry in Installed, and its discovery hints are not
+used until it is fixed.
 
 When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
 

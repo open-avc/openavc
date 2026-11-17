@@ -105,7 +105,8 @@ def test_the_config_field_part_names_the_field_it_was_reading(monkeypatch):
 
 
 def test_a_discovery_check_that_raises_is_named(monkeypatch):
-    errors = validate_driver_definition({**BASE, **TYPO}, discovery_validator=_broke, strict=True)
+    monkeypatch.setattr(avcdriver_semantic, "read_discovery_block", _broke)
+    errors = validate_driver_definition({**BASE, **TYPO}, strict=True)
     tagged = list(zip(errors.tags, errors))  # type: ignore[attr-defined]
     assert [tag for tag, m in tagged if "broke here" in m] == ["discovery"]
     assert tagged[-1] == ("", TYPO_MESSAGE)

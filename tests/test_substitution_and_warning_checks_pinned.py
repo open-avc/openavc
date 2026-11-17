@@ -1373,7 +1373,9 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                       'reading refreshes every 3 s. Poll less per cycle, or set a longer '
                       'poll_interval in default_config.')],
  'polling_not_mapping': [('error', 'polling', 'polling: must be a mapping')],
- 'port_open_discovery_not_mapping': [],
+ 'port_open_discovery_not_mapping': [('error',
+                                      'discovery',
+                                      "'discovery' must be a mapping, got list")],
  'port_open_empty': [],
  'port_open_extras_not_list': [('warning',
                                 'discovery',

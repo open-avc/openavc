@@ -54,6 +54,7 @@ from openavc.drivers.registry import (
 from openavc.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS, without_null_sections
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
+from openavc.version import __version__
 
 log = get_logger(__name__)
 
@@ -160,21 +161,6 @@ def _is_driver_file(filepath: Path) -> bool:
     return True
 
 
-def _discovery_hint_errors(driver_def: dict[str, Any]) -> list[str]:
-    """Deep-validate the ``discovery:`` block through the real hints parser.
-
-    Lives here rather than in avcdriver_semantic because the parser pulls in
-    the discovery engine; the rules module stays importable without it.
-    """
-    from openavc.discovery.hints import DiscoveryHintError, parse_driver_discovery
-
-    try:
-        parse_driver_discovery(driver_def)
-    except DiscoveryHintError as exc:
-        return [f"discovery: {exc}"]
-    return []
-
-
 def validate_driver_definition(
     driver_def: dict[str, Any], *, strict: bool = False
 ) -> list[str]:
@@ -184,15 +170,15 @@ def validate_driver_definition(
     Returns a list of error strings. Empty list means valid.
 
     The rules live in ``avcdriver_semantic`` (shared with the community
-    catalog's validator); this wrapper adds the discovery-block check, which
-    needs the discovery engine's parser.
+    catalog's validator); this wrapper hands in the running release, which a
+    discovery block's ``requires:`` is judged against.
 
     ``strict`` is the author's doors' switch (save, Validate, the AI tool,
     ``drivers.check``): leave it off when loading a driver, where
     ``check_driver_definition`` returns what it moves as notices.
     """
     return _validate_definition_rules(
-        driver_def, discovery_validator=_discovery_hint_errors, strict=strict
+        driver_def, platform_version=__version__, strict=strict
     )
 
 
@@ -200,10 +186,9 @@ def check_driver_definition(
     driver_def: dict[str, Any], *, strict: bool = False
 ) -> DefinitionVerdict:
     """The errors and the notices for a definition
-    (``avcdriver_semantic.check_driver_definition``), with the
-    discovery-block check."""
+    (``avcdriver_semantic.check_driver_definition``), judged as this release."""
     return _check_definition_rules(
-        driver_def, discovery_validator=_discovery_hint_errors, strict=strict
+        driver_def, platform_version=__version__, strict=strict
     )
 
 
@@ -218,7 +203,7 @@ def validate_driver_issues(
     second copy of the contract rules.
     """
     return _validate_definition_issues(
-        driver_def, discovery_validator=_discovery_hint_errors, strict=strict
+        driver_def, platform_version=__version__, strict=strict
     )
 
 

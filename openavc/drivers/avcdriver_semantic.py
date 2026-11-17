@@ -14,16 +14,17 @@ framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
 watchdog (``liveness_checks``), the ``routing:`` block
 (``routing_checks``), where a value conversion may be declared
 (``conversion_checks``), the ``{name}`` placeholders in its wire templates
-(``substitution_checks``) and the serial line settings its default_config
-holds (``serial_line``). The walk is ``_DefinitionWalk``, one method per
+(``substitution_checks``), the serial line settings its default_config
+holds (``serial_line``) and its ``discovery:`` block (``discovery_block``,
+the one reader the discovery engine runs too). The walk is ``_DefinitionWalk``, one method per
 part in the order they report; the sections other parts name into are read
 once (``declared_names.DeclaredSections``) and handed to the checks that
 follow a name into them. ``validate_driver_warnings`` walks it the same
 way for the rules that only warn (``driver_warnings``). The runtime
-loader wraps it (adding the discovery-block check, which needs the
-discovery engine's parser), and the community driver catalog runs a copy of
-the same rules in its CI, so a definition that passes catalog review is
-exactly a definition the platform will load.
+loader wraps it (handing in the platform release, which a discovery block's
+``requires:`` is judged against), and the community driver catalog runs a
+copy of the same rules in its CI, so a definition that passes catalog review
+is exactly a definition the platform will load.
 
 Judging a definition returns messages; it never raises. Each part of both
 walks is asked through ``_guarded``: a part that raises on a value of a kind
@@ -35,9 +36,8 @@ that stops it.
 
 Purity contract: standard library plus the sibling contract modules (the
 ``spec`` constants table and the check modules). Nothing here may import
-the server runtime, transports, or discovery machinery; checks that need
-them are passed in (see ``validate_driver_definition``'s
-``discovery_validator`` hook). An import-guard test enforces this.
+the server runtime, transports, or discovery machinery. An import-guard
+test enforces this.
 """
 
 from __future__ import annotations
@@ -65,6 +65,7 @@ from openavc.drivers.conversion_checks import (
     value_conversion_errors as value_conversion_errors,
     value_conversion_issues,
 )
+from openavc.drivers.discovery_block import DiscoveryRead, read_discovery_block
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY as UNEVALUATED_KEY,
     DeclaredSections,
@@ -109,7 +110,6 @@ from openavc.drivers.sign_in_checks import auth_errors
 from openavc.drivers.spec import (
     DEFS,
     FIELDS,
-    GENERIC_ID_PREFIXES,
     REQUIRED_FIELDS,
     YAML_TRANSPORTS,
     block_has_fixed_keys,
@@ -304,7 +304,7 @@ def _inside(loc: str, key: Any) -> str:
 def validate_driver_definition(
     driver_def: dict[str, Any],
     *,
-    discovery_validator: Callable[[dict[str, Any]], list[str]] | None = None,
+    platform_version: str | None = None,
     strict: bool = False,
 ) -> list[str]:
     """
@@ -312,10 +312,10 @@ def validate_driver_definition(
 
     Returns a list of error strings. Empty list means valid.
 
-    ``discovery_validator`` is the hook for the deep discovery-block check:
-    the runtime loader passes the discovery engine's parser through it, and
-    it is asked after the device settings and before the push block. When
-    None, the discovery block is not validated.
+    ``platform_version`` is the release doing the judging: the runtime loader
+    passes its own, and a discovery block whose ``requires:`` names a newer
+    one is not read (``discovery_block``). None (the catalog, the SDK) reads
+    every block.
 
     ``strict`` is the one switch between the two kinds of door
     (``check_driver_definition`` says which refusals it moves): pass it where
@@ -330,7 +330,7 @@ def validate_driver_definition(
     each issue to. This never raises.
     """
     return check_driver_definition(
-        driver_def, discovery_validator=discovery_validator, strict=strict
+        driver_def, platform_version=platform_version, strict=strict
     ).errors
 
 
@@ -347,7 +347,7 @@ class DefinitionVerdict:
 def check_driver_definition(
     driver_def: dict[str, Any],
     *,
-    discovery_validator: Callable[[dict[str, Any]], list[str]] | None = None,
+    platform_version: str | None = None,
     strict: bool = False,
 ) -> DefinitionVerdict:
     """THE verdict on a driver definition, at either kind of door.
@@ -377,8 +377,8 @@ def check_driver_definition(
     if not isinstance(driver_def, dict):
         return DefinitionVerdict(_TaggedErrors(["Driver definition must be a mapping"]), _TaggedErrors())
     driver_def = without_null_sections(driver_def)
-    walk = _DefinitionWalk(driver_def)
-    for part, section in walk.parts(discovery_validator):
+    walk = _DefinitionWalk(driver_def, platform_version)
+    for part, section in walk.parts():
         _guarded(walk.errors, part, section)
     for part, section in walk.authors_parts():
         _guarded(walk.authored, part, section)
@@ -467,11 +467,13 @@ class _DefinitionWalk:
     loading the driver reports as notices.
     """
 
-    def __init__(self, driver_def: dict[str, Any]) -> None:
+    def __init__(self, driver_def: dict[str, Any], platform_version: str | None = None) -> None:
         self.driver_def = driver_def
+        self.platform_version = platform_version
         self.errors = _TaggedErrors()
         self.authored = _TaggedErrors()
         self.declared = DeclaredSections(driver_def)
+        self._discovery = DiscoveryRead()
 
     def authors_parts(self) -> list[tuple[Callable[[], None], str]]:
         """The parts only the author's doors refuse on, in the order they
@@ -480,6 +482,7 @@ class _DefinitionWalk:
             (self.rule_names, "responses"),
             (self.child_fault_codes, "responses"),
             (self.line_settings, "default_config"),
+            (self.discovery_authored, "discovery"),
         ]
 
     def rule_names(self) -> None:
@@ -506,10 +509,7 @@ class _DefinitionWalk:
             errors.ctx = f"default_config.{key}"
             errors.append(message)
 
-    def parts(
-        self,
-        discovery_validator: Callable[[dict[str, Any]], list[str]] | None,
-    ) -> list[tuple[Callable[[], None], str]]:
+    def parts(self) -> list[tuple[Callable[[], None], str]]:
         """Each part in the order they report, with the section a message it
         raises is tagged with when it raises before setting its own place."""
         return [
@@ -518,7 +518,7 @@ class _DefinitionWalk:
             (self.commands, "commands"),
             (self.config_fields, "config_schema"),
             (self.device_settings, "device_settings"),
-            (partial(self.discovery, discovery_validator), "discovery"),
+            (self.discovery, "discovery"),
             (self.connection_blocks, "push"),
             (self.actions, "actions"),
             (self.state_variables, "state_variables"),
@@ -635,22 +635,19 @@ class _DefinitionWalk:
                 device_setting_errors(setting_name, setting_def, self.declared.state_variables)
             )
 
-    def discovery(
-        self, discovery_validator: Callable[[dict[str, Any]], list[str]] | None
-    ) -> None:
-        """The ``discovery:`` block, through the check the caller hands in
-        (the loader's needs the discovery engine's parser). The check reads
-        the definition and must not change it: the sections other parts name
-        into were read before it runs. A template (``generic_*``) takes no
-        part in discovery and is not checked. Any mix of strong and soft
-        signals, or none, is allowed here; signal collisions are caught when
-        the SignalIndex is built."""
+    def discovery(self) -> None:
+        """The ``discovery:`` block, by the one reader discovery runs too
+        (``discovery_block``): what no door accepts."""
         errors = self.errors
         errors.ctx = "discovery"
-        driver_id = self.driver_def.get("id")
-        is_template = isinstance(driver_id, str) and driver_id.startswith(GENERIC_ID_PREFIXES)
-        if not is_template and discovery_validator is not None:
-            errors.extend(discovery_validator(self.driver_def))
+        self._discovery = read_discovery_block(self.driver_def, platform_version=self.platform_version)
+        errors.extend(self._discovery.errors)
+
+    def discovery_authored(self) -> None:
+        """What ``discovery``'s reading refuses only where a driver is written."""
+        errors = self.authored
+        errors.ctx = "discovery"
+        errors.extend(self._discovery.authored)
 
     def connection_blocks(self) -> None:
         """The blocks the connection itself reads: ``push:``, the
@@ -885,7 +882,7 @@ def _as_issues(messages: list[str], severity: str) -> list[dict[str, str]]:
 def validate_driver_issues(
     driver_def: dict[str, Any],
     *,
-    discovery_validator: Callable[[dict[str, Any]], list[str]] | None = None,
+    platform_version: str | None = None,
     strict: bool = False,
 ) -> list[dict[str, str]]:
     """The same rules as ``validate_driver_definition``, as issue records.
@@ -902,7 +899,7 @@ def validate_driver_issues(
     instead of carrying its own copy of the rules in another language.
     """
     errors = validate_driver_definition(
-        driver_def, discovery_validator=discovery_validator, strict=strict
+        driver_def, platform_version=platform_version, strict=strict
     )
     warnings = validate_driver_warnings(driver_def)
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")

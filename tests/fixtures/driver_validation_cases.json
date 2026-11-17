@@ -4189,6 +4189,154 @@
   },
   "transport": "tcp"
  },
+ "discovery_cert_subject_without_tls": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "tcp_probe": {
+    "cert_subject": "(",
+    "expect": "x",
+    "port": 443
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "discovery_empty_fingerprint_strings": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "mdns": "",
+   "ssdp": ""
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "discovery_entry_unknown_keys": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "amx_ddp": {
+    "make": "Acme",
+    "sku": "1"
+   },
+   "mdns": {
+    "name": "x",
+    "service": "_acme._tcp"
+   },
+   "ssdp": {
+    "device_type": "urn:acme:device:Widget:1",
+    "serial": "1"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "discovery_every_problem_in_a_probe": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "tcp_probe": {
+    "bogus": 1,
+    "expect": "A",
+    "port": 0,
+    "send_hex": "zz",
+    "timeout_ms": 0,
+    "tls": "yes"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "discovery_follow_up_contents": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "tcp_probe": {
+    "expect": "A",
+    "port": 5000,
+    "send_ascii": "Q",
+    "then": {
+     "expect": "b",
+     "expect_regex": "(",
+     "send_hex": "zz"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "discovery_hostname_does_not_compile": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "hostname": [
+    "("
+   ]
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "discovery_invalid_block": {
   "commands": {
    "noop": {
@@ -4199,6 +4347,28 @@
    "tcp_probe": {
     "port": "not-a-port"
    }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "discovery_requires_not_a_version": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "discovery": {
+   "port_open": [
+    4352
+   ],
+   "requires": "banana"
   },
   "id": "acme_widget",
   "name": "Acme Widget",

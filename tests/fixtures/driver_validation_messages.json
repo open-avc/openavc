@@ -429,8 +429,37 @@
  "device_settings_not_mapping": [
   "device_settings: must be a mapping"
  ],
+ "discovery_cert_subject_without_tls": [
+  "discovery.tcp_probe.cert_subject requires tls: true (the certificate is only read on a TLS probe)"
+ ],
+ "discovery_empty_fingerprint_strings": [
+  "discovery.mdns service must be a non-empty string",
+  "discovery.ssdp device_type must be a non-empty string"
+ ],
+ "discovery_entry_unknown_keys": [
+  "discovery.mdns entry has unknown keys: ['name']",
+  "discovery.ssdp entry has unknown keys: ['serial']",
+  "discovery.amx_ddp entry has unknown keys: ['sku']"
+ ],
+ "discovery_every_problem_in_a_probe": [
+  "discovery.tcp_probe.port must be >= 1 (got 0)",
+  "discovery.tcp_probe.send_hex is not valid hex: non-hexadecimal number found in fromhex() arg at position 0",
+  "discovery.tcp_probe.timeout_ms must be >= 1 (got 0)",
+  "discovery.tcp_probe.tls must be a bool",
+  "discovery.tcp_probe has unknown keys: ['bogus']"
+ ],
+ "discovery_follow_up_contents": [
+  "discovery.tcp_probe.then.send_hex is not valid hex: non-hexadecimal number found in fromhex() arg at position 0",
+  "discovery.tcp_probe.then declares multiple matchers (expect, expect_regex); pick exactly one of expect, expect_regex, or expect_hex"
+ ],
+ "discovery_hostname_does_not_compile": [
+  "discovery.hostname entry '(' failed to compile: missing ), unterminated subpattern at position 0"
+ ],
  "discovery_invalid_block": [
-  "discovery: acme_widget: discovery.tcp_probe.port must be an integer"
+  "discovery.tcp_probe.port must be an integer"
+ ],
+ "discovery_requires_not_a_version": [
+  "discovery.requires must be a version string like \"0.23.0\", got 'banana'"
  ],
  "each_child_missing_send": [
   "polling.queries[0]: missing 'send' template"
@@ -558,8 +587,7 @@
  "missing_required_fields": [
   "Missing required field: id",
   "Missing required field: name",
-  "Missing required field: transport",
-  "discovery: Driver missing required 'id' field"
+  "Missing required field: transport"
  ],
  "not_a_mapping": [
   "Driver definition must be a mapping"

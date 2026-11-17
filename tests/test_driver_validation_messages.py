@@ -689,8 +689,26 @@ CASES: dict[str, Any] = {
     "device_setting_map_enum_key_not_declared": _setting(
         type="enum", values=["low", {"value": "high", "label": "High"}], map={"mid": "MID"},
     ),
-    # --- discovery (validated through the hints parser) ---
+    # --- discovery (read by drivers/discovery_block.py) ---
     "discovery_invalid_block": _d(discovery={"tcp_probe": {"port": "not-a-port"}}),
+    "discovery_every_problem_in_a_probe": _d(discovery={"tcp_probe": {
+        "port": 0, "send_hex": "zz", "expect": "A", "timeout_ms": 0, "tls": "yes", "bogus": 1,
+    }}),
+    "discovery_cert_subject_without_tls": _d(discovery={"tcp_probe": {
+        "port": 443, "cert_subject": "(", "expect": "x",
+    }}),
+    "discovery_follow_up_contents": _d(discovery={"tcp_probe": {
+        "port": 5000, "send_ascii": "Q", "expect": "A",
+        "then": {"send_hex": "zz", "expect_regex": "(", "expect": "b"},
+    }}),
+    "discovery_requires_not_a_version": _d(discovery={"requires": "banana", "port_open": [4352]}),
+    "discovery_entry_unknown_keys": _d(discovery={
+        "mdns": {"service": "_acme._tcp", "name": "x"},
+        "ssdp": {"device_type": "urn:acme:device:Widget:1", "serial": "1"},
+        "amx_ddp": {"make": "Acme", "sku": "1"},
+    }),
+    "discovery_empty_fingerprint_strings": _d(discovery={"mdns": "", "ssdp": ""}),
+    "discovery_hostname_does_not_compile": _d(discovery={"hostname": ["("]}),
     # --- json contains ---
     "json_set_contains_not_scalar": _d(
         transport="http",
@@ -1140,7 +1158,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
             "action_checks.py",
             "avcdriver_semantic.py", "child_type_checks.py", "command_checks.py",
             "condition_checks.py", "conversion_checks.py",
-            "declared_names.py", "driver_warnings.py", "framing_checks.py",
+            "declared_names.py", "discovery_block.py", "driver_warnings.py", "framing_checks.py",
             "liveness_checks.py",
             "param_aid_checks.py",
             "push_block_checks.py",
