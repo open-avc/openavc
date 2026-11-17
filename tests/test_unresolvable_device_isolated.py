@@ -28,7 +28,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from openavc.core.device_logins import SAVED_LOGIN
-from openavc.core.project_diff import ProjectDiff
+from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
 from openavc.drivers import registry
 from openavc.drivers.base import BaseDriver
@@ -156,10 +156,22 @@ async def test_a_save_brings_every_other_device_to_its_settings(engine, case):
 
 
 @pytest.mark.parametrize("case", list(MALFORMED))
+async def test_a_saved_device_change_reaches_every_other_device(engine, case):
+    engine.project = _project(case)
+    await engine._reconcile(ProjectDiff(devices=True), ProjectOrigin.EDIT)
+    await engine.wait_for_device_bringup()
+    assert {"good1", "br", "good2"} <= _running(engine)
+    for device_id in ("good1", "br", "good2"):
+        assert engine.state.get(f"device.{device_id}.connected") is True, device_id
+
+
+@pytest.mark.parametrize("case", list(MALFORMED))
 async def test_the_rollback_after_a_failed_save_brings_the_others_back(engine, case):
     engine.project = _project(case)
     await engine._rollback_reconcile(ProjectDiff(devices=True))
+    await engine.wait_for_device_bringup()
     assert {"good1", "br", "good2"} <= _running(engine)
+    assert engine.state.get("device.good1.connected") is True
 
 
 
