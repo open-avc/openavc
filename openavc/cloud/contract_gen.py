@@ -4,8 +4,8 @@
 vocabulary and limit the agent and the cloud exchange. This module renders it
 into ``openavc/cloud/wire_contract.json``: a JSON Schema and a whole example
 per message, the vocabularies and the limits, each entry with the release it
-arrived in. The cloud copies that file and tests its own builders and readers
-against it.
+arrived in, and the crypto vectors (``wire_vectors.py``) both sides run. The
+cloud copies that file and tests its own builders and readers against it.
 
 Regenerate after any change to the tables:
 
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator
 
-from openavc.cloud import wire_tables
+from openavc.cloud import wire_tables, wire_vectors
 from openavc.cloud.crypto import sign_message
 from openavc.cloud.wire_tables import ABSENT, Field, Message
 from openavc.utils.spawn import CREATE_NO_WINDOW
@@ -238,6 +238,7 @@ def build_contract() -> dict[str, Any]:
         "messages": {m.type: _message_entry(m) for m in wire_tables.MESSAGES},
         "vocabularies": {name: [_vocabulary_entry(e) for e in entries]
                          for name, entries in wire_tables.VOCABULARIES.items()},
+        "vectors": wire_vectors.VECTORS,
     }
 
 

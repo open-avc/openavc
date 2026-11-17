@@ -6,14 +6,13 @@ counting on the bill. Unpair now signs a request to the cloud with the key it
 still holds, before forgetting it, and unpairs locally whatever the answer.
 """
 
-import hashlib
 
 import httpx
 import pytest
 
 import openavc.config as cfg
 from openavc.api.routes import cloud as cloud_routes
-from openavc.cloud.crypto import compute_hmac, derive_auth_key
+from openavc.cloud.crypto import sign_system_request
 
 SYSTEM_ID = "11111111-2222-3333-4444-555555555555"
 SYSTEM_KEY = "ab" * 32
@@ -81,9 +80,9 @@ async def test_the_cloud_is_told_with_the_systems_signature_before_the_key_is_go
     assert request.method == "POST"
     headers = request.headers
     assert headers["X-System-ID"] == SYSTEM_ID
-    auth_key = derive_auth_key(bytes.fromhex(SYSTEM_KEY), SYSTEM_ID)
-    message = (SYSTEM_ID + headers["X-Timestamp"] + hashlib.sha256(b"").hexdigest()).encode()
-    assert headers["X-Signature"] == compute_hmac(auth_key, message)
+    assert headers["X-Signature"] == sign_system_request(
+        bytes.fromhex(SYSTEM_KEY), SYSTEM_ID, headers["X-Timestamp"], b""
+    )
     _cleared_locally(saved, engine)
 
 

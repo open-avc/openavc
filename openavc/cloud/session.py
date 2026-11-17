@@ -99,8 +99,7 @@ class Session:
         if not self._valid:
             raise SessionInvalid("Cannot sign — session is invalidated")
         msg["session"] = self.session_token
-        msg_without_sig = {k: v for k, v in msg.items() if k != "sig"}
-        msg["sig"] = sign_message(self.signing_key, msg_without_sig)
+        msg["sig"] = sign_message(self.signing_key, msg)
         return msg
 
     def verify_incoming(self, msg: dict[str, Any]) -> bool:

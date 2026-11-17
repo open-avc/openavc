@@ -3772,5 +3772,181 @@
         "description": "The Programmer's panel preview; needs a signed-in session."
       }
     ]
+  },
+  "vectors": {
+    "description": "Inputs and the exact outputs both sides must produce. Bytes are hex (*_hex); a request body is its UTF-8 text. 'integer_keys' names the top-level maps whose keys the sender holds as integers: rebuilt that way, the message gives the same bytes. If a vector fails, restore the behaviour; never change the vector.",
+    "hkdf_sha256": [
+      {
+        "name": "RFC 5869 test case 1",
+        "ikm_hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "salt_hex": "000102030405060708090a0b0c",
+        "info_hex": "f0f1f2f3f4f5f6f7f8f9",
+        "length": 42,
+        "okm_hex": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+      },
+      {
+        "name": "RFC 5869 test case 3: an empty salt and info",
+        "ikm_hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "salt_hex": "",
+        "info_hex": "",
+        "length": 42,
+        "okm_hex": "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8"
+      }
+    ],
+    "auth_key": [
+      {
+        "name": "the handshake's auth key",
+        "system_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        "system_id": "0f7b1a9c-3d52-4e88-9a41-6c2f8e5d7b30",
+        "auth_key_hex": "0d4bedcd397836e6279bbd875b330068d7bb48c5cc5948baf30b134802168be9"
+      }
+    ],
+    "signing_key": [
+      {
+        "name": "a session's signing key",
+        "system_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        "signing_key_salt_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "session_id": "b4d6f2a1-8c3e-45d9-b7a0-1e9f6c4d2a85",
+        "signing_key_hex": "c03dd3a52240ad77f38a3f1e53d8bb2a5fa76ee213f704b9c09d475d475411da"
+      }
+    ],
+    "canonical_json": [
+      {
+        "name": "sorted keys, no spaces, UTF-8 text unescaped",
+        "message": {
+          "type": "state_batch",
+          "seq": 42,
+          "ts": "2026-01-02T03:04:05Z",
+          "changes": [
+            {
+              "key": "device.proj1.power",
+              "value": true
+            },
+            {
+              "key": "var.room_name",
+              "value": "Salle bleue — café"
+            },
+            {
+              "key": "device.amp.volume",
+              "value": -12.5
+            },
+            {
+              "key": "device.amp.mute",
+              "value": null
+            }
+          ],
+          "ports": {
+            "22": "ssh",
+            "443": "https",
+            "80": "http"
+          }
+        },
+        "integer_keys": [
+          "ports"
+        ],
+        "canonical": "{\"changes\":[{\"key\":\"device.proj1.power\",\"value\":true},{\"key\":\"var.room_name\",\"value\":\"Salle bleue — café\"},{\"key\":\"device.amp.volume\",\"value\":-12.5},{\"key\":\"device.amp.mute\",\"value\":null}],\"ports\":{\"22\":\"ssh\",\"443\":\"https\",\"80\":\"http\"},\"seq\":42,\"ts\":\"2026-01-02T03:04:05Z\",\"type\":\"state_batch\"}"
+      }
+    ],
+    "signing": [
+      {
+        "name": "a message",
+        "signing_key_hex": "c03dd3a52240ad77f38a3f1e53d8bb2a5fa76ee213f704b9c09d475d475411da",
+        "message": {
+          "type": "state_batch",
+          "seq": 42,
+          "ts": "2026-01-02T03:04:05Z",
+          "changes": [
+            {
+              "key": "device.proj1.power",
+              "value": true
+            },
+            {
+              "key": "var.room_name",
+              "value": "Salle bleue — café"
+            },
+            {
+              "key": "device.amp.volume",
+              "value": -12.5
+            },
+            {
+              "key": "device.amp.mute",
+              "value": null
+            }
+          ],
+          "ports": {
+            "22": "ssh",
+            "443": "https",
+            "80": "http"
+          }
+        },
+        "integer_keys": [
+          "ports"
+        ],
+        "sig": "5ac0e56f95c7da5aea0d86259accc39380dbb2a5489d49e4abd09c62418b642b"
+      },
+      {
+        "name": "a message that already carries a sig: the sig field is never signed",
+        "signing_key_hex": "c03dd3a52240ad77f38a3f1e53d8bb2a5fa76ee213f704b9c09d475d475411da",
+        "message": {
+          "type": "state_batch",
+          "seq": 42,
+          "ts": "2026-01-02T03:04:05Z",
+          "changes": [
+            {
+              "key": "device.proj1.power",
+              "value": true
+            },
+            {
+              "key": "var.room_name",
+              "value": "Salle bleue — café"
+            },
+            {
+              "key": "device.amp.volume",
+              "value": -12.5
+            },
+            {
+              "key": "device.amp.mute",
+              "value": null
+            }
+          ],
+          "ports": {
+            "22": "ssh",
+            "443": "https",
+            "80": "http"
+          },
+          "sig": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "integer_keys": [],
+        "sig": "5ac0e56f95c7da5aea0d86259accc39380dbb2a5489d49e4abd09c62418b642b"
+      }
+    ],
+    "auth_proof": [
+      {
+        "name": "the handshake's proof",
+        "auth_key_hex": "0d4bedcd397836e6279bbd875b330068d7bb48c5cc5948baf30b134802168be9",
+        "nonce": "9c1f4e2d7a6b3850",
+        "system_id": "0f7b1a9c-3d52-4e88-9a41-6c2f8e5d7b30",
+        "timestamp": "2026-01-02T03:04:05.678901Z",
+        "proof": "f23d9b4b95251d8a1ffac78e131521c26b57cb4f6f5e426b86186ae331a34207"
+      }
+    ],
+    "http_system_signature": [
+      {
+        "name": "a request with no body",
+        "system_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        "system_id": "0f7b1a9c-3d52-4e88-9a41-6c2f8e5d7b30",
+        "timestamp": "2026-01-02T03:04:05.678901+00:00",
+        "body": "",
+        "signature": "cb72eff874ce1180ada004d24c14b11b634ea45be6fea3c90bbd97b0f5b26329"
+      },
+      {
+        "name": "a JSON body with non-ASCII text",
+        "system_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        "system_id": "0f7b1a9c-3d52-4e88-9a41-6c2f8e5d7b30",
+        "timestamp": "2026-01-02T03:04:05.678901+00:00",
+        "body": "{\"message\":\"Allume le projecteur de la salle bleue — merci\",\"conversation_id\":null}",
+        "signature": "9a501816a197bba51bfcdeb48ad884855829ec0263b61f66fc8664b440ffc402"
+      }
+    ]
   }
 }

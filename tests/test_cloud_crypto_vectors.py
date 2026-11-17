@@ -1,14 +1,26 @@
-"""Known-answer vectors for the cloud agent's cryptographic primitives.
+"""The agent's crypto against the wire contract's vectors.
 
-These pin the exact wire-level output of key derivation, canonical JSON,
-message signing, and the handshake proof. The cloud service derives the
-same values independently, so ANY change to the output of these functions
-breaks every fielded agent's connection at the signature layer.
+Key derivation, canonical JSON, message signing, the handshake proof and the
+signature on a system's HTTP requests must give exactly the outputs in
+``wire_contract.json``'s ``vectors``: the cloud runs the same vectors from its
+copy of that file, so any change here breaks every fielded agent's connection
+at the signature layer.
 
-If one of these tests fails, do not update the expected constants —
-restore the behavior. The constants are the contract.
+If one of these fails, restore the behaviour; never change the vector
+(``openavc/cloud/wire_vectors.py``).
 """
 
+from __future__ import annotations
+
+import ast
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from openavc.cloud import contract_gen, wire_vectors
 from openavc.cloud.crypto import (
     canonical_json,
     compute_auth_proof,
@@ -16,106 +28,105 @@ from openavc.cloud.crypto import (
     derive_signing_key,
     hkdf_sha256,
     sign_message,
+    sign_system_request,
     verify_message_signature,
 )
 
-# Fixed, arbitrary inputs shared by the vectors below.
-SYSTEM_KEY = bytes(range(64))
-SYSTEM_ID = "0f7b1a9c-3d52-4e88-9a41-6c2f8e5d7b30"
-SESSION_ID = "b4d6f2a1-8c3e-45d9-b7a0-1e9f6c4d2a85"
-SIGNING_KEY_SALT = bytes(range(32))
-
-# A message exercising the canonicalization edge cases: unsorted keys,
-# integer dict keys (normalized to strings, sorted lexicographically),
-# non-ASCII text (ensure_ascii=False), bool / float / null values.
-MESSAGE = {
-    "type": "state_batch",
-    "seq": 42,
-    "ts": "2026-01-02T03:04:05Z",
-    "changes": [
-        {"key": "device.proj1.power", "value": True},
-        {"key": "var.room_name", "value": "Salle bleue — café"},
-        {"key": "device.amp.volume", "value": -12.5},
-        {"key": "device.amp.mute", "value": None},
-    ],
-    "ports": {22: "ssh", 443: "https", 80: "http"},
-}
-
-EXPECTED_AUTH_KEY_HEX = "0d4bedcd397836e6279bbd875b330068d7bb48c5cc5948baf30b134802168be9"
-EXPECTED_SIGNING_KEY_HEX = "c03dd3a52240ad77f38a3f1e53d8bb2a5fa76ee213f704b9c09d475d475411da"
-EXPECTED_CANONICAL = (
-    '{"changes":[{"key":"device.proj1.power","value":true},'
-    '{"key":"var.room_name","value":"Salle bleue — café"},'
-    '{"key":"device.amp.volume","value":-12.5},'
-    '{"key":"device.amp.mute","value":null}],'
-    '"ports":{"22":"ssh","443":"https","80":"http"},'
-    '"seq":42,"ts":"2026-01-02T03:04:05Z","type":"state_batch"}'
-).encode("utf-8")
-EXPECTED_SIGNATURE = "5ac0e56f95c7da5aea0d86259accc39380dbb2a5489d49e4abd09c62418b642b"
-
-AUTH_NONCE = "9c1f4e2d7a6b3850"
-AUTH_TIMESTAMP = "2026-01-02T03:04:05.678901Z"
-EXPECTED_AUTH_PROOF = "f23d9b4b95251d8a1ffac78e131521c26b57cb4f6f5e426b86186ae331a34207"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VECTORS: dict[str, Any] = json.loads(
+    contract_gen.artifact_path(REPO_ROOT).read_text(encoding="utf-8")
+)["vectors"]
 
 
-class TestHKDFRFC5869:
-    """HKDF-SHA256 pinned to the published RFC 5869 test vectors."""
-
-    def test_case_1_basic(self):
-        okm = hkdf_sha256(
-            ikm=bytes.fromhex("0b" * 22),
-            salt=bytes.fromhex("000102030405060708090a0b0c"),
-            info=bytes.fromhex("f0f1f2f3f4f5f6f7f8f9"),
-            length=42,
-        )
-        assert okm.hex() == (
-            "3cb25f25faacd57a90434f64d0362f2a"
-            "2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
-            "34007208d5b887185865"
-        )
-
-    def test_case_3_empty_salt_and_info(self):
-        # Exercises the empty-salt zero-fill branch of HKDF-Extract.
-        okm = hkdf_sha256(
-            ikm=bytes.fromhex("0b" * 22),
-            salt=b"",
-            info=b"",
-            length=42,
-        )
-        assert okm.hex() == (
-            "8da4e775a563c18f715f802a063c5a31"
-            "b8a11f5c5ee1879ec3454e5f3c738d2d"
-            "9d201395faa4b61a96c8"
-        )
+def _cases(kind: str) -> list[Any]:
+    return [pytest.param(v, id=v["name"]) for v in VECTORS[kind]]
 
 
-class TestKeyDerivationVectors:
-    def test_auth_key(self):
-        key = derive_auth_key(SYSTEM_KEY, SYSTEM_ID)
-        assert key.hex() == EXPECTED_AUTH_KEY_HEX
-
-    def test_signing_key(self):
-        key = derive_signing_key(SYSTEM_KEY, SIGNING_KEY_SALT, SESSION_ID)
-        assert key.hex() == EXPECTED_SIGNING_KEY_HEX
-
-
-class TestCanonicalJsonVector:
-    def test_exact_bytes(self):
-        assert canonical_json(MESSAGE) == EXPECTED_CANONICAL
+def _as_sent(vector: dict[str, Any]) -> dict[str, Any]:
+    """The message as the sender holds it: the maps named in ``integer_keys``
+    keyed by integers, which JSON cannot carry."""
+    message = dict(vector["message"])
+    for key in vector["integer_keys"]:
+        message[key] = {int(k): v for k, v in message[key].items()}
+    return message
 
 
-class TestSignatureVectors:
-    def test_sign_message(self):
-        signing_key = bytes.fromhex(EXPECTED_SIGNING_KEY_HEX)
-        assert sign_message(signing_key, MESSAGE) == EXPECTED_SIGNATURE
+def test_every_kind_has_a_vector():
+    kinds = set(VECTORS) - {"description"}
+    assert kinds == {"hkdf_sha256", "auth_key", "signing_key", "canonical_json",
+                     "signing", "auth_proof", "http_system_signature"}
+    assert all(VECTORS[kind] for kind in kinds)
 
-    def test_verify_with_sig_field_present(self):
-        # Verification must ignore an embedded 'sig' field when canonicalizing.
-        signing_key = bytes.fromhex(EXPECTED_SIGNING_KEY_HEX)
-        signed = {**MESSAGE, "sig": EXPECTED_SIGNATURE}
-        assert verify_message_signature(signing_key, signed, EXPECTED_SIGNATURE)
 
-    def test_auth_proof(self):
-        auth_key = bytes.fromhex(EXPECTED_AUTH_KEY_HEX)
-        proof = compute_auth_proof(auth_key, AUTH_NONCE, SYSTEM_ID, AUTH_TIMESTAMP)
-        assert proof == EXPECTED_AUTH_PROOF
+@pytest.mark.parametrize("v", _cases("hkdf_sha256"))
+def test_hkdf_sha256(v):
+    okm = hkdf_sha256(bytes.fromhex(v["ikm_hex"]), bytes.fromhex(v["salt_hex"]),
+                      bytes.fromhex(v["info_hex"]), v["length"])
+    assert okm.hex() == v["okm_hex"]
+
+
+@pytest.mark.parametrize("v", _cases("auth_key"))
+def test_auth_key(v):
+    assert derive_auth_key(bytes.fromhex(v["system_key_hex"]), v["system_id"]).hex() == v["auth_key_hex"]
+
+
+@pytest.mark.parametrize("v", _cases("signing_key"))
+def test_signing_key(v):
+    key = derive_signing_key(bytes.fromhex(v["system_key_hex"]),
+                             bytes.fromhex(v["signing_key_salt_hex"]), v["session_id"])
+    assert key.hex() == v["signing_key_hex"]
+
+
+@pytest.mark.parametrize("v", _cases("canonical_json"))
+def test_canonical_json(v):
+    expected = v["canonical"].encode("utf-8")
+    assert canonical_json(v["message"]) == expected
+    assert canonical_json(_as_sent(v)) == expected
+
+
+@pytest.mark.parametrize("v", _cases("signing"))
+def test_signing(v):
+    key = bytes.fromhex(v["signing_key_hex"])
+    for message in (v["message"], _as_sent(v)):
+        assert sign_message(key, message) == v["sig"]
+        assert verify_message_signature(key, message, v["sig"])
+
+
+@pytest.mark.parametrize("v", _cases("auth_proof"))
+def test_auth_proof(v):
+    proof = compute_auth_proof(bytes.fromhex(v["auth_key_hex"]), v["nonce"],
+                               v["system_id"], v["timestamp"])
+    assert proof == v["proof"]
+
+
+@pytest.mark.parametrize("v", _cases("http_system_signature"))
+def test_http_system_signature(v):
+    signature = sign_system_request(bytes.fromhex(v["system_key_hex"]), v["system_id"],
+                                    v["timestamp"], v["body"].encode("utf-8"))
+    assert signature == v["signature"]
+
+
+@pytest.mark.parametrize("v", _cases("http_system_signature"))
+def test_a_signed_request_carries_the_vector_signature(v, monkeypatch):
+    """The headers every signed request sends are the vector's signature,
+    stamped with the timestamp the request went out at."""
+    from openavc.api import ai_proxy
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromisoformat(v["timestamp"])
+
+    monkeypatch.setattr(ai_proxy, "datetime", _Frozen)
+    headers = ai_proxy._sign_request(v["system_id"], bytes.fromhex(v["system_key_hex"]),
+                                     v["body"].encode("utf-8"))
+    assert headers == {"X-System-ID": v["system_id"], "X-Timestamp": v["timestamp"],
+                       "X-Signature": v["signature"]}
+
+
+def test_the_vectors_are_written_out_never_computed():
+    """A vector computed by the code it checks would follow that code."""
+    tree = ast.parse(Path(wire_vectors.__file__).read_text(encoding="utf-8"))
+    imported = [node for node in ast.walk(tree)
+                if isinstance(node, (ast.Import, ast.ImportFrom))]
+    assert all(getattr(node, "module", None) in ("__future__", "typing") for node in imported)

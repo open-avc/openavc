@@ -6,7 +6,6 @@ local endpoints and the server proxies to the cloud using the system
 key established during pairing. No separate cloud login needed.
 """
 
-import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -70,18 +69,13 @@ def _get_system_key_bytes() -> bytes:
 
 def _sign_request(system_id: str, system_key: bytes, body: bytes) -> dict[str, str]:
     """Create HMAC auth headers for a cloud system-authenticated request."""
-    from openavc.cloud.crypto import derive_auth_key, compute_hmac
+    from openavc.cloud.crypto import sign_system_request
 
     timestamp = datetime.now(timezone.utc).isoformat()
-    auth_key = derive_auth_key(system_key, system_id)
-    body_hash = hashlib.sha256(body).hexdigest()
-    message = (system_id + timestamp + body_hash).encode("utf-8")
-    signature = compute_hmac(auth_key, message)
-
     return {
         "X-System-ID": system_id,
         "X-Timestamp": timestamp,
-        "X-Signature": signature,
+        "X-Signature": sign_system_request(system_key, system_id, timestamp, body),
     }
 
 

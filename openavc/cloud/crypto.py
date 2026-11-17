@@ -9,6 +9,11 @@ Key concepts:
 - Auth key: Derived from system key via HKDF. Used for challenge-response authentication.
 - Signing key: Derived from system key + session salt via HKDF. Used for HMAC message signatures.
 - Canonical JSON: Deterministic JSON serialization for signature computation.
+- System request signature: the X-Signature on a system's HTTP requests to the cloud,
+  under the auth key.
+
+The wire contract's vectors (wire_vectors.py) pin every output here; the cloud
+runs the same vectors against its own implementation.
 """
 
 from __future__ import annotations
@@ -193,6 +198,25 @@ def verify_auth_proof(
     return verify_hmac(auth_key, message, proof)
 
 
+# --- HTTP requests a system signs ---
+
+def sign_system_request(system_key: bytes, system_id: str, timestamp: str, body: bytes) -> str:
+    """
+    The ``X-Signature`` on an HTTP request a system sends the cloud.
+
+    signature = HMAC-SHA256(auth_key, system_id || timestamp || hex(SHA-256(body)))
+
+    ``timestamp`` is the ``X-Timestamp`` header's text exactly as sent; the
+    cloud refuses one more than a minute from its own clock.
+
+    Returns:
+        Hex-encoded signature.
+    """
+    body_hash = hashlib.sha256(body).hexdigest()
+    message = (system_id + timestamp + body_hash).encode("utf-8")
+    return compute_hmac(derive_auth_key(system_key, system_id), message)
+
+
 # --- Canonical JSON ---
 
 def _normalize_keys(obj: Any) -> Any:
@@ -236,22 +260,26 @@ def canonical_json(obj: dict[str, Any]) -> bytes:
 
 # --- Message Signing ---
 
+def _without_sig(message: dict[str, Any]) -> dict[str, Any]:
+    """The fields a message signature covers: all of them but 'sig'."""
+    return {k: v for k, v in message.items() if k != "sig"}
+
+
 def sign_message(signing_key: bytes, message: dict[str, Any]) -> str:
     """
     Sign a message dict and return the hex-encoded signature.
 
-    The message must NOT contain a 'sig' field — it is computed from
-    the canonical JSON of all other fields.
+    The signature covers the canonical JSON of every field but 'sig': a
+    'sig' already on the message is never signed, as the cloud signs.
 
     Args:
         signing_key: The session signing key.
-        message: The message dict (without 'sig').
+        message: The message dict ('sig' present or not).
 
     Returns:
         Hex-encoded HMAC-SHA256 signature.
     """
-    msg_bytes = canonical_json(message)
-    return compute_hmac(signing_key, msg_bytes)
+    return compute_hmac(signing_key, canonical_json(_without_sig(message)))
 
 
 def verify_message_signature(
@@ -271,10 +299,7 @@ def verify_message_signature(
     Returns:
         True if the signature is valid.
     """
-    # Build a copy without the sig field
-    msg_without_sig = {k: v for k, v in message.items() if k != "sig"}
-    msg_bytes = canonical_json(msg_without_sig)
-    return verify_hmac(signing_key, msg_bytes, signature)
+    return verify_hmac(signing_key, canonical_json(_without_sig(message)), signature)
 
 
 # --- Utilities ---
