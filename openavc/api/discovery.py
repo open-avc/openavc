@@ -82,9 +82,11 @@ async def refresh_all_device_matches() -> None:
     """Reload driver hints and discovery companions, and re-match all
     discovered devices.
 
-    Call this after installing, updating or uninstalling drivers so discovery
-    results stay in sync with the current driver registry, and so the next
-    scan runs the ``*_discovery.py`` checks of the drivers there now.
+    ``driver_change.changed`` calls this after every driver change, so
+    discovery results stay in sync with the current driver registry, and so
+    the next scan runs the ``*_discovery.py`` checks of the drivers there now.
+    The community catalog folded in is the copy already fetched, so a change
+    on a system that cannot reach the internet never waits on a fetch.
     """
     if _engine is None:
         return
@@ -94,7 +96,7 @@ async def refresh_all_device_matches() -> None:
     _engine.load_discovery_companions_from_dirs([DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR])
     # Re-fold the community catalog so un-installed drivers stay matchable
     # — discovery's whole job is suggesting what to install next.
-    await _engine.refresh_signal_index_with_catalog()
+    _engine.refold_cached_catalog()
 
     for ip in list(_engine.results.keys()):
         updated = await _engine.refresh_device_matches(ip)

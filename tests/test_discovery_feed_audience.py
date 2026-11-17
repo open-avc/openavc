@@ -72,7 +72,7 @@ class _AcmeScan:
     def load_discovery_companions_from_dirs(self, dirs) -> None:
         pass
 
-    async def refresh_signal_index_with_catalog(self) -> None:
+    def refold_cached_catalog(self) -> None:
         pass
 
     async def refresh_device_matches(self, ip):

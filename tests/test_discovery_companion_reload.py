@@ -48,3 +48,27 @@ async def test_an_installed_drivers_check_runs_without_a_restart(engine):
     (repo / "acme_widget_discovery.py").unlink()
     await discovery_api.refresh_all_device_matches()
     assert "acme_widget" not in eng.discovery_companions
+
+
+async def test_a_driver_change_matches_against_the_catalog_already_fetched(engine, monkeypatch):
+    """A driver change re-reads the drivers here and nothing else: the
+    community catalog it folds in is the copy the last scan fetched, so a
+    save on a system that cannot reach the internet does not wait for it."""
+    eng, _repo = engine
+    fetched: list[bool] = []
+
+    async def fetch(force: bool = False):
+        fetched.append(force)
+        return []
+
+    folded: list[list] = []
+    monkeypatch.setattr(eng.community_index, "get_drivers", fetch)
+    monkeypatch.setattr(eng.community_index, "_drivers", [{"id": "acme_gadget"}])
+    monkeypatch.setattr(
+        eng, "_rebuild_signal_index", lambda community_drivers: folded.append(community_drivers)
+    )
+
+    await discovery_api.refresh_all_device_matches()
+
+    assert fetched == []
+    assert folded[-1] == [{"id": "acme_gadget"}]

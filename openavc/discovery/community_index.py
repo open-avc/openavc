@@ -90,6 +90,11 @@ class CommunityIndexCache:
             "error": self._last_error,
         }
 
+    def cached(self) -> list[dict[str, Any]]:
+        """The drivers last fetched, without fetching: [] before a first
+        fetch."""
+        return self._drivers
+
     async def get_drivers(self, force: bool = False) -> list[dict[str, Any]]:
         """Fetch community drivers, using cached data if fresh enough.
 

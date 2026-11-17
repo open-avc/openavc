@@ -409,6 +409,13 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             community = []
         self._rebuild_signal_index(community_drivers=community)
 
+    def refold_cached_catalog(self) -> None:
+        """Rebuild the SignalIndex from the installed drivers and the
+        community catalog already fetched, fetching nothing: a driver change
+        changes what is installed, not the catalog, which the next scan
+        fetches again."""
+        self._rebuild_signal_index(community_drivers=self.community_index.cached())
+
     def _rebuild_signal_index(
         self, community_drivers: list[dict[str, Any]],
     ) -> None:
