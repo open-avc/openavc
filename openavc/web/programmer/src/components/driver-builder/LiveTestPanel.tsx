@@ -4,6 +4,7 @@ import {
   AlertCircle,
   AlertTriangle,
   ChevronRight,
+  Info,
   Pause,
   Play,
 } from "lucide-react";
@@ -60,6 +61,9 @@ interface ResultEntry {
   contract_errors?: string[];
   /** Replies no response rule matched (see TestCommandResult.unmatched). */
   unmatched?: string[];
+  /** Channels a reply named beyond the test's roster, in the server's words
+   * (see TestCommandResult.unregistered). */
+  unregistered?: string[];
   /** Set when the request hit the 2s rate limit (A82). */
   throttled?: boolean;
   timestamp: number;
@@ -479,6 +483,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           error: result.error,
           contract_errors: result.contract_errors ?? [],
           unmatched: result.unmatched ?? [],
+          unregistered: result.unregistered ?? [],
           timestamp: Date.now(),
         },
         ...prev,
@@ -926,19 +931,14 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
         </div>
       ))}
       {(entry.unmatched ?? []).map((text, j) => (
-        <div
-          key={`unmatched-${j}`}
-          style={{
-            color: "var(--color-warning, #e8b250)",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 4,
-            marginTop: 4,
-          }}
-        >
-          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>No response rule matched this reply: {visibleBytes(text)}</span>
-        </div>
+        <NoticeLine key={`unmatched-${j}`}>
+          No response rule matched this reply: {visibleBytes(text)}
+        </NoticeLine>
+      ))}
+      {(entry.unregistered ?? []).map((sentence, j) => (
+        <NoticeLine key={`unregistered-${j}`} muted>
+          {sentence}
+        </NoticeLine>
       ))}
       {Object.entries(entry.state_changes).length > 0 && (
         <div
@@ -975,20 +975,31 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
         </div>
       )}
       {(entry.contract_errors ?? []).map((msg, j) => (
-        <div
-          key={`contract-${j}`}
-          style={{
-            color: "var(--color-warning, #e8b250)",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 4,
-            marginTop: 4,
-          }}
-        >
-          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>{msg}</span>
-        </div>
+        <NoticeLine key={`contract-${j}`}>{msg}</NoticeLine>
       ))}
+    </div>
+  );
+}
+
+/**
+ * One line under a result: a warning (a reply no rule matched, a contract
+ * error), or, `muted`, something worth seeing that is not a fault (a channel
+ * beyond the test's roster).
+ */
+function NoticeLine({ muted = false, children }: { muted?: boolean; children: React.ReactNode }) {
+  const Icon = muted ? Info : AlertTriangle;
+  return (
+    <div
+      style={{
+        color: muted ? "var(--text-secondary)" : "var(--color-warning, #e8b250)",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 4,
+        marginTop: 4,
+      }}
+    >
+      <Icon size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+      <span>{children}</span>
     </div>
   );
 }

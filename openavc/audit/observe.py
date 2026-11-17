@@ -18,7 +18,7 @@ Two sources, both the platform's own, never a second parser:
   counted; the first ``EVENT_DETAIL_KEPT`` of each kind keep their detail.
   ``CONTRACT_TEXT`` is the one set of words for each kind: the report, the
   wizard (the live view sends it beside the counts) and the Driver Builder's
-  live test all read it.
+  live test all read it, and ``contract_sentence`` says one event in them.
 
 Two faults are read from the traffic rather than reported by the driver:
 
@@ -90,17 +90,34 @@ def contract_labels(counts: dict[str, int]) -> dict[str, str]:
 def contract_example(detail: Any) -> str:
     """What one contract event is about, in a line: the rule that failed and
     its error, the channel or zone a reply named or why it could not be
-    found, else the reply, the state, the command or the address."""
+    found, the value that did not convert and its declared type, the status
+    value of the wrong type and what is wrong with it, else the reply, the
+    state, the command or the address."""
     if not isinstance(detail, dict):
         return ""
     if detail.get("rule"):
         return f'"{detail["rule"]}" ({detail.get("error", "")})'
     if "child_type" in detail:
         return placement_example(detail)
+    if "raw" in detail and "type" in detail:
+        return f'"{detail["raw"]}" (declared {detail["type"]})'
+    if detail.get("state") and detail.get("problem"):
+        return f'{detail["state"]} ({detail["problem"]})'
     return str(
         detail.get("text") or detail.get("state")
         or detail.get("command") or detail.get("address") or ""
     )
+
+
+def contract_sentence(kind: str, detail: Any, *, limit: int | None = None) -> str:
+    """One contract event as a sentence: its kind's words and what it is
+    about (``contract_example``, cut to ``limit`` characters when given).
+    The audit's timeline and the Builder's live test say each event so."""
+    example = contract_example(detail)
+    if limit is not None:
+        example = example[:limit]
+    words = CONTRACT_TEXT.get(kind, kind)
+    return f"{words}: {example}." if example else f"{words}."
 
 # Channels a reply-to-nobody check reads: request/response byte streams.
 # HTTP pairs every response with its request by construction, MQTT is

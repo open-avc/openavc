@@ -428,6 +428,11 @@ async def test_the_live_test_does_not_fail_a_channel_beyond_its_roster():
     result = await _live_test(definition, b"CH9 5\r\n")
     assert result["contract_errors"] == []
     assert result["success"] is True
+    # Listed beside the result, once however often it is heard, as an
+    # unmatched reply is: the author sees the reply arrive and nothing change.
+    assert result["unregistered"] == [
+        "Status for a channel or zone that is not set up on this device: channel 9."
+    ]
 
 
 async def test_a_json_body_for_a_child_the_roster_lacks_does_not_stamp_the_throttle():

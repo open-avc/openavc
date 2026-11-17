@@ -261,6 +261,104 @@ async def test_the_builder_test_reports_replies_no_rule_matched():
     assert result["success"] is True
 
 
+async def _builder_test(reply: bytes) -> dict:
+    """The Builder's live test of ``query_power`` against a socket that
+    answers ``reply``."""
+
+    async def handle(reader, writer):
+        await reader.read(100)
+        writer.write(reply)
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        return await _test_via_configurable_driver(CommandRequest(
+            host="127.0.0.1", port=str(port), transport="tcp",
+            definition=_definition(), command_name="query_power", timeout=2,
+        ))
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_the_builder_test_fails_a_reply_value_that_does_not_convert():
+    """The runtime keeps "abc" as it came for an integer volume, which is
+    right for the room and invisible to the author, so the test says so: the
+    value that did not convert, and the status value it left the wrong type."""
+    result = await _builder_test(b"VOL=abc\r")
+    assert result["success"] is False
+    assert result["contract_errors"] == [
+        "A reply's value could not be converted to the type the driver says "
+        'it is: "abc" (declared integer).',
+        "A status value is not the type the driver says it is: volume "
+        "(declared integer, got str).",
+    ]
+    # What the device sent and what was stored stay visible beside it.
+    assert result["received"]
+    assert result["state_changes"]["device.test_acme_widget.volume"] == "abc"
+    assert result["error"] is None
+
+
+async def test_the_builder_test_fails_a_boolean_it_could_not_read():
+    """An unreadable boolean is stored as False, a boolean, so only the
+    conversion is wrong."""
+    result = await _builder_test(b"PWR=maybe\r")
+    assert result["success"] is False
+    assert result["contract_errors"] == [
+        "A reply's value could not be converted to the type the driver says "
+        'it is: "maybe" (declared boolean).',
+    ]
+
+
+async def test_the_builder_test_fails_a_value_outside_its_enum():
+    result = await _builder_test(b"INPUT=vga\r")
+    assert result["success"] is False
+    assert result["contract_errors"] == [
+        "A status value is not the type the driver says it is: input "
+        "(not one of the declared values).",
+    ]
+
+
+async def test_the_builder_test_reports_a_good_reply_as_success():
+    result = await _builder_test(b"PWR=on\rVOL=12\rINPUT=hdmi2\r")
+    assert result["contract_errors"] == []
+    assert result["unmatched"] == []
+    assert result["unregistered"] == []
+    assert result["success"] is True
+
+
+def test_the_builder_test_hears_every_kind_a_contract_observer_is_told():
+    """Each kind fails the test, is listed beside it, or is already reported
+    another way, so a kind added to the runtime cannot be dropped here."""
+    from openavc.api.routes import driver_test
+    from openavc.drivers.contract_events import CONTRACT_EVENTS
+
+    heard = (
+        set(driver_test.FAILS_THE_TEST)
+        | set(driver_test.LISTED)
+        | set(driver_test.REPORTED_BY_ITS_RAISE)
+    )
+    assert heard == set(CONTRACT_EVENTS)
+    assert not set(driver_test.FAILS_THE_TEST) & set(driver_test.LISTED)
+
+
+def test_the_audit_words_a_value_fault_with_what_it_is_about():
+    from openavc.audit.observe import contract_example
+
+    assert contract_example(
+        {"raw": "abc", "type": "integer", "stored": "abc"}
+    ) == '"abc" (declared integer)'
+    assert contract_example(
+        {"state": "volume", "declared": "integer", "value": "abc",
+         "problem": "declared integer, got str"}
+    ) == "volume (declared integer, got str)"
+    # A write the driver does not declare names only its variable.
+    assert contract_example({"state": "lamp_hours"}) == "lamp_hours"
+
+
 # ---------------------------------------------------------------------------
 # The audit's collection
 # ---------------------------------------------------------------------------

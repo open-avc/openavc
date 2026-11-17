@@ -86,8 +86,12 @@ export interface TestCommandResult {
   state_changes: Record<string, unknown>;
   error: string | null;
   /**
-   * Driver-contract faults the test tripped — currently state the driver
-   * wrote without declaring it in `state_variables`. Distinct from `error`,
+   * Driver-contract faults the test tripped, each as a sentence: state the
+   * driver wrote without declaring it in `state_variables`, a response rule
+   * that failed on the reply, a reply value that did not convert to its
+   * declared type, a status value not of its declared type, a reply whose
+   * channel or zone could not be found, a command the driver does not have.
+   * Any one fails the test. Distinct from `error`,
    * which is about the exchange with the device: these mean the exchange
    * worked and the driver's own declarations are wrong. Absent on the raw
    * send-and-wait path, which runs no driver.
@@ -100,6 +104,13 @@ export interface TestCommandResult {
    * Absent on the raw send-and-wait path, which runs no driver.
    */
   unmatched?: string[];
+  /**
+   * Channels or zones a reply named beyond the test's roster, each as a
+   * sentence. Not a fault: a device answers for every channel it has, but the
+   * status goes nowhere. It does not affect `success`. Absent on the raw
+   * send-and-wait path, which runs no driver.
+   */
+  unregistered?: string[];
 }
 
 /**

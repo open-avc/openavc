@@ -9,9 +9,10 @@ Three ways to run a command, in descending fidelity:
 
 * **Live via the real runtime** (`definition` + `command_name`) — instantiates
   the actual `ConfigurableDriver`, runs auth and on_connect, sends, and
-  reports the response, state changes, driver-contract violations and the
-  replies no response rule matched. What works here works when the driver is
-  wired to a real device.
+  reports the response, state changes, driver-contract violations, the
+  replies no response rule matched and the channels a reply named beyond the
+  test's roster. What works here works when the driver is wired to a real
+  device.
 * **Dry run** (`dry_run`) — the same construction, but the transport records
   instead of transmitting. The reported wire is what the runtime handed the
   transport, so the preview cannot drift from the send the way a second
@@ -26,14 +27,26 @@ Split out of `routes/drivers.py`: this is a third of that file behind two
 routes, and it shares nothing with driver installation or definition CRUD.
 """
 
-from typing import Any, Callable, NamedTuple
+from typing import Any, NamedTuple
 
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.models import TestCommandRequest
+from openavc.audit.observe import contract_sentence
+from openavc.drivers.contract_events import (
+    CHILD_UNPLACED,
+    CHILD_UNREGISTERED,
+    COERCION_FAILURE,
+    RULE_FAILED,
+    TYPE_MISMATCH,
+    UNDECLARED_STATE,
+    UNKNOWN_COMMAND,
+    UNMATCHED_RESPONSE,
+)
 from openavc.drivers.dry_run import display_text
+from openavc.drivers.reply_guard import rule_failure_sentence
 from openavc.core.device_config import (
     device_connections,
     devices_at_host,
@@ -260,37 +273,66 @@ def _unmatched_text(detail: dict[str, Any]) -> str:
     return f"{address} {args}" if args else str(address)
 
 
-def _test_observer(
-    contract_errors: list[str], unmatched: list[str],
-) -> Callable[[str, dict[str, Any]], None]:
-    """The test driver's contract observer.
+# What the live test does with each kind a contract observer is told
+# (``drivers/contract_events.py``); every kind is in exactly one of these.
+#
+# A fault in the driver fails the test, though the device answered: the
+# runtime carries on past each one, so the reply looks read and nothing else
+# says so. A rule that failed reading the reply is skipped; a value that did
+# not convert is stored as it came (or False); a value not of its declared
+# type is stored all the same; a reply whose channel or zone id, or page
+# start, could not be read writes nothing (``drivers/child_placement.py``);
+# a command the driver does not have sends nothing.
+FAILS_THE_TEST = (
+    RULE_FAILED, COERCION_FAILURE, TYPE_MISMATCH, CHILD_UNPLACED, UNKNOWN_COMMAND,
+)
+# Listed beside the result without failing it. A reply no rule matched: the
+# runtime drops it with a debug line, so without this the author sees the
+# bytes arrive and nothing happen, and cannot tell a missing rule from a rule
+# that did not fit. A reply naming a channel or zone beyond this test's
+# roster: no fault of the driver (a device answers for every channel it has),
+# but its status goes nowhere, which the author should see.
+LISTED = (UNMATCHED_RESPONSE, CHILD_UNREGISTERED)
+# Already reported by the raise the test driver's strict state checking makes
+# on the same write (``BaseDriver.strict_state``), in that error's own words.
+REPORTED_BY_ITS_RAISE = (UNDECLARED_STATE,)
 
-    A response rule that failed while reading the reply is a contract error:
-    the runtime skips it, so the reply looks read and nothing else says so.
-    So is a reply whose channel or zone id, or page start, the driver could
-    not read (``drivers/child_placement.py``): nothing is written, and the
-    empty state changes are otherwise the only sign. It is worded as a device
-    audit words it (``audit/observe.py``). A reply naming a channel or zone
-    beyond this test's roster is not a fault of the driver, and fails nothing
-    here. A reply
-    no rule matched is listed apart: the runtime drops it with a debug line,
-    so without this the author sees the bytes arrive and nothing happen, and
-    cannot tell a missing rule from a rule that did not fit.
-    """
-    from openavc.audit.observe import CONTRACT_TEXT, contract_example
-    from openavc.drivers.base import CHILD_UNPLACED, RULE_FAILED, UNMATCHED_RESPONSE
-    from openavc.drivers.reply_guard import rule_failure_sentence
 
-    def observe(kind: str, detail: dict[str, Any]) -> None:
+class _Heard:
+    """What the test driver said about its own contract while the test ran,
+    as the result reports it: ``contract_errors`` fail the test, the
+    ``unmatched`` replies and the ``unregistered`` channels are listed.
+    Each event is worded as a device audit words it
+    (``audit/observe.contract_sentence``), and said once however often the
+    same rule fires."""
+
+    def __init__(self) -> None:
+        self.contract_errors: list[str] = []
+        self.unmatched: list[str] = []
+        self.unregistered: list[str] = []
+
+    def note_contract_error(self, message: str) -> None:
+        _note_once(self.contract_errors, message)
+
+    def observe(self, kind: str, detail: dict[str, Any]) -> None:
+        """The test driver's contract observer."""
         if kind == RULE_FAILED:
-            sentence = rule_failure_sentence(str(detail.get("rule")), str(detail.get("error")))
-            _note_once(contract_errors, sentence)
-        elif kind == CHILD_UNPLACED:
-            _note_once(contract_errors, f"{CONTRACT_TEXT[kind]}: {contract_example(detail)}.")
+            self.note_contract_error(
+                rule_failure_sentence(str(detail.get("rule")), str(detail.get("error")))
+            )
+        elif kind in FAILS_THE_TEST:
+            self.note_contract_error(contract_sentence(kind, detail))
         elif kind == UNMATCHED_RESPONSE:
-            unmatched.append(_unmatched_text(detail))
+            self.unmatched.append(_unmatched_text(detail))
+        elif kind == CHILD_UNREGISTERED:
+            _note_once(self.unregistered, contract_sentence(kind, detail))
 
-    return observe
+    def result_fields(self) -> dict[str, list[str]]:
+        return {
+            "contract_errors": self.contract_errors,
+            "unmatched": self.unmatched,
+            "unregistered": self.unregistered,
+        }
 
 
 async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
@@ -327,14 +369,12 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     # panel is open. The test driver is attached to nothing, so a raise here
     # costs a room nothing. See BaseDriver.strict_state.
     driver.strict_state = True
-    contract_errors: list[str] = []
+    heard = _Heard()
+    driver.contract_observer = heard.observe
 
     def note_contract_error(e: UndeclaredStateError) -> None:
         """Record a violation once; the same rule fires on every poll."""
-        _note_once(contract_errors, str(e))
-
-    unmatched: list[str] = []
-    driver.contract_observer = _test_observer(contract_errors, unmatched)
+        heard.note_contract_error(str(e))
 
     # Capture state changes so the panel can show what the command moved.
     initial_state: dict[str, Any] = (
@@ -379,8 +419,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 "received": [display_text(b) for b in received_chunks],
                 "state_changes": {},
                 "error": f"Connect failed: {e}",
-                "contract_errors": contract_errors,
-                "unmatched": unmatched,
+                **heard.result_fields(),
             }
 
         cmd_def = (definition.get("commands") or {}).get(body.command_name)
@@ -391,8 +430,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 "received": [display_text(b) for b in received_chunks],
                 "state_changes": {},
                 "error": f"Unknown command '{body.command_name}'",
-                "contract_errors": contract_errors,
-                "unmatched": unmatched,
+                **heard.result_fields(),
             }
 
         sent_repr = _describe_outgoing(definition, cmd_def, config, body.params or {})
@@ -458,13 +496,12 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     return {
         # A contract violation fails the test even when the device answered
         # perfectly: the exchange worked, the driver's declarations did not.
-        "success": error_text is None and not contract_errors,
+        "success": error_text is None and not heard.contract_errors,
         "sent": sent_repr,
         "received": [display_text(b) for b in received_chunks],
         "state_changes": state_changes,
         "error": error_text,
-        "contract_errors": contract_errors,
-        "unmatched": unmatched,
+        **heard.result_fields(),
     }
 
 

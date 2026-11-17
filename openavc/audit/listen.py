@@ -42,11 +42,10 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.observe import (
-    CONTRACT_TEXT,
     REPLY_WINDOW_SECONDS,
     ContractEvent,
-    contract_example,
     contract_labels,
+    contract_sentence,
     is_platform_key,
     recorded,
     replies_to_nobody,
@@ -455,11 +454,9 @@ class ListenPass:
     def _on_event(self, event: ContractEvent) -> None:
         if event.kind not in self._events_seen:
             self._events_seen.add(event.kind)
-            detail = contract_example(event.detail)
             self._timeline(
                 f"contract.{event.kind}",
-                f"{CONTRACT_TEXT.get(event.kind, event.kind)}"
-                f"{': ' + detail[:120] if detail else ''}.",
+                contract_sentence(event.kind, event.detail, limit=120),
             )
         self._dirty = True
 
