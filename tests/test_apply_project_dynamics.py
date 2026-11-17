@@ -439,6 +439,7 @@ def _mock_devices(running: dict) -> MagicMock:
     devices.update_device = AsyncMock()
     devices.remove_device = AsyncMock()
     devices.retry_all_orphans = AsyncMock()
+    devices.why_not_running.return_value = None
     devices.device_records.side_effect = lambda: [
         DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
     ]
@@ -534,9 +535,9 @@ async def test_devices_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
     assert eng.project is prev_project
     await _assert_rolled_back_and_healthy(eng, prev_revision)
 
-    revision = await eng.apply_project(new_project)
+    outcome = await eng.apply_project(new_project)
 
-    assert revision == eng._project_revision != prev_revision
+    assert outcome.revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     eng.devices.add_device.assert_awaited_once()
     assert eng.devices.add_device.await_args.args[0]["id"] == "d1"
@@ -550,9 +551,10 @@ async def test_plugins_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
     loader.get_known_plugin_ids.return_value = set()
     loader.is_running.return_value = False
     loader.get_running_config.return_value = {}
-    loader.start_plugin = AsyncMock(
+    loader.start_plugins = AsyncMock(
         side_effect=[RuntimeError("injected reconcile failure"), None]
     )
+    loader.why_not_running.return_value = None
     loader.stop_plugin = AsyncMock()
     loader.restart_or_apply = AsyncMock(return_value="restarted")
     loader.remove_plugin_tracking = MagicMock()
@@ -569,11 +571,11 @@ async def test_plugins_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
     assert eng.project is prev_project
     await _assert_rolled_back_and_healthy(eng, prev_revision)
 
-    revision = await eng.apply_project(new_project)
+    outcome = await eng.apply_project(new_project)
 
-    assert revision == eng._project_revision != prev_revision
+    assert outcome.revision == eng._project_revision != prev_revision
     assert eng.project is new_project
-    assert loader.start_plugin.await_count == 2
+    assert loader.start_plugins.await_count == 2
     await eng.triggers.stop()
 
 
@@ -608,9 +610,9 @@ async def test_macros_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp_
     assert calls["n"] == 2
     await _assert_rolled_back_and_healthy(eng, prev_revision)
 
-    revision = await eng.apply_project(new_project)
+    outcome = await eng.apply_project(new_project)
 
-    assert revision == eng._project_revision != prev_revision
+    assert outcome.revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     await eng.macros.execute("m_new")
     assert eng.state.get("var.m_new_ran") is True
@@ -640,9 +642,9 @@ async def test_variables_reconcile_failure_rolls_back_then_next_apply_succeeds(t
     assert eng.project is prev_project
     await _assert_rolled_back_and_healthy(eng, prev_revision)
 
-    revision = await eng.apply_project(new_project)
+    outcome = await eng.apply_project(new_project)
 
-    assert revision == eng._project_revision != prev_revision
+    assert outcome.revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     assert eng.state.get("var.volume") == 42
     assert eng.persister.update_keys.call_count == 2

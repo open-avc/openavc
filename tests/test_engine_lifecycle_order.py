@@ -167,7 +167,6 @@ async def test_start_runs_its_stages_in_order(tmp_path, monkeypatch, acme_driver
             "system.started", "triggers start", "panel software",
         ]
         assert eng.state.get("system.started") is True
-        assert eng.state.get("system.startup_errors") == 0
         assert eng.state.get("system.project_name") == "Lifecycle"
         from openavc.core import project_recovery, time_zone
         assert eng.state.get(project_recovery.KEY_STATE) == project_recovery.NONE
@@ -202,7 +201,7 @@ async def test_start_publishes_a_recovery_left_on_record(tmp_path, no_update_che
 
 
 @pytest.mark.asyncio
-async def test_start_counts_and_reports_each_part_that_failed(
+async def test_start_names_each_part_that_failed_and_counts_none(
         tmp_path, monkeypatch, caplog, acme_driver, no_update_checks):
     from openavc.core.script_engine import ScriptEngine
 
@@ -228,7 +227,8 @@ async def test_start_counts_and_reports_each_part_that_failed(
     try:
         with caplog.at_level(logging.INFO, logger=ENGINE_LOG):
             await eng.start()
-        assert eng.state.get("system.startup_errors") == 3
+        # Each part says so on its own surface; nothing counts them.
+        assert eng.state.get("system.startup_errors") is None
         engine_lines = [
             (r.levelno, r.getMessage()) for r in caplog.records if r.name == ENGINE_LOG
         ]
@@ -540,7 +540,7 @@ async def test_system_json_is_not_optional(tmp_path, monkeypatch, no_update_chec
 
 
 @pytest.mark.asyncio
-async def test_a_driver_load_that_fails_is_counted_and_the_start_goes_on(
+async def test_a_driver_load_that_fails_is_named_and_the_start_goes_on(
         tmp_path, monkeypatch, caplog, no_update_checks):
     eng = Engine(_project(tmp_path))
     _quiet_services(eng, [])
@@ -551,7 +551,6 @@ async def test_a_driver_load_that_fails_is_counted_and_the_start_goes_on(
             await eng.start()
         assert order == [label for _, _, label in _HOST_STEPS]
         assert eng.state.get("system.started") is True
-        assert eng.state.get("system.startup_errors") == 1
         lines = [r.getMessage() for r in caplog.records if r.name == ENGINE_LOG]
         assert "Could not load the driver library" in lines
         assert "Engine started with 1 error(s): Drivers: drivers broke" in lines

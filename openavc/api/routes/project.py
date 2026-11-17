@@ -453,13 +453,13 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
                 await asyncio.to_thread(
                     create_backup, engine.project_path, f"Before importing '{project.project.name}'"
                 )
-                new_revision = await engine.replace_project(
+                outcome = await engine.replace_project(
                     project, update_notes, expected_revision=expected_rev
                 )
             except InstalledEquipmentError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
         else:
-            new_revision = await engine.apply_project(
+            outcome = await engine.apply_project(
                 project, expected_revision=expected_rev
             )
             # An earlier release's document saved over this one: what its
@@ -476,7 +476,7 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
         # does not have, for the import's result to name.
         content["needs_login"] = engine.logins_needed()
         content["plugins_need_login"] = engine.plugin_logins_needed()
-    return JSONResponse(content=content, headers={"ETag": f'"{new_revision}"'})
+    return JSONResponse(content=content, headers={"ETag": f'"{outcome.revision}"'})
 
 
 @router.get("/project/validate-drivers")

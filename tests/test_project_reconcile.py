@@ -205,9 +205,9 @@ async def test_ui_edit_does_not_disturb_runtime(tmp_path):
                       "grid_area": {"col": 1, "row": 1}}],
     ))
     before = eng._project_revision
-    revision = await eng.apply_project(new_project)
+    outcome = await eng.apply_project(new_project)
 
-    assert revision == eng._project_revision != before
+    assert outcome.revision == eng._project_revision != before
     assert counters == {}, f"UI-only edit touched the runtime: {counters}"
     await asyncio.sleep(0.1)
     assert fire_count["n"] == 1, "startup trigger re-fired on a UI edit"
@@ -429,11 +429,11 @@ async def test_apply_project_occ_conflict(tmp_path):
     assert eng._project_revision == current
     assert eng.project.project.name == "P"
 
-    revision = await eng.apply_project(
+    outcome = await eng.apply_project(
         ProjectConfig(**_project_dict(name="Fresh")),
         expected_revision=current,
     )
-    assert revision == eng._project_revision != current
+    assert outcome.revision == eng._project_revision != current
     assert eng.project.project.name == "Fresh"
 
 

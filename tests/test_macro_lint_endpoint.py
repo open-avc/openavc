@@ -34,6 +34,7 @@ from openavc.api.rest import router, set_engine
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
 from openavc.core.macro_validation import macro_issues, validate_macro
+from openavc.core.project_changes import ApplyOutcome
 from openavc.core.state_store import StateStore
 
 
@@ -53,7 +54,7 @@ def client(tmp_path):
     engine.macros = MacroEngine(state, events, MagicMock())
     engine.project_path = tmp_path / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=1)
+    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
     engine.broadcast_ws = AsyncMock()
 
     app = FastAPI()

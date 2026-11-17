@@ -24,6 +24,7 @@ from openavc.api.errors import (
     validation_error_lines,
 )
 from openavc.api.rest import router, set_engine
+from openavc.core.project_changes import ApplyOutcome
 
 
 def _project(**over) -> dict:
@@ -49,7 +50,7 @@ def mock_engine(tmp_path):
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=1)
+    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
     engine.reload_project = AsyncMock()
     engine.broadcast_ws = AsyncMock()
     return engine

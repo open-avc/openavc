@@ -344,6 +344,7 @@ def _mock_plugin_loader(known=(), running=(), configs=None) -> MagicMock:
     # running one; these configs hold no login, so as they are.
     loader.config_differs.side_effect = lambda pid, config: config != configs.get(pid, {})
     loader.start_plugin = AsyncMock()
+    loader.start_plugins = AsyncMock()
     loader.stop_plugin = AsyncMock()
     loader.restart_or_apply = AsyncMock(return_value="restarted")
     loader.remove_plugin_tracking = MagicMock()
@@ -359,11 +360,14 @@ async def test_sync_plugins_starts_new_enabled_plugin(tmp_path):
 
     await eng._sync_plugins()
 
-    eng.plugin_loader.start_plugin.assert_awaited_once_with("p1", {"level": 3})
+    eng.plugin_loader.start_plugins.assert_awaited_once_with({"p1": eng.project.plugins["p1"]})
+    assert eng.project.plugins["p1"].config == {"level": 3}
 
 
 @pytest.mark.asyncio
-async def test_sync_plugins_does_not_start_new_disabled_plugin(tmp_path):
+async def test_sync_plugins_hands_a_new_disabled_plugin_over_turned_off(tmp_path):
+    """As a start takes it: the loader marks it missing or incompatible, and
+    starts nothing (tests/test_apply_failed_parts.py)."""
     eng = _engine(tmp_path, plugins={
         "p1": {"enabled": False, "config": {}},
     })
@@ -371,6 +375,7 @@ async def test_sync_plugins_does_not_start_new_disabled_plugin(tmp_path):
 
     await eng._sync_plugins()
 
+    eng.plugin_loader.start_plugins.assert_awaited_once_with({"p1": eng.project.plugins["p1"]})
     eng.plugin_loader.start_plugin.assert_not_awaited()
 
 
@@ -418,7 +423,8 @@ async def test_sync_plugins_starts_enabled_stopped_plugin(tmp_path):
 
     await eng._sync_plugins()
 
-    eng.plugin_loader.start_plugin.assert_awaited_once_with("p1", {"level": 9})
+    eng.plugin_loader.start_plugins.assert_awaited_once_with({"p1": eng.project.plugins["p1"]})
+    assert eng.project.plugins["p1"].config == {"level": 9}
     eng.plugin_loader.stop_plugin.assert_not_awaited()
 
 

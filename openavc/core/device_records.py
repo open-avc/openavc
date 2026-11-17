@@ -46,6 +46,7 @@ from openavc.core.connection_fault import (
     simulator_error_text,
 )
 from openavc.core.device_errors import DriverBuildError
+from openavc.core.installed_equipment import missing_driver_reason
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -166,6 +167,18 @@ class DeviceRecordsMixin:
         """The device's state, or None when the system has no such device."""
         record = self.device_record(device_id)
         return record.status if record is not None else None
+
+    def why_not_running(self, device_id: str) -> tuple[str, str] | None:
+        """Why no driver runs a device the project has not turned off: its
+        state (``orphaned``, ``driver_failed`` or ``settings_failed``) and
+        the sentence its card shows. None while a driver runs it, while the
+        project turns it off, and when the system has no such device."""
+        record = self.device_record(device_id)
+        if record is None or record.status in (RUNNING, DISABLED):
+            return None
+        if record.reason is not None:
+            return record.status, record.reason.message
+        return record.status, missing_driver_reason(str(record.config.get("driver") or ""))
 
     def _records_in(self, status: str) -> dict[str, dict[str, Any]]:
         """Each device in ``status`` that no driver runs: id -> its config."""

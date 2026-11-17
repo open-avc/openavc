@@ -17,6 +17,13 @@ run. A stage is added with both directions: tests/test_reconcile_stages.py
 fails the apply at each one in turn and checks the system is back where it
 was.
 
+A stage whose subject is made of parts (the devices, the plugins, the scripts)
+also names how to read the ones the change could not run, once every stage
+has: each part's own owner says why (the device manager's record, the plugin
+loader's status, the script engine's load error), and the run keeps them as
+``FailedPart``s for the change's outcome. A part failing never fails the
+change, and a run that is rolled back takes its parts with it.
+
 What an undo cannot give back: a macro run the change cancelled stays
 cancelled, and drivers a load found on disk stay registered. The advertised
 name and ``system.project_name`` move only once a change is running (its
@@ -52,6 +59,26 @@ from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.engine")
 
+DEVICE = "device"
+PLUGIN = "plugin"
+SCRIPT = "script"
+# The reason a script that failed to load has; a device's is its record's
+# state, a plugin's its status.
+LOAD_FAILED = "load_failed"
+
+
+@dataclass(frozen=True)
+class FailedPart:
+    """A part of the project a change could not run: what it is (``DEVICE``,
+    ``PLUGIN`` or ``SCRIPT``), which one, why as a stable code (a device's
+    record state, a plugin's status, ``LOAD_FAILED``), and the sentence its
+    own surface shows, which every reader may be told."""
+
+    kind: str
+    part_id: str
+    reason: str
+    detail: str
+
 
 @dataclass
 class ReconcileRun:
@@ -66,18 +93,22 @@ class ReconcileRun:
     variables_before: tuple[dict[str, Any], frozenset[str] | None] | None = None
     # The values of the variables the change binds, before a binding wrote them.
     bound_before: dict[str, Any] = field(default_factory=dict)
+    # The parts the change could not run, read once every stage has run.
+    failed: list[FailedPart] = field(default_factory=list)
 
 
 class Stage(NamedTuple):
     """One stage of the reconcile: when a change needs it, and the engine
     methods (each given the run) that take the running system forward and
-    back. Named, not bound, so a method replaced on the engine is the one
-    that runs."""
+    back, and, for a stage whose subject is made of parts, the one that
+    reads the parts it could not run. Named, not bound, so a method replaced
+    on the engine is the one that runs."""
 
     name: str
     needed: Callable[[ReconcileRun], bool]
     forward: str
     undo: str
+    failed: str | None = None
 
 
 RECONCILE_STAGES: tuple[Stage, ...] = (
@@ -90,9 +121,9 @@ RECONCILE_STAGES: tuple[Stage, ...] = (
     Stage("variables", lambda run: run.diff.variables,
           "_follow_variables", "_restore_variables"),
     Stage("devices", lambda run: run.diff.devices_to_sync,
-          "_reconcile_devices", "_resync_devices"),
+          "_reconcile_devices", "_resync_devices", "_devices_not_running"),
     Stage("plugins", lambda run: run.diff.plugins,
-          "_follow_plugins", "_follow_plugins"),
+          "_follow_plugins", "_follow_plugins", "_plugins_not_running"),
     Stage("macro definitions", lambda run: run.diff.macros or run.diff.device_groups,
           "_follow_definitions", "_follow_definitions"),
     Stage("trigger restart", lambda run: run.diff.requires_trigger_rebuild,
@@ -100,7 +131,7 @@ RECONCILE_STAGES: tuple[Stage, ...] = (
     Stage("variable bindings", lambda run: run.diff.variables,
           "_follow_bindings", "_restore_bindings"),
     Stage("scripts", lambda run: run.diff.scripts,
-          "_follow_scripts", "_restore_scripts"),
+          "_follow_scripts", "_restore_scripts", "_scripts_not_loaded"),
     Stage("ISC", lambda run: run.diff.isc, "_follow_isc", "_follow_isc"),
 )
 
@@ -119,11 +150,19 @@ class ProjectReconcileMixin:
 
     async def _reconcile(self, run: ReconcileRun) -> None:
         """Take the running subsystems to ``self.project``: each stage the
-        change needs, in order, entered in ``run`` before it runs."""
+        change needs, in order, entered in ``run`` before it runs. Then the
+        parts the entered stages could not run, kept in ``run.failed``."""
         for stage in RECONCILE_STAGES:
             if stage.needed(run):
                 run.entered.append(stage)
                 await getattr(self, stage.forward)(run)
+        run.failed.extend(self._parts_not_running(run))
+
+    def _parts_not_running(self, run: ReconcileRun) -> list[FailedPart]:
+        """The parts each stage ``run`` entered could not run, in stage
+        order, as that stage's own reader says."""
+        readers = [getattr(self, stage.failed) for stage in run.entered if stage.failed]
+        return [part for read in readers for part in read(run)]
 
     async def _rollback_reconcile(self, run: ReconcileRun) -> None:
         """Undo every stage ``run`` entered, last first, against the project
@@ -229,8 +268,29 @@ class ProjectReconcileMixin:
         await self._sync_devices(defer_connect=True)
         self._schedule_device_bringup()
 
+    def _devices_not_running(self, run: ReconcileRun) -> list[FailedPart]:
+        """Each project device the project has not turned off that no driver
+        runs after the sync, which tries every one of them again, with why
+        (the device manager's record)."""
+        return [
+            FailedPart(DEVICE, device.id, *why)
+            for device in self.project.devices
+            if (why := self.devices.why_not_running(device.id)) is not None
+        ]
+
     async def _follow_plugins(self, run: ReconcileRun) -> None:
         await self._sync_plugins()
+
+    def _plugins_not_running(self, run: ReconcileRun) -> list[FailedPart]:
+        """Each plugin the project turns on that is not running after the
+        sync, which starts every one of them that is not, with why (the
+        plugin loader's status)."""
+        return [
+            FailedPart(PLUGIN, plugin_id, *why)
+            for plugin_id, entry in self.project.plugins.items()
+            if entry.enabled
+            and (why := self.plugin_loader.why_not_running(plugin_id)) is not None
+        ]
 
     async def _follow_definitions(self, run: ReconcileRun) -> None:
         self._load_macro_definitions(
@@ -293,6 +353,19 @@ class ProjectReconcileMixin:
                 self._reload_script(previous[script_id])
             else:
                 self.scripts.unload_script(script_id)
+
+    def _scripts_not_loaded(self, run: ReconcileRun) -> list[FailedPart]:
+        """Each script the change loaded (every one, for a whole new project)
+        that failed to, with the script engine's load error. One that fails
+        to load again keeps running its previous version."""
+        if not self.scripts:
+            return []
+        if run.origin is ProjectOrigin.LOAD:
+            loaded = [s.id for s in self.project.scripts]
+        else:
+            loaded = [cfg["id"] for cfg in run.diff.scripts_to_reload]
+        errors = self.scripts.get_load_errors()
+        return [FailedPart(SCRIPT, sid, LOAD_FAILED, errors[sid]) for sid in loaded if sid in errors]
 
     def _reload_every_script(self) -> None:
         self.scripts.reload_scripts([s.model_dump() for s in self.project.scripts])
@@ -390,9 +463,10 @@ class ProjectReconcileMixin:
         self.plugin_loader.remove_plugin_tracking(plugin_id)
 
     async def _add_plugin(self, plugin_id: str, entry) -> None:
-        """A plugin the project gained: started, if its entry enables it."""
-        if entry.enabled:
-            await self.plugin_loader.start_plugin(plugin_id, entry.config)
+        """A plugin the project gained, taken as a start takes it
+        (``PluginLoader.start_plugins``): missing or incompatible whatever its
+        entry says, otherwise started if its entry enables it."""
+        await self.plugin_loader.start_plugins({plugin_id: entry})
 
     async def _follow_plugin_entry(self, plugin_id: str, entry) -> None:
         """A plugin the project still has: stopped, started, or handed its
@@ -401,7 +475,7 @@ class ProjectReconcileMixin:
         if was_running and not entry.enabled:
             await self.plugin_loader.stop_plugin(plugin_id)
         elif not was_running and entry.enabled:
-            await self.plugin_loader.start_plugin(plugin_id, entry.config)
+            await self.plugin_loader.start_plugins({plugin_id: entry})
         elif was_running and self.plugin_loader.config_differs(plugin_id, entry.config):
             await self._hand_plugin_config(plugin_id, entry.config)
 

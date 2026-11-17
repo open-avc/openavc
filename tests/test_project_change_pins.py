@@ -191,15 +191,15 @@ async def test_an_announcement_that_fails_leaves_the_change_applied(tmp_path, ca
     eng.mdns_advertiser = advertiser
 
     with caplog.at_level(logging.ERROR):
-        revision = await eng.apply_project(ProjectConfig(**_project_dict(name="Board Room")))
+        outcome = await eng.apply_project(ProjectConfig(**_project_dict(name="Board Room")))
 
     assert eng.project.project.name == "Board Room"
-    assert eng._project_revision == revision
+    assert eng._project_revision == outcome.revision
     assert eng._revision_counter == 1
     assert any(r.exc_info and "the network went away" in str(r.exc_info[1])
                for r in caplog.records)
     # The parts after the one that failed still went out.
-    assert {"type": "project.reloaded", "revision": revision} in sent
+    assert {"type": "project.reloaded", "revision": outcome.revision} in sent
 
 
 @pytest.mark.asyncio
@@ -216,10 +216,10 @@ async def test_a_panel_definition_that_cannot_be_built_still_announces_the_revis
     edited = eng.project.model_copy(deep=True)
     edited.ui.pages[0].elements[0].label = "Renamed"
     with caplog.at_level(logging.ERROR):
-        revision = await eng.apply_project(edited)
+        outcome = await eng.apply_project(edited)
 
     assert eng.project.ui.pages[0].elements[0].label == "Renamed"
-    assert sent == [{"type": "project.reloaded", "revision": revision}]
+    assert sent == [{"type": "project.reloaded", "revision": outcome.revision}]
     assert any(r.exc_info and "a page that cannot be drawn" in str(r.exc_info[1])
                for r in caplog.records)
 
@@ -238,9 +238,9 @@ async def test_a_reload_notice_that_cannot_be_sent_still_reaches_the_event_bus(t
     eng.broadcast_ws = no_socket
     eng.events.on("system.project.reloaded", on_reloaded)
     with caplog.at_level(logging.ERROR):
-        revision = await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
+        outcome = await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
 
-    assert eng._project_revision == revision
+    assert eng._project_revision == outcome.revision
     assert heard == ["system.project.reloaded"]
     assert any(r.exc_info and "the hub is gone" in str(r.exc_info[1])
                for r in caplog.records)

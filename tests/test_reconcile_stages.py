@@ -48,6 +48,9 @@ class _Devices:
     def get_device_config(self, device_id):
         return self.running.get(device_id)
 
+    def why_not_running(self, device_id):
+        return None
+
     async def keep_unresolved(self, error):
         return True
 
@@ -85,6 +88,14 @@ class _Plugins:
     async def start_plugin(self, plugin_id, config=None):
         self.running[plugin_id] = dict(config or {})
         return True
+
+    async def start_plugins(self, entries):
+        for plugin_id, entry in entries.items():
+            if entry.enabled:
+                await self.start_plugin(plugin_id, entry.config)
+
+    def why_not_running(self, plugin_id):
+        return None
 
     async def stop_plugin(self, plugin_id):
         self.running.pop(plugin_id, None)

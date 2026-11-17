@@ -12,14 +12,16 @@ can fire a macro, then cancels the macros, then disconnects the devices they
 command. ``_reconcile`` (core/project_reconcile.py) shares these orderings, so
 a change to one is checked against the other.
 
-A part of the start that fails is counted in ``system.startup_errors`` and
-named in one warning; it never stops the rest of the start. The driver
-library's load is one of them: a start whose load fails goes on, and the
-devices whose driver did not register wait for it. So is each device that
-cannot be worked out or added, counted on its own (core/device_sync.py): the
-others still start. Each step that settles a
-decision or converts something on disk before the project loads
-(``prepare_host``) is logged and never fatal, but not counted.
+A part of the start that fails is named in one warning; it never stops the
+rest of the start. The driver library's load is one of them: a start whose
+load fails goes on, and the devices whose driver did not register wait for
+it. So is each device that cannot be worked out or added, named on its own
+(core/device_sync.py): the others still start. A device, a plugin or a script
+that does not run says so on its own surface until it is fixed (the device
+manager's record, the plugin loader's status, the script engine's load
+error), the same surface a project change's outcome reads; nothing counts
+them. Each step that settles a decision or converts something on disk before
+the project loads (``prepare_host``) is logged and never fatal, but not named.
 
 Mixed into Engine (core/engine.py). Logs under the engine's name.
 """
@@ -284,7 +286,7 @@ class EngineLifecycleMixin:
         # Pre-warm the network-info cache off the event loop so the first
         # status/health poll never blocks on socket / gethostname syscalls.
         _in_background(asyncio.to_thread(self._detect_network_info))
-        self._publish_startup_errors(startup_errors)
+        self._log_startup_errors(startup_errors)
         self.state.set("system.started", True, source="system")
         await self.events.emit("system.started")
         # Start trigger engine after system.started (so startup triggers work)
@@ -336,7 +338,7 @@ class EngineLifecycleMixin:
         repo migration) and before the project loads, since resolving a
         device's config and reporting its driver dependencies both ask the
         registry what exists. The load skips a file it cannot take on its
-        own; a load that fails anyway is counted and the start goes on."""
+        own; a load that fails anyway is named and the start goes on."""
         from openavc.drivers.driver_loader import load_builtin_drivers
 
         try:
@@ -375,7 +377,7 @@ class EngineLifecycleMixin:
         """Add every project device, in parallel with the connection table
         merged into each one's config, connected unless a simulation is coming
         back; then the ports they push to. A device that cannot be worked out
-        or added is counted among the start's errors, by id with why, and the
+        or added is named among the start's errors, by id with why, and the
         others still start (``core/device_sync.py``); one that cannot be
         worked out is kept by the device manager with why on its card."""
         self._sweep_device_logins()
@@ -445,11 +447,8 @@ class EngineLifecycleMixin:
             ensure_programs_loop(self._retry_client_missing_devices)
         )
 
-    def _publish_startup_errors(self, startup_errors: list[str]) -> None:
-        # Record startup error count for UI visibility. Always set it (0 when
-        # clean) so a previous run's count can't linger in the store / cloud
-        # relay after the project is fixed and reloaded.
-        self.state.set("system.startup_errors", len(startup_errors), source="system")
+    def _log_startup_errors(self, startup_errors: list[str]) -> None:
+        """Name every part of the start that failed, in one warning."""
         if startup_errors:
             log.warning(f"Engine started with {len(startup_errors)} error(s): {'; '.join(startup_errors)}")
 

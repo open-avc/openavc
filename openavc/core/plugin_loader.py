@@ -504,7 +504,11 @@ class PluginLoader:
     # ──── Lifecycle ────
 
     async def start_plugins(self, plugins_config: dict[str, Any]) -> None:
-        """Start all enabled plugins from the project config."""
+        """Take each of the project's plugin entries in ``plugins_config``, at
+        a start and when a project change adds one or turns it on: THE rule
+        for what the plugin then is. Missing when it is not installed and
+        incompatible when it is not for this machine, whether or not the entry
+        turns it on; otherwise started when it does."""
         for plugin_id, plugin_entry in plugins_config.items():
             # Handle both PluginConfig objects and raw dicts
             if hasattr(plugin_entry, "enabled"):
@@ -1024,6 +1028,20 @@ class PluginLoader:
         name = info.get("name") or plugin_id
         return f"{name} couldn't start. The Programmer's Log has the details."
 
+    def why_not_running(self, plugin_id: str) -> tuple[str, str] | None:
+        """Why a plugin the project turns on is not running: its status
+        (``missing``, ``incompatible`` or ``error``) and a sentence any reader
+        may be told, the cloud included (``error_for_cloud``). None while it
+        runs."""
+        if self.is_running(plugin_id):
+            return None
+        status = self._status.get(plugin_id)
+        if status == "missing":
+            return status, self._missing_plugins.get(plugin_id, {}).get("reason", "")
+        if status == "incompatible":
+            return status, f"Plugin '{plugin_id}' is not compatible with {self._platform_id}"
+        return "error", self.error_for_cloud(plugin_id) or self.couldnt_start_sentence(plugin_id)
+
     def list_plugins(self, *, for_cloud: bool = False) -> list[dict[str, Any]]:
         """List all known plugins with status information.
 
@@ -1079,7 +1097,8 @@ class PluginLoader:
         """Get detailed info for a specific plugin."""
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
         if plugin_class is None:
-            return self._missing_plugin_info(plugin_id)
+            missing = self._missing_plugins.get(plugin_id)
+            return {"plugin_id": plugin_id, "status": "missing", "installed": False, **missing} if missing else None
 
         info = plugin_class.PLUGIN_INFO
         status = self._status.get(plugin_id, "stopped")
@@ -1109,12 +1128,6 @@ class PluginLoader:
             result["error"] = self._errors.get(plugin_id, "")
         result.update(_described_declarations(plugin_class))
         return result
-
-    def _missing_plugin_info(self, plugin_id: str) -> dict[str, Any] | None:
-        missing = self._missing_plugins.get(plugin_id)
-        if not missing:
-            return None
-        return {"plugin_id": plugin_id, "status": "missing", "installed": False, **missing}
 
     def get_plugin_status(self, plugin_id: str) -> str:
         """Get the current status of a plugin."""

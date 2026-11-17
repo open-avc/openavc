@@ -228,7 +228,7 @@ async def test_the_devices_waiting_for_a_login_are_still_listed(engine, case):
     assert {"id": "good2", "name": "Switcher"} in engine.logins_needed()
 
 
-async def test_the_whole_start_finishes_with_the_one_device_counted(tmp_path, monkeypatch, caplog):
+async def test_the_whole_start_finishes_with_the_one_device_named(tmp_path, monkeypatch, caplog):
     import json
 
     from openavc.core.engine import Engine
@@ -250,7 +250,7 @@ async def test_the_whole_start_finishes_with_the_one_device_counted(tmp_path, mo
                 caplog.at_level(logging.WARNING, logger=ENGINE_LOG):
             await eng.start()
         assert eng.state.get("system.started") is True
-        assert eng.state.get("system.startup_errors") == 1
+        assert eng.devices.status_of("bad") == "settings_failed"
         assert {"good1", "br", "good2"} <= _running(eng)
         assert eng.scripts is not None
         assert any(

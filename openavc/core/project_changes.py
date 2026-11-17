@@ -5,7 +5,11 @@ Two kinds of change. An **applied** one (``apply_project`` and the doors
 built on it) is taken in, saved, compared with the running project, swapped
 in and reconciled (``core/project_reconcile.py``), undone on the runtime if the
 swap or the reconcile fails, and then announced; the announcement cannot turn
-a change that is already running into a failure. A **bookkeeping** one is a change the
+a change that is already running into a failure. What an applied change did
+is its ``ApplyOutcome``, THE answer every door gives from: the revision it
+runs under and each part of it the system could not run (a device, a plugin,
+a script), with why. A part that failed is said by its own surface until it
+is fixed, never as a count a later change resets. A **bookkeeping** one is a change the
 runtime already has (a device's pending settings cleared, a plugin's own
 ``save_config``): it is only saved and announced, never reconciled, and the
 code that makes one may be running inside a reconcile, which is why it can
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from dataclasses import dataclass
 from functools import partial
 from typing import Any
 
@@ -35,7 +40,7 @@ from openavc.core.project_loader import (
     refresh_crash_copy,
     save_project_async,
 )
-from openavc.core.project_reconcile import ReconcileRun
+from openavc.core.project_reconcile import FailedPart, ReconcileRun
 from openavc.core.project_update import MigrationNotes
 from openavc.core.saved_values import refuse_new_words
 from openavc.core.typed_fields import trim_device_settings
@@ -46,6 +51,16 @@ log = get_logger("openavc.core.engine")
 
 class ProjectRevisionConflictError(Exception):
     """A revision-checked save found a newer project revision on the server."""
+
+
+@dataclass(frozen=True)
+class ApplyOutcome:
+    """What an applied change did: it runs under ``revision``, and
+    ``failed`` names each part of it the system could not run, in the
+    order the reconcile met them (empty when every part runs)."""
+
+    revision: str
+    failed: tuple[FailedPart, ...] = ()
 
 
 async def _call(callback) -> None:
@@ -123,13 +138,13 @@ class ProjectChangesMixin:
         expected_revision: str | None = None,
         origin: ProjectOrigin = ProjectOrigin.EDIT,
         persist: bool = True,
-    ) -> str:
+    ) -> ApplyOutcome:
         """The one way a project change enters the engine.
 
         Checks optimistic concurrency (``expected_revision=None`` skips the
         check), persists the bytes, swaps the in-memory project, bumps the
         revision, and reconciles only the subsystems the change actually
-        touches. Returns the new revision.
+        touches. Returns its outcome.
 
         The revision compare must happen under the same lock that increments
         ``_project_revision``. Checked outside it, two concurrent saves can
@@ -144,16 +159,16 @@ class ProjectChangesMixin:
     async def replace_project(
         self, new_project: ProjectConfig, update_notes: MigrationNotes, *,
         expected_revision: str | None = None,
-    ) -> str:
+    ) -> ApplyOutcome:
         """A project that replaces the running one (an import, a new blank
         project, a whole project pushed from the cloud), applied as a load
         and saved; once that has worked, the update notice is what its
         migration changed, or none (``keep_update_notes``)."""
         async with self._reload_lock:
             self._check_revision(expected_revision)
-            revision = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
+            outcome = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
             self.keep_update_notes(update_notes, replace=True)
-            return revision
+            return outcome
 
     def _check_revision(self, expected_revision: str | None) -> None:
         """Refuse a save made against a revision this run has moved past;
@@ -179,7 +194,7 @@ class ProjectChangesMixin:
         self._revision_counter += 1
         return f"{self._boot_id}-{self._revision_counter}"
 
-    async def apply_project_edit(self, mutate) -> str:
+    async def apply_project_edit(self, mutate) -> ApplyOutcome:
         """Apply an edit built from the current project, atomically.
 
         Callers that copy ``engine.project``, mutate the copy, and then call
@@ -192,14 +207,14 @@ class ProjectChangesMixin:
         project reads (find-by-id, 404 checks) belong inside it, since the
         project it sees may differ from what the caller inspected before the
         lock was acquired. An exception from ``mutate`` aborts the edit with
-        nothing applied. Returns the new revision.
+        nothing applied. Returns its outcome.
         """
         async with self._reload_lock:
             new_project = self.project.model_copy(deep=True)
             mutate(new_project)
             return await self._apply_project_locked(new_project, ProjectOrigin.EDIT, persist=True)
 
-    async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> str:
+    async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> ApplyOutcome:
         """Explicitly apply a product's product hardware to existing programming."""
         async with self._reload_lock:
             proposed = self.project.model_copy(deep=True)
@@ -226,12 +241,12 @@ class ProjectChangesMixin:
         origin: ProjectOrigin,
         persist: bool,
         reassigned_equipment: str | None = None,
-    ) -> str:
+    ) -> ApplyOutcome:
         """Body of :meth:`apply_project` once any revision is checked; caller
         holds ``_reload_lock``. The project is taken in (and saved), compared
         with the running one, swapped in and reconciled (all of it undone on
-        a failure), and then announced. Returns the new revision, which a
-        failure in the announcing no longer changes: the change is running."""
+        a failure), and then announced. Returns the outcome, which a failure
+        in the announcing no longer changes: the change is running."""
         as_given, new_project = await self._take_in(
             new_project, origin, persist, reassigned_equipment
         )
@@ -242,9 +257,10 @@ class ProjectChangesMixin:
             # marker leaves the marker in place, and the device still has to
             # reconnect with the new login.
             diff = ProjectDiff.compute(self.project, as_given)
-        await self._swap_in(new_project, diff, origin)
-        await self._announce_applied(diff, origin)
-        return self._project_revision
+        run = await self._swap_in(new_project, diff, origin)
+        outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
+        await self._announce_applied(diff, origin, outcome)
+        return outcome
 
     async def _take_in(
         self,
@@ -294,11 +310,12 @@ class ProjectChangesMixin:
 
     async def _swap_in(
         self, new_project: ProjectConfig, diff: ProjectDiff, origin: ProjectOrigin
-    ) -> None:
+    ) -> ReconcileRun:
         """Make ``new_project`` the running project under a new revision and
-        reconcile to it. Everything from the swap on is inside the guard: a
-        failure in the swap, the settings, the revision or the reconcile puts
-        the runtime back on the project it ran before, and raises."""
+        reconcile to it; the reconcile's run, with the parts it could not
+        run. Everything from the swap on is inside the guard: a failure in
+        the swap, the settings, the revision or the reconcile puts the
+        runtime back on the project it ran before, and raises."""
         previous = (
             self.project, self._project_revision, self._revision_counter,
             self._dirty_since_backup,
@@ -320,6 +337,7 @@ class ProjectChangesMixin:
                       "project state", exc_info=True)
             await self._roll_back(previous, run)
             raise
+        return run
 
     async def _roll_back(self, previous: tuple, run: ReconcileRun) -> None:
         """The runtime back on the project it ran before a failed swap or
@@ -349,12 +367,15 @@ class ProjectChangesMixin:
             partial(self._rollback_reconcile, run), "Rollback re-sync also failed",
         )
 
-    async def _announce_applied(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
+    async def _announce_applied(
+        self, diff: ProjectDiff, origin: ProjectOrigin, outcome: ApplyOutcome,
+    ) -> None:
         """What an applied change tells the rest of the system. The change is
         running under its new revision by now, so nothing here may answer it
         as a failure: a part that raises is logged, and the parts after it
         still go out (an open IDE still learns the revision when the panel
-        definition cannot be built)."""
+        definition cannot be built). The parts it could not run are named in
+        one warning; each is published by its own surface already."""
         parts = (
             (partial(self._publish_applied, diff), "publishing its state"),
             (partial(self._announce_panel_definition, diff), "sending the panel definition"),
@@ -363,15 +384,19 @@ class ProjectChangesMixin:
         )
         for part, what in parts:
             await _call_logged(part, f"Project applied, but {what} failed")
-        log.info(f"Project applied (origin={origin.value}, "
-                 f"revision={self._project_revision})")
+        applied = f"Project applied (origin={origin.value}, revision={outcome.revision})"
+        if not outcome.failed:
+            log.info(applied)
+            return
+        named = "; ".join(
+            f"{p.kind} '{p.part_id}' ({p.reason}): {p.detail}" for p in outcome.failed
+        )
+        count = len(outcome.failed)
+        log.warning(f"{applied}, but {count} part{'s are' if count != 1 else ' is'} not running: {named}")
 
     def _publish_applied(self, diff: ProjectDiff) -> None:
         """The state keys, the push-port record and the advertised name an
         applied change moves."""
-        # Zero the startup-error count so a stale count from the initial
-        # start (now fixed) doesn't linger in the store and cloud relay.
-        self.state.set("system.startup_errors", 0, source="system")
         if diff.devices_to_sync:
             self._record_push_ports()
         if diff.project_meta:

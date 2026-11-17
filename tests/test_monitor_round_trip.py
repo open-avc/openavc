@@ -22,6 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from openavc.api.rest import router, set_engine
+from openavc.core.project_changes import ApplyOutcome
 from openavc.core.project_loader import MonitorConfig, ProjectConfig, VariableConfig
 
 
@@ -63,7 +64,7 @@ def client(tmp_path):
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
     engine._project_revision = 0
-    engine.apply_project = AsyncMock(return_value=1)
+    engine.apply_project = AsyncMock(return_value=ApplyOutcome("1"))
     engine.broadcast_ws = AsyncMock()
 
     app = FastAPI()

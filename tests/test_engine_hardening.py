@@ -15,7 +15,6 @@ Covers, one finding per test where practical:
 - list `selected` two-way binding is written on select events
 - get_status gates host/network identifiers behind include_sensitive
 - state.set UI action coerces non-primitive values
-- a clean reload zeroes system.startup_errors
 - stop() drains pending state.changed events
 - reconcile_runtime_services reconciles ISC/mDNS to live system config
 """
@@ -476,22 +475,6 @@ async def test_reload_rollback_resyncs_devices_and_plugins(tmp_path):
     assert sync["devices"] == 2
     assert sync["plugins"] == 2
 
-    await eng.triggers.stop()
-
-
-# ── clean reload zeroes startup_errors ──
-
-
-@pytest.mark.asyncio
-async def test_clean_reload_zeroes_startup_errors(tmp_path):
-    eng = Engine(_write_project(tmp_path))
-    eng.project = load_project(eng.project_path)
-    eng._running = True
-    eng.state.set("system.startup_errors", 3, source="system")
-
-    await eng.reload_project()
-
-    assert eng.state.get("system.startup_errors") == 0
     await eng.triggers.stop()
 
 
