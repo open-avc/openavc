@@ -2,12 +2,14 @@
 
 "Audit this device" on a device page fills the wizard in from the project: the
 address the device really connects to, its driver, and its saved connection
-settings. The address comes from the same resolved config the device manager
-dials (``core.device_config.resolve_device_config``), so a host from the
-connection table or a driver default is found as it is in production.
+settings. The address is ``core.device_config.connection_of`` over the same
+resolved config the device manager dials (``resolve_device_config``), so a host
+from the connection table or a driver default is found as it is in production,
+and a device set to go through a bridge is found as the resolver recorded it
+(``core.bridge_binding``).
 
 An audit starts from a network address, so a device without one is refused
-in words: one on a serial port of this computer, one reached through a
+in words: one on a serial port of this computer, one set to connect through a
 bridge (its bytes go to the bridge's address, and the bridge's own set-up
 steps are not part of an audit), and one with no address entered.
 
@@ -23,8 +25,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from openavc.core.device_config import resolve_device_config
-from openavc.drivers.registry import get_device_transport
+from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -34,8 +35,8 @@ SERIAL = (
     "serial port."
 )
 BRIDGED = (
-    "{name} is reached through {bridge}. An audit needs a device OpenAVC connects "
-    "to directly."
+    "{name} is set to connect through {bridge}. An audit needs a device OpenAVC "
+    "connects to directly."
 )
 NO_ADDRESS = "{name} has no address yet. Enter one with Edit, then audit it."
 UNRESOLVED = "{name}'s connection settings could not be read. Check them with Edit."
@@ -67,24 +68,22 @@ def device_target(project: Any, device_id: str) -> dict[str, Any] | None:
         "reason": "",
     }
     try:
-        cfg = resolve_device_config(device, project).get("config") or {}
+        conn = connection_of(resolve_device_config(device, project))
     except Exception:
         log.debug("Could not resolve %s for an audit", device_id, exc_info=True)
         out["reason"] = UNRESOLVED.format(name=name)
         return out
-    transport = get_device_transport(device.driver, cfg)
-    out["transport"] = transport
-    bridge_id = cfg.get("bridge")
-    if bridge_id:
-        bridge = _find(project, str(bridge_id))
+    out["transport"] = conn.transport
+    if conn.bridge:
+        bridge = _find(project, conn.bridge)
         out["reason"] = BRIDGED.format(
-            name=name, bridge=(bridge.name or bridge.id) if bridge is not None else bridge_id,
+            name=name, bridge=(bridge.name or bridge.id) if bridge is not None else conn.bridge,
         )
         return out
-    if transport == "serial":
+    if conn.transport == "serial":
         out["reason"] = SERIAL.format(name=name)
         return out
-    host = str(cfg.get("host") or "").strip()
+    host = conn.host.strip()
     if not host:
         out["reason"] = NO_ADDRESS.format(name=name)
         return out

@@ -34,7 +34,9 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
+from openavc.core.bridge_binding import bridge_binding
 from openavc.core.connection_fault import (
+    INVALID_CONFIG,
     ConnectionFault,
     ConnectionFaultError,
     SimulatorGap,
@@ -656,7 +658,7 @@ class DeviceManager(
         # state is a pure mirror of its bridge (see _mirror_bridge_state), so
         # the transport auto-reconnect machinery doesn't apply to it.
         dev_cfg = self._device_configs.get(device_id, {}).get("config", {})
-        if dev_cfg.get("transport") == "bridge":
+        if bridge_binding(dev_cfg).emits:
             return
 
         # Skip if this is an intentional disconnect (reconnect_device, remove, update)
@@ -741,8 +743,28 @@ class DeviceManager(
         """Dial a device: the one door bring-up, the reconnect loop,
         Reconnect, Resume and a setup action's reconnect all go through."""
         self._require_control_target(device_id)
+        self._refuse_unresolved_bridge(device_id)
         self._follow_usb_adapter(device_id, driver)
         await driver.connect()
+
+    def bridge_problem(self, device_id: str) -> str:
+        """Why a running device's bridge binding cannot be completed where its
+        driver dials now (``dialled_record``: a running simulation points it
+        at the simulator, where no binding applies), or "" when it can, or
+        it goes through no bridge. The bridge is named as its card is."""
+        record = self.dialled_record(device_id)
+        binding = bridge_binding((record or {}).get("config"))
+        if not binding.unresolved:
+            return ""
+        return binding.problem(str(self.state.get(f"device.{binding.bridge}.name") or ""))
+
+    def _refuse_unresolved_bridge(self, device_id: str) -> None:
+        """A device whose bridge binding did not resolve is refused before
+        anything is dialled (``core/bridge_binding.py``), never left to dial
+        an address or a serial port of its own."""
+        problem = self.bridge_problem(device_id)
+        if problem:
+            raise ConnectionFaultError(problem, code=INVALID_CONFIG)
 
     @staticmethod
     def _follow_usb_adapter(device_id: str, driver: Any) -> None:

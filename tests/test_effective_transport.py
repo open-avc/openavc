@@ -232,11 +232,6 @@ _NOT_A_RESOLUTION = {
     ("utils/outbound.py", 'kwargs.get("transport")'),
     # The simulation keeps the device's own setting, to put back afterwards.
     ("core/simulation.py", 'driver.config.get("transport")'),
-    # Whether a device is routed through a bridge: the bridge resolver writes
-    # the outcome into the config as this value, and these read it back.
-    ("core/device_manager.py", 'dev_cfg.get("transport")'),
-    ("core/device_bridges.py", 'config.get("transport")'),
-    ("core/device_bridges.py", 'cfg.get("transport")'),
     # A driver's own Connection setting, as its config_schema declares it.
     ("drivers/registry.py", '(info.get("config_schema") or {}).get("transport")'),
     # A report repeats the connection record it was handed.

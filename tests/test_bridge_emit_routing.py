@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from openavc.core.bridge_binding import EMITTER, ROUTE_KEY
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver
@@ -70,7 +71,7 @@ def _mk(cls, config):
 def test_bridge_routed_connect_opens_no_socket_and_mirrors_bridge_state():
     # Bridge offline at connect time -> the device comes up offline (no socket,
     # but flagged bridge-routed so the manager can flip it later).
-    dev = _mk(_FakeIRDevice, {"transport": "bridge", "bridge": "b", "bridge_port": "ir:1"})
+    dev = _mk(_FakeIRDevice, {"transport": "bridge", "bridge": "b", "bridge_port": "ir:1", ROUTE_KEY: EMITTER})
     asyncio.run(dev.connect())
     assert dev._bridge_routed is True
     assert dev.transport is None
@@ -78,7 +79,7 @@ def test_bridge_routed_connect_opens_no_socket_and_mirrors_bridge_state():
     assert dev.state.get("device.dev.connected") is False
 
     # Bridge already online -> the device seeds online from the bridge's state.
-    dev2 = _mk(_FakeIRDevice, {"transport": "bridge", "bridge": "b", "bridge_port": "ir:1"})
+    dev2 = _mk(_FakeIRDevice, {"transport": "bridge", "bridge": "b", "bridge_port": "ir:1", ROUTE_KEY: EMITTER})
     dev2.state.set("device.b.connected", True)
     asyncio.run(dev2.connect())
     assert dev2._connected is True
@@ -98,14 +99,14 @@ def test_emit_requires_a_binding():
 
 
 def test_emit_requires_a_router():
-    dev = _mk(_FakeIRDevice, {"bridge": "b", "bridge_port": "ir:1"})
+    dev = _mk(_FakeIRDevice, {"bridge": "b", "bridge_port": "ir:1", ROUTE_KEY: EMITTER})
     # bound but no router injected (device manager didn't wire it)
     with pytest.raises(ConnectionError, match="routing unavailable"):
         asyncio.run(dev.send_command("PWR"))
 
 
 def test_emit_forwards_to_router_with_binding_and_payload():
-    dev = _mk(_FakeIRDevice, {"bridge": "itach", "bridge_port": "ir:2"})
+    dev = _mk(_FakeIRDevice, {"bridge": "itach", "bridge_port": "ir:2", ROUTE_KEY: EMITTER})
     calls: list[tuple] = []
 
     async def router(bridge_id, port_id, kind, payload):

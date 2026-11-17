@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from openavc.core import bridge_binding as route
+from openavc.core.bridge_binding import ROUTE_KEY
 from openavc.core.connection_fault import BRIDGE_OFFLINE
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
@@ -62,6 +64,7 @@ def test_ir_codes_surface_as_commands_ui_meta_stripped():
             "transport": "bridge",
             "bridge": "b1",
             "bridge_port": "ir:1",
+            ROUTE_KEY: route.EMITTER,
             "ir_codes": {
                 "power_on": {"label": "Power On", "pronto": "0000 006D 0000 0001 0060 0018", "repeat": 1},
                 "vol_up": {"label": "Volume Up", "pronto": "0000 006D 0000 0001 0030 0018", "repeat": 2},
@@ -94,7 +97,7 @@ def test_device_config_codes_override_driver_default_codes():
     default_codes = cls.DRIVER_INFO["default_config"]["ir_codes"]
     device_codes = {"power_on": {"label": "Power (custom)", "pronto": "0000 006D 0000 0001 0099 0018", "repeat": 3}}
     merged = {**default_codes, **device_codes}
-    dev = _mk(cls, {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1", "ir_codes": merged})
+    dev = _mk(cls, {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1", ROUTE_KEY: route.EMITTER, "ir_codes": merged})
     cmds = dev.DRIVER_INFO["commands"]
     assert set(cmds) == {"power_on", "mute"}
     assert cmds["power_on"]["label"] == "Power (custom)"
@@ -110,6 +113,7 @@ def test_ir_send_routes_through_the_bridge():
             "transport": "bridge",
             "bridge": "b1",
             "bridge_port": "ir:2",
+            ROUTE_KEY: route.EMITTER,
             "ir_codes": {"power_on": {"pronto": "0000 006D 0000 0001 0060 0018", "repeat": 4}},
         },
     )
@@ -134,6 +138,7 @@ def test_bad_ir_code_is_skipped_not_fatal():
             "transport": "bridge",
             "bridge": "b1",
             "bridge_port": "ir:1",
+            ROUTE_KEY: route.EMITTER,
             "ir_codes": {
                 "good": {"pronto": "0000 006D 0000 0001 0060 0018"},
                 "bad": {"label": "no pronto here"},
@@ -175,13 +180,13 @@ def _dm_with_bridge_and_ir():
     dm.state.set("device.b1.name", "Acme Bridge")
 
     ir_cls = _acme_ir_class()
-    ir = ir_cls("tv1", {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"}, dm.state, dm.events)
+    ir = ir_cls("tv1", {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1", ROUTE_KEY: route.EMITTER}, dm.state, dm.events)
     ir._bridge_routed = True
     dm._devices["tv1"] = ir
     dm._device_configs["tv1"] = {
         "id": "tv1",
         "driver": "acme_ir",
-        "config": {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+        "config": {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1", ROUTE_KEY: route.EMITTER},
     }
     return dm, bridge, ir
 
@@ -192,7 +197,8 @@ def test_dependents_lookup_only_finds_bridge_routed_devices():
     # A serial pass-through downstream (transport tcp) is NOT a mirrored dependent.
     dm._device_configs["ser1"] = {
         "id": "ser1", "driver": "x",
-        "config": {"transport": "tcp", "bridge": "b1", "bridge_port": "serial:1"},
+        "config": {"transport": "tcp", "bridge": "b1", "bridge_port": "serial:1",
+                   ROUTE_KEY: route.PASSTHROUGH},
     }
     dm._devices["ser1"] = object()
     assert dm._bridge_routed_dependents("b1") == ["tv1"]
@@ -393,7 +399,7 @@ def test_only_a_device_bound_to_a_bridge_port_is_handed_the_router():
     register_driver(_AcmeRoutedPin)
     try:
         dm = DeviceManager(StateStore(), EventBus())
-        bound = {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"}
+        bound = {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1", ROUTE_KEY: route.EMITTER}
         asyncio.run(dm.add_device(
             {"id": "tv9", "driver": "acme_routed_pin", "config": bound}, defer_connect=True,
         ))

@@ -6,7 +6,9 @@ defaults, ``device.config`` holds protocol fields, and the project's
 ``connections`` table holds host/port/baudrate. On top of that, two bindings
 rewrite the result entirely — a bridge-bound device travels through another
 device's pass-through port, and a USB-serial device's volatile OS port is
-derived from its stable adapter id.
+derived from its stable adapter id. The bridge binding is
+``core/bridge_binding.py``'s: it records what the binding came to in the
+resolved config, and every reader here asks that record.
 
 Everything that hands a device config to the device manager goes through
 ``resolve_device_config`` (engine startup, project reconcile, the device
@@ -44,6 +46,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Protocol
 
+from openavc.core.bridge_binding import ROUTE_KEY, bridge_binding, resolve_bridge_binding
 from openavc.core.typed_fields import trim_typed_fields
 from openavc.drivers.registry import (
     get_driver_bridge_ports,
@@ -89,7 +92,7 @@ def resolve_device_config(device, project) -> dict:
     # A space typed around an address or a login comes off before anything
     # dials it, so a project saved with one connects without an edit.
     merged = trim_typed_fields(cfg.get("driver", ""), merged)
-    cfg["config"] = resolve_bridge_binding(merged, project)
+    cfg["config"] = resolve_bridge_binding(merged, project, cfg.get("driver", ""))
     # Rewrite a USB-serial device's volatile port from its stable adapter id,
     # the local-serial analog of the bridge rewrite above. An adapter that is
     # not plugged in leaves the stored port in the record; the device manager
@@ -146,89 +149,6 @@ def apply_config_delta(project, device_id: str, delta: dict[str, Any]) -> bool:
     return True
 
 
-def resolve_bridge_binding(config: dict, project) -> dict:
-    """Rewrite a bridge-bound device's effective connection to its bridge's port.
-
-    When a device's connection carries ``bridge`` (a bridge device id) +
-    ``bridge_port`` (a port the bridge advertises), the device's bytes
-    travel *through* that bridge rather than to a host of its own. For a
-    serial pass-through port this is a pure config rewrite: point the
-    downstream at the bridge's transparent TCP pass-through endpoint
-    (``transport=tcp``, ``host=<bridge host>``, ``port=<passthrough_port>``)
-    and reuse the existing TCP transport unchanged. The serial params
-    (baudrate/parity/...) stay in the config so the bridge driver can push
-    them to the hardware via ``prepare_bridge_port`` before bytes flow.
-
-    Unresolvable bindings (unknown bridge, unknown port, missing host) are
-    left untouched and logged — the device then fails to connect with a
-    clear error rather than silently dialing the wrong place. IR / relay
-    ports are not transport rewrites (commands route through the bridge at
-    send time, Phase 2/3) and are left as-is for that path.
-    """
-    bridge_id = config.get("bridge")
-    bridge_port_id = config.get("bridge_port")
-    if not bridge_id or not bridge_port_id:
-        return config
-
-    bridge_dev = next(
-        (d for d in project.devices if d.id == bridge_id), None
-    )
-    if bridge_dev is None:
-        log.warning(
-            "Bridge '%s' referenced by a device's connection is not in the "
-            "project — leaving the binding unresolved", bridge_id,
-        )
-        return config
-
-    port_def = get_driver_bridge_ports(bridge_dev.driver).get(bridge_port_id)
-    if port_def is None:
-        log.warning(
-            "Bridge '%s' (driver '%s') does not advertise port '%s' — "
-            "leaving the binding unresolved",
-            bridge_id, bridge_dev.driver, bridge_port_id,
-        )
-        return config
-
-    passthrough_port = port_def.get("passthrough_port")
-    if port_def.get("kind") == "serial" and passthrough_port:
-        # Resolve the bridge's own host the same layered way every device's
-        # connection is (driver defaults < device.config < connections
-        # table). Reading the connections table alone misses a host that
-        # comes from a driver default or sits in the bridge's device.config
-        # (e.g. an imported or template project) — which would leave the
-        # binding unresolved and the downstream device wrongly offline.
-        bridge_cfg = getattr(bridge_dev, "config", None) or {}
-        bridge_conn = project.connections.get(bridge_id, {})
-        bridge_host = trim_typed_fields(bridge_dev.driver, {
-            **get_driver_default_config(bridge_dev.driver),
-            **bridge_cfg,
-            **bridge_conn,
-        }).get("host")
-        if not bridge_host:
-            log.warning(
-                "Bridge '%s' has no host configured — leaving the serial "
-                "binding for '%s' unresolved", bridge_id, bridge_port_id,
-            )
-            return config
-        resolved = dict(config)
-        resolved["transport"] = "tcp"
-        resolved["host"] = bridge_host
-        resolved["port"] = passthrough_port
-        return resolved
-
-    if port_def.get("kind") == "ir":
-        # An IR device has no transport of its own: it emits through the
-        # live bridge instance at send time (base.emit_via_bridge). Mark it
-        # bridge-routed so connect() opens no socket; the bridge/bridge_port
-        # markers stay in config for the router to resolve.
-        resolved = dict(config)
-        resolved["transport"] = "bridge"
-        return resolved
-
-    # Any other non-pass-through kind: no transport rewrite.
-    return config
-
-
 def is_bridge_config(cfg: dict[str, Any]) -> bool:
     """True if a resolved device config belongs to a bridge driver."""
     return bool(get_driver_bridge_ports(cfg.get("driver", "")))
@@ -261,10 +181,12 @@ class DeviceConnection:
 
     ``port`` is a number for a network transport and a path for serial; a
     transport that falls back to a port of its own (http, ssh, mqtt, snmp)
-    reports that port when the device names none. ``bridge`` is the bridge
-    device's id when the device reaches ``host`` through that bridge's
-    pass-through port, or (transport ``bridge``) emits through that bridge
-    and holds no connection of its own; empty otherwise. ``simulated`` is
+    reports that port when the device names none. ``bridge`` is the id of the
+    bridge the device is set to go through (``core.bridge_binding``): it
+    reaches ``host`` through that bridge's pass-through port, or (transport
+    ``bridge``) emits through it and holds no connection of its own; or the
+    binding cannot be completed, and ``host`` and ``port`` are empty, since the
+    device connects nowhere. Empty for a device on no bridge. ``simulated`` is
     True when the record was the one its driver dials now and a running
     simulation points it at the simulator on this computer: the transport,
     host and port are then the simulator's, not the equipment's.
@@ -298,6 +220,22 @@ class DeviceConnection:
         }
 
 
+def _port_of(transport: str, cfg: dict[str, Any]) -> int | str | None:
+    """The port ``cfg`` dials over ``transport``: a serial port's path, a
+    network port's number, or the transport's fallback when none is set."""
+    port = cfg.get("port")
+    if transport == "serial":
+        return str(port) if port is not None else None
+    if port is None or port == "":
+        return implied_port(transport, cfg)
+    # A port that is not a number is reported as no port, never replaced
+    # by the transport's fallback: the driver would not dial that either.
+    try:
+        return int(port)
+    except (TypeError, ValueError):
+        return None
+
+
 def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
     """Where a device connects, from its resolved record.
 
@@ -311,34 +249,21 @@ def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
     cfg = resolved.get("config") or {}
     driver = str(resolved.get("driver") or "")
     transport = get_device_transport(driver, cfg)
-    port = cfg.get("port")
-    if transport == "serial":
-        port = str(port) if port is not None else None
-    elif port is None or port == "":
-        port = implied_port(transport, cfg)
-    else:
-        # A port that is not a number is reported as no port, never replaced
-        # by the transport's fallback: the driver would not dial that either.
-        try:
-            port = int(port)
-        except (TypeError, ValueError):
-            port = None
-    # resolve_bridge_binding turns a serial device bound to a bridge's
-    # pass-through port into a TCP connection to the bridge's host, and an IR
-    # device bound to an emitter port into transport "bridge".
-    bridged = (
-        bool(cfg.get("bridge") and cfg.get("bridge_port"))
-        and transport in ("tcp", "bridge")
-    )
+    # What the resolver recorded of a bridge binding: a pass-through is
+    # already rewritten to the bridge's host, and a binding that cannot be
+    # completed connects nowhere, whatever address the config still holds.
+    binding = bridge_binding(cfg)
+    host = "" if binding.unresolved else str(cfg.get("host") or "")
+    port = None if binding.unresolved else _port_of(transport, cfg)
     device_id = str(resolved.get("id") or "")
     return DeviceConnection(
         device_id=device_id,
         name=str(resolved.get("name") or device_id),
         driver=driver,
         transport=transport,
-        host=str(cfg.get("host") or ""),
+        host=host,
         port=port,
-        bridge=str(cfg["bridge"]) if bridged else "",
+        bridge=binding.bridge,
         simulated=bool(resolved.get(_SIMULATED)),
     )
 
@@ -366,8 +291,8 @@ def dialled_record(
     driver = str(record.get("driver") or "")
     if redirect and get_device_transport(driver, cfg) != "bridge":
         cfg.update(redirect)
-        cfg.pop("bridge", None)
-        cfg.pop("bridge_port", None)
+        for key in ("bridge", "bridge_port", ROUTE_KEY):
+            cfg.pop(key, None)
         return {**record, "config": cfg, _SIMULATED: True}
     return {**record, "config": resolve_usb_binding(cfg, get_driver_transport(driver))}
 

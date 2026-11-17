@@ -25,7 +25,15 @@ speaking the protocol:
 - udp, snmp, OSC over UDP: there is nothing to connect to. The socket is
   pointed at the address, which proves the name resolves and a route exists,
   and the result says that is all it proves.
-- bridge: an IR device emits through its bridge, so the bridge is tested.
+- bridge: an IR device emits through its bridge, so the bridge is tested as
+  its own Test Connection would test it: where its driver dials now, answered
+  from its connection when it is connected, the simulator named when it is
+  simulated.
+
+Whether a device goes through a bridge is what the resolver recorded of its
+binding (``core/bridge_binding``). One that cannot be completed (no port
+chosen, the bridge gone, its port unknown) is not tried: the result is the
+sentence the device card shows for it.
 
 Success means something accepted a connection at that address. It does not
 mean the device there speaks the driver's protocol: whether it answers is the
@@ -62,9 +70,8 @@ from typing import Any, Mapping
 
 import httpx
 
+from openavc.core.bridge_binding import BRIDGE_MISSING, BridgeBinding, bridge_binding
 from openavc.core.connection_fault import (
-    bridge_port_missing,
-    bridge_port_missing_message,
     ConnectionFaultError,
     no_address_message,
     no_port_message,
@@ -110,24 +117,51 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
     A device whose driver is connected now is answered from that connection
     and nothing is dialed; neither is a port another connected device holds.
     """
+    return await _test_device(device, engine, subject="")
+
+
+async def _test_device(device: Any, engine: Any, subject: str) -> dict[str, Any]:
+    """:func:`run_connection_test` of ``device``. ``subject`` is "" for the
+    device asked about, or the name of the bridge an IR device sends through,
+    which the notes then name."""
     resolved = resolve_device_config(device, engine.project)
     dialled = _dialled(engine, device.id) or resolved
+    binding = bridge_binding(dialled.get("config"))
+    if binding.unresolved:
+        label = _device_name(engine.project, binding.bridge)
+        return _failure(binding.problem(label), connection_of(dialled).address())
+    if binding.emits:
+        return await _through_bridge(binding.bridge, engine, connection_of(dialled).address())
     live = _connections(engine, "live_connections")
     own = next((c for c in live if c.device_id == device.id), None)
     if own is not None and _opens_connection(dialled):
-        return _connected_now(own, resolved)
+        return _connected_now(own, resolved, subject)
     held, _unresolved = await held_ports(_connections(engine, "network_connections"))
-    result = await check_reachability(dialled, engine.project, held=held)
+    result = await check_reachability(dialled, held=held)
+    if binding.passthrough and not result["success"]:
+        # The address in the sentence is the bridge's, never entered here.
+        result["error"] = _sent_through(
+            result["error"], _device_name(engine.project, binding.bridge),
+        )
     if not connection_of(dialled).simulated:
         return result
     where = _where(connection_of(resolved))
+    who = subject or "This device"
     result["simulated"] = True
     result["note"] = (
-        "This device is simulated, so the test reached the simulator, not the "
+        f"{who} is simulated, so the test reached the simulator, not the "
         f"equipment at {where}." if where else
-        "This device is simulated, so the test reached the simulator, not the equipment."
+        f"{who} is simulated, so the test reached the simulator, not the equipment."
     )
     return result
+
+
+def _device_name(project: Any, device_id: str) -> str:
+    """A project device's name, else its id when the project has no such device."""
+    found = next(
+        (d for d in getattr(project, "devices", None) or [] if d.id == device_id), None,
+    )
+    return (found.name or found.id) if found is not None else device_id
 
 
 def _dialled(engine: Any, device_id: str) -> dict[str, Any] | None:
@@ -174,11 +208,12 @@ def _where(conn: Any) -> str:
     return conn.host or str(conn.port or "")
 
 
-def _connected_now(own: Any, resolved: dict[str, Any]) -> dict[str, Any]:
+def _connected_now(own: Any, resolved: dict[str, Any], subject: str = "") -> dict[str, Any]:
     """The answer for a device whose driver is connected now (``own``, from
     ``live_connections``): the address it is connected to, and a note saying
     no second connection was opened. A simulated device is connected to the
-    simulator, and the note says so, naming the address ``resolved`` sets."""
+    simulator, and the note says so, naming the address ``resolved`` sets.
+    ``subject`` names the bridge when it is the one connected."""
     if not own.simulated:
         return {
             "success": True,
@@ -186,7 +221,10 @@ def _connected_now(own: Any, resolved: dict[str, Any]) -> dict[str, Any]:
             "latency_ms": None,
             "connection": own.address(),
             "in_use_by": own.name,
-            "note": "The device is connected now. The test did not open a second connection to it.",
+            "note": (
+                f"{subject or 'The device'} is connected now. The test did not open "
+                "a second connection to it."
+            ),
         }
     where = _where(connection_of(resolved))
     equipment = f"the equipment at {where}" if where else "the equipment"
@@ -198,47 +236,30 @@ def _connected_now(own: Any, resolved: dict[str, Any]) -> dict[str, Any]:
         "in_use_by": own.name,
         "simulated": True,
         "note": (
-            f"This device is simulated and connected to the simulator now, not to "
-            f"{equipment}. The test did not open a second connection to it."
+            f"{subject or 'This device'} is simulated and connected to the simulator "
+            f"now, not to {equipment}. The test did not open a second connection to it."
         ),
     }
 
 
 async def check_reachability(
     resolved: dict[str, Any],
-    project: Any,
     held: Mapping[tuple[str, int], Any] | None = None,
 ) -> dict[str, Any]:
-    """Test one device's connection.
+    """Test one device's connection, at the address its record dials.
 
-    ``resolved`` is the device as :func:`resolve_device_config` returns it;
-    ``project`` is only read to find the bridge an IR device emits through.
-    ``held`` is ``port_guard.held_ports``' map: a connection to one of those
-    ports is not opened, and the result names the device holding it.
-    Returns ``{success, error, latency_ms, connection}``, plus ``note`` when a
-    success proves less than a connection would. ``connection`` is the
-    address that was tried (``DeviceConnection.address``).
+    ``resolved`` is the device as :func:`resolve_device_config` returns it, or
+    as its driver dials it now. A bridge binding is :func:`run_connection_test`'s
+    to read first: a serial pass-through is tried here at the bridge's
+    address, as its record says. ``held`` is ``port_guard.held_ports``' map: a
+    connection to one of those ports is not opened, and the result names the
+    device holding it. Returns ``{success, error, latency_ms, connection}``,
+    plus ``note`` when a success proves less than a connection would.
+    ``connection`` is the address that was tried (``DeviceConnection.address``).
     """
     conn = connection_of(resolved)
     address = conn.address()
-    bridge = None
-    if conn.bridge:
-        bridge = next(
-            (d for d in getattr(project, "devices", None) or [] if d.id == conn.bridge), None
-        )
-        if bridge is None:
-            # The binding could not be resolved, so there is no address to try.
-            return _failure(
-                f"This device sends through the bridge '{conn.bridge}', which is "
-                "not in the project.",
-                address,
-            )
-        if conn.transport == "bridge":
-            return await _through_bridge(bridge, project, address, held)
-
     cfg = resolved.get("config") or {}
-    if bridge_port_missing(cfg):
-        return _failure(bridge_port_missing_message(), address)
     if held and conn.host and isinstance(conn.port, int) and _opens_connection(resolved):
         holder = held.get((await resolve_address(conn.host) or conn.host, conn.port))
         if holder is not None:
@@ -265,7 +286,7 @@ async def check_reachability(
         note = None
 
     if error is not None:
-        return _failure(_sent_through(error, bridge), address)
+        return _failure(error, address)
     result: dict[str, Any] = {
         "success": True,
         "error": None,
@@ -313,31 +334,37 @@ def _held_by(holder: Any, address: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _sent_through(error: str, bridge: Any) -> str:
-    """``error`` followed by the bridge a device sends through, when it has
-    one: the address in the sentence is then the bridge's."""
-    if bridge is None:
-        return error
+def _sent_through(error: str, bridge_label: str) -> str:
+    """``error`` followed by the bridge a device sends through: the address in
+    the sentence is then the bridge's."""
     if not error.rstrip().endswith((".", "!", "?")):
         error = error.rstrip() + "."
-    return f"{error} This device sends through the bridge '{bridge.name or bridge.id}'."
+    return f"{error} This device sends through the bridge '{bridge_label}'."
 
 
 async def _through_bridge(
-    bridge: Any, project: Any, address: dict[str, Any],
-    held: Mapping[tuple[str, int], Any] | None,
+    bridge_id: str, engine: Any, address: dict[str, Any],
 ) -> dict[str, Any]:
     """An IR device has no connection of its own: test the bridge it emits
-    through, and report the bridge's address marked with its id."""
-    resolved = resolve_device_config(bridge, project)
-    if connection_of(resolved).transport == "bridge":
+    through as the bridge's own Test Connection would (where its driver dials
+    now, from its connection when it is connected), and report the bridge's
+    address marked with its id."""
+    bridge = next(
+        (d for d in getattr(engine.project, "devices", None) or [] if d.id == bridge_id), None,
+    )
+    if bridge is None:
+        # The record the driver runs on names a bridge the project has lost.
+        return _failure(BridgeBinding(bridge=bridge_id, route=BRIDGE_MISSING).problem(), address)
+    bridge_record = _dialled(engine, bridge.id) or resolve_device_config(bridge, engine.project)
+    if connection_of(bridge_record).transport == "bridge":
         return _failure(
             f"The bridge '{bridge.id}' is itself set to send through a bridge.", address
         )
-    result = await check_reachability(resolved, project, held=held)
+    label = bridge.name or bridge.id
+    result = await _test_device(bridge, engine, subject=label)
     result["connection"] = {**result["connection"], "bridge": bridge.id}
     if not result["success"]:
-        result["error"] = _sent_through(result["error"], bridge)
+        result["error"] = _sent_through(result["error"], label)
     return result
 
 

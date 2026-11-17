@@ -22,6 +22,7 @@ import serial.tools
 import serial.tools.list_ports as list_ports_mod
 
 import openavc.transport.serial_transport as st
+from openavc.core.bridge_binding import PASSTHROUGH, ROUTE_KEY
 from openavc.core.connection_fault import UNREACHABLE, ConnectionFaultError
 from openavc.core.device_manager import DeviceManager
 from openavc.core.device_reachability import check_reachability
@@ -171,8 +172,12 @@ def test_usb_binding_skipped_for_network_and_bridge(monkeypatch):
     # Explicit network transport — a stray usb_serial must not hijack the port.
     net = {"transport": "tcp", "usb_serial": "AB12CD", "port": 23, "host": "1.2.3.4"}
     assert st.resolve_usb_binding(net) == net
-    # Bridge-bound (already rewritten to tcp by the bridge resolver).
-    bridged = {"usb_serial": "AB12CD", "bridge": "itach", "bridge_port": "serial:1"}
+    # Bridge-bound (rewritten to the bridge's pass-through by the bridge resolver,
+    # which records it).
+    bridged = {
+        "usb_serial": "AB12CD", "bridge": "itach", "bridge_port": "serial:1",
+        ROUTE_KEY: PASSTHROUGH,
+    }
     assert st.resolve_usb_binding(bridged) == bridged
 
 
@@ -478,7 +483,8 @@ def test_the_stored_name_is_dialled_when_listing_the_ports_fails(monkeypatch):
         # Simulating: the redirect points the device at the simulator over TCP
         # and leaves usb_serial in place.
         _bound(port=19001, transport="tcp", host="127.0.0.1"),
-        {"usb_serial": "AB12CD", "bridge": "itach", "bridge_port": "serial:1"},
+        {"usb_serial": "AB12CD", "bridge": "itach", "bridge_port": "serial:1",
+         ROUTE_KEY: PASSTHROUGH},
         {"transport": "serial", "port": "/dev/ttyUSB0"},
     ],
     ids=["simulated", "bridged", "not_bound"],
@@ -500,7 +506,7 @@ async def test_test_connection_does_not_open_the_port_another_adapter_took(monke
         "config": _bound(),
     }
 
-    result = await check_reachability(resolved, SimpleNamespace(devices=[]))
+    result = await check_reachability(resolved)
 
     assert result["success"] is False
     assert "AB12CD" in result["error"] and "not plugged in" in result["error"]

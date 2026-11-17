@@ -47,13 +47,12 @@ from openavc.core.connection_fault import (
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     ConnectionFaultError,
-    bridge_port_missing,
-    bridge_port_missing_message,
     classify_connection_fault,
     default_fault_message,
     no_address_message,
     typed_fault_from_exc,
 )
+from openavc.core.bridge_binding import bridge_binding
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the driver runtime's name, which the
@@ -358,15 +357,14 @@ class ConnectLifecycle:
         seeded from the bridge's current state, so a device added after its
         bridge is already up starts online (and one whose bridge is down
         starts offline, with a bridge_offline reason set by the DeviceManager).
+        Only an emitter binding the resolver recorded (core/bridge_binding.py)
+        has a bridge to mirror; the device manager refuses one that did not
+        resolve before it gets here.
         """
         self._bridge_routed = True
-        bridge_id = self.config.get("bridge")
-        bridge_port = self.config.get("bridge_port")
-        online = bool(
-            bridge_id
-            and bridge_port
-            and self.state.get(f"device.{bridge_id}.connected")
-        )
+        binding = bridge_binding(self.config)
+        bridge_id = binding.bridge if binding.emits else ""
+        online = bool(bridge_id and self.state.get(f"device.{bridge_id}.connected"))
         self._connected = online
         self.set_state("connected", online)
         if online:
@@ -385,11 +383,6 @@ class ConnectLifecycle:
         transport or driver-owned session is built. Every driver passes
         through here; a bridge-routed device does not (it sends through its
         bridge's own connection and signs in to nothing)."""
-        # A bridge with no port chosen leaves the binding unresolved, so the
-        # device would dial its own transport with nothing to dial, and the
-        # card asked for an IP address its Edit Device form does not show.
-        if bridge_port_missing(self.config):
-            raise ConnectionFaultError(bridge_port_missing_message(), code=INVALID_CONFIG)
         # An empty address dials this computer, and the card then blamed a
         # refused port on a device nobody had given an address.
         if self.address_missing():

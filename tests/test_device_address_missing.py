@@ -107,21 +107,35 @@ async def test_connect_refuses_before_any_session_is_built():
 async def test_a_bridge_chosen_without_its_port_asks_for_the_port(transport):
     """Saved on Through a bridge before its port was picked, the binding never
     resolves. The card says which choice is missing, not an IP address its
-    Edit Device form does not show, and nothing is dialed."""
+    Edit Device form does not show, and nothing is dialed: the connect door
+    refuses it before the driver's own checks."""
+    from types import SimpleNamespace
+
+    from openavc.core.bridge_binding import resolve_bridge_binding
     from openavc.core.connection_fault import bridge_port_missing_message
 
     _AcmeOwnSession.built = 0
-    driver = _driver(
+    info = {**_AcmeOwnSession.DRIVER_INFO, "transport": transport}
+    cls = type("_Widget", (_AcmeOwnSession,), {"DRIVER_INFO": info})
+    _DRIVER_REGISTRY["acme_widget_no_address"] = cls
+    dm = DeviceManager(StateStore(), EventBus())
+    config = resolve_bridge_binding(
         {"bridge": "itach1", "bridge_port": "", "host": None, "port": None},
-        transport=transport, cls=_AcmeOwnSession,
+        SimpleNamespace(devices=[], connections={}),
     )
-    with pytest.raises(ConnectionFaultError) as caught:
-        await driver.connect()
-    assert caught.value.fault_code == "invalid_config"
-    assert str(caught.value) == bridge_port_missing_message()
-    assert "bridge port" in str(caught.value)
-    assert "IP address" not in str(caught.value)
-    assert _AcmeOwnSession.built == 0
+    try:
+        await dm.add_device({
+            "id": "w1", "driver": "acme_widget_no_address", "name": "W1", "config": config,
+        })
+        detail = dm.state.get("device.w1.offline_detail")
+        assert dm.state.get("device.w1.offline_reason") == "invalid_config"
+        assert detail == bridge_port_missing_message()
+        assert "bridge port" in detail
+        assert "IP address" not in detail
+        assert _AcmeOwnSession.built == 0
+    finally:
+        await dm.disconnect_all()
+        _DRIVER_REGISTRY.pop("acme_widget_no_address", None)
 
 
 def test_the_card_and_the_connection_test_say_the_same_sentence():

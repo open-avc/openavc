@@ -682,7 +682,8 @@ export interface DeviceAction {
 // Where a device connects after every layer: the driver's default port,
 // the device's config, the connections table, and a bridge's rewrite.
 // `port` is a path for serial; `bridge` is the bridge device's id when the
-// device is reached through one, "" otherwise.
+// device is set to go through one, "" otherwise. A device whose bridge
+// connection cannot be completed has no host and no port: it connects nowhere.
 export interface DeviceAddress {
   transport: string;
   host: string;

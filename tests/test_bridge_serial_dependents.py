@@ -18,6 +18,8 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock
 
+from openavc.core import bridge_binding as route
+from openavc.core.bridge_binding import ROUTE_KEY
 from openavc.core.connection_fault import BRIDGE_OFFLINE, ConnectionFaultError
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
@@ -82,8 +84,9 @@ def _rig(*, bridge_online: bool = True, register_bridge: bool = True):
     """A manager holding an Acme bridge and a widget bound to its serial port.
 
     The widget's config is the RESOLVED one: `resolve_bridge_binding` has already
-    rewritten transport/host/port to the bridge's pass-through and left the
-    `bridge` / `bridge_port` markers behind, which is the shape the manager sees.
+    rewritten transport/host/port to the bridge's pass-through, left the
+    `bridge` / `bridge_port` markers behind and recorded the pass-through, which
+    is the shape the manager sees.
     """
     dm = DeviceManager(StateStore(), EventBus())
     bridge = _AcmeBridge("b1", {"host": "192.0.2.9"}, dm.state, dm.events)
@@ -103,11 +106,17 @@ def _rig(*, bridge_online: bool = True, register_bridge: bool = True):
         "bridge": "b1",
         "bridge_port": "serial:1",
         "baudrate": 9600,
+        ROUTE_KEY: route.PASSTHROUGH,
     }
     widget = _AcmeWidget("w1", dict(resolved), dm.state, dm.events)
     dm._devices["w1"] = widget
     dm._device_configs["w1"] = {"id": "w1", "driver": "acme_widget", "config": resolved}
     return dm, bridge, widget
+
+
+def _routed() -> dict[str, Any]:
+    """An IR device's resolved config on the bridge's emitter port."""
+    return {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1", ROUTE_KEY: route.EMITTER}
 
 
 def _refused() -> OSError:
@@ -170,11 +179,12 @@ def test_a_live_bridge_leaves_the_failure_with_the_device():
 
 
 def test_a_binding_with_no_port_was_never_rewritten_so_the_bridge_is_not_blamed():
-    # `resolve_bridge_binding` needs both markers to rewrite anything. With only
-    # `bridge`, the device is dialling its own address and the bridge is not in
-    # the path at all.
+    # `resolve_bridge_binding` rewrites nothing for a binding with no port, and
+    # records why: the connect door refuses that device, and the bridge is not
+    # in the path at all.
     dm, _bridge, widget = _rig(bridge_online=False)
     dm._device_configs["w1"]["config"].pop("bridge_port")
+    dm._device_configs["w1"]["config"][ROUTE_KEY] = route.NO_PORT
 
     assert dm._set_offline_reason("w1", widget, exc=_refused()) != BRIDGE_OFFLINE
 
@@ -238,7 +248,7 @@ def test_a_bridge_side_failure_does_not_break_the_connect_handler():
     dm, bridge, _widget = _rig(bridge_online=True)
     bridge.prepare_raises = True
     ir = _AcmeWidget(
-        "tv1", {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+        "tv1", _routed(),
         dm.state, dm.events,
     )
     ir._bridge_routed = True
@@ -246,7 +256,7 @@ def test_a_bridge_side_failure_does_not_break_the_connect_handler():
     dm._devices["tv1"] = ir
     dm._device_configs["tv1"] = {
         "id": "tv1", "driver": "acme_widget",
-        "config": {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+        "config": _routed(),
     }
 
     asyncio.run(dm._on_device_connected("device.connected.b1", {}))
@@ -260,12 +270,12 @@ def test_every_bound_port_kind_is_prepared_not_just_the_mirrored_ones():
     # this whole path exists for.
     dm, _bridge, _widget = _rig(bridge_online=True)
     dm._devices["tv1"] = _AcmeWidget(
-        "tv1", {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+        "tv1", _routed(),
         dm.state, dm.events,
     )
     dm._device_configs["tv1"] = {
         "id": "tv1", "driver": "acme_widget",
-        "config": {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+        "config": _routed(),
     }
 
     assert sorted(dm._bridge_bound_dependents("b1")) == ["tv1", "w1"]
@@ -277,8 +287,9 @@ def test_every_bound_port_kind_is_prepared_not_just_the_mirrored_ones():
 
 def test_a_device_naming_the_bridge_without_a_port_is_not_bound_to_it():
     dm, _bridge, _widget = _rig()
-    dm._devices["w2"] = _AcmeWidget("w2", {"bridge": "b1"}, dm.state, dm.events)
-    dm._device_configs["w2"] = {"id": "w2", "driver": "acme_widget", "config": {"bridge": "b1"}}
+    unbound = {"bridge": "b1", ROUTE_KEY: route.NO_PORT}
+    dm._devices["w2"] = _AcmeWidget("w2", dict(unbound), dm.state, dm.events)
+    dm._device_configs["w2"] = {"id": "w2", "driver": "acme_widget", "config": unbound}
 
     assert dm._bridge_bound_dependents("b1") == ["w1"]
 
@@ -288,17 +299,19 @@ def test_a_device_with_no_live_driver_is_carried_by_nobody():
     dm, _bridge, _widget = _rig()
     dm._device_configs["tv2"] = {
         "id": "tv2", "driver": "acme_widget",
-        "config": {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+        "config": _routed(),
     }
 
     assert dm._bridge_bound_dependents("b1") == ["w1"]
     assert dm._bridge_routed_dependents("b1") == []
 
 
-def test_preparing_a_port_needs_both_markers():
+def test_preparing_a_port_needs_a_resolved_binding():
     dm, bridge, _widget = _rig()
 
-    asyncio.run(dm._prepare_bridge_for("w2", {"bridge": "b1", "baudrate": 9600}))
+    asyncio.run(dm._prepare_bridge_for(
+        "w2", {"bridge": "b1", "baudrate": 9600, ROUTE_KEY: route.NO_PORT},
+    ))
 
     assert bridge.prepared == []
 
@@ -307,14 +320,16 @@ def test_a_binding_that_names_a_device_that_is_no_bridge_prepares_nothing():
     dm, _bridge, widget = _rig()
     widget.prepare_bridge_port = AsyncMock()
 
-    asyncio.run(dm._prepare_bridge_for("w2", {"bridge": "w1", "bridge_port": "serial:1"}))
+    asyncio.run(dm._prepare_bridge_for(
+        "w2", {"bridge": "w1", "bridge_port": "serial:1", ROUTE_KEY: route.PASSTHROUGH},
+    ))
 
     widget.prepare_bridge_port.assert_not_awaited()
 
 
 def test_a_healed_bridge_prepares_its_ports_before_it_announces_its_dependents():
     dm, bridge, _widget = _rig(bridge_online=True)
-    routed = {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"}
+    routed = _routed()
     ir = _AcmeWidget("tv1", dict(routed), dm.state, dm.events)
     ir._bridge_routed = True
     ir.set_state("connected", False)

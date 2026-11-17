@@ -19,7 +19,7 @@ import pytest
 import openavc.system_config as system_config
 from openavc.api.routes import devices as devices_routes
 from openavc.core.device_config import connection_of, dialled_record, resolve_device_config
-from openavc.core.device_reachability import check_reachability
+from openavc.core.device_reachability import run_connection_test
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import DeviceConfig
 from openavc.core.state_store import StateStore
@@ -87,7 +87,8 @@ async def listener():
 
 
 async def _test(device: DeviceConfig, project: SimpleNamespace) -> dict:
-    return await check_reachability(resolve_device_config(device, project), project)
+    """Test Connection of a device nothing runs: as the project sets it."""
+    return await run_connection_test(device, SimpleNamespace(project=project))
 
 
 # --- the address -------------------------------------------------------------

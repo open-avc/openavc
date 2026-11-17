@@ -19,6 +19,8 @@ from typing import Any
 
 import pytest
 
+from openavc.core import bridge_binding as route
+from openavc.core.bridge_binding import ROUTE_KEY
 from openavc.core.connection_fault import AUTH_FAILED, ConnectionFaultError
 from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.event_bus import EventBus
@@ -453,11 +455,11 @@ class _AddressedAcmeLink(_AcmeLink):
     }
 
 
+# A bridge binding that cannot be completed is refused before the driver is
+# asked at all, by the device manager's connect door (tests/test_bridge_binding.py).
 @pytest.mark.parametrize(
     ("config", "code", "says"),
     [
-        ({"bridge": "acme_bridge", "host": "", "password": SAVED_LOGIN}, "invalid_config",
-         "bridge"),
         ({"host": "", "password": SAVED_LOGIN}, "invalid_config", "address"),
         ({"password": SAVED_LOGIN}, "login_missing", ""),
     ],
@@ -481,8 +483,10 @@ async def test_refusals_are_asked_in_order(config, code, says):
     [("ir1", True, True), ("ir1", False, False), ("", True, False)],
 )
 async def test_a_bridge_routed_device_follows_its_bridge(bridge_port, bridge_up, online):
+    # The resolver's record: an emitter port, or no port chosen.
     driver = _AcmeLink({"transport": "bridge", "bridge": "acme_bridge",
-                        "bridge_port": bridge_port})
+                        "bridge_port": bridge_port,
+                        ROUTE_KEY: route.EMITTER if bridge_port else route.NO_PORT})
     driver.state.set("device.acme_bridge.connected", bridge_up)
     await driver.connect()
     assert driver._bridge_routed is True

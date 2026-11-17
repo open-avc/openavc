@@ -188,7 +188,8 @@ class DeviceReconnectMixin:
     Its state is set up by ``_init_reconnect``. From its host (DeviceManager)
     it reads ``state``, ``_devices``, ``installed_equipment`` and
     ``project_reconnect_interval``, and asks ``_simulation_gap``,
-    ``_connect_driver`` and ``_apply_pending_settings``. From the away status
+    ``bridge_problem``, ``_connect_driver`` and ``_apply_pending_settings``.
+    From the away status
     (core/device_away.py) it asks ``_set_offline_reason``,
     ``_clear_offline_reason``, ``_failure_text``, ``restart_seconds_left`` and
     the sleep book.
@@ -287,18 +288,19 @@ class DeviceReconnectMixin:
     def _start_reconnect(self, device_id: str) -> None:
         """Start a background reconnect loop for a device.
 
-        A device with no address to dial gets none, and neither does one whose
-        login is not saved on this system: retrying cannot supply either, so it
-        stops at once, the way a rejected login does, rather than after the
-        attempts a device-reported fault is allowed. The card already says what
-        to set; editing the device or Reconnect retries.
+        A device with no address to dial gets none, nor does one whose bridge
+        binding cannot be completed, nor one whose login is not saved on this
+        system: retrying cannot supply any of them, so it stops at once, the
+        way a rejected login does, rather than after the attempts a
+        device-reported fault is allowed. The card already says what to set;
+        editing the device or Reconnect retries.
         """
         if self._simulation_gap(device_id) is not None:
             return
         if device_id in self._reconnect_tasks:
             return  # Already reconnecting
         driver = self._devices.get(device_id)
-        if driver is not None and driver.address_missing():
+        if driver is not None and (driver.address_missing() or self.bridge_problem(device_id)):
             self._stop_reconnect_for_permanent_fault(device_id, INVALID_CONFIG)
             return
         if driver is not None and driver.login_missing():

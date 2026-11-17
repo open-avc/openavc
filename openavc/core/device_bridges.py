@@ -2,12 +2,14 @@
 that prepares a bridge's ports, carries a bridge-routed device's commands to the
 bridge, and keeps the devices a bridge carries in step with it.
 
-A device is bound to a bridge port when its resolved config names both
-``bridge`` and ``bridge_port`` (core/device_config.py). There are two kinds. A
-serial device has its connection rewritten to the bridge's pass-through and
-dials it itself. An IR device on an emitter port (resolved transport ``bridge``)
-has no connection at all: it emits through the live bridge instance, and is
-online exactly while its bridge is.
+Which devices a bridge carries, and how, is what the resolver recorded of each
+device's binding (``core/bridge_binding.py``, asked through ``bridge_binding``,
+never the ``bridge`` / ``bridge_port`` markers). There are two kinds. A serial
+device on a pass-through port has its connection rewritten to the bridge's
+pass-through and dials it itself. An IR device on an emitter port has no
+connection at all: it emits through the live bridge instance, and is online
+exactly while its bridge is. A binding that did not resolve is neither: the
+connect door refuses that device, and the bridge has nothing to do for it.
 
 The rule worth knowing before changing it: only the second kind MIRRORS the
 bridge (its connected state, a lifecycle event on a real edge only, and the
@@ -25,6 +27,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
+from openavc.core.bridge_binding import bridge_binding
 from openavc.drivers.serial_line import with_line_settings_read
 from openavc.utils.logger import get_logger
 
@@ -33,12 +36,6 @@ if TYPE_CHECKING:
     from openavc.drivers.base import BaseDriver
 
 log = get_logger("openavc.core.device_manager")
-
-
-def _binds_bridge_port(config: dict[str, Any]) -> bool:
-    """True when a resolved config is bound to a port on a bridge: both markers
-    set, which is also the precondition for its connection being rewritten."""
-    return bool(config.get("bridge") and config.get("bridge_port"))
 
 
 class DeviceBridgesMixin:
@@ -58,7 +55,7 @@ class DeviceBridgesMixin:
     def _attach_bridge_router(self, driver: BaseDriver, config: dict[str, Any]) -> None:
         """Hand a device bound to a bridge port the router that reaches its
         bridge at send time (an IR device emits through the live bridge)."""
-        if _binds_bridge_port(config):
+        if bridge_binding(config).through:
             driver._bridge_router = self._route_bridge_command
 
     async def _prepare_bridge_for(
@@ -78,10 +75,10 @@ class DeviceBridgesMixin:
         the hardware, so a transient miss self-heals on the next add/edit. Never
         raises: a bridge-side failure must not strand the downstream offline.
         """
-        if not _binds_bridge_port(config):
+        binding = bridge_binding(config)
+        if not binding.through:
             return
-        bridge_id = config.get("bridge")
-        bridge_port = config.get("bridge_port")
+        bridge_id, bridge_port = binding.bridge, binding.port
         bridge = self._devices.get(bridge_id)
         if bridge is None or not getattr(bridge, "is_bridge", False):
             log.debug(
@@ -123,11 +120,9 @@ class DeviceBridgesMixin:
         socket and comes up online only if its bridge already is, so one still
         offline says its bridge is why. The mirror clears it when the bridge
         comes up."""
-        if config.get("transport") != "bridge" or driver.get_state("connected"):
-            return
-        bridge_id = config.get("bridge")
-        if bridge_id:
-            self._set_bridge_offline_reason(device_id, bridge_id)
+        binding = bridge_binding(config)
+        if binding.emits and not driver.get_state("connected"):
+            self._set_bridge_offline_reason(device_id, binding.bridge)
 
     async def _bridge_came_up(self, bridge_id: str) -> None:
         """A device connected: when it is a bridge, its ports are prepared
@@ -176,7 +171,7 @@ class DeviceBridgesMixin:
 
     def _bridge_routed_dependents(self, bridge_id: str) -> list[str]:
         """Live device ids that route their commands through ``bridge_id`` and
-        have no transport of their own (resolved ``transport == "bridge"``).
+        have no transport of their own (an emitter binding).
 
         These are the devices whose connected state mirrors the bridge (IR
         devices on emitter ports). A serial pass-through downstream is *not*
@@ -184,7 +179,7 @@ class DeviceBridgesMixin:
         its own socket, so it needs no mirroring.
         """
         return self._live_devices_where(
-            lambda cfg: cfg.get("bridge") == bridge_id and cfg.get("transport") == "bridge"
+            lambda cfg: _carried_by(cfg, bridge_id) and bridge_binding(cfg).emits
         )
 
     def _bridge_bound_dependents(self, bridge_id: str) -> list[str]:
@@ -195,31 +190,28 @@ class DeviceBridgesMixin:
         has to configure a port for, including the serial pass-through devices
         that dial the bridge themselves and so are nobody's mirror.
         """
-        return self._live_devices_where(
-            lambda cfg: cfg.get("bridge") == bridge_id and cfg.get("bridge_port")
-        )
+        return self._live_devices_where(lambda cfg: _carried_by(cfg, bridge_id))
 
     def _carrier_bridge_if_offline(self, device_id: str) -> str | None:
         """The id of the bridge carrying ``device_id``, when that bridge is down.
 
-        A serial device bound through a bridge has its connection rewritten to
-        the bridge's transparent pass-through (``resolve_bridge_binding``), which
-        overwrites host, port and transport but keeps ``bridge`` / ``bridge_port``
-        in the resolved config. Those markers are the only thing left tying the
-        failing socket back to the bridge, because the address it failed against
-        belongs to the bridge rather than to the device.
+        A serial device on a pass-through port has its connection rewritten to
+        the bridge's (``resolve_bridge_binding``), which overwrites host, port
+        and transport. Its recorded binding is the only thing left tying the
+        failing socket back to the bridge, because the address it failed
+        against belongs to the bridge rather than to the device.
 
-        Both markers are required, matching the rewrite's own precondition: a
-        binding with no port was never rewritten, so that device is dialling its
-        own address and the bridge has nothing to do with the failure. ``None``
-        also when the bridge is UP -- a live bridge with an unreachable device
-        downstream is the device's own fault, and saying otherwise would point
-        the integrator at the wrong box.
+        Only a resolved pass-through counts: a binding that did not resolve was
+        never rewritten and is refused before it dials, so the bridge has
+        nothing to do with that failure. ``None`` also when the bridge is UP --
+        a live bridge with an unreachable device downstream is the device's own
+        fault, and saying otherwise would point the integrator at the wrong box.
         """
         cfg = self._device_configs.get(device_id, {}).get("config", {})
-        if not _binds_bridge_port(cfg):
+        binding = bridge_binding(cfg)
+        if not binding.passthrough:
             return None
-        bridge_id = cfg.get("bridge")
+        bridge_id = binding.bridge
         bridge = self._devices.get(bridge_id)
         # A bridge that is not registered at all (its driver is not installed
         # yet) counts as down: the downstream is certainly not reaching anything
@@ -255,3 +247,9 @@ class DeviceBridgesMixin:
         if was != online:
             edge = "connected" if online else "disconnected"
             await self.events.emit(f"device.{edge}.{dev_id}")
+
+
+def _carried_by(config: dict[str, Any], bridge_id: str) -> bool:
+    """Whether a resolved config's connection goes through ``bridge_id``."""
+    binding = bridge_binding(config)
+    return binding.through and binding.bridge == bridge_id

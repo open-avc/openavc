@@ -24,6 +24,7 @@ from openavc.core.connection_fault import (
     typed_fault_from_exc,
     usb_adapter_missing_message,
 )
+from openavc.core.bridge_binding import bridge_binding
 from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
 from openavc.drivers.transport_choice import configured_transport
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
@@ -151,10 +152,11 @@ def require_usb_adapter(config: dict, driver_transport: str = "") -> dict:
     the adapter there from the bound one: the port there reports no serial
     number, or this host cannot list its ports.
 
-    Only applies to a real local serial connection: a bridge-bound serial
-    device has been rewritten to ``transport=tcp`` by the bridge resolver and
-    is left alone, and an explicit network transport is skipped (the
-    simulation redirect sets ``tcp`` and leaves ``usb_serial`` in place).
+    Only applies to a real local serial connection: a device set to go
+    through a bridge (``core.bridge_binding``, resolved or not) is not on this
+    computer's port and is left alone, and an explicit network transport is
+    skipped (the simulation redirect sets ``tcp`` and leaves ``usb_serial`` in
+    place).
 
     ``driver_transport`` is the device's driver-declared transport
     (``DRIVER_INFO['transport']``). When the saved config omits ``transport``,
@@ -184,7 +186,7 @@ def _bound_usb_serial(config: dict, driver_transport: str) -> str:
     """The adapter serial number a local serial device is bound to, or ""
     when its port is not the adapter's to decide (a bridge, a network
     transport, no ``usb_serial``)."""
-    if config.get("bridge"):
+    if bridge_binding(config).bound:
         return ""
     # The device's own choice, else the driver's (transport_choice); "" is a
     # driver not installed, whose stored adapter binding still counts.

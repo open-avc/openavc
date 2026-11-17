@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from openavc.core.bridge_binding import bridge_binding
+
 
 class BridgePorts:
     """A bridge's ports, for ``BaseDriver`` (see the module docstring)."""
@@ -137,15 +139,15 @@ class BridgePorts:
     async def emit_via_bridge(self, kind: str, payload: dict[str, Any]) -> Any:
         """Emit ``payload`` through the bridge this device is bound to.
 
-        For a bridge-routed device (its config carries ``bridge`` +
-        ``bridge_port``): looks up the live bridge via the injected router and
-        calls its bridge_emit. Raises ConnectionError if the device is not
-        bridge-bound or the bridge is unavailable.
+        For a bridge-routed device (the resolver recorded an emitter binding,
+        core/bridge_binding.py): looks up the live bridge via the injected
+        router and calls its bridge_emit. Raises ConnectionError if the device
+        is not bound to a bridge's emitter port or the bridge is unavailable.
         """
-        bridge_id = self.config.get("bridge")
-        port_id = self.config.get("bridge_port")
-        if not bridge_id or not port_id:
+        binding = bridge_binding(self.config)
+        if not binding.emits:
             raise ConnectionError(f"[{self.device_id}] not bound to a bridge port")
+        bridge_id, port_id = binding.bridge, binding.port
         if self._bridge_router is None:
             raise ConnectionError(
                 f"[{self.device_id}] bridge routing unavailable"
