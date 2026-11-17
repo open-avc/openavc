@@ -12,6 +12,18 @@ export interface ProjectStoreSnapshot {
   saving: boolean;
   dirty: boolean;
   revision: string | null;
+  /** The last save met a newer revision; its own banner says so. */
+  conflictDetected?: boolean;
+}
+
+/** What acting on a notice can do, injected so it is testable without a
+ *  WebSocket (hooks/useWebSocket.ts gives the real ones). */
+export interface ProjectReloadEffects {
+  getStore: () => ProjectStoreSnapshot;
+  /** Settles once the save under way, and any it chains, is done. */
+  whenSaved: () => Promise<void>;
+  refetch: (revision: string | null | undefined) => void;
+  warn: (message: string) => void;
 }
 
 export type ProjectReloadDecision =
@@ -67,4 +79,30 @@ export function reloadStillNeeded(
   noticeRevision: string | null | undefined,
 ): boolean {
   return noticeRevision == null || noticeRevision !== storeRevision;
+}
+
+/**
+ * Act on a project.reloaded notice: nothing for this tab's own change, a
+ * quiet refetch, or a warning while edits are unsaved. Another writer's
+ * change during this tab's save is acted on once the save is done (and not
+ * at all when the save conflicted: its banner already says the project
+ * moved). Resolves when the notice has been acted on.
+ */
+export async function actOnProjectReload(
+  notice: ProjectReloadMessage,
+  effects: ProjectReloadEffects,
+  clientId: string = CLIENT_ID,
+): Promise<void> {
+  const decision = decideProjectReload(effects.getStore(), notice, clientId);
+  if (decision === "own") return;
+  if (decision === "after-save") {
+    await effects.whenSaved();
+    if (!effects.getStore().conflictDetected) await actOnProjectReload(notice, effects, clientId);
+  } else if (decision === "refetch") {
+    effects.refetch(notice.revision);
+  } else if (decision === "warn-other-session") {
+    effects.warn("Project modified by another session. Save may trigger a conflict. Consider reloading.");
+  } else {
+    effects.warn("Project modified externally. Your unsaved changes may conflict");
+  }
 }

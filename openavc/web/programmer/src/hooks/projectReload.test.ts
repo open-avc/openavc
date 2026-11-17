@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { decideProjectReload, reloadStillNeeded } from "./projectReload";
+import { describe, expect, it, vi } from "vitest";
+import {
+  actOnProjectReload,
+  decideProjectReload,
+  reloadStillNeeded,
+  type ProjectStoreSnapshot,
+} from "./projectReload";
 
 const clean = { saving: false, dirty: false, revision: "r1" };
 const dirty = { saving: false, dirty: true, revision: "r1" };
@@ -58,5 +63,56 @@ describe("reloadStillNeeded", () => {
     expect(reloadStillNeeded(null, "r2")).toBe(true);
     expect(reloadStillNeeded("r1", undefined)).toBe(true);
     expect(reloadStillNeeded("r1", null)).toBe(true);
+  });
+});
+
+describe("actOnProjectReload", () => {
+  const notice = { type: "project.reloaded" as const, revision: "r9", origin_client: "someone-else" };
+
+  function effects(during: ProjectStoreSnapshot, after: ProjectStoreSnapshot) {
+    let store = during;
+    let settle: () => void = () => {};
+    const saved = new Promise<void>((resolve) => {
+      settle = () => {
+        store = after;
+        resolve();
+      };
+    });
+    return {
+      fx: {
+        getStore: () => store,
+        whenSaved: () => saved,
+        refetch: vi.fn(),
+        warn: vi.fn(),
+      },
+      settle: () => settle(),
+    };
+  }
+
+  it("fetches another writer's change once the save it landed during is done", async () => {
+    const { fx, settle } = effects({ ...dirty, saving: true }, { ...clean, revision: "r2" });
+    const acted = actOnProjectReload(notice, fx, "me");
+    await Promise.resolve();
+    expect(fx.refetch).not.toHaveBeenCalled();
+    settle();
+    await acted;
+    expect(fx.refetch).toHaveBeenCalledWith("r9");
+    expect(fx.warn).not.toHaveBeenCalled();
+  });
+
+  it("says nothing more when the save it landed during conflicted", async () => {
+    const { fx, settle } = effects({ ...dirty, saving: true }, { ...dirty, conflictDetected: true });
+    const acted = actOnProjectReload(notice, fx, "me");
+    settle();
+    await acted;
+    expect(fx.refetch).not.toHaveBeenCalled();
+    expect(fx.warn).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for this tab's own save", async () => {
+    const { fx } = effects({ ...dirty, saving: true }, clean);
+    await actOnProjectReload({ ...notice, origin_client: "me" }, fx, "me");
+    expect(fx.refetch).not.toHaveBeenCalled();
+    expect(fx.warn).not.toHaveBeenCalled();
   });
 });
