@@ -36,7 +36,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
-from openavc.drivers.driver_change import changed
+from openavc.drivers.driver_change import changed, holding
 from openavc.drivers.driver_loader import (
     AmbiguousDriverFile,
     driver_companions,
@@ -194,27 +194,28 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     next door (documented behaviour), because the editor needs the structured
     ``line`` to mark the offending row and an HTTPException detail is prose.
     """
-    require_mutable_driver(driver_id)
-    filepath = _safe_driver_path(driver_id)
-    source = body.get("source")
-    if source is None:
-        raise HTTPException(status_code=422, detail="Missing 'source' field")
+    async with holding(driver_id):
+        require_mutable_driver(driver_id)
+        filepath = _safe_driver_path(driver_id)
+        source = body.get("source")
+        if source is None:
+            raise HTTPException(status_code=422, detail="Missing 'source' field")
 
-    if not filepath.exists():
-        raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+        if not filepath.exists():
+            raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
-    data = _source_bytes(source)
-    require_mutable_driver_file(filepath.name, data)
-    problems = _source_problems(source, filepath.name)
-    if problems and body.get("require_valid_syntax"):
-        return {"status": "error", "driver_id": driver_id, "saved": False, **problems}
+        data = _source_bytes(source)
+        require_mutable_driver_file(filepath.name, data)
+        problems = _source_problems(source, filepath.name)
+        if problems and body.get("require_valid_syntax"):
+            return {"status": "error", "driver_id": driver_id, "saved": False, **problems}
 
-    try:
-        filepath.write_bytes(data)
-    except OSError as e:
-        raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
+        try:
+            filepath.write_bytes(data)
+        except OSError as e:
+            raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
 
-    return {"status": "saved", "driver_id": driver_id, **_kept(problems)}
+        return {"status": "saved", "driver_id": driver_id, **_kept(problems)}
 
 
 def _source_bytes(source: str) -> bytes:
@@ -280,6 +281,12 @@ def _issues_sentence(issues: list[str]) -> str:
 @endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     """Create a new Python driver file."""
+    async with holding(body.id):
+        return await _create_python_driver(body)
+
+
+async def _create_python_driver(body: PythonDriverCreateRequest) -> dict:
+    """The Code view's create, from its first check to its announcement."""
     from openavc.system_config import DRIVER_REPO_DIR
 
     require_mutable_driver(body.id)
@@ -304,10 +311,26 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 
     driver_class = load_python_driver_file(filepath)
     if driver_class:
+        _claim_created(driver_class.DRIVER_INFO["id"], filepath)
         register_driver(driver_class)
 
     await _announce(body.id)
     return {"status": "created", "driver_id": body.id}
+
+
+def _claim_created(driver_id: str, filepath: Path) -> None:
+    """The id a created file turned out to declare, made this change's
+    before it is registered; while another change to that driver is under way
+    the file just created goes again, so the same create can be tried later."""
+    from openavc.api.routes.drivers import claim_or_answer
+    from openavc.drivers.python_modules import forget_module
+
+    try:
+        claim_or_answer(driver_id)
+    except HTTPException:
+        forget_module(filepath)
+        filepath.unlink(missing_ok=True)
+        raise
 
 
 @router.delete("/python-drivers/{driver_id}", dependencies=[Depends(require_claimed_auth)])
@@ -315,6 +338,12 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 async def delete_python_driver(driver_id: str) -> dict:
     """Delete a Python driver: every file that is that driver, with each
     one's companions, so a renamed copy cannot come back at the next start."""
+    async with holding(driver_id):
+        return await _delete_python_driver(driver_id)
+
+
+async def _delete_python_driver(driver_id: str) -> dict:
+    """The Code view's delete, from its first check to its announcement."""
     from openavc.system_config import DRIVER_REPO_DIR
 
     require_mutable_driver(driver_id)
@@ -356,6 +385,16 @@ async def delete_python_driver(driver_id: str) -> dict:
 @endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def reload_python_driver_endpoint(driver_id: str) -> dict:
     """Hot-reload a Python driver and reconnect affected devices."""
+    async with holding(driver_id):
+        return await _reload_python_driver(driver_id)
+
+
+async def _reload_python_driver(driver_id: str) -> dict:
+    """The Code view's reload, from its first check to its announcement. The
+    id the file declares now, and the one it declared, are this change's
+    before either is registered or dropped."""
+    from openavc.api.routes.drivers import claim_or_answer
+
     require_mutable_driver(driver_id)
     filepath = _safe_driver_path(driver_id)
 
@@ -365,7 +404,7 @@ async def reload_python_driver_endpoint(driver_id: str) -> dict:
     from openavc.drivers.driver_loader import reload_python_driver
 
     require_mutable_driver_file(filepath.name, filepath.read_bytes())
-    result = reload_python_driver(filepath)
+    result = reload_python_driver(filepath, claim=claim_or_answer)
 
     if result["status"] == "error":
         return result

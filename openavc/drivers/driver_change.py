@@ -1,5 +1,23 @@
 """THE two steps of a driver change: ``admit``, which puts a driver file on
-this server, and ``changed``, which follows every change at every door.
+this server, and ``changed``, which follows every change at every door; and
+THE rule that orders two changes on one driver, ``holding``.
+
+**One change at a time on each driver id.** Every door that writes, removes,
+registers or reloads a driver (the community install, update and uninstall,
+the single-file and bundle imports, the Driver Builder's create, save, patch,
+delete and reload, the Code view's create, save, delete and reload, the
+assistant's create and update) runs inside ``holding`` the ids it names, from
+its first check to its announcement. A door awaits between its own steps (a
+catalog download, the devices on the driver coming down and being built
+again), and a second door on the same driver waits for the first to answer
+before it checks anything, so each answer describes the end state it left and
+the later door's answer is the end state of both. Doors on other drivers do
+not wait. A door that learns an id only once it has read or run a file (an
+import whose id is computed, a reload that changed the id) ``claim``s it
+before registering anything under it: taken when free, refused while another
+change holds it, never waited for, since a change waiting while it holds an id
+could wait forever on one that waits for its own. ``admit`` claims the id it
+registers.
 
 Every door that writes a driver file (the community install and update, the
 single-file and bundle imports, the Driver Builder's saves) hands ``admit``
@@ -9,7 +27,7 @@ registry and ``sys.modules`` exactly as they were. A person who imports a
 newer copy of their driver with a mistake in it keeps the copy that worked.
 
 ``admit`` runs these steps in order, with no ``await`` anywhere in it, so no
-other request ever sees a change half made:
+other request ever sees a file half admitted:
 
 1. **Check.** Every file's protected identity, and the platform floor the
    driver file declares, read from its bytes for both kinds of driver and never
@@ -47,22 +65,26 @@ every open Programmer is told (``announce``). A door names the ids a driver
 arrived for or changed, and the ids it took away (``gone``), whose devices it
 leaves as they are.
 
-There is no FastAPI here: ``admit`` raises ``DriverRefused`` (a status, a
-sentence, and the loader's reasons when it refused the file) for its own
-refusals, and a door's gates raise what the door raises. ``changed`` raises
-nothing. Logs as ``openavc.api.routes.drivers``, where the install doors'
-lines have always been filed.
+There is no FastAPI here: ``admit`` and ``claim`` raise ``DriverRefused`` (a
+status, a sentence, and the loader's reasons when it refused the file) for
+their own refusals, and a door's gates raise what the door raises. ``changed``
+raises nothing. Logs as ``openavc.api.routes.drivers``, where the install
+doors' lines have always been filed.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
 import re
 import shutil
 import sys
 import tempfile
-from collections.abc import Awaitable, Callable, Collection, Mapping
+import weakref
+from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Mapping
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -143,6 +165,110 @@ class Admitted:
     driver_class: type
     removed: list[str]
     notices: tuple[str, ...] = ()
+
+
+# --- one change at a time on each driver id --------------------------------------
+
+
+class _Holds:
+    """Which change holds each driver id on one event loop, and the changes
+    waiting for one. An id is here only while a change holds it."""
+
+    def __init__(self) -> None:
+        self.holders: dict[str, asyncio.Task[Any]] = {}
+        self.waiting: list[asyncio.Future[None]] = []
+
+    def free_for(self, change: asyncio.Task[Any] | None, driver_ids: Collection[str]) -> bool:
+        """Whether no other change holds any of ``driver_ids``."""
+        return all(self.holders.get(driver_id, change) is change for driver_id in driver_ids)
+
+    def take(self, change: asyncio.Task[Any] | None, driver_ids: Collection[str]) -> list[str]:
+        """Take each of ``driver_ids`` this change does not hold already; the
+        ones it took, which are the ones it gives back."""
+        taken = [driver_id for driver_id in driver_ids if driver_id not in self.holders]
+        for driver_id in taken:
+            self.holders[driver_id] = change
+        return taken
+
+    def give_back(self, driver_ids: Collection[str]) -> None:
+        """Give ``driver_ids`` back and wake every waiting change to look again."""
+        for driver_id in driver_ids:
+            self.holders.pop(driver_id, None)
+        waiting, self.waiting = self.waiting, []
+        for waiter in waiting:
+            if not waiter.done():
+                waiter.set_result(None)
+
+
+_holds_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _Holds] = (
+    weakref.WeakKeyDictionary()
+)
+
+# The ids the innermost ``holding`` of this change took, which ``claim`` adds to.
+_this_change: ContextVar[list[str] | None] = ContextVar("driver_change_held", default=None)
+
+
+def _holds_on(loop: asyncio.AbstractEventLoop) -> _Holds:
+    """The holds on ``loop``: a test, a restart, each runs its own."""
+    holds = _holds_by_loop.get(loop)
+    if holds is None:
+        holds = _holds_by_loop[loop] = _Holds()
+    return holds
+
+
+def _busy(driver_id: str) -> DriverRefused:
+    return DriverRefused(
+        409,
+        f"Another change to the driver '{driver_id}' is still being made. "
+        "Try again once it has finished.",
+    )
+
+
+@asynccontextmanager
+async def holding(*driver_ids: str) -> AsyncIterator[None]:
+    """Hold ``driver_ids`` for one change: wait until no other change holds
+    any of them, take them all at once, and give them back when the change
+    ends, however it ends. Ids this change holds already (a door that calls
+    another) are not waited for or given back here. An empty id is ignored."""
+    loop = asyncio.get_running_loop()
+    holds = _holds_on(loop)
+    change = asyncio.current_task()
+    wanted = [driver_id for driver_id in dict.fromkeys(driver_ids) if driver_id]
+    while not holds.free_for(change, wanted):
+        waiter = loop.create_future()
+        holds.waiting.append(waiter)
+        try:
+            await waiter
+        finally:
+            if waiter in holds.waiting:
+                holds.waiting.remove(waiter)
+    taken = holds.take(change, wanted)
+    token = _this_change.set(taken)
+    try:
+        yield
+    finally:
+        _this_change.reset(token)
+        holds.give_back(taken)
+
+
+def claim(driver_id: str) -> None:
+    """Make ``driver_id`` this change's before anything is registered or
+    dropped under it. Inside ``holding``, a free id is taken until the hold
+    ends; an id another change holds is refused (``DriverRefused``, 409), never
+    waited for. Outside one, only the refusal applies, and with no event loop
+    running no change can be under way."""
+    try:
+        holds = _holds_on(asyncio.get_running_loop())
+    except RuntimeError:
+        return
+    if not driver_id:
+        return
+    change = asyncio.current_task()
+    if not holds.free_for(change, [driver_id]):
+        raise _busy(driver_id)
+    mine = _this_change.get()
+    if mine is not None:
+        mine.extend(holds.take(change, [driver_id]))
 
 
 # --- the platform floor ---------------------------------------------------------
@@ -317,10 +443,18 @@ def _python_class(driver_class: type | None, gates: Gates, reason: str | None = 
 
 
 def _gated(driver_class: type, gates: Gates) -> type:
-    """``driver_class``, once the door's class gate has passed it."""
+    """``driver_class``, once the door's class gate has passed it and its id
+    is this change's (``claim``)."""
     if gates.driver_class is not None:
         gates.driver_class(driver_class)
+    claim(_class_id(driver_class))
     return driver_class
+
+
+def _class_id(driver_class: type) -> str:
+    info = getattr(driver_class, "DRIVER_INFO", None)
+    driver_id = info.get("id") if isinstance(info, dict) else None
+    return driver_id if isinstance(driver_id, str) else ""
 
 
 class _Before:

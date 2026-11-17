@@ -8,10 +8,13 @@ surface marked ``editable: false``, and a YAML definition is never written
 over its id. A definition the AI writes is checked strictly (an undeclared
 key it invented would otherwise land in a saved driver and do nothing),
 saved to the user driver folder, never over a shipped built-in, registered,
-and announced to the IDE. Create and update answer with the checker's issue
-records, the ones the Driver Builder's Validate shows (errors and warnings,
-each with its place): a refused draft names each error, and a saved one the
-warnings it was saved with, which never refuse it.
+and announced to the IDE, all of it holding the driver's id
+(``driver_change.holding``) as every other door that changes a driver does,
+so the assistant's change and one made in the IDE never interleave. Create
+and update answer with the checker's issue records, the ones the Driver
+Builder's Validate shows (errors and warnings, each with its place): a
+refused draft names each error, and a saved one the warnings it was saved
+with, which never refuse it.
 
 ``test_driver_command`` never opens a port a connected project device holds
 (``discovery/port_guard.py``): a device that serves one connection at a time
@@ -25,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError
+from openavc.drivers.driver_change import holding
 from openavc.drivers.refused_files import load_error, not_loaded_sentence
 from openavc.drivers.registry import (
     is_driver_registered,
@@ -249,31 +253,32 @@ class DriverToolsMixin:
         if not definition.get("id"):
             return {"error": "Driver definition must have an 'id' field"}
 
-        dirs = self._get_driver_dirs()
-        if any(d.get("id") == definition["id"] for d in list_driver_definitions(dirs)):
-            return {"error": f"Driver definition '{definition['id']}' already exists"}
+        async with holding(definition["id"]):
+            dirs = self._get_driver_dirs()
+            if any(d.get("id") == definition["id"] for d in list_driver_definitions(dirs)):
+                return {"error": f"Driver definition '{definition['id']}' already exists"}
 
-        # No YAML file for the id but something is registered under it means a
-        # Python driver already owns it. Writing a definition here would load
-        # over the top of working hardware, and the usual reason to try is
-        # having read the introspected surface get_driver_definition returns
-        # for a Python driver and mistaken it for something to save back.
-        if is_driver_registered(definition["id"]):
-            return {"error": (
-                f"Driver '{definition['id']}' is already installed as a Python-format "
-                "driver. A YAML definition sharing its id would shadow it. Pick a "
-                "different id, or use the driver that is already there."
-            )}
+            # No YAML file for the id but something is registered under it means a
+            # Python driver already owns it. Writing a definition here would load
+            # over the top of working hardware, and the usual reason to try is
+            # having read the introspected surface get_driver_definition returns
+            # for a Python driver and mistaken it for something to save back.
+            if is_driver_registered(definition["id"]):
+                return {"error": (
+                    f"Driver '{definition['id']}' is already installed as a Python-format "
+                    "driver. A YAML definition sharing its id would shadow it. Pick a "
+                    "different id, or use the driver that is already there."
+                )}
 
-        issues = _issues(definition)
-        refusal = _refuse_invalid(issues)
-        if refusal:
-            return refusal
+            issues = _issues(definition)
+            refusal = _refuse_invalid(issues)
+            if refusal:
+                return refusal
 
-        save_driver_definition(definition, _user_driver_dir(dirs))
-        _register_definition(definition)
-        await _announce(definition["id"])
-        return {"status": "created", "id": definition["id"], "issues": issues}
+            save_driver_definition(definition, _user_driver_dir(dirs))
+            _register_definition(definition)
+            await _announce(definition["id"])
+            return {"status": "created", "id": definition["id"], "issues": issues}
 
     async def _update_driver_definition(self, input: dict) -> Any:
         from openavc.drivers.driver_loader import list_driver_definitions, restore_driver_registration
@@ -282,34 +287,35 @@ class DriverToolsMixin:
         definition = input.get("definition", {})
         if not definition.get("id"):
             return {"error": "Driver definition must have an 'id' field"}
-        dirs = self._get_driver_dirs()
+        async with holding(driver_id, definition["id"]):
+            dirs = self._get_driver_dirs()
 
-        existing = list_driver_definitions(dirs)
-        match = next((d for d in existing if d.get("id") == driver_id), None)
-        if match is None:
-            return {"error": f"Driver definition '{driver_id}' not found"}
+            existing = list_driver_definitions(dirs)
+            match = next((d for d in existing if d.get("id") == driver_id), None)
+            if match is None:
+                return {"error": f"Driver definition '{driver_id}' not found"}
 
-        source = match.get("_source_file")
-        old_path = Path(source) if source else None
-        new_id = definition["id"]
-        issues = _issues(definition)
-        refusal = (
-            _refuse_builtin(driver_id, old_path)
-            or _refuse_invalid(issues)
-            or _refuse_taken_id(driver_id, new_id, existing)
-        )
-        if refusal:
-            return refusal
+            source = match.get("_source_file")
+            old_path = Path(source) if source else None
+            new_id = definition["id"]
+            issues = _issues(definition)
+            refusal = (
+                _refuse_builtin(driver_id, old_path)
+                or _refuse_invalid(issues)
+                or _refuse_taken_id(driver_id, new_id, existing)
+            )
+            if refusal:
+                return refusal
 
-        _replace_definition_file(definition, dirs, old_path)
-        _register_definition(definition)
-        if new_id != driver_id:
-            # The rename removed the user file for the old id. If it was
-            # overriding a shipped built-in, re-register the built-in so the
-            # old id keeps working; otherwise drop the stale registration.
-            restore_driver_registration(driver_id, dirs)
-        await _announce(new_id)
-        return {"status": "updated", "id": new_id, "issues": issues}
+            _replace_definition_file(definition, dirs, old_path)
+            _register_definition(definition)
+            if new_id != driver_id:
+                # The rename removed the user file for the old id. If it was
+                # overriding a shipped built-in, re-register the built-in so the
+                # old id keeps working; otherwise drop the stale registration.
+                restore_driver_registration(driver_id, dirs)
+            await _announce(new_id)
+            return {"status": "updated", "id": new_id, "issues": issues}
 
     async def _test_driver_command(self, input: dict) -> Any:
         import asyncio

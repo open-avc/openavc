@@ -43,7 +43,7 @@ import inspect
 import re
 import sys
 import traceback
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -335,13 +335,24 @@ def trial_driver_import(filepath: Path) -> PythonRead:
         sys.modules.pop(name, None)
 
 
-def reload_python_driver(filepath: Path) -> dict[str, Any]:
+def _claim_ids(claim: Callable[[str], None], *driver_ids: str | None) -> None:
+    """``claim`` asked of each id a reload registers or drops."""
+    for driver_id in driver_ids:
+        if driver_id:
+            claim(driver_id)
+
+
+def reload_python_driver(
+    filepath: Path, claim: Callable[[str], None] | None = None
+) -> dict[str, Any]:
     """Hot-reload a Python driver from disk.
 
     The new code is imported under a throwaway name first; if that fails, the
-    running driver is untouched and the result says why. Then the file is
-    imported for real, the previous id is dropped when the id changed, and the
-    new class is registered.
+    running driver is untouched and the result says why. Then ``claim`` is
+    asked of the id the file declares and of the id it replaces, and raises to
+    refuse with nothing touched (a door's ``driver_change.claim``). Then the
+    file is imported for real, the previous id is dropped when the id changed,
+    and the new class is registered.
 
     Returns ``{status, driver_id, old_driver_id, notices}`` (``notices``,
     what the author's doors refuse in a driver that loads anyway, kept for
@@ -358,6 +369,8 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
     old_module = sys.modules.get(name)
     old_class = driver_class_in(old_module, name) if old_module is not None else None
     old_driver_id = old_class.DRIVER_INFO["id"] if old_class is not None else None
+    if claim is not None:
+        _claim_ids(claim, new_driver_id, old_driver_id)
     sys.modules.pop(name, None)
 
     final = read_python_driver_file(filepath)

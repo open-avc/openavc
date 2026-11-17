@@ -12,7 +12,10 @@ catalog's hashes; a hand-imported file has no catalog entry to hash against),
 its gates (the unknown-key gate for an import, the id it asked for at an
 install) and its sentences. What follows every change, here and at the
 Builder's doors, is `driver_change.changed`: the simulation, the devices,
-Discovery and the announcement, in one order for every door.
+Discovery and the announcement, in one order for every door. Each door holds
+its driver's id (`driver_change.holding`) from its first check to its
+announcement, so a second door on the same driver begins once the first has
+answered; an import holds the id its file declares.
 `tests/test_driver_install_doors_pins.py` holds each door as it is.
 
 Four neighbours are *not* here: `api/driver_catalog.py` (the community
@@ -55,7 +58,9 @@ from openavc.drivers.driver_change import (
     admit,
     changed,
     check_driver_file,
+    claim,
     floor_refusal,
+    holding,
 )
 # Re-exported for the doors that do not call ``changed`` yet (module docstring).
 from openavc.drivers.driver_change import announce as announce_drivers_changed  # noqa: F401
@@ -118,6 +123,16 @@ def admit_or_answer(change: DriverChange, gates: Gates, failed: str) -> Admitted
         raise
     except Exception as e:
         raise _api_error(500, failed, e)
+
+
+def claim_or_answer(driver_id: str) -> None:
+    """``driver_change.claim`` as this API answers it: at a door that learns
+    an id only once it has read or run a file, before anything is registered
+    under it, the 409 while another change to that driver is under way."""
+    try:
+        claim(driver_id)
+    except DriverRefused as e:
+        raise _refusal_answer(e)
 
 
 def _refusal_answer(refusal: DriverRefused) -> HTTPException:
@@ -287,42 +302,43 @@ async def get_community_drivers(refresh: bool = False) -> dict[str, Any]:
 @router.post("/drivers/install")
 async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[str, Any]:
     """Download and install a driver from the community repo."""
-    require_mutable_driver(body.driver_id)
+    async with holding(body.driver_id):
+        require_mutable_driver(body.driver_id)
 
-    # min_platform_version supplied by the caller. The file's own is checked
-    # after the download, for both kinds of driver, so a caller that sends
-    # none (Discovery's Install & Add, the AI's install) cannot bypass it.
-    if body.min_platform_version:
-        _enforce_min_platform_version(body.min_platform_version)
+        # min_platform_version supplied by the caller. The file's own is checked
+        # after the download, for both kinds of driver, so a caller that sends
+        # none (Discovery's Install & Add, the AI's install) cannot bypass it.
+        if body.min_platform_version:
+            _enforce_min_platform_version(body.min_platform_version)
 
-    driver_repo = _get_driver_repo_dir()
-    driver_repo.mkdir(parents=True, exist_ok=True)
+        driver_repo = _get_driver_repo_dir()
+        driver_repo.mkdir(parents=True, exist_ok=True)
 
-    # Pin the source to the official catalog repo (not merely "some GitHub URL")
-    require_catalog_url(body.file_url, what="Driver URL")
+        # Pin the source to the official catalog repo (not merely "some GitHub URL")
+        require_catalog_url(body.file_url, what="Driver URL")
 
-    # The catalog's hashes for this driver, read server-side. Fetched before the
-    # download so a mismatch is caught with nothing yet written.
-    files = CatalogFiles(
-        body.driver_id, body.file_url, driver_repo, await catalog_check(body.driver_id)
-    )
+        # The catalog's hashes for this driver, read server-side. Fetched before the
+        # download so a mismatch is caught with nothing yet written.
+        files = CatalogFiles(
+            body.driver_id, body.file_url, driver_repo, await catalog_check(body.driver_id)
+        )
 
-    # Every file is fetched, and checked against the catalog, before anything
-    # is written; the driver file is checked first, so a driver this platform
-    # cannot run is refused before its companions are asked for.
-    download = await files.download(_check_driver_file)
-    admit_or_answer(
-        DriverChange(driver_repo, files.file_name, download.files, optional=download.optional),
-        Gates(driver_class=lambda cls: _enforce_driver_id_match(cls, files.driver_id)),
-        failed=f"Failed to load driver '{files.driver_id}'",
-    )
-    outcome = await changed(body.driver_id)
-    return {
-        "status": "installed",
-        "driver_id": body.driver_id,
-        "file": files.file_name,
-        "activated_devices": outcome.activated,
-    }
+        # Every file is fetched, and checked against the catalog, before anything
+        # is written; the driver file is checked first, so a driver this platform
+        # cannot run is refused before its companions are asked for.
+        download = await files.download(_check_driver_file)
+        admit_or_answer(
+            DriverChange(driver_repo, files.file_name, download.files, optional=download.optional),
+            Gates(driver_class=lambda cls: _enforce_driver_id_match(cls, files.driver_id)),
+            failed=f"Failed to load driver '{files.driver_id}'",
+        )
+        outcome = await changed(body.driver_id)
+        return {
+            "status": "installed",
+            "driver_id": body.driver_id,
+            "file": files.file_name,
+            "activated_devices": outcome.activated,
+        }
 
 
 # What each door says above the loader's reasons when it refuses the driver
@@ -407,7 +423,20 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="File must be .avcdriver or .py")
 
     content = await upload.read()
+    async with holding(_import_id(filename, content)):
+        return await _import_driver_file(driver_repo, filename, content)
 
+
+def _import_id(filename: str, content: bytes) -> str:
+    """The id an import holds while it runs: the one its driver file declares,
+    or the name the file arrived with when no id can be read without running
+    it (``admit`` claims the id the file turns out to be)."""
+    driver_id = declared_driver_info(filename, content).get("id")
+    return driver_id if isinstance(driver_id, str) and driver_id else Path(filename).stem
+
+
+async def _import_driver_file(driver_repo: Path, filename: str, content: bytes) -> dict[str, Any]:
+    """The single-file import, from its first check to its announcement."""
     # The same gate Browse Community applies, before the file lands: a driver
     # hand-imported from a partner's website is the same file the catalog
     # install would have refused, and the systems this protects are exactly the
@@ -470,30 +499,31 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
 
     entries = _bundle_entries(await upload.read())
     main_name = _bundle_main(entries)
-    for name, data in entries.items():
-        require_mutable_driver_file(name, data)
-    entries, main_name = _bundle_named_for_its_id(entries, main_name)
+    async with holding(_import_id(main_name, entries[main_name])):
+        for name, data in entries.items():
+            require_mutable_driver_file(name, data)
+        entries, main_name = _bundle_named_for_its_id(entries, main_name)
 
-    _check_driver_file(main_name, entries[main_name])
-    admitted = admit_or_answer(
-        DriverChange(driver_repo, main_name, entries),
-        Gates(
-            definition=_reject_unknown_keys,
-            not_a_definition=_BUNDLE_REFUSED,
-            no_driver_class=_BUNDLE_REFUSED,
-        ),
-        failed=f"Failed to load uploaded driver bundle '{raw_name}'",
-    )
-    driver_id = admitted.driver_class.DRIVER_INFO.get("id", main_name)
-    _remove_other_copies(driver_repo, driver_id, driver_repo / main_name)
-    outcome = await changed(driver_id)
-    return {
-        "status": "uploaded",
-        "driver_id": driver_id,
-        "files": sorted(entries.keys()),
-        "activated_devices": outcome.activated,
-        "notices": list(admitted.notices),
-    }
+        _check_driver_file(main_name, entries[main_name])
+        admitted = admit_or_answer(
+            DriverChange(driver_repo, main_name, entries),
+            Gates(
+                definition=_reject_unknown_keys,
+                not_a_definition=_BUNDLE_REFUSED,
+                no_driver_class=_BUNDLE_REFUSED,
+            ),
+            failed=f"Failed to load uploaded driver bundle '{raw_name}'",
+        )
+        driver_id = admitted.driver_class.DRIVER_INFO.get("id", main_name)
+        _remove_other_copies(driver_repo, driver_id, driver_repo / main_name)
+        outcome = await changed(driver_id)
+        return {
+            "status": "uploaded",
+            "driver_id": driver_id,
+            "files": sorted(entries.keys()),
+            "activated_devices": outcome.activated,
+            "notices": list(admitted.notices),
+        }
 
 
 def _bundle_entries(content: bytes) -> dict[str, bytes]:
@@ -694,28 +724,29 @@ def _remove_installed_file(deleted_file: Path, driver_repo: Path) -> None:
 @router.delete("/drivers/installed/{driver_id}")
 async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     """Uninstall a driver from driver_repo/ and unregister from memory."""
-    require_mutable_driver(driver_id)
+    async with holding(driver_id):
+        require_mutable_driver(driver_id)
 
-    _refuse_while_in_use(driver_id)
+        _refuse_while_in_use(driver_id)
 
-    driver_repo = _get_driver_repo_dir()
-    if not driver_repo.exists():
-        raise HTTPException(status_code=404, detail="Driver not found")
+        driver_repo = _get_driver_repo_dir()
+        if not driver_repo.exists():
+            raise HTTPException(status_code=404, detail="Driver not found")
 
-    # Every file that is this driver, a renamed upload included, so a copy
-    # left behind cannot register the driver again at the next start.
-    driver_files = (
-        driver_files_for(driver_repo, driver_id, ".avcdriver")
-        + driver_files_for(driver_repo, driver_id, ".py")
-    )
-    if not driver_files:
-        raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
+        # Every file that is this driver, a renamed upload included, so a copy
+        # left behind cannot register the driver again at the next start.
+        driver_files = (
+            driver_files_for(driver_repo, driver_id, ".avcdriver")
+            + driver_files_for(driver_repo, driver_id, ".py")
+        )
+        if not driver_files:
+            raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
-    for deleted_file in driver_files:
-        _remove_installed_file(deleted_file, driver_repo)
-    unregister_driver(driver_id)
-    await changed(gone=[driver_id])
-    return {"status": "uninstalled", "driver_id": driver_id}
+        for deleted_file in driver_files:
+            _remove_installed_file(deleted_file, driver_repo)
+        unregister_driver(driver_id)
+        await changed(gone=[driver_id])
+        return {"status": "uninstalled", "driver_id": driver_id}
 
 
 async def _requested_update_url(request: Request) -> str:
@@ -777,62 +808,63 @@ def _what_an_update_removes(
 @router.post("/drivers/installed/{driver_id}/update")
 async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     """Update an installed community driver to a newer version."""
-    require_mutable_driver(driver_id)
+    async with holding(driver_id):
+        require_mutable_driver(driver_id)
 
-    driver_repo = _get_driver_repo_dir()
-    if not driver_repo.exists():
-        raise HTTPException(status_code=404, detail="Driver not found")
+        driver_repo = _get_driver_repo_dir()
+        if not driver_repo.exists():
+            raise HTTPException(status_code=404, detail="Driver not found")
 
-    file_url = await _requested_update_url(request)
-    old_file = _file_an_update_replaces(driver_repo, driver_id)
-    if not old_file:
-        raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
+        file_url = await _requested_update_url(request)
+        old_file = _file_an_update_replaces(driver_repo, driver_id)
+        if not old_file:
+            raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
-    # Validate the new URL the same way install does — finding the old file
-    # accepts any file_url, but the install endpoint pins the source to the
-    # official catalog repo.
-    require_catalog_url(file_url, what="Driver URL")
-    files = CatalogFiles(driver_id, file_url, driver_repo, await catalog_check(driver_id))
+        # Validate the new URL the same way install does — finding the old file
+        # accepts any file_url, but the install endpoint pins the source to the
+        # official catalog repo.
+        require_catalog_url(file_url, what="Driver URL")
+        files = CatalogFiles(driver_id, file_url, driver_repo, await catalog_check(driver_id))
 
-    # Resolve the existing companion (if any) before anything is fetched, so
-    # the change knows what it takes away.
-    old_companion = _installed_yaml_companion(old_file, driver_repo)
+        # Resolve the existing companion (if any) before anything is fetched, so
+        # the change knows what it takes away.
+        old_companion = _installed_yaml_companion(old_file, driver_repo)
 
-    # The new version's files, a Python driver's convention companions
-    # included, exactly as install fetches them. Without those the new driver
-    # code would land beside the previous version's `_sim.py` /
-    # `_discovery.py`: the simulator would keep answering with the old protocol
-    # while the driver speaks the new one, and discovery would probe with logic
-    # that no longer matches the driver. A failed update leaves the working
-    # driver in place: nothing is written until every file is in hand and the
-    # staged copy is admitted.
-    download = await files.download(_check_driver_file)
-    admitted = admit_or_answer(
-        DriverChange(
-            driver_repo,
-            files.file_name,
-            download.files,
-            optional=download.optional,
-            removes=_what_an_update_removes(old_file, old_companion, files, download),
-        ),
-        Gates(
-            driver_class=lambda cls: _enforce_driver_id_match(cls, driver_id),
-            not_a_definition=_UPDATE_REFUSED,
-            no_driver_class=_UPDATE_REFUSED,
-        ),
-        failed=f"Failed to load updated driver '{driver_id}'",
-    )
-    for name in admitted.removed:
-        if name in download.unpublished:
-            log.info("Removed %s — no longer published for driver '%s'", name, driver_id)
-    # A device already running the driver was built from the old class and
-    # goes on using it until it is built again, so an update only reaches the
-    # fleet here.
-    outcome = await changed(driver_id)
-    return {
-        "status": "updated",
-        "driver_id": driver_id,
-        "file": files.file_name,
-        "devices_reconnected": outcome.reconnected,
-        "devices_not_reconnected": outcome.not_reconnected,
-    }
+        # The new version's files, a Python driver's convention companions
+        # included, exactly as install fetches them. Without those the new driver
+        # code would land beside the previous version's `_sim.py` /
+        # `_discovery.py`: the simulator would keep answering with the old protocol
+        # while the driver speaks the new one, and discovery would probe with logic
+        # that no longer matches the driver. A failed update leaves the working
+        # driver in place: nothing is written until every file is in hand and the
+        # staged copy is admitted.
+        download = await files.download(_check_driver_file)
+        admitted = admit_or_answer(
+            DriverChange(
+                driver_repo,
+                files.file_name,
+                download.files,
+                optional=download.optional,
+                removes=_what_an_update_removes(old_file, old_companion, files, download),
+            ),
+            Gates(
+                driver_class=lambda cls: _enforce_driver_id_match(cls, driver_id),
+                not_a_definition=_UPDATE_REFUSED,
+                no_driver_class=_UPDATE_REFUSED,
+            ),
+            failed=f"Failed to load updated driver '{driver_id}'",
+        )
+        for name in admitted.removed:
+            if name in download.unpublished:
+                log.info("Removed %s — no longer published for driver '%s'", name, driver_id)
+        # A device already running the driver was built from the old class and
+        # goes on using it until it is built again, so an update only reaches the
+        # fleet here.
+        outcome = await changed(driver_id)
+        return {
+            "status": "updated",
+            "driver_id": driver_id,
+            "file": files.file_name,
+            "devices_reconnected": outcome.reconnected,
+            "devices_not_reconnected": outcome.not_reconnected,
+        }

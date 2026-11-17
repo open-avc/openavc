@@ -8,10 +8,12 @@ contract check, then ``driver_change.admit`` (the platform floor, the file
 written beside, the loader's own check on it, the swap that puts it in place
 and takes the replaced copy of the id away, the registration), then
 ``driver_change.changed`` (the simulation, the devices, Discovery, the
-announcement), as every door that writes a driver does. A save the loader
-would skip at the next start is refused now, with the copy that was there
-unchanged. A shipped built-in in the read-only definitions folder is never
-written or deleted here; a user copy that overrides one can be, and the
+announcement), as every door that writes a driver does. Every door here
+holds the ids it names (``driver_change.holding``) from its first check to its
+announcement; a save that renames holds the old id and the new. A save the
+loader would skip at the next start is refused now, with the copy that was
+there unchanged. A shipped built-in in the read-only definitions folder is
+never written or deleted here; a user copy that overrides one can be, and the
 built-in serves the id again after.
 
 Installing, uploading and removing drivers is ``routes/drivers.py``; the
@@ -28,9 +30,9 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, endpoint_policy
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes.drivers import admit_or_answer, definition_invalid
+from openavc.api.routes.drivers import admit_or_answer, claim_or_answer, definition_invalid
 from openavc.core.host_policy import HostCategory
-from openavc.drivers.driver_change import DriverChange, Gates, changed
+from openavc.drivers.driver_change import DriverChange, Gates, changed, holding
 from openavc.drivers.registry import register_driver
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -284,11 +286,12 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
 
     dirs = _get_driver_dirs()
     driver_def = _requested_definition(body)
-    if any(d.get("id") == driver_def["id"] for d in _list(dirs)):
-        raise _id_taken(driver_def["id"])
+    async with holding(driver_def["id"]):
+        if any(d.get("id") == driver_def["id"] for d in _list(dirs)):
+            raise _id_taken(driver_def["id"])
 
-    saved = await _save_definition(driver_def, dirs)
-    return {"status": "created", **saved}
+        saved = await _save_definition(driver_def, dirs)
+        return {"status": "created", **saved}
 
 
 @router.put("/driver-definitions/{driver_id}")
@@ -298,13 +301,14 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
 
     dirs = _get_driver_dirs()
     driver_def = _requested_definition(body)
-    existing = _list(dirs)
-    _current_definition(driver_id, existing)
-    _refuse_built_in_edit(driver_id, dirs)
-    _refuse_rename_onto_another(driver_def.get("id", ""), driver_id, existing, dirs)
+    async with holding(driver_id, driver_def.get("id", "")):
+        existing = _list(dirs)
+        _current_definition(driver_id, existing)
+        _refuse_built_in_edit(driver_id, dirs)
+        _refuse_rename_onto_another(driver_def.get("id", ""), driver_id, existing, dirs)
 
-    saved = await _save_definition(driver_def, dirs, replacing=driver_id)
-    return {"status": "updated", **saved}
+        saved = await _save_definition(driver_def, dirs, replacing=driver_id)
+        return {"status": "updated", **saved}
 
 
 def _merge_patch(current: Any, patch: Any) -> Any:
@@ -333,27 +337,33 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     from openavc.drivers.driver_loader import list_driver_definitions as _list
 
     dirs = _get_driver_dirs()
-    current = _current_definition(driver_id, _list(dirs))
-    _refuse_built_in_edit(driver_id, dirs)
+    async with holding(driver_id):
+        current = _current_definition(driver_id, _list(dirs))
+        _refuse_built_in_edit(driver_id, dirs)
 
-    # A patch never changes the id. The floor is read off the merge, so a
-    # patch carrying a lower floor (or clearing it) is the way out of one.
-    merged = _merge_patch(current, body)
-    merged["id"] = driver_id
-    saved = await _save_definition(_strip_listing_decorations(merged), dirs, replacing=driver_id)
-    return {"status": "updated", **saved}
+        # A patch never changes the id. The floor is read off the merge, so a
+        # patch carrying a lower floor (or clearing it) is the way out of one.
+        merged = _merge_patch(current, body)
+        merged["id"] = driver_id
+        saved = await _save_definition(_strip_listing_decorations(merged), dirs, replacing=driver_id)
+        return {"status": "updated", **saved}
 
 
 @router.delete("/driver-definitions/{driver_id}")
 async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     """Delete a JSON driver definition."""
+    dirs = _get_driver_dirs()
+    async with holding(driver_id):
+        return await _delete_definition(driver_id, dirs)
+
+
+async def _delete_definition(driver_id: str, dirs: Any) -> dict:
+    """The Driver Builder's delete, from its first check to its announcement."""
     from openavc.drivers.driver_loader import (
         delete_driver_definition,
         is_builtin_driver,
         restore_driver_registration,
     )
-
-    dirs = _get_driver_dirs()
 
     # Built-in drivers ship inside the install tree and can't be deleted —
     # unlinking one would remove it permanently with no recovery.
@@ -395,35 +405,39 @@ async def reload_driver_definition(driver_id: str) -> dict:
     )
     from openavc.drivers.configurable import create_configurable_driver_class
 
-    filepath = find_driver_file_by_id(_get_driver_dirs(), driver_id)
-    if filepath is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No .avcdriver file declaring '{driver_id}' found on disk",
-        )
+    async with holding(driver_id):
+        filepath = find_driver_file_by_id(_get_driver_dirs(), driver_id)
+        if filepath is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No .avcdriver file declaring '{driver_id}' found on disk",
+            )
 
-    read = read_library_definition(filepath)
-    driver_def = read.definition
-    if driver_def is None:
-        raise definition_invalid(
-            list(read.reasons),
-            preamble=(
-                f"Driver file '{filepath.name}' did not load. "
-                + ("Fix this first" if len(read.reasons) == 1 else "Fix these first")
-            ),
-        )
+        read = read_library_definition(filepath)
+        driver_def = read.definition
+        if driver_def is None:
+            raise definition_invalid(
+                list(read.reasons),
+                preamble=(
+                    f"Driver file '{filepath.name}' did not load. "
+                    + ("Fix this first" if len(read.reasons) == 1 else "Fix these first")
+                ),
+            )
 
-    # Re-register, then build the devices again so they pick up the disk
-    # version without a full project reload. A renamed id on disk leaves
-    # devices on the requested id orphaned, so they are built again too.
-    driver_class = create_configurable_driver_class(driver_def)
-    register_driver(driver_class)
-    renamed = [driver_id] if driver_def["id"] != driver_id else []
-    outcome = await changed(driver_def["id"], *renamed)
+        # Re-register, then build the devices again so they pick up the disk
+        # version without a full project reload. A renamed id on disk leaves
+        # devices on the requested id orphaned, so they are built again too;
+        # the id the file declares now is this change's before it is
+        # registered.
+        driver_class = create_configurable_driver_class(driver_def)
+        claim_or_answer(driver_def["id"])
+        register_driver(driver_class)
+        renamed = [driver_id] if driver_def["id"] != driver_id else []
+        outcome = await changed(driver_def["id"], *renamed)
 
-    return {
-        "status": "reloaded",
-        "driver_id": driver_def["id"],
-        "file": filepath.name,
-        "devices_reconnected": outcome.reconnected,
-    }
+        return {
+            "status": "reloaded",
+            "driver_id": driver_def["id"],
+            "file": filepath.name,
+            "devices_reconnected": outcome.reconnected,
+        }
