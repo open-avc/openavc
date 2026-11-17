@@ -122,6 +122,130 @@ async def test_a_rollback_that_fails_too_still_raises_the_reconcile_failure(tmp_
     assert eng.project.project.name == "P"
 
 
+def _settings_that_fail_on(eng, calls: set[int]) -> None:
+    """Make the project-settings step raise on the given calls (1 is the
+    forward swap, 2 the rollback's), and do its real work on the others."""
+    real = eng._apply_project_settings
+    seen = []
+
+    def settings():
+        seen.append(1)
+        if len(seen) in calls:
+            raise RuntimeError(f"settings failed on call {len(seen)}")
+        real()
+
+    eng._apply_project_settings = settings
+
+
+@pytest.mark.asyncio
+async def test_a_swap_that_fails_before_the_reconcile_puts_the_previous_project_back(tmp_path):
+    eng = _engine(tmp_path)
+    sent = _capture_broadcasts(eng)
+    eng._dirty_since_backup = False
+    revision = eng._project_revision
+    _settings_that_fail_on(eng, {1})
+
+    with pytest.raises(RuntimeError, match="settings failed on call 1"):
+        await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
+
+    assert eng.project.project.name == "P"
+    assert eng._project_revision == revision
+    assert eng._revision_counter == 0
+    assert eng._dirty_since_backup is False
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_a_rollback_whose_settings_fail_still_restores_the_revision(tmp_path, caplog):
+    eng = _engine(tmp_path)
+    revision = eng._project_revision
+    resynced = []
+
+    async def boom(diff, origin):
+        raise RuntimeError("the reconcile's own failure")
+
+    async def resync(diff):
+        resynced.append(eng.project.project.name)
+
+    eng._reconcile = boom
+    eng._rollback_reconcile = resync
+    _settings_that_fail_on(eng, {2})
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(RuntimeError, match="the reconcile's own failure"):
+            await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
+
+    assert eng.project.project.name == "P"
+    assert eng._project_revision == revision
+    assert eng._revision_counter == 0
+    assert resynced == ["P"]
+    assert any(r.exc_info and "settings failed on call 2" in str(r.exc_info[1])
+               for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_an_announcement_that_fails_leaves_the_change_applied(tmp_path, caplog):
+    eng = _engine(tmp_path)
+    sent = _capture_broadcasts(eng)
+    advertiser = MagicMock()
+    advertiser.update_name.side_effect = OSError("the network went away")
+    eng.mdns_advertiser = advertiser
+
+    with caplog.at_level(logging.ERROR):
+        revision = await eng.apply_project(ProjectConfig(**_project_dict(name="Board Room")))
+
+    assert eng.project.project.name == "Board Room"
+    assert eng._project_revision == revision
+    assert eng._revision_counter == 1
+    assert any(r.exc_info and "the network went away" in str(r.exc_info[1])
+               for r in caplog.records)
+    # The parts after the one that failed still went out.
+    assert {"type": "project.reloaded", "revision": revision} in sent
+
+
+@pytest.mark.asyncio
+async def test_a_panel_definition_that_cannot_be_built_still_announces_the_revision(
+    tmp_path, caplog,
+):
+    eng = _engine(tmp_path, elements=[_button("btn_a")])
+    sent = _capture_broadcasts(eng)
+
+    def no_panel():
+        raise ValueError("a page that cannot be drawn")
+
+    eng.panel_ui = no_panel
+    edited = eng.project.model_copy(deep=True)
+    edited.ui.pages[0].elements[0].label = "Renamed"
+    with caplog.at_level(logging.ERROR):
+        revision = await eng.apply_project(edited)
+
+    assert eng.project.ui.pages[0].elements[0].label == "Renamed"
+    assert sent == [{"type": "project.reloaded", "revision": revision}]
+    assert any(r.exc_info and "a page that cannot be drawn" in str(r.exc_info[1])
+               for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_a_reload_notice_that_cannot_be_sent_still_reaches_the_event_bus(tmp_path, caplog):
+    eng = _engine(tmp_path)
+    heard = []
+
+    async def no_socket(msg, client_type=None):
+        raise RuntimeError("the hub is gone")
+
+    async def on_reloaded(event, payload):
+        heard.append(event)
+
+    eng.broadcast_ws = no_socket
+    eng.events.on("system.project.reloaded", on_reloaded)
+    with caplog.at_level(logging.ERROR):
+        revision = await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
+
+    assert eng._project_revision == revision
+    assert heard == ["system.project.reloaded"]
+    assert any(r.exc_info and "the hub is gone" in str(r.exc_info[1])
+               for r in caplog.records)
+
+
 @pytest.mark.asyncio
 async def test_a_rename_reaches_the_mdns_advertiser(tmp_path):
     eng = _engine(tmp_path)

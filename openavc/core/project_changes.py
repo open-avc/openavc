@@ -4,7 +4,8 @@ engine runs, and the revision every such change is saved under.
 Two kinds of change. An **applied** one (``apply_project`` and the doors
 built on it) is taken in, saved, compared with the running project, swapped
 in and reconciled (``core/project_reconcile.py``), undone on the runtime if the
-reconcile fails, and then announced. A **bookkeeping** one is a change the
+swap or the reconcile fails, and then announced; the announcement cannot turn
+a change that is already running into a failure. A **bookkeeping** one is a change the
 runtime already has (a device's pending settings cleared, a plugin's own
 ``save_config``): it is only saved and announced, never reconciled, and the
 code that makes one may be running inside a reconcile, which is why it can
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from functools import partial
 from typing import Any
 
 from openavc.core import project_update
@@ -227,7 +229,8 @@ class ProjectChangesMixin:
         """Body of :meth:`apply_project` once any revision is checked; caller
         holds ``_reload_lock``. The project is taken in (and saved), compared
         with the running one, swapped in and reconciled (all of it undone on
-        a failure), and then announced. Returns the new revision."""
+        a failure), and then announced. Returns the new revision, which a
+        failure in the announcing no longer changes: the change is running."""
         as_given, new_project = await self._take_in(
             new_project, origin, persist, reassigned_equipment
         )
@@ -292,32 +295,35 @@ class ProjectChangesMixin:
         self, new_project: ProjectConfig, diff: ProjectDiff, origin: ProjectOrigin
     ) -> None:
         """Make ``new_project`` the running project under a new revision and
-        reconcile to it; a reconcile that fails puts the runtime back on the
-        project it ran before, and raises."""
+        reconcile to it. Everything from the swap on is inside the guard: a
+        failure in the swap, the settings, the revision or the reconcile puts
+        the runtime back on the project it ran before, and raises."""
         previous = (
             self.project, self._project_revision, self._revision_counter,
             self._dirty_since_backup,
         )
-        # Swapping self.project IS the UI reload: UI dispatch looks elements
-        # up at event time, so a UI-only change needs nothing beyond this
-        # swap and the ui.definition broadcast below.
-        self.project = new_project
-        self._apply_project_settings()
-        self._project_revision = self._new_revision()
-        self._dirty_since_backup = True
-
         try:
+            # Swapping self.project IS the UI reload: UI dispatch looks
+            # elements up at event time, so a UI-only change needs nothing
+            # beyond this swap and the ui.definition broadcast after it.
+            self.project = new_project
+            self._apply_project_settings()
+            self._project_revision = self._new_revision()
+            self._dirty_since_backup = True
             await self._reconcile(diff, origin)
         except Exception:
-            log.error("Project reconcile failed, rolling back to previous "
+            log.error("Project apply failed, rolling back to previous "
                       "project state", exc_info=True)
             await self._roll_back(previous, diff)
             raise
 
     async def _roll_back(self, previous: tuple, diff: ProjectDiff) -> None:
-        """The runtime back on the project it ran before a failed reconcile."""
+        """The runtime back on the project it ran before a failed swap or
+        reconcile. The project, revision, count and backup flag go back
+        first, so a failure in what follows cannot leave the new revision on
+        the old project; the settings and the re-sync are each logged on a
+        failure and never raise, so the caller hears the original one."""
         self.project, revision, counter, dirty = previous
-        self._apply_project_settings()
         # The counter goes back too, so it stays a count of COMMITTED
         # saves. The token minted above never left the process (nothing
         # is broadcast or returned until the reconcile succeeds), so the
@@ -325,17 +331,38 @@ class ProjectChangesMixin:
         self._project_revision = revision
         self._revision_counter = counter
         self._dirty_since_backup = dirty
+        await _call_logged(
+            self._apply_project_settings,
+            "Rollback could not put the previous project's settings back",
+        )
 
         # The new bytes stay on disk deliberately: the file is the source
         # of truth and the user's edit must survive a runtime hiccup.
         # Rollback restores the RUNTIME to the previous project.
-        try:
-            await self._rollback_reconcile(diff)
-        except Exception:
-            log.error("Rollback re-sync also failed", exc_info=True)
+        await _call_logged(
+            partial(self._rollback_reconcile, diff), "Rollback re-sync also failed",
+        )
 
     async def _announce_applied(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
-        """What a clean apply tells the rest of the system."""
+        """What an applied change tells the rest of the system. The change is
+        running under its new revision by now, so nothing here may answer it
+        as a failure: a part that raises is logged, and the parts after it
+        still go out (an open IDE still learns the revision when the panel
+        definition cannot be built)."""
+        parts = (
+            (partial(self._publish_applied, diff), "publishing its state"),
+            (partial(self._announce_panel_definition, diff), "sending the panel definition"),
+            (self._announce_revision, "announcing its revision"),
+            (partial(self.events.emit, "system.project.reloaded"), "emitting system.project.reloaded"),
+        )
+        for part, what in parts:
+            await _call_logged(part, f"Project applied, but {what} failed")
+        log.info(f"Project applied (origin={origin.value}, "
+                 f"revision={self._project_revision})")
+
+    def _publish_applied(self, diff: ProjectDiff) -> None:
+        """The state keys, the push-port record and the advertised name an
+        applied change moves."""
         # Zero the startup-error count so a stale count from the initial
         # start (now fixed) doesn't linger in the store and cloud relay.
         self.state.set("system.startup_errors", 0, source="system")
@@ -346,20 +373,16 @@ class ProjectChangesMixin:
                            source="system")
             if self.mdns_advertiser:
                 self.mdns_advertiser.update_name(self.project.project.name)
-        await self._announce_panel_definition(diff)
 
-        # Notify the Programmer IDE to refetch project data. Always sent:
-        # external editors need to learn the new revision even for changes
-        # they can't see in the UI definition.
+    async def _announce_revision(self) -> None:
+        """Notify the Programmer IDE to refetch project data. Always sent:
+        external editors need to learn the new revision even for changes
+        they can't see in the UI definition."""
         await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": self._project_revision,
             **reload_origin(),
         })
-
-        await self.events.emit("system.project.reloaded")
-        log.info(f"Project applied (origin={origin.value}, "
-                 f"revision={self._project_revision})")
 
     async def _announce_panel_definition(self, diff: ProjectDiff) -> None:
         """Push the new UI definition to connected panels, only when what it
