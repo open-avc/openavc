@@ -29,6 +29,8 @@ Simulation stays on until you stop it, including through a restart of the server
 
 If simulation cannot come back after a restart (the simulator's port is taken by another program, for example), the devices connect to the real equipment and the bar says why. Click **Start Simulation** to choose devices and try again, or **Turn Off Simulation** so the next restart does not simulate either. The same bar appears if the simulator stops by itself while it is running.
 
+A driver you change while simulation is on reaches the simulated devices too: save it in the Driver Builder, import a new copy, or install or update it from the community library, and each simulated device that uses it is started again from the new file. Its simulated state starts over, as it does when you stop and start simulation.
+
 ### Standalone
 
 You can also run the simulator directly from the command line:
@@ -133,6 +135,7 @@ requires the same credentials as the rest of the API.
 |----------|--------|-------------|
 | `/api/status` | GET | Overall simulator status |
 | `/api/available` | GET | Discovered drivers |
+| `/api/drivers/rescan` | POST | Read the driver folders again. OpenAVC asks after a driver changes; the next start of a device builds it from the file there now |
 | `/api/devices` | GET | Running simulator instances (`devices`), and each device the simulator was asked to run and could not (`refused`: `device_id`, `driver_id`, `cause` and `detail`, the error). `cause` is `no_simulator`, `build_failed` or `start_failed` |
 | `/api/devices/{id}` | GET | Single device state |
 | `/api/devices/{id}/start` | POST | Start simulating a device. Answers 422 with the same `cause` and `detail` when the device can't be run, and 400 when it is already simulated |
