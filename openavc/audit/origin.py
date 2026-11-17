@@ -25,7 +25,11 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from openavc.core.device_config import connection_of, resolve_device_config
+from openavc.core.device_config import (
+    DeviceConnection,
+    connection_of,
+    resolve_device_config,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -37,6 +41,10 @@ SERIAL = (
 BRIDGED = (
     "{name} is set to connect through {bridge}. An audit needs a device OpenAVC "
     "connects to directly."
+)
+THROUGH_A_BRIDGE = (
+    "{name} sends its commands through a bridge. An audit needs a device "
+    "OpenAVC connects to directly."
 )
 NO_ADDRESS = "{name} has no address yet. Enter one with Edit, then audit it."
 UNRESOLVED = "{name}'s connection settings could not be read. Check them with Edit."
@@ -74,22 +82,30 @@ def device_target(project: Any, device_id: str) -> dict[str, Any] | None:
         out["reason"] = UNRESOLVED.format(name=name)
         return out
     out["transport"] = conn.transport
+    out["reason"] = _refusal(project, name, conn)
+    if not out["reason"]:
+        out["address"] = conn.host.strip()
+        out["auditable"] = True
+    return out
+
+
+def _refusal(project: Any, name: str, conn: DeviceConnection) -> str:
+    """The sentence an audit of ``name``, connecting as ``conn``, is refused
+    with; "" when it has a network address to audit."""
     if conn.bridge:
         bridge = _find(project, conn.bridge)
-        out["reason"] = BRIDGED.format(
+        return BRIDGED.format(
             name=name, bridge=(bridge.name or bridge.id) if bridge is not None else conn.bridge,
         )
-        return out
+    if conn.transport == "bridge":
+        # An IR device with no bridge chosen names none, and still has no
+        # address of its own to audit or to enter.
+        return THROUGH_A_BRIDGE.format(name=name)
     if conn.transport == "serial":
-        out["reason"] = SERIAL.format(name=name)
-        return out
-    host = conn.host.strip()
-    if not host:
-        out["reason"] = NO_ADDRESS.format(name=name)
-        return out
-    out["address"] = host
-    out["auditable"] = True
-    return out
+        return SERIAL.format(name=name)
+    if not conn.host.strip():
+        return NO_ADDRESS.format(name=name)
+    return ""
 
 
 def connects_to(project: Any, device_id: str, names: Iterable[str]) -> bool:

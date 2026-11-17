@@ -18,7 +18,14 @@ from pydantic import ValidationError
 
 from openavc.api.models import AuditDriverRequest, AuditStartRequest
 from openavc.api.routes import audit as routes
-from openavc.audit.origin import BRIDGED, NO_ADDRESS, SERIAL, device_target, origin_for
+from openavc.audit.origin import (
+    BRIDGED,
+    NO_ADDRESS,
+    SERIAL,
+    THROUGH_A_BRIDGE,
+    device_target,
+    origin_for,
+)
 from openavc.core.project_loader import DeviceConfig
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import _DRIVER_REGISTRY
@@ -42,6 +49,14 @@ class _AcmeBridge(BaseDriver):
     }
 
 
+class _AcmeIR(BaseDriver):
+    DRIVER_INFO = {
+        "id": "acme_origin_ir", "name": "Acme IR", "manufacturer": "Acme",
+        "category": "utility", "transport": "bridge", "ir_device": True,
+        "default_config": {}, "commands": {}, "state_variables": {}, "config_schema": {},
+    }
+
+
 class _AcmeLogin(BaseDriver):
     DRIVER_INFO = {
         "id": "acme_origin_login", "name": "Acme Login", "manufacturer": "Acme",
@@ -57,10 +72,10 @@ class _AcmeLogin(BaseDriver):
 
 @pytest.fixture(autouse=True)
 def drivers():
-    for cls in (_AcmeSerial, _AcmeBridge, _AcmeLogin):
+    for cls in (_AcmeSerial, _AcmeBridge, _AcmeIR, _AcmeLogin):
         _DRIVER_REGISTRY[cls.DRIVER_INFO["id"]] = cls
     yield
-    for cls in (_AcmeSerial, _AcmeBridge, _AcmeLogin):
+    for cls in (_AcmeSerial, _AcmeBridge, _AcmeIR, _AcmeLogin):
         _DRIVER_REGISTRY.pop(cls.DRIVER_INFO["id"], None)
 
 
@@ -106,6 +121,17 @@ def test_a_device_without_a_network_address_is_refused_in_words():
     assert blank["auditable"] is False
     assert blank["reason"] == NO_ADDRESS.format(name="New Display")
     assert device_target(project, "ghost") is None
+
+
+def test_an_ir_device_with_no_bridge_chosen_is_not_sent_to_enter_an_address():
+    """An IR device sends through a bridge and has no address of its own, so
+    its Edit Device asks for none, chosen bridge or not."""
+    project = _project(
+        DeviceConfig(id="tv", driver="acme_origin_ir", name="Lounge TV", config={}),
+    )
+    target = device_target(project, "tv")
+    assert target["auditable"] is False
+    assert target["reason"] == THROUGH_A_BRIDGE.format(name="Lounge TV")
 
 
 def test_the_origin_is_kept_only_while_the_device_connects_there():
