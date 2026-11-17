@@ -59,8 +59,9 @@ def test_the_parts_a_browser_link_is_written_from():
         ({}, True),
         ({"verify_ssl": True}, True),
         ({"verify_ssl": False}, False),
-        # Null is read as not set, as every config key is.
+        # Null or blank is read as not set: the check stays on.
         ({"verify_ssl": None}, True),
+        ({"verify_ssl": ""}, True),
         # Anything else by its truth, as the TCP and MQTT transports read it.
         ({"verify_ssl": 0}, False),
         ({"verify_ssl": "false"}, True),

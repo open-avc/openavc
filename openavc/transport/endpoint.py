@@ -59,12 +59,13 @@ def _uses_tls(config: Mapping[str, Any]) -> bool:
 
 
 def checks_certificate(config: Mapping[str, Any]) -> bool:
-    """Whether an http device's certificate is checked: ``verify_ssl`` by its
-    truth, as the TCP and MQTT transports read it, and on when it is not set
-    or set to null. Part of :func:`http_endpoint`'s answer; on its own for a
-    caller with a URL of its own and no host."""
+    """Whether an http device's certificate is checked: on when
+    ``verify_ssl`` is not set, null or blank (as a blank port is not set),
+    otherwise by its truth, as the TCP and MQTT transports read it. Part of
+    :func:`http_endpoint`'s answer; on its own for a caller with a URL of its
+    own and no host."""
     value = config.get("verify_ssl")
-    return True if value is None else bool(value)
+    return True if value is None or value == "" else bool(value)
 
 
 def url_host(host: Any) -> str:

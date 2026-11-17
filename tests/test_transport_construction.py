@@ -406,7 +406,9 @@ async def test_http_port_that_is_not_a_number_is_refused_naming_it(monkeypatch, 
     assert made == []
 
 
-@pytest.mark.parametrize(("verify_ssl", "verify"), [(None, True), (0, False), ("false", True)])
+@pytest.mark.parametrize(
+    ("verify_ssl", "verify"), [(None, True), ("", True), (0, False), ("false", True)],
+)
 async def test_http_certificate_check_is_read_as_a_switch(
     monkeypatch, control_ip, verify_ssl, verify,
 ):

@@ -248,6 +248,7 @@ async def test_http_host_wins_over_a_stale_base_url(drivers, captured_httpx):
     ({"host": "2001:db8::20", "port": 8080}, "http://[2001:db8::20]:8080", True),
     ({"host": "192.0.2.22", "port": "8443", "ssl": True}, "https://192.0.2.22:8443", True),
     ({"host": "192.0.2.22", "port": "", "verify_ssl": None}, "http://192.0.2.22:80", True),
+    ({"host": "192.0.2.22", "verify_ssl": ""}, "http://192.0.2.22:80", True),
 ])
 async def test_http_tests_the_address_the_transport_sends_to(
     drivers, captured_httpx, config, url, verify,
