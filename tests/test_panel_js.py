@@ -405,10 +405,11 @@ SCENARIOS = [
     # Every door into a page draw goes in through one entry: no draw runs
     # inside another, a theme the draw itself puts on is that draw, a page
     # drawn before its theme lands is drawn again when it does (a dialog open
-    # over it staying open), and a definition with no pages ends what was on
-    # screen.
+    # over it staying open), the Preview opens a dialog over the page it was
+    # showing, and a definition with no pages ends what was on screen.
     "a_theme_put_on_by_a_page_draw_draws_that_page_once",
     "a_page_drawn_before_its_theme_lands_is_drawn_again_when_it_does",
+    "a_preview_dialog_opens_over_the_page_the_preview_was_showing",
     "a_theme_that_lands_after_a_dialog_opened_leaves_it_open",
     "a_definition_with_no_pages_ends_the_page_and_every_dialog",
     "a_draw_asked_for_inside_a_draw_runs_after_it",

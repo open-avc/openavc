@@ -429,10 +429,13 @@ class PanelApp {
         this.snapshotReceived = true;
         this._setupViewportListener();
         if (this.editMode) {
+            if (msg.pageId) this.currentPage = msg.pageId;
             this.renderCurrentPage();
         } else {
             // Preview: an overlay page has to go through the
-            // navigation path or it draws as a flat page.
+            // navigation path or it draws as a flat page. The page the
+            // message names is not written first: a dialog opens over the
+            // page on screen.
             this._showPageAsRuntimeWould(msg.pageId || this.currentPage);
             this.lock.reconcile();
             this.resetIdleTimer();
@@ -440,9 +443,8 @@ class PanelApp {
         this._postToParent({ type: 'openavc:editor-ready' });
     }
 
-    /** What a definition message says about the view: the page, the grid, the files, the type scale, the theme. */
+    /** What a definition message says about the view: the grid, the files, the type scale, the theme. */
     _takeEditorView(msg) {
-        if (msg.pageId) this.currentPage = msg.pageId;
         if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
         // Bumped by the Builder every time a file lands in ui/. It rides on the
         // src of every custom control so a save is visible in the canvas

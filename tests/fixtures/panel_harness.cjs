@@ -11400,6 +11400,10 @@ const PANEL_CHECKS = {
         const node = document.querySelector(`.panel-overlay:not(.dismissing) [data-element-id="${id}"]`);
         assert(node && node.textContent === text, `${id} on the overlay shows ${node && JSON.stringify(node.textContent)}, not ${JSON.stringify(text)}`);
     },
+    // The page drawn, which a dialog's `$back` lands on.
+    page: (m, want) => {
+        assert(m.app.currentPage === want, `the page drawn is ${JSON.stringify(m.app.currentPage)}, not ${JSON.stringify(want)}`);
+    },
     // The controls on screen, by element id.
     controls: (m, want) => {
         const have = Object.keys(m.app._surfaces.everyControl()).sort();
@@ -11623,6 +11627,9 @@ function stackedDraws(steps, from = 0) {
         .map(([i, s]) => `step ${i}: ${s.bg.length} pages, ${s.nb} bindings`);
 }
 
+/** The pages a Preview is shown with a second regular page, `main2`, to stand behind a dialog. */
+const DOOR_PREVIEW_PAGES = () => [...PREVIEW_PAGES(), pinPage('main2', { elements: [pinLabel('m2')] })];
+
 /** A theme whose button defaults differ from no theme at all. */
 const DOOR_THEME = {
     id: 'late', name: 'late', variables: { panel_bg: '#101820' },
@@ -11664,6 +11671,22 @@ Object.assign(tests, {
         const last = got.navigated[got.navigated.length - 1];
         assert(last.n === 2, `the page was drawn ${last.n} times, not again when its theme landed`);
         assert(/rgb\(18, 52, 86\)/.test(last.b[0] || ''), `the button kept its unthemed look: ${last.b[0]}`);
+    },
+
+    async a_preview_dialog_opens_over_the_page_the_preview_was_showing() {
+        const ui = pinUi('pv', DOOR_PREVIEW_PAGES());
+        const steps = await driveCase({
+            ...PREVIEW,
+            steps: [
+                init(ui, { pageId: 'main2' }), ['check', 'page', 'main2'],
+                // The Programmer sends the project again with the dialog chosen, as every edit does.
+                ['builder', { type: 'openavc:editor-project', ui, pageId: 'dlg' }],
+                ['check', 'page', 'main2'], ['check', 'stack', ['dlg']], ['check', 'rootHolds', ['m2']],
+                ['nav', '$back'], ['check', 'page', 'main2'],
+            ],
+        });
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
     },
 
     async a_theme_that_lands_after_a_dialog_opened_leaves_it_open() {
