@@ -176,10 +176,11 @@ def _device_rows(engine: Any, names: list[str]) -> list[dict[str, Any]]:
         row = conn.to_dict()
         row["connected"] = bool(engine.state.get(f"device.{conn.device_id}.connected"))
         row["paused"] = bool(engine.state.get(f"device.{conn.device_id}.paused"))
-        # Not running (its driver is not installed, or it is disabled): it
-        # holds no connection, so there is nothing to pause.
+        # Not running (disabled, its driver not installed, or its driver or
+        # its settings failed): it holds no connection, so there is nothing
+        # to pause.
         devices = getattr(engine, "devices", None)
-        row["running"] = devices is None or devices.get_driver(conn.device_id) is not None
+        row["running"] = devices is None or devices.runs(conn.device_id)
         rows.append(row)
     return rows
 
@@ -397,7 +398,7 @@ async def connect_and_listen(session_id: str) -> dict[str, Any]:
     engine = _get_engine()
     project = getattr(engine, "project", None)
     names = await target_names(project, session.target.address, session.target.ip)
-    running = unpaused_devices_at(project, engine.state, names)
+    running = unpaused_devices_at(project, getattr(engine, "devices", None), names)
     if running:
         raise HTTPException(
             status_code=409,

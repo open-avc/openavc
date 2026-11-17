@@ -14,7 +14,8 @@ through the real start (``Engine._add_devices_at_start``):
 Then every reader is asked about each device, and the answers are compared
 with one table: the listing and a device's details, ``/api/health`` and
 ``/api/status``, the cloud heartbeat, the AI's device and project tools, the
-simulation's device set, and where devices connect (``device_connections``).
+simulation's device set, where devices connect (``device_connections``), and
+what the Device Audit refuses to share the equipment with.
 
 Invented ``acme_record_*`` drivers throughout.
 """
@@ -28,6 +29,7 @@ import pytest
 
 from openavc.api import rest
 from openavc.api.routes import system as system_routes
+from openavc.audit.sandbox import unpaused_devices_at
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.cloud.heartbeat import HeartbeatCollector
 from openavc.core.connection_fault import INVALID_CONFIG
@@ -121,17 +123,18 @@ async def engine(tmp_path, monkeypatch):
 #   health: the /api/health bucket it is counted under
 #   simulated: in the simulation's device set
 #   holds: answered by device_connections (where devices connect)
+#   audit: what the Device Audit will not share the equipment with
 EXPECTED = {
     "live": {"status": "running", "health": "connected", "simulated": True,
-             "holds": True},
+             "holds": True, "audit": True},
     "off": {"status": "disabled", "health": "disabled", "simulated": True,
-            "holds": False},
+            "holds": False, "audit": False},
     "lost": {"status": "orphaned", "health": "orphaned", "simulated": True,
-             "holds": True},
+             "holds": True, "audit": False},
     "broken": {"status": "driver_failed", "health": "disconnected", "simulated": True,
-               "holds": True},
+               "holds": True, "audit": False},
     "unset": {"status": "settings_failed", "health": "disconnected", "simulated": False,
-              "holds": False},
+              "holds": False, "audit": False},
 }
 
 
@@ -181,6 +184,14 @@ async def test_every_reader_says_the_same_about_a_device_in_each_state(engine):
     # up, is answered as it is set to.
     holds = {c.device_id for c in device_connections(engine.project, devices)}
     assert holds == {did for did, row in EXPECTED.items() if row["holds"]}
+
+    # The Device Audit refuses to share the equipment only with a device a
+    # driver runs.
+    names = list(HOSTS.values())
+    blocking = unpaused_devices_at(engine.project, devices, names)
+    assert set(blocking) == {
+        d.name for d in engine.project.devices if EXPECTED[d.id]["audit"]
+    }
 
 
 async def test_a_device_whose_settings_cannot_be_worked_out_says_why_on_its_card(engine):

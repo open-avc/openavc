@@ -65,8 +65,8 @@ class FakeDevices:
     def is_paused(self, device_id):
         return device_id in self.paused
 
-    def get_driver(self, device_id):
-        return object() if device_id in self.running else None
+    def runs(self, device_id):
+        return device_id in self.running
 
 
 class FakeCheck:
@@ -179,7 +179,7 @@ async def test_a_device_set_up_by_host_name_is_the_device_at_its_address(wired, 
     names = await target_names(wired.engine.project, "127.0.0.1", "127.0.0.1")
     assert names == ["127.0.0.1", "amp.lab"]
     # What connecting checks: both run, so the audit would share the device.
-    assert unpaused_devices_at(wired.engine.project, wired.engine.state, names) == [
+    assert unpaused_devices_at(wired.engine.project, wired.devices, names) == [
         "Lobby Display", "Amp by name",
     ]
 
@@ -201,7 +201,7 @@ async def test_a_simulated_device_is_still_paused_for_the_audit(wired):
     rows = (await routes.audit_conflicts("10.9.9.9"))["devices"]
     assert [r["device_id"] for r in rows] == ["other"]
     names = await target_names(wired.engine.project, "10.9.9.9", "10.9.9.9")
-    assert unpaused_devices_at(wired.engine.project, wired.engine.state, names) == ["Hall"]
+    assert unpaused_devices_at(wired.engine.project, wired.devices, names) == ["Hall"]
 
 
 async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
@@ -227,9 +227,35 @@ async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
     assert {r["device_id"]: r["running"] for r in rows if r["device_id"] in ("lobby", "spare")} == {
         "lobby": True, "spare": False,
     }
-    wired.engine.state.set("device.lobby.paused", True)
-    assert unpaused_devices_at(wired.engine.project, wired.engine.state, ["127.0.0.1"]) == []
+    wired.devices.paused.add("lobby")
+    assert unpaused_devices_at(wired.engine.project, wired.devices, ["127.0.0.1"]) == []
     await routes.end_session(started["session"]["session_id"])
+
+
+@pytest.mark.parametrize("held_by", ["its driver could not set it up", "it is disabled"])
+async def test_connecting_is_not_refused_for_a_device_no_driver_runs(wired, monkeypatch, held_by):
+    """A project device at the address that no driver runs holds no
+    connection and cannot be paused, so connecting goes ahead: one its driver
+    could not set up (enabled, with no driver), and one that is disabled."""
+    wired.engine.project.devices.append(
+        DeviceConfig(id="broken", driver="acme_audit_api", name="Broken Amp",
+                     config={"host": "127.0.0.1"},
+                     enabled=held_by != "it is disabled"),
+    )
+    wired.engine.devices = wired.devices
+    started = await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["lobby"]))
+    session_id = started["session"]["session_id"]
+    wired.engine.state.set("device.lobby.paused", True)  # as the real pause writes it
+    wired.manager.current().runs.append(SimpleNamespace(driver_id="acme_audit_api"))
+    listened: list[str] = []
+
+    async def fake_listen(session, run):
+        listened.append(run.driver_id)
+
+    monkeypatch.setattr(routes, "start_listen", fake_listen)
+    await routes.connect_and_listen(session_id)
+    assert listened == ["acme_audit_api"]
+    await routes.end_session(session_id)
 
 
 async def test_a_closing_page_cancels_only_when_no_other_page_follows(wired, monkeypatch):

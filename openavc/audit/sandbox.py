@@ -165,21 +165,22 @@ async def target_names(project: Any, address: str, ip: str) -> list[str]:
     return names + [host for host, found in zip(hosts, resolved) if found == ip]
 
 
-def unpaused_devices_at(project: Any, state: Any, names: list[str]) -> list[str]:
-    """Names of project devices that connect to ``names`` and are not paused.
+def unpaused_devices_at(project: Any, devices: Any, names: list[str]) -> list[str]:
+    """Names of project devices that connect to ``names``, that a driver
+    runs, and that are not paused.
 
     The audit pauses these when it starts; one found running later (added to
     the project, or resumed by hand) would share the device with the audit.
+    ``devices`` is the device manager, whose record says whether a driver
+    runs each one (``runs``): one disabled, waiting for its driver, or whose
+    driver or settings failed holds no connection and cannot be paused.
     """
-    if project is None:
+    if project is None or devices is None:
         return []
-    out = []
-    for conn in devices_at_host(project, names):
-        prefix = f"device.{conn.device_id}."
-        # A device whose driver is not installed holds no connection.
-        if not state.get(prefix + "paused") and not state.get(prefix + "orphaned"):
-            out.append(conn.name)
-    return out
+    return [
+        conn.name for conn in devices_at_host(project, names)
+        if devices.runs(conn.device_id) and not devices.is_paused(conn.device_id)
+    ]
 
 
 class DriverSandbox:

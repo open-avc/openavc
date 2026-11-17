@@ -252,11 +252,12 @@ def test_project_devices_at_the_address_that_are_not_paused_are_named():
         ],
         connections={},
     )
-    state = StateStore()
-    assert unpaused_devices_at(project, state, ["10.0.0.5"]) == ["Lobby Display"]
-    state.set("device.lobby.paused", True)
-    assert unpaused_devices_at(project, state, ["10.0.0.5"]) == []
-    assert unpaused_devices_at(None, state, ["10.0.0.5"]) == []
+    paused: set[str] = set()
+    devices = SimpleNamespace(runs=lambda device_id: True, is_paused=lambda device_id: device_id in paused)
+    assert unpaused_devices_at(project, devices, ["10.0.0.5"]) == ["Lobby Display"]
+    paused.add("lobby")
+    assert unpaused_devices_at(project, devices, ["10.0.0.5"]) == []
+    assert unpaused_devices_at(None, devices, ["10.0.0.5"]) == []
 
 
 async def test_a_project_save_and_simulation_never_reach_the_audit_device(driver_class):
