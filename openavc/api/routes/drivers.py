@@ -102,12 +102,14 @@ def _check_driver_file(filename: str, content: bytes) -> None:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
-def _admitted(change: DriverChange, gates: Gates, failed: str) -> Admitted:
-    """``driver_change.admit`` as this API answers it: its own refusal as its
-    status and sentence, with the loader's reasons beneath it when the loader
-    refused the file (``definition_invalid``: one per line in ``detail``, and
-    as ``errors``); a protected identity and a gate's refusal as they were
-    raised; and anything else the door's 500 sentence ``failed``."""
+def admit_or_answer(change: DriverChange, gates: Gates, failed: str) -> Admitted:
+    """``driver_change.admit`` as this API answers it, at every door that
+    writes a driver file (the Driver Builder's saves too): its own refusal as
+    its status and sentence, with the loader's reasons beneath it when the
+    loader refused the file (``definition_invalid``: one per line in
+    ``detail``, and as ``errors``); a protected identity and a gate's refusal
+    as they were raised; and anything else the door's 500 sentence
+    ``failed``."""
     try:
         return admit(change, gates)
     except DriverRefused as e:
@@ -120,10 +122,12 @@ def _admitted(change: DriverChange, gates: Gates, failed: str) -> Admitted:
 
 def _refusal_answer(refusal: DriverRefused) -> HTTPException:
     """``admit``'s refusal as this API answers it: its status and sentence,
-    with the loader's reasons beneath it when there are any."""
+    with the loader's reasons beneath it when there are any. Gates that name
+    no sentence of their own (the Builder's saves) answer under
+    ``definition_invalid``'s heading, which counts the reasons."""
     if refusal.errors:
         return definition_invalid(
-            list(refusal.errors), preamble=refusal.detail, status_code=refusal.status_code
+            list(refusal.errors), preamble=refusal.detail or None, status_code=refusal.status_code
         )
     return HTTPException(status_code=refusal.status_code, detail=refusal.detail)
 
@@ -307,7 +311,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     # is written; the driver file is checked first, so a driver this platform
     # cannot run is refused before its companions are asked for.
     download = await files.download(_check_driver_file)
-    _admitted(
+    admit_or_answer(
         DriverChange(driver_repo, files.file_name, download.files, optional=download.optional),
         Gates(driver_class=lambda cls: _enforce_driver_id_match(cls, files.driver_id)),
         failed=f"Failed to load driver '{files.driver_id}'",
@@ -419,7 +423,7 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     _check_driver_file(filename, content)
-    admitted = _admitted(
+    admitted = admit_or_answer(
         DriverChange(driver_repo, filename, {filename: content}),
         Gates(
             definition=_reject_unknown_keys,
@@ -471,7 +475,7 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     entries, main_name = _bundle_named_for_its_id(entries, main_name)
 
     _check_driver_file(main_name, entries[main_name])
-    admitted = _admitted(
+    admitted = admit_or_answer(
         DriverChange(driver_repo, main_name, entries),
         Gates(
             definition=_reject_unknown_keys,
@@ -803,7 +807,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     # driver in place: nothing is written until every file is in hand and the
     # staged copy is admitted.
     download = await files.download(_check_driver_file)
-    admitted = _admitted(
+    admitted = admit_or_answer(
         DriverChange(
             driver_repo,
             files.file_name,

@@ -1614,7 +1614,7 @@ class SimulationManager:
         # path reconnects it once, on its new port).
         changed = {
             device_id for device_id in simulated_ids & current_device_ids
-            if device_id in self._driver_restarts or self._payload_changed(device_id)
+            if self._needs_restart(device_id)
         }
 
         # Re-apply redirects to existing simulated devices whose driver
@@ -1671,19 +1671,8 @@ class SimulationManager:
         A simulator that does not answer is logged, and the devices are
         started again all the same: an edited YAML driver is read at every
         start."""
-        if not self.active or not self._process or self._process.returncode is not None:
+        if not self.active:
             return False
-        await self._ask_to_rescan()
-        dm = self.engine.devices
-        on_them = {
-            device_id for device_id in self._project_device_ids()
-            if (dm.get_device_config(device_id) or {}).get("driver") in driver_ids
-        }
-        self._driver_restarts |= on_them & set(self._sim_ports)
-        return bool(on_them)
-
-    async def _ask_to_rescan(self) -> None:
-        """Ask the simulator to read its driver folders again."""
         import aiohttp
 
         try:
@@ -1693,18 +1682,26 @@ class SimulationManager:
                     timeout=aiohttp.ClientTimeout(total=10),
                 )
                 if resp.status != 200:
-                    log.warning(
-                        "The simulator did not read its drivers again: it answered %s",
-                        resp.status,
-                    )
+                    log.warning("The simulator did not read its drivers again: it answered %s", resp.status)
         except Exception as e:
             log.warning("The simulator could not be asked to read its drivers again: %s", e)
+        dm = self.engine.devices
+        on_them = {
+            device_id for device_id in self._project_device_ids()
+            if (dm.get_device_config(device_id) or {}).get("driver") in driver_ids
+        }
+        self._driver_restarts |= on_them & set(self._sim_ports)
+        return bool(on_them)
 
-    def _payload_changed(self, device_id: str) -> bool:
-        """Has this simulated device's launch payload drifted from the
-        project's current config? False when nothing was recorded (a
-        simulator adopted from an earlier run has no baseline to compare
-        against, and restarting it would only lose its state)."""
+    def _needs_restart(self, device_id: str) -> bool:
+        """Must this simulated device's simulator be started again? When its
+        driver changed since it started (``drivers_changed``), or its launch
+        payload drifted from the project's current config. A payload drift is
+        False when nothing was recorded (a simulator adopted from an earlier
+        run has no baseline to compare against, and restarting it would only
+        lose its state)."""
+        if device_id in self._driver_restarts:
+            return True
         recorded = self._sim_payloads.get(device_id)
         if recorded is None:
             return False

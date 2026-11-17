@@ -28,14 +28,17 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, endpoint_policy
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.errors import api_error
-from openavc.api.routes.drivers import definition_invalid
+from openavc.api.routes.drivers import admit_or_answer, definition_invalid
 from openavc.core.host_policy import HostCategory
-from openavc.core.installed_equipment import InstalledEquipmentError
-from openavc.drivers.driver_change import DriverChange, DriverRefused, admit, changed
+from openavc.drivers.driver_change import DriverChange, Gates, changed
 from openavc.drivers.registry import register_driver
 
 router = APIRouter(route_class=ProgrammerRoute)
+
+# A save names no sentence of its own above the loader's reasons: it answers
+# under definition_invalid's heading ("The driver was not saved. Fix this
+# first"), the one its contract check answers under.
+_SAVE_GATES = Gates(not_a_definition="")
 
 
 def _strip_listing_decorations(definition: dict) -> dict:
@@ -253,8 +256,10 @@ async def _save_definition(
     replaced = (
         replaced_definition(replacing, dirs, keep=repo / name) if replacing is not None else None
     )
-    _admit_definition(
-        DriverChange(repo, name, {name: data}, removes=[replaced.name] if replaced else [])
+    admit_or_answer(
+        DriverChange(repo, name, {name: data}, removes=[replaced.name] if replaced else []),
+        _SAVE_GATES,
+        failed="The driver was not saved, and the copy you had is unchanged.",
     )
 
     new_id = driver_def["id"]
@@ -263,23 +268,6 @@ async def _save_definition(
         restore_driver_registration(old_id, dirs)
     outcome = await changed(new_id, *renamed)
     return {"driver_id": new_id, "devices_reconnected": outcome.reconnected}
-
-
-def _admit_definition(change: DriverChange) -> None:
-    """``driver_change.admit`` as the Builder answers it: the loader's reasons
-    beneath the save's own heading, the floor's sentence as it is, a
-    protected identity as it was raised, and any other failure as a save not
-    made."""
-    try:
-        admit(change)
-    except DriverRefused as e:
-        if e.errors:
-            raise definition_invalid(list(e.errors), status_code=e.status_code)
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
-    except (HTTPException, InstalledEquipmentError):
-        raise
-    except Exception as e:
-        raise api_error(500, "The driver was not saved, and the copy you had is unchanged.", e)
 
 
 def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:

@@ -138,3 +138,10 @@ async def test_before_the_engine_starts_only_discovery_and_the_announcement_run(
     monkeypatch.setattr(driver_change, "_running_engine", lambda: None)
     assert await driver_change.changed(DRIVER_ID) == driver_change.Changed()
     assert world.events == [("refresh",), ("announce", DRIVER_ID)]
+
+
+@pytest.mark.parametrize("missing", ["reload_driver", "retry_all_orphans", "status_of"])
+async def test_an_engine_without_a_part_still_runs_the_rest(world, missing):
+    delattr(world.devices, missing)
+    await driver_change.changed(DRIVER_ID)
+    assert world.events[-2:] == [("refresh",), ("announce", DRIVER_ID)]

@@ -62,7 +62,7 @@ import re
 import shutil
 import sys
 import tempfile
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -550,28 +550,42 @@ async def _tell_the_simulation(engine: Any, driver_ids: Collection[str]) -> bool
 async def _rebuild_devices(devices: Any, driver_ids: Collection[str]) -> Changed:
     """Build every device on ``driver_ids`` again and bring up every device
     waiting for a driver that is registered now; what came of each."""
+    using, waiting = _devices_on(devices, driver_ids)
+    reconnected: list[str] = []
+    for driver_id in driver_ids:
+        reconnected += await _logged(
+            lambda driver_id=driver_id: devices.reload_driver(driver_id),
+            f"Driver '{driver_id}' changed, but its devices could not be built again",
+        )
+    swept = await _logged(
+        lambda: devices.retry_all_orphans(), "Could not bring up the devices waiting for a driver"
+    )
+    activated = list(dict.fromkeys([d for d in reconnected if d in waiting] + list(swept)))
+    not_reconnected = [d for d in using if d not in reconnected and d not in activated]
+    return Changed(reconnected, activated, not_reconnected)
+
+
+def _devices_on(devices: Any, driver_ids: Collection[str]) -> tuple[list[str], set[str]]:
+    """The devices on ``driver_ids``, and those of them waiting to run (for
+    their driver, or for their settings to be worked out)."""
     from openavc.core.device_records import ORPHANED, SETTINGS_FAILED
 
     try:
         using = [d for driver_id in driver_ids for d in devices.get_devices_using_driver(driver_id)]
-        waiting = {d for d in using if devices.status_of(d) in (ORPHANED, SETTINGS_FAILED)}
+        return using, {d for d in using if devices.status_of(d) in (ORPHANED, SETTINGS_FAILED)}
     except Exception:
         log.exception("Could not read which devices use the changed drivers")
-        using, waiting = [], set()
-    reconnected: list[str] = []
-    for driver_id in driver_ids:
-        try:
-            reconnected += await devices.reload_driver(driver_id)
-        except Exception:
-            log.exception("Driver '%s' changed, but its devices could not be built again", driver_id)
+        return [], set()
+
+
+async def _logged(step: Callable[[], Awaitable[list[str]]], failure: str) -> list[str]:
+    """The devices one part of the rebuild names, or none, with ``failure``
+    logged, when it raises."""
     try:
-        swept = await devices.retry_all_orphans()
+        return list(await step())
     except Exception:
-        log.exception("Could not bring up the devices waiting for a driver")
-        swept = []
-    activated = list(dict.fromkeys([d for d in reconnected if d in waiting] + list(swept)))
-    not_reconnected = [d for d in using if d not in reconnected and d not in activated]
-    return Changed(reconnected, activated, not_reconnected)
+        log.exception(failure)
+        return []
 
 
 def _ask_for_a_bringup_round(devices: Any) -> None:
