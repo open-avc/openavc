@@ -1458,7 +1458,7 @@ def start_check(session: "AuditSession") -> None:
     Progress and the finished state reach the session's subscribers; the
     session's teardown cancels a check still running.
     """
-    from openavc.audit.session import AuditError
+    from openavc.audit.session import AuditError, error_sentence
 
     check: NetworkCheck | None = session.check
     if check is None:
@@ -1479,18 +1479,19 @@ def start_check(session: "AuditSession") -> None:
         except asyncio.CancelledError:
             check.status = "cancelled"
             raise
-        except Exception as exc:
-            log.exception("Network check failed")
-            check.status = "failed"
-            check.error = (
-                f"The network check stopped: {str(exc).rstrip('.')}. "
-                "Start a new audit to run it again."
-            )
-            session.add_timeline("check.failed", check.error)
         finally:
             session.publish_state()
 
-    session.track_task(asyncio.create_task(run()))
+    def failed(exc: BaseException) -> None:
+        check.status = "failed"
+        check.error = (
+            f"The network check stopped: {error_sentence(exc).rstrip('.')}. "
+            "Start a new audit to run it again."
+        )
+        session.add_timeline("check.failed", check.error)
+        session.publish_state()
+
+    session.track_task(asyncio.create_task(run()), fails=failed)
 
 
 async def open_for_session(session: "AuditSession", discovery: DiscoveryEngine) -> NetworkCheck:

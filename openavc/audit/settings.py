@@ -40,10 +40,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.command_catalog import command_catalog
-from openavc.audit.commands import QUERY_WINDOW_SECONDS, error_sentence
+from openavc.audit.commands import QUERY_WINDOW_SECONDS
 from openavc.audit.effects import same_value
 from openavc.audit.observe import command_sent_nothing, recorded
-from openavc.audit.session import AuditError
+from openavc.audit.session import AuditError, error_sentence
 from openavc.drivers.base import validate_device_setting_value
 from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
@@ -101,9 +101,10 @@ class SettingTrial:
     restore_value: Any = None
     status: str = WRITING
     # Each half: {"at", "error", "confirmed", "value", "after"}, plus "sent"
-    # (a failed call had already sent bytes) and "interrupted" (the audit
-    # ended before the read-back did); ``restore`` also says whether the audit
-    # did it on its own as the driver stopped.
+    # (a failed call had already sent bytes), "interrupted" (the audit
+    # ended before the read-back did) and "stopped" (the audit's own failure
+    # while it waited, as a sentence); ``restore`` also says whether the
+    # audit did it on its own as the driver stopped.
     write: dict[str, Any] = field(default_factory=dict)
     restore: dict[str, Any] | None = None
     # The device's state before the write (for "what changed").
@@ -258,7 +259,10 @@ class SettingsPass:
             run=self.run.index, setting=key,
         )
         self._publish(trial)
-        self._task = self.session.track_task(asyncio.create_task(self._round_trip(trial)))
+        self._task = self.session.track_task(
+            asyncio.create_task(self._round_trip(trial)),
+            fails=lambda exc: self._failed(trial, exc),
+        )
         return trial
 
     async def put_back(self, key: str) -> SettingTrial:
@@ -272,7 +276,10 @@ class SettingsPass:
             raise AuditError(NOTHING_TO_PUT_BACK.format(label=label))
         trial.status = RESTORING
         self._publish(trial)
-        self._task = self.session.track_task(asyncio.create_task(self._restore_only(trial)))
+        self._task = self.session.track_task(
+            asyncio.create_task(self._restore_only(trial)),
+            fails=lambda exc: self._failed(trial, exc),
+        )
         return trial
 
     def _refuse_if_busy(self) -> None:
@@ -406,6 +413,25 @@ class SettingsPass:
             trial.status = DONE
             self._publish(trial)
 
+    def _failed(self, trial: SettingTrial, exc: BaseException) -> None:
+        """The write or the put-back raised: the half it was on records the
+        failure, and the setting is still put back when the driver stops
+        (or by Put it back) if the write may have landed. Called by the
+        session with the tracked task's exception."""
+        why = error_sentence(exc)
+        half = trial.restore if trial.restore is not None else trial.write
+        if "at" not in half:
+            # Nothing was written yet.
+            half.update({"at": time.time(), "error": why, "confirmed": False,
+                         "value": None, "sent": False})
+        else:
+            half["stopped"] = why
+        trial.status = DONE
+        self.session.add_timeline(
+            "setting.failed", setting_sentence(trial), run=self.run.index, setting=trial.key,
+        )
+        self._publish(trial)
+
     async def _restore_only(self, trial: SettingTrial) -> None:
         try:
             await self._restore(trial)
@@ -510,6 +536,11 @@ def _read_back(half: dict[str, Any]) -> str:
         return f"the device reported it back after {half['after']} s."
     if half.get("interrupted"):
         return "the audit ended before the device reported it back."
+    if half.get("stopped"):
+        return (
+            "the audit stopped waiting for the device to report it back: "
+            f"{half['stopped'].rstrip('.')}."
+        )
     if half.get("value") is None:
         return "the device did not report it back."
     return f"the device still reports {_value_text(half['value'])}."

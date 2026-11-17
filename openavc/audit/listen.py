@@ -51,7 +51,7 @@ from openavc.audit.observe import (
     replies_to_nobody,
 )
 from openavc.audit.sandbox import DriverSandbox, audit_device_id
-from openavc.audit.session import AuditError
+from openavc.audit.session import AuditError, error_sentence
 from openavc.core.connection_fault import is_permanent_fault
 from openavc.core.device_traffic import RX, TX, TrafficEntry, serialize_entry
 from openavc.utils.boolean_words import value_text
@@ -82,6 +82,9 @@ FAILED = "failed"
 STOPPED = "stopped"
 
 NO_CONNECTION_SET = "Enter the connection settings first."
+# Keep listening on an attempt whose pass has ended (it failed, or the run
+# stopped): nothing would end the window.
+ATTEMPT_ENDED = "This connection has ended. Connect again to listen."
 
 # The front-panel check's answers, as the timeline says them.
 FRONT_PANEL_TEXT = {
@@ -264,18 +267,12 @@ class ListenPass:
     # -- the pass -------------------------------------------------------------
 
     async def execute(self) -> None:
+        """The pass, run as the session's tracked task: whatever it raises
+        reaches :meth:`failed`."""
         sb = self.sandbox
         device_id = sb.device_id
-        try:
-            sb.prepare()
-            await sb.start()
-        except AuditError as exc:
-            self._fail(str(exc))
-            return
-        except Exception as exc:
-            log.exception("The audit could not start the driver")
-            self._fail(f"The driver could not start: {exc}")
-            return
+        sb.prepare()
+        await sb.start()
         self._redactor = sb.observer.redactor()
         self.sources = response_sources(sb.driver)
         self.poll_interval = float(sb.resolved.get("config", {}).get("poll_interval", 0) or 0)
@@ -366,6 +363,8 @@ class ListenPass:
 
     def extend(self, seconds: float = EXTEND_SECONDS) -> None:
         """Keep listening longer, never past ``max_seconds`` from the start."""
+        if self.task is None or self.task.done():
+            raise AuditError(ATTEMPT_ENDED)
         cap = self.started_at + self.max_seconds
         now = time.time()
         if now >= cap:
@@ -422,6 +421,22 @@ class ListenPass:
             self.finished_at = time.time()
         self._dirty = True
         self._flush_now()
+
+    def failed(self, exc: BaseException) -> None:
+        """The pass raised: it fails with what it raised, and a driver it
+        had started stops, since nothing watches it any more. Called by the
+        session with the tracked task's exception."""
+        if isinstance(exc, AuditError):
+            self._fail(str(exc))
+        elif not self.sandbox.started:
+            self._fail(f"The driver could not start: {error_sentence(exc)}")
+        else:
+            self._fail(
+                f"The audit stopped listening: {error_sentence(exc).rstrip('.')}. "
+                "Change the connection settings or connect again."
+            )
+        if self.sandbox.started:
+            self.session.track_task(asyncio.create_task(self.stop()))
 
     def _fail(self, message: str) -> None:
         self.status = FAILED
@@ -801,5 +816,5 @@ async def start_listen(
     commands_for(session, run)  # the next step's command list, from the live driver
     settings_for(session, run)
     session.enter_step("listen")
-    listen.task = session.track_task(asyncio.create_task(listen.execute()))
+    listen.task = session.track_task(asyncio.create_task(listen.execute()), fails=listen.failed)
     return listen

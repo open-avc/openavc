@@ -792,3 +792,41 @@ async def test_both_tests_against_the_simulator(driver):
         await run.stop()
         await sim.stop()
         _DRIVER_REGISTRY.pop("acme_simulated", None)
+
+
+async def test_a_test_that_raises_stops_and_says_why(driver):
+    """Something the audit raises while a test runs stops the test, and its
+    sentence (the wizard's and the report's) says why."""
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit)
+
+    async def pinger() -> bool:
+        return True
+
+    try:
+        test = start_outage(session, run, POWER_CYCLE, pinger=pinger, **QUICK)
+
+        def broken(_now):
+            raise RuntimeError("the clock broke")
+
+        test._step = broken
+        await _until(lambda: test.status == STOPPED)
+        assert test.end_code == "error"
+        assert test.end_reason == "The test stopped: the clock broke"
+        # Nothing was measured before it broke, so the reason is the sentence.
+        assert test.record()["summary"] == "The test stopped: the clock broke."
+        assert [e.kind for e in session.timeline].count("outage.done") == 1
+        # Another test can start: this one is not left running.
+        assert start_outage(session, run, POWER_CYCLE, pinger=pinger, **QUICK).status == "running"
+    finally:
+        await run.stop()
+        await unit.close()
+
+
+def test_the_audits_own_failure_is_said_where_the_test_ended():
+    base = {"kind": POWER_CYCLE, "noticed_at": 5.0, "reason": {"code": "no_response"},
+            "measured": {"noticed_after": 3.0}}
+    failed = outage_sentence({**base, "status": STOPPED, "end_code": "error",
+                              "end_reason": "The test stopped: the clock broke"})
+    assert failed.endswith("; the driver had not reconnected when the test stopped: the clock broke.")

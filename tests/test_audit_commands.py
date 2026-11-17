@@ -1286,3 +1286,78 @@ async def test_a_later_refusal_on_the_same_clock_tick_is_still_not_the_commands(
     finally:
         await run.stop()
         server.close()
+
+
+async def test_a_window_the_audit_cannot_finish_closes_with_why(driver):
+    """Something the audit itself raises while it watches a command (not
+    the driver's call) closes that command with the reason as its outcome;
+    the next Send is not refused as busy."""
+    server, port = await _fake_device()
+    session, run, heard = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+
+        async def broken(*_args, **_kwargs):
+            raise RuntimeError("the window broke")
+
+        commands._hold_open = broken
+        trial = await commands.send("set_volume", {"level": 40})
+        assert trial.status == DONE and trial.error == ""
+        assert trial.watch_error == "the window broke"
+        view = commands.to_dict()["trials"][0]
+        assert view["summary"] == "the audit could not finish watching it: the window broke."
+        assert view["watch_error"] == "the window broke"
+        failed = [e.text for e in session.timeline if e.kind == "command.failed"]
+        assert failed == ["Set Volume: the audit could not finish watching it: the window broke."]
+        assert heard[-1]["type"] == "audit.commands"
+        assert heard[-1]["commands"]["trials"][0]["summary"] == view["summary"]
+
+        del commands._hold_open
+        again = await commands.send("power_on")
+        await _until(lambda: again.status == DONE)
+        assert again.watch_error == ""
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_a_conclusion_that_raises_closes_the_command_with_why(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+
+        def broken(_trial):
+            raise ValueError("")
+
+        commands._conclude = broken
+        trial = await commands.send("set_volume", {"level": 40})
+        await _until(lambda: trial.status == DONE)
+        assert trial.watch_error == "ValueError"
+        assert "command.done" not in [e.kind for e in session.timeline]
+        assert [e.kind for e in session.timeline].count("command.failed") == 1
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_status_queries_that_raise_close_the_query_being_watched(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+
+        async def broken(*_args, **_kwargs):
+            raise RuntimeError("the window broke")
+
+        commands._hold_open = broken
+        await commands.run_queries()
+        await _until(lambda: commands.batch["status"] == "done")
+        await _until(lambda: commands.current() is None)
+        assert [t.command for t in commands.trials] == ["query_power"]
+        assert commands.trials[0].watch_error == "the window broke"
+        assert commands.batch["sent"] == 0
+        assert commands.busy_with() is None
+    finally:
+        await run.stop()
+        server.close()

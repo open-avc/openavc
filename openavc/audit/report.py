@@ -123,7 +123,9 @@
     connection carried it), the times (``sent_at``, ``returned_at``,
     ``ends_at``, ``finished_at``), ``result`` (what the driver's
     ``send_command`` returned), ``error`` and ``error_type`` (what it
-    raised, in words and by class) and ``traffic`` (``sent``,
+    raised, in words and by class), ``watch_error`` (the audit's own failure
+    while it sent or watched the command, in words; ``""`` when none) and
+    ``traffic`` (``sent``,
     ``received``, and every entry from the send to the end of its window,
     in the ``attempts`` traffic form); ``changed``, every status value that
     read differently when the report was taken from before the first command
@@ -174,7 +176,8 @@
     "after"}``, the value read back and how many seconds after the write;
     ``sent`` when a call that failed had already sent bytes, so the setting
     was put back anyway; ``interrupted`` when the audit ended before the
-    read-back did; ``unchanged`` when the value already showed before that
+    read-back did; ``stopped`` the audit's own failure while it waited, in
+    words; ``unchanged`` when the value already showed before that
     write and the device reported nothing after it, so the read-back proves
     nothing; ``restore.automatic`` when the audit put it back as the driver
     stopped) and ``summary``.
@@ -187,7 +190,8 @@
   - ``outages``: each power cycle and cable pull, in order: ``number``,
     ``kind`` (``power_cycle``, ``cable_pull``), ``status`` (``done`` or
     ``stopped``, with ``end_reason`` and ``end_code``: ``person`` when Stop
-    was pressed, ``ceiling`` when the 15-minute limit stopped it),
+    was pressed, ``ceiling`` when the 15-minute limit stopped it, ``error``
+    when the audit's own failure did),
     ``connect_attempt``; the clocks, each a time or null: ``started_at``, the
     person's marks ``off_at`` and ``on_at``, the device's own answers
     ``unreachable_at`` and ``reachable_at`` (from a ping once a second, when

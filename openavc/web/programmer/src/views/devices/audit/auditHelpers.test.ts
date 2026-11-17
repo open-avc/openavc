@@ -25,6 +25,7 @@ import {
   displayBytes,
   LIVE_TRAFFIC_KEPT,
   secondsLeft,
+  canKeepListening,
   statusValue,
   previewStageLabel,
   previewRequestLines,
@@ -536,6 +537,19 @@ describe("connect and listen", () => {
     expect(next.session?.runs?.[0].listen).toBe(listen);
     const ignored = applyAuditMessage(s, [], { type: "audit.listen", session_id: "abc123", run: 3, listen });
     expect(ignored.session).toBe(s);
+  });
+
+  it("offers Keep listening only while something can still listen", () => {
+    const listen = (status: string, error = "") => ({ status, error }) as unknown as AuditListen;
+    for (const status of ["listening", "done", "not_connected"]) {
+      expect(canKeepListening(listen(status))).toBe(true);
+    }
+    // A window that ended before the driver connected: the driver keeps trying.
+    expect(canKeepListening(listen("failed"))).toBe(true);
+    // The attempt failed with an error: nothing is running to listen with.
+    expect(canKeepListening(listen("failed", "The driver could not start: no room for it"))).toBe(false);
+    expect(canKeepListening(listen("connecting"))).toBe(false);
+    expect(canKeepListening(listen("stopped"))).toBe(false);
   });
 
   it("counts down only while listening", () => {

@@ -502,3 +502,55 @@ async def test_events_the_device_has_not_sent_are_said_on_the_listen_step(driver
     finally:
         await run.stop()
         server.close()
+
+
+async def test_a_listen_that_raises_after_the_driver_started_fails_with_it(driver):
+    """Something the listen step cannot read once the driver is up (here a
+    driver default poll interval that is not a number) fails the step with
+    a sentence the wizard shows, rather than leaving it on connecting."""
+    _DRIVER_REGISTRY["acme_listen"] = create_configurable_driver_class(
+        {**DRIVER, "default_config": {"port": 1, "poll_interval": "abc"}},
+    )
+    server, port = await _fake_device()
+    session, run, heard = _session_and_run(port)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status != "connecting")
+        assert listen.status == FAILED
+        assert "abc" in listen.error
+        assert [e.text for e in session.timeline if e.kind == "listen.failed"] == [listen.error]
+        sent = [m["listen"] for m in heard if m["type"] == "audit.listen"]
+        assert sent and sent[-1]["status"] == FAILED and sent[-1]["error"] == listen.error
+        # Nothing watches the driver now: it stops, and Keep listening, which
+        # nothing would end, is refused.
+        await _until(lambda: not listen.sandbox.started)
+        assert listen.status == FAILED
+        with pytest.raises(AuditError, match="Connect again"):
+            listen.extend()
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_a_driver_that_cannot_start_fails_the_listen_in_its_words(driver, monkeypatch):
+    """A refusal before the driver starts is said as it is; anything else
+    that stops it starting says the driver could not start."""
+    from openavc.audit.sandbox import DriverSandbox
+
+    session, run, _ = _session_and_run(1)
+    run.choice = DriverChoice(driver_id="acme_missing", identity={"name": "Acme Missing"})
+    listen = await start_listen(session, run, **FAST)
+    await _until(lambda: listen.status != "connecting")
+    assert listen.status == FAILED and "acme_missing" in listen.error
+    assert not listen.error.startswith("The driver could not start")
+
+    async def broken(self):
+        raise RuntimeError("no room for it")
+
+    monkeypatch.setattr(DriverSandbox, "start", broken)
+    session, run, _ = _session_and_run(1)
+    listen = await start_listen(session, run, **FAST)
+    await _until(lambda: listen.status != "connecting")
+    assert listen.error == "The driver could not start: no room for it"
+    with pytest.raises(AuditError, match="Connect again"):
+        listen.extend()

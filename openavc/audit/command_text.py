@@ -51,9 +51,13 @@ def effect_sentence(effect: dict[str, Any]) -> str:
 
 def trial_sentence(trial: dict[str, Any]) -> str:
     """What one command did, as the timeline, the wizard and the summary say
-    it. Takes the trial as its record holds it (``report.json`` included)."""
+    it. Takes the trial as its record holds it (``report.json`` included).
+    A window the audit could not finish says so in place of what it saw,
+    which is incomplete."""
     if trial.get("error"):
         return f"not accepted: {trial['error']}"
+    if trial.get("watch_error"):
+        return f"the audit could not finish watching it: {trial['watch_error'].rstrip('.')}."
     parts = [text for part in _PARTS for text in part(trial)]
     return "; ".join(parts or [_nothing_happened(trial)]) + "."
 

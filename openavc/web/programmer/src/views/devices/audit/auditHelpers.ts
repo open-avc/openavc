@@ -554,6 +554,15 @@ export function appendTraffic(
   return next.length > LIVE_TRAFFIC_KEPT ? next.slice(next.length - LIVE_TRAFFIC_KEPT) : next;
 }
 
+/** Keep listening is offered while the attempt is still listening or has
+ *  finished listening with its driver up, and after a window that ended
+ *  before the driver connected. An attempt that failed with an error has
+ *  nothing running to listen with: Connect again starts a new one. */
+export function canKeepListening(listen: AuditListen): boolean {
+  if (listen.status === "failed") return !listen.error;
+  return listen.status === "listening" || listen.status === "done" || listen.status === "not_connected";
+}
+
 /** Seconds left in the listening window, or null when not listening. */
 export function secondsLeft(listen: AuditListen | undefined, now: number): number | null {
   if (!listen || !listen.ends_at) return null;

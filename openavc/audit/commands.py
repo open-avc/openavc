@@ -95,7 +95,7 @@ from openavc.audit.effects import (
 )
 from openavc.audit.exchange import frames_in, own_send, refusals, unmatched_replies
 from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, recorded
-from openavc.audit.session import AuditError
+from openavc.audit.session import AuditError, error_sentence
 from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.drivers.command_files import CommandFile, DeviceFile
 from openavc.drivers.spec import is_secret_setting
@@ -145,20 +145,6 @@ NO_TRIAL_TO_ANSWER = "There is no command number {number} to answer for."
 NOT_SENT_YET = "Wait for {label} to be sent before saying what the device did."
 
 
-def error_sentence(exc: BaseException) -> str:
-    """What the person reads when a Send raised.
-
-    The platform's own refusals (a parameter out of range, a command the
-    driver does not have) are already sentences. A connection failure is put
-    in the words a panel uses. Anything else is the driver's own message.
-    """
-    from openavc.api.error_messages import friendly_error
-
-    if isinstance(exc, (ConnectionError, TimeoutError)):
-        return friendly_error(exc, device="The device")
-    return str(exc) or type(exc).__name__
-
-
 @dataclass
 class CommandTrial:
     """One command sent, and what came of it."""
@@ -184,6 +170,9 @@ class CommandTrial:
     result: Any = None
     error: str = ""
     error_type: str = ""
+    # The audit's own failure while it sent or watched the command (its
+    # window closed early), as a sentence; the driver's call is ``error``.
+    watch_error: str = ""
     # Parameters the driver marks secret: shown as *** wherever the trial is.
     secret_params: set[str] = field(default_factory=set)
     # What the driver declares about the command, as the catalog said.
@@ -277,6 +266,7 @@ class CommandTrial:
             "result": self.result,
             "error": self.error,
             "error_type": self.error_type,
+            "watch_error": self.watch_error,
             "since_previous": self.since_previous,
             "extended": self.extended,
             "stopped_early": self.stopped_early,
@@ -437,7 +427,9 @@ class CommandPass:
         trial.file_command = _moves_a_file(entry) or bool(files)
         trial.on_finished = on_finished
         trial.keep_file = keep_file
-        task = self._task = self.session.track_task(asyncio.create_task(self._send_and_watch(trial)))
+        task = self._task = self.session.track_task(
+            asyncio.create_task(self._send_and_watch(trial)), fails=self._failed,
+        )
         # A file can take minutes to reach a device, longer than a request
         # may wait (30 s through the cloud tunnel): answered as soon as it
         # starts, and followed over audit.subscribe like every send.
@@ -529,7 +521,9 @@ class CommandPass:
             f"{'query' if len(queries) == 1 else 'queries'} one after another.",
             run=self.run.index,
         )
-        self._task = self.session.track_task(asyncio.create_task(self._run_batch(queries)))
+        self._task = self.session.track_task(
+            asyncio.create_task(self._run_batch(queries)), fails=self._failed,
+        )
 
     async def _run_batch(self, queries: list[dict[str, Any]]) -> None:
         try:
@@ -623,16 +617,24 @@ class CommandPass:
 
     async def _send_and_watch(self, trial: CommandTrial, *, window: float | None = None) -> None:
         """Send ``trial`` and hold its window open. ``window``: the batch's
-        query window, which is never held for a read-back."""
+        query window, which is never held for a read-back. A raise leaves the
+        trial open for :meth:`_failed`, which closes it with the failure."""
         sandbox = self.run.listen.sandbox
         listener = WindowListener(trial, sandbox, after_reconnect_seconds=self.after_reconnect_seconds)
-        trial.mark(sandbox.observer, trial.marks)
+        finished = False
         try:
+            trial.mark(sandbox.observer, trial.marks)
             await self._call(trial, sandbox, window)
             await self._hold_open(trial, sandbox, window)
+            finished = True
+        except asyncio.CancelledError:
+            # Stopped by the audit: what the window saw so far stands.
+            finished = True
+            raise
         finally:
             listener.close()
-            self._finish(trial)
+            if finished:
+                self._finish(trial)
 
     async def _call(self, trial: CommandTrial, sandbox: Any, window: float | None) -> None:
         """The driver's call through the production door: what it returned
@@ -721,8 +723,10 @@ class CommandPass:
         attempt = self._attempt(trial)
         if attempt is not None:
             trial.mark(attempt.sandbox.observer, trial.end_marks)
-        trial.status = DONE
+        # Concluded before it is done: a conclusion that raises leaves the
+        # trial open for the step's failure.
         self._conclude(trial)
+        trial.status = DONE
         self.session.add_timeline(
             "command.done",
             f"{trial.label}: {trial_sentence(self._trial_view(trial, every_entry=False))}",
@@ -734,6 +738,32 @@ class CommandPass:
                 f"{trial.label}: the driver said it succeeded, but nothing was sent to the device.",
                 run=self.run.index, trial=trial.number, command=trial.command,
             )
+        self._publish(trial)
+
+    def _failed(self, exc: BaseException) -> None:
+        """A Send or the status queries raised: the command it was on closes
+        with the failure as its outcome, and the next Send is not refused as
+        busy. Called by the session with the tracked task's exception."""
+        why = error_sentence(exc)
+        trial = self.current()
+        if trial is None:
+            self.session.add_timeline(
+                "commands.failed", f"The audit stopped sending commands: {why}",
+                run=self.run.index,
+            )
+            self._publish()
+            return
+        trial.watch_error = why
+        if trial.on_finished is not None:
+            trial.on_finished()
+            trial.on_finished = None
+        trial.returned.set()
+        trial.finished_at = time.time()
+        trial.status = DONE
+        self.session.add_timeline(
+            "command.failed", f"{trial.label}: {trial_sentence(trial.to_dict())}",
+            run=self.run.index, trial=trial.number, command=trial.command,
+        )
         self._publish(trial)
 
     def _conclude(self, trial: CommandTrial) -> None:

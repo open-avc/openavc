@@ -26,10 +26,16 @@ that keep an audit from leaving anything behind:
   for ``IDLE_TIMEOUT`` seconds. An open wizard sends nothing while it sits on a
   finished report, so walking away from one ends the session and resumes the
   project's devices.
+- **A step that raises fails in its own words.** Every step's background work
+  (connect and listen, a command, a setting, a power test, the network check)
+  runs as a tracked task, and ``track_task`` is the one place its exception is
+  caught: the step that started it is handed the exception and fails with it,
+  on its own screen and in the timeline, so nothing is left waiting on work
+  that has stopped. A step does not catch its own.
 
 Everything else a session holds (the network check, the listeners, the report)
-is attached by the modules that build it: ``track_task`` for work to cancel,
-``on_teardown`` for things to stop. What the browser sees comes through
+is attached by the modules that build it: ``track_task`` for work to cancel
+(and its failure), ``on_teardown`` for things to stop. What the browser sees comes through
 ``subscribe``, one callback per WebSocket client that asked, never a
 broadcast.
 """
@@ -172,6 +178,24 @@ class TimelineEntry:
 
 
 Subscriber = Callable[[dict[str, Any]], None]
+# What a step does when its background work raised: fail with the exception.
+StepFailure = Callable[[BaseException], None]
+
+
+def error_sentence(exc: BaseException) -> str:
+    """What the person reads when something an audit step did raised: a
+    Send, a setting's write, or the step's own background work.
+
+    The platform's own refusals (a parameter out of range, a command the
+    driver does not have) are already sentences. A connection failure is put
+    in the words a panel uses. Anything else is its own message, or its type
+    when it has none.
+    """
+    from openavc.api.error_messages import friendly_error
+
+    if isinstance(exc, (ConnectionError, TimeoutError)):
+        return friendly_error(exc, device="The device")
+    return str(exc).strip() or type(exc).__name__
 
 
 # The most log lines one audit keeps for its report's log.txt.
@@ -349,11 +373,39 @@ class AuditSession:
 
     # -- things to stop -----------------------------------------------------
 
-    def track_task(self, task: asyncio.Task) -> asyncio.Task:
-        """Cancel ``task`` at teardown if it is still running."""
+    def track_task(
+        self, task: asyncio.Task, *, fails: StepFailure | None = None,
+    ) -> asyncio.Task:
+        """Cancel ``task`` at teardown if it is still running, and hand
+        whatever it raises to ``fails``.
+
+        ``fails`` is the step that started the task: it fails with the
+        exception, in the words its own screen shows. This is the one place a
+        raise in an audit's background work is caught; a step does not catch
+        its own. Work no step owns passes none, and only the log hears of it.
+        """
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(lambda done: self._task_done(done, fails))
         return task
+
+    def _task_done(self, task: asyncio.Task, fails: StepFailure | None) -> None:
+        self._tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is None:
+            return
+        log.error(
+            "Device audit %s: %s raised", self.id,
+            getattr(task.get_coro(), "__qualname__", None) or task.get_name(),
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        if fails is None:
+            return
+        try:
+            fails(exc)
+        except Exception:
+            log.exception("Device audit %s could not record a step's failure", self.id)
 
     def on_teardown(self, hook: Callable[[], Awaitable[None]]) -> None:
         """Await ``hook`` at teardown, after tracked tasks are cancelled."""
@@ -522,7 +574,10 @@ class AuditManager:
                 "session.started", started + ".",
                 address=target.address, ip=target.ip,
             )
-            session.track_task(asyncio.create_task(self._watch(session)))
+            session.track_task(
+                asyncio.create_task(self._watch(session)),
+                fails=lambda exc: _watch_failed(session, exc),
+            )
             log.info("Device audit %s started on %s", session.id, target.address)
             return session
 
@@ -674,6 +729,17 @@ class AuditManager:
             if loop.time() >= next_rearm:
                 next_rearm = loop.time() + self._keepalive
                 await self._rearm_pauses(session)
+
+
+def _watch_failed(session: AuditSession, exc: BaseException) -> None:
+    """The session's own watch raised: the project devices the audit paused
+    are no longer kept paused, and leaving the audit open will not end it."""
+    session.add_timeline(
+        "session.watch_failed",
+        "The audit can no longer keep the project devices it paused from "
+        f"reconnecting, or end itself when left open: {error_sentence(exc).rstrip('.')}. "
+        "Finish the audit.",
+    )
 
 
 _END_TEXT = {

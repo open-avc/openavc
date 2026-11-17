@@ -58,7 +58,7 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from openavc.audit.session import AuditError
+from openavc.audit.session import AuditError, error_sentence
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -208,8 +208,8 @@ class OutageTest:
         # What set ``ends_at``: "settled" (the watch after the reconnect) or
         # "back_unnoticed" (back, and not noticed yet).
         self._ends_by = ""
-        # Why the test stopped early: "person", "ceiling", or "" when it ended
-        # on its own.
+        # Why the test stopped early: "person", "ceiling", "error" (the
+        # audit's own failure), or "" when it ended on its own.
         self.end_code = ""
         # What came back after the reconnect, kept when the test ends.
         self._final: dict[str, Any] | None = None
@@ -371,7 +371,7 @@ class OutageTest:
             + ("; the audit pings the device every second" if self.ping["used"] else "")
             + ".",
         )
-        self.task = self.session.track_task(asyncio.create_task(self._loop()))
+        self.task = self.session.track_task(asyncio.create_task(self._loop()), fails=self.failed)
 
     def _prepare_ping(self) -> None:
         if self._pinger is not None:
@@ -451,9 +451,16 @@ class OutageTest:
                     next_flush = now + self.flush_seconds
                     self._publish()
                 await asyncio.sleep(min(self.flush_seconds, self.ping_seconds) / 2)
-        finally:
+        except asyncio.CancelledError:
             if self.status == RUNNING:
                 self._finish(STOPPED, "The test was stopped.")
+            raise
+
+    def failed(self, exc: BaseException) -> None:
+        """The test raised: it stops, and its sentence says why. Called by
+        the session with the tracked task's exception."""
+        self.end_code = "error"
+        self._finish(STOPPED, f"The test stopped: {error_sentence(exc)}")
 
     def _step(self, now: float) -> None:
         """Move the test on: the ceiling, the watch after reconnecting, the end."""
@@ -629,11 +636,12 @@ def outage_sentence(record: dict[str, Any]) -> str:
     measured = record.get("measured") or {}
     parts: list[str] = []
     # How the sentence says the test ended: its own end, the person's Stop,
-    # or the time limit, said once, where the driver's state is.
+    # the time limit or the audit's own failure, said once, where the
+    # driver's state is.
     code = record.get("end_code") or ""
     end_text = (record.get("end_reason") or "").rstrip(".")
     ended = (
-        "when " + end_text[:1].lower() + end_text[1:] if code == "ceiling" and end_text
+        "when " + end_text[:1].lower() + end_text[1:] if code in ("ceiling", "error") and end_text
         else "when the test was stopped" if code == "person"
         else "when the test ended"
     )

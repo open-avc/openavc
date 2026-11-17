@@ -46,7 +46,7 @@ function trial(extra: Partial<AuditCommandTrial> = {}): AuditCommandTrial {
   return {
     number: 1, command: "set_volume", label: "Set Volume", params: { level: 40 }, attempt: 1,
     batch: false, connect_attempt: 0, sent_at: 10, returned_at: 10.1, ends_at: 12,
-    finished_at: 12, status: "done", result: null, error: "", error_type: "",
+    finished_at: 12, status: "done", result: null, error: "", error_type: "", watch_error: "",
     traffic: { sent: 1, received: 1, entries: [] }, since_previous: null, extended: 0,
     stopped_early: false, changes: [], already_moving: [], moved: [], device_errors: [], effects: [],
     query: null, refusals: {},

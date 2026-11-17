@@ -450,3 +450,53 @@ async def test_both_scan_doors_give_the_refusal_sentence(monkeypatch):
         assert result == {"error": SCAN_BLOCKED}
     finally:
         await manager.finish(session.id)
+
+
+async def test_a_tracked_task_that_raises_fails_the_step_that_owns_it(caplog):
+    """What a background task raises reaches the step that started it, and
+    the log; a cancelled one reaches neither, and a step whose own failure
+    handling raises is logged, never raised into the loop."""
+    manager = AuditManager(None)
+    session = await manager.start(TARGET)
+    failures: list[BaseException] = []
+
+    async def raises():
+        raise ValueError("bad value")
+
+    async def forever():
+        await asyncio.sleep(3600)
+
+    def also_raises(_exc):
+        raise RuntimeError("could not say so")
+
+    caplog.set_level("DEBUG", logger="audit.session")
+    raised = session.track_task(asyncio.create_task(raises()), fails=failures.append)
+    cancelled = session.track_task(asyncio.create_task(forever()), fails=failures.append)
+    session.track_task(asyncio.create_task(raises()), fails=also_raises)
+    await asyncio.sleep(0)
+    cancelled.cancel()
+    await asyncio.gather(raised, cancelled, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert [str(e) for e in failures] == ["bad value"]
+    assert sum("raises raised" in r.getMessage() for r in caplog.records) == 2
+    assert any("could not record a step's failure" in r.getMessage() for r in caplog.records)
+    assert not any(t.done() for t in session._tasks)  # a finished task is let go
+    await manager.finish(session.id)
+
+
+async def test_a_watch_that_raises_says_what_the_audit_no_longer_does(dm, core, monkeypatch):
+    _connected_widget(dm, core)
+    manager = AuditManager(dm, keepalive_seconds=0.05, idle_check_seconds=0.05)
+    session = await manager.start(TARGET, pause=[("widget1", "Lobby Widget")])
+
+    async def broken(_session):
+        raise RuntimeError("the clock broke")
+
+    monkeypatch.setattr(manager, "_rearm_pauses", broken)
+    for _ in range(50):
+        if any(e.kind == "session.watch_failed" for e in session.timeline):
+            break
+        await asyncio.sleep(0.02)
+    text = next(e.text for e in session.timeline if e.kind == "session.watch_failed")
+    assert text.endswith(": the clock broke. Finish the audit.")
+    await manager.finish(session.id)

@@ -4,6 +4,7 @@ import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
 import {
+  canKeepListening,
   childCountText,
   currentRun,
   trafficEntryText,
@@ -100,7 +101,7 @@ export function ListenStep() {
             >
               Continue
             </button>
-            {(listen.status === "listening" || listen.status === "done" || listen.status === "not_connected" || listen.status === "failed") && (
+            {canKeepListening(listen) && (
               <button
                 type="button"
                 onClick={() => void act("extend", () => audit.keepListening(sessionId))}

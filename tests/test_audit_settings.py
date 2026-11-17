@@ -454,3 +454,61 @@ async def test_the_fresh_read_waits_for_a_write_after_the_question_on_one_clock_
     finally:
         await run.stop()
         server.close()
+
+
+async def test_a_read_back_that_raises_says_so_and_the_setting_still_goes_back(driver):
+    """Something the audit raises while it waits for the device (not the
+    driver's write) is said on the setting, and the write, which went out,
+    is still put back when the driver stops."""
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port)
+    try:
+        settings = settings_for(session, run)
+        manager = run.listen.sandbox.manager
+        real = manager.await_setting_readback
+        calls: list = []
+
+        async def raises_once(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise RuntimeError("the read-back broke")
+            return await real(*args, **kwargs)
+
+        manager.await_setting_readback = raises_once
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: "stopped" in trial.write)
+        assert trial.status == DONE and trial.write["stopped"] == "the read-back broke"
+        assert trial.needs_putting_back() and settings.current() is None
+        summary = trial.to_dict()["summary"]
+        assert summary == (
+            "Wrote Boardroom to Device name: the audit stopped waiting for the device to "
+            "report it back: the read-back broke. It was not put back."
+        )
+        assert [e.text for e in session.timeline if e.kind == "setting.failed"] == [summary]
+        await _until(lambda: device["name"] == "Boardroom")
+    finally:
+        await run.stop()
+        server.close()
+    assert device["name"] == "Lobby" and trial.restore["automatic"]
+
+
+async def test_a_setting_that_fails_before_it_is_written_says_why(driver):
+    server, port = await _fake_device()
+    session, run = await _connected(port)
+    try:
+        settings = settings_for(session, run)
+
+        async def broken(_trial):
+            raise RuntimeError("no fresh value")
+
+        settings._refresh_original = broken
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: "error" in trial.write)
+        assert trial.status == DONE and not trial.needs_putting_back()
+        assert trial.to_dict()["summary"] == (
+            "Could not write Boardroom to Device name: no fresh value"
+        )
+    finally:
+        await run.stop()
+        server.close()

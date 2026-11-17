@@ -364,6 +364,8 @@ export interface AuditCommandTrial {
   /** Why it was not accepted, in words ("" when it was). */
   error: string;
   error_type: string;
+  /** The audit's own failure while it sent or watched the command ("" when none). */
+  watch_error: string;
   traffic: {
     sent: number;
     received: number;
@@ -495,6 +497,8 @@ export interface AuditSettingHalf {
   sent?: boolean;
   /** The audit ended before the read-back did. */
   interrupted?: boolean;
+  /** The audit's own failure while it waited for the read-back. */
+  stopped?: string;
   /** It already showed this value and the device reported nothing after the write. */
   unchanged?: boolean;
 }
@@ -528,8 +532,8 @@ export interface AuditOutage {
   kind: AuditOutageKind;
   status: "running" | "done" | "stopped";
   end_reason: string;
-  /** Why it stopped early: the person's Stop, the time limit, or "" (it ended on its own). */
-  end_code: "" | "person" | "ceiling";
+  /** Why it stopped early: the person's Stop, the time limit, the audit's own failure, or "" (it ended on its own). */
+  end_code: "" | "person" | "ceiling" | "error";
   connect_attempt: number;
   started_at: number;
   finished_at: number | null;

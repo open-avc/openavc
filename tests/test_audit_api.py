@@ -364,6 +364,39 @@ async def test_the_check_runs_once_and_its_result_reaches_the_state(wired):
     await wired.manager.shutdown()
 
 
+class BrokenCheck(FakeCheck):
+    """A network check that raises part-way."""
+
+    async def run(self):
+        raise OSError("the adapter went away")
+
+
+async def test_a_check_that_raises_fails_with_its_reason(wired, monkeypatch):
+    async def broken_open(session, _discovery):
+        check = BrokenCheck(session)
+        session.check = check
+        session.add_state_provider(lambda: fpmod.check_state(session))
+        return check
+
+    monkeypatch.setattr(routes, "open_for_session", broken_open)
+    started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+    session_id = started["session"]["session_id"]
+    got: list[dict] = []
+    wired.manager.current().subscribe(got.append)
+    await routes.run_network_check(session_id)
+    for _ in range(50):
+        if wired.manager.current().check.status == "failed":
+            break
+        await asyncio.sleep(0.01)
+    error = (
+        "The network check stopped: the adapter went away. Start a new audit to run it again."
+    )
+    assert got[-1]["state"]["check"]["status"] == "failed"
+    assert got[-1]["state"]["check"]["error"] == error
+    assert [e.text for e in wired.manager.current().timeline if e.kind == "check.failed"] == [error]
+    await wired.manager.shutdown()
+
+
 class HangingCheck(FakeCheck):
     """A network check still running when the audit is cancelled."""
 
