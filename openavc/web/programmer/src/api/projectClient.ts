@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { BASE, request } from "./base";
 import { ApiError } from "./errors";
+import { OPERATION_HEADER } from "./clientId";
 
 // --- Project ---
 
@@ -109,13 +110,32 @@ export class ConflictError extends Error {
   }
 }
 
+/** An error answer's JSON body, or nothing when it has none. */
+function answerFields(body: string): { detail?: unknown; code?: unknown } {
+  try {
+    const fields: unknown = JSON.parse(body);
+    return fields && typeof fields === "object" ? fields : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * PUT the whole project. `operation` names this save: sent again under the
+ * same id after its answer was lost, it is answered with what it did. A 409
+ * is a `ConflictError` when another writer moved the project, and an
+ * `ApiError` when the server refused the change itself (`code` "refused"),
+ * which reloading would not fix.
+ */
 export async function saveProject(
   project: ProjectConfig,
   etag?: string,
   mode: "edit" | "import" = "edit",
+  operation?: string,
 ): Promise<{ status: string; etag?: string; needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[] }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (etag) headers["If-Match"] = etag;
+  if (operation) headers[OPERATION_HEADER] = operation;
 
   const suffix = mode === "import" ? "?mode=import" : "";
   const res = await fetch(`${BASE}/project${suffix}`, {
@@ -125,16 +145,14 @@ export async function saveProject(
   });
 
   if (res.status === 409) {
+    const body = await res.text();
+    const { detail, code } = answerFields(body);
+    if (code === "refused") throw new ApiError(res.status, body);
     // Prefer the server's sentence: only it knows whether another writer
     // landed a save or this page's ETag is from before a restart.
-    let detail = "";
-    try {
-      detail = ((await res.json()) as { detail?: string })?.detail ?? "";
-    } catch {
-      /* no body, or not JSON — fall back to the generic wording */
-    }
     throw new ConflictError(
-      detail || "Project was modified by another session. Reload to see the latest changes.",
+      (typeof detail === "string" && detail) ||
+        "Project was modified by another session. Reload to see the latest changes.",
     );
   }
   if (!res.ok) {

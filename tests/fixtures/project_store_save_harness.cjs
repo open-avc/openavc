@@ -32,8 +32,13 @@ function makeDeps(overrides) {
   const deps = {
     getProject: () => ({ id: "p" }),
     getEtag: () => state.etag,
+    getGeneration: () => 0,
+    newOperationId: () => "op-1",
     saveProject: async () => ({ etag: '"2"' }),
-    isConflict: (e) => Boolean(e && e.__conflict),
+    // The real one reads the server's answer (projectStore.saveFailureKind,
+    // covered by the vitest suite). Here a fake marks its kind on the error;
+    // an unmarked one is a failure that said nothing, sent again.
+    classify: (e) => (e && e.__conflict ? "conflict" : (e && e.__kind) || "unknown"),
     conflictMessage: (e) => e.message,
     // The real one unwraps an ApiError and gives an expired session its own
     // sentence (projectStore.saveFailureMessage, covered by the vitest suite).
@@ -128,6 +133,43 @@ async function main() {
       pass: outcome === "conflict" && calls === 1 && sleeps.length === 0 &&
         state.conflictDetected === true && state.error === "conflict!",
       detail: { outcome, calls, conflictDetected: state.conflictDetected },
+    };
+  }
+
+  // A save whose answer was lost is sent again as itself: the same project,
+  // the same If-Match, the same operation id, so the server can recognise it.
+  {
+    const sent = [];
+    let ids = 0;
+    const { deps } = makeDeps({
+      newOperationId: () => `op-${++ids}`,
+      saveProject: async (project, etag, operation) => {
+        sent.push([project, etag, operation]);
+        if (sent.length === 1) throw new TypeError("Failed to fetch");
+        return { etag: '"2"' };
+      },
+    });
+    const outcome = await H.runSaveWithRetry(deps);
+    results.lost_answer_resends_the_same_save = {
+      pass: outcome === "saved" && sent.length === 2 && sent[0][0] === sent[1][0] &&
+        sent[0][1] === sent[1][1] && sent[1][2] === "op-1",
+      detail: { outcome, sent: sent.map(([, etag, op]) => [etag, op]) },
+    };
+  }
+
+  // An answer that will be the same is not tried again: one write.
+  {
+    let calls = 0;
+    const { deps, state } = makeDeps({
+      saveProject: async () => {
+        calls++;
+        const e = new Error("refused"); e.__kind = "final"; throw e;
+      },
+    });
+    const outcome = await H.runSaveWithRetry(deps);
+    results.final_answer_not_tried_again = {
+      pass: outcome === "failed" && calls === 1 && typeof state.error === "string",
+      detail: { outcome, calls },
     };
   }
 

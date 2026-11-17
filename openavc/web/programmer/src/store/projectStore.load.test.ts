@@ -83,7 +83,7 @@ describe("retrying a failed load", () => {
     saveProject.mockResolvedValue({ etag: '"3"' });
     getProject.mockResolvedValue({ ...edited, _etag: '"3"' });
     await useProjectStore.getState().retryLoad();
-    expect(saveProject).toHaveBeenCalledWith(edited, '"1"');
+    expect(saveProject).toHaveBeenCalledWith(edited, '"1"', "edit", expect.any(String));
     expect(getProject).toHaveBeenCalledTimes(1);
     expect(useProjectStore.getState().loadError).toBeNull();
     expect(useProjectStore.getState().dirty).toBe(false);

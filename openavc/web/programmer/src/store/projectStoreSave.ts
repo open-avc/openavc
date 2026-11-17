@@ -1,10 +1,16 @@
 // The save write loop, extracted from projectStore so its async contract is
-// unit-testable with injected fakes. The point of the extraction: a retryable
-// (non-conflict) failure must be retried WITHIN the awaited promise, so a caller
-// that `await save()` sees the final underlying write — not just the first
-// failed attempt. The old store scheduled the retry on a detached setTimeout and
-// returned, resolving the awaited chain early; it also retried forever on
-// persistent failure. This loop awaits each retry and stops after maxRetries.
+// unit-testable with injected fakes. A failed save that may be tried again is
+// tried WITHIN the awaited promise, so a caller that `await save()` sees the
+// final underlying write, not just the first failed attempt, and the loop stops
+// after maxRetries.
+//
+// Which failures are tried again is decided by what the server answered
+// (`classify`), never by the attempt count alone: an answer that refuses the
+// change, or says another writer moved the project, gets the same answer every
+// time. One save is one set of bytes against one revision under one operation
+// id, for every try: a save whose answer was lost is sent again as itself, and
+// the server, which recognises the id of the save that made its current
+// revision, answers what it did rather than a conflict with this tab's own save.
 import type { ProjectConfig } from "../api/types";
 
 /** Fields runSaveWithRetry writes back to the store during a save. */
@@ -21,14 +27,32 @@ export interface SaveStatePatch {
   saveRetryIn?: number | null;
 }
 
+/**
+ * What a failed save's answer says about trying it again:
+ * - `conflict`: another writer moved the project. Never tried again; the
+ *   conflict banner offers the answers that can work.
+ * - `final`: the server refused the change or the request, and would answer
+ *   the same again (a refusal, an invalid project, an ended session), or the
+ *   failure was in the page. Never tried again.
+ * - `not_taken`: the server said nothing was taken in (not applied, still
+ *   starting). Tried again, until the same answer comes back twice.
+ * - `unknown`: no answer came back, or one that does not say (a gateway's).
+ *   The same save is sent again under its operation id.
+ */
+export type SaveFailureKind = "conflict" | "final" | "not_taken" | "unknown";
+
 export interface SaveAttemptDeps {
-  /** Latest project to send — re-read each attempt so a retry picks up any
-   *  edits the user made during the backoff delay. */
+  /** The project to send, read once per save: every try sends the same. */
   getProject: () => ProjectConfig | null;
   getEtag: () => string | null;
-  saveProject: (project: ProjectConfig, etag?: string) => Promise<{ etag?: string }>;
-  /** True for a version conflict (409) — never retried; the user must reload. */
-  isConflict: (e: unknown) => boolean;
+  /** Moves when the store adopts the server's copy (a reload). A save
+   *  waiting to be tried again when it moves is dropped, since the edit it
+   *  held was put aside. */
+  getGeneration: () => number;
+  /** A fresh id naming one save. */
+  newOperationId: () => string;
+  saveProject: (project: ProjectConfig, etag: string | undefined, operation: string) => Promise<{ etag?: string }>;
+  classify: (e: unknown) => SaveFailureKind;
   conflictMessage: (e: unknown) => string;
   /** The sentence a give-up failure shows the user. Injected like
    *  conflictMessage, and for the same reason: unwrapping a thrown value is
@@ -43,55 +67,102 @@ export interface SaveAttemptDeps {
 
 export type SaveOutcome = "saved" | "conflict" | "failed" | "noop";
 
+/** One save: these bytes, against this revision, under this id. */
+interface SaveRequest {
+  project: ProjectConfig;
+  etag: string | null;
+  generation: number;
+  operation: string;
+}
+
+/** A failed try's answer, and whether it ends the save. */
+interface FailedTry {
+  message: string;
+  final: boolean;
+  /** The answer, when the server said nothing was taken in. */
+  notTaken: string | null;
+}
+
+function judgeFailure(
+  deps: SaveAttemptDeps,
+  e: unknown,
+  kind: SaveFailureKind,
+  previousNotTaken: string | null,
+  outOfTries: boolean,
+): FailedTry {
+  const message = deps.failureMessage(e);
+  const notTaken = kind === "not_taken" ? message : null;
+  // A save the server did not take, answered the same way twice, would be
+  // answered so again.
+  const repeated = notTaken !== null && notTaken === previousNotTaken;
+  return { message, final: kind === "final" || repeated || outOfTries, notTaken };
+}
+
+async function trySave(deps: SaveAttemptDeps, request: SaveRequest): Promise<"saved"> {
+  deps.setState({ saving: true, savePending: false, error: null, saveRetryIn: null });
+  const result = await deps.saveProject(request.project, request.etag ?? undefined, request.operation);
+  const newEtag = result.etag ?? null;
+  // The ETag is an opaque token — kept as it came, compared for equality.
+  const newRevision = newEtag ? newEtag.replace(/"/g, "") : null;
+  // An edit made while this save was out (or waiting to be tried again) is
+  // not in what was sent: keep dirty=true so the caller saves again.
+  const editedDuringSave = deps.getProject() !== request.project;
+  deps.setState({
+    saving: false,
+    saveRetryIn: null,
+    dirty: editedDuringSave,
+    etag: newEtag,
+    revision: newRevision,
+    conflictDetected: false,
+  });
+  return "saved";
+}
+
 /**
- * Attempt the project write, retrying a transient failure up to `maxRetries`
- * times with linear backoff, AWAITING each retry. The returned promise resolves
- * only once the final write settles — success (`saved`), a version conflict
- * (`conflict`, no retry), or exhausted retries (`failed`) — never after merely
- * the first failed attempt, and never looping past the retry budget.
+ * Attempt the project write, trying a failure again up to `maxRetries` times
+ * with linear backoff when its answer allows it, AWAITING each try. The
+ * returned promise resolves only once the save is settled: saved, a version
+ * conflict, failed (an answer that will not change, or the tries spent), or
+ * dropped (`noop`: nothing to save, or the project was reloaded during a wait).
  */
 export async function runSaveWithRetry(
   deps: SaveAttemptDeps,
   startAttempt = 0,
 ): Promise<SaveOutcome> {
   const maxRetries = deps.maxRetries ?? 2;
+  const project = deps.getProject();
+  if (!project) return "noop";
+  const request: SaveRequest = {
+    project,
+    etag: deps.getEtag(),
+    generation: deps.getGeneration(),
+    operation: deps.newOperationId(),
+  };
+  let previousNotTaken: string | null = null;
   for (let attempt = startAttempt; ; attempt++) {
-    const project = deps.getProject();
-    if (!project) return "noop";
-    const etag = deps.getEtag();
-    deps.setState({ saving: true, savePending: false, error: null, saveRetryIn: null });
     try {
-      const result = await deps.saveProject(project, etag ?? undefined);
-      const newEtag = result.etag ?? null;
-      // The ETag is an opaque token — kept as it came, compared for equality.
-      const newRevision = newEtag ? newEtag.replace(/"/g, "") : null;
-      // If the project ref changed during the save, the user kept editing —
-      // keep dirty=true so the caller schedules another save.
-      const editedDuringSave = deps.getProject() !== project;
-      deps.setState({
-        saving: false,
-        saveRetryIn: null,
-        dirty: editedDuringSave,
-        etag: newEtag,
-        revision: newRevision,
-        conflictDetected: false,
-      });
-      return "saved";
+      return await trySave(deps, request);
     } catch (e) {
-      if (deps.isConflict(e)) {
+      const kind = deps.classify(e);
+      if (kind === "conflict") {
         deps.setState({
           saving: false, saveRetryIn: null, conflictDetected: true, error: deps.conflictMessage(e),
         });
         return "conflict";
       }
-      if (attempt < maxRetries) {
-        const delay = (attempt + 1) * 1000;
-        deps.setState({ saving: false, saveRetryIn: delay / 1000 });
-        await deps.sleep(delay);
-        continue;
+      const failed = judgeFailure(deps, e, kind, previousNotTaken, attempt >= maxRetries);
+      if (failed.final) {
+        deps.setState({ error: failed.message, saving: false, saveRetryIn: null });
+        return "failed";
       }
-      deps.setState({ error: deps.failureMessage(e), saving: false, saveRetryIn: null });
-      return "failed";
+      previousNotTaken = failed.notTaken;
+      const delay = (attempt + 1) * 1000;
+      deps.setState({ saving: false, saveRetryIn: delay / 1000 });
+      await deps.sleep(delay);
+      if (deps.getGeneration() !== request.generation || !deps.getProject()) {
+        deps.setState({ saveRetryIn: null });
+        return "noop";
+      }
     }
   }
 }

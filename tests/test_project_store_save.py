@@ -77,6 +77,8 @@ SCENARIOS = [
     "m307_retries_then_succeeds",
     "m307_persistent_failure_stops",
     "retry_wait_is_not_a_failure",
+    "lost_answer_resends_the_same_save",
+    "final_answer_not_tried_again",
     "m307_conflict_no_retry",
     "m307_edit_during_save_keeps_dirty",
     "m307_noop_when_no_project",

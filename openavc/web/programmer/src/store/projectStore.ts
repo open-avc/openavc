@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
-import { ApiError, parseApiError } from "../api/errors";
-import { runSaveWithRetry } from "./projectStoreSave";
+import { ApiError, apiErrorCode, isNoAnswerError, parseApiError } from "../api/errors";
+import { newClientId } from "../api/clientId";
+import { runSaveWithRetry, type SaveFailureKind } from "./projectStoreSave";
 
 /**
  * The sentence a failed save shows the user, rendered across the top of the
@@ -21,6 +22,25 @@ export function saveFailureMessage(e: unknown): string {
     return "Your session had ended. The change is still here, so you can save it again.";
   }
   return parseApiError(e);
+}
+
+/**
+ * Whether a failed save is tried again, from what the server answered: its
+ * `code` where the answer has one (a 409 is a conflict or a refusal, by its
+ * code), else its status. A change that was not applied, or a server still
+ * starting, took nothing in, so the save is tried again; no answer, or a
+ * gateway's or a bare 500 that does not say, is sent again as the same save
+ * under its operation id (store/projectStoreSave.ts). Anything else is the
+ * answer the same save would get again.
+ */
+export function saveFailureKind(e: unknown): SaveFailureKind {
+  if (e instanceof api.ConflictError) return "conflict";
+  if (isNoAnswerError(e)) return "unknown";
+  if (!(e instanceof ApiError)) return "final";
+  const code = apiErrorCode(e);
+  if (code === "not_applied" || e.status === 503) return "not_taken";
+  if (e.status >= 500 && !code) return "unknown";
+  return "final";
 }
 
 interface ServerCopy {
@@ -187,8 +207,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         {
           getProject: () => get().project,
           getEtag: () => get().etag,
-          saveProject: api.saveProject,
-          isConflict: (e) => e instanceof api.ConflictError,
+          getGeneration: () => get().loadGeneration,
+          newOperationId: newClientId,
+          saveProject: (project, etag, operation) => api.saveProject(project, etag, "edit", operation),
+          classify: saveFailureKind,
           conflictMessage: (e) => (e as Error).message,
           failureMessage: saveFailureMessage,
           setState: (patch) => set(patch),

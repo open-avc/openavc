@@ -5,7 +5,8 @@ import {
   type SaveAttemptDeps,
   type SaveStatePatch,
 } from "./projectStoreSave";
-import { saveFailureMessage } from "./projectStore";
+import { saveFailureKind, saveFailureMessage } from "./projectStore";
+import { ConflictError } from "../api/projectClient";
 import type { ProjectConfig } from "../api/types";
 
 /**
@@ -25,8 +26,10 @@ function deps(over: Partial<SaveAttemptDeps> = {}): {
   const d: SaveAttemptDeps = {
     getProject: () => PROJECT,
     getEtag: () => '"abc"',
+    getGeneration: () => 0,
+    newOperationId: () => "op-1",
     saveProject: vi.fn(async () => ({ etag: '"def"' })),
-    isConflict: () => false,
+    classify: saveFailureKind,
     conflictMessage: (e) => (e as Error).message,
     failureMessage: saveFailureMessage,
     setState: (patch) => patches.push(patch),
@@ -97,12 +100,11 @@ describe("runSaveWithRetry", () => {
   });
 
   it("leaves the conflict path alone", async () => {
-    const conflict = new Error("The system restarted since this page loaded the project.");
+    const conflict = new ConflictError("The system restarted since this page loaded the project.");
     const { d, patches } = deps({
       saveProject: vi.fn(async () => {
         throw conflict;
       }),
-      isConflict: () => true,
     });
 
     expect(await runSaveWithRetry(d)).toBe("conflict");
@@ -151,5 +153,135 @@ describe("a save waiting to be tried again", () => {
     expect(await runSaveWithRetry(d)).toBe("saved");
     expect(patches.some((p) => typeof p.error === "string")).toBe(false);
     expect(patches.at(-1)).toMatchObject({ saveRetryIn: null, saving: false, dirty: false });
+  });
+});
+
+const NOT_APPLIED =
+  "Not applied: the running system could not take the change. The Programmer's Log has the details. " +
+  "The previous project is still running.";
+
+const answered = (status: number, detail: string, code?: string) =>
+  new ApiError(status, JSON.stringify(code ? { detail, code } : { detail }));
+
+describe("saveFailureKind", () => {
+  it("reads the answer's code, not its status", () => {
+    expect(saveFailureKind(new ConflictError("Another session saved"))).toBe("conflict");
+    expect(saveFailureKind(answered(409, "Refused", "refused"))).toBe("final");
+    expect(saveFailureKind(answered(422, "Unknown word", "refused"))).toBe("final");
+    expect(saveFailureKind(answered(500, NOT_APPLIED, "not_applied"))).toBe("not_taken");
+  });
+
+  it("tries again what said nothing was taken in, and what said nothing at all", () => {
+    expect(saveFailureKind(answered(503, "Server is starting up"))).toBe("not_taken");
+    expect(saveFailureKind(new TypeError("Failed to fetch"))).toBe("unknown");
+    expect(saveFailureKind(new ApiError(502, "Bad Gateway"))).toBe("unknown");
+    expect(saveFailureKind(new ApiError(500, "Internal Server Error"))).toBe("unknown");
+  });
+
+  it("never tries again an answer that will be the same", () => {
+    expect(saveFailureKind(answered(401, "Authentication required"))).toBe("final");
+    expect(saveFailureKind(answered(422, "Invalid project configuration"))).toBe("final");
+    expect(saveFailureKind(answered(413, "Project file too large (max 10 MB)"))).toBe("final");
+    // A fault in the page itself, not an answer.
+    expect(saveFailureKind(new TypeError("x is undefined"))).toBe("final");
+  });
+});
+
+describe("which failed saves are tried again", () => {
+  const failing = (...errors: unknown[]) => {
+    let call = 0;
+    return vi.fn(async () => {
+      const error = errors[Math.min(call, errors.length - 1)];
+      call += 1;
+      if (error === "saved") return { etag: '"def"' };
+      throw error;
+    });
+  };
+
+  it("does not try a refusal of the change again, and says why", async () => {
+    const save = failing(answered(409, "Refused for this reason.", "refused"));
+    const { d, patches } = deps({ maxRetries: 2, saveProject: save });
+
+    expect(await runSaveWithRetry(d)).toBe("failed");
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(patches.some((p) => p.conflictDetected)).toBe(false);
+    expect(failurePatch(patches)?.error).toBe("Refused for this reason.");
+  });
+
+  it("does not try an invalid project again", async () => {
+    const save = failing(answered(422, "Invalid project configuration"));
+    const { d } = deps({ maxRetries: 2, saveProject: save });
+    expect(await runSaveWithRetry(d)).toBe("failed");
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("tries a change that was not applied again, and stops when the answer repeats", async () => {
+    const save = failing(answered(500, NOT_APPLIED, "not_applied"));
+    const { d, patches } = deps({ maxRetries: 2, saveProject: save });
+
+    expect(await runSaveWithRetry(d)).toBe("failed");
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(failurePatch(patches)?.error).toBe(NOT_APPLIED);
+  });
+
+  it("saves a change that was not applied once and is taken the next time", async () => {
+    const save = failing(answered(500, NOT_APPLIED, "not_applied"), "saved");
+    const { d } = deps({ maxRetries: 2, saveProject: save });
+    expect(await runSaveWithRetry(d)).toBe("saved");
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends a save whose answer was lost again as the same save", async () => {
+    let ids = 0;
+    const save = failing(new TypeError("Failed to fetch"), "saved");
+    const { d } = deps({
+      maxRetries: 2,
+      saveProject: save,
+      newOperationId: () => `op-${++ids}`,
+    });
+
+    expect(await runSaveWithRetry(d)).toBe("saved");
+    expect(save).toHaveBeenCalledTimes(2);
+    const [first, second] = save.mock.calls as unknown as unknown[][];
+    expect(second).toEqual(first);
+    expect(second[0]).toBe(PROJECT);
+    expect(second.slice(1)).toEqual(['"abc"', "op-1"]);
+  });
+
+  it("keeps an edit made during the wait for the save after it", async () => {
+    let current: ProjectConfig = PROJECT;
+    const edited = { ...PROJECT, project: { id: "p", name: "Edited" } } as unknown as ProjectConfig;
+    const save = failing(new TypeError("Failed to fetch"), "saved");
+    const { d, patches } = deps({
+      maxRetries: 2,
+      getProject: () => current,
+      saveProject: save,
+      sleep: async () => {
+        current = edited;
+      },
+    });
+
+    expect(await runSaveWithRetry(d)).toBe("saved");
+    // The resend is the save whose answer was lost, not the edit.
+    expect((save.mock.calls as unknown as unknown[][])[1][0]).toBe(PROJECT);
+    // The edit is still unsaved, so the store saves again.
+    expect(patches.at(-1)).toMatchObject({ dirty: true });
+  });
+
+  it("drops the save when the project is reloaded during the wait", async () => {
+    let generation = 0;
+    const save = failing(new TypeError("Failed to fetch"), "saved");
+    const { d, patches } = deps({
+      maxRetries: 2,
+      getGeneration: () => generation,
+      saveProject: save,
+      sleep: async () => {
+        generation += 1;
+      },
+    });
+
+    expect(await runSaveWithRetry(d)).toBe("noop");
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(patches.at(-1)).toMatchObject({ saveRetryIn: null });
   });
 });
