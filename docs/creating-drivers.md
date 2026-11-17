@@ -119,7 +119,7 @@ Common to text protocols: **Message Delimiter** marks the end of each message. `
 
 When the same command and response strings work byte-identically over more than one medium (network and a serial line, typically), tick the extra media under **Also Usable Over**. The per-device connection then offers a choice of transport, including routing through a serial bridge.
 
-**Bridge Ports** — declare here that this device IS a bridge other devices connect through (a serial-to-Ethernet gateway or IR emitter box). Each port gets an id (e.g. `serial:1`), a kind (serial, IR, or relay), a label for the connection picker, and for serial ports the TCP pass-through port. Declaring ports is enough for the connection picker; the behavior behind a port (pushing serial line settings, emitting IR) needs a Python driver.
+**Bridge Ports** — declare here that this device IS a bridge other devices connect through (a serial-to-Ethernet gateway or IR emitter box). Each port gets an id (e.g. `serial:1`), a kind (serial, IR, or relay), a label for the connection picker, and for serial ports the TCP pass-through port. Declaring ports is enough for the connection picker; the behavior behind a port (pushing serial line settings, emitting IR) needs a Python driver. A device connects through a serial port only when that port names its pass-through port, and through an IR port; a relay port can be declared, but no device connects through one yet.
 
 The other Connection sub-sections are optional:
 
