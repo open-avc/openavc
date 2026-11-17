@@ -214,10 +214,10 @@ async def test_the_push_route_reaches_an_audit_device(driver_class):
         server.close()
 
 
-@pytest.mark.parametrize("port", ["COM3", "SIM:lab"])
+@pytest.mark.parametrize("port", ["COM3", "/dev/ttyUSB0"])
 def test_a_serial_connection_does_not_start(port):
-    """The audit tests network devices: a serial port is refused, a real
-    one or a simulated one."""
+    """The audit tests network devices: a serial port is refused, whatever
+    its path."""
     cls = create_configurable_driver_class(_definition(id="acme_sandbox_serial", transport="serial"))
     _DRIVER_REGISTRY["acme_sandbox_serial"] = cls
     try:

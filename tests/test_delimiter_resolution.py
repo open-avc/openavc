@@ -97,7 +97,7 @@ def _tcp(delimiter):
 
 def _serial(delimiter):
     return SerialTransport(
-        port="SIM:acme", baudrate=9600, on_data=lambda _d: None,
+        port="/dev/ttyACME0", baudrate=9600, on_data=lambda _d: None, simulate=True,
         on_disconnect=lambda: None, delimiter=delimiter,
     )
 

@@ -557,8 +557,8 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
           <div style={helpStyle}>
-            Path to the serial device on this host. Prefix with <code>SIM:</code> to
-            use the built-in simulator (e.g. <code>SIM:projector</code>).
+            Path to the serial device on this host. To test without the device,
+            save the driver, add a device that uses it, then Start Simulation.
           </div>
         </div>
       ) : (

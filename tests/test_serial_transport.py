@@ -1,4 +1,4 @@
-"""Tests for serial transport (simulation mode — always runnable)."""
+"""Tests for serial transport, on the stand-in a caller asks for with simulate=True (always runnable)."""
 
 import asyncio
 
@@ -38,7 +38,7 @@ async def test_invalid_serial_settings_raise_invalid_config_fault(monkeypatch):
 async def test_sim_connect():
     """Simulated serial port connects successfully."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
     )
@@ -53,7 +53,7 @@ async def test_sim_wait_idle_waits_out_a_write_queued_behind_it():
     its delay are done too (a gated poll line is judged after the answer to
     a command pressed while it was waiting)."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
         inter_command_delay=0.1,
@@ -75,7 +75,7 @@ async def test_sim_wait_idle_waits_out_a_write_queued_behind_it():
 async def test_sim_send():
     """Simulated serial port accepts sends without error."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
     )
@@ -87,7 +87,7 @@ async def test_sim_receive_with_delimiter():
     """Simulated serial port delivers messages via frame parser."""
     received = []
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: received.append(d),
         on_disconnect=lambda: None,
         delimiter=b"\r",
@@ -105,7 +105,7 @@ async def test_sim_receive_raw_mode():
     """Simulated serial port in raw mode delivers data as-is."""
     received = []
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: received.append(d),
         on_disconnect=lambda: None,
         delimiter=None,
@@ -121,7 +121,7 @@ async def test_sim_receive_raw_mode():
 async def test_sim_send_and_wait():
     """send_and_wait works in simulation mode."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
         delimiter=b"\r",
@@ -141,7 +141,7 @@ async def test_sim_send_and_wait():
 async def test_sim_send_and_wait_timeout():
     """send_and_wait times out when no response arrives."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
     )
@@ -157,7 +157,7 @@ async def test_sim_with_custom_frame_parser():
     received = []
     parser = FixedLengthFrameParser(4)
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: received.append(d),
         on_disconnect=lambda: None,
         frame_parser=parser,
@@ -177,7 +177,7 @@ async def test_sim_with_custom_frame_parser():
 async def test_sim_send_not_connected():
     """Sending on a closed port raises ConnectionError."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
     )
@@ -195,7 +195,7 @@ async def test_sim_async_callback():
         received.append(data)
 
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=on_data,
         on_disconnect=lambda: None,
         delimiter=b"\r",
@@ -222,7 +222,7 @@ async def test_async_on_data_task_held_until_done():
         await release.wait()
 
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=handler,
         on_disconnect=lambda: None,
         delimiter=b"\r",
@@ -244,7 +244,7 @@ async def test_send_and_wait_wakes_on_close():
     """Closing the transport while send_and_wait is parked fails it fast
     instead of blocking the full response timeout."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
     )
@@ -263,7 +263,7 @@ async def test_send_and_wait_wakes_on_disconnect():
     """A link drop while send_and_wait is parked fails fast with ConnectionError,
     not after the full response timeout."""
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: None,
     )
@@ -294,7 +294,7 @@ async def test_response_queue_overflow_does_not_disconnect():
     """
     disconnected = []
     transport = await SerialTransport.create(
-        "SIM:test", baudrate=9600,
+        "/dev/ttyACME0", baudrate=9600, simulate=True,
         on_data=lambda d: None,
         on_disconnect=lambda: disconnected.append(True),
         delimiter=b"\r",

@@ -24,7 +24,10 @@ speaking the protocol:
   opened. A device bound to a USB adapter's serial number opens the port that
   adapter has now, and one whose adapter is not plugged in is refused without
   opening anything (``transport/serial_transport.require_usb_adapter``, the
-  device manager's rule at every dial).
+  device manager's rule at every dial). A port typed as ``SIM:<name>``, or any
+  port on a system without the serial package, is refused in the card's words
+  (``transport/serial_transport.serial_port_refusal``, which the transport
+  asks too).
 - udp, snmp, OSC over UDP: there is nothing to connect to. The socket is
   pointed at the address, which proves the name resolves and a route exists,
   and the result says that is all it proves.
@@ -91,7 +94,7 @@ from openavc.discovery.network_scanner import resolve_address
 from openavc.discovery.port_guard import held_ports
 from openavc.drivers.transport_ladder import serial_line_settings
 from openavc.transport.endpoint import checks_certificate, control_bind_address, http_endpoint
-from openavc.transport.serial_transport import require_usb_adapter
+from openavc.transport.serial_transport import require_usb_adapter, serial_port_refusal
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
 
@@ -524,6 +527,9 @@ async def _open_serial(cfg: dict[str, Any]) -> str | None:
     serial_port = str(cfg.get("port") or "")
     if not serial_port:
         return _NO_SERIAL_PORT
+    refused = serial_port_refusal(serial_port)
+    if refused is not None:
+        return str(refused)
     try:
         line = serial_line_settings(cfg)
     except ConnectionFaultError as refused:

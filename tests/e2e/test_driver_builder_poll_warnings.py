@@ -28,7 +28,7 @@ DEFINITION = {
     "version": "1.0.0",
     "transport": "serial",
     "delimiter": "\\r",
-    "default_config": {"port": "SIM:acme", "poll_interval": 1},
+    "default_config": {"port": "/dev/ttyACME0", "poll_interval": 1},
     "state_variables": {"power": {"type": "string", "label": "Power"}},
     "commands": {},
     "responses": [{

@@ -3,12 +3,14 @@ OpenAVC Serial Transport — async serial port client with message framing.
 
 Provides a managed serial connection with:
 - Pluggable frame parser (same as TCP transport)
-- Graceful simulation fallback when pyserial-asyncio is unavailable
 - Same interface as TCPTransport: send(), send_and_wait(), close(), connected
 
-Simulation mode is automatically activated when pyserial-asyncio is not
-installed or when a port path starts with "SIM:" — useful for development
-on machines without serial hardware.
+A port is opened or refused, never stood in for: a ``SIM:<name>`` port and a
+system without pyserial-asyncio are refused before anything opens
+(``serial_port_refusal``). The Simulator is the one way to run a serial device
+without the equipment: it redirects the device to its TCP stand-in
+(``core/simulation.py``). The in-process stand-in here opens only for a caller
+that passes ``simulate=True``, which is how the transport's tests drive it.
 """
 
 from __future__ import annotations
@@ -17,10 +19,13 @@ import asyncio
 from typing import Any
 
 from openavc.core.connection_fault import (
+    CLIENT_MISSING,
     INVALID_CONFIG,
     UNREACHABLE,
     ConnectionFault,
     ConnectionFaultError,
+    serial_support_missing_message,
+    sim_port_message,
     typed_fault_from_exc,
     usb_adapter_missing_message,
 )
@@ -234,6 +239,24 @@ def resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
         return config
 
 
+def serial_port_refusal(port: str) -> ConnectionFaultError | None:
+    """Why this system will not open ``port`` before trying it, or ``None``.
+
+    THE rule for a serial port that is not one to open. A port typed as
+    ``SIM:<name>`` is a setting error (``invalid_config``): the Simulator is
+    the one way to run a serial device without the equipment, so the sentence
+    names Start Simulation. A system without pyserial-asyncio can open no
+    serial port at all (``client_missing``). Asked by the transport before it
+    opens anything, which the connect and Live Test's raw Send build, and by
+    the connection test, which opens the port with pyserial itself.
+    """
+    if port.strip().upper().startswith("SIM:"):
+        return ConnectionFaultError(sim_port_message(), code=INVALID_CONFIG)
+    if not HAS_SERIAL:
+        return ConnectionFaultError(serial_support_missing_message(), code=CLIENT_MISSING)
+    return None
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Done-callback for fire-and-forget on_data tasks: surface failures that
     would otherwise vanish as a 'Task exception was never retrieved' GC warning."""
@@ -285,9 +308,9 @@ class SerialTransport:
         # names, never the port-name fallback.
         self._traffic_name = name or ""
 
-        # A serial port is a device path ("COM3", "/dev/ttyUSB0", "SIM:<name>"),
-        # never a number. A numeric value means the device was configured with a
-        # TCP port — a permanent config error that used to die on the string
+        # A serial port is a device path ("COM3", "/dev/ttyUSB0"), never a
+        # number. A numeric value means the device was configured with a TCP
+        # port — a permanent config error that used to die on the string
         # operation below with a bare AttributeError, leaving the device card
         # showing a generic reconnect instead of the fix.
         if not isinstance(port, str):
@@ -299,8 +322,14 @@ class SerialTransport:
                 code=INVALID_CONFIG,
             )
 
-        # Determine if we should simulate
-        self._simulate = simulate or port.startswith("SIM:") or not HAS_SERIAL
+        # The stand-in (sends recorded, nothing answers unless sim_receive
+        # feeds it) only when the caller asks for it: a SIM: port or a missing
+        # serial package is refused, never a device that reads connected.
+        self._simulate = simulate
+        if not simulate:
+            refused = serial_port_refusal(port)
+            if refused is not None:
+                raise refused
 
         # Resolve frame parser (same logic as TCP, empty delimiter included)
         if frame_parser is not None:
@@ -360,8 +389,9 @@ class SerialTransport:
         Factory method. Creates a SerialTransport and opens the port.
 
         Args:
-            port: Serial port path (e.g., "COM3", "/dev/ttyUSB0").
-                  Use "SIM:<name>" to force simulation mode.
+            port: Serial port path (e.g., "COM3", "/dev/ttyUSB0"). A
+                  ``SIM:<name>`` port, or any port on a system without
+                  pyserial-asyncio, is refused (:func:`serial_port_refusal`).
             baudrate: Baud rate (default 9600).
             on_data: Called with each complete message.
             on_disconnect: Called when the port is lost.
@@ -377,7 +407,9 @@ class SerialTransport:
             stopbits: Stop bits (1, 1.5, 2). Default 1.
             rtscts: Enable hardware (RTS/CTS) flow control. Default off.
             xonxoff: Enable software (XON/XOFF) flow control. Default off.
-            simulate: Force simulation mode.
+            simulate: Open the stand-in instead of a port, for tests: it
+                reads connected, records sends and receives only what
+                :meth:`sim_receive` feeds it.
             name: Optional label for log messages (e.g. device_id).
                   Defaults to port path.
 
@@ -404,12 +436,6 @@ class SerialTransport:
             self._reader_task = asyncio.create_task(self._sim_reader_loop())
             log.info(f"Serial SIMULATED connection on {self.port} @ {self.baudrate}")
             return
-
-        if not HAS_SERIAL:
-            raise ImportError(
-                "pyserial-asyncio is required for real serial connections. "
-                "Install it with: pip install pyserial-asyncio"
-            )
 
         try:
             self._reader, self._writer = await asyncio.wait_for(

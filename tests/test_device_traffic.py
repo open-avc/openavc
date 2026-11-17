@@ -310,7 +310,7 @@ async def test_serial_records_what_it_sends_and_delivers():
 
     got: list[bytes] = []
     transport = await SerialTransport.create(
-        port="SIM:acme", baudrate=9600, on_data=got.append,
+        port="/dev/ttyACME0", baudrate=9600, on_data=got.append, simulate=True,
         on_disconnect=lambda: None, delimiter=b"\r", name="acme_serial",
     )
     try:
