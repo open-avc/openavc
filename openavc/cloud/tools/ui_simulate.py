@@ -20,8 +20,12 @@ told apart here.
 
 from typing import Any
 
+from openavc.api.error_messages import describe_press_failure
 from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.core.ui_events import find_element, resolve_press
+from openavc.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 #: State-change sources a simulated interaction can never itself produce.
 _IGNORED_SOURCES = frozenset({
@@ -52,7 +56,13 @@ async def simulate_ui_action(engine: Any, state: Any, input: dict) -> dict:
         try:
             dispatched = await engine.handle_ui_event(*event, dry_run=dry_run)
         except Exception as e:
-            return {"error": f"Action failed: {e}", "state_changes": capture.changes}
+            # Catch-all: the same door a panel's touch takes, answered in the
+            # words the Programmer gets; the exception stays on this system.
+            log.exception(f"Simulated {action} on '{element_id}' failed")
+            return {
+                "error": describe_press_failure(e).programmer,
+                "state_changes": capture.changes,
+            }
 
     return {
         "success": True,

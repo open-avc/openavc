@@ -864,7 +864,7 @@ async def test_handler_crash_reports_the_message_type_that_failed():
             await _dispatch_text(ws, '{"type": "ui.press", "element_id": "b1"}', "panel")
     err = [m for m in ws.sent if m["type"] == "error"]
     assert err and err[0]["source_type"] == "ui.press"
-    assert "Server error" in err[0]["message"]
+    assert err[0]["message"] == "This control couldn't finish. Contact support."
 
 
 @pytest.mark.asyncio

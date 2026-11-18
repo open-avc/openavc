@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from openavc.core.condition_eval import match_key, same_value
 from openavc.core.device_manager import failed_command
+from openavc.core.macro_text import no_such_macro
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.script_engine import ScriptCallError
 from openavc.core.state_store import coerce_flat_primitive
@@ -409,10 +410,7 @@ class UIEventRuntime:
                         f"runs the macro '{macro_id}', which is not in this "
                         f"project, so nothing runs when it fires",
                     )
-                    record(
-                        macro=macro_id, started=False,
-                        error=f"No macro named '{macro_id}'.",
-                    )
+                    record(macro=macro_id, started=False, error=no_such_macro(macro_id))
                     return
                 if dry_run:
                     record(macro=macro_id, started=False)

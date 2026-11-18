@@ -613,7 +613,8 @@ A control that calls a script says the same when a device command the script
 sent fails. When the script itself fails, the message is "This control
 couldn't finish. Contact support." and the reason goes to the Scripts view. A
 script can put its own sentence there instead (see `PanelMessage` in the
-[Scripting Guide](scripting-guide.md)).
+[Scripting Guide](scripting-guide.md)). A press that fails inside OpenAVC
+itself shows the same message, and the reason goes to the Log view.
 
 It only appears when something failed. A control that works is silent, and the
 rest of a press still runs when one action in it fails, so a button that turns

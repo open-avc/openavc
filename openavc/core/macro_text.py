@@ -13,6 +13,10 @@ failure goes through ``describe_command_failure``, the rule every command door
 uses, and an offline or missing device reads the way a direct press would.
 Nothing here runs a step or writes state; it reads the state store (device
 names and hosts), the loaded project and the plugin actions registered now.
+
+THE sentence for a press naming a macro the project does not have is here too
+(``no_such_macro``): a control's macro action and the panel's ``macro.execute``
+and ``macro.cancel`` all answer with it.
 """
 
 from __future__ import annotations
@@ -62,6 +66,14 @@ _ANNOUNCED: dict[str, Callable[[dict[str, Any]], str]] = {
     "help.clear": lambda _s: "Clearing the help request",
     "ui.navigate": _navigate_text,
 }
+
+
+def no_such_macro(macro_id: str) -> str:
+    """THE sentence for a press that names a macro the project does not have:
+    a control's macro action, a preset's ``macro.execute`` and its
+    ``macro.cancel``. One sentence for every reader, since the id in it is the
+    only thing anybody can go and look up."""
+    return f"No macro named '{macro_id}'."
 
 
 class StepWording:

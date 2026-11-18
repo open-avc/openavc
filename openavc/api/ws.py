@@ -26,11 +26,13 @@ from openavc.core.host_policy import HostCategory
 from openavc.api.error_messages import (
     describe_change_failure,
     describe_command_failure,
+    describe_press_failure,
     device_error_label,
     friendly_error,
 )
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
+from openavc.core.macro_text import no_such_macro
 from openavc.core.panel_devices import (
     CLOSE_CODE_NOT_APPROVED,
     CLOSE_REASON_NOT_APPROVED,
@@ -647,13 +649,17 @@ async def _ui_event(
     Only the first failed action is reported. A frame carries one sentence and
     the panel shows one message at a time, so a second frame would only replace
     the first; the log keeps every one of them.
+
+    Both are the room's sentence whoever sent the interaction: a failed action
+    carries ``CommandFailure.panel`` on its record, and an interaction that
+    raised is answered from the same record (``describe_press_failure``).
     """
     try:
         dispatched = await engine.handle_ui_event(event_type, element_id, data)
     except Exception as e:
         # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-        log.error(f"{msg_type} failed: {e}")
-        await _send_ws_error(ws, msg_type, friendly_error(e), element_id)
+        log.exception(f"{msg_type} on '{element_id}' failed")
+        await _send_ws_error(ws, msg_type, describe_press_failure(e).panel, element_id)
         return
     for action in dispatched or []:
         error = action.get("error")
@@ -707,9 +713,11 @@ async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
         log.exception("Error handling WebSocket message")
         # The message parsed, so we know which type failed — the old raw send
         # dropped that, leaving the client a bare "Server error" with nothing
-        # to correlate it to.
+        # to correlate it to. Every message a panel may send comes from a
+        # control, so a panel is told what a press that failed tells it.
         failed_type = msg.get("type") if isinstance(msg, dict) else None
-        await _send_ws_error(ws, failed_type, f"Server error: {type(exc).__name__}")
+        failure = describe_press_failure(exc).for_reader(at_panel=client_type == "panel")
+        await _send_ws_error(ws, failed_type, failure)
 
 
 async def _handle_message(
@@ -896,22 +904,26 @@ async def _handle_message(
         if not macro_id:
             await _send_ws_error(ws, msg_type, "Missing macro_id")
             return
-        # The same sentence a bound button gets (core.ui_events), because it is
+        # The sentence a bound button gets (no_such_macro), because it is
         # the same failure: a matrix preset and a button that runs a macro are
         # one thing to whoever is standing at the panel, and the id in it is
         # the only thing anybody can go and look up. Answered before the task
         # rather than out of it, so the run that cannot happen never starts.
         if not engine.macros.has_macro(macro_id):
-            await _send_ws_error(ws, msg_type, f"No macro named '{macro_id}'.")
+            await _send_ws_error(ws, msg_type, no_such_macro(macro_id))
             return
 
         async def _run_macro() -> None:
             try:
                 await engine.macros.execute(macro_id)
             except Exception as e:
-                # Catch-all: macro steps run arbitrary actions (commands, scripts, state changes)
-                log.error(f"macro.execute failed: {e}")
-                await _send_ws_error(ws, msg_type, f"Macro failed: {friendly_error(e)}")
+                # Catch-all: execute reports a step's failure itself, so what
+                # reaches here raised around the steps.
+                log.exception(f"macro.execute of '{macro_id}' failed")
+                await _send_ws_error(
+                    ws, msg_type,
+                    describe_press_failure(e).for_reader(at_panel=client_type == "panel"),
+                )
 
         # Run in the background and ack receipt immediately: a macro with
         # delay steps (warm-up sequences run tens of seconds) would otherwise
@@ -937,7 +949,7 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, "Missing macro_id")
             return
         if not engine.macros.has_macro(macro_id):
-            await _send_ws_error(ws, msg_type, f"No macro named '{macro_id}'.")
+            await _send_ws_error(ws, msg_type, no_such_macro(macro_id))
             return
         running = engine.macros.is_macro_running(macro_id)
         if running:

@@ -226,15 +226,20 @@ async def test_a_value_event_carries_its_value(action, value):
 
 
 @pytest.mark.asyncio
-async def test_a_failure_returns_what_changed_before_it_and_unsubscribes():
+async def test_a_failure_returns_what_changed_before_it_and_unsubscribes(caplog):
+    """The Programmer's half of a press's failure (``describe_press_failure``):
+    the exception's text stays in the log on this system."""
     store = StateStore()
-    result, rec, _ = await _simulate(
-        {"action": "change", "element_id": "twice", "value": 3}, store=store,
-        writes=[("var.level", 3, "ui"), ("var.mode", "a", "heartbeat")],
-        raises=RuntimeError("boom"),
-    )
+    with caplog.at_level("ERROR"):
+        result, rec, _ = await _simulate(
+            {"action": "change", "element_id": "twice", "value": 3}, store=store,
+            writes=[("var.level", 3, "ui"), ("var.mode", "a", "heartbeat")],
+            raises=RuntimeError("boom"),
+        )
+    logged = [r for r in caplog.records if "twice" in r.getMessage()]
+    assert logged and logged[0].exc_info is not None
     assert result == {
-        "error": "Action failed: boom",
+        "error": "Server error: RuntimeError. The Programmer's Log has the details.",
         "state_changes": [{"key": "var.level", "old_value": None, "new_value": 3}],
     }
     assert list(result) == ["error", "state_changes"]

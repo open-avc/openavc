@@ -4,7 +4,9 @@ User-friendly error message mapping.
 Maps common Python exceptions to actionable messages that AV integrators
 can understand and act on, instead of raw tracebacks. THE words for what a
 project change did (``describe_change_failure``, ``describe_not_running``):
-every door that changes the project answers from them.
+every door that changes the project answers from them. THE words for a press
+whose own handling failed (``describe_press_failure``): the WebSocket door
+and the cloud AI's simulated press answer from it.
 """
 
 from __future__ import annotations
@@ -46,7 +48,7 @@ def device_error_label(
 
 @dataclass(frozen=True)
 class CommandFailure:
-    """A device command that did not run, worded for each reader.
+    """A device command or a press that did not run, worded for each reader.
 
     ``programmer`` is what Send Command answers. ``panel`` is the same failure
     for somebody standing at a panel, who can open no setting and no log.
@@ -196,6 +198,28 @@ def _describe_device_failure(
     return CommandFailure(
         f"{name} couldn't {what}. The Device Log on its page has the details.",
         f"{name} couldn't {what}. Contact support.",
+    )
+
+
+def describe_press_failure(exc: BaseException) -> CommandFailure:
+    """THE words for a press whose own handling failed, outside every action
+    its binding ran: the interaction raised, the server failed on the message
+    carrying it, a preset's macro raised before its steps ran, or the cloud
+    AI's simulated press raised. Every action that reaches a device has
+    already answered through ``describe_command_failure`` by then, and a
+    script call through its own sentence.
+
+    Nothing in such an exception was written for its reader, and its text may
+    hold a value that must stay private, so neither half quotes it. The room
+    is told what a control's script call that raised tells it; the Programmer
+    and the cloud AI, the exception's type and where the details are. The
+    caller logs the exception with its traceback.
+    """
+    from openavc.core.script_engine import COULD_NOT_FINISH
+
+    return CommandFailure(
+        f"Server error: {type(exc).__name__}. The Programmer's Log has the details.",
+        COULD_NOT_FINISH,
     )
 
 
