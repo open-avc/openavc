@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(SPECPATH).parent
 
 # Collect data files: (source, dest_in_bundle)
 datas = [
+    (str(PROJECT_ROOT / 'openavc' / 'licenses'), 'openavc/licenses'),
     # Frontend builds
     (str(PROJECT_ROOT / 'openavc' / 'web' / 'panel'), 'openavc/web/panel'),
     (str(PROJECT_ROOT / 'openavc' / 'web' / 'programmer' / 'dist'), 'openavc/web/programmer/dist'),
@@ -54,6 +55,15 @@ datas = [(src, dst) for src, dst in datas if os.path.exists(src)]
 
 # Hidden imports that PyInstaller can't detect (dynamic imports in FastAPI, uvicorn, etc.)
 hiddenimports = [
+    # Community BACnet/IP drivers and simulators import this stack at runtime.
+    'bacpypes3.app',
+    'bacpypes3.ipv4.bvll',
+    'bacpypes3.ipv4.service',
+    'bacpypes3.local.device',
+    'bacpypes3.local.networkport',
+    'bacpypes3.local.analog',
+    'bacpypes3.local.binary',
+    'bacpypes3.local.multistate',
     # Uvicorn protocol implementations (loaded dynamically)
     'uvicorn.protocols.http.h11_impl',
     'uvicorn.protocols.http.httptools_impl',

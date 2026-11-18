@@ -1,0 +1,31 @@
+BACpypes3 0.1.0
+Author: Joel Bender <joel@carrickbender.com>, with BACpypes3 contributors
+Project: https://github.com/JoelBender/BACpypes3
+Distribution: https://pypi.org/project/bacpypes3/0.1.0/
+
+The published distribution declares "License-Expression: MIT". The project's
+pyproject.toml also declares MIT. Its older classifier still says BSD License;
+the release contains no separate license file or copyright-year statement.
+This notice retains the author attribution and supplies the standard MIT terms
+identified by that declaration. It does not assign a new copyright year or
+claim to be an upstream license file.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
