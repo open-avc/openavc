@@ -11,6 +11,10 @@
 // id, for every try: a save whose answer was lost is sent again as itself, and
 // the server, which recognises the id of the save that made its current
 // revision, answers what it did rather than a conflict with this tab's own save.
+// The id of a save still out, or never answered, is kept in the store
+// (`saveOperation`): a page reloaded before the answer came asks once more
+// under it (store/projectDraft.ts), with the server's own copy as the body,
+// which the server does not apply either way.
 import type { ProjectConfig } from "../api/types";
 
 /** Fields runSaveWithRetry writes back to the store during a save. */

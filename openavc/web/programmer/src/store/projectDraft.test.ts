@@ -245,6 +245,29 @@ describe("the tab's draft", () => {
     stop();
   });
 
+  it("leaves out a setting a driver made secret since this page first asked", async () => {
+    // The page's own first ask: the access code is not a secret yet.
+    listDrivers.mockResolvedValue([{ ...LOBBY_DRIVERS[0], config_schema: { access_code: { type: "string" } } }]);
+    const stop = started();
+    loaded(lobby(), "b-1");
+    await vi.advanceTimersByTimeAsync(0);
+    // The driver is updated; the Add Device form reads the new list.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ drivers: LOBBY_DRIVERS }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )));
+    try {
+      await (await import("../api/driverClient")).listDrivers();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    useProjectStore.setState({ project: withTypedWidget(), dirty: true, error: "Save failed" });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(storedText()).toContain("widget2");
+    expect(storedText()).not.toContain(TYPED);
+    stop();
+  });
+
   it("is written at once as the page goes away", async () => {
     const stop = started();
     loaded(lobby(), "b-1");
@@ -323,6 +346,43 @@ describe("the tab's draft", () => {
     expect(saveProject).toHaveBeenCalledWith(expect.anything(), '"b-1"', "edit", "op-7");
     expect(useDraftOffer.getState().offer).toBeNull();
     expect(readDraft()).toBeNull();
+    stop();
+  });
+
+  it("restores edits made after a save the server recognises, saved against the server's revision", async () => {
+    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: false });
+    sessionStorage.setItem(draftKey(), JSON.stringify(draft));
+    const onSystem = { ...lobby(), devices: [{ ...lobby().devices[0], enabled: true }] } as ProjectConfig;
+    getProject.mockImplementation(async () => ({ ...structuredClone(onSystem), _etag: '"b-2"' }));
+    saveProject.mockResolvedValue({ etag: '"b-3"' });
+    const stop = started();
+    loaded(onSystem, "b-2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useDraftOffer.getState().offer?.kind).toBe("current");
+
+    await restoreDraft();
+    await vi.advanceTimersByTimeAsync(5_000);
+    const [project, etag, , operation] = saveProject.mock.calls.at(-1)!;
+    expect(etag).toBe('"b-2"');
+    expect(operation).not.toBe("op-7");
+    expect((project as ProjectConfig).devices.map((d) => d.id)).toEqual(["widget1", "widget2"]);
+    expect(useProjectStore.getState().dirty).toBe(false);
+    stop();
+  });
+
+  it("restores as a conflict when another session saves while the offer is open", async () => {
+    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets)));
+    const stop = started();
+    loaded(lobby(), "b-1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useDraftOffer.getState().offer?.kind).toBe("current");
+
+    getProject.mockImplementation(async () => ({ ...lobby(), _etag: '"b-2"' }));
+    await restoreDraft();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(saveProject).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().conflictDetected).toBe(true);
+    expect(useProjectStore.getState().etag).toBe('"b-1"');
     stop();
   });
 

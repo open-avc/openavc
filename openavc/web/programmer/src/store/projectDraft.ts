@@ -40,9 +40,10 @@
  * server's copy, markers and all.
  */
 import { create } from "zustand";
-import type { DeviceConfig, ProjectConfig } from "../api/types";
+import type { DeviceConfig, DriverInfo, ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
 import { getTunnelPrefix } from "../api/base";
+import { onDriverList } from "../api/driverClient";
 import { isSecretSetting, PASSWORD_FIELD } from "../components/shared/secretSetting";
 import { SAVED_LOGIN } from "../views/devices/deviceLogins";
 import { useProjectStore } from "./projectStore";
@@ -386,11 +387,19 @@ function secretFieldsFrom(schema: Values | undefined): ReadonlySet<string> {
   return fields;
 }
 
+function rememberDrivers(drivers: DriverInfo[]): void {
+  driverSecrets = new Map(drivers.map((d) => [d.id, secretFieldsFrom(d.config_schema)]));
+}
+
+// Every driver list the page fetches, so the copy kept never knows less
+// than the form a login was typed into: a driver given a secret setting
+// since this page first asked is read from the list that form drew.
+onDriverList(rememberDrivers);
+
 async function askForDrivers(): Promise<boolean> {
   driversAskedAt = Date.now();
   try {
-    const drivers = await api.listDrivers();
-    driverSecrets = new Map(drivers.map((d) => [d.id, secretFieldsFrom(d.config_schema)]));
+    rememberDrivers(await api.listDrivers());
     return true;
   } catch {
     return false;

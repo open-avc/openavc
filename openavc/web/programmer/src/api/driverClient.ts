@@ -9,8 +9,20 @@ import { BASE, request } from "./base";
 
 // --- Drivers ---
 
+const driverListListeners = new Set<(drivers: DriverInfo[]) => void>();
+
+/** Hear every driver list this page fetches, as it arrives; returns the
+ *  unsubscribe. The unsaved-changes copy (store/projectDraft.ts) reads which
+ *  settings are secret from the same list a device form was drawn from. */
+export function onDriverList(listener: (drivers: DriverInfo[]) => void): () => void {
+  driverListListeners.add(listener);
+  return () => driverListListeners.delete(listener);
+}
+
 export async function listDrivers(): Promise<DriverInfo[]> {
-  return (await request<{ drivers: DriverInfo[] }>("/drivers")).drivers;
+  const drivers = (await request<{ drivers: DriverInfo[] }>("/drivers")).drivers;
+  for (const listener of driverListListeners) listener(drivers);
+  return drivers;
 }
 
 // --- Driver Definitions ---
