@@ -849,6 +849,252 @@ async def test_reload_of_a_file_now_declaring_another_id_reconnects_both(env, mo
     ]
 
 
+# --- the assistant's create, update and read are the Builder's ------------------
+#
+# The AI's create_driver_definition and update_driver_definition are the
+# Builder's create and replace: each case runs through both doors and holds
+# them to one outcome (the files left, what followed, the refusal), the AI
+# saying a refusal in its own shape, ``{"error": ...}``.
+
+
+def _said(refused: HTTPException) -> str:
+    """A refusal as the AI says it: the reasons beneath it when it has them,
+    else its sentence."""
+    errors = getattr(refused, "fields", {}).get("errors")
+    return "; ".join(errors) if errors else refused.detail
+
+
+def _assistant(monkeypatch, env: Env):
+    from unittest.mock import MagicMock
+
+    from openavc.cloud.ai_tool_handler import AIToolHandler
+
+    monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", env.repo)
+    return AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+
+
+class _Builder:
+    async def create(self, definition: dict) -> str | None:
+        try:
+            await ROUTES.create_driver_definition(DriverDefinitionRequest(**definition))
+        except HTTPException as refused:
+            return _said(refused)
+        return None
+
+    async def replace(self, driver_id: str, definition: dict) -> str | None:
+        try:
+            await ROUTES.update_driver_definition(driver_id, DriverDefinitionRequest(**definition))
+        except HTTPException as refused:
+            return _said(refused)
+        return None
+
+
+class _Assistant:
+    def __init__(self, tools) -> None:
+        self.tools = tools
+
+    async def create(self, definition: dict) -> str | None:
+        answer = await self.tools._create_driver_definition({"definition": definition})
+        return answer.get("error")
+
+    async def replace(self, driver_id: str, definition: dict) -> str | None:
+        answer = await self.tools._update_driver_definition(
+            {"driver_id": driver_id, "definition": definition},
+        )
+        return answer.get("error")
+
+
+@pytest.fixture(params=["builder", "assistant"])
+def door(request, env, monkeypatch):
+    return _Builder() if request.param == "builder" else _Assistant(_assistant(monkeypatch, env))
+
+
+async def test_each_door_saves_a_new_definition_and_follows_it(env, door):
+    assert await door.create(dict(GADGET)) is None
+
+    assert env.files() == ["acme_gadget.avcdriver"]
+    assert _saved(env, "acme_gadget.avcdriver") == GADGET
+    assert env.events == [
+        ("register", "acme_gadget", ("acme_gadget.avcdriver",)),
+        *_followed("acme_gadget"),
+    ]
+
+
+@pytest.mark.parametrize("case", ["create", "replace"])
+async def test_each_door_refuses_a_floor_above_this_platform(env, door, case):
+    if case == "replace":
+        save_driver_definition(dict(WIDGET), env.repo)
+    too_new = {**(GADGET if case == "create" else WIDGET), "min_platform_version": TOO_NEW}
+
+    refusal = await (door.create(too_new) if case == "create" else door.replace("acme_widget", too_new))
+
+    assert refusal.startswith("This driver requires OpenAVC 99.0.0 or later.")
+    assert env.files() == ([] if case == "create" else ["acme_widget.avcdriver"])
+    assert env.events == []
+
+
+@pytest.mark.parametrize("case", ["create", "replace"])
+async def test_each_door_refuses_a_discovery_file_not_here(env, door, case):
+    if case == "replace":
+        save_driver_definition(dict(WIDGET), env.repo)
+    named = _naming_a_discovery_file(WIDGET)
+
+    refusal = await (door.create(named) if case == "create" else door.replace("acme_widget", named))
+
+    assert refusal == "; ".join(_loader_refused(named))
+    assert env.files() == ([] if case == "create" else ["acme_widget.avcdriver"])
+    assert env.events == []
+
+
+async def test_each_door_refuses_an_invalid_definition(env, door):
+    invalid = {**GADGET, "bogus_key": 1}
+
+    refusal = await door.create(invalid)
+
+    assert refusal == "; ".join(driver_loader.validate_driver_definition(invalid, strict=True))
+    assert env.files() == [] and env.events == []
+
+
+async def test_each_door_refuses_an_id_a_python_driver_serves(env, door):
+    (env.repo / "gadget_driver.py").write_text(PYTHON_GADGET, encoding="utf-8")
+
+    refusal = await door.create(dict(GADGET))
+
+    assert refusal == 'Another driver named "acme_gadget" already exists. Choose a different ID.'
+    assert env.files() == ["gadget_driver.py"] and env.events == []
+
+
+async def test_each_door_saves_over_an_id_registered_with_no_file(env, door):
+    """An id still registered after its file was removed outside the
+    Programmer is not taken: no file serves it now, or would at the next
+    start. Neither door says what kind of driver it was."""
+    from openavc.drivers import registry
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    registry.register_driver(create_configurable_driver_class(dict(GADGET)))
+    try:
+        assert await door.create({**GADGET, "name": "Acme Gadget 2"}) is None
+    finally:
+        registry.unregister_driver("acme_gadget")
+
+    assert env.files() == ["acme_gadget.avcdriver"]
+    assert _saved(env, "acme_gadget.avcdriver")["name"] == "Acme Gadget 2"
+
+
+async def test_the_assistant_s_create_of_a_reserved_id_is_refused_in_the_manufacturer_s_words(
+    env, monkeypatch,
+):
+    """An id the manufacturer's integration holds is refused by the save's own
+    check, and the AI is told that refusal as written."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from openavc.cloud.protocol import AI_TOOL_CALL, AI_TOOL_RESULT, _now_iso
+    from openavc.drivers import registry
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    tools = _assistant(monkeypatch, env)
+    tools._agent.send_message = AsyncMock()
+    registry.reserve_driver(create_configurable_driver_class(dict(GADGET)))
+    try:
+        await tools.handle({
+            "type": AI_TOOL_CALL, "ts": _now_iso(), "seq": 1, "session": "test",
+            "payload": {
+                "request_id": "req-1",
+                "tool_name": "create_driver_definition",
+                "tool_input": {"definition": dict(GADGET)},
+            },
+        })
+        for _ in range(5):
+            await asyncio.sleep(0)
+    finally:
+        registry._RESERVED_DRIVERS.discard("acme_gadget")
+        registry.unregister_driver("acme_gadget")
+
+    kind, payload = tools._agent.send_message.await_args.args
+    assert kind == AI_TOOL_RESULT
+    assert (payload["success"], payload["error"]) == (
+        False,
+        "This integration is installed by the manufacturer and cannot be replaced or uninstalled.",
+    )
+    assert env.files() == [] and env.events == []
+
+
+async def test_each_door_replaces_in_place_and_removes_the_other_copy(env, door):
+    save_driver_definition(dict(WIDGET), env.repo)
+    (env.repo / "widget_copy.avcdriver").write_text(yaml.safe_dump(WIDGET), encoding="utf-8")
+
+    assert await door.replace("acme_widget", {**WIDGET, "name": "Acme Widget 2"}) is None
+
+    assert env.files() == ["acme_widget.avcdriver"]
+    assert _saved(env, "acme_widget.avcdriver")["name"] == "Acme Widget 2"
+    assert env.events == [
+        ("register", "acme_widget", ("acme_widget.avcdriver",)),
+        *_followed("acme_widget"),
+    ]
+
+
+async def test_each_door_renames_restores_the_old_id_and_follows_both(env, door):
+    save_driver_definition(dict(WIDGET), env.repo)
+
+    assert await door.replace("acme_widget", {**WIDGET, "id": "acme_widget_two"}) is None
+
+    assert env.files() == ["acme_widget_two.avcdriver"]
+    assert env.events == [
+        ("register", "acme_widget_two", ("acme_widget_two.avcdriver",)),
+        ("restore", "acme_widget", (env.builtin, env.repo)),
+        *_followed("acme_widget_two", "acme_widget"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "case, refusal",
+    [
+        ("unknown", "Driver definition 'acme_nothing' not found"),
+        ("built-in", "Built-in drivers are read-only. Customize a copy to edit."),
+        ("onto a built-in", "Driver id 'acme_gadget' belongs to a read-only built-in driver."),
+        ("onto another", 'Another driver named "acme_gadget" already exists. Choose a different ID.'),
+    ],
+)
+async def test_each_door_refuses_a_replace_that_is_not_its_to_make(env, door, case, refusal):
+    save_driver_definition(dict(WIDGET), env.builtin if case == "built-in" else env.repo)
+    save_driver_definition(dict(GADGET), env.repo if case == "onto another" else env.builtin)
+    driver_id = "acme_nothing" if case == "unknown" else "acme_widget"
+    sent = dict(GADGET) if case.startswith("onto") else {**WIDGET, "name": "Acme Widget 2"}
+
+    assert await door.replace(driver_id, sent) == refusal
+    assert env.events == []
+
+
+async def test_the_assistant_reads_what_the_builder_reads_and_saves_it_back(env, monkeypatch):
+    """A definition the AI read is one it can save back as it is: the marks
+    its read adds (the format, that it can be edited) and the listing's own
+    keys are not saved."""
+    save_driver_definition(dict(WIDGET), env.repo)
+    tools = _assistant(monkeypatch, env)
+
+    read = await tools._get_driver_definition({"driver_id": "acme_widget"})
+    assert read == {
+        **await ROUTES.get_driver_definition("acme_widget"), "format": "avcdriver", "editable": True,
+    }
+
+    answer = await tools._update_driver_definition({"driver_id": "acme_widget", "definition": read})
+
+    assert answer == {
+        "status": "updated", "id": "acme_widget", "issues": [],
+        "devices_reconnected": ["acme_widget-dev"],
+    }
+    assert _saved(env, "acme_widget.avcdriver") == WIDGET
+
+
+def test_the_assistant_s_read_marks_are_no_driver_key():
+    """A driver key of the same name would be dropped from every AI save."""
+    from openavc.cloud.tools.driver_tools import READ_MARKS
+    from openavc.drivers.avcdriver_semantic import unknown_key_errors
+
+    assert len(unknown_key_errors({"id": "acme_widget", **dict.fromkeys(READ_MARKS, 1)})) == len(READ_MARKS)
+
+
 # --- GET /drivers/installed ------------------------------------------------------
 
 

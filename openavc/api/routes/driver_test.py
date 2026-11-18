@@ -21,7 +21,9 @@ Three ways to run a command, in descending fidelity:
   commands, no auth, no on_connect: "what does this device say if I send X".
   A serial port still opens with the line settings a connect would use, read
   from the draft's `default_config` and the panel's overrides when the request
-  carries a `definition` (`transport_ladder.serial_line_settings`).
+  carries a `definition` (`transport_ladder.serial_line_settings`). The text
+  is read (`_escaped`) before anything opens. The AI's test_driver_command is
+  this probe over TCP (`raw_tcp_probe`).
 
 Split out of `routes/drivers.py`: this is a third of that file behind two
 routes, and it shares nothing with driver installation or definition CRUD.
@@ -603,7 +605,7 @@ async def _test_raw(body: TestCommandRequest) -> dict:
             detail="Provide either a definition + command_name or a command_string",
         )
     if body.transport == "tcp":
-        return await _test_tcp_raw(body)
+        return await raw_tcp_probe(body)
     if body.transport == "serial":
         return await _test_serial_raw(body)
     if body.transport == "udp":
@@ -667,11 +669,9 @@ def _raw_port(body: TestCommandRequest, name: str) -> int:
 
 
 def _escaped(value: str, what: str) -> bytes:
-    """THE reading of a raw probe's text: ``value`` with its backslash escapes
-    (``\\r``, ``\\n``, ``\\x0D``) as the bytes they stand for. One it cannot
-    read (a truncated ``\\x``) is a 422 naming ``what``, raised before anything
-    is opened, so a probe that could not be sent never takes a device that
-    serves one connection at a time from its driver."""
+    """THE reading of a raw probe's text (``\\r``, ``\\x0D`` as the bytes they
+    stand for). An incomplete escape is a 422 naming ``what``, raised before
+    anything is opened: a one-connection device is never taken for nothing."""
     try:
         return value.encode().decode("unicode_escape").encode()
     except UnicodeError:
@@ -684,21 +684,14 @@ def _escaped(value: str, what: str) -> bytes:
         ) from None
 
 
-def _raw_command(body: TestCommandRequest) -> bytes:
-    return _escaped(body.command_string, "command")
-
-
-def _raw_delimiter(body: TestCommandRequest) -> bytes:
-    return _escaped(body.delimiter, "message delimiter")
-
-
-async def _test_tcp_raw(body: TestCommandRequest) -> dict:
-    """Raw TCP probe, TLS-wrapped when the driver's connection is (its ssl and
-    verify_ssl, as the transport ladder builds a TCP connection)."""
+async def raw_tcp_probe(body: TestCommandRequest) -> dict:
+    """THE raw TCP probe, the Builder's and the AI's test_driver_command:
+    TLS-wrapped when the driver's connection is (its ssl and verify_ssl, as
+    the transport ladder builds a TCP connection)."""
     from openavc.transport.tcp import TCPTransport
 
-    data = _raw_command(body)
-    delimiter = _raw_delimiter(body)
+    data = _escaped(body.command_string, "command")
+    delimiter = _escaped(body.delimiter, "message delimiter")
     port = _raw_port(body, "TCP")
     try:
         transport = await TCPTransport.create(
@@ -732,8 +725,8 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
             detail="Serial port path is required (e.g. COM3 or /dev/ttyUSB0).",
         )
 
-    data = _raw_command(body)
-    delimiter = _raw_delimiter(body)
+    data = _escaped(body.command_string, "command")
+    delimiter = _escaped(body.delimiter, "message delimiter")
     try:
         transport = await SerialTransport.create(
             port=port_path,
@@ -757,7 +750,7 @@ async def _test_udp_raw(body: TestCommandRequest) -> dict:
     """
     from openavc.transport.udp import UDPTransport
 
-    data = _raw_command(body)
+    data = _escaped(body.command_string, "command")
     udp = UDPTransport(host=body.host, port=_raw_port(body, "UDP"), name="udp_test")
     try:
         await udp.open()

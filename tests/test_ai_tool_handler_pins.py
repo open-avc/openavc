@@ -896,9 +896,7 @@ class TestHelpers:
         with patch.dict(sys.modules, {"openavc.api.rest": None}):
             assert _handler()._get_engine() is None
 
-    def test_the_driver_folders(self):
-        from openavc.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
+    def test_the_driver_folder(self):
+        from openavc.system_config import DRIVER_REPO_DIR
 
-        handler = _handler()
-        assert handler._get_driver_repo_dir() == DRIVER_REPO_DIR
-        assert handler._get_driver_dirs() == [DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR]
+        assert _handler()._get_driver_repo_dir() == DRIVER_REPO_DIR

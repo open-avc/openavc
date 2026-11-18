@@ -62,7 +62,7 @@ def driver_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr("openavc.system_config.DRIVER_DEFINITIONS_DIR", builtin)
     monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
     announced = AsyncMock()
-    monkeypatch.setattr("openavc.api.routes.drivers.announce_drivers_changed", announced)
+    monkeypatch.setattr("openavc.drivers.driver_change.announce", announced)
     yield repo, announced
     unregister_driver("acme_yaml")
 
@@ -78,7 +78,9 @@ async def test_a_created_driver_answers_the_warnings_it_was_saved_with(driver_di
 
     answer = await _handler()._create_driver_definition({"definition": WARNS})
 
-    assert answer == {"status": "created", "id": "acme_yaml", "issues": [UNLABELLED]}
+    assert answer == {
+        "status": "created", "id": "acme_yaml", "issues": [UNLABELLED], "devices_reconnected": [],
+    }
     assert (repo / "acme_yaml.avcdriver").exists()
     assert is_driver_registered("acme_yaml")
     announced.assert_awaited_once_with("acme_yaml")
@@ -92,7 +94,9 @@ async def test_an_updated_driver_answers_the_warnings_it_was_saved_with(driver_d
         {"driver_id": "acme_yaml", "definition": WARNS},
     )
 
-    assert answer == {"status": "updated", "id": "acme_yaml", "issues": [UNLABELLED]}
+    assert answer == {
+        "status": "updated", "id": "acme_yaml", "issues": [UNLABELLED], "devices_reconnected": [],
+    }
     assert "set_input" in (repo / "acme_yaml.avcdriver").read_text(encoding="utf-8")
     announced.assert_awaited_once_with("acme_yaml")
 
@@ -127,11 +131,10 @@ async def test_the_ai_hears_what_the_builders_validate_shows(driver_dirs, draft)
     assert answer["issues"] == (await validate_driver_definition_draft(draft))["issues"]
 
 
-async def test_a_refusal_goes_up_as_a_failure_with_its_issues():
+async def test_a_refusal_goes_up_as_a_failure_with_its_issues(driver_dirs):
     agent = MagicMock()
     agent.send_message = AsyncMock()
     handler = _handler(agent)
-    handler._get_driver_dirs = MagicMock(return_value=[])
 
     await handler.handle({
         "type": AI_TOOL_CALL, "ts": _now_iso(), "seq": 1, "session": "test",

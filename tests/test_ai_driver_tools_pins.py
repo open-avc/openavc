@@ -10,12 +10,15 @@ write or a fetch fails here:
   entry's download address, one driver's full entry, and the exact
   manufacturer and model lookup over ``devices.json`` (fetched on every call,
   rows for the same model added together).
-- ``get_installed_drivers``: what the driver folder lists and how.
-- ``create_driver_definition`` and ``update_driver_definition``: every
-  refusal, where the file is saved, a rename, the driver registered and
-  announced (the checker's issue records they answer with are
-  ``test_ai_driver_definition_issues.py``'s).
-- ``test_driver_command``: what it sends, answers and closes on each way out.
+- ``get_installed_drivers`` with no engine or no driver folder (its rows are
+  Installed's, held in ``test_driver_file_identity.py``).
+- ``create_driver_definition`` and ``update_driver_definition``: a definition
+  with no id (every other outcome is the Driver Builder's, held door for door
+  in ``test_driver_definition_routes_pins.py``; the checker's issue records
+  they answer with are ``test_ai_driver_definition_issues.py``'s).
+- ``test_driver_command``: the Builder's raw TCP probe, answered in the AI's
+  shape: what it sends, answers and closes on each way out, and the port a
+  connected device holds.
 
 The network is never touched: ``httpx.AsyncClient.get`` and the TCP transport
 are replaced. An invented device throughout.
@@ -26,7 +29,7 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -35,7 +38,6 @@ from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.cloud.tools.catalog_tools import _lean_driver_entry, _score_driver_match
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import (
-    is_driver_registered,
     list_registered_drivers,
     register_driver,
     unregister_driver,
@@ -399,32 +401,6 @@ async def test_find_with_no_catalog(monkeypatch, caplog, failure):
 # --- get_installed_drivers ---------------------------------------------------------------------
 
 
-async def test_installed_drivers_list_the_driver_folder(tmp_path):
-    repo = tmp_path / "driver_repo"
-    repo.mkdir()
-    (repo / "b_switch.avcdriver").write_text("id: acme_switch\nname: Acme Switch\n", encoding="utf-8")
-    (repo / "a_bare.avcdriver").write_text("transport: tcp\n", encoding="utf-8")
-    (repo / "c_broken.avcdriver").write_text("id: [unclosed\n", encoding="utf-8")
-    (repo / "d_list.avcdriver").write_text("- one\n- two\n", encoding="utf-8")
-    (repo / "acme_widget.py").write_text("", encoding="utf-8")
-    (repo / "acme_widget_sim.py").write_text("", encoding="utf-8")
-    (repo / "_helpers.py").write_text("", encoding="utf-8")
-    (repo / "notes.txt").write_text("", encoding="utf-8")
-    handler = _handler()
-    handler._get_engine = lambda: object()
-    handler._get_driver_repo_dir = lambda: repo
-
-    answer = await handler._get_installed_drivers({})
-
-    assert answer == {"drivers": [
-        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver", "load_error": None},
-        {"id": "acme_switch", "name": "Acme Switch", "format": "avcdriver", "filename": "b_switch.avcdriver", "load_error": None},
-        {"id": "c_broken", "name": "c_broken", "format": "avcdriver", "filename": "c_broken.avcdriver", "load_error": None},
-        {"id": "acme_widget", "name": "Acme Widget", "format": "python", "filename": "acme_widget.py", "load_error": None},
-        {"id": "acme_widget_sim", "name": "Acme Widget Sim", "format": "python", "filename": "acme_widget_sim.py", "load_error": None},
-    ]}
-
-
 async def test_installed_drivers_without_an_engine_or_a_folder(tmp_path):
     handler = _handler()
     handler._get_engine = lambda: None
@@ -437,136 +413,22 @@ async def test_installed_drivers_without_an_engine_or_a_folder(tmp_path):
 # --- driver definitions ----------------------------------------------------------------------------
 
 
-def _definition(driver_id: str = "acme_yaml", name: str = "Acme YAML") -> dict[str, Any]:
-    return {"id": driver_id, "name": name, "transport": "tcp"}
+@pytest.mark.parametrize("tool", ["_create_driver_definition", "_update_driver_definition"])
+@pytest.mark.parametrize(
+    "sent",
+    [{}, {"definition": {"name": "x"}}, {"definition": {"id": ""}}, {"definition": {"id": 7}},
+     {"definition": ["id"]}],
+    ids=["no definition", "no id", "an empty id", "an id that is not text", "not a mapping"],
+)
+async def test_a_definition_with_no_id_is_refused_before_anything_is_read(tool, sent, monkeypatch):
+    def unread():
+        raise AssertionError("the driver library was read")
 
+    monkeypatch.setattr("openavc.api.routes.driver_definitions._get_driver_dirs", unread)
 
-@pytest.fixture
-def driver_dirs(tmp_path, monkeypatch):
-    builtin = tmp_path / "definitions"
-    repo = tmp_path / "driver_repo"
-    builtin.mkdir()
-    repo.mkdir()
-    monkeypatch.setattr("openavc.system_config.DRIVER_DEFINITIONS_DIR", builtin)
-    monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
-    announced = AsyncMock()
-    monkeypatch.setattr("openavc.api.routes.drivers.announce_drivers_changed", announced)
-    yield builtin, repo, announced
-    for driver_id in ("acme_yaml", "acme_renamed", "acme_other"):
-        unregister_driver(driver_id)
-
-
-async def test_create_definition_saves_registers_and_announces(driver_dirs):
-    _builtin, repo, announced = driver_dirs
-
-    answer = await _handler()._create_driver_definition({"definition": _definition()})
-
-    assert answer == {"status": "created", "id": "acme_yaml", "issues": []}
-    assert (repo / "acme_yaml.avcdriver").exists()
-    assert is_driver_registered("acme_yaml")
-    announced.assert_awaited_once_with("acme_yaml")
-
-
-async def test_create_definition_with_one_folder_saves_there(driver_dirs, tmp_path):
-    _builtin, _repo, _announced = driver_dirs
-    only = tmp_path / "only"
-    only.mkdir()
-    handler = _handler()
-    handler._get_driver_dirs = lambda: [only]
-
-    await handler._create_driver_definition({"definition": _definition()})
-
-    assert (only / "acme_yaml.avcdriver").exists()
-
-
-async def test_create_definition_refusals(driver_dirs, monkeypatch):
-    _builtin, repo, announced = driver_dirs
-    handler = _handler()
-    assert await handler._create_driver_definition({}) == {"error": "Driver definition must have an 'id' field"}
-    assert await handler._create_driver_definition({"definition": {"name": "x"}}) == {
+    assert await getattr(_handler(), tool)({"driver_id": "acme_yaml", **sent}) == {
         "error": "Driver definition must have an 'id' field",
     }
-    assert await handler._create_driver_definition({"definition": {**_definition(), "bogus": 1, "other": 2}}) == {
-        "error": "unknown key 'bogus'; unknown key 'other'",
-        "issues": [
-            {"severity": "error", "message": "unknown key 'bogus'", "path": ""},
-            {"severity": "error", "message": "unknown key 'other'", "path": ""},
-        ],
-    }
-    (repo / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Old\ntransport: tcp\n", encoding="utf-8")
-    assert await handler._create_driver_definition({"definition": _definition()}) == {
-        "error": "Driver definition 'acme_yaml' already exists",
-    }
-    register_driver(_AcmePython)
-    assert await handler._create_driver_definition({"definition": _definition("acme_other")}) == {
-        "error": (
-            "Driver 'acme_other' is already installed as a Python-format driver. A YAML "
-            "definition sharing its id would shadow it. Pick a different id, or use the "
-            "driver that is already there."
-        ),
-    }
-    announced.assert_not_awaited()
-
-
-async def test_update_definition_rewrites_in_place(driver_dirs, monkeypatch):
-    _builtin, repo, announced = driver_dirs
-    (repo / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Old\ntransport: tcp\n", encoding="utf-8")
-    restored = MagicMock()
-    monkeypatch.setattr("openavc.drivers.driver_loader.restore_driver_registration", restored)
-
-    answer = await _handler()._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": _definition(name="Acme New")},
-    )
-
-    assert answer == {"status": "updated", "id": "acme_yaml", "issues": []}
-    assert "Acme New" in (repo / "acme_yaml.avcdriver").read_text(encoding="utf-8")
-    assert is_driver_registered("acme_yaml")
-    restored.assert_not_called()
-    announced.assert_awaited_once_with("acme_yaml")
-
-
-async def test_update_definition_renamed_drops_the_old_file(driver_dirs, monkeypatch):
-    _builtin, repo, announced = driver_dirs
-    (repo / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Old\ntransport: tcp\n", encoding="utf-8")
-    restored = MagicMock()
-    monkeypatch.setattr("openavc.drivers.driver_loader.restore_driver_registration", restored)
-    handler = _handler()
-
-    answer = await handler._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": _definition("acme_renamed")},
-    )
-
-    assert answer == {"status": "updated", "id": "acme_renamed", "issues": []}
-    assert not (repo / "acme_yaml.avcdriver").exists()
-    assert (repo / "acme_renamed.avcdriver").exists()
-    assert is_driver_registered("acme_renamed")
-    restored.assert_called_once_with("acme_yaml", handler._get_driver_dirs())
-    announced.assert_awaited_once_with("acme_renamed")
-
-
-async def test_update_definition_refusals(driver_dirs):
-    _builtin, repo, announced = driver_dirs
-    (repo / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Old\ntransport: tcp\n", encoding="utf-8")
-    (repo / "acme_other.avcdriver").write_text("id: acme_other\nname: Other\ntransport: tcp\n", encoding="utf-8")
-    handler = _handler()
-
-    assert await handler._update_driver_definition({"driver_id": "acme_yaml"}) == {
-        "error": "Driver definition must have an 'id' field",
-    }
-    assert await handler._update_driver_definition({"driver_id": "acme_ghost", "definition": _definition()}) == {
-        "error": "Driver definition 'acme_ghost' not found",
-    }
-    assert await handler._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": {**_definition(), "bogus": 1}},
-    ) == {
-        "error": "unknown key 'bogus'",
-        "issues": [{"severity": "error", "message": "unknown key 'bogus'", "path": ""}],
-    }
-    assert await handler._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": _definition("acme_other")},
-    ) == {"error": "A driver definition with id 'acme_other' already exists"}
-    assert "Old" in (repo / "acme_yaml.avcdriver").read_text(encoding="utf-8")
-    announced.assert_not_awaited()
 
 
 # --- test_driver_command ------------------------------------------------------------------------
@@ -604,13 +466,16 @@ def tcp(monkeypatch):
 
 
 async def test_raw_command_sends_the_decoded_text(tcp):
+    """At the Builder probe's defaults (port 23, a carriage return ending the
+    reply, 5 seconds), and a reply that is not text answered in hex, as the
+    Builder's test panel shows it."""
     made, holder = tcp
 
     answer = await _handler()._test_driver_command({"host": "192.0.2.50", "command_string": "PWR?\\r"})
 
-    assert answer == {"success": True, "error": None, "response": "PWR=1�"}
+    assert answer == {"success": True, "error": None, "response": "5057523d31ff"}
     assert [(k["host"], k["port"], k["delimiter"], k["timeout"]) for k in made] == [
-        ("192.0.2.50", 23, b"\r\n", 5),
+        ("192.0.2.50", 23, b"\r", 5),
     ]
     assert holder["transport"].sent == [(b"PWR?\r", 5)]
     assert holder["transport"].closed == 1
@@ -631,10 +496,27 @@ async def test_raw_command_reads_a_timeout_sent_as_text(tcp):
     made, _holder = tcp
 
     await _handler()._test_driver_command({"host": "192.0.2.50", "command_string": "X", "timeout": "3"})
-    answer = await _handler()._test_driver_command({"host": "192.0.2.50", "command_string": "X", "timeout": "soon"})
 
     assert [k["timeout"] for k in made] == [3.0]
-    assert answer == {"success": False, "error": "timeout must be a number of seconds", "response": None}
+
+
+@pytest.mark.parametrize(("timeout", "error"), [
+    ("soon", "timeout: Input should be a valid number, unable to parse string as a number"),
+    (0, "timeout: Input should be greater than 0"),
+    (61, "timeout: Input should be less than or equal to 60"),
+    (float("nan"), "timeout: Input should be less than or equal to 60"),
+])
+async def test_raw_command_takes_the_probe_s_timeouts_only(tcp, timeout, error):
+    """The Builder's probe waits more than 0 and at most 60 seconds; any
+    other wait is refused, naming the field, and nothing is dialled."""
+    made, _holder = tcp
+
+    answer = await _handler()._test_driver_command(
+        {"host": "192.0.2.50", "command_string": "X", "timeout": timeout},
+    )
+
+    assert answer == {"success": False, "error": error, "response": None}
+    assert made == []
 
 
 @pytest.mark.parametrize(("reply", "error"), [
@@ -661,18 +543,25 @@ async def test_raw_command_that_cannot_connect(tcp):
     assert answer == {"success": False, "error": "Connection refused", "response": None}
 
 
-@pytest.mark.parametrize("field", ["command_string", "delimiter"])
-async def test_raw_command_with_a_truncated_escape_is_refused_before_dialing(tcp, field):
-    """A truncated escape names its field, in the tool's own words, and
-    nothing is dialed; the command text's used to raise after the connect."""
+@pytest.mark.parametrize(("field", "named"), [
+    ("command_string", "command"), ("delimiter", "message delimiter"),
+])
+async def test_raw_command_with_a_truncated_escape_is_refused_before_dialing(tcp, field, named):
+    """A truncated escape is refused in the probe's words, naming which text
+    it is in, and nothing is dialled."""
     made, _holder = tcp
     sent = {"host": "192.0.2.50", "command_string": "PWR?", field: "PWR\\x"}
 
     answer = await _handler()._test_driver_command(sent)
 
-    assert answer["success"] is False
-    assert answer["error"].startswith(f"Invalid {field} escape sequence 'PWR\\\\x': ")
-    assert answer["response"] is None
+    assert answer == {
+        "success": False,
+        "error": (
+            f"The {named} 'PWR\\x' has an incomplete backslash escape. Write a byte as \\x "
+            "and two hex digits, such as \\x0D, and a backslash itself as \\\\."
+        ),
+        "response": None,
+    }
     assert made == []
 
 
@@ -728,7 +617,7 @@ async def test_raw_command_dials_when_the_connected_list_cannot_be_read(tcp, cap
     ]
 
 
-async def test_raw_command_with_a_port_that_is_not_a_number_skips_the_check(tcp):
+async def test_raw_command_with_a_port_that_is_not_a_number_is_refused(tcp):
     made, _holder = tcp
     asked: list[Any] = []
 
@@ -739,10 +628,13 @@ async def test_raw_command_with_a_port_that_is_not_a_number_skips_the_check(tcp)
     handler = _handler()
     handler._get_engine = lambda: _Engine(_Devices(live))
 
-    await handler._test_driver_command({"host": "192.0.2.50", "port": "telnet", "command_string": "X"})
+    answer = await handler._test_driver_command(
+        {"host": "192.0.2.50", "port": "telnet", "command_string": "X"},
+    )
 
+    assert answer == {"success": False, "error": "Invalid TCP port: 'telnet'", "response": None}
     assert asked == []
-    assert [k["port"] for k in made] == ["telnet"]
+    assert made == []
 
 
 async def test_raw_command_with_nothing_connected_dials(tcp):
@@ -753,7 +645,7 @@ async def test_raw_command_with_nothing_connected_dials(tcp):
     answer = await handler._test_driver_command({"host": "192.0.2.50", "port": "4000", "command_string": "X"})
 
     assert answer["success"] is True
-    assert [k["port"] for k in made] == ["4000"]
+    assert [k["port"] for k in made] == [4000]
 
 
 # --- the simple reads -----------------------------------------------------------------------------
@@ -794,20 +686,6 @@ async def test_search_reads_a_limit_it_cannot_parse_as_twenty_five(monkeypatch, 
     answer = await _handler()._search_community_drivers({"limit": limit})
 
     assert (answer["returned"], answer["truncated"]) == (25, True)
-
-
-async def test_update_definition_of_a_built_in_is_refused_before_it_is_validated(driver_dirs):
-    builtin, _repo, announced = driver_dirs
-    (builtin / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Ship\ntransport: tcp\n", encoding="utf-8")
-
-    answer = await _handler()._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": {**_definition(), "bogus": 1}},
-    )
-
-    assert answer == {
-        "error": "Driver 'acme_yaml' is a built-in and cannot be modified. Duplicate it under a new id first.",
-    }
-    announced.assert_not_awaited()
 
 
 # --- a catalog of the wrong shape ------------------------------------------------------

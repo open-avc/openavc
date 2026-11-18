@@ -108,15 +108,19 @@ async def test_unknown_driver_says_not_installed(tmp_path, monkeypatch) -> None:
 async def test_create_definition_will_not_shadow_a_python_driver(tmp_path, monkeypatch) -> None:
     """Reading a Python driver's introspected surface must not lead to saving
     it back as YAML: a definition sharing the id would load over the top of
-    the working driver."""
+    the working driver. Refused as the Driver Builder's create refuses any id
+    a file already serves, with nothing written."""
     _, repo = _driver_dirs(tmp_path, monkeypatch)
-    register_driver(_AcmeWidget)
-    try:
-        result = await _handler()._create_driver_definition(
-            {"definition": {"id": "acme_widget", "name": "Acme Widget", "transport": "tcp"}}
-        )
-    finally:
-        unregister_driver("acme_widget")
+    (repo / "acme_widget.py").write_text(
+        "from openavc.drivers.base import BaseDriver\n"
+        "class AcmeWidget(BaseDriver):\n"
+        "    DRIVER_INFO = {'id': 'acme_widget', 'name': 'Acme Widget'}\n",
+        encoding="utf-8",
+    )
 
-    assert "shadow" in result.get("error", "")
+    result = await _handler()._create_driver_definition(
+        {"definition": {"id": "acme_widget", "name": "Acme Widget", "transport": "tcp"}}
+    )
+
+    assert result["error"] == 'Another driver named "acme_widget" already exists. Choose a different ID.'
     assert list(repo.glob("*.avcdriver")) == []

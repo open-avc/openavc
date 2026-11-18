@@ -1,18 +1,24 @@
 """The AI's driver tools: what is installed, a driver's definition, writing a
 YAML definition, and sending raw text to a device while building one.
 
+Each tool is a door the Programmer already has, and calls that door's own
+code rather than a copy of it, answering in the AI's shape (an ``{"error":
+...}`` for a refusal, never an HTTP status): get_installed_drivers is Drivers
+> Installed (``installed_drivers``); get_driver_definition, create and
+update are the Driver Builder's read, create and replace
+(``served_definition``, ``create_definition``, ``replace_definition``: the
+contract check, the platform floor, the file written, the replaced copy
+taken away, the registration, the devices on the driver built again,
+Discovery and the announcement, all holding the driver's id); and
+test_driver_command is the Builder's raw TCP probe (``raw_tcp_probe``).
+
 Two driver formats reach these doors. A YAML driver is a ``.avcdriver`` file
 and the AI may read, create and edit it; a Python driver is a loaded class
 with no definition file, so ``get_driver_definition`` answers its loaded
-surface marked ``editable: false``, and a YAML definition is never written
-over its id. A definition the AI writes is checked strictly (an undeclared
-key it invented would otherwise land in a saved driver and do nothing),
-saved to the user driver folder, never over a shipped built-in, registered,
-and announced to the IDE, all of it holding the driver's id
-(``driver_change.holding``) as every other door that changes a driver does,
-so the assistant's change and one made in the IDE never interleave. Create
-and update answer with the checker's issue records, the ones the Driver
-Builder's Validate shows (errors and warnings, each with its place): a
+surface marked ``editable: false``. The marks a read adds (``READ_MARKS``)
+are dropped before a save, so a definition the AI read saves back as it is.
+Create and update also answer with the checker's issue records, the ones the
+Driver Builder's Validate shows (errors and warnings, each with its place): a
 refused draft names each error, and a saved one the warnings it was saved
 with, which never refuse it.
 
@@ -24,86 +30,40 @@ answers again.
 
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
-from openavc.cloud.tools import ToolEditError
-from openavc.drivers.driver_change import holding
-from openavc.drivers.refused_files import load_error, not_loaded_sentence
-from openavc.drivers.registry import (
-    is_driver_registered,
-    list_registered_drivers,
-    register_driver,
-)
+from fastapi import HTTPException
+
+from openavc.drivers.refused_files import not_loaded_sentence
+from openavc.drivers.registry import list_registered_drivers
 from openavc.utils.logger import get_logger
 
+#: The keys get_driver_definition adds to a driver's surface, which are not
+#: the driver's: a save drops them.
+READ_MARKS = ("format", "editable", "note")
 
-def _unescaped(value: str, field: str) -> bytes:
-    """``value`` with its backslash escapes (``\\r``, ``\\n``, ``\\x0D``) as the
-    bytes they stand for. A truncated one (``\\x``) is a ToolEditError naming
-    the field, raised before anything is dialed."""
-    try:
-        return value.encode().decode("unicode_escape").encode()
-    except (UnicodeDecodeError, UnicodeEncodeError) as e:
-        raise ToolEditError({
-            "success": False,
-            "error": f"Invalid {field} escape sequence {value!r}: {e}",
-            "response": None,
-        }) from e
+# The raw command's fields, read as the Builder's probe reads them.
+_PROBE_FIELDS = ("host", "port", "command_string", "delimiter", "timeout")
 
 
-def _timeout_seconds(input: dict) -> float:
-    """The raw command's response timeout: 5 when not sent, and a number sent
-    as text ("5") read as one, as the scan's timeout is. Anything else is a
-    ToolEditError, raised before anything is dialed."""
-    value = input.get("timeout")
-    if value is None:
-        return 5.0
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        raise ToolEditError({
-            "success": False, "error": "timeout must be a number of seconds", "response": None,
-        }) from None
+def _marked(surface: dict[str, Any], *, editable: bool, note: str | None = None) -> dict[str, Any]:
+    """A driver's surface as get_driver_definition answers it (``READ_MARKS``)."""
+    marks: dict[str, Any] = {"format": "avcdriver" if editable else "python", "editable": editable}
+    if note:
+        marks["note"] = note
+    return {**surface, **marks}
 
 
-def _installed_yaml_entry(filepath: Path) -> dict | None:
-    """An ``.avcdriver`` in the driver folder as the listing names it: by its
-    own id and name, by the file name when it does not parse, and None for a
-    file that parses to something other than a mapping."""
-    import yaml
+def _drafted(definition: dict[str, Any]) -> dict[str, Any]:
+    """A definition the AI sent, as the save takes it: without the marks its
+    read added, or the listing's own keys."""
+    from openavc.api.routes.driver_definitions import _strip_listing_decorations
 
-    try:
-        data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError, ValueError):
-        return {
-            "id": filepath.stem, "name": filepath.stem, "format": "avcdriver",
-            "filename": filepath.name, "load_error": load_error(filepath),
-        }
-    if not isinstance(data, dict):
-        return None
-    return {
-        "id": data.get("id", filepath.stem),
-        "name": data.get("name", filepath.stem),
-        "format": "avcdriver",
-        "filename": filepath.name,
-        "load_error": load_error(filepath),
-    }
-
-
-def _installed_python_entry(filepath: Path) -> dict:
-    return {
-        "id": filepath.stem,
-        "name": filepath.stem.replace("_", " ").title(),
-        "format": "python",
-        "filename": filepath.name,
-        "load_error": load_error(filepath),
-    }
-
-
-def _user_driver_dir(dirs: list[Path]) -> Path:
-    """Where a definition the AI writes is saved: the user driver folder."""
-    return dirs[1] if len(dirs) > 1 else dirs[0]
+    return _strip_listing_decorations(
+        {key: value for key, value in definition.items() if key not in READ_MARKS}
+    )
 
 
 def _issues(definition: dict) -> list[dict[str, str]]:
@@ -115,52 +75,63 @@ def _issues(definition: dict) -> list[dict[str, str]]:
     return validate_driver_issues(definition, strict=True)
 
 
-def _refuse_invalid(issues: list[dict[str, str]]) -> dict | None:
-    """A draft with an error is refused, its errors' text as the error and
-    every record beside it; a warning alone refuses nothing."""
-    errors = [issue["message"] for issue in issues if issue["severity"] == "error"]
-    return {"error": "; ".join(errors), "issues": issues} if errors else None
+def _refused(refused: HTTPException, issues: list[dict[str, str]]) -> dict[str, Any]:
+    """A refusal of the Builder's save as the AI answers it: the reasons
+    beneath it when it has them, else its sentence, and every issue the
+    checker found in the draft beside it."""
+    errors = getattr(refused, "fields", {}).get("errors")
+    answer: dict[str, Any] = {"error": "; ".join(errors) if errors else str(refused.detail)}
+    if issues:
+        answer["issues"] = issues
+    return answer
 
 
-def _refuse_builtin(driver_id: str, source: Path | None) -> dict | None:
-    """A shipped built-in lives in the read-only definitions folder and is
-    never modified, as the IDE's read-only gate refuses it too."""
-    from openavc.system_config import DRIVER_DEFINITIONS_DIR
-
-    builtin_root = str(Path(DRIVER_DEFINITIONS_DIR).resolve())
-    if source and str(source.resolve()).startswith(builtin_root):
-        return {"error": f"Driver '{driver_id}' is a built-in and cannot be modified. Duplicate it under a new id first."}
-    return None
+def _saved(status: str, saved: dict[str, Any], issues: list[dict[str, str]]) -> dict[str, Any]:
+    return {
+        "status": status,
+        "id": saved["driver_id"],
+        "issues": issues,
+        "devices_reconnected": saved["devices_reconnected"],
+    }
 
 
-def _refuse_taken_id(driver_id: str, new_id: str, existing: list[dict]) -> dict | None:
-    """A rename onto an id another definition owns would clobber it."""
-    if new_id != driver_id and any(d.get("id") == new_id for d in existing):
-        return {"error": f"A driver definition with id '{new_id}' already exists"}
-    return None
+def _no_id(definition: Any) -> dict[str, str] | None:
+    driver_id = definition.get("id") if isinstance(definition, dict) else None
+    if isinstance(driver_id, str) and driver_id:
+        return None
+    return {"error": "Driver definition must have an 'id' field"}
 
 
-def _replace_definition_file(definition: dict, dirs: list[Path], old_path: Path | None) -> None:
-    """Save the replacement first (an atomic temp-write and replace), then drop
-    the old file only when the id, and so the file name, changed: a save that
-    fails leaves the old definition in place."""
-    from openavc.drivers.driver_loader import save_driver_definition
+async def _through_the_builder(
+    door: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]], status: str, sent: Any
+) -> dict[str, Any]:
+    """A definition the AI sent, saved through one of the Driver Builder's
+    save doors (``door``) and answered in the AI's shape, with the checker's
+    records for the draft beside the outcome."""
+    missing = _no_id(sent)
+    if missing:
+        return missing
+    definition = _drafted(sent)
+    issues = _issues(definition)
+    try:
+        saved = await door(definition)
+    except HTTPException as refused:
+        return _refused(refused, issues)
+    return _saved(status, saved, issues)
 
-    new_path = save_driver_definition(definition, _user_driver_dir(dirs))
-    if old_path and old_path.resolve() != new_path.resolve():
-        old_path.unlink(missing_ok=True)
+
+def _not_sent(error: str) -> dict[str, Any]:
+    return {"success": False, "error": error, "response": None}
 
 
-def _register_definition(definition: dict) -> None:
-    from openavc.drivers.configurable import create_configurable_driver_class
+def _probe(input: dict) -> Any:
+    """The raw command as the Builder's probe takes it: TCP, every field the
+    AI left out at the probe's default, a field the probe cannot take a
+    ValidationError naming it."""
+    from openavc.api.models import TestCommandRequest
 
-    register_driver(create_configurable_driver_class(definition))
-
-
-async def _announce(driver_id: str) -> None:
-    from openavc.api.routes.drivers import announce_drivers_changed
-
-    await announce_drivers_changed(driver_id)
+    sent = {field: input[field] for field in _PROBE_FIELDS if input.get(field) is not None}
+    return TestCommandRequest(**sent, transport="tcp")
 
 
 class DriverToolsMixin:
@@ -170,20 +141,11 @@ class DriverToolsMixin:
         return list_registered_drivers()
 
     async def _get_installed_drivers(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine:
-            return {"drivers": []}
-        driver_repo = self._get_driver_repo_dir()
-        if not driver_repo.exists():
-            return {"drivers": []}
+        from openavc.api.routes.drivers import installed_drivers
 
-        yaml_entries = [_installed_yaml_entry(f) for f in sorted(driver_repo.glob("*.avcdriver"))]
-        python_entries = [
-            _installed_python_entry(f)
-            for f in sorted(driver_repo.glob("*.py"))
-            if not f.name.startswith("_")
-        ]
-        return {"drivers": [e for e in yaml_entries if e is not None] + python_entries}
+        if not self._get_engine():
+            return {"drivers": []}
+        return {"drivers": installed_drivers(self._get_driver_repo_dir())}
 
     async def _get_driver_definition(self, input: dict) -> Any:
         """The driver's surface, from its .avcdriver file where it has one.
@@ -203,24 +165,19 @@ class DriverToolsMixin:
         no definition file to edit and no shape to save back. Only an id that
         is genuinely not registered gets an error, and it says so.
         """
-        from openavc.drivers.driver_loader import list_driver_definitions
+        from openavc.api.routes.driver_definitions import served_definition
+
         driver_id = input.get("driver_id", "")
-        dirs = self._get_driver_dirs()
-        for d in list_driver_definitions(dirs):
-            if d.get("id") == driver_id:
-                d.pop("_source_file", None)
-                d["format"] = "avcdriver"
-                d["editable"] = True
-                return d
+        definition = served_definition(driver_id)
+        if definition is not None:
+            return _marked(definition, editable=True)
 
         introspected = next(
             (d for d in list_registered_drivers() if d.get("id") == driver_id),
             None,
         )
         if introspected is not None:
-            introspected["format"] = "python"
-            introspected["editable"] = False
-            introspected["note"] = (
+            return _marked(introspected, editable=False, note=(
                 f"'{driver_id}' is a Python-format driver, so it has no declarative "
                 ".avcdriver definition file and no raw protocol strings, response "
                 "parsers or polling block to read. Everything below is introspected "
@@ -228,8 +185,7 @@ class DriverToolsMixin:
                 "returns. It cannot be edited with update_driver_definition, and it "
                 "must not be re-authored as a YAML definition; a definition sharing "
                 "this id would shadow the working driver."
-            )
-            return introspected
+            ))
 
         not_loaded = not_loaded_sentence(driver_id)
         if not_loaded:
@@ -247,129 +203,53 @@ class DriverToolsMixin:
         }
 
     async def _create_driver_definition(self, input: dict) -> Any:
-        from openavc.drivers.driver_loader import list_driver_definitions, save_driver_definition
+        from openavc.api.routes.driver_definitions import create_definition
 
-        definition = input.get("definition", {})
-        if not definition.get("id"):
-            return {"error": "Driver definition must have an 'id' field"}
-
-        async with holding(definition["id"]):
-            dirs = self._get_driver_dirs()
-            if any(d.get("id") == definition["id"] for d in list_driver_definitions(dirs)):
-                return {"error": f"Driver definition '{definition['id']}' already exists"}
-
-            # No YAML file for the id but something is registered under it means a
-            # Python driver already owns it. Writing a definition here would load
-            # over the top of working hardware, and the usual reason to try is
-            # having read the introspected surface get_driver_definition returns
-            # for a Python driver and mistaken it for something to save back.
-            if is_driver_registered(definition["id"]):
-                return {"error": (
-                    f"Driver '{definition['id']}' is already installed as a Python-format "
-                    "driver. A YAML definition sharing its id would shadow it. Pick a "
-                    "different id, or use the driver that is already there."
-                )}
-
-            issues = _issues(definition)
-            refusal = _refuse_invalid(issues)
-            if refusal:
-                return refusal
-
-            save_driver_definition(definition, _user_driver_dir(dirs))
-            _register_definition(definition)
-            await _announce(definition["id"])
-            return {"status": "created", "id": definition["id"], "issues": issues}
+        return await _through_the_builder(create_definition, "created", input.get("definition"))
 
     async def _update_driver_definition(self, input: dict) -> Any:
-        from openavc.drivers.driver_loader import list_driver_definitions, restore_driver_registration
+        from openavc.api.routes.driver_definitions import replace_definition
 
-        driver_id = input.get("driver_id", "")
-        definition = input.get("definition", {})
-        if not definition.get("id"):
-            return {"error": "Driver definition must have an 'id' field"}
-        async with holding(driver_id, definition["id"]):
-            dirs = self._get_driver_dirs()
-
-            existing = list_driver_definitions(dirs)
-            match = next((d for d in existing if d.get("id") == driver_id), None)
-            if match is None:
-                return {"error": f"Driver definition '{driver_id}' not found"}
-
-            source = match.get("_source_file")
-            old_path = Path(source) if source else None
-            new_id = definition["id"]
-            issues = _issues(definition)
-            refusal = (
-                _refuse_builtin(driver_id, old_path)
-                or _refuse_invalid(issues)
-                or _refuse_taken_id(driver_id, new_id, existing)
-            )
-            if refusal:
-                return refusal
-
-            _replace_definition_file(definition, dirs, old_path)
-            _register_definition(definition)
-            if new_id != driver_id:
-                # The rename removed the user file for the old id. If it was
-                # overriding a shipped built-in, re-register the built-in so the
-                # old id keeps working; otherwise drop the stale registration.
-                restore_driver_registration(driver_id, dirs)
-            await _announce(new_id)
-            return {"status": "updated", "id": new_id, "issues": issues}
+        replace = partial(replace_definition, input.get("driver_id", ""))
+        return await _through_the_builder(replace, "updated", input.get("definition"))
 
     async def _test_driver_command(self, input: dict) -> Any:
-        import asyncio
-        from openavc.transport.tcp import TCPTransport
+        from pydantic import ValidationError
 
-        host = input.get("host", "")
-        port = input.get("port", 23)
-        command_string = input.get("command_string", "")
-        delimiter = input.get("delimiter", "\\r\\n")
-        if not host or not command_string:
-            return {"success": False, "error": "host and command_string are required", "response": None}
+        from openavc.api.errors import validation_error_lines
+        from openavc.api.routes.driver_test import raw_tcp_probe
 
+        if not input.get("host") or not input.get("command_string"):
+            return _not_sent("host and command_string are required")
         try:
-            timeout = _timeout_seconds(input)
-            delimiter_bytes = _unescaped(delimiter, "delimiter")
-            cmd_data = _unescaped(command_string, "command_string")
-        except ToolEditError as refused:
-            return refused.result
+            probe = _probe(input)
+        except ValidationError as invalid:
+            return _not_sent("; ".join(validation_error_lines(invalid.errors())))
 
         # A port a connected project device's driver holds is never opened
         # (see the module docstring).
-        holder = await self._raw_port_holder(host, port)
+        holder = await self._raw_port_holder(probe.host, probe.port)
         if holder is not None:
             return {
-                "success": False,
-                "error": (
-                    f"{holder} is connected to {host}:{port} now, and a second connection "
-                    f"can take the device from its driver. Send it one of its own commands "
-                    f"with send_device_command instead. To send raw text, ask the user to "
-                    f"disable {holder} on its device page first and enable it again after."
+                **_not_sent(
+                    f"{holder} is connected to {probe.host}:{probe.port} now, and a second "
+                    f"connection can take the device from its driver. Send it one of its own "
+                    f"commands with send_device_command instead. To send raw text, ask the "
+                    f"user to disable {holder} on its device page first and enable it again after."
                 ),
-                "response": None,
                 "in_use_by": holder,
             }
 
         try:
-            transport = await TCPTransport.create(
-                host=host, port=port,
-                on_data=lambda d: None, on_disconnect=lambda: None,
-                delimiter=delimiter_bytes, timeout=timeout,
-            )
-        except ConnectionError as e:
-            return {"success": False, "error": str(e), "response": None}
-
-        try:
-            response = await transport.send_and_wait(cmd_data, timeout=timeout)
-            response_text = response.decode("ascii", errors="replace")
-            return {"success": True, "error": None, "response": response_text}
-        except asyncio.TimeoutError:
-            return {"success": False, "error": "Timeout waiting for response", "response": None}
-        except (OSError, ConnectionError) as e:
-            return {"success": False, "error": str(e), "response": None}
-        finally:
-            await transport.close()
+            result = await raw_tcp_probe(probe)
+        except HTTPException as refused:
+            return _not_sent(str(refused.detail))
+        received = result["received"]
+        return {
+            "success": result["success"],
+            "error": result["error"],
+            "response": received[0] if received else None,
+        }
 
     async def _raw_port_holder(self, host: str, port: Any) -> str | None:
         """The connected project device whose driver holds ``host:port``, or

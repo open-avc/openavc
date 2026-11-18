@@ -260,6 +260,28 @@ async def test_the_installed_list_shows_the_copy_that_runs(library, monkeypatch)
         assert row["load_error"] is None
 
 
+async def test_the_assistant_lists_what_installed_lists(library, monkeypatch):
+    """The AI's get_installed_drivers answers Installed's rows, row for row:
+    a Python driver's simulator and discovery files are not drivers, and a
+    Python driver is named by the class that runs."""
+    from unittest.mock import MagicMock
+
+    from openavc.api.routes import drivers as drivers_routes
+    from openavc.cloud.ai_tool_handler import AIToolHandler
+
+    for companion in ("acme_py_sim.py", "acme_py_discovery.py"):
+        (library[1] / companion).write_text(BASE, encoding="utf-8")
+    monkeypatch.setattr(drivers_routes, "_get_driver_repo_dir", lambda: library[1])
+    tools = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+    tools._get_engine = lambda: object()
+    tools._get_driver_repo_dir = lambda: library[1]
+
+    installed = await drivers_routes.list_installed_community_drivers()
+
+    assert await tools._get_installed_drivers({}) == installed
+    assert "acme_py_sim" not in {row["id"] for row in installed["drivers"]}
+
+
 # --- the readers that map an id back to its file ------------------------------
 
 

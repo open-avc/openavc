@@ -272,8 +272,11 @@ async def test_the_assistant_s_edit_waits_for_a_save_so_every_device_runs_one_ve
     saved, edited = await save, await edit
 
     assert saved["devices_reconnected"] == ["d1", "d2", "d3"]
-    assert world.devices.built == dict.fromkeys(["d1", "d2", "d3"], "Acme Widget 2")
+    # The edit, which came later, is the end state: every device runs what it
+    # saved.
     assert edited["status"] == "updated"
+    assert edited["devices_reconnected"] == ["d1", "d2", "d3"]
+    assert world.devices.built == dict.fromkeys(["d1", "d2", "d3"], "Acme Widget 3")
     assert world.stored() == {DRIVER_ID: "Acme Widget 3"}
     assert world.serving() == "Acme Widget 3"
     assert not edited_while_saving

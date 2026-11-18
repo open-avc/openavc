@@ -25,8 +25,9 @@ and dry-run harness) and `routes/python_drivers.py` (``.py`` source
 management). This module calls into the last for `remove_python_companions`,
 since a Python driver's file set is that module's rule to own.
 `announce_drivers_changed` is `driver_change.announce`, under the name the
-doors that do not call `changed` yet (the Code view's, the AI's driver tools,
-a project's) import it by.
+doors that do not call `changed` yet (the Code view's, a project's) import it
+by. Drivers > Installed's rows are `installed_drivers`, which the AI's
+get_installed_drivers answers too.
 """
 
 import re
@@ -685,22 +686,27 @@ def _installed_python_entry(filepath: Path) -> dict[str, Any]:
     }
 
 
-@router.get("/drivers/installed")
-async def list_installed_community_drivers() -> dict[str, Any]:
-    """List drivers installed in driver_repo/: one row per driver, the file
-    that serves it (``serving_file``), or, when none of its files loaded, the
-    one that would, with why. Definitions first, then Python drivers, each by
-    file name. Companions and underscore helpers are never drivers."""
+def installed_drivers(driver_repo: Path) -> list[dict[str, Any]]:
+    """THE list of drivers installed in ``driver_repo``, which Drivers >
+    Installed and the AI's get_installed_drivers both answer: one row per
+    driver, the file that serves it (``serving_file``), or, when none of its
+    files loaded, the one that would, with why. Definitions first, then Python
+    drivers, each by file name. Companions and underscore helpers are never
+    drivers. No folder, no rows."""
     from openavc.drivers.driver_loader import serving_files
 
-    driver_repo = _get_driver_repo_dir()
     if not driver_repo.exists():
-        return {"drivers": []}
-
+        return []
     listed = sorted(serving_files([driver_repo], refused_too=True).values())
     definitions = [_installed_definition_entry(f) for f in listed if f.suffix == ".avcdriver"]
     python = [_installed_python_entry(f) for f in listed if f.suffix == ".py"]
-    return {"drivers": [entry for entry in definitions if entry is not None] + python}
+    return [entry for entry in definitions if entry is not None] + python
+
+
+@router.get("/drivers/installed")
+async def list_installed_community_drivers() -> dict[str, Any]:
+    """List drivers installed in driver_repo/ (``installed_drivers``)."""
+    return {"drivers": installed_drivers(_get_driver_repo_dir())}
 
 
 def _refuse_while_in_use(driver_id: str) -> None:

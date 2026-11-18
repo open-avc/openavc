@@ -291,9 +291,6 @@ class _Tools(DriverToolsMixin):
     def _get_driver_repo_dir(self):
         return self.repo
 
-    def _get_driver_dirs(self):
-        return [self.repo]
-
 
 async def test_the_ai_s_tools_say_installed_but_did_not_load(repo):
     (repo / "acme_widget.avcdriver").write_bytes(_yaml(**BOGUS))

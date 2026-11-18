@@ -20,7 +20,8 @@ could wait forever on one that waits for its own. ``admit`` claims the id it
 registers.
 
 Every door that writes a driver file (the community install and update, the
-single-file and bundle imports, the Driver Builder's saves) hands ``admit``
+single-file and bundle imports, the Driver Builder's saves, which the AI's
+create and update are too) hands ``admit``
 the whole change, every file it brings and every file it removes, and gets
 back the registered class, or a refusal that left the driver folder, the
 registry and ``sys.modules`` exactly as they were. A person who imports a

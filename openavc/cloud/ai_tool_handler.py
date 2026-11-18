@@ -493,13 +493,6 @@ class AIToolHandler(
         from openavc.system_config import DRIVER_REPO_DIR
         return DRIVER_REPO_DIR
 
-    def _get_driver_dirs(self) -> list[Path]:
-        from openavc.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
-        return [
-            DRIVER_DEFINITIONS_DIR,
-            DRIVER_REPO_DIR,
-        ]
-
     async def _send_result(
         self, request_id: str, success: bool,
         result: Any = None, error: str | None = None

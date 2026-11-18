@@ -1,5 +1,8 @@
 """Driver-definition CRUD: the ``.avcdriver`` definitions the Driver Builder
-lists, reads, checks, saves, deletes and reloads.
+lists, reads, checks, saves, deletes and reloads, and the AI's driver tools
+read, create and update through the same functions (``served_definition``,
+``create_definition``, ``replace_definition``), answering a refusal in their
+own shape.
 
 Create, replace and patch each refuse what is theirs to refuse (an id already
 taken; a definition that is not there, a built-in, a rename onto another
@@ -108,13 +111,24 @@ async def list_driver_definitions() -> dict[str, Any]:
     return {"definitions": definitions}
 
 
-@router.get("/driver-definitions/{driver_id}")
-async def get_driver_definition(driver_id: str) -> dict:
-    """Get a single JSON driver definition by ID."""
+def served_definition(driver_id: str) -> dict[str, Any] | None:
+    """THE read of one definition, the Builder's and the AI's: the listed
+    definition that serves ``driver_id``, without the file it was read from,
+    or None when no definition does."""
     from openavc.drivers.driver_loader import list_driver_definitions as _list
 
-    definition = _current_definition(driver_id, _list(_get_driver_dirs()))
-    definition.pop("_source_file", None)
+    current = next((d for d in _list(_get_driver_dirs()) if d.get("id") == driver_id), None)
+    if current is not None:
+        current.pop("_source_file", None)
+    return current
+
+
+@router.get("/driver-definitions/{driver_id}")
+async def get_driver_definition(driver_id: str) -> dict:
+    """Get a single JSON driver definition by ID (``served_definition``)."""
+    definition = served_definition(driver_id)
+    if definition is None:
+        raise _definition_not_found(driver_id)
     return definition
 
 
@@ -275,43 +289,57 @@ async def _save_definition(
 
 def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:
     """Only what the client sent: unset model defaults (manufacturer,
-    delimiter, empty containers) stay out of the saved YAML, explicit nulls are
-    dropped, and the listing's own bookkeeping keys are stripped."""
-    return _strip_listing_decorations(body.model_dump(exclude_unset=True, exclude_none=True))
+    delimiter, empty containers) stay out of the saved YAML, and explicit
+    nulls are dropped."""
+    return body.model_dump(exclude_unset=True, exclude_none=True)
+
+
+async def create_definition(driver_def: dict[str, Any]) -> dict[str, Any]:
+    """THE create of a definition, the Builder's and the AI's, holding its id
+    from the first check to the announcement: the listing's own keys
+    stripped, an id a file already serves refused as taken (either kind,
+    ``serving_file``: a Python driver's would serve over the new definition
+    again at the next start), then ``_save_definition``. Raises the
+    refusal as this API answers it."""
+    from openavc.drivers.driver_loader import serving_file
+
+    dirs = _get_driver_dirs()
+    driver_def = _strip_listing_decorations(driver_def)
+    async with holding(driver_def["id"]):
+        if serving_file(dirs, driver_def["id"]) is not None:
+            raise _id_taken(driver_def["id"])
+        return await _save_definition(driver_def, dirs)
 
 
 @router.post("/driver-definitions")
 async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
-    """Create a new JSON driver definition. An id a file already serves,
-    either kind (``serving_file``), is taken: a Python driver's would serve
-    over the new definition again at the next start."""
-    from openavc.drivers.driver_loader import serving_file
-
-    dirs = _get_driver_dirs()
-    driver_def = _requested_definition(body)
-    async with holding(driver_def["id"]):
-        if serving_file(dirs, driver_def["id"]) is not None:
-            raise _id_taken(driver_def["id"])
-
-        saved = await _save_definition(driver_def, dirs)
-        return {"status": "created", **saved}
+    """Create a new JSON driver definition (``create_definition``)."""
+    return {"status": "created", **await create_definition(_requested_definition(body))}
 
 
-@router.put("/driver-definitions/{driver_id}")
-async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest) -> dict:
-    """Update an existing JSON driver definition."""
+async def replace_definition(driver_id: str, driver_def: dict[str, Any]) -> dict[str, Any]:
+    """THE replace of a definition, the Builder's and the AI's, holding the id
+    it replaces and the one it saves: the listing's own keys stripped; refused
+    when no definition serves ``driver_id``, when that is a read-only
+    built-in, or when a rename takes an id already served; then
+    ``_save_definition``, which takes the replaced copy away. Raises the
+    refusal as this API answers it."""
     from openavc.drivers.driver_loader import list_driver_definitions as _list
 
     dirs = _get_driver_dirs()
-    driver_def = _requested_definition(body)
+    driver_def = _strip_listing_decorations(driver_def)
     async with holding(driver_id, driver_def.get("id", "")):
         existing = _list(dirs)
         _current_definition(driver_id, existing)
         _refuse_built_in_edit(driver_id, dirs)
         _refuse_rename_onto_another(driver_def.get("id", ""), driver_id, existing, dirs)
+        return await _save_definition(driver_def, dirs, replacing=driver_id)
 
-        saved = await _save_definition(driver_def, dirs, replacing=driver_id)
-        return {"status": "updated", **saved}
+
+@router.put("/driver-definitions/{driver_id}")
+async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest) -> dict:
+    """Update an existing JSON driver definition (``replace_definition``)."""
+    return {"status": "updated", **await replace_definition(driver_id, _requested_definition(body))}
 
 
 def _merge_patch(current: Any, patch: Any) -> Any:
