@@ -140,10 +140,10 @@ async def test_one_device_failing_to_re_add_does_not_stop_the_rest(dm, monkeypat
     await dm.add_device(_cfg("second"))
     take_down = dm._take_down
 
-    async def stuck_take_down(device_id: str) -> None:
+    async def stuck_take_down(device_id: str, why: str) -> None:
         if device_id == "first":
             raise RuntimeError("stuck")
-        await take_down(device_id)
+        await take_down(device_id, why)
 
     monkeypatch.setattr(dm, "_take_down", stuck_take_down)
 

@@ -394,7 +394,7 @@ async def _resume(dm):
 async def _in_place(dm):
     # A setup action's reconnect raises its failure to the action.
     with pytest.raises(ConnectionFaultError):
-        await dm.reconnect_in_place("widget_a")
+        await dm.reconnect_in_place("widget_a", dm.get_driver("widget_a"))
 
 
 @pytest.mark.parametrize("door", [_reconnect, _resume, _in_place], ids=lambda d: d.__name__)

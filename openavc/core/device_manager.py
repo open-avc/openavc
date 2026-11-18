@@ -19,7 +19,8 @@ edit and re-adds the device.
 Its other jobs live in their own modules, mixed in so every name stays on the
 manager: sending a command (device_commands.py), retrying a dropped device
 (device_reconnect.py), Reconnect and a setup action's hold on the connection
-(device_manual_reconnect.py), saying why a device is away (device_away.py),
+(device_manual_reconnect.py), ending the work that holds an instance before
+it goes (device_retire.py), saying why a device is away (device_away.py),
 writing settings, live or queued (pending_settings.py), the Open Web UI page
 (device_web_ui.py), devices on a bridge port (device_bridges.py), a device
 paused on purpose (device_pause.py), the one record of every project device
@@ -64,6 +65,12 @@ from openavc.core.device_info import DeviceInfoMixin
 from openavc.core.device_manual_reconnect import DeviceManualReconnectMixin
 from openavc.core.device_orphans import DeviceOrphansMixin
 from openavc.core.device_records import DISABLED, DRIVER_FAILED, RUNNING, DeviceRecordsMixin
+from openavc.core.device_retire import (
+    RETIRED_REMOVED,
+    RETIRED_REPLACED,
+    RETIRED_STOPPING,
+    DeviceRetireMixin,
+)
 from openavc.core.device_pause import (  # noqa: F401  (the constants re-exported)
     PAUSE_TTL,
     PAUSED_FOR_AUDIT,
@@ -107,6 +114,7 @@ class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
     DeviceBridgesMixin, DevicePauseMixin, DeviceRecordsMixin, DeviceOrphansMixin,
     DeviceBuildFailuresMixin, DeviceInfoMixin, DeviceCommandsMixin, DeviceManualReconnectMixin,
+    DeviceRetireMixin,
 ):
     """Manages all device driver instances."""
 
@@ -128,6 +136,7 @@ class DeviceManager(
         # request and connects them after it has answered.
         self._deferred_connects: set[str] = set()
         self._init_pause()
+        self._init_retire()
         self._init_web_ui()
         self._init_pending()
         self._init_away()
@@ -418,11 +427,12 @@ class DeviceManager(
         """Disconnect and remove a device for good, in any state, why it was
         away on purpose included: a device added under this id later is another
         device. The same device on a new instance is :meth:`_replace_device`."""
-        await self._take_down(device_id)
+        await self._take_down(device_id, RETIRED_REMOVED)
         self._forget_away(device_id)
 
-    async def _take_down(self, device_id: str) -> None:
+    async def _take_down(self, device_id: str, why: str) -> None:
         """Disconnect a device and drop what its instance had."""
+        await self._retire(device_id, why)
         # Cancel reconnect if running — await so reconnect loop finishes
         await self._cancel_reconnect(device_id)
         # Drop pause bookkeeping: the TTL backstop must not fire a resume for
@@ -516,7 +526,7 @@ class DeviceManager(
         if before.status == DISABLED:
             self._forget_record(device_id)
         else:
-            await self._take_down(device_id)
+            await self._take_down(device_id, RETIRED_REPLACED)
         if before.config.get("driver") != config.get("driver"):
             self._forget_away(device_id)
         if not config.get("enabled", True):
@@ -657,6 +667,7 @@ class DeviceManager(
 
     async def disconnect_all(self) -> None:
         """Disconnect all devices gracefully (called at shutdown)."""
+        await self._retire_all(RETIRED_STOPPING)
         # Cancel all reconnect tasks first — await each so loops finish cleanly
         await self._cancel_all_reconnects()
         self._cancel_all_pause_expiries()

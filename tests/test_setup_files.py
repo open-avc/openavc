@@ -84,7 +84,7 @@ async def test_uploaded_bytes_reach_setup_and_are_removed(tmp_path, outcome):
         assert received == [b"<rooms/>"]
         assert staging.staged_paths() == []
         assert not runner.is_running("lobby")
-        manager.end_setup.assert_awaited_once_with("lobby")
+        manager.end_setup.assert_awaited_once_with("lobby", driver)
     finally:
         remaining = list(runner._tasks)
         for task in remaining:

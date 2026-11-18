@@ -108,7 +108,7 @@ async def test_connection_entry_points_do_not_dial_missing_simulator(rig, method
     manager._schedule_web_ui_probe = lambda ident: None
     if method == "reconnect_in_place":
         with pytest.raises(ConnectionError, match="has no simulator"):
-            await getattr(manager, method)("missing")
+            await manager.reconnect_in_place("missing", missing)
     else:
         await getattr(manager, method)("missing")
     assert missing.connects == 0

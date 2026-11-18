@@ -25,6 +25,7 @@ from openavc.core.setup_actions import (
     SetupActionContext,
     SetupActionInProgress,
     SetupActionRunner,
+    SetupLease,
 )
 from openavc.core.state_store import StateStore
 from openavc.drivers.actions import resolve_device_actions
@@ -274,7 +275,7 @@ async def test_none_connection_field_in_delta_is_ignored():
     reads as a config change, bouncing the device mid-action.
     """
     _runner, engine, _dm, driver = _make_env()
-    ctx = SetupActionContext(engine, "dev1")
+    ctx = SetupActionContext(engine, SetupLease("dev1", engine.devices.get_driver("dev1")))
 
     await ctx.apply_config_update({"port": None, "provisioned": "yes"})
 
@@ -289,7 +290,7 @@ async def test_none_connection_field_in_delta_is_ignored():
 
 async def test_delta_of_only_none_connection_fields_is_a_no_op():
     _runner, engine, _dm, driver = _make_env()
-    ctx = SetupActionContext(engine, "dev1")
+    ctx = SetupActionContext(engine, SetupLease("dev1", engine.devices.get_driver("dev1")))
 
     await ctx.apply_config_update({"host": None, "port": None})
 
@@ -327,7 +328,7 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
         assert driver_before is not None
         revision_before = engine._project_revision
 
-        ctx = SetupActionContext(engine, "dev1")
+        ctx = SetupActionContext(engine, SetupLease("dev1", engine.devices.get_driver("dev1")))
         await ctx.apply_config_update({"port": 9999, "provisioned": "yes"})
 
         assert engine._project_revision > revision_before
@@ -518,11 +519,11 @@ async def test_default_run_setup_action_raises_not_implemented():
 async def test_begin_setup_suppresses_and_end_setup_resumes_reconnect():
     _runner, _engine, dm, driver = _make_env()
 
-    await dm.begin_setup("dev1")
+    await dm.begin_setup("dev1", driver)
     assert "dev1" in dm._intentional_disconnect
 
     # Device still offline -> end_setup resumes the auto-reconnect loop.
-    await dm.end_setup("dev1")
+    await dm.end_setup("dev1", driver)
     assert "dev1" not in dm._intentional_disconnect
     assert "dev1" in dm._reconnect_tasks
     await dm._cancel_reconnect("dev1")

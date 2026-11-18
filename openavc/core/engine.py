@@ -164,6 +164,9 @@ class Engine(
         # Setup-action runner (driver-declared provisioning wizards)
         from openavc.core.setup_actions import SetupActionRunner
         self.setup_actions = SetupActionRunner(self)
+        # A device's instance going (removed, replaced, the stop) ends the
+        # setup run holding it first (DeviceManager._retire).
+        self.devices.end_setup_run = self.setup_actions.end_run
         # Commands that take or hand back a file: the files waiting on disk,
         # and Send Command's background runs of them.
         from openavc.core.command_runs import CommandRuns

@@ -46,6 +46,7 @@ from openavc.core.connection_fault import (
     simulator_error_text,
 )
 from openavc.core.device_errors import DriverBuildError
+from openavc.core.device_retire import RETIRED_REPLACED
 from openavc.core.installed_equipment import missing_driver_reason
 from openavc.utils.logger import get_logger
 
@@ -223,7 +224,7 @@ class DeviceRecordsMixin:
         if device_id in self._not_running:
             # The same device, kept in another state: what it was is taken
             # down, never forgotten (core/device_manager.py _replace_device).
-            await self._take_down(device_id)
+            await self._take_down(device_id, RETIRED_REPLACED)
         self._keep_record(device_id, SETTINGS_FAILED, entry, fault)
         prefix = f"device.{device_id}."
         self.state.set(f"{prefix}name", entry.get("name") or device_id, source="config")

@@ -186,14 +186,14 @@ async def test_reconnect_goes_on_when_closing_the_driver_fails(dm):
 async def test_a_setup_action_stops_the_retry_loop_that_was_running(dm):
     task = await _running_retry(dm)
     try:
-        await dm.begin_setup("dev")
+        await dm.begin_setup("dev", dm.get_driver("dev"))
 
         assert task.cancelled()
         assert "dev" not in dm._reconnect_tasks
         assert "dev" in dm._intentional_disconnect
     finally:
         task.cancel()
-        await dm.end_setup("dev")
+        await dm.end_setup("dev", dm.get_driver("dev"))
 
 
 async def test_an_in_place_reconnect_clears_the_reason_then_closes_and_dials(dm):
@@ -201,7 +201,7 @@ async def test_an_in_place_reconnect_clears_the_reason_then_closes_and_dials(dm)
     driver.calls.clear()
     dm.state.set("device.dev.offline_reason", UNREACHABLE)
 
-    await dm.reconnect_in_place("dev")
+    await dm.reconnect_in_place("dev", driver)
 
     assert driver.calls == ["disconnect", "connect"]
     assert dm.state.get("device.dev.offline_reason") is None
@@ -212,7 +212,7 @@ async def test_an_in_place_reconnect_goes_on_when_closing_the_driver_fails(dm):
     driver = _widget(dm)
     driver.calls.clear()
 
-    await dm.reconnect_in_place("dev")
+    await dm.reconnect_in_place("dev", driver)
 
     assert driver.calls == ["disconnect", "connect"]
     assert dm.state.get("device.dev.connected") is True

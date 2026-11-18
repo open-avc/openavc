@@ -639,8 +639,10 @@ class EngineLifecycleMixin:
         # trigger's macro, a script's or a plugin's stop): save the
         # persistent ones and stop watching, before the devices let go.
         await run.run("the state persister", self._stop_persister)
-        # Stop file commands still running, then delete every staged file.
+        # Stop file commands and setup actions still running, then delete
+        # every staged file: either can be reading one.
         await run.run("the file commands", self.command_runs.stop)
+        await run.run("the setup actions", self.setup_actions.stop)
         await run.run("the staged files", self.file_staging.stop)
         await run.run("the devices", self.devices.disconnect_all)
         # Then end the simulator: SimulationManager.end(EndReason.SHUTDOWN),

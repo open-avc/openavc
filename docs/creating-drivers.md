@@ -3434,6 +3434,14 @@ step log; `pct` is an optional 0–100. Inside a run — and only inside one —
 can also `await self.request_config_update({...})` to persist new connection
 settings and `await self.request_reconnect()` to bring the device up on them.
 
+In releases after OpenAVC 0.40.0, a run is stopped when its device is removed,
+when an edit or a driver update replaces the device, and when the system shuts
+down. Your handler is cancelled (`asyncio.CancelledError` arrives at whatever it
+is awaiting), the wizard says why the setup stopped, and anything the handler
+still tries afterwards (`progress`, `request_config_update`,
+`request_reconnect`) is refused. Let the cancel through: close your own connection in a `finally`,
+and do not catch `CancelledError` to carry on.
+
 From OpenAVC 0.40.1, a setup action can also declare a `type: "file"`
 parameter, with `accept`, `max_bytes` and `required` just like a file command.
 The wizard uploads the selected file before starting the action. The handler

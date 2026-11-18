@@ -25,7 +25,7 @@ import pytest
 from openavc.core.engine import Engine
 from openavc.core.project_loader import ProjectConfig, ProjectSaveError, save_project
 from openavc.core.project_migration import CURRENT_VERSION
-from openavc.core.setup_actions import SetupActionContext, SetupActionRunner
+from openavc.core.setup_actions import SetupActionContext, SetupActionRunner, SetupLease
 from openavc.drivers.actions import resolve_device_actions
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
@@ -112,6 +112,11 @@ async def engine(tmp_path, monkeypatch):
             unregister_driver("acme_provision_saves")
 
 
+def _context(engine: Engine) -> SetupActionContext:
+    """The context a setup run on dev1 installs, holding its live instance."""
+    return SetupActionContext(engine, SetupLease("dev1", engine.devices.get_driver("dev1")))
+
+
 def _disk(engine: Engine) -> dict:
     return json.loads(engine.project_path.read_text(encoding="utf-8"))
 
@@ -133,7 +138,7 @@ async def test_an_edit_saved_while_a_setup_action_saves_its_settings_is_kept(eng
     update = None
     async with engine._reload_lock:
         update = asyncio.create_task(
-            SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+            _context(engine).apply_config_update({"port": 9999})
         )
         await _let_others_run()
         await engine._change_locked(_rename, reconcile=True)
@@ -179,7 +184,7 @@ async def test_an_edit_saved_right_after_a_setup_action_leaves_its_device_runnin
     driver = engine.devices.get_driver("dev1")
     async with engine._reload_lock:
         update = asyncio.create_task(
-            SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+            _context(engine).apply_config_update({"port": 9999})
         )
         await _let_others_run()
         edit = asyncio.create_task(engine.apply_project_edit(_rename_other_device))
@@ -196,7 +201,7 @@ async def test_a_setup_action_s_settings_are_saved_without_restarting_its_device
     driver = engine.devices.get_driver("dev1")
     revision = engine._project_revision
 
-    await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999, "provisioned": "yes"})
+    await _context(engine).apply_config_update({"port": 9999, "provisioned": "yes"})
 
     assert engine.devices.get_driver("dev1") is driver
     assert driver.config["port"] == 9999
@@ -215,7 +220,7 @@ async def test_a_setup_action_s_save_is_announced_to_scripts_once(engine):
         heard.append(event)
 
     engine.events.on("system.project.reloaded", on_reloaded)
-    await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+    await _context(engine).apply_config_update({"port": 9999})
 
     assert heard == ["system.project.reloaded"]
 
@@ -233,7 +238,7 @@ async def test_a_setup_action_whose_notice_cannot_be_sent_still_succeeds(engine,
     engine.broadcast_ws = no_socket
     engine.events.on("system.project.reloaded", lambda event, _payload: heard.append(event))
     with caplog.at_level(logging.ERROR):
-        await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+        await _context(engine).apply_config_update({"port": 9999})
 
     assert driver.config["port"] == 9999
     assert _disk(engine)["connections"]["dev1"]["port"] == 9999
@@ -245,7 +250,7 @@ async def test_a_setup_action_s_settings_record_the_push_ports_and_ask_for_a_bri
     """A setting a wizard moves can be the port a device pushes to (the host
     firewall's record), and on a simulated device it is the address the
     simulator's redirect replaced (the bring-up round points it back)."""
-    await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+    await _context(engine).apply_config_update({"port": 9999})
 
     engine._record_push_ports.assert_called_once_with()
     engine._schedule_device_bringup.assert_called_once_with()
@@ -256,7 +261,93 @@ async def test_a_setup_action_for_a_device_the_project_no_longer_has_saves_nothi
     revision = engine._project_revision
 
     with pytest.raises(RuntimeError, match="not found in project"):
-        await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+        await _context(engine).apply_config_update({"port": 9999})
 
     assert engine._project_revision == revision
     assert "dev1" not in engine.project.connections or engine.project.connections["dev1"]["port"] == 23
+
+
+def _move_dev1(project) -> None:
+    project.connections["dev1"]["port"] = 2323
+
+
+async def test_an_edit_saved_while_a_setup_action_waits_to_save_ends_the_action(engine):
+    # The setup action's save waits for the lock an edit of its device holds.
+    # The edit builds the device a new instance, so the action ends before
+    # that happens, and nothing it was about to save or reconnect reaches the
+    # new one.
+    old = engine.devices.get_driver("dev1")
+    asked = asyncio.Event()
+
+    async def run(action_id, params, progress):
+        asked.set()
+        await old.request_config_update({"port": 9999})
+        await old.request_reconnect()
+        return {"moved": True}
+
+    old.run_setup_action = run
+    action = next(a for a in resolve_device_actions(old.DRIVER_INFO) if a["kind"] == "setup")
+    async with engine._reload_lock:
+        await engine.setup_actions.start("dev1", action, {})
+        await asyncio.wait_for(asked.wait(), 2)
+        await _let_others_run()
+        await engine._change_locked(_move_dev1, reconcile=True)
+    await asyncio.gather(*engine.setup_actions._tasks, return_exceptions=True)
+    await _let_others_run()
+
+    new = engine.devices.get_driver("dev1")
+    assert new is not old
+    assert new.config["port"] == 2323
+    assert engine.project.connections["dev1"]["port"] == 2323
+    assert _disk(engine)["connections"]["dev1"]["port"] == 2323
+    last = [m for m in engine.sent if m.get("type") == "action.progress"][-1]
+    assert (last["status"], last["error"]) == (
+        "error",
+        "The setup stopped because the device's settings or driver changed. Run it again.",
+    )
+    assert not engine.setup_actions.is_running("dev1")
+
+
+async def test_a_driver_reload_while_a_setup_action_saves_lets_the_save_finish(engine, monkeypatch):
+    # A driver reload ends a setup run on the device it replaces, without the
+    # project lock. A save the run had already begun is finished first: the
+    # project, the file and the device's next instance all hold it.
+    from openavc.core import project_changes
+
+    real_save = project_changes.save_project_async
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def held_save(path, project):
+        entered.set()
+        await release.wait()
+        await real_save(path, project)
+
+    monkeypatch.setattr(project_changes, "save_project_async", held_save)
+    old = engine.devices.get_driver("dev1")
+
+    async def run(action_id, params, progress):
+        await old.request_config_update({"port": 9999})
+        await old.request_reconnect()
+        return {"moved": True}
+
+    old.run_setup_action = run
+    action = next(a for a in resolve_device_actions(old.DRIVER_INFO) if a["kind"] == "setup")
+    await engine.setup_actions.start("dev1", action, {})
+    await asyncio.wait_for(entered.wait(), 2)
+    reload = asyncio.create_task(engine.devices.reload_driver("acme_provision_saves"))
+    await _let_others_run()
+    release.set()
+    await asyncio.wait_for(reload, 4)
+    await asyncio.gather(*engine.setup_actions._tasks, return_exceptions=True)
+
+    new = engine.devices.get_driver("dev1")
+    assert new is not old
+    assert engine.project.connections["dev1"]["port"] == 9999
+    assert _disk(engine)["connections"]["dev1"]["port"] == 9999
+    assert engine.devices.get_device_config("dev1")["config"]["port"] == 9999
+    assert new.config["port"] == 9999
+    last = [m for m in engine.sent if m.get("type") == "action.progress"][-1]
+    assert (last["status"], last["error"]) == (
+        "error",
+        "The setup stopped because the device's settings or driver changed. Run it again.",
+    )

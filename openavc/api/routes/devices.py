@@ -864,6 +864,20 @@ async def invoke_device_action(
         raise _api_error(getattr(e, "status", 404), str(e), e)
 
 
+@router.get("/devices/{device_id}/setup-runs/{run_id}")
+async def get_setup_run(device_id: str, run_id: str) -> dict[str, Any]:
+    """How a setup run stands, for a wizard whose connection dropped: the
+    run's last ``action.progress`` message (running, done or error). Needs
+    no live driver, so a removed device's run still answers how it ended,
+    and a run of an earlier process answers that it was interrupted."""
+    from openavc.core.setup_actions import NOT_KEPT
+
+    run = _get_engine().setup_actions.outcome(device_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=NOT_KEPT)
+    return {"run": run}
+
+
 # --- Device Settings ---
 
 

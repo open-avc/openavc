@@ -279,13 +279,13 @@ async def test_a_setup_actions_reconnect_while_the_bring_up_waits_keeps_its_conn
     bring_up = await _bring_up_waiting(manager, server, port)
 
     # As the setup action runner does around the action.
-    await manager.begin_setup("console")
-    await manager.reconnect_in_place("console")
+    driver = manager._devices["console"]
+    await manager.begin_setup("console", driver)
+    await manager.reconnect_in_place("console", driver)
     await asyncio.wait_for(bring_up, 5)
     await asyncio.sleep(PROMPT_WAIT)
-    await manager.end_setup("console")
+    await manager.end_setup("console", driver)
 
-    driver = manager._devices["console"]
     assert server.open(1)
     assert not server.open(0)
     assert driver.connected

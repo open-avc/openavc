@@ -26,6 +26,7 @@ vi.mock("../../api/restClient", () => ({
   invokeDeviceAction,
   getProject,
   saveProject,
+  getSetupRun: vi.fn(),
   ConflictError: class ConflictError extends Error {},
 }));
 
@@ -34,6 +35,7 @@ const { wsHandlers } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../api/wsClient", () => ({
+  onConnect: () => () => {},
   onMessage: (handler: (msg: Record<string, unknown>) => void) => {
     wsHandlers.push(handler);
     return () => {

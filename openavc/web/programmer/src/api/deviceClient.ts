@@ -114,11 +114,32 @@ export async function invokeDeviceAction(
   actionId: string,
   params: Record<string, unknown> = {},
   files: Record<string, string> = {},
-): Promise<{ success: boolean; result: unknown; action_id: string }> {
+): Promise<{ success?: boolean; result?: unknown; action_id: string; run_id?: string; status?: string }> {
   return request(`/devices/${deviceId}/actions/${actionId}`, {
     method: "POST",
     body: JSON.stringify({ params, files }),
   });
+}
+
+/** A setup run's last `action.progress` message, as the server kept it. */
+export interface SetupRunProgress {
+  device_id: string;
+  action_id?: string;
+  run_id: string;
+  step: string;
+  pct: number | null;
+  status: string;
+  error?: string;
+  result?: unknown;
+}
+
+/** How a setup run stands: running, done or error. A run from before the
+ *  server restarted answers as an error that says it was interrupted. */
+export async function getSetupRun(deviceId: string, runId: string): Promise<SetupRunProgress> {
+  const body = await request<{ run: SetupRunProgress }>(
+    `/devices/${encodeURIComponent(deviceId)}/setup-runs/${encodeURIComponent(runId)}`,
+  );
+  return body.run;
 }
 
 export async function updateDevice(

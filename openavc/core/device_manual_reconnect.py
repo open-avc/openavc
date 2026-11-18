@@ -9,7 +9,9 @@ attempt count), closes the driver and dials it once, then flushes the settings
 queued while the device was away. A setup action brings its own transport, so
 for its run the retry loop is stood down (``begin_setup``) and handed back
 afterwards (``end_setup``); its ``request_reconnect`` reconnects the SAME driver
-instance (``reconnect_in_place``), so the handler's ``self`` stays valid.
+instance (``reconnect_in_place``), so the handler's ``self`` stays valid. All
+three take the instance the run started on and act on that instance only
+(core/setup_actions.py, ``SetupLease``).
 
 The rule worth knowing before changing it: whoever takes the connection over
 puts the device on the intentional-disconnect list first, or closing its
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.device_records import DRIVER_FAILED, SETTINGS_FAILED
 from openavc.drivers.base import ConnectEndedError
 from openavc.utils.logger import get_logger
@@ -132,8 +135,16 @@ class DeviceManualReconnectMixin:
             if not self._paused_for_refused_login(device_id, code):
                 self._start_reconnect(device_id)
 
-    async def begin_setup(self, device_id: str) -> None:
-        """Suppress auto-reconnect for the duration of a setup action.
+    def _setup_instance(self, device_id: str, driver: BaseDriver) -> BaseDriver:
+        """``driver``, while the device still runs it: a setup run acts on the
+        instance it started on only. :class:`DeviceNotFoundError` otherwise."""
+        if self._live_driver(device_id) is not driver:
+            raise DeviceNotFoundError(f"Device '{device_id}' is no longer this instance")
+        return driver
+
+    async def begin_setup(self, device_id: str, driver: BaseDriver) -> None:
+        """Suppress auto-reconnect for the duration of a setup action on
+        ``driver``, the instance it started on.
 
         A setup action opens its own out-of-band transport, independent of the
         device's normal (often failing) one. Cancel any running reconnect loop
@@ -142,32 +153,36 @@ class DeviceManualReconnectMixin:
         device's live transport (if any) is left untouched — an offline device
         is already down, and the handler doesn't use it. Pair with ``end_setup``.
         """
-        self._live_driver(device_id)
+        self._setup_instance(device_id, driver)
         await self._cancel_reconnect(device_id)
         self._intentional_disconnect.add(device_id)
 
-    async def end_setup(self, device_id: str) -> None:
-        """Re-enable auto-reconnect after a setup action. If the device didn't
-        come back online during the run (the handler didn't reconnect, or its
-        reconnect failed), resume the normal auto-reconnect loop so it keeps
-        trying. Idempotent and safe if the device was removed mid-run.
+    async def end_setup(self, device_id: str, driver: BaseDriver) -> None:
+        """Re-enable auto-reconnect after a setup action on ``driver``. If the
+        device didn't come back online during the run (the handler didn't
+        reconnect, or its reconnect failed), resume the normal auto-reconnect
+        loop so it keeps trying. Nothing when the device no longer runs that
+        instance: removed, or replaced by one that starts on its own terms.
         """
+        if self._devices.get(device_id) is not driver:
+            return
         self._intentional_disconnect.discard(device_id)
-        driver = self._devices.get(device_id)
-        if driver is not None and not driver.get_state("connected"):
+        if not driver.get_state("connected"):
             self._start_reconnect(device_id)
 
-    async def reconnect_in_place(self, device_id: str) -> None:
-        """Reconnect the existing driver instance using its current config.
+    async def reconnect_in_place(self, device_id: str, driver: BaseDriver) -> None:
+        """Reconnect ``driver``, the instance a setup run holds, using its
+        current config.
 
         Used by a setup action's ``request_reconnect`` after a config update —
         it reconnects the *same* driver instance (so the handler's `self` stays
         valid) with whatever settings ``request_config_update`` merged into
         ``self.config``. Does not touch the intentional-disconnect set: the
         setup runner owns that suppression for the whole run. Raises on connect
-        failure so the handler can see it.
+        failure so the handler can see it, and :class:`DeviceNotFoundError`
+        when the device no longer runs that instance.
         """
-        driver = self._live_driver(device_id)
+        self._setup_instance(device_id, driver)
         self._clear_offline_reason(device_id)
         try:
             await driver.disconnect()

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Check, AlertTriangle } from "lucide-react";
 import { Dialog } from "../../components/shared/Dialog";
 import * as api from "../../api/restClient";
-import { onMessage } from "../../api/wsClient";
 import type { DeviceAction } from "../../api/types";
 import {
   ActionParamFields,
@@ -12,17 +11,11 @@ import {
 } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { parseApiError } from "../../api/errors";
-import { syncAfterSetupAction } from "../../store/projectStore";
 import { fileParamsBlocked } from "../../components/shared/commandFiles";
 import { discardUpload, setupUploadOpener, uploadCommandFiles } from "../../api/commandFileClient";
+import { followSetupRun, type Step } from "./followSetupRun";
 
 type Phase = "input" | "running" | "done" | "error";
-
-interface Step {
-  step: string;
-  pct: number | null;
-  status: string;
-}
 
 /**
  * The sentence the handler wrote for the operator, out of the terminal event's
@@ -44,7 +37,7 @@ async function invokeWithFiles(run: {
   files: Record<string, File | null>;
   signal: AbortSignal;
   onProgress: (steps: Step[]) => void;
-}): Promise<void> {
+}): Promise<string | undefined> {
   const chosen = Object.fromEntries(
     Object.entries(run.files).filter((entry): entry is [string, File] => entry[1] !== null),
   );
@@ -56,7 +49,10 @@ async function invokeWithFiles(run: {
   );
   try {
     if (run.signal.aborted) throw new Error("The upload was stopped.");
-    await api.invokeDeviceAction(run.deviceId, run.action.id, buildParams(run.action.params, run.values), uploads);
+    const started = await api.invokeDeviceAction(
+      run.deviceId, run.action.id, buildParams(run.action.params, run.values), uploads,
+    );
+    return started.run_id;
   } catch (error) {
     await Promise.all(Object.values(uploads).map((id) => discardUpload(id)));
     throw error;
@@ -82,6 +78,10 @@ const btnStyle = (variant: "primary" | "muted"): React.CSSProperties => ({
  * A failed run always arrives as status "error", whether the handler raised or
  * returned success:false (the server decides that, see core/setup_actions.py),
  * so "done" here means it worked.
+ *
+ * The final event can be missed while the WebSocket is down (a dropped
+ * network, a server restart), so the run is followed by `followSetupRun`,
+ * which asks the server how it stands each time the socket reconnects.
  */
 export function SetupActionWizard({
   deviceId,
@@ -104,6 +104,7 @@ export function SetupActionWizard({
   const [error, setError] = useState<string>("");
   const unsubRef = useRef<null | (() => void)>(null);
   const uploadAbort = useRef<AbortController | null>(null);
+  const runIdRef = useRef<string | undefined>(undefined);
 
   // Stop listening if the wizard unmounts mid-run.
   useEffect(() => () => {
@@ -122,39 +123,26 @@ export function SetupActionWizard({
     setSteps([]);
     setSummary("");
     setError("");
+    runIdRef.current = undefined;
     // Subscribe BEFORE the POST so an early progress event can't be missed.
-    // One run per device+action is guaranteed server-side, so that pair is a
-    // sufficient filter.
-    unsubRef.current = onMessage((msg) => {
-      if (msg.type !== "action.progress") return;
-      if (msg.device_id !== deviceId || msg.action_id !== action.id) return;
-      const status = String(msg.status ?? "running");
-      setSteps((prev) => [
-        ...prev,
-        { step: String(msg.step ?? ""), pct: (msg.pct as number | null) ?? null, status },
-      ]);
-      if (status === "done" || status === "error") {
-        // The run may have saved new settings for this device.
-        void syncAfterSetupAction(deviceId);
-      }
-      if (status === "done") {
+    const run = followSetupRun(deviceId, action.id, () => runIdRef.current, {
+      step: (step) => setSteps((prev) => [...prev, step]),
+      done: (msg) => {
         setSummary(resultMessage(msg.result));
         setPhase("done");
-        unsubRef.current?.();
-      } else if (status === "error") {
-        setError(String(msg.error ?? msg.step ?? "Setup failed"));
+      },
+      failed: (message) => {
+        setError(message);
         setPhase("error");
-        unsubRef.current?.();
-      }
+      },
     });
+    unsubRef.current = run.stop;
     try {
       uploadAbort.current = new AbortController();
-      await invokeWithFiles({ deviceId, action, values, files,
+      runIdRef.current = await invokeWithFiles({ deviceId, action, values, files,
         signal: uploadAbort.current.signal, onProgress: setSteps });
     } catch (e) {
-      unsubRef.current?.();
-      setError(parseApiError(e));
-      setPhase("error");
+      run.fail(parseApiError(e));
     } finally {
       uploadAbort.current = null;
     }

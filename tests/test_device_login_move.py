@@ -698,7 +698,7 @@ async def test_a_pushed_copy_holding_an_old_login_keeps_the_current_one(engine, 
 
 
 async def test_a_setup_action_that_saves_a_code_files_it_and_keeps_the_device_up(engine, data):
-    from openavc.core.setup_actions import SetupActionContext
+    from openavc.core.setup_actions import SetupActionContext, SetupLease
 
     engine.project = _project(SAVED_LOGIN)
     engine.device_logins.save("proj1", DRIVER, {"password": "Hunter2-Acme"})
@@ -708,7 +708,8 @@ async def test_a_setup_action_that_saves_a_code_files_it_and_keeps_the_device_up
                 engine.resolved_device_config(engine.project.devices[0]), defer_connect=True,
             )
             driver = engine.devices.get_driver("proj1")
-            await SetupActionContext(engine, "proj1").apply_config_update({"pairing_code": "7731"})
+            lease = SetupLease("proj1", driver)
+            await SetupActionContext(engine, lease).apply_config_update({"pairing_code": "7731"})
 
         assert engine.devices.get_driver("proj1") is driver  # not torn down mid-action
         assert driver.config["pairing_code"] == "7731"

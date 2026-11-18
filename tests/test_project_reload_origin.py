@@ -238,10 +238,10 @@ class _WizardDevices:
     def get_driver(self, device_id):
         return self._driver
 
-    async def begin_setup(self, device_id) -> None:
+    async def begin_setup(self, device_id, driver) -> None:
         pass
 
-    async def end_setup(self, device_id) -> None:
+    async def end_setup(self, device_id, driver) -> None:
         pass
 
 
