@@ -15,7 +15,8 @@ test_driver_command is the Builder's raw TCP probe (``raw_tcp_probe``).
 Two driver formats reach these doors. A YAML driver is a ``.avcdriver`` file
 and the AI may read, create and edit it; a Python driver is a loaded class
 with no definition file, so ``get_driver_definition`` answers its loaded
-surface marked ``editable: false``. The marks a read adds (``READ_MARKS``)
+surface marked ``editable: false``, as it does a YAML driver still loaded
+after its file was removed, which it says is one. The marks a read adds (``READ_MARKS``)
 are dropped before a save, so a definition the AI read saves back as it is.
 Create and update also answer with the checker's issue records, the ones the
 Driver Builder's Validate shows (errors and warnings, each with its place): a
@@ -48,12 +49,41 @@ READ_MARKS = ("format", "editable", "note")
 _PROBE_FIELDS = ("host", "port", "command_string", "delimiter", "timeout")
 
 
-def _marked(surface: dict[str, Any], *, editable: bool, note: str | None = None) -> dict[str, Any]:
-    """A driver's surface as get_driver_definition answers it (``READ_MARKS``)."""
-    marks: dict[str, Any] = {"format": "avcdriver" if editable else "python", "editable": editable}
+def _marked(surface: dict[str, Any], format: str, note: str | None = None) -> dict[str, Any]:
+    """A driver's surface as get_driver_definition answers it (``READ_MARKS``):
+    editable only when it was read from its definition file (no ``note``)."""
+    marks: dict[str, Any] = {"format": format, "editable": note is None}
     if note:
         marks["note"] = note
     return {**surface, **marks}
+
+
+def _loaded_surface(driver_id: str) -> dict[str, Any] | None:
+    """A registered driver no definition file serves, as get_driver_definition
+    answers it: its loaded surface, marked by the class's kind. A declarative
+    driver here is one whose file is gone; only a Python class is Python."""
+    from openavc.drivers.configurable import ConfigurableDriver
+    from openavc.drivers.registry import get_driver_class
+
+    surface = next((d for d in list_registered_drivers() if d.get("id") == driver_id), None)
+    if surface is None:
+        return None
+    if issubclass(get_driver_class(driver_id), ConfigurableDriver):
+        return _marked(surface, "avcdriver", (
+            f"'{driver_id}' is loaded, but its .avcdriver definition file is no longer in the "
+            "driver folder, so there is no definition to read or update. Everything below is "
+            "the loaded driver's surface. create_driver_definition saves a new definition "
+            "under this id."
+        ))
+    return _marked(surface, "python", (
+        f"'{driver_id}' is a Python-format driver, so it has no declarative "
+        ".avcdriver definition file and no raw protocol strings, response "
+        "parsers or polling block to read. Everything below is introspected "
+        "from the loaded driver class and is the same surface list_drivers "
+        "returns. It cannot be edited with update_driver_definition, and it "
+        "must not be re-authored as a YAML definition; a definition sharing "
+        "this id would shadow the working driver."
+    ))
 
 
 def _drafted(definition: dict[str, Any]) -> dict[str, Any]:
@@ -170,22 +200,10 @@ class DriverToolsMixin:
         driver_id = input.get("driver_id", "")
         definition = served_definition(driver_id)
         if definition is not None:
-            return _marked(definition, editable=True)
-
-        introspected = next(
-            (d for d in list_registered_drivers() if d.get("id") == driver_id),
-            None,
-        )
-        if introspected is not None:
-            return _marked(introspected, editable=False, note=(
-                f"'{driver_id}' is a Python-format driver, so it has no declarative "
-                ".avcdriver definition file and no raw protocol strings, response "
-                "parsers or polling block to read. Everything below is introspected "
-                "from the loaded driver class and is the same surface list_drivers "
-                "returns. It cannot be edited with update_driver_definition, and it "
-                "must not be re-authored as a YAML definition; a definition sharing "
-                "this id would shadow the working driver."
-            ))
+            return _marked(definition, "avcdriver")
+        loaded = _loaded_surface(driver_id)
+        if loaded is not None:
+            return loaded
 
         not_loaded = not_loaded_sentence(driver_id)
         if not_loaded:

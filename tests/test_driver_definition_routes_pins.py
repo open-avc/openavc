@@ -981,6 +981,47 @@ async def test_each_door_saves_over_an_id_registered_with_no_file(env, door):
     assert _saved(env, "acme_gadget.avcdriver")["name"] == "Acme Gadget 2"
 
 
+async def test_the_assistant_reads_a_definition_whose_file_is_gone_as_one(env, monkeypatch):
+    """A YAML driver still registered after its file was removed is not called
+    a Python driver: its read says the file is gone and a new definition can
+    be saved under the id, which the create then does."""
+    from openavc.drivers import registry
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    tools = _assistant(monkeypatch, env)
+    registry.register_driver(create_configurable_driver_class(dict(GADGET)))
+    try:
+        read = await tools._get_driver_definition({"driver_id": "acme_gadget"})
+    finally:
+        registry.unregister_driver("acme_gadget")
+
+    assert (read["format"], read["editable"]) == ("avcdriver", False)
+    assert "Python" not in read["note"]
+    assert "create_driver_definition" in read["note"]
+
+
+async def test_the_assistant_reads_a_python_driver_as_one(env, monkeypatch):
+    from openavc.drivers import registry
+    from openavc.drivers.base import BaseDriver
+
+    class AcmeGadget(BaseDriver):
+        DRIVER_INFO = {"id": "acme_gadget", "name": "Acme Gadget", "transport": "tcp"}
+
+        async def connect(self) -> None: ...
+        async def disconnect(self) -> None: ...
+        async def send_command(self, command, params=None): ...
+
+    tools = _assistant(monkeypatch, env)
+    registry.register_driver(AcmeGadget)
+    try:
+        read = await tools._get_driver_definition({"driver_id": "acme_gadget"})
+    finally:
+        registry.unregister_driver("acme_gadget")
+
+    assert (read["format"], read["editable"]) == ("python", False)
+    assert "Python-format driver" in read["note"]
+
+
 async def test_the_assistant_s_create_of_a_reserved_id_is_refused_in_the_manufacturer_s_words(
     env, monkeypatch,
 ):
