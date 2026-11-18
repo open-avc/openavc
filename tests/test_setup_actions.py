@@ -145,16 +145,26 @@ class _FakeEngine:
             connections={},
         )
         self._project_revision = 0
+        self.events = EventBus()
         self.ws_messages: list[dict[str, Any]] = []
         # Who each message was for: None = every client, as Engine.broadcast_ws.
         self.ws_client_types: list[str | None] = []
 
-    async def apply_project(self, new_project, **kwargs) -> int:
-        # Mirror the seam's copy+swap+bump contract; the real reconcile is
-        # pinned by test_apply_config_update_bumps_revision_without_bounce.
-        self.project = new_project
+    async def persist_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> int:
+        # Mirror the door's contract: the change made to a copy of the
+        # project current now, swapped in under a new revision, and only
+        # then the runtime's own half. The real door is pinned by
+        # tests/test_setup_action_saves.py.
+        proposed = self.project.model_copy(deep=True)
+        mutate(proposed)
+        self.project = proposed
         self._project_revision += 1
+        if runtime_write is not None:
+            runtime_write()
         return self._project_revision
+
+    def device_settings_moved(self) -> None:
+        pass
 
     async def broadcast_ws(
         self, message: dict[str, Any], *, client_type: str | None = None
@@ -228,7 +238,7 @@ async def test_setup_action_streams_progress_updates_config_and_reconnects():
     assert driver.config["port"] == 9999
     assert driver.config["provisioned"] == "yes"
 
-    # The delta went through the apply_project seam — revision advanced, so
+    # The delta went through the change door — revision advanced, so
     # a stale IDE PUT 409s instead of silently reverting the wizard's write.
     assert engine._project_revision == 1
 
@@ -288,10 +298,10 @@ async def test_delta_of_only_none_connection_fields_is_a_no_op():
 async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
     """Regression (data loss), real seam: a setup action's config delta must
     advance the project revision — the old path saved without bumping, so a
-    stale IDE PUT silently reverted what the wizard just wrote. And the
-    reconcile it triggers must NOT tear down the device mid-action: the live
-    config is updated first, so the device compare stays convergent and the
-    running handler's ``self`` stays valid.
+    stale IDE PUT silently reverted what the wizard just wrote. And it must
+    NOT tear down the device mid-action: it is saved without a reconcile and
+    the live config is merged once the file holds it, so the running
+    handler's ``self`` stays valid.
     """
     from openavc.drivers.registry import register_driver, unregister_driver
     from openavc.core.engine import Engine
@@ -319,7 +329,7 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
         await ctx.apply_config_update({"port": 9999, "provisioned": "yes"})
 
         assert engine._project_revision > revision_before
-        # Same driver instance — the reconcile did not bounce the device.
+        # Same driver instance — the save did not bounce the device.
         assert engine.devices.get_driver("dev1") is driver_before
         assert engine.project.connections["dev1"]["port"] == 9999
         assert engine.project.devices[0].config["provisioned"] == "yes"
@@ -357,16 +367,14 @@ async def test_a_setting_the_running_system_cannot_take_is_said_as_every_door_sa
     uses, never the exception's own text."""
     import errno
 
-    from openavc.core.project_changes import ProjectNotAppliedError
     from openavc.core.project_loader import ProjectSaveError
 
     runner, engine, dm, driver = _make_env()
 
-    async def apply_project(new_project, **kwargs):
-        cause = ProjectSaveError(OSError(errno.ENOSPC, "No space left on device", "/srv/acme/project.avc"))
-        raise ProjectNotAppliedError(cause) from cause
+    async def persist_bookkeeping_change(mutate, **kwargs):
+        raise ProjectSaveError(OSError(errno.ENOSPC, "No space left on device", "/srv/acme/project.avc"))
 
-    engine.apply_project = apply_project
+    engine.persist_bookkeeping_change = persist_bookkeeping_change
     await runner.start("dev1", _setup_action(driver), {"password": "x"})
     await _drain(runner)
 

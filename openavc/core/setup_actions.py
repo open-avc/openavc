@@ -33,6 +33,8 @@ from uuid import uuid4
 from openavc.core.client_origin import client_origin, request_client_id
 from openavc.core.device_config import apply_config_delta
 from openavc.core.device_manager import DeviceNotFoundError
+from openavc.core.project_changes import ProjectNotAppliedError
+from openavc.core.project_loader import ProjectSaveError
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -70,6 +72,16 @@ class SetupActionContext:
         the next ``connect()`` uses the new settings — the same instance keeps
         running, so the handler's ``self`` stays valid.
 
+        A bookkeeping change through the change door
+        (``Engine.persist_bookkeeping_change``): the delta is written into the
+        project current when the save runs, so an edit saved meanwhile is
+        kept, and merged into the live driver only once the file holds it,
+        under the same lock. No reconcile runs: it would compare the running
+        device with the new settings before the merge and restart it under
+        the handler. A save that fails leaves the device, the project and
+        the file as they were, and is said as every door says a change that
+        was not applied.
+
         A ``None``-valued connection field is ignored (with a warning): the
         connections table never stores None, so honoring it would drop the key
         from the persisted table while the live driver kept ``key=None`` — a
@@ -97,24 +109,30 @@ class SetupActionContext:
             if not delta:
                 return
 
-        # Build the change on a copy — apply_project diffs it against the
-        # live project, so an in-place edit would reconcile nothing.
-        project = engine.project.model_copy(deep=True)
-        if not apply_config_delta(project, device_id, delta):
-            raise RuntimeError(f"Device '{device_id}' not found in project")
+        def put_in_project(project) -> None:
+            if not apply_config_delta(project, device_id, delta):
+                raise RuntimeError(f"Device '{device_id}' not found in project")
 
-        # Merge into the live device BEFORE the reconcile — into the driver
-        # (what the next connect dials) and into the config the device manager
-        # compares against the new resolved one. Doing it first keeps that
-        # compare convergent, so the running instance is not torn down and the
-        # handler's ``self`` stays valid.
-        engine.devices.merge_live_config(device_id, delta)
+        def take_live() -> None:
+            # Into the driver (what the next connect dials) and into the
+            # config the device manager compares with the project, so the
+            # next reconcile reads no edit; then what an applied change does
+            # for a device's settings besides that compare.
+            engine.devices.merge_live_config(device_id, delta)
+            engine.device_settings_moved()
 
         # Runs in the action's background task, never under the reconcile
-        # lock, so awaiting the seam directly is safe. The revision bump and
+        # lock, so awaiting the door directly is safe. The revision bump and
         # project.reloaded broadcast mean a stale IDE PUT gets a 409 instead
         # of silently reverting what the wizard just wrote.
-        await engine.apply_project(project)
+        try:
+            await engine.persist_bookkeeping_change(put_in_project, runtime_write=take_live)
+        except ProjectSaveError as failure:
+            # Everything was put back, so the change was not applied.
+            raise ProjectNotAppliedError(failure) from failure
+        # A script may wait on this event for a saved change, and a setup
+        # action's save has always sent it; the bookkeeping door does not.
+        await engine.events.emit("system.project.reloaded")
         log.info("[%s] Setup action applied config update: %s",
                  device_id, sorted(delta.keys()))
 

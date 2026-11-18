@@ -31,10 +31,13 @@ part that failed is said by its own surface until it is fixed, never as a
 count a later change resets. The words every door answers an outcome in, the
 change that was not applied, a conflict and a refusal included, are
 ``api/error_messages.py``'s. A **bookkeeping** one is a change the runtime
-already has (a device's pending settings cleared, a plugin's own
-``save_config``): the door without the reconcile, swapped in and written as
-an edit is and put back when the write fails, and announced. The code that
-makes one may be running
+takes without a reconcile (a device's pending settings cleared, a plugin's
+own ``save_config``, a setup action's settings): the door without the
+reconcile, swapped in and written as an edit is and put back when the write
+fails, and announced. The running system's own half of it (a setup action's
+settings merged into the live driver) is made once the file holds it,
+under the same lock (``persist_bookkeeping_change``'s ``runtime_write``).
+The code that makes one may be running
 inside a reconcile, which is why it can be queued
 (``schedule_bookkeeping_change``).
 
@@ -658,16 +661,22 @@ class ProjectChangesMixin:
         else:
             await self.persist_bookkeeping_change(mutate, on_error=on_error)
 
-    async def persist_bookkeeping_change(self, mutate, *, on_error=None) -> str:
-        """Persist an in-place project mutation whose runtime effect is
-        already applied — no reconcile, just save + revision bump +
-        ``project.reloaded`` broadcast (so an open IDE's stale ETag gets a
-        409 instead of silently reverting the change).
+    async def persist_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> str:
+        """Persist a project change the running system takes without a
+        reconcile — save + revision bump + ``project.reloaded`` broadcast (so
+        an open IDE's stale ETag gets a 409 instead of silently reverting the
+        change).
 
         ``mutate(project)`` goes through the change door
         (:meth:`_change_locked`) without the reconcile. When it is refused
         or the save fails, ``on_error`` runs and the exception propagates;
-        the running project is then as it was.
+        the running project is then as it was. ``runtime_write()`` is the
+        running system's own half of the change (a device's live settings):
+        made once the file holds the change and still under the lock, so a
+        failed save leaves the runtime as the file holds it, and a change
+        waiting on the lock never reconciles against a runtime that has not
+        taken this one yet. The file holds the change by then, so its
+        failure is logged, never raised.
 
         MUST NOT be called from code that can run while the reconcile lock
         is held — event handlers fired during a reconcile (device connect,
@@ -681,6 +690,9 @@ class ProjectChangesMixin:
                 if on_error is not None:
                     await _call(on_error)
                 raise
+            await _call_logged(
+                runtime_write, "Project saved, but the running system could not take the change",
+            )
         await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": revision,

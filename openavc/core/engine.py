@@ -264,6 +264,16 @@ class Engine(
         except Exception:
             log.exception("Could not record the ports devices push to")
 
+    def device_settings_moved(self) -> None:
+        """A device's settings changed and were taken live without a
+        reconcile (a setup action's update): what an applied change does for
+        them besides the device compare. The ports devices push to are
+        recorded again, and a bring-up round is asked for, which points a
+        simulated device back at the simulator its new address replaced and
+        starts again a simulator whose settings drifted."""
+        self._record_push_ports()
+        self._schedule_device_bringup()
+
     def resolved_device_config(self, device) -> dict:
         """The config this device actually dials — driver defaults, project
         config, and the connection table layered, with bridge/USB bindings
