@@ -139,6 +139,13 @@ def _record(app) -> RunState | None:
     return getattr(app.state, "run_state", None)
 
 
+def say_stopping(app) -> None:
+    """``app``'s record says stopping, when its lifespan has made one."""
+    record = _record(app)
+    if record is not None:
+        record.stopping()
+
+
 def startup_status(app) -> dict[str, Any]:
     """``/api/startup-status``'s answer: the record, or ready with nothing
     to say on an app whose lifespan made none."""

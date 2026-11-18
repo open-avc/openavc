@@ -568,7 +568,9 @@ from openavc.middleware.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
 # Served while the engine initializes.
-from openavc.middleware.startup_splash import FAILED, RunState, StartupSplashMiddleware
+from openavc.middleware.startup_splash import (
+    FAILED, RunState, StartupSplashMiddleware, say_stopping,
+)
 app.add_middleware(StartupSplashMiddleware)
 
 # Serve Panel UI static files
@@ -816,16 +818,11 @@ def _served_app():
 # The main listener's server, the one that hears a stop signal first.
 def _main_server(cfg: "uvicorn.Config") -> "uvicorn.Server":
     from openavc import listen_sockets
-    return listen_sockets.hears_the_stop(uvicorn.Server(cfg), _stop_heard)
-
-
-def _stop_heard() -> None:
-    """The stop signal reached the main server: the served app's run-state
-    record says stopping. uvicorn installs its handlers before the lifespan
-    makes the record; a signal in between is said by the lifespan's end."""
-    record = getattr(_served_app().state, "run_state", None)
-    if record is not None:
-        record.stopping()
+    # The served app's record says stopping (its lifespan makes it, so a
+    # signal before then is said by the lifespan's end).
+    return listen_sockets.hears_the_stop(
+        uvicorn.Server(cfg), lambda: say_stopping(_served_app()),
+    )
 
 
 async def _run_tls(sockets: list) -> None:
