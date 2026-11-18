@@ -201,9 +201,9 @@ async def test_a_bookkeeping_save_that_fails_leaves_the_running_project_as_the_f
 
 
 async def test_a_plugin_save_while_a_bookkeeping_save_is_written_is_kept(engine, monkeypatch):
-    """A plugin's save that arrives while the file is being written goes
-    onto the running project in place and is queued; it lands on the
-    project the write keeps, in memory and then on disk."""
+    """A plugin's save that arrives while the file is being written waits
+    for that write, runs no plugin code, and lands on the project the write
+    keeps, in memory and on disk, before save_config returns."""
     from openavc.core import project_changes
 
     writing, release = asyncio.Event(), asyncio.Event()
@@ -220,11 +220,14 @@ async def test_a_plugin_save_while_a_bookkeeping_save_is_written_is_kept(engine,
     monkeypatch.setattr(project_changes, "save_project_async", slow)
     saving = asyncio.create_task(engine.persist_bookkeeping_change(_rename))
     await writing.wait()
-    await engine._save_plugin_config("plug1", {"x": 2})
+    plugin_save = asyncio.create_task(engine._save_plugin_config("plug1", {"x": 2}))
+    await asyncio.sleep(0.05)
+    assert not plugin_save.done()
     release.set()
+    await plugin_save
     await saving
-    await engine._bookkeeping_task
 
+    assert engine._bookkeeping_task is None
     assert engine.project.plugins["plug1"].config == {"x": 2}
     assert engine.project.project.name == "Renamed"
     assert _disk(engine)["plugins"]["plug1"]["config"] == {"x": 2}

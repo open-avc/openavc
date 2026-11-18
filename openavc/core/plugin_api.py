@@ -717,13 +717,15 @@ class PluginAPI:
         poison the shared project model and block every subsequent save for the
         rest of the session.
 
-        Saved before this returns, unless another project change is being
-        saved (``on_start``, ``on_config_changed`` and the handlers the
-        platform runs while it applies one are inside it): then the save
-        lands right after that change. Either way ``config`` holds what was
-        saved at once, so a save built on it keeps this one; the platform
-        takes it once the file holds it. A save that fails leaves ``config``
-        as it was, and one made inside a change fails only in the log.
+        Saved before this returns, after any project change being saved at
+        that moment, unless it is made inside one (``on_start``,
+        ``on_config_changed``, ``stop`` and the handlers the platform runs
+        while it applies a change or stops): then the save lands right after
+        that change. Either way ``config`` holds what was saved at once, so a
+        save built on it keeps this one; the platform takes it once the file
+        holds it. A save that fails or is cancelled while it waits leaves
+        ``config`` as it was, and one made inside a change fails only in the
+        log.
         """
         if not isinstance(config, dict):
             raise PluginPermissionError(
@@ -744,7 +746,8 @@ class PluginAPI:
         self._unsaved = config
         try:
             await self._save_config_fn(self._plugin_id, config, save)
-        except Exception:
+        except BaseException:
+            # Cancelled too: a plugin's task stopped while its save waits.
             save.dropped()
             raise
 

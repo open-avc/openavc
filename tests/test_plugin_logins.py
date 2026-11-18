@@ -26,6 +26,7 @@ import json
 import shutil
 import zipfile
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -770,6 +771,15 @@ async def test_the_assistants_log_hides_a_plugin_login_saved_here(engine, data):
 # --- a plugin's own save reaches the platform once the file holds it ---------------
 
 
+@asynccontextmanager
+async def _inside_a_change(engine):
+    """Where a plugin hook runs: inside a change that holds the lock, so a
+    save it makes is queued behind that change."""
+    async with engine._reload_lock:
+        with engine._running_hooks():
+            yield
+
+
 async def test_a_save_queued_behind_a_change_reaches_the_platform_once_saved(engine, data):
     _write(engine.project_path, _project())
     await engine.reload_project()
@@ -777,7 +787,7 @@ async def test_a_save_queued_behind_a_change_reaches_the_platform_once_saved(eng
 
     config = api.config
     config["host"] = "192.0.2.77"
-    async with engine._reload_lock:
+    async with _inside_a_change(engine):
         await api.save_config(config)
         # The plugin reads its own save at once; the platform's copy, which
         # the next change compares with and the settings page shows, waits
@@ -809,7 +819,7 @@ async def test_a_save_that_fails_leaves_the_plugin_and_the_login_file_as_saved(e
     config["password"] = "Bridge-Pass-9"
     monkeypatch.setattr(project_changes, "save_project_async", disk_full)
     if queued:
-        async with engine._reload_lock:
+        async with _inside_a_change(engine):
             await api.save_config(config)
         await engine._bookkeeping_task
     else:
@@ -833,7 +843,7 @@ async def test_a_config_handed_to_the_plugin_before_its_queued_save_lands_is_kep
 
     config = api.config
     config["host"] = "192.0.2.79"
-    async with engine._reload_lock:
+    async with _inside_a_change(engine):
         await api.save_config(config)
         # The settings form hands the plugin its config before its own
         # change takes the lock.
@@ -858,7 +868,7 @@ async def test_a_later_save_that_reached_the_file_first_is_not_written_over(engi
     earlier, later = api.config, api.config
     earlier["host"] = "192.0.2.81"
     later["host"] = "192.0.2.82"
-    async with engine._reload_lock:
+    async with _inside_a_change(engine):
         # Scheduled before the earlier save queues its flush, so the later
         # save runs first once the lock is free, and reaches the file first.
         landing = asyncio.ensure_future(api.save_config(later))
@@ -939,7 +949,7 @@ async def test_a_login_saved_behind_a_change_is_masked_before_its_file_holds_it(
 
     config = api.config
     config["password"] = "Bridge-Pass-7"
-    async with engine._reload_lock:
+    async with _inside_a_change(engine):
         await api.save_config(config)
         assert "Bridge-Pass-7" not in get_secret_registry().redact_any("sent Bridge-Pass-7")
         # Any registration meanwhile still knows it.
@@ -970,3 +980,69 @@ async def test_a_save_made_after_a_reconcile_outlives_the_one_made_during_it(eng
     # The key made at start is kept, as a saved login.
     assert _plugin_on_disk(engine)["screens"][0]["screen_key"] == SAVED_LOGIN
     assert DeviceLogins(data).secret(plugin_owner(PLUGIN_ID, WALL), "screen_key") == "made-wall-key"
+
+
+async def test_a_plugin_that_saves_as_a_failed_change_is_undone_never_hangs_it(engine, data, monkeypatch):
+    from openavc.core import project_changes
+    from openavc.core.project_changes import ProjectNotAppliedError
+
+    async def start_and_save(self, api):
+        self.api = api
+        await api.save_config(api.config)
+
+    monkeypatch.setattr(_AcmeBridge, "start", start_and_save)
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    await engine._bookkeeping_task
+
+    async def disk_full(path, project):
+        raise OSError("Injected unwritable project")
+
+    changed = engine.project.model_copy(deep=True)
+    changed.plugins[PLUGIN_ID].config["host"] = "192.0.2.87"
+    monkeypatch.setattr(project_changes, "save_project_async", disk_full)
+    # The change restarts the plugin, and its undo restarts it again: each
+    # start saves, inside the change.
+    with pytest.raises(ProjectNotAppliedError):
+        await asyncio.wait_for(engine.apply_project(changed), timeout=10)
+    if engine._bookkeeping_task is not None:
+        await engine._bookkeeping_task
+
+    assert engine.plugin_loader.is_running(PLUGIN_ID)
+    assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.20"
+    assert engine.plugin_loader._apis[PLUGIN_ID].config["host"] == "192.0.2.20"
+
+
+async def test_a_save_cancelled_while_it_waits_its_turn_leaves_the_plugin_as_saved(engine, data, monkeypatch):
+    from openavc.core import project_changes
+    from tests.helpers import wait_for_condition
+
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+
+    real = project_changes.save_project_async
+    released = asyncio.Event()
+
+    async def held(path, project):
+        await released.wait()
+        await real(path, project)
+
+    monkeypatch.setattr(project_changes, "save_project_async", held)
+    other = asyncio.create_task(engine.persist_bookkeeping_change(lambda project: None))
+    await wait_for_condition(engine._reload_lock.locked, message="the other save never took the lock")
+
+    config = api.config
+    config["host"] = "192.0.2.88"
+    saving = asyncio.create_task(api.save_config(config))
+    await asyncio.sleep(0.05)
+    assert api.config["host"] == "192.0.2.88"
+    # A plugin's task cancelled as it stops, while its save waits.
+    saving.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await saving
+    released.set()
+    await other
+
+    assert api.config["host"] == "192.0.2.20"
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.20"

@@ -39,8 +39,10 @@ half of it (a device's settings merged into the live driver, the config the
 platform holds for a plugin) is made once the file holds it, under the same lock (the ``runtime_write`` of
 ``persist_bookkeeping_change`` and of ``schedule_bookkeeping_change``), so
 nothing is taken live first and nothing needs undoing when a save fails.
-The code that makes one may be running inside a reconcile, which is why it
-can be queued (``schedule_bookkeeping_change``).
+The code that makes one may be running inside a change that holds the
+lock (a plugin hook or an event handler it awaits), which is why it can be
+queued (``schedule_bookkeeping_change``); THE span that queues a plugin's
+own save is ``_running_hooks``, and outside it the save waits its turn.
 
 Both run under ``_reload_lock``, both mint the next revision here, and both
 make the next timed backup due once the file holds them. A revision is an
@@ -55,6 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -233,11 +236,30 @@ class ProjectChangesMixin:
 
         # Reload serialization
         self._reload_lock = asyncio.Lock()
+        # How many holders of the lock are running hooks under it now
+        # (_running_hooks): a bookkeeping change made meanwhile is queued.
+        self._hook_runs = 0
 
         # Deferred bookkeeping persists (see schedule_bookkeeping_change):
         # the changes waiting for the lock and the task that flushes them.
         self._bookkeeping_queue: list[_Queued] = []
         self._bookkeeping_task: asyncio.Task | None = None
+
+    @contextmanager
+    def _running_hooks(self):
+        """THE span in which a bookkeeping change is queued rather than
+        awaited (:meth:`persist_or_defer_bookkeeping_change`): the holder of
+        ``_reload_lock`` is running code that can make one, a plugin hook or
+        an event handler it awaits, so a change that waited for the lock
+        would wait for itself. An applied change raises it for all of its
+        run (the reconcile, its undo, the announcement) and the stop for its
+        teardown. A bookkeeping save runs none, so a change made beside one
+        waits its turn and hears its own failure."""
+        self._hook_runs += 1
+        try:
+            yield
+        finally:
+            self._hook_runs -= 1
 
     async def reload_project(self) -> None:
         """Hot-reload project.avc from disk (LOAD origin — full reconcile).
@@ -456,7 +478,8 @@ class ProjectChangesMixin:
         running one, swapped in, reconciled and saved (all of it undone on a
         failure, the file never written), and then announced. Returns the
         outcome, which a failure in the announcing no longer changes: the
-        change is running."""
+        change is running. Its plugin hooks and event handlers run inside it
+        (:meth:`_running_hooks`)."""
         taken = self._take_in(new_project, origin, persist, reassigned_equipment)
         if origin is ProjectOrigin.LOAD:
             diff = ProjectDiff.all_dirty()
@@ -465,9 +488,10 @@ class ProjectChangesMixin:
             # marker leaves the marker in place, and the device still has to
             # reconnect with the new login.
             diff = ProjectDiff.compute(self.project, taken.as_given)
-        run = await self._swap_in(taken, diff, origin)
-        outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
-        await self._announce_applied(diff, origin, outcome)
+        with self._running_hooks():
+            run = await self._swap_in(taken, diff, origin)
+            outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
+            await self._announce_applied(diff, origin, outcome)
         return outcome
 
     def _take_in(
@@ -655,17 +679,19 @@ class ProjectChangesMixin:
 
     async def persist_or_defer_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> None:
         """Persist a bookkeeping change from code that may be running inside
-        a reconcile (a plugin hook the reconciler awaits holds the reload
-        lock, and awaiting it then would deadlock).
+        a change that holds the reload lock (a plugin hook or an event
+        handler that change awaits, where waiting for the lock would wait
+        for itself).
 
-        With the lock free, :meth:`persist_bookkeeping_change`: saved before
-        this returns, raising on failure. With it held,
+        Inside one (:meth:`_running_hooks`),
         :meth:`schedule_bookkeeping_change`: ``mutate`` is queued to run
-        right after the change holding the lock, against the project
-        current then. Either way nothing reaches the running project or the
+        right after it, against the project current then, and a failure is
+        logged. Otherwise :meth:`persist_bookkeeping_change`, behind any
+        change holding the lock: saved before this returns, raising on
+        failure. Either way nothing reaches the running project or the
         runtime before the file holds it (``runtime_write``).
         """
-        if self._reload_lock.locked():
+        if self._hook_runs:
             self.schedule_bookkeeping_change(mutate, on_error=on_error, runtime_write=runtime_write)
         else:
             await self.persist_bookkeeping_change(mutate, on_error=on_error, runtime_write=runtime_write)
@@ -691,7 +717,9 @@ class ProjectChangesMixin:
         MUST NOT be called from code that can run while the reconcile lock
         is held — event handlers fired during a reconcile (device connect,
         plugin hooks, state changes) — that would deadlock. Those callers
-        use :meth:`schedule_bookkeeping_change` instead.
+        use :meth:`schedule_bookkeeping_change`, or
+        :meth:`persist_or_defer_bookkeeping_change` to await it when they
+        are not inside one.
         """
         async with self._reload_lock:
             try:

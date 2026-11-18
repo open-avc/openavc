@@ -615,8 +615,9 @@ async def test_a_deferred_plugin_save_that_fails_after_the_plugin_left_still_say
 
     monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
     async with eng._reload_lock:
-        await eng._save_plugin_config("plug1", {"x": 2})
-        del eng.project.plugins["plug1"]
+        with eng._running_hooks():
+            await eng._save_plugin_config("plug1", {"x": 2})
+            del eng.project.plugins["plug1"]
     await eng._bookkeeping_task
 
     assert "plug1" not in eng.project.plugins
@@ -659,8 +660,9 @@ async def test_a_plugin_save_during_a_reconcile_refreshes_the_log_redaction_at_o
     )
 
     async with eng._reload_lock:
-        await eng._save_plugin_config("plug1", {"x": 2})
-        assert refreshed == [1]
+        with eng._running_hooks():
+            await eng._save_plugin_config("plug1", {"x": 2})
+            assert refreshed == [1]
     await eng._bookkeeping_task
 
     assert refreshed == [1, 2]

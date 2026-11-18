@@ -584,8 +584,11 @@ class EngineLifecycleMixin:
         # subsystems down while a hot-reload runs interleaves trigger and
         # subscription start/stop. Wait for any reload to finish first, until
         # the stop's bound: a reload that hangs does not keep the devices up.
+        # A plugin's on_stop or a system.stopping handler that saves runs
+        # inside the teardown, so its save is queued (_running_hooks).
         async with run.holding(self._reload_lock, "the project change still running"):
-            await self._stop_inner(run)
+            with self._running_hooks():
+                await self._stop_inner(run)
         # A bookkeeping write scheduled DURING teardown (e.g. a plugin
         # on_stop calling save_config) spawned a flush task that queued
         # behind the lock held above. Drain it now that the lock is free so

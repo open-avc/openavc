@@ -324,11 +324,11 @@ class ProjectLoginsMixin:
         fails; a login it hands back empty while it waits to be entered here
         keeps the marker (``keep_waiting_logins``). The platform's copy of
         the config moves only once the file holds it (``own.taken``). A
-        plugin can call ``save_config`` from a hook the reconciler awaits
-        inline (``on_start``, ``on_config_changed``, an event handler), so a
-        save made while a change holds the lock is queued to land right
-        after it (``persist_or_defer_bookkeeping_change``). The log masks
-        the logins it saved from now on.
+        plugin can call ``save_config`` from a hook a change awaits inline
+        (``on_start``, ``on_config_changed``, ``stop``, an event handler), so
+        a save made inside one is queued to land right after it; any other
+        waits its turn (``persist_or_defer_bookkeeping_change``). The log
+        masks the logins it saved from now on.
         """
         if not self.project or plugin_id not in self.project.plugins:
             if own is not None:

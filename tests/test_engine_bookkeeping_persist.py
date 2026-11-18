@@ -254,7 +254,7 @@ async def test_plugin_save_config_uncontended_persists_before_return(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_plugin_save_config_under_lock_defers_without_deadlock(tmp_path):
+async def test_plugin_save_config_inside_a_change_defers_without_deadlock(tmp_path):
     """A plugin hook (on_start / on_config_changed / an event handler) can
     call api.save_config while _sync_plugins holds the reconcile lock."""
     eng = _engine(tmp_path, plugins={
@@ -263,12 +263,13 @@ async def test_plugin_save_config_under_lock_defers_without_deadlock(tmp_path):
     _capture_broadcasts(eng)
 
     async with eng._reload_lock:
-        await asyncio.wait_for(
-            eng._save_plugin_config("plug1", {"x": 2}), timeout=5
-        )
-        # Queued: the running project, which the settings page shows, waits
-        # for the file.
-        assert eng.project.plugins["plug1"].config == {"x": 1}
+        with eng._running_hooks():
+            await asyncio.wait_for(
+                eng._save_plugin_config("plug1", {"x": 2}), timeout=5
+            )
+            # Queued: the running project, which the settings page shows,
+            # waits for the file.
+            assert eng.project.plugins["plug1"].config == {"x": 1}
 
     await wait_for_condition(
         lambda: eng._revision_counter == 1,
@@ -328,3 +329,105 @@ async def test_bookkeeping_scheduled_during_stop_teardown_persists(tmp_path):
     disk = _disk_project(eng)
     assert disk["plugins"]["plug1"]["config"].get("written_during_stop") is True
     assert eng._revision_counter == 1
+
+
+# --- when a plugin's own save waits its turn, and when it is queued ---------
+
+
+def _hold_the_first_write_and_fail_the_rest(monkeypatch) -> asyncio.Event:
+    """The first project write waits until the returned event is set, so the
+    save making it holds the reload lock meanwhile; every write after it
+    raises, as a full disk does."""
+    from openavc.core import project_changes
+
+    real = project_changes.save_project_async
+    released = asyncio.Event()
+    writes = 0
+
+    async def save(path, project):
+        nonlocal writes
+        writes += 1
+        if writes == 1:
+            await released.wait()
+            await real(path, project)
+            return
+        raise OSError("Injected unwritable project")
+
+    monkeypatch.setattr(project_changes, "save_project_async", save)
+    return released
+
+
+def _rename(project) -> None:
+    project.project.name = "Renamed"
+
+
+async def _another_save_holding_the_lock(eng) -> asyncio.Task:
+    other = asyncio.create_task(eng.persist_bookkeeping_change(_rename))
+    await wait_for_condition(eng._reload_lock.locked, message="the other save never took the lock")
+    return other
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_save_that_waited_beside_another_raises_its_own_failure(tmp_path, monkeypatch):
+    eng = _engine(tmp_path, plugins={
+        "plug1": {"enabled": False, "config": {"x": 1}},
+    })
+    _capture_broadcasts(eng)
+    released = _hold_the_first_write_and_fail_the_rest(monkeypatch)
+    other = await _another_save_holding_the_lock(eng)
+
+    saving = asyncio.create_task(eng._save_plugin_config("plug1", {"x": 2}))
+    await asyncio.sleep(0.05)
+    released.set()
+    with pytest.raises(OSError):
+        await asyncio.wait_for(saving, timeout=5)
+    await other
+
+    assert eng.project.plugins["plug1"].config == {"x": 1}
+    assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 1}
+    assert eng._revision_counter == 1
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_save_from_a_project_reloaded_handler_lands_without_a_deadlock(tmp_path):
+    """The bus event an applied change sends is awaited under its lock, so
+    a plugin saving from its handler is queued behind the change."""
+    eng = _engine(tmp_path, plugins={
+        "plug1": {"enabled": False, "config": {"x": 1}},
+    })
+    _capture_broadcasts(eng)
+
+    async def save_on_reload(event, payload):
+        await eng._save_plugin_config("plug1", {"x": 2})
+
+    eng.events.on("system.project.reloaded", save_on_reload)
+    renamed = eng.project.model_copy(deep=True)
+    _rename(renamed)
+    await asyncio.wait_for(eng.apply_project(renamed), timeout=5)
+
+    await wait_for_condition(
+        lambda: eng._revision_counter == 2,
+        message="the plugin's save from the handler never landed",
+    )
+    assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
+    assert _disk_project(eng)["project"]["name"] == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_save_made_as_the_engine_stops_lands_without_a_deadlock(tmp_path):
+    """A plugin's stop runs under the stop's hold on the lock, so its save
+    is queued and written before stop() returns."""
+    eng = _engine(tmp_path, plugins={
+        "plug1": {"enabled": False, "config": {"x": 1}},
+    })
+    _capture_broadcasts(eng)
+
+    async def stop_all_saving():
+        await eng._save_plugin_config("plug1", {"x": 2})
+
+    eng.plugin_loader.stop_all = stop_all_saving
+
+    problems = await asyncio.wait_for(eng.stop(), timeout=5)
+
+    assert problems == []
+    assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
