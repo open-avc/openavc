@@ -1,4 +1,10 @@
-"""Script CRUD and execution REST API endpoints."""
+"""Script CRUD and execution REST API endpoints.
+
+A create writes the script's file and a delete removes it inside the project
+change (``core/change_files.py``): a change that is not applied leaves the
+``scripts/`` folder as it was, and a deleted script's file goes only once the
+project file no longer names it.
+"""
 
 import re
 from pathlib import Path
@@ -12,6 +18,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import ScriptCreateRequest
+from openavc.core.change_files import ChangeFiles
 from openavc.core.event_references import project_script_sources, script_issues
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
@@ -194,17 +201,13 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
         if s.id == data.id:
             raise HTTPException(status_code=409, detail=f"Script '{data.id}' already exists")
 
-    # Write the script file
-    scripts_dir = _get_scripts_dir()
-    scripts_dir.mkdir(parents=True, exist_ok=True)
-    path = _safe_script_path(scripts_dir, data.file)
-    atomic_write_text(path, data.source)
+    path = _safe_script_path(_get_scripts_dir(), data.file)
 
     # Add to the project through the one seam: the scripts diff loads just
     # this script instead of the old full reload (which re-executed every
     # script and re-fired startup triggers). The duplicate check runs again
     # inside the mutate — a create racing this one may have appended the id
-    # after the check above.
+    # after the check above — and the file is written only after it.
     from openavc.core.project_loader import ScriptConfig
     new_script = ScriptConfig(
         id=data.id,
@@ -212,14 +215,16 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
         enabled=data.enabled,
         description=data.description,
     )
+    files = ChangeFiles()
 
     def mutate(project):
         for s in project.scripts:
             if s.id == data.id:
                 raise HTTPException(status_code=409, detail=f"Script '{data.id}' already exists")
         project.scripts.append(new_script)
+        files.write(path, data.source)
 
-    await engine.apply_project_edit(mutate)
+    await engine.apply_project_edit(mutate, files=files)
     return {"status": "created", "script_id": data.id}
 
 
@@ -230,24 +235,20 @@ async def delete_script(script_id: str) -> dict[str, Any]:
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
 
-    # The find/404 and file delete run inside the mutate against the
-    # project copy taken under the lock; the scripts diff unloads just
-    # this script (handlers, subscriptions, timers) without disturbing
-    # the others.
+    # The find/404 runs inside the mutate against the project copy taken
+    # under the lock; the scripts diff unloads just this script (handlers,
+    # subscriptions, timers) without disturbing the others, and its file
+    # goes once the project file no longer names it.
+    files = ChangeFiles()
+
     def mutate(project):
         cfg = next((s for s in project.scripts if s.id == script_id), None)
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
-
-        # Delete the file
-        scripts_dir = _get_scripts_dir()
-        path = _safe_script_path(scripts_dir, cfg.file)
-        if path.exists():
-            path.unlink()
-
+        files.remove(_safe_script_path(_get_scripts_dir(), cfg.file))
         project.scripts = [s for s in project.scripts if s.id != script_id]
 
-    await engine.apply_project_edit(mutate)
+    await engine.apply_project_edit(mutate, files=files)
     return {"status": "deleted"}
 
 

@@ -60,11 +60,19 @@ def mock_engine(tmp_path):
     engine._project_revision = 0
 
     # Script create/delete hand a mutate callback to apply_project_edit;
-    # mirror the copy-mutate-swap-and-bump contract.
-    async def _fake_apply_edit(mutate):
+    # mirror the copy-mutate-swap-and-bump contract, with the files the
+    # mutate writes or removes put back or settled.
+    async def _fake_apply_edit(mutate, files=None):
         new_project = engine.project.model_copy(deep=True)
-        mutate(new_project)
+        try:
+            mutate(new_project)
+        except Exception:
+            if files is not None:
+                files.put_back()
+            raise
         engine.project = new_project
+        if files is not None:
+            files.settle()
         engine._project_revision += 1
         return engine._project_revision
 
