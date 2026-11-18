@@ -495,19 +495,12 @@ class ProjectChangesMixin:
         were, raising it; the files ``mutate`` wrote beside the project
         (``files``) are put back too, and the ones it removes go only once
         the project file holds the change."""
-        files = files if files is not None else ChangeFiles()
-        try:
+        with (files or ChangeFiles()).following():
             proposed = self.project.model_copy(deep=True)
             mutate(proposed)
             if reconcile:
-                outcome = await self._apply_project_locked(proposed, ProjectOrigin.EDIT, persist=True)
-            else:
-                outcome = await self._keep_locked(proposed)
-        except Exception:
-            files.put_back()
-            raise
-        files.settle()
-        return outcome
+                return await self._apply_project_locked(proposed, ProjectOrigin.EDIT, persist=True)
+            return await self._keep_locked(proposed)
 
     async def _keep_locked(self, proposed: ProjectConfig) -> ApplyOutcome:
         """The change door's end for a bookkeeping change: ``proposed`` taken

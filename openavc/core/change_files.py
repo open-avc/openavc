@@ -15,9 +15,9 @@ and the change's ``mutate`` fills it:
   is loaded again from it). A file that cannot be removed then is logged and
   left: the change is applied, and a file no record names is inert.
 
-The door calls ``put_back`` when the change is not applied and ``settle``
-once it is; each is logged on a failure and never raised, so the caller
-hears what the change itself did.
+The door runs the change inside ``following``, which calls ``put_back``
+when the change is not applied and ``settle`` once it is; each is logged on
+a failure and never raised, so the caller hears what the change itself did.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +71,17 @@ class ChangeFiles:
     def remove(self, path: Path) -> None:
         """Remove ``path`` once the project file holds the change."""
         self._removed.append(path)
+
+    @contextmanager
+    def following(self) -> Iterator[None]:
+        """The change's own span: what it wrote put back when it raises, and
+        what it drops removed once it returns."""
+        try:
+            yield
+        except Exception:
+            self.put_back()
+            raise
+        self.settle()
 
     def put_back(self) -> None:
         """The change was not applied: every file it wrote back as it was,

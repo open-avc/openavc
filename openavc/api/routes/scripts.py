@@ -59,6 +59,16 @@ def _safe_script_path(scripts_dir: Path, filename: str) -> Path:
     return resolved
 
 
+def _refuse_taken(project, script_id: str, file: str) -> None:
+    """409 for an id another script has, or a file another script runs
+    from: the create's write would replace that script's source."""
+    for s in project.scripts:
+        if s.id == script_id:
+            raise HTTPException(status_code=409, detail=f"Script '{script_id}' already exists")
+        if s.file == file:
+            raise HTTPException(status_code=409, detail=f"The file '{file}' belongs to script '{s.id}'")
+
+
 @router.get("/scripts/functions")
 async def get_script_functions() -> dict[str, Any]:
     """Return all callable functions from loaded scripts."""
@@ -218,12 +228,7 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
     files = ChangeFiles()
 
     def mutate(project):
-        for s in project.scripts:
-            if s.id == data.id:
-                raise HTTPException(status_code=409, detail=f"Script '{data.id}' already exists")
-            # The write below would replace the source that script runs.
-            if s.file == data.file:
-                raise HTTPException(status_code=409, detail=f"The file '{data.file}' belongs to script '{s.id}'")
+        _refuse_taken(project, data.id, data.file)
         project.scripts.append(new_script)
         files.write(path, data.source)
 
