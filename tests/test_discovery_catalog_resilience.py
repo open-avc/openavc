@@ -113,12 +113,6 @@ def test_requires_gated_catalog_entry_skips_without_side_effects(monkeypatch, ca
 # --- A malformed (non-object) catalog element must be skipped, not fatal ---
 
 
-def _fetch_returning(data):
-    async def _fetch(_path):
-        return data
-    return _fetch
-
-
 def _raw_fetch_returning(data):
     import json
 
@@ -158,10 +152,59 @@ async def test_devices_cache_skips_non_object_entries(monkeypatch):
         "not-a-dict",
         {"manufacturer": "Acme", "model": "X2", "drivers": [{"id": "acme_gadget"}]},
     ]}
-    monkeypatch.setattr(ci, "_fetch_json_with_retry", _fetch_returning(payload))
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", _raw_fetch_returning(payload))
     cache = ci.CommunityDevicesCache()
     assert await cache.find_drivers("Acme", "X2") == [{"id": "acme_gadget"}]
     assert all(isinstance(d, dict) for d in await cache.get_devices())
+
+
+async def test_devices_cache_adds_up_every_row_for_a_model(monkeypatch):
+    """The catalog can list one model on two rows (its name cased two ways,
+    each with its own driver): both rows' drivers answer, in row order."""
+    payload = {"devices": [
+        {"manufacturer": "Acme", "model": "X1 series", "drivers": [{"id": "acme_widget"}]},
+        {"manufacturer": "Acme", "model": "X2", "drivers": [{"id": "acme_gadget"}]},
+        {"manufacturer": "ACME", "model": "X1 Series", "drivers": [{"id": "acme_generic"}]},
+    ]}
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", _raw_fetch_returning(payload))
+    cache = ci.CommunityDevicesCache()
+    assert await cache.find_drivers("acme", "x1 SERIES") == [{"id": "acme_widget"}, {"id": "acme_generic"}]
+    assert (await cache.get_lookup())[("acme", "x1 series")] == [{"id": "acme_widget"}, {"id": "acme_generic"}]
+
+
+async def test_devices_cache_skips_rows_it_cannot_read(monkeypatch):
+    """A row whose manufacturer or model is not text, or whose drivers are not
+    a list, is skipped, and so is a driver entry that is not an object."""
+    payload = {"devices": [
+        {"manufacturer": "Acme", "model": 100, "drivers": [{"id": "acme_number"}]},
+        {"manufacturer": ["Acme"], "model": "X1", "drivers": [{"id": "acme_listed"}]},
+        {"manufacturer": "Acme", "model": "X1", "drivers": "acme_text"},
+        {"manufacturer": "Acme", "model": "X1", "drivers": ["acme_text", None, {"id": "acme_widget"}]},
+    ]}
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", _raw_fetch_returning(payload))
+    cache = ci.CommunityDevicesCache()
+    assert await cache.find_drivers("Acme", "X1") == [{"id": "acme_widget"}]
+    assert list(await cache.get_lookup()) == [("acme", "x1")]
+
+
+async def test_devices_cache_records_why_a_fetch_failed(monkeypatch):
+    """A failed fetch says why (offline, not JSON, no list) while the cache
+    holds no copy, and a fetch that works clears it."""
+    answers = [(None, "offline"), (b"<html>", ""), (b'{"devices": 5}', ""), (b'{"devices": []}', "")]
+
+    async def fetch(_path):
+        return answers.pop(0)
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    cache = ci.CommunityDevicesCache()
+    errors = []
+    for _ in range(4):
+        assert await cache.find_drivers("Acme", "X1") == []
+        errors.append(cache.last_error)
+    assert errors[0] == "offline"
+    assert "not valid JSON" in errors[1]
+    assert "unexpected shape" in errors[2]
+    assert errors[3] == ""
 
 
 def test_rebuild_signal_index_skips_non_dict_catalog_entry(caplog):

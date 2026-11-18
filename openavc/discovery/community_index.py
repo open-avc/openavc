@@ -1,5 +1,10 @@
 """Community driver index + device catalog caches — fetched from GitHub raw.
 
+Each cache keeps its copy for ten minutes, tries a failed fetch once more,
+and answers the copy it has when that fails too. The server's one copy of
+each, the one Browse Drivers, installs and the AI's catalog tools read, is
+made in ``api/driver_catalog.py``.
+
 The index cache also keeps what it last fetched (``identity``): when, from
 where, the SHA-256 of the bytes, and how many drivers they held, or why the
 fetch failed. A device audit records that, so a report says exactly which
@@ -20,6 +25,9 @@ log = logging.getLogger("discovery.community")
 COMMUNITY_REPO_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
 CACHE_TTL = 600  # 10 minutes
 
+#: How long a failed request waits before it is tried the second time.
+_RETRY_DELAY_SECONDS = 2.0
+
 
 async def _fetch_raw_with_retry(path: str) -> tuple[bytes | None, str]:
     """Fetch a file from the community repo with one retry.
@@ -39,25 +47,13 @@ async def _fetch_raw_with_retry(path: str) -> tuple[bytes | None, str]:
             last_error = e
             if attempt == 0:
                 import asyncio
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(_RETRY_DELAY_SECONDS)
     log.warning("Failed to fetch %s after 2 attempts: %s", path, last_error)
     if last_error is not None:
         sentence = internet_failure(last_error, "raw.githubusercontent.com")
         if sentence:
             return None, sentence
     return None, str(last_error) or type(last_error).__name__
-
-
-async def _fetch_json_with_retry(path: str) -> dict[str, Any] | list[Any] | None:
-    """Fetch a JSON file from the community repo with one retry. None on failure."""
-    raw, _error = await _fetch_raw_with_retry(path)
-    if raw is None:
-        return None
-    try:
-        return json.loads(raw)
-    except ValueError as e:
-        log.warning("%s is not valid JSON: %s", path, e)
-        return None
 
 
 class CommunityIndexCache:
@@ -148,7 +144,9 @@ class CommunityDevicesCache:
     Provides O(1) lookup of `(manufacturer, model)` to the drivers that
     control that device. The catalog is reverse-indexed at build time from
     every driver's `compatible_models`, so a hit here is the authoritative
-    "which driver controls this device" answer.
+    "which driver controls this device" answer. One model can sit on more
+    than one row (its name cased two ways, each row naming its own driver),
+    so a lookup answers the drivers of every row for it, in row order.
     """
 
     def __init__(self) -> None:
@@ -156,6 +154,18 @@ class CommunityDevicesCache:
         # (manufacturer_lower, model_lower) -> list of driver entries
         self._lookup: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._fetched_at: float = 0.0
+        self._last_error: str = ""
+
+    @property
+    def last_error(self) -> str:
+        """Why the most recent fetch failed, empty when it succeeded. A failed
+        fetch keeps the earlier copy, so a lookup can still answer."""
+        return self._last_error
+
+    def cached(self) -> list[dict[str, Any]]:
+        """The devices last fetched, without fetching: [] before a first
+        fetch."""
+        return self._devices
 
     async def get_devices(self) -> list[dict[str, Any]]:
         """Fetch the devices catalog, using cached data if fresh enough."""
@@ -187,32 +197,60 @@ class CommunityDevicesCache:
         if self._devices and (now - self._fetched_at) < CACHE_TTL:
             return
 
-        data = await _fetch_json_with_retry("devices.json")
-        if data is None:
+        devices = await self._fetch_devices()
+        if devices is None:
             if self._devices:
                 log.info("Using stale community devices cache (%d devices)", len(self._devices))
             return
 
-        raw = data.get("devices", []) if isinstance(data, dict) else data
-        if not isinstance(raw, list):
+        self._devices = devices
+        self._lookup = _devices_lookup(devices)
+        self._fetched_at = now
+        self._last_error = ""
+        log.info("Community devices fetched: %d devices", len(devices))
+
+    async def _fetch_devices(self) -> list[dict[str, Any]] | None:
+        """devices.json's rows, each an object; None (with why kept in
+        ``last_error``) when there is no list of devices to read."""
+        raw, error = await _fetch_raw_with_retry("devices.json")
+        if raw is None:
+            self._last_error = error or "no data"
+            return None
+        try:
+            data = json.loads(raw)
+        except ValueError as e:
+            log.warning("devices.json is not valid JSON: %s", e)
+            self._last_error = f"devices.json is not valid JSON: {e}"
+            return None
+
+        rows = data.get("devices", []) if isinstance(data, dict) else data
+        if not isinstance(rows, list):
             log.warning("devices.json had unexpected shape; ignoring")
-            return
+            self._last_error = "devices.json had an unexpected shape"
+            return None
 
         # Drop non-object entries so one malformed element can't crash the
         # per-element `.get(...)` below (and, via the engine catch-all, abort
         # the whole scan) — skip the bad entry, keep the rest.
-        devices = [d for d in raw if isinstance(d, dict)]
-        skipped = len(raw) - len(devices)
+        devices = [d for d in rows if isinstance(d, dict)]
+        skipped = len(rows) - len(devices)
         if skipped:
             log.warning("devices.json: skipped %d malformed (non-object) entr(ies)", skipped)
+        return devices
 
-        self._devices = devices
-        self._lookup = {}
-        for d in devices:
-            mfr = d.get("manufacturer", "")
-            model = d.get("model", "")
-            drivers = d.get("drivers", [])
-            if mfr and model and isinstance(drivers, list):
-                self._lookup[(mfr.lower(), model.lower())] = drivers
-        self._fetched_at = now
-        log.info("Community devices fetched: %d devices", len(devices))
+
+def _devices_lookup(devices: list[dict[str, Any]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
+    """(manufacturer, model), lowercased, to the driver entries of every row
+    naming them. A row whose manufacturer or model is not text, or whose
+    drivers are not a list, is skipped, as is a driver entry that is not an
+    object."""
+    lookup: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for d in devices:
+        mfr, model, drivers = d.get("manufacturer"), d.get("model"), d.get("drivers")
+        if not (isinstance(mfr, str) and isinstance(model, str) and mfr and model):
+            continue
+        if not isinstance(drivers, list):
+            continue
+        rows = lookup.setdefault((mfr.lower(), model.lower()), [])
+        rows.extend(drv for drv in drivers if isinstance(drv, dict))
+    return lookup

@@ -5,11 +5,14 @@ write or a fetch fails here:
 
 - The community catalog: how a free-text query scores an entry (each field's
   weight), the filters, the ranking, the limit and how a bad one is read, the
-  lean entry a search answers with, the index cached for ten minutes (a stale
-  copy answered when a fetch fails, nothing to answer without one), every
-  entry's download address, one driver's full entry, and the exact
-  manufacturer and model lookup over ``devices.json`` (fetched on every call,
-  rows for the same model added together).
+  lean entry a search answers with, every entry's download address (built
+  into the answer, never written into the server's copy), one driver's full
+  entry, and the exact manufacturer and model lookup over ``devices.json``
+  (rows for the same model added together). The tools read the server's one
+  copy of each file (``api/driver_catalog.py``), the copy Browse Drivers
+  reads: kept for ten minutes, a failed fetch tried once more, a stale copy
+  answered when that fails too, and a catalog that cannot be read, or holds
+  no list, answered as one that could not be fetched.
 - ``get_installed_drivers`` with no engine or no driver folder (its rows are
   Installed's, held in ``test_driver_file_identity.py``).
 - ``create_driver_definition`` and ``update_driver_definition``: a definition
@@ -34,8 +37,11 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
+from openavc.api import driver_catalog
+from openavc.api.routes.drivers import get_community_drivers
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.cloud.tools.catalog_tools import _lean_driver_entry, _score_driver_match
+from openavc.discovery import community_index
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import (
     list_registered_drivers,
@@ -66,6 +72,15 @@ class _AcmePython(BaseDriver):
 
 def _handler() -> AIToolHandler:
     return AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+
+
+@pytest.fixture(autouse=True)
+def _no_catalog_yet(monkeypatch):
+    """Each test starts with no copy of the catalog on this server, and a
+    failed fetch is tried again at once rather than after two seconds."""
+    monkeypatch.setattr(driver_catalog, "_index_cache", None)
+    monkeypatch.setattr(driver_catalog, "_devices_cache", None)
+    monkeypatch.setattr(community_index, "_RETRY_DELAY_SECONDS", 0)
 
 
 class _Web:
@@ -215,35 +230,63 @@ async def test_search_limit_defaults_to_twenty_five(monkeypatch):
 
     assert (answer["returned"], answer["total"], answer["truncated"]) == (25, 30, True)
 
-    capped = {"drivers": [_entry(f"acme_{n:03d}") for n in range(130)]}
-    handler = _handler()
-    _Web(monkeypatch, {"index.json": capped})
-    assert (await handler._search_community_drivers({"limit": 1000}))["returned"] == 100
+
+async def test_search_answers_at_most_a_hundred(monkeypatch):
+    _Web(monkeypatch, {"index.json": {"drivers": [_entry(f"acme_{n:03d}") for n in range(130)]}})
+    assert (await _handler()._search_community_drivers({"limit": 1000}))["returned"] == 100
 
 
-# --- the index and its cache ------------------------------------------------------------
+# --- the server's copy of the index ------------------------------------------------------
 
 
-async def test_every_entry_with_a_file_gets_its_download_address(monkeypatch):
+def _search_ids(answer: dict) -> list:
+    return [d["id"] for d in answer["drivers"]]
+
+
+async def test_every_entry_with_a_file_answers_its_download_address(monkeypatch):
     _Web(monkeypatch, {"index.json": INDEX})
 
-    drivers = await _handler()._fetch_community_index()
+    answer = await _handler()._search_community_drivers({})
 
-    assert {d["id"]: d.get("download_url") for d in drivers} == {
+    assert {d["id"]: d.get("download_url") for d in answer["drivers"]} == {
         "acme_widget": f"{BASE}/utility/acme_widget.avcdriver",
         "acme_gadget": f"{BASE}/utility/acme_gadget.avcdriver",
         "zeta_widget": f"{BASE}/utility/zeta_widget.avcdriver",
         "nofile_widget": None,
     }
+    # Built into the answer: the copy Browse Drivers lists is as fetched.
+    assert [d.get("download_url") for d in driver_catalog.index_cache().cached()] == [None] * 4
 
 
 async def test_a_list_shaped_index_is_read_too(monkeypatch):
     web = _Web(monkeypatch, {"index.json": [_entry("acme_widget")]})
 
-    drivers = await _handler()._fetch_community_index()
-
-    assert [d["id"] for d in drivers] == ["acme_widget"]
+    assert _search_ids(await _handler()._search_community_drivers({})) == ["acme_widget"]
     assert web.fetched == [f"{BASE}/index.json"]
+
+
+async def test_the_ai_answers_the_catalog_browse_drivers_just_fetched(monkeypatch):
+    web = _Web(monkeypatch, {"index.json": INDEX})
+    handler = _handler()
+    assert await handler._get_community_driver_detail({"driver_id": "acme_new"}) == {
+        "error": "Driver 'acme_new' not found in community catalog",
+    }
+
+    web.bodies["index.json"] = {"drivers": [*INDEX["drivers"], _entry("acme_new")]}
+    await get_community_drivers(refresh=True)
+
+    assert (await handler._get_community_driver_detail({"driver_id": "acme_new"}))["id"] == "acme_new"
+    assert len(web.fetched) == 2
+
+
+async def test_browse_drivers_and_the_ai_share_one_fetch(monkeypatch):
+    web = _Web(monkeypatch, {"index.json": INDEX})
+
+    await get_community_drivers()
+    await _handler()._search_community_drivers({"query": "acme"})
+    await _handler()._get_community_driver_detail({"driver_id": "acme_widget"})
+
+    assert len(web.fetched) == 1
 
 
 async def test_the_index_is_kept_for_ten_minutes(monkeypatch):
@@ -252,44 +295,59 @@ async def test_the_index_is_kept_for_ten_minutes(monkeypatch):
     web = _Web(monkeypatch, {"index.json": INDEX})
     handler = _handler()
 
-    first = await handler._fetch_community_index()
+    await handler._search_community_drivers({})
     now[0] += 599
-    assert await handler._fetch_community_index() is first
+    assert len(_search_ids(await handler._search_community_drivers({}))) == 4
     assert len(web.fetched) == 1
 
     now[0] += 2
     web.bodies["index.json"] = {"drivers": [_entry("acme_new")]}
-    assert [d["id"] for d in await handler._fetch_community_index()] == ["acme_new"]
+    assert _search_ids(await handler._search_community_drivers({})) == ["acme_new"]
     assert len(web.fetched) == 2
 
 
-@pytest.mark.parametrize("failure", [httpx.ConnectError("offline"), OSError("no route"), (503, b"down")])
-async def test_a_failed_fetch_answers_the_stale_copy(monkeypatch, failure):
+# A request that fails is tried once more; an answer that arrives but is not
+# JSON is not asked for again.
+FAILED_FETCHES = [
+    (httpx.ConnectError("offline"), 2), (OSError("no route"), 2), ((503, b"down"), 2),
+    ((200, b"<html>"), 1),
+]
+
+
+@pytest.mark.parametrize(("failure", "requests"), FAILED_FETCHES)
+async def test_a_failed_fetch_answers_the_stale_copy(monkeypatch, failure, requests):
     now = [1_000_000.0]
     monkeypatch.setattr(time, "time", lambda: now[0])
     web = _Web(monkeypatch, {"index.json": INDEX})
     handler = _handler()
-    first = await handler._fetch_community_index()
+    await handler._search_community_drivers({})
 
     now[0] += 3600
     web.bodies["index.json"] = failure
-    assert await handler._fetch_community_index() is first
+    answer = await handler._search_community_drivers({})
+    assert (len(answer["drivers"]), answer["error"]) == (4, None)
+    assert len(web.fetched) == 1 + requests
     # The stale copy keeps its age: the next call tries again.
-    await handler._fetch_community_index()
-    assert len(web.fetched) == 3
+    await handler._search_community_drivers({})
+    assert len(web.fetched) == 1 + 2 * requests
 
 
-@pytest.mark.parametrize("failure", [httpx.ConnectError("offline"), OSError("no route"), (404, b"gone")])
-async def test_a_failed_fetch_with_no_copy_answers_none(monkeypatch, failure):
-    _Web(monkeypatch, {"index.json": failure})
-    assert await _handler()._fetch_community_index() is None
+@pytest.mark.parametrize(("failure", "requests"), FAILED_FETCHES)
+async def test_a_failed_fetch_with_no_copy_is_answered_as_one(monkeypatch, failure, requests):
+    web = _Web(monkeypatch, {"index.json": failure})
+
+    assert await _handler()._search_community_drivers({}) == {
+        "drivers": [], "total": 0, "error": "Failed to fetch community index",
+    }
+    assert len(web.fetched) == requests
 
 
-async def test_an_index_that_is_not_json_fails_the_tool(monkeypatch):
-    # Not caught today: the tool fails and the dispatcher words it.
-    _Web(monkeypatch, {"index.json": (200, b"<html>")})
-    with pytest.raises(ValueError):
-        await _handler()._search_community_drivers({})
+async def test_an_empty_catalog_is_answered_as_empty(monkeypatch):
+    _Web(monkeypatch, {"index.json": {"drivers": []}})
+
+    answer = await _handler()._search_community_drivers({"query": "acme"})
+
+    assert (answer["drivers"], answer["total"], answer["error"]) == ([], 0, None)
 
 
 # --- get_community_driver_detail ------------------------------------------------------------
@@ -320,10 +378,23 @@ async def test_detail_refusals(monkeypatch):
     assert await handler._get_community_driver_detail({"driver_id": "acme_ghost"}) == {
         "error": "Driver 'acme_ghost' not found in community catalog",
     }
-    web.bodies["index.json"] = httpx.ConnectError("offline")
+
+
+async def test_detail_with_no_catalog(monkeypatch):
+    _Web(monkeypatch, {"index.json": httpx.ConnectError("offline")})
     assert await _handler()._get_community_driver_detail({"driver_id": "acme_widget"}) == {
         "error": "Failed to fetch community index",
     }
+
+
+async def test_detail_answers_a_copy_of_the_entry(monkeypatch):
+    _Web(monkeypatch, {"index.json": INDEX})
+    handler = _handler()
+
+    answer = await handler._get_community_driver_detail({"driver_id": "nofile_widget"})
+    answer["name"] = "Changed"
+
+    assert (await handler._get_community_driver_detail({"driver_id": "nofile_widget"}))["name"] == "No File"
 
 
 # --- find_driver_for_device ------------------------------------------------------------------
@@ -359,15 +430,41 @@ async def test_find_adds_up_every_row_for_the_model(monkeypatch):
     assert web.fetched == [f"{BASE}/devices.json"]
 
 
-async def test_find_fetches_the_catalog_every_time(monkeypatch):
+async def test_find_reads_one_copy_for_ten_minutes(monkeypatch):
+    now = [1_000_000.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
     web = _Web(monkeypatch, {"devices.json": DEVICES["devices"]})
     handler = _handler()
 
     await handler._find_driver_for_device({"manufacturer": "Acme", "model": "WX-300"})
+    now[0] += 599
+    answer = await _handler()._find_driver_for_device({"manufacturer": "Acme", "model": "WX-200"})
+    assert answer["matches"] == [{"driver_id": "acme_widget", "confidence": "untested", "notes": None}]
+    assert len(web.fetched) == 1
+
+    now[0] += 2
+    web.bodies["devices.json"] = [{"manufacturer": "Acme", "model": "WX-200", "drivers": [{"id": "acme_new"}]}]
+    answer = await handler._find_driver_for_device({"manufacturer": "Acme", "model": "WX-200"})
+    assert [m["driver_id"] for m in answer["matches"]] == ["acme_new"]
+    assert len(web.fetched) == 2
+
+
+@pytest.mark.parametrize(("failure", "requests"), FAILED_FETCHES)
+async def test_find_answers_the_stale_copy_when_a_fetch_fails(monkeypatch, failure, requests):
+    now = [1_000_000.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+    web = _Web(monkeypatch, {"devices.json": DEVICES})
+    handler = _handler()
+    await handler._find_driver_for_device({"manufacturer": "Acme", "model": "WX-200"})
+
+    now[0] += 3600
+    web.bodies["devices.json"] = failure
     answer = await handler._find_driver_for_device({"manufacturer": "Acme", "model": "WX-200"})
 
-    assert answer["matches"] == [{"driver_id": "acme_widget", "confidence": "untested", "notes": None}]
-    assert len(web.fetched) == 2
+    assert (answer["matches"], answer["error"]) == (
+        [{"driver_id": "acme_widget", "confidence": "untested", "notes": None}], None,
+    )
+    assert len(web.fetched) == 1 + requests
 
 
 async def test_find_with_no_match(monkeypatch):
@@ -385,17 +482,17 @@ async def test_find_needs_both(monkeypatch, sent):
     assert web.fetched == []
 
 
-@pytest.mark.parametrize("failure", [
-    httpx.ConnectError("offline"), OSError("no route"), (500, b"oops"), (200, b"<html>"),
-])
-async def test_find_with_no_catalog(monkeypatch, caplog, failure):
+@pytest.mark.parametrize(("failure", "requests"), FAILED_FETCHES)
+async def test_find_with_no_catalog(monkeypatch, caplog, failure, requests):
     caplog.set_level(logging.WARNING)
-    _Web(monkeypatch, {"devices.json": failure})
+    web = _Web(monkeypatch, {"devices.json": failure})
 
     answer = await _handler()._find_driver_for_device({"manufacturer": "Acme", "model": "WX-100"})
 
     assert answer == {"matches": [], "error": "Failed to fetch the community device catalog"}
-    assert [r.getMessage() for r in caplog.records if r.getMessage().startswith("Community device catalog")]
+    assert len(web.fetched) == requests
+    # Why goes to the log, never into the answer.
+    assert [r.getMessage() for r in caplog.records if "devices.json" in r.getMessage()]
 
 
 # --- get_installed_drivers ---------------------------------------------------------------------

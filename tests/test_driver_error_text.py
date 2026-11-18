@@ -29,7 +29,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from openavc.api import ws
+from openavc.api import driver_catalog, ws
 from openavc.api.routes import devices as device_routes
 from openavc.cloud.ai_tool_handler import TOOL_FAILED, AIToolHandler
 from openavc.core.device_manager import DeviceNotFoundError
@@ -38,6 +38,7 @@ from openavc.core.isc import ISCRemoteError
 from openavc.core import project_loader
 from openavc.core.project_loader import DeviceConfig, ProjectSaveError, load_project
 from openavc.core.script_engine import ScriptEngine
+from openavc.discovery import community_index
 from openavc.drivers.base import (
     BaseDriver,
     CommandRefusedError,
@@ -503,6 +504,9 @@ async def test_a_catalog_lookup_that_failed_keeps_the_library_text_local(engine,
         raise httpx.ConnectError(PRIVATE)
 
     monkeypatch.setattr(httpx.AsyncClient, "get", refuse)
+    # This server holds no copy of the catalog yet, and tries again at once.
+    monkeypatch.setattr(driver_catalog, "_devices_cache", None)
+    monkeypatch.setattr(community_index, "_RETRY_DELAY_SECONDS", 0)
     handler, send = _ai(engine)
     await handler._execute_tool(
         "r1", "find_driver_for_device", handler._tools["find_driver_for_device"],

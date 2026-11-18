@@ -9,9 +9,11 @@ the check against the hashes the catalog publishes for that file's own path,
 before anything is written. The hashes are looked up here from the community
 index, never taken from the request, and a disagreement fetches the index once
 more past the cached copy before refusing (``utils/community_integrity.py``
-``CatalogCheck``). Browse Community and every install's check read the same
-cached copy of the index (``index_cache``); a device page's missing-driver
-list and Discovery keep caches of their own.
+``CatalogCheck``). Browse Community, every install's check and the AI's
+catalog tools read the same cached copy of the index (``index_cache``), and
+the AI's model lookup reads this server's one copy of ``devices.json``
+(``devices_cache``); a device page's missing-driver list and Discovery keep
+caches of their own.
 
 Each of the three files an install may bring answers a failure in its own
 words (the main file, a YAML driver's declared companion, a Python driver's
@@ -46,19 +48,33 @@ from openavc.utils.outbound import internet_client, internet_failure
 # routes' to a reader.
 log = get_logger("openavc.api.routes.drivers")
 
-# The community index Browse Community and the installs read (``index_cache``).
+# The community index Browse Community, the installs and the AI read
+# (``index_cache``), and the device catalog the AI reads (``devices_cache``).
 _index_cache: Any = None
+_devices_cache: Any = None
 
 
 def index_cache() -> Any:
     """The cached community index, made on first use: Browse Community lists
-    it and every install's hash lookup reads it."""
+    it, every install's hash lookup reads it, and so do the AI's catalog
+    search and a driver's catalog entry."""
     global _index_cache
     if _index_cache is None:
         from openavc.discovery.community_index import CommunityIndexCache
 
         _index_cache = CommunityIndexCache()
     return _index_cache
+
+
+def devices_cache() -> Any:
+    """The cached community device catalog (``devices.json``), made on first
+    use: the AI's lookup of the drivers for a manufacturer and model reads it."""
+    global _devices_cache
+    if _devices_cache is None:
+        from openavc.discovery.community_index import CommunityDevicesCache
+
+        _devices_cache = CommunityDevicesCache()
+    return _devices_cache
 
 
 def _drivers_owner_repo() -> str:
