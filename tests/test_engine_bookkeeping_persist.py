@@ -276,18 +276,20 @@ async def test_plugin_save_config_under_lock_defers_without_deadlock(tmp_path):
         await asyncio.wait_for(
             eng._save_plugin_config("plug1", {"x": 2}), timeout=5
         )
-        # In-memory config is already current for get_running_config parity.
-        assert eng.project.plugins["plug1"].config == {"x": 2}
+        # Queued: the running project, which the settings page shows, waits
+        # for the file.
+        assert eng.project.plugins["plug1"].config == {"x": 1}
 
     await wait_for_condition(
         lambda: eng._revision_counter == 1,
         message="deferred plugin-config persist never ran",
     )
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
+    assert eng.project.plugins["plug1"].config == {"x": 2}
 
 
 @pytest.mark.asyncio
-async def test_plugin_save_config_failure_reverts_in_memory(tmp_path, monkeypatch):
+async def test_plugin_save_config_failure_leaves_the_project_as_saved(tmp_path, monkeypatch):
     eng = _engine(tmp_path, plugins={
         "plug1": {"enabled": False, "config": {"x": 1}},
     })
@@ -301,7 +303,7 @@ async def test_plugin_save_config_failure_reverts_in_memory(tmp_path, monkeypatc
     with pytest.raises(OSError):
         await eng._save_plugin_config("plug1", {"x": 2})
 
-    # Reverted so the poisoned config can't break every later save.
+    # Never taken in, so the config can't break every later save.
     assert eng.project.plugins["plug1"].config == {"x": 1}
     assert eng._revision_counter == 0
 

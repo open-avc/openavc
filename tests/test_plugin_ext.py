@@ -467,13 +467,73 @@ class TestSaveConfig:
 
     @pytest.mark.asyncio
     async def test_reverts_config_on_save_failure(self):
-        """If the persist step fails, api.config reverts so it never reports an
-        unpersisted value as saved."""
+        """If the persist step fails, api.config stays on the saved config, so
+        it never reports an unpersisted value as saved."""
         api, _ = _make_api("p", capabilities=[])
         api._config = {"keep": 1}
         api._save_config_fn = AsyncMock(side_effect=OSError("disk full"))
         with pytest.raises(OSError):
             await api.save_config({"keep": 2})
+        assert api.config == {"keep": 1}
+        assert api._config == {"keep": 1}
+
+    @pytest.mark.asyncio
+    async def test_a_save_on_its_way_shows_in_config_and_reaches_the_platform_once_taken(self):
+        api, _ = _make_api("p", capabilities=[])
+        api._config = {"keep": 1}
+        saves = []
+
+        async def queue(plugin_id, config, save):
+            saves.append(save)
+
+        api._save_config_fn = queue
+        await api.save_config({"keep": 2})
+        assert api.config == {"keep": 2}
+        assert api._config == {"keep": 1}
+        saves[0].taken()
+        assert api._config == {"keep": 2}
+        assert api.config == {"keep": 2}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("newer", ["handed", "later save", "stopped"])
+    async def test_a_save_overtaken_before_it_lands_is_not_current(self, newer):
+        api, _ = _make_api("p", capabilities=[])
+        api._config = {"keep": 1}
+        saves = []
+
+        async def queue(plugin_id, config, save):
+            saves.append(save)
+
+        api._save_config_fn = queue
+        await api.save_config({"keep": 2})
+        earlier = saves[0]
+        if newer == "handed":
+            api._update_config({"keep": 3})
+        elif newer == "later save":
+            await api.save_config({"keep": 3})
+            saves[1].taken()
+        else:
+            api._retire()
+        assert not earlier.current()
+        earlier.taken()
+        assert api.config == ({"keep": 2} if newer == "stopped" else {"keep": 3})
+        assert api._config == ({"keep": 1} if newer == "stopped" else {"keep": 3})
+
+    @pytest.mark.asyncio
+    async def test_a_dropped_save_leaves_a_later_one_showing(self):
+        api, _ = _make_api("p", capabilities=[])
+        api._config = {"keep": 1}
+        saves = []
+
+        async def queue(plugin_id, config, save):
+            saves.append(save)
+
+        api._save_config_fn = queue
+        await api.save_config({"keep": 2})
+        await api.save_config({"keep": 3})
+        saves[0].dropped()
+        assert api.config == {"keep": 3}
+        saves[1].dropped()
         assert api.config == {"keep": 1}
 
 

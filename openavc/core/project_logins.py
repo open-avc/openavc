@@ -2,8 +2,8 @@
 plugins wait for somebody to enter one, moving each login the project still
 holds in the clear into this system's login file (``core.device_logins``),
 the log redaction's copy of the project's own secrets, the sweep of logins
-whose owner left the project, and a plugin's own save of its config, which
-moves its logins on the way to disk.
+whose owner left the project, and a plugin's own save of its config, whose
+logins move with it through the change door.
 
 A move happens twice in a start: the device logins as the project loads
 (``_move_device_logins_at_load``), the plugin logins once the plugins are
@@ -40,9 +40,10 @@ from openavc.core.device_logins import (
     StoreView,
     held_as_saved,
     in_project,
+    find_plugin_logins,
+    keep_waiting_logins,
     marked_fields,
     move_logins,
-    move_plugin_logins,
     param_owner,
     plugin_logins_waiting,
     saved_isc_key,
@@ -55,12 +56,6 @@ from openavc.utils.log_redaction import get_secret_registry, project_secret_valu
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.engine")
-
-
-def _replace_plugin_config(project: ProjectConfig, plugin_id: str, config: dict) -> None:
-    """``config`` as the plugin's config in ``project``, if it still has it."""
-    if plugin_id in project.plugins:
-        project.plugins[plugin_id].config = config
 
 
 class ProjectLoginsMixin:
@@ -94,7 +89,8 @@ class ProjectLoginsMixin:
     def _project_secrets(self) -> set[str]:
         """The mesh key and every plugin login, from the login file where the
         project holds the marker, as the project holds them where it does not
-        (a move that could not finish)."""
+        (a move that could not finish), and as a running plugin saved them
+        while that save is on its way to the file."""
         values = {v for v in project_secret_values(self.project) if v != SAVED_LOGIN}
         if self.project is None:
             return values
@@ -104,6 +100,11 @@ class ProjectLoginsMixin:
         for found in saved_logins_of(self.project, StoreView(self.device_logins)):
             if found.kind != DEVICE:
                 values |= set(found.fields.values())
+        # A plugin's own save on its way to the file: the plugin holds its
+        # logins already, so the log masks them before the file does.
+        for plugin_id, config in self.plugin_loader.unsaved_configs().items():
+            for found in find_plugin_logins(plugin_id, config):
+                values |= {v for v in found.fields.values() if v != SAVED_LOGIN}
         return values
 
     def saved_param_value(self, name: str) -> str | None:
@@ -313,60 +314,60 @@ class ProjectLoginsMixin:
         except Exception:
             log.exception("Could not update the saved device logins")
 
-    async def _save_plugin_config(self, plugin_id: str, config: dict) -> None:
-        """Save updated plugin config to the project file (callback for PluginAPI).
+    async def _save_plugin_config(self, plugin_id: str, config: dict, own=None) -> None:
+        """Save a plugin's own config to the project file (the callback for
+        ``PluginAPI.save_config``; ``own`` is its ``OwnSave``).
 
-        The plugin already runs with ``config`` (PluginAPI swapped it before
-        calling here), so this is a bookkeeping persist — no reconcile. A
+        A bookkeeping change through the change door: no reconcile, since
+        the plugin already runs with what it saved. Its logins move into the
+        login file in the door's take-in, and are taken back if the save
+        fails; a login it hands back empty while it waits to be entered here
+        keeps the marker (``keep_waiting_logins``). The platform's copy of
+        the config moves only once the file holds it (``own.taken``). A
         plugin can call ``save_config`` from a hook the reconciler awaits
-        inline (``on_start``, ``on_config_changed``, an event handler), so
-        it goes through ``persist_or_defer_bookkeeping_change``: saved before
-        returning, raising on failure (the PluginAPI contract), unless the
-        reconcile holds the lock, when the write runs right after it. A login
-        the plugin made or changed is masked in the log from then on (the
-        door registers the project's secrets).
+        inline (``on_start``, ``on_config_changed``, an event handler), so a
+        save made while a change holds the lock is queued to land right
+        after it (``persist_or_defer_bookkeeping_change``). The log masks
+        the logins it saved from now on.
         """
         if not self.project or plugin_id not in self.project.plugins:
+            if own is not None:
+                own.dropped()
             return
-        previous = self.project.plugins[plugin_id].config
-        # The plugin saves the config it runs with, its logins filled in. Each
-        # moves into the login file here, since this persist never passes
-        # _apply_project_locked: one the plugin changed (a regenerated key, a
-        # password typed into its own page) replaces the saved one, and the
-        # project keeps the marker.
-        config = move_plugin_logins(plugin_id, config, self.device_logins, current=previous)
-
+        self._register_project_secrets()
         try:
             await self.persist_or_defer_bookkeeping_change(
-                lambda project: _replace_plugin_config(project, plugin_id, config),
-                # Deferred, it writes the config the plugin runs with by then.
-                deferred=lambda project: self._write_running_plugin_config(project, plugin_id),
-                on_error=functools.partial(self._plugin_config_not_saved, plugin_id, previous),
+                functools.partial(self._put_plugin_config, plugin_id, config, own),
+                on_error=functools.partial(self._plugin_config_not_saved, plugin_id, own),
+                runtime_write=own.taken if own is not None else None,
             )
         except Exception as e:
             log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
             raise
 
-    async def _plugin_config_not_saved(self, plugin_id: str, previous: dict) -> None:
-        # Revert the in-memory project so it matches disk. Otherwise a
-        # bad/unwritable config lingers in the shared project model and
-        # the next save of ANYTHING re-serializes it and fails too.
-        _replace_plugin_config(self.project, plugin_id, previous)
+    def _put_plugin_config(self, plugin_id: str, config: dict, own, project: ProjectConfig) -> None:
+        """A plugin's own save written into ``project`` (the project current
+        when the save runs), unless a newer change reached the plugin first
+        or it left the project."""
+        entry = project.plugins.get(plugin_id)
+        if entry is None:
+            return
+        if own is not None and not own.current():
+            log.info(
+                f"Plugin '{plugin_id}' saved its settings, but newer ones reached it "
+                "before that save could be written, so the newer ones are kept"
+            )
+            return
+        # A copy: the plugin's own view and the platform's hold this one.
+        written = copy.deepcopy(config)
+        entry.config = keep_waiting_logins(plugin_id, written, entry.config, self.device_logins)
+
+    async def _plugin_config_not_saved(self, plugin_id: str, own) -> None:
+        """A plugin's own save that failed: nothing it changed ran, so the
+        plugin reads its saved config again, and an open IDE is told."""
+        if own is not None:
+            own.dropped()
         await self.broadcast_ws({
             "type": "error",
             "message": f"Failed to save plugin config for '{plugin_id}'",
         })
-
-    def _write_running_plugin_config(self, project: ProjectConfig, plugin_id: str) -> None:
-        """The deferred half of a plugin's save, run after the reconcile."""
-        # By then another save of this plugin may have landed (its own
-        # save_config, the settings form, the assistant). Writing the config
-        # as it was captured would put the older one back over it, so the
-        # config the plugin runs with when this runs is the one written.
-        if plugin_id not in project.plugins or not self.plugin_loader.is_running(plugin_id):
-            return
-        running = copy.deepcopy(self.plugin_loader.get_running_config(plugin_id))
-        project.plugins[plugin_id].config = move_plugin_logins(
-            plugin_id, running, self.device_logins,
-            current=project.plugins[plugin_id].config,
-        )

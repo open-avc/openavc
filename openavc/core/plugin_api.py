@@ -6,6 +6,10 @@ Each plugin instance receives its own PluginAPI with:
 - Namespace isolation (state writes restricted to plugin.<id>.*)
 - Event auto-prefixing (emitted events prefixed with plugin.<id>.)
 - Automatic registration tracking for cleanup
+- THE two views of its config while its own save is on its way to the
+  project file: the plugin's (``config``, the save at once) and the
+  platform's (``_config``, once the file holds it), and which waiting save
+  may still be written (``OwnSave``)
 """
 
 import asyncio
@@ -35,6 +39,56 @@ _HOP_BY_HOP = frozenset({
 VIEWER_LOCAL = "local"
 VIEWER_REMOTE = "remote"
 VIEWER_REMOTE_BLOCKED = "remote_blocked"
+
+
+class OwnSave:
+    """One ``api.save_config`` on its way to the project file.
+
+    Two views of a plugin's config while it is: the plugin's own
+    (``api.config``) holds what it saved at once, so a save it builds on that
+    one keeps it; the platform's (``api._config``: what a project change
+    compares with, ``get_running_config``) moves only once the file holds
+    the save (:meth:`taken`). A save that fails leaves both on the saved
+    config (:meth:`dropped`).
+
+    A save may land after another change has reached the plugin
+    (:meth:`current`): one the platform handed it since (a hot apply, a
+    restart, a stop), or a later save of its own that reached the file
+    first. Writing it then would put the older config back, so the engine
+    writes it only while it is current.
+    """
+
+    def __init__(self, api: "PluginAPI", config: dict) -> None:
+        self.config = config
+        self._api = api
+        api._saves += 1
+        self._number = api._saves
+        self._handed = api._handed
+
+    def current(self) -> bool:
+        """Whether this save is still the newest thing the plugin has asked
+        for or been handed."""
+        api = self._api
+        return (not api._retired and api._handed == self._handed
+                and self._number > api._saved)
+
+    def taken(self) -> None:
+        """The file holds this save: the platform's copy moves to it, and
+        the plugin's own view reads the platform's once nothing newer waits.
+        Nothing when the save is no longer current."""
+        if not self.current():
+            return
+        api = self._api
+        api._config = self.config
+        api._saved = self._number
+        if api._unsaved is self.config:
+            api._unsaved = None
+
+    def dropped(self) -> None:
+        """This save will not reach the file: the plugin's own view reads the
+        saved config again, unless it has saved again since."""
+        if self._api._unsaved is self.config:
+            self._api._unsaved = None
 
 
 class PluginPermissionError(Exception):
@@ -92,7 +146,14 @@ class PluginAPI:
     ):
         self._plugin_id = plugin_id
         self._capabilities = set(capabilities)
+        # The platform's view of the config (saved or handed), and the
+        # plugin's own save still on its way to the file (OwnSave).
         self._config = dict(config)
+        self._unsaved: dict | None = None
+        self._handed = 0  # configs the platform handed it since it started
+        self._saves = 0  # its own saves, numbered in the order asked
+        self._saved = 0  # the number of the last one the file holds
+        self._retired = False  # stopped: nothing more reaches this instance
         self._registry = registry
         self._state = state_store
         self._events = event_bus
@@ -678,17 +739,26 @@ class PluginAPI:
 
     @property
     def config(self) -> dict:
-        """This plugin's saved configuration (from the project file). Read-only."""
-        return dict(self._config)
+        """This plugin's configuration, as saved in the project file, or as
+        the plugin last saved it while that save is on its way there. Read-only."""
+        return dict(self._unsaved if self._unsaved is not None else self._config)
 
     def _update_config(self, new_config: dict) -> None:
-        """Swap the live config (loader-internal, used by hot config apply).
+        """Hand the plugin a config (loader-internal, used by hot config apply).
 
         Called by the plugin loader right before invoking a plugin's
         ``on_config_changed`` hook, so ``api.config`` already reflects the
-        new values when the hook runs.
+        new values when the hook runs. A save of its own still on its way to
+        the file is older than this, and is not written (``OwnSave``).
         """
         self._config = dict(new_config)
+        self._unsaved = None
+        self._handed += 1
+
+    def _retire(self) -> None:
+        """The plugin stopped: a save it made that has not reached the file
+        yet is not written (loader-internal)."""
+        self._retired = True
 
     async def save_config(self, config: dict) -> None:
         """Save updated configuration to the project file.
@@ -697,9 +767,15 @@ class PluginAPI:
         A non-serializable or self-referential value is rejected here, before
         it is written into the engine's in-memory project — otherwise it would
         poison the shared project model and block every subsequent save for the
-        rest of the session. On a save failure the in-memory config is reverted
-        so ``config`` / ``get_running_config`` never report an unpersisted value
-        as saved.
+        rest of the session.
+
+        Saved before this returns, unless another project change is being
+        saved (``on_start``, ``on_config_changed`` and the handlers the
+        platform runs while it applies one are inside it): then the save
+        lands right after that change. Either way ``config`` holds what was
+        saved at once, so a save built on it keeps this one; the platform
+        takes it once the file holds it. A save that fails leaves ``config``
+        as it was, and one made inside a change fails only in the log.
         """
         if not isinstance(config, dict):
             raise PluginPermissionError(
@@ -712,14 +788,17 @@ class PluginAPI:
             raise PluginPermissionError(
                 f"Plugin config must be JSON-serializable: {e}"
             )
-        previous = self._config
-        self._config = dict(config)
-        if self._save_config_fn:
-            try:
-                await self._save_config_fn(self._plugin_id, config)
-            except Exception:
-                self._config = previous
-                raise
+        config = dict(config)
+        if not self._save_config_fn:
+            self._config = config
+            return
+        save = OwnSave(self, config)
+        self._unsaved = config
+        try:
+            await self._save_config_fn(self._plugin_id, config, save)
+        except Exception:
+            save.dropped()
+            raise
 
     # ──── Identity & Logging ────
 

@@ -35,8 +35,8 @@ takes without a reconcile (a device's pending settings cleared, a plugin's
 own ``save_config``, a setup action's settings, a setting the device fills
 in): the door without the reconcile, swapped in and written as an edit is
 and put back when the write fails, and announced. The running system's own
-half of it (a device's settings merged into the live driver) is made once
-the file holds it, under the same lock (the ``runtime_write`` of
+half of it (a device's settings merged into the live driver, the config the
+platform holds for a plugin) is made once the file holds it, under the same lock (the ``runtime_write`` of
 ``persist_bookkeeping_change`` and of ``schedule_bookkeeping_change``), so
 nothing is taken live first and nothing needs undoing when a save fails.
 The code that makes one may be running inside a reconcile, which is why it
@@ -400,8 +400,8 @@ class ProjectChangesMixin:
         in as an edit is, made the running project under a new revision as
         an edit is, and written, with the next backup due once the file
         holds it. Swapped in before the write, as an edit is: a change made
-        in place while the file is written (a plugin's save during it)
-        lands on the project that is kept. A failed write puts the project
+        in place while the file is written lands on the project that is
+        kept. A failed write puts the project
         and the revision back, takes back the logins it filed and raises.
         Caller holds ``_reload_lock``."""
         taken = self._take_in(proposed, ProjectOrigin.EDIT, True, None)
@@ -653,26 +653,22 @@ class ProjectChangesMixin:
                 "ui": self.panel_ui(),
             })
 
-    async def persist_or_defer_bookkeeping_change(self, mutate, *, deferred, on_error=None) -> None:
+    async def persist_or_defer_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> None:
         """Persist a bookkeeping change from code that may be running inside
         a reconcile (a plugin hook the reconciler awaits holds the reload
         lock, and awaiting it then would deadlock).
 
-        With the lock free, ``persist_bookkeeping_change(mutate)``: saved
-        before this returns, raising on failure. With it held, ``mutate`` is
-        applied to the running project now and ``deferred(project)`` is
-        queued to be written right after the reconcile; it is applied to the
-        project current then, so it can read what the runtime holds at that
-        moment rather than what the caller captured. Either way the log
-        redaction learns the project's secrets once the running project
-        holds the change.
+        With the lock free, :meth:`persist_bookkeeping_change`: saved before
+        this returns, raising on failure. With it held,
+        :meth:`schedule_bookkeeping_change`: ``mutate`` is queued to run
+        right after the change holding the lock, against the project
+        current then. Either way nothing reaches the running project or the
+        runtime before the file holds it (``runtime_write``).
         """
         if self._reload_lock.locked():
-            mutate(self.project)
-            self._register_project_secrets()
-            self.schedule_bookkeeping_change(deferred, on_error=on_error)
+            self.schedule_bookkeeping_change(mutate, on_error=on_error, runtime_write=runtime_write)
         else:
-            await self.persist_bookkeeping_change(mutate, on_error=on_error)
+            await self.persist_bookkeeping_change(mutate, on_error=on_error, runtime_write=runtime_write)
 
     async def persist_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> str:
         """Persist a project change the running system takes without a
@@ -684,7 +680,8 @@ class ProjectChangesMixin:
         (:meth:`_change_locked`) without the reconcile. When it is refused
         or the save fails, ``on_error`` runs and the exception propagates;
         the running project is then as it was. ``runtime_write()`` is the
-        running system's own half of the change (a device's live settings):
+        running system's own half of the change (a device's live settings,
+        a plugin's config):
         made once the file holds the change and still under the lock, so a
         failed save leaves the runtime as the file holds it, and a change
         waiting on the lock never reconciles against a runtime that has not

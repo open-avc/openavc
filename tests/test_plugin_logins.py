@@ -21,6 +21,7 @@ An invented plugin and an invented device throughout.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import zipfile
@@ -483,6 +484,8 @@ async def test_a_key_the_plugin_makes_itself_is_made_again_and_never_waits(engin
     marked = _config(screens=[{"id": "wall", "screen_key": SAVED_LOGIN}])
     _write(engine.project_path, _project(marked))
     await engine.reload_project()
+    # Made at start, inside the reload, so its save lands right after it.
+    await engine._bookkeeping_task
 
     # Handed "", the plugin made a new key, which is now saved here.
     assert DeviceLogins(data).secret(plugin_owner(PLUGIN_ID, WALL), "screen_key") == "made-wall-key"
@@ -762,6 +765,147 @@ async def test_the_assistants_log_hides_a_plugin_login_saved_here(engine, data):
     secrets = tools._collect_secret_values()
     assert {"Bridge-Pass-1", "Feed-Pass-L", "Mesh-Key-123"} <= secrets
     assert SAVED_LOGIN not in secrets
+
+
+# --- a plugin's own save reaches the platform once the file holds it ---------------
+
+
+async def test_a_save_queued_behind_a_change_reaches_the_platform_once_saved(engine, data):
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+
+    config = api.config
+    config["host"] = "192.0.2.77"
+    async with engine._reload_lock:
+        await api.save_config(config)
+        # The plugin reads its own save at once; the platform's copy, which
+        # the next change compares with and the settings page shows, waits
+        # for the file.
+        assert api.config["host"] == "192.0.2.77"
+        assert engine.plugin_loader.get_running_config(PLUGIN_ID)["host"] == "192.0.2.20"
+        assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.20"
+    await engine._bookkeeping_task
+
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.77"
+    assert engine.plugin_loader.get_running_config(PLUGIN_ID)["host"] == "192.0.2.77"
+    assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.77"
+    assert api.config["host"] == "192.0.2.77"
+
+
+@pytest.mark.parametrize("queued", [False, True])
+async def test_a_save_that_fails_leaves_the_plugin_and_the_login_file_as_saved(engine, data, monkeypatch, queued):
+    from openavc.core import project_changes
+
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+
+    async def disk_full(path, project):
+        raise OSError("Injected unwritable project")
+
+    config = api.config
+    config["host"] = "192.0.2.78"
+    config["password"] = "Bridge-Pass-9"
+    monkeypatch.setattr(project_changes, "save_project_async", disk_full)
+    if queued:
+        async with engine._reload_lock:
+            await api.save_config(config)
+        await engine._bookkeeping_task
+    else:
+        with pytest.raises(OSError):
+            await api.save_config(config)
+
+    assert api.config["host"] == "192.0.2.20"
+    assert api.config["password"] == "Bridge-Pass-1"
+    assert engine.plugin_loader.get_running_config(PLUGIN_ID)["host"] == "192.0.2.20"
+    assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.20"
+    assert DeviceLogins(data).secret(plugin_owner(PLUGIN_ID), "password") == "Bridge-Pass-1"
+
+
+@pytest.mark.parametrize("hot_apply", [False, True])
+async def test_a_config_handed_to_the_plugin_before_its_queued_save_lands_is_kept(engine, data, hot_apply):
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+    if hot_apply:
+        engine.plugin_loader._instances[PLUGIN_ID].on_config_changed = AsyncMock(return_value=True)
+
+    config = api.config
+    config["host"] = "192.0.2.79"
+    async with engine._reload_lock:
+        await api.save_config(config)
+        # The settings form hands the plugin its config before its own
+        # change takes the lock.
+        handed = json.loads(json.dumps(engine.project.plugins[PLUGIN_ID].config))
+        handed["host"] = "192.0.2.80"
+        await engine.plugin_loader.restart_or_apply(PLUGIN_ID, handed)
+    await engine._bookkeeping_task
+
+    running = engine.plugin_loader._apis[PLUGIN_ID]
+    assert (running is api) is hot_apply
+    assert running.config["host"] == "192.0.2.80"
+    assert engine.plugin_loader.get_running_config(PLUGIN_ID)["host"] == "192.0.2.80"
+    assert _plugin_on_disk(engine)["host"] != "192.0.2.79"
+    assert engine.project.plugins[PLUGIN_ID].config["host"] != "192.0.2.79"
+
+
+async def test_a_later_save_that_reached_the_file_first_is_not_written_over(engine, data):
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+
+    earlier, later = api.config, api.config
+    earlier["host"] = "192.0.2.81"
+    later["host"] = "192.0.2.82"
+    async with engine._reload_lock:
+        # Scheduled before the earlier save queues its flush, so the later
+        # save runs first once the lock is free, and reaches the file first.
+        landing = asyncio.ensure_future(api.save_config(later))
+        await api.save_config(earlier)
+    await landing
+    await engine._bookkeeping_task
+
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.82"
+    assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.82"
+    assert api.config["host"] == "192.0.2.82"
+    assert engine.plugin_loader.get_running_config(PLUGIN_ID)["host"] == "192.0.2.82"
+
+
+async def test_a_save_a_plugin_makes_as_it_stops_is_written(engine, data):
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+    instance = engine.plugin_loader._instances[PLUGIN_ID]
+
+    async def stop():
+        config = api.config
+        config["host"] = "192.0.2.83"
+        await api.save_config(config)
+
+    instance.stop = stop
+    await engine.plugin_loader.stop_plugin(PLUGIN_ID)
+
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.83"
+    assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.83"
+
+
+async def test_a_login_saved_behind_a_change_is_masked_before_its_file_holds_it(engine, data):
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+
+    config = api.config
+    config["password"] = "Bridge-Pass-7"
+    async with engine._reload_lock:
+        await api.save_config(config)
+        assert "Bridge-Pass-7" not in get_secret_registry().redact_any("sent Bridge-Pass-7")
+        # Any registration meanwhile still knows it.
+        engine._register_project_secrets()
+        assert "Bridge-Pass-7" not in get_secret_registry().redact_any("sent Bridge-Pass-7")
+    await engine._bookkeeping_task
+    assert "Bridge-Pass-7" not in get_secret_registry().redact_any("sent Bridge-Pass-7")
+    assert DeviceLogins(data).secret(plugin_owner(PLUGIN_ID), "password") == "Bridge-Pass-7"
 
 
 async def test_a_save_made_after_a_reconcile_outlives_the_one_made_during_it(engine, data):

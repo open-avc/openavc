@@ -982,33 +982,35 @@ def _stored(
     return True
 
 
-def move_plugin_logins(
+def keep_waiting_logins(
     plugin_id: str,
     config: dict[str, Any],
+    current: dict[str, Any],
     logins: DeviceLogins,
-    *,
-    current: dict[str, Any] | None = None,
-    typed: bool = True,
 ) -> dict[str, Any]:
-    """One plugin's ``config`` with each login it declares moved into the
-    running project's logins and the marker left in its place: the config a
-    plugin saves itself (``api.save_config``), which reaches the project
-    without passing ``move_logins``. ``config`` itself when nothing moved or
-    the move could not finish.
+    """A plugin's own ``config`` (``api.save_config``) with the marker kept
+    where a login still waits for somebody to enter it here; ``config``
+    itself when none does. The logins it holds in the clear move into the
+    login file with the rest of the change, in the change door's take-in.
 
     ``current`` is the config the project holds now. A login it marks that
     this system has nothing behind was handed to the plugin as ``""``
     (``filled_plugin_config``); handed back still empty, it keeps the marker,
     so saving something else does not turn "needs entering here" into "not
     set"."""
-    found = find_plugin_logins(plugin_id, config)
-    out = config
-    if found:
-        if not _stored(found, logins, typed=typed, library=None, where=f"plugin '{plugin_id}'"):
-            return config
-        out = plugin_secrets.marked(config, {f.qualifier: f.fields for f in found})
-    if current is None:
-        return out
+    secrets = plugin_secrets.declared_for(plugin_id)
+    still_waiting = [
+        (item, field) for item, field, _ in plugin_secrets.places(config, secrets)
+        if plugin_secrets.get_field(plugin_secrets.holder_of(config, item), field) == ""
+        and plugin_secrets.get_field(plugin_secrets.holder_of(current, item), field) == SAVED_LOGIN
+        and logins.secret(plugin_owner(plugin_id, item), field) is None
+    ]
+    if not still_waiting:
+        return config
+    out = copy.deepcopy(config)
+    for item, field in still_waiting:
+        plugin_secrets.set_field(plugin_secrets.holder_of(out, item), field, SAVED_LOGIN)
+    return out
     secrets = plugin_secrets.declared_for(plugin_id)
     still_waiting = [
         (item, field) for item, field, _ in plugin_secrets.places(out, secrets)

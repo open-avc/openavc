@@ -782,6 +782,10 @@ class PluginLoader:
         self._unregister_dispatch(plugin_id)
         if instance is not None:
             await _bounded_stop(plugin_id, instance, during="stop")
+        if api is not None:
+            # After its stop(), so a save it makes there is written; one still
+            # waiting for the project lock is not.
+            api._retire()
         if registry is not None:
             await registry.cleanup(self._state, self._events)
         if api is not None:
@@ -1001,9 +1005,21 @@ class PluginLoader:
         self._clear_plugin_flags(plugin_id)
 
     def get_running_config(self, plugin_id: str) -> dict[str, Any]:
-        """Return the config dict of a running plugin, or empty dict if not running."""
+        """Return the config dict of a running plugin, or empty dict if not
+        running: the platform's view, which a save of the plugin's own
+        reaches only once the file holds it (``plugin_api.OwnSave``)."""
         api = self._apis.get(plugin_id)
         return api._config if api else {}
+
+    def unsaved_configs(self) -> dict[str, dict[str, Any]]:
+        """``{plugin id: config}`` for each running plugin whose own save
+        has not reached the file yet: the logins in it are masked in the
+        log before the file holds them."""
+        return {
+            plugin_id: dict(api._unsaved)
+            for plugin_id, api in self._apis.items()
+            if api._unsaved is not None
+        }
 
     # ──── Info & Status ────
 

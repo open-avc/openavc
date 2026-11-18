@@ -638,16 +638,19 @@ async def test_a_plugin_save_refreshes_the_log_redaction(tmp_path, monkeypatch):
 
     await eng._save_plugin_config("plug1", {"x": 2})
 
-    # Once, after the save went through.
-    assert refreshed == [1]
+    # Before the save, for the logins the plugin holds already, and again
+    # once it went through.
+    assert refreshed == [0, 1]
 
 
 @pytest.mark.asyncio
 async def test_a_plugin_save_during_a_reconcile_refreshes_the_log_redaction_at_once(
     tmp_path, monkeypatch,
 ):
-    """The running project holds the change before its file does, so the
-    redaction learns it then, and again once the queued save lands."""
+    """The plugin holds what it saved before the file does, so the
+    redaction learns it at once, with the running project still as saved,
+    and again once the queued save lands. What it learns is pinned in
+    tests/test_plugin_logins.py."""
     eng = _engine(tmp_path, plugins={"plug1": {"enabled": False, "config": {"x": 1}}})
     _capture_broadcasts(eng)
     registry = get_secret_registry()
@@ -659,10 +662,10 @@ async def test_a_plugin_save_during_a_reconcile_refreshes_the_log_redaction_at_o
 
     async with eng._reload_lock:
         await eng._save_plugin_config("plug1", {"x": 2})
-        assert refreshed == [2]
+        assert refreshed == [1]
     await eng._bookkeeping_task
 
-    assert refreshed == [2, 2]
+    assert refreshed == [1, 2]
 
 
 # --- The plugin sync ---------------------------------------------------------
