@@ -238,20 +238,49 @@ def _plain(type_expr: str) -> Any:
     return copy.deepcopy(_TYPE_PLAIN[type_expr.split("|")[0]])
 
 
+def _fresh(after: str) -> Any:
+    return [] if after == "[]" else {}
+
+
+def _into_item(node: list[Any], after: str) -> Any:
+    if not node:
+        node.append(_fresh(after))
+    return node[0]
+
+
+def _into_entry(node: dict[str, Any], after: str) -> Any:
+    if not node:
+        node["example"] = _fresh(after)
+    return next(iter(node.values()))
+
+
+def _into_named(node: dict[str, Any], tok: str, after: str) -> Any:
+    if not isinstance(node.get(tok), (dict, list)):
+        node[tok] = _fresh(after)
+    return node[tok]
+
+
 def _into(node: Any, tok: str, after: str) -> Any:
     """The container one step down a field's path, made when it is not there."""
-    fresh = [] if after == "[]" else {}
     if tok == "[]":
-        if not node:
-            node.append(fresh)
-        return node[0]
+        return _into_item(node, after)
     if tok == "*":
-        if not node:
-            node["example"] = fresh
-        return next(iter(node.values()))
-    if not isinstance(node.get(tok), (dict, list)):
-        node[tok] = fresh
-    return node[tok]
+        return _into_entry(node, after)
+    return _into_named(node, tok, after)
+
+
+def _example_value(f: report_contract.ReportField) -> Any:
+    return _plain(f.type) if f.example is report_contract.ABSENT else f.example
+
+
+def _place(out: dict[str, Any], f: report_contract.ReportField) -> None:
+    """One declared field put into the example, with what holds it."""
+    toks = report_contract.tokens(f.path)
+    node: Any = out
+    for i, tok in enumerate(toks[:-1]):
+        node = _into(node, tok, toks[i + 1])
+    if not isinstance(node.get(toks[-1]), (dict, list)):
+        node[toks[-1]] = _example_value(f)
 
 
 def report_example(kind: report_contract.ReportKind) -> dict[str, Any]:
@@ -260,12 +289,7 @@ def report_example(kind: report_contract.ReportKind) -> dict[str, Any]:
     key, ``example``."""
     out: dict[str, Any] = {}
     for f in kind.fields:
-        toks = report_contract.tokens(f.path)
-        node: Any = out
-        for i, tok in enumerate(toks[:-1]):
-            node = _into(node, tok, toks[i + 1])
-        if not isinstance(node.get(toks[-1]), (dict, list)):
-            node[toks[-1]] = _plain(f.type) if f.example is report_contract.ABSENT else f.example
+        _place(out, f)
     out["report_version"] = kind.report_version
     return out
 
@@ -367,12 +391,16 @@ def sinces() -> Iterator[tuple[str, str]]:
     for name, entries in wire_tables.VOCABULARIES.items():
         for e in entries:
             yield f"{name}: {e.value}", e.since
+    yield from _report_sinces()
+
+
+def _report_sinces() -> Iterator[tuple[str, str]]:
+    """Every (entry, since) in the report contract."""
     for kind in report_contract.KINDS.values():
         yield f"report {kind.kind}", kind.since
-        for v in kind.versions:
-            yield f"report {kind.kind} version {v.version}", v.since
-        for f in kind.fields:
-            yield f"report {kind.kind}: {f.path}", report_contract.field_since(kind, f)
+        yield from ((f"report {kind.kind} version {v.version}", v.since) for v in kind.versions)
+        yield from ((f"report {kind.kind}: {f.path}", report_contract.field_since(kind, f))
+                    for f in kind.fields)
 
 
 def unshipped_sinces(cutting: str, previous: str) -> list[str]:

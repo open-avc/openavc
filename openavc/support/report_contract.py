@@ -434,22 +434,58 @@ def type_fits(type_expr: str, value: Any) -> bool:
     return any(_JSON_TYPES[t](value) for t in type_expr.split("|"))
 
 
-def _holders(node: Any, toks: list[str], where: str):
-    """Every object the path's last name sits in, with where it is."""
-    if not toks:
-        yield where, node
-        return
-    tok, rest = toks[0], toks[1:]
-    if tok == "[]":
-        if isinstance(node, list):
-            for i, item in enumerate(node):
-                yield from _holders(item, rest, f"{where}[{i}]")
-    elif tok == "*":
-        if isinstance(node, dict):
-            for key, value in node.items():
-                yield from _holders(value, rest, f"{where}.{key}" if where else str(key))
-    elif isinstance(node, dict) and tok in node:
-        yield from _holders(node[tok], rest, f"{where}.{tok}" if where else tok)
+def _join(where: str, key: Any) -> str:
+    return f"{where}.{key}" if where else str(key)
+
+
+def _each_item(node: Any, where: str, _tok: str) -> list[tuple[str, Any]]:
+    if not isinstance(node, list):
+        return []
+    return [(f"{where}[{i}]", item) for i, item in enumerate(node)]
+
+
+def _each_entry(node: Any, where: str, _tok: str) -> list[tuple[str, Any]]:
+    if not isinstance(node, dict):
+        return []
+    return [(_join(where, key), value) for key, value in node.items()]
+
+
+def _named(node: Any, where: str, tok: str) -> list[tuple[str, Any]]:
+    if not isinstance(node, dict) or tok not in node:
+        return []
+    return [(_join(where, tok), node[tok])]
+
+
+_STEPS = {"[]": _each_item, "*": _each_entry}
+
+
+def _holders(node: Any, toks: list[str], where: str = "") -> list[tuple[str, Any]]:
+    """Every place a path's tokens lead to, with where it is."""
+    places = [(where, node)]
+    for tok in toks:
+        step = _STEPS.get(tok, _named)
+        places = [found for at, value in places for found in step(value, at, tok)]
+    return places
+
+
+def _problem_at(f: ReportField, holder: Any, at: str, name: str) -> str | None:
+    """What is wrong with ``f`` in one object that should hold it, if anything."""
+    if not isinstance(holder, dict):
+        return None
+    if name not in holder:
+        return f"{at}: missing" if f.required else None
+    value = holder[name]
+    if type_fits(f.type, value):
+        return None
+    return f"{at}: {type(value).__name__}, declared {f.type}"
+
+
+def _problems_of(f: ReportField, report: dict[str, Any]) -> list[str]:
+    toks = tokens(f.path)
+    name = toks[-1]
+    found = (_problem_at(f, holder, _join(where, name), name)
+             for where, holder in _holders(report, toks[:-1]))
+    return [problem for problem in found if problem]
 
 
 def field_problems(kind: str, report: dict[str, Any]) -> list[str]:
@@ -457,22 +493,13 @@ def field_problems(kind: str, report: dict[str, Any]) -> list[str]:
     the table does not declare, a field always written that is missing, a
     field of another type. A field inside something absent or null is not
     looked for; what holds it answers for that."""
-    declared = KINDS[kind].fields
+    top = top_level(kind)
     problems = [
         f"{key}: a top-level field the report contract does not declare"
-        for key in report if key not in top_level(kind)
+        for key in report if key not in top
     ]
-    for f in declared:
-        toks = tokens(f.path)
-        for where, holder in _holders(report, toks[:-1], ""):
-            if not isinstance(holder, dict):
-                continue
-            at = f"{where}.{toks[-1]}" if where else toks[-1]
-            if toks[-1] not in holder:
-                if f.required:
-                    problems.append(f"{at}: missing")
-            elif not type_fits(f.type, holder[toks[-1]]):
-                problems.append(f"{at}: {type(holder[toks[-1]]).__name__}, declared {f.type}")
+    for f in KINDS[kind].fields:
+        problems.extend(_problems_of(f, report))
     return problems
 
 
