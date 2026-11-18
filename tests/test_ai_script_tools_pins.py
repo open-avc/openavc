@@ -203,6 +203,18 @@ async def test_create_script_refuses_an_id_in_use(harness):
     engine.apply_project_edit.assert_not_awaited()
 
 
+async def test_create_script_refuses_a_file_another_script_runs_from(harness):
+    handler, engine, scripts_dir, _edits = harness
+
+    answer = await handler._create_script({"id": "hall", "file": "lights.py", "source": "x = 1\n"})
+
+    assert answer == {
+        "error": "The file 'lights.py' belongs to script 'lights'. Give the new script a file of its own.",
+    }
+    assert (scripts_dir / "lights.py").read_text(encoding="utf-8") == LIGHTS
+    assert [s.id for s in engine.project.scripts] == ["lights"]
+
+
 async def test_create_script_refuses_an_id_the_project_refuses_before_writing(harness):
     """The id is checked before the file is written, so a refused one leaves
     no stray file; the model is told the field and why."""

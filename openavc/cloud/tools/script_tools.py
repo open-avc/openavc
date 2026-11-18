@@ -131,6 +131,13 @@ def _with_script_warnings(result: dict, engine: Any, script_id: str, source: str
 def _append_script(project: Any, new_script: Any) -> None:
     if any(s.id == new_script.id for s in project.scripts):
         raise ToolEditError({"error": f"Script '{new_script.id}' already exists"})
+    # The file is written next: it would replace the source that script runs.
+    owner = next((s for s in project.scripts if s.file == new_script.file), None)
+    if owner is not None:
+        raise ToolEditError({
+            "error": f"The file '{new_script.file}' belongs to script '{owner.id}'. "
+                     f"Give the new script a file of its own.",
+        })
     project.scripts.append(new_script)
 
 
