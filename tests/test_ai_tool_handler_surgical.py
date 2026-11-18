@@ -2206,9 +2206,10 @@ async def test_plugin_config_update_bumps_revision(handler, mock_agent, mock_eng
 
     payload = _get_result_payload(mock_agent)
     assert payload["success"] is True
-    # restart_or_apply ran first (runtime-first, then apply — the reconcile
-    # sees the running config already current), and the seam bumped once.
-    mock_engine.plugin_loader.restart_or_apply.assert_awaited_once()
+    # The change alone reaches the plugin (its reconcile, pinned on a real
+    # engine in tests/test_plugin_config_through_the_change.py); the tool
+    # hands it nothing before the door, and the seam bumped once.
+    mock_engine.plugin_loader.restart_or_apply.assert_not_awaited()
     mock_engine.apply_project_edit.assert_awaited_once()
     assert mock_engine._project_revision == 1
     assert mock_engine.project.plugins["some_plugin"].config == {"volume": 5}
@@ -2448,7 +2449,6 @@ async def test_update_plugin_config_allows_explicit_empty_object(
     payload = _get_result_payload(mock_agent)
     assert payload["success"] is True
     assert mock_engine.project.plugins["some_plugin"].config == {}
-    mock_engine.plugin_loader.restart_or_apply.assert_awaited_once()
 
 
 # ===== STATE READ TOOLS — cloud exclusion filter + count validation =====
@@ -2865,9 +2865,8 @@ async def test_a_config_sent_back_with_masks_keeps_the_saved_passwords(
     assert by_id["lobby"]["rtsp_url"] == "rtsp://viewer:lobby-pass-1@10.0.0.21/live"
     assert by_id["foyer"]["password"] == ""
     assert "***" not in repr(saved)
-    # The plugin was handed the real values too, not the masks.
-    applied = mock_engine.plugin_loader.restart_or_apply.call_args[0][1]
-    assert applied == saved
+    # The plugin is handed what the project now holds, through the change
+    # that saved it (tests/test_plugin_config_through_the_change.py).
 
 
 @pytest.mark.asyncio

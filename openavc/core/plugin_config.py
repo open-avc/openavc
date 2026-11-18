@@ -3,7 +3,8 @@
 The REST endpoint (openavc/api/plugins.py) and the cloud AI tool
 (openavc/cloud/tools/plugin_tools.py) both persist plugin config; they must
 accept and reject exactly the same shapes, so the validator lives here and
-both import it.
+both import it, as is what both answer about the running plugin once the
+change is saved (``config_save_applied``).
 
 Past the schema's types, a plugin may judge a proposed config itself through
 an optional ``validate_config(config)`` class method: the parts it would skip
@@ -138,6 +139,19 @@ def missing_required_for_plugin(plugin_id: str, config: dict) -> list[str]:
     if schema is None:
         return []
     return missing_required_fields(config, schema)
+
+
+def config_save_applied(outcome, plugin_id: str, loader) -> str:
+    """What a save of ``plugin_id``'s config answers as ``applied``, at the
+    settings form and the AI's plugin tool alike: what the project change
+    that saved it did to the plugin (``ApplyOutcome.plugin_move``: its
+    reconcile handed the config hot, restarted the plugin, started it, or
+    could not start it), else ``unchanged`` when the plugin runs with that
+    config already and ``not_running`` when nothing runs it."""
+    move = outcome.plugin_move(plugin_id)
+    if move is not None:
+        return move
+    return "unchanged" if loader.is_running(plugin_id) else "not_running"
 
 
 def plugin_config_problems(plugin_id: str, config: dict) -> list[str]:

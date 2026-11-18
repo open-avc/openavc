@@ -19,7 +19,7 @@ the saved-login marker sent back keeps the saved one.
 import re
 from typing import Any
 
-from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.cloud.tools import ToolEditError, apply_tool_change, apply_tool_edit
 from openavc.utils.log_redaction import (
     keep_masked_secrets,
     mask_secrets_by_name,
@@ -391,6 +391,7 @@ class PluginToolsMixin:
         # be built up across several calls.
         from openavc.core.plugin_config import (
             config_problems_added,
+            config_save_applied,
             missing_required_for_plugin,
             validate_config_for_plugin,
         )
@@ -407,21 +408,19 @@ class PluginToolsMixin:
             return {"error": f"Plugin '{plugin_id}': {' '.join(added)}"}
         missing = missing_required_for_plugin(plugin_id, new_config)
 
-        # Hot-apply when the plugin supports it, else restart — before the
-        # seam apply, so the reconcile sees the running config already
-        # current and doesn't apply it a second time.
-        outcome = await engine.plugin_loader.restart_or_apply(plugin_id, new_config)
-
         def mutate(project):
             if plugin_id not in project.plugins:
                 raise ToolEditError({"error": f"Plugin '{plugin_id}' not in project"})
             project.plugins[plugin_id].config = new_config
 
-        err = await apply_tool_edit(engine, mutate)
+        # The change hands the config to the running plugin (core/plugin_config
+        # config_save_applied), so one it refuses or cannot save hands nothing.
+        err, outcome = await apply_tool_change(engine, mutate)
         if err:
             return err
+        applied = config_save_applied(outcome, plugin_id, engine.plugin_loader)
 
-        result = {"status": "updated", "plugin_id": plugin_id, "applied": outcome}
+        result = {"status": "updated", "plugin_id": plugin_id, "applied": applied}
         if kept:
             result["config_problems"] = kept
         if missing:
@@ -430,16 +429,16 @@ class PluginToolsMixin:
                 f"Config saved, but required field(s) {', '.join(sorted(missing))} "
                 f"are not set yet. Plugin '{plugin_id}' can't run until they are."
             )
-        elif outcome == "start_failed":
+        elif applied == "start_failed":
             reason = engine.plugin_loader.error_for_cloud(plugin_id)
             if reason:
                 result["warning"] = (
-                    f"Config saved, but plugin '{plugin_id}' failed to restart with "
+                    f"Config saved, but plugin '{plugin_id}' failed to start with "
                     f"it and is stopped: {_as_sentence(reason)}"
                 )
             else:
                 result["warning"] = (
-                    f"Config saved, but plugin '{plugin_id}' failed to restart with "
+                    f"Config saved, but plugin '{plugin_id}' failed to start with "
                     f"it and is stopped. Check the config values and plugin logs."
                 )
         return result

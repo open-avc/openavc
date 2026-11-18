@@ -147,10 +147,20 @@ class ProjectNotAppliedError(Exception):
 class ApplyOutcome:
     """What an applied change did: it runs under ``revision``, and
     ``failed`` names each part of it the system could not run, in the
-    order the reconcile met them (empty when every part runs)."""
+    order the reconcile met them (empty when every part runs).
+    ``plugin_moves`` is what its reconcile did to each plugin it moved, as
+    ``(plugin id, word)`` (``ReconcileRun.plugin_moves``): the answer of a
+    door that saves a plugin's config (``plugin_move``)."""
 
     revision: str
     failed: tuple[FailedPart, ...] = ()
+    plugin_moves: tuple[tuple[str, str], ...] = ()
+
+    def plugin_move(self, plugin_id: str) -> str | None:
+        """What this change did to ``plugin_id``: ``hot_applied``,
+        ``restarted``, ``started``, ``start_failed`` or ``stopped``; None
+        when it left the plugin as it was."""
+        return dict(self.plugin_moves).get(plugin_id)
 
 
 @dataclass(frozen=True)
@@ -541,7 +551,9 @@ class ProjectChangesMixin(ProjectRevisionMixin):
             # reconnect with the new login.
             diff = ProjectDiff.compute(self.project, taken.as_given)
         run = await self._swap_in(taken, diff, origin)
-        outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
+        outcome = ApplyOutcome(
+            self._project_revision, tuple(run.failed), tuple(run.plugin_moves.items()),
+        )
         await self._announce_applied(diff, origin, outcome)
         return outcome
 

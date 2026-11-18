@@ -79,7 +79,7 @@ Settings include standard field types (text, numbers, toggles, dropdowns) and Op
 | Macro | `macro_ref` | Pick a macro from the project |
 | Device | `device_ref` | Pick a device from the project |
 
-Configuration changes are auto-saved. If the plugin is running, it restarts automatically with the new settings.
+Configuration changes are auto-saved. A running plugin takes each change as it is saved, restarting if it has to, and a plugin that is turned on but stopped starts with it. A change that could not be saved leaves the plugin on its saved settings.
 
 A password, API key or other login is kept on this system rather than in the project, so a backup, an export or a template made from the project does not contain it. A saved login shows as **Saved on this system**, never as the login itself. **Change** opens an empty box, and what you type there is saved when you press **Save** beside it, not as you type; **Cancel**, or **Save** with the box left empty, keeps the saved login. A login that is not saved on this system, such as on a replacement restored from a backup or after importing a project without its logins, shows an empty box with **Save** and the words "Not saved on this system". Restoring a backup, or opening or importing a project, names the plugins that need their login entered, beside the devices. A plugin that makes its own keys, such as Present's display addresses, makes new ones there instead, and each display then has to be pointed at its new address. The AI Assistant does not enter or change a plugin's logins and points you to the plugin's settings instead.
 

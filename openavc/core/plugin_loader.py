@@ -503,12 +503,14 @@ class PluginLoader:
 
     # ──── Lifecycle ────
 
-    async def start_plugins(self, plugins_config: dict[str, Any]) -> None:
+    async def start_plugins(self, plugins_config: dict[str, Any]) -> dict[str, bool]:
         """Take each of the project's plugin entries in ``plugins_config``, at
         a start and when a project change adds one or turns it on: THE rule
         for what the plugin then is. Missing when it is not installed and
         incompatible when it is not for this machine, whether or not the entry
-        turns it on; otherwise started when it does."""
+        turns it on; otherwise started when it does. Returns each plugin it
+        tried to start, by whether that start succeeded."""
+        tried: dict[str, bool] = {}
         for plugin_id, plugin_entry in plugins_config.items():
             # Handle both PluginConfig objects and raw dicts
             if hasattr(plugin_entry, "enabled"):
@@ -543,11 +545,12 @@ class PluginLoader:
                 continue
 
             if enabled:
-                await self.start_plugin(plugin_id, config)
+                tried[plugin_id] = await self.start_plugin(plugin_id, config)
 
         # The running set is final for this sweep. Guarded, so the per-plugin
         # calls below have already collapsed into at most one firewall change.
         self.sync_declared_ports()
+        return tried
 
     def _get_lock(self, plugin_id: str) -> asyncio.Lock:
         """Return the per-plugin lifecycle lock, creating it on first use."""
@@ -951,8 +954,11 @@ class PluginLoader:
 
     async def restart_or_apply(self, plugin_id: str, new_config: dict) -> str:
         """Apply new config to a running plugin: hot when the plugin opts in
-        via ``on_config_changed``, otherwise stop/start. Every config-write
-        path (REST, cloud AI) routes through here so behavior is identical.
+        via ``on_config_changed``, otherwise stop/start. A project change's
+        reconcile (``core/project_reconcile.py``) is its one caller, so every
+        config write (the settings form, the AI's plugin tool, a whole-project
+        save, a cloud push) reaches the plugin inside the change that saves
+        it, and its outcome is that change's answer for the plugin.
 
         Holds the per-plugin lock across the whole check → hot-apply →
         stop → start sequence. The cloud AI layer fans tool calls out as

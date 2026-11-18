@@ -65,29 +65,27 @@ def _project():
     )
 
 
-def _engine(monkeypatch, *, restart_outcome="restarted"):
-    outcomes = []
-
-    async def _restart(plugin_id, config):
-        outcomes.append((plugin_id, config))
-        return restart_outcome
-
+def _engine(monkeypatch, *, move="restarted", running=True):
+    """``move`` is what the change's reconcile did to the plugin (None:
+    nothing), ``running`` whether the plugin runs after it."""
     engine = SimpleNamespace(
         project=_project(),
         project_path="unused.avc",
-        plugin_loader=SimpleNamespace(restart_or_apply=_restart),
+        plugin_loader=SimpleNamespace(is_running=lambda plugin_id: running),
         events=_RecordingEvents(),
         _project_revision=0,
     )
 
     # The route hands a mutate callback to apply_project_edit; mirror the
-    # copy-mutate-swap-and-bump contract (no reconcile — pinned elsewhere).
+    # copy-mutate-swap-and-bump contract and answer what the reconcile did
+    # (the reconcile itself runs in tests/test_plugin_config_through_the_change.py).
     async def _apply_edit(mutate):
         new_project = engine.project.model_copy(deep=True)
         mutate(new_project)
         engine.project = new_project
         engine._project_revision += 1
-        return ApplyOutcome(str(engine._project_revision))
+        moves = (("acme_widget", move),) if move else ()
+        return ApplyOutcome(str(engine._project_revision), plugin_moves=moves)
 
     engine.apply_project_edit = _apply_edit
     monkeypatch.setattr("openavc.api.plugins._engine", engine)
@@ -164,7 +162,7 @@ async def test_update_config_rejects_non_object_body(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_update_config_accepts_valid_and_reports_outcome(monkeypatch):
-    engine = _engine(monkeypatch, restart_outcome="hot_applied")
+    engine = _engine(monkeypatch, move="hot_applied")
     monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", _AcmeWidgetPlugin)
 
     result = await update_plugin_config(
@@ -182,7 +180,7 @@ async def test_update_config_partial_save_persists_with_warning(monkeypatch):
     still lacks a required field must persist (with a warning naming the
     field), not 400. Rejecting it made the IDE's autosave toast an error
     after every keystroke until the whole form was filled."""
-    engine = _engine(monkeypatch, restart_outcome="start_failed")
+    engine = _engine(monkeypatch, move="start_failed")
     monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", _AcmeWidgetPlugin)
 
     result = await update_plugin_config("acme_widget", _FakeRequest({"port": 81}))
@@ -196,24 +194,25 @@ async def test_update_config_partial_save_persists_with_warning(monkeypatch):
 async def test_update_config_surfaces_restart_failure(monkeypatch):
     """A config that breaks the plugin must not report a clean update —
     the plugin is left stopped and the user needs to know."""
-    _engine(monkeypatch, restart_outcome="start_failed")
+    _engine(monkeypatch, move="start_failed")
     monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", _AcmeWidgetPlugin)
 
     result = await update_plugin_config("acme_widget", _FakeRequest({"host": "x"}))
     assert result["applied"] == "start_failed"
-    assert "failed to restart" in result["warning"]
+    assert "failed to start with it" in result["warning"]
 
 
 @pytest.mark.asyncio
 async def test_update_config_without_installed_plugin_still_saves(monkeypatch):
     """Config for a missing (not-installed) plugin persists unvalidated so
     it survives until the plugin is installed."""
-    engine = _engine(monkeypatch, restart_outcome="not_running")
+    engine = _engine(monkeypatch, move=None, running=False)
     pl._PLUGIN_CLASS_REGISTRY.pop("acme_widget", None)
 
     result = await update_plugin_config("acme_widget", _FakeRequest({"anything": True}))
     assert result["status"] == "updated"
     assert engine.project.plugins["acme_widget"].config == {"anything": True}
+    assert result["applied"] == "not_running"
 
 
 # ── restart_or_apply outcome (loader) ──

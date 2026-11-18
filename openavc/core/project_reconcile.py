@@ -22,7 +22,10 @@ also names how to read the ones the change could not run, once every stage
 has: each part's own owner says why (the device manager's record, the plugin
 loader's status, the script engine's load error), and the run keeps them as
 ``FailedPart``s for the change's outcome. A part failing never fails the
-change, and a run that is rolled back takes its parts with it.
+change, and a run that is rolled back takes its parts with it. The plugins
+stage also keeps what it did to each plugin it moved (``plugin_moves``), the
+one place a running plugin is handed a new config, which the outcome carries
+to the doors that save one.
 
 What an undo cannot give back: a macro run the change cancelled stays
 cancelled, and drivers a load found on disk stay registered. The advertised
@@ -62,6 +65,11 @@ log = get_logger("openavc.core.engine")
 DEVICE = "device"
 PLUGIN = "plugin"
 SCRIPT = "script"
+# What the plugins stage did to a plugin (``ReconcileRun.plugin_moves``),
+# beside the words ``PluginLoader.restart_or_apply`` answers.
+STARTED = "started"
+START_FAILED = "start_failed"
+STOPPED = "stopped"
 # The reason a script that failed to load has; a device's is its record's
 # state, a plugin's its status.
 LOAD_FAILED = "load_failed"
@@ -95,6 +103,9 @@ class ReconcileRun:
     bound_before: dict[str, Any] = field(default_factory=dict)
     # The parts the change could not run, read once every stage has run.
     failed: list[FailedPart] = field(default_factory=list)
+    # What the plugins stage did to each plugin it moved, by id
+    # (``_sync_plugins``), for the change's outcome.
+    plugin_moves: dict[str, str] = field(default_factory=dict)
 
 
 class Stage(NamedTuple):
@@ -123,7 +134,7 @@ RECONCILE_STAGES: tuple[Stage, ...] = (
     Stage("devices", lambda run: run.diff.devices_to_sync,
           "_reconcile_devices", "_resync_devices", "_devices_not_running"),
     Stage("plugins", lambda run: run.diff.plugins,
-          "_follow_plugins", "_follow_plugins", "_plugins_not_running"),
+          "_follow_plugins", "_resync_plugins", "_plugins_not_running"),
     Stage("macro definitions", lambda run: run.diff.macros or run.diff.device_groups,
           "_follow_definitions", "_follow_definitions"),
     Stage("trigger restart", lambda run: run.diff.requires_trigger_rebuild,
@@ -279,6 +290,11 @@ class ProjectReconcileMixin:
         ]
 
     async def _follow_plugins(self, run: ReconcileRun) -> None:
+        run.plugin_moves = await self._sync_plugins()
+
+    async def _resync_plugins(self, run: ReconcileRun) -> None:
+        """The plugins back on the previous project's entries: a config the
+        change handed one is handed back."""
         await self._sync_plugins()
 
     def _plugins_not_running(self, run: ReconcileRun) -> list[FailedPart]:
@@ -441,54 +457,75 @@ class ProjectReconcileMixin:
             defer_connect=defer_connect,
         )
 
-    async def _sync_plugins(self) -> None:
-        """Sync running plugins with project config on hot-reload."""
+    async def _sync_plugins(self) -> dict[str, str]:
+        """Take the running plugins to the project's entries. Returns what it
+        did to each plugin it moved, by id: ``stopped``, ``started``,
+        ``start_failed``, or how its new config reached it
+        (``PluginLoader.restart_or_apply``: ``hot_applied``, ``restarted``,
+        ``start_failed``). A plugin it left as it was is not named."""
         if not self.project:
-            return
+            return {}
 
         old_plugins = self.plugin_loader.get_known_plugin_ids()
         new_plugins = set(self.project.plugins.keys())
 
+        moves: dict[str, str | None] = {}
         for plugin_id in old_plugins - new_plugins:
-            await self._drop_plugin(plugin_id)
+            moves[plugin_id] = await self._drop_plugin(plugin_id)
         for plugin_id in new_plugins - old_plugins:
-            await self._add_plugin(plugin_id, self.project.plugins[plugin_id])
+            moves[plugin_id] = await self._add_plugin(plugin_id, self.project.plugins[plugin_id])
         for plugin_id in old_plugins & new_plugins:
-            await self._follow_plugin_entry(plugin_id, self.project.plugins[plugin_id])
+            moves[plugin_id] = await self._follow_plugin_entry(
+                plugin_id, self.project.plugins[plugin_id],
+            )
+        return {plugin_id: move for plugin_id, move in moves.items() if move is not None}
 
-    async def _drop_plugin(self, plugin_id: str) -> None:
+    async def _drop_plugin(self, plugin_id: str) -> str | None:
         """A plugin the project no longer has: stopped, and forgotten."""
-        if self.plugin_loader.is_running(plugin_id):
+        stopped = self.plugin_loader.is_running(plugin_id)
+        if stopped:
             await self.plugin_loader.stop_plugin(plugin_id)
         self.plugin_loader.remove_plugin_tracking(plugin_id)
+        return STOPPED if stopped else None
 
-    async def _add_plugin(self, plugin_id: str, entry) -> None:
+    async def _add_plugin(self, plugin_id: str, entry) -> str | None:
         """A plugin the project gained, taken as a start takes it
         (``PluginLoader.start_plugins``): missing or incompatible whatever its
         entry says, otherwise started if its entry enables it."""
-        await self.plugin_loader.start_plugins({plugin_id: entry})
+        return await self._start_plugin_entry(plugin_id, entry)
 
-    async def _follow_plugin_entry(self, plugin_id: str, entry) -> None:
+    async def _start_plugin_entry(self, plugin_id: str, entry) -> str | None:
+        """``start_plugins`` for one entry: ``started`` or ``start_failed``
+        when it tried to start the plugin, None when it did not (turned off,
+        missing, incompatible)."""
+        tried = await self.plugin_loader.start_plugins({plugin_id: entry})
+        if plugin_id not in tried:
+            return None
+        return STARTED if tried[plugin_id] else START_FAILED
+
+    async def _follow_plugin_entry(self, plugin_id: str, entry) -> str | None:
         """A plugin the project still has: stopped, started, or handed its
         new config, as its entry now says."""
         was_running = self.plugin_loader.is_running(plugin_id)
         if was_running and not entry.enabled:
             await self.plugin_loader.stop_plugin(plugin_id)
-        elif not was_running and entry.enabled:
-            await self.plugin_loader.start_plugins({plugin_id: entry})
-        elif was_running and self.plugin_loader.config_differs(plugin_id, entry.config):
-            await self._hand_plugin_config(plugin_id, entry.config)
+            return STOPPED
+        if not was_running and entry.enabled:
+            return await self._start_plugin_entry(plugin_id, entry)
+        if was_running and self.plugin_loader.config_differs(plugin_id, entry.config):
+            return await self._hand_plugin_config(plugin_id, entry.config)
+        return None
 
-    async def _hand_plugin_config(self, plugin_id: str, config: dict) -> None:
-        # Same path as every other config write (REST, cloud AI):
-        # try the plugin's on_config_changed hot-apply hook first,
-        # fall back to a restart.
+    async def _hand_plugin_config(self, plugin_id: str, config: dict) -> str:
+        # The plugin's on_config_changed hot-apply hook first, else a
+        # restart; the one place a running plugin is handed a new config.
         outcome = await self.plugin_loader.restart_or_apply(plugin_id, config)
-        if outcome == "start_failed":
+        if outcome == START_FAILED:
             log.error(
                 f"Plugin '{plugin_id}' failed to restart after a "
                 f"config change and is stopped"
             )
+        return outcome
 
     def take_device_settings(self, device_id: str, delta: dict) -> None:
         """THE way a device's settings saved without a reconcile (a setup

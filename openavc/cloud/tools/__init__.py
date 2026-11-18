@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import Any
 
 #: The parts each project change made by the tool call running now could not
 #: start; set by the dispatcher around one call (``collecting_not_running``).
@@ -53,18 +54,27 @@ async def apply_tool_edit(engine, mutate, *, files=None) -> dict | None:
     ``files`` is the ``core/change_files.ChangeFiles`` the mutate writes and
     removes beside the project with, handed to the door.
     """
+    error, _ = await apply_tool_change(engine, mutate, files=files)
+    return error
+
+
+async def apply_tool_change(engine, mutate, *, files=None) -> tuple[dict | None, Any]:
+    """:func:`apply_tool_edit` for a tool that answers from what the change
+    did: the refusal's result dict and None, or None and the change's
+    ``ApplyOutcome``."""
     with_files = {} if files is None else {"files": files}
     try:
-        note_applied(await engine.apply_project_edit(mutate, **with_files))
+        outcome = await engine.apply_project_edit(mutate, **with_files)
     except ToolEditError as e:
-        return e.result
+        return e.result, None
     except ValueError as e:
         from openavc.core.installed_equipment import InstalledEquipmentError
         from openavc.core.saved_values import UnknownWordError
         if isinstance(e, InstalledEquipmentError | UnknownWordError):
-            return {"error": str(e)}
+            return {"error": str(e)}, None
         raise
-    return None
+    note_applied(outcome)
+    return None, outcome
 
 
 def merge_forward_compat(existing, model_cls: type, partial: dict):

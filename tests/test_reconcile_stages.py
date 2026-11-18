@@ -94,9 +94,10 @@ class _Plugins:
         return True
 
     async def start_plugins(self, entries):
-        for plugin_id, entry in entries.items():
-            if entry.enabled:
-                await self.start_plugin(plugin_id, entry.config)
+        return {
+            plugin_id: await self.start_plugin(plugin_id, entry.config)
+            for plugin_id, entry in entries.items() if entry.enabled
+        }
 
     def why_not_running(self, plugin_id):
         return None
@@ -109,7 +110,7 @@ class _Plugins:
 
     async def restart_or_apply(self, plugin_id, config):
         self.running[plugin_id] = dict(config)
-        return "applied"
+        return "hot_applied"
 
 
 class _Mesh:

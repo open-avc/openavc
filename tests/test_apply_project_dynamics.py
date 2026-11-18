@@ -553,7 +553,7 @@ async def test_plugins_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
     loader.is_running.return_value = False
     loader.get_running_config.return_value = {}
     loader.start_plugins = AsyncMock(
-        side_effect=[RuntimeError("injected reconcile failure"), None]
+        side_effect=[RuntimeError("injected reconcile failure"), {"acme_plugin": True}]
     )
     loader.why_not_running.return_value = None
     loader.stop_plugin = AsyncMock()

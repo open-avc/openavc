@@ -395,8 +395,8 @@ async def test_the_marker_sent_back_keeps_the_saved_login(engine, client, data):
     await engine.reload_project()
     starts = _AcmeBridge.starts
 
-    # A settings save restarts the plugin once, as every save does, with the
-    # saved logins; the project's reconcile after it sees nothing new.
+    # A settings save restarts the plugin once, through the project change
+    # that saves it, with the saved logins.
     config = json.loads(json.dumps(engine.project.plugins[PLUGIN_ID].config))
     config["host"] = "192.0.2.21"
     reply = await client.put(f"/api/plugins/{PLUGIN_ID}/config", json=config)

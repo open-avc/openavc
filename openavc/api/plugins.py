@@ -27,6 +27,7 @@ from openavc.core.host_policy import HostCategory
 from openavc.api.static_files import serve_static_file
 from openavc.core.plugin_config import (
     config_problems_added,
+    config_save_applied,
     missing_required_for_plugin,
     validate_config_for_plugin,
 )
@@ -302,7 +303,10 @@ async def get_plugin_config(plugin_id: str) -> dict[str, Any]:
 
 @router.put("/plugins/{plugin_id}/config")
 async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, Any]:
-    """Update plugin configuration. Restarts plugin if running."""
+    """Update plugin configuration. The project change that saves it hands
+    it to the running plugin, hot or by a restart (or starts a plugin turned
+    on but stopped), so a change that is refused or not saved leaves the
+    plugin on the config the project holds."""
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
@@ -331,19 +335,16 @@ async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, An
         raise HTTPException(status_code=400, detail=" ".join(added))
     missing = missing_required_for_plugin(plugin_id, new_config)
 
-    # Hot-apply when the plugin supports it, else restart — before the seam
-    # apply, so the reconcile sees the running config already current and
-    # doesn't apply it a second time.
-    outcome = await engine.plugin_loader.restart_or_apply(plugin_id, new_config)
-
     def mutate(project):
         if plugin_id not in project.plugins:
             raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not in project")
         project.plugins[plugin_id].config = new_config
 
-    await engine.apply_project_edit(mutate)
+    applied = config_save_applied(
+        await engine.apply_project_edit(mutate), plugin_id, engine.plugin_loader,
+    )
 
-    result: dict[str, Any] = {"status": "updated", "plugin_id": plugin_id, "applied": outcome}
+    result: dict[str, Any] = {"status": "updated", "plugin_id": plugin_id, "applied": applied}
     if kept:
         result["config_problems"] = kept
     if missing:
@@ -354,9 +355,9 @@ async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, An
             f"Config saved, but required field(s) {', '.join(sorted(missing))} "
             f"are not set yet. Plugin '{plugin_id}' can't run until they are."
         )
-    elif outcome == "start_failed":
+    elif applied == "start_failed":
         result["warning"] = (
-            f"Config saved, but plugin '{plugin_id}' failed to restart with it "
+            f"Config saved, but plugin '{plugin_id}' failed to start with it "
             f"and is stopped. Check the config values and plugin logs."
         )
     return result
