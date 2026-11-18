@@ -153,6 +153,20 @@ def test_create_script_duplicate(client):
     assert resp.status_code == 409
 
 
+def test_create_script_refuses_a_file_another_script_uses(client, mock_engine):
+    """A new id on a file another script runs from would overwrite its source."""
+    resp = client.post(
+        "/api/scripts",
+        json={"id": "other", "file": "test_script.py", "source": "x = 1\n"},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "The file 'test_script.py' belongs to script 'test_script'"
+    scripts_dir = mock_engine.project_path.parent / "scripts"
+    assert (scripts_dir / "test_script.py").read_text(encoding="utf-8") == 'print("hello")'
+    assert [s.id for s in mock_engine.project.scripts] == ["test_script"]
+
+
 def test_create_script_rejects_nested_subpath(client, mock_engine):
     """`file` may not carry a subdir — no writing into scripts/<nested>/."""
     resp = client.post(

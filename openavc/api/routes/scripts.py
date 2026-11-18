@@ -221,6 +221,9 @@ async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
         for s in project.scripts:
             if s.id == data.id:
                 raise HTTPException(status_code=409, detail=f"Script '{data.id}' already exists")
+            # The write below would replace the source that script runs.
+            if s.file == data.file:
+                raise HTTPException(status_code=409, detail=f"The file '{data.file}' belongs to script '{s.id}'")
         project.scripts.append(new_script)
         files.write(path, data.source)
 
