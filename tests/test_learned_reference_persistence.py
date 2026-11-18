@@ -126,8 +126,9 @@ async def test_batched_plugin_rollbacks_retain_original_config(tmp_path, monkeyp
     monkeypatch.setattr(project_changes, 'save_project_async', disk_full)
     try:
         async with engine._reload_lock:
-            await engine._save_plugin_config('plug1', {'x': 2})
-            await engine._save_plugin_config('plug1', {'x': 3})
+            with engine._running_hooks():
+                await engine._save_plugin_config('plug1', {'x': 2})
+                await engine._save_plugin_config('plug1', {'x': 3})
         await asyncio.wait_for(engine._bookkeeping_task, 5)
         assert engine.project.plugins['plug1'].config == {'x': 1}
     finally:
