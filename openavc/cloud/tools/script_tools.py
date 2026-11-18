@@ -19,6 +19,7 @@ from typing import Any
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.event_references import (
     NO_EMITTER,
+    PLATFORM_EVENT,
     STARTUP_TIMER,
     project_script_sources,
     script_issues,
@@ -38,6 +39,11 @@ _KIND_NOTES = {
         "system.started comes once per server start, so an every() started in its handler "
         "stops at the script's next edit. Call every() at the top of the script, where each "
         "load starts it again."
+    ),
+    PLATFORM_EVENT: (
+        "Names starting with system. are OpenAVC's own: events.emit() of one is refused when "
+        "it runs, and a handler for one OpenAVC never sends never fires. Use the custom. name "
+        "each warning gives."
     ),
 }
 
@@ -83,7 +89,8 @@ def _new_script_path(scripts_dir: Path, filename: str) -> Path:
 
 def _script_issues(engine: Any, script_id: str, source: str) -> list[dict]:
     """The script lint's issues in the script just written: handlers nothing in
-    the project can reach, and timers that stop at the script's next edit.
+    the project can reach, timers that stop at the script's next edit, and
+    the platform's own event names.
 
     The same check the IDE's script lint runs, at the other door that writes a
     script. A generator is told in the reply it is already reading, which is

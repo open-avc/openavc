@@ -144,9 +144,13 @@ export async function validateMacros(
  *  - `startup_timer`: an `every()` started in a handler that listens only for
  *    `system.started`, which comes once per server start, so the timer stops
  *    at the script's next edit. `line` is the `every(` call's, and `event` is
- *    `system.started`. */
+ *    `system.started`.
+ *  - `platform_event`: a `system.` name, which only OpenAVC sends. On an
+ *    `emit(` line the call is refused; on an `@on_event` line the pattern
+ *    hears nothing, since the platform never sends it. `event` is the name,
+ *    and the message names the `custom.` one to use. */
 export interface ScriptIssue {
-  kind: "no_emitter" | "startup_timer";
+  kind: "no_emitter" | "startup_timer" | "platform_event";
   line: number;
   event: string;
   message: string;

@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,11 +29,14 @@ from openavc.core.event_bus import (
     PLATFORM_EVENTS,
     EventBus,
     check_project_emit,
+    silent_pattern_sentence,
     silent_platform_pattern,
 )
+from openavc.core.event_references import PLATFORM_EVENT, script_issues
 from openavc.core.macro_engine import MacroEngine
 from openavc.core.macro_validation import macro_issues, validate_macro
-from openavc.core.project_loader import load_project
+from openavc.core.project_migration import CURRENT_VERSION
+from openavc.core.project_loader import ProjectConfig, ProjectMeta, ScriptConfig, load_project
 from openavc.core.script_api import _EventProxy
 from openavc.core.state_store import StateStore
 
@@ -152,7 +155,9 @@ async def test_a_macro_step_still_sends_a_custom_event(macros):
 def _engine_with_button(tmp_path: Path, event: str) -> Engine:
     path = tmp_path / "project.avc"
     path.write_text(json.dumps({
-        "openavc_version": "0.17.0",
+        # The current format: an older one renames a project's own system.
+        # event on load (tests/test_event_migration.py).
+        "openavc_version": CURRENT_VERSION,
         "project": {"id": "acme", "name": "Acme", "description": ""},
         "devices": [], "macros": [], "variables": [],
         "ui": {"settings": {}, "pages": [{
@@ -253,3 +258,61 @@ def test_the_ai_s_macro_tools_refuse_the_step():
     assert refusal == (
         "Macro validation failed: steps[0]: " + check_project_emit("system.started")
     )
+
+
+# --- The script check --------------------------------------------------------
+
+_SCRIPT = '''\
+from openavc import events, on_event
+
+
+@on_event("system.room_occupied")
+async def occupied(event, payload):
+    await events.emit("system.panic")
+
+
+@on_event("system.started")
+async def boot(event, payload):
+    await events.emit("custom.ready")
+
+
+@on_event("system.*")
+async def platform(event, payload):
+    await events.emit(f"custom.{payload}")
+'''
+
+
+def test_the_script_check_marks_each_system_name_at_its_line():
+    """A script is code and is not renamed when an older project opens, so
+    the script editor is where it hears of the change."""
+    issues = script_issues({"room": _SCRIPT}).get("room", [])
+    assert [(i["kind"], i["line"], i["event"], i["message"]) for i in issues] == [
+        (PLATFORM_EVENT, 4, "system.room_occupied", silent_pattern_sentence("system.room_occupied")),
+        (PLATFORM_EVENT, 6, "system.panic", check_project_emit("system.panic")),
+    ]
+
+
+async def test_the_ai_is_told_when_it_writes_one(tmp_path):
+    from openavc.api import rest
+    from openavc.cloud.ai_tool_handler import AIToolHandler
+
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "room.py").write_text("x = 1\n", encoding="utf-8")
+    engine = MagicMock()
+    engine.project = ProjectConfig(
+        project=ProjectMeta(id="acme", name="Acme"),
+        scripts=[ScriptConfig(id="room", file="room.py")],
+    )
+    engine.project_path = tmp_path / "project.avc"
+    engine.scripts = None
+    rest.set_engine(engine)
+    try:
+        handler = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+        result = await handler._update_script_source({"script_id": "room", "source": _SCRIPT})
+    finally:
+        rest.set_engine(None)
+
+    assert result["status"] == "saved"
+    assert check_project_emit("system.panic") in result["warnings"]
+    assert "Names starting with system. are OpenAVC's own" in result["warning_note"]

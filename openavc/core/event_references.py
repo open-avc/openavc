@@ -42,7 +42,15 @@ and cleared at every reload. `startup_timers` finds that shape. `after()` in
 the same handler is one-time boot work, which is what that handler is for,
 and is left alone.
 
-`script_issues` is both checks together, each issue tagged with its `kind`,
+**And the platform's names.** A script's `events.emit` refuses a `system.`
+name (`core/event_bus.check_project_emit`), and listening for a `system.` name
+the platform never sends hears nothing, since no project can send one there.
+`platform_names` finds both, by the line, with the runtime's sentence and the
+`custom.` name to use. A project opened from before 0.18.0 had its macros' and
+controls' `system.` events renamed (`core/event_migration.py`); a script is
+code and is not rewritten, so this is where it hears of it.
+
+`script_issues` is every check together, each issue tagged with its `kind`,
 and is what `POST /api/scripts/validate` and the AI's script tools ask.
 
 Read statically, never by importing: the editor asks about source it is holding
@@ -61,6 +69,12 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
+from openavc.core.event_bus import (
+    check_project_emit,
+    is_platform_event,
+    silent_pattern_sentence,
+    silent_platform_pattern,
+)
 from openavc.ui.page_review import do_action_dicts
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
@@ -78,9 +92,10 @@ UNREADABLE = "*"
 # The event emitted once per server start, never on a script's load or reload.
 STARTED_EVENT = "system.started"
 
-# The two kinds of issue, as `script_issues` tags them.
+# The kinds of issue, as `script_issues` tags them.
 NO_EMITTER = "no_emitter"
 STARTUP_TIMER = "startup_timer"
+PLATFORM_EVENT = "platform_event"
 
 STARTUP_TIMER_MESSAGE = (
     "This timer starts only when the server starts. Start it at the top of the "
@@ -230,6 +245,33 @@ def script_emitters(source: str) -> list[str]:
         for node in ast.walk(tree)
         if isinstance(node, ast.Call) and _callee(node) == "emit"
     ]
+
+
+def platform_names(source: str) -> list[dict[str, Any]]:
+    """Every line that sends a `system.` name, which is refused, or listens
+    for one the platform never sends, which hears nothing: each issue
+    ``{kind, line, event, message}``, the message the runtime's own sentence."""
+    tree = _parse(source)
+    if tree is None:
+        return []
+    found: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = _callee(node)
+        if callee == "emit":
+            name = _readable_name(_first_arg(node))
+            if name != UNREADABLE and is_platform_event(name):
+                found.append(_platform_issue(node.lineno, name, check_project_emit(name)))
+        elif callee == "on_event":
+            pattern = _literal(_first_arg(node))
+            if silent_platform_pattern(pattern):
+                found.append(_platform_issue(node.lineno, pattern, silent_pattern_sentence(pattern)))
+    return found
+
+
+def _platform_issue(line: int, event: str, message: str | None) -> dict[str, Any]:
+    return {"kind": PLATFORM_EVENT, "line": line, "event": event, "message": message or ""}
 
 
 def _dump(obj: Any) -> Mapping[str, Any]:
@@ -396,7 +438,7 @@ def dead_listeners(
 def script_issues(
     sources: Mapping[str, str], project: Any = None
 ) -> dict[str, list[dict[str, Any]]]:
-    """Both checks over ``sources`` (all of the project's scripts, as
+    """Every check over ``sources`` (all of the project's scripts, as
     ``dead_listeners`` needs): script id -> its issues in line order, each
     ``{kind, line, event, message}``. A clean script is absent."""
     issues = dead_listeners(sources, project)
@@ -406,7 +448,8 @@ def script_issues(
              "message": STARTUP_TIMER_MESSAGE}
             for line in startup_timers(source)
         ]
-        if timers:
-            merged = issues.get(script_id, []) + timers
+        more = timers + platform_names(source)
+        if more:
+            merged = issues.get(script_id, []) + more
             issues[script_id] = sorted(merged, key=lambda issue: issue["line"])
     return issues

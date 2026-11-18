@@ -66,26 +66,37 @@ function counted(n: number, one: string, many: string): string {
   return n === 1 ? `1 ${one}` : `${n} ${many}`;
 }
 
-/** What the script list says about a script's issues, worded by their kind. */
+/** Each kind's words on the script list: one, many, and the hover. */
+const BADGE_WORDS: Record<ScriptIssue["kind"], { one: string; many: string; title: string }> = {
+  no_emitter: {
+    one: "handler with no emitter",
+    many: "handlers with no emitter",
+    title: "Nothing in this project emits its event. Open the script to see which, and where to emit it.",
+  },
+  startup_timer: {
+    one: "timer stops at the next edit",
+    many: "timers stop at the next edit",
+    title: "Started only when the server starts. Open the script to see where to start it instead.",
+  },
+  platform_event: {
+    one: "system. event name",
+    many: "system. event names",
+    title: "Names starting with system. are OpenAVC's own. Open the script to see the custom. name to use.",
+  },
+};
+
+/** What the script list says about a script's issues, worded by their kind
+ *  when they are all one kind, and counted as warnings when they are not. */
 export function issueBadge(issues: ScriptIssue[]): IssueBadge {
-  const timers = issues.filter((i) => i.kind === "startup_timer").length;
-  const handlers = issues.length - timers;
-  if (timers === 0) {
+  const kind = issues[0]?.kind ?? "no_emitter";
+  if (issues.some((i) => i.kind !== kind)) {
     return {
-      text: counted(handlers, "handler with no emitter", "handlers with no emitter"),
-      title: "Nothing in this project emits its event. Open the script to see which, and where to emit it.",
+      text: counted(issues.length, "warning", "warnings"),
+      title: "Open the script to see each one.",
     };
   }
-  if (handlers === 0) {
-    return {
-      text: counted(timers, "timer stops at the next edit", "timers stop at the next edit"),
-      title: "Started only when the server starts. Open the script to see where to start it instead.",
-    };
-  }
-  return {
-    text: counted(issues.length, "warning", "warnings"),
-    title: "Open the script to see each one.",
-  };
+  const words = BADGE_WORDS[kind];
+  return { text: counted(issues.length, words.one, words.many), title: words.title };
 }
 
 /**

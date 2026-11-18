@@ -70,6 +70,15 @@ describe("issueBadge", () => {
     expect(issueBadge([timer(8)]).title).toContain("only when the server starts");
   });
 
+  it("words a system. name as the name it is", () => {
+    const named = (line: number) =>
+      issue({ kind: "platform_event", line, event: "system.panic", message: "Event 'system.panic' is not sent." });
+    expect(issueBadge([named(4)]).text).toBe("1 system. event name");
+    expect(issueBadge([named(4), named(9)]).text).toBe("2 system. event names");
+    expect(issueBadge([named(4)]).title).toContain("custom. name to use");
+    expect(issueBadge([named(4), timer(8)]).text).toBe("2 warnings");
+  });
+
   it("counts both kinds together as warnings rather than misnaming one", () => {
     const badge = issueBadge([issue(), timer(8)]);
     expect(badge.text).toBe("2 warnings");
