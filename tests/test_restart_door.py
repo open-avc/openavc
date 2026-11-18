@@ -14,22 +14,29 @@ from types import SimpleNamespace
 import pytest
 
 from openavc import restart
+from openavc.core.start_stages import StartRun
+from openavc.middleware.startup_splash import READY, STOPPING, RunState
 
 
 @pytest.fixture
 def door(monkeypatch):
     """The door armed with an engine that is running, each accepted exit
     recorded as ``(wait_seconds, engine)`` and held open until the test
-    lets it go (``release``), as a real exit is until the process ends."""
+    lets it go (``release``), as a real exit is until the process ends.
+    ``run_state`` is the server's run-state record, its start finished."""
     engine = SimpleNamespace(stopping=False)
-    seen = SimpleNamespace(engine=engine, exits=[], release=asyncio.Event())
+    run_state = RunState()
+    run_state.started(StartRun())
+    seen = SimpleNamespace(
+        engine=engine, run_state=run_state, exits=[], release=asyncio.Event(),
+    )
 
     async def record(wait, engine_):
         seen.exits.append((wait, engine_))
         await seen.release.wait()
 
     monkeypatch.setattr(restart, "_exit_after", record)
-    restart.accept_restarts(engine)
+    restart.accept_restarts(engine, run_state)
     yield seen
     seen.release.set()
 
@@ -49,6 +56,26 @@ async def test_each_mode_starts_the_exit_after_its_wait(door, mode, wait):
         accepted=True, mode=mode or "graceful", wait_seconds=wait,
     )
     assert door.exits == [(wait, door.engine)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["graceful", "hard"])
+async def test_an_accepted_request_says_stopping_before_its_wait(door, mode):
+    """From the moment it is accepted the server is on its way down, the
+    graceful wait included: /api/health and the status folder say so."""
+    assert restart.request_exit(mode, "api").accepted
+
+    assert door.run_state.phase == STOPPING
+    assert door.exits == []  # the exit has not even begun its wait
+
+
+@pytest.mark.asyncio
+async def test_a_refused_request_leaves_the_record_as_it_was(door):
+    restart.request_exit("wild-west", "api")
+    door.engine.stopping = True
+    restart.request_exit("graceful", "api")
+
+    assert door.run_state.phase == READY
 
 
 @pytest.mark.asyncio

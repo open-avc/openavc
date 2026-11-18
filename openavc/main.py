@@ -380,7 +380,7 @@ async def _initialize_engine(app: FastAPI) -> None:
         # watcher below) ends this process; before it, every one is refused:
         # openavc/restart.py.
         with run.stage("setting up restarts"):
-            restart.accept_restarts(engine)
+            restart.accept_restarts(engine, app.state.run_state)
             engine.listen_watcher = _watch_listen_choice()
 
         with run.stage("logging the addresses to open"):
@@ -396,7 +396,9 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     validate_policies(app)
     app.state.host_policy_started = True
-    app.state.run_state = RunState()
+    # Where the process is in its life, from now on in the status folder the
+    # tray and the menu bar read too (middleware/startup_splash.py).
+    app.state.run_state = RunState(report=status_folder.write_run_state)
 
     # Keep plugin tokens presented via the _plugin_token query param out of
     # uvicorn's access log. Done here (not at import) so uvicorn has already
@@ -415,6 +417,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        # Said already when a stop signal or a restart began it; said here
+        # when neither did.
+        app.state.run_state.stopping()
         # The same stop a restart runs (openavc/restart.py), within the same
         # deadline: core/engine_lifecycle.py has the stages and their order.
         await engine.shutdown(stop_deadline())
@@ -563,7 +568,7 @@ from openavc.middleware.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
 # Served while the engine initializes.
-from openavc.middleware.startup_splash import RunState, StartupSplashMiddleware
+from openavc.middleware.startup_splash import FAILED, RunState, StartupSplashMiddleware
 app.add_middleware(StartupSplashMiddleware)
 
 # Serve Panel UI static files
@@ -754,7 +759,7 @@ def _certificate_files():
             "or disable HTTPS (Settings > Security, or OPENAVC_TLS_ENABLED=false)."
         )
         print(f"\n*** {msg} ***\n", file=sys.stderr)
-        status_folder.write_startup_error("tls_error", msg)
+        status_folder.write_run_state(FAILED, __version__, msg, "tls_error")
         raise SystemExit(1) from exc
 
 
@@ -811,7 +816,16 @@ def _served_app():
 # The main listener's server, the one that hears a stop signal first.
 def _main_server(cfg: "uvicorn.Config") -> "uvicorn.Server":
     from openavc import listen_sockets
-    return listen_sockets.hears_the_stop(uvicorn.Server(cfg))
+    return listen_sockets.hears_the_stop(uvicorn.Server(cfg), _stop_heard)
+
+
+def _stop_heard() -> None:
+    """The stop signal reached the main server: the served app's run-state
+    record says stopping. uvicorn installs its handlers before the lifespan
+    makes the record; a signal in between is said by the lifespan's end."""
+    record = getattr(_served_app().state, "run_state", None)
+    if record is not None:
+        record.stopping()
 
 
 async def _run_tls(sockets: list) -> None:
@@ -898,7 +912,7 @@ def _bind_primary_port(plan):
         else:
             msg = exc.message("HTTP port", "OPENAVC_PORT")
         print(f"\n*** {msg} ***\n")
-        status_folder.write_startup_error(exc.error_type, msg)
+        status_folder.write_run_state(FAILED, __version__, msg, exc.error_type)
         raise SystemExit(1)
 
 

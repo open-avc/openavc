@@ -489,7 +489,8 @@ async def test_the_simulator_runs_in_a_session_of_its_own_on_posix(rig, monkeypa
 def _the_main_server_hears(sig: int) -> _MainServer:
     """A stop signal, through the hook the main server is started with
     (``python -m openavc.main``), the moment it arrives."""
-    server = listen_sockets.hears_the_stop(_MainServer())
+    # No run-state record here: the engine reads the signal itself.
+    server = listen_sockets.hears_the_stop(_MainServer(), lambda: None)
     server.handle_exit(sig, None)
     return server
 

@@ -87,7 +87,7 @@ Override with the `OPENAVC_DATA_DIR` environment variable.
 ├── plugin_repo/       # Community and custom plugins (installed from the IDE)
 ├── backups/           # Automatic pre-update backups
 ├── logs/              # Log files (rotated)
-├── status/            # The ports the server listens on, and why it last failed to start
+├── status/            # The ports the server listens on, whether it is starting, running or stopping, and why it last failed to start
 ├── system.json        # System configuration
 └── update-cache/      # Downloaded update packages; on Windows, the installers rollback uses
 ```
@@ -654,6 +654,16 @@ Platform notes:
 ## Health Check
 
 `GET /api/health` returns server health with no authentication required. Use this for monitoring tools, load balancers, and container orchestration health checks.
+
+It answers `200` only while the server is running. While the server is starting, after a start that failed, and from the moment a restart or a stop begins, it answers `503` with what the server is doing (`starting`, `failed` or `stopping`) and the version:
+
+```json
+{ "status": "stopping", "version": "0.41.0" }
+```
+
+`GET /api/startup-status` gives the reason when a start failed.
+
+A running server answers:
 
 ```json
 {

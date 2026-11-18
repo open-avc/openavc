@@ -282,7 +282,8 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
         # watcher's later tick must still read the server configuration.
         await watcher.call_args.kwargs["on_tick"]()
         assert safety_tick.await_args.args[0] is system_config.return_value
-    assert app.state.run_state.answer() == {"ready": True, "error": None, "problems": []}
+    assert app.state.run_state.ready is True
+    assert (app.state.run_state.error, app.state.run_state.problems) == (None, ())
     start.assert_awaited_once()
     assert files(data) == original
 

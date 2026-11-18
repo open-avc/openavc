@@ -23,7 +23,8 @@ import pytest
 from openavc import config, main, restart as restart_door, runtime_flags
 from openavc.core.start_stages import GoOn
 from openavc.core.stop_stages import STOP_SECONDS
-from openavc.middleware.startup_splash import RunState
+from openavc.middleware.startup_splash import FAILED, READY, RunState
+from openavc.version import __version__
 from openavc.restart import WATCHDOG_MARGIN_SECONDS
 
 
@@ -143,7 +144,9 @@ async def test_a_good_boot_checks_sweeps_starts_then_confirms(boot):
     assert boot.calls["check_rollback_needed"] == [((boot.data_dir,), {})]
     assert boot.calls["clear_stale_rollback_marker"] == [((boot.data_dir,), {})]
     assert boot.calls["confirm_startup"] == [((boot.data_dir,), {})]
-    assert boot.app.state.run_state.answer() == {"ready": True, "error": None, "problems": []}
+    assert boot.app.state.run_state.answer() == {
+        "phase": READY, "ready": True, "version": __version__, "error": None, "problems": [],
+    }
 
 
 async def test_a_failed_update_is_rolled_back_before_the_engine_starts(boot, monkeypatch):
@@ -328,7 +331,9 @@ async def test_an_engine_that_fails_to_start_leaves_its_stage_and_error_for_the_
     # The stage that stopped the start is named, and what it went on past
     # before that is kept.
     assert boot.app.state.run_state.answer() == {
+        "phase": FAILED,
         "ready": False,
+        "version": __version__,
         "error": "Loading the project failed: project unreadable",
         "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
     }
@@ -346,7 +351,9 @@ async def test_a_stage_of_the_servers_own_that_stops_the_start_is_named(boot, mo
     await boot.run()
 
     assert boot.app.state.run_state.answer() == {
+        "phase": FAILED,
         "ready": False,
+        "version": __version__,
         "error": "Loading the drivers' discovery data failed: no index",
         "problems": [],
     }
@@ -361,7 +368,9 @@ async def test_a_start_that_went_on_past_a_stage_is_ready_and_keeps_it(boot):
     await boot.run()
 
     assert boot.app.state.run_state.answer() == {
+        "phase": READY,
         "ready": True,
+        "version": __version__,
         "error": None,
         "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
     }

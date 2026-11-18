@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from openavc import config, main, runtime_flags
+from openavc.middleware.startup_splash import STOPPING, RunState
 
 
 @pytest.fixture
@@ -522,41 +523,64 @@ def test_a_supervisor_listener_is_adopted_for_the_same_plan(started, monkeypatch
 # others are listen_sockets.quiet_server), so it is the first to hear a stop.
 # It notes it before uvicorn starts draining connections, which comes long
 # before the lifespan reaches Engine.stop(); anything deciding something on the
-# way down reads runtime_flags.stopping (Engine.stopping).
+# way down reads runtime_flags.stopping (Engine.stopping), and the served app's
+# run-state record says stopping (/api/health, the status folder).
 
 
-async def test_the_https_listener_notes_the_stop_signal(runs, monkeypatch):
+@pytest.fixture
+def served_record(monkeypatch):
+    """The run-state record of the app the main listener serves, as its
+    lifespan makes it, the start still running."""
     monkeypatch.setattr(runtime_flags, "stopping", False)
+    record = RunState()
+    monkeypatch.setattr(main.app.state, "run_state", record, raising=False)
+    return record
+
+
+async def test_the_https_listener_notes_the_stop_signal(runs, served_record):
     await main._run_tls(["s1"])
-    _hears_the_stop(runs.servers[0])
+    _hears_the_stop(runs.servers[0], served_record)
 
 
-async def test_the_http_listener_beside_the_redirect_notes_the_stop_signal(runs, monkeypatch):
-    monkeypatch.setattr(runtime_flags, "stopping", False)
+async def test_the_http_listener_beside_the_redirect_notes_the_stop_signal(runs, served_record):
     await main._run_http(["s1"])
-    _hears_the_stop(runs.servers[0])
+    _hears_the_stop(runs.servers[0], served_record)
 
 
-def test_plain_http_alone_notes_the_stop_signal(started, monkeypatch):
-    monkeypatch.setattr(runtime_flags, "stopping", False)
+def test_plain_http_alone_notes_the_stop_signal(started, served_record):
     main.main()
-    _hears_the_stop(started.servers[0])
+    _hears_the_stop(started.servers[0], served_record)
 
 
-def _hears_the_stop(server) -> None:
+def _hears_the_stop(server, record) -> None:
     assert server.config.app == "openavc.main:app"
     server.handle_exit(15, None)
     assert runtime_flags.stopping is True
+    assert record.phase == STOPPING
     # uvicorn still does what it does with the signal.
     assert server.exits_handled == [15]
 
 
-def test_a_real_server_still_shuts_down_on_the_signal(monkeypatch):
+def test_a_real_server_still_shuts_down_on_the_signal(served_record):
+    import signal
+
+    import uvicorn
+
+    server = main._main_server(uvicorn.Config("openavc.main:app"))
+    server.handle_exit(signal.SIGTERM, None)
+    assert runtime_flags.stopping is True
+    assert served_record.phase == STOPPING
+    assert server.should_exit is True
+
+
+def test_a_signal_before_the_lifespan_made_its_record_still_stops(monkeypatch):
+    """uvicorn installs its handlers before the lifespan runs."""
     import signal
 
     import uvicorn
 
     monkeypatch.setattr(runtime_flags, "stopping", False)
+    monkeypatch.delattr(main.app.state, "run_state", raising=False)
     server = main._main_server(uvicorn.Config("openavc.main:app"))
     server.handle_exit(signal.SIGTERM, None)
     assert runtime_flags.stopping is True

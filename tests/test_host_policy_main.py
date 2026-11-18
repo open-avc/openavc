@@ -76,7 +76,8 @@ try:
     main.app.state.run_state = RunState()
     host.current = PolicySnapshot(4, False, False)
     assert client.get('/panel/').status_code == 403  # No startup-splash bypass.
-    assert client.get('/api/startup-status').json() == {'ready': False, 'error': None, 'problems': []}
+    status = client.get('/api/startup-status').json()
+    assert (status['phase'], status['ready'], status['error']) == ('starting', False, None)
 
     scope = {'type': 'http', 'asgi': {'version': '3.0', 'spec_version': '2.4'},
              'method': 'POST', 'path': '/api/auth/setup', 'raw_path': b'/api/auth/setup',

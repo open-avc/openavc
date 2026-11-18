@@ -5,15 +5,16 @@ On Windows the installer restricts the data folder to the service and
 administrators (installer/secure-data-dir.bat), and the tray app runs as the
 signed-in user, so the one thing the tray can read is status/. On macOS the
 server runs as root and the menu bar app as the signed-in user, so the server
-writes server.json readable by everyone. The server writes two files there:
-where it listens, at every start, and why it failed to start, when it does.
-The tray reads both; the menu bar reads where it listens. Nothing ties the
-ends together but these tests: tray.py and menubar.py are standalone scripts
-that import nothing from the server, so each end names the folder and files
-itself.
+writes server.json readable by everyone. The server writes three files there:
+where it listens, at every start; where it is in its life (starting, ready,
+failed to start, stopping), at each change; and why it failed to start, when
+it does. The tray reads where it listens and why it failed; the menu bar reads
+where it listens. Nothing ties the ends together but these tests: tray.py and
+menubar.py are standalone scripts that import nothing from the server, so each
+end names the folder and files itself.
 
 The folder is readable by every local account, so these tests also hold it to
-carrying exactly those two files and those fields.
+carrying exactly those three files and those fields.
 """
 
 import importlib.util
@@ -138,12 +139,50 @@ def test_the_tray_reads_the_address_the_server_records(data_dir, monkeypatch):
     assert tray_mod._get_server_config() == ports
 
 
+def _run_state(data_dir) -> dict:
+    return json.loads((data_dir / "status" / "run-state.json").read_text(encoding="utf-8"))
+
+
+def test_each_phase_replaces_the_last(data_dir):
+    status_folder.write_run_state("starting", "1.2.3")
+    status_folder.write_run_state("ready", "1.2.3")
+
+    recorded = _run_state(data_dir)
+    assert (recorded["phase"], recorded["version"], recorded["pid"]) == ("ready", "1.2.3", os.getpid())
+    # A phase with no reason leaves no reason behind.
+    assert not (data_dir / "status" / "startup-error.json").exists()
+
+
+def test_a_failed_start_leaves_its_phase_and_its_reason_for_the_tray(data_dir, monkeypatch):
+    """A stage of the engine's start that stopped it, not only a port or TLS:
+    the tray's dialog says why."""
+    shown = []
+    monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append(message))
+    monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
+
+    status_folder.write_run_state("failed", "1.2.3", "Loading the project failed: project unreadable")
+
+    assert _run_state(data_dir)["phase"] == "failed"
+    error = json.loads((data_dir / "status" / "startup-error.json").read_text(encoding="utf-8"))
+    assert error["error"] == "start_failed"
+    tray_mod.OpenAVCTray()._check_startup_error()
+    assert shown == ["Loading the project failed: project unreadable"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the folder's ACL decides on Windows, not the file mode")
+def test_every_account_can_read_where_the_server_is_in_its_life(data_dir):
+    status_folder.write_run_state("starting", "1.2.3")
+
+    mode = stat.S_IMODE((data_dir / "status" / "run-state.json").stat().st_mode)
+    assert mode & 0o044 == 0o044, oct(mode)
+
+
 def test_the_tray_reads_the_startup_error_the_server_records(data_dir, monkeypatch):
     shown = []
     monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append(message))
     monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
 
-    status_folder.write_startup_error("port_in_use", "HTTP port 8090 is already in use.")
+    status_folder.write_run_state("failed", "1.2.3", "HTTP port 8090 is already in use.", "port_in_use")
 
     assert (data_dir / "status" / "startup-error.json").is_file()
     assert not (data_dir / "startup-error.json").exists()
@@ -178,7 +217,7 @@ def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeyp
     monkeypatch.setattr(listen_sockets, "bind_for_plan", bind)
     served = []
     monkeypatch.setattr(main.uvicorn.Server, "run", lambda self, sockets: served.append(sockets))
-    status_folder.write_startup_error("port_in_use", "an earlier failure")
+    status_folder.write_run_state("failed", "1.2.3", "an earlier failure", "port_in_use")
 
     main.main()
 
@@ -219,6 +258,8 @@ def test_a_port_in_use_is_recorded_for_the_tray(data_dir, monkeypatch):
     error = json.loads((data_dir / "status" / "startup-error.json").read_text(encoding="utf-8"))
     assert error["error"] == "port_in_use"
     assert error["message"].startswith("HTTP port 8090 is already in use.")
+    # No lifespan ever ran, so no record: the bind's failure says the phase.
+    assert _run_state(data_dir)["phase"] == "failed"
 
 
 def test_the_folder_every_account_can_read_carries_only_these(data_dir, monkeypatch):
@@ -226,12 +267,19 @@ def test_the_folder_every_account_can_read_carries_only_these(data_dir, monkeypa
     monkeypatch.setattr(config, "HTTP_PORT", 8090)
 
     status_folder.write_server_address()
-    status_folder.write_startup_error("tls_error", "HTTPS is enabled but the TLS listener cannot start.")
+    status_folder.write_run_state(
+        "failed", "1.2.3", "HTTPS is enabled but the TLS listener cannot start.", "tls_error",
+    )
 
     status = data_dir / "status"
-    assert sorted(p.name for p in status.iterdir()) == ["server.json", "startup-error.json"]
+    assert sorted(p.name for p in status.iterdir()) == [
+        "run-state.json", "server.json", "startup-error.json",
+    ]
     assert set(json.loads((status / "server.json").read_text(encoding="utf-8"))) == {
         "http_port", "tls_enabled", "tls_port", "listen",
+    }
+    assert set(json.loads((status / "run-state.json").read_text(encoding="utf-8"))) == {
+        "phase", "version", "pid", "timestamp",
     }
     assert set(json.loads((status / "startup-error.json").read_text(encoding="utf-8"))) == {
         "error", "message", "timestamp",

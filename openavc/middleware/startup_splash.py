@@ -1,26 +1,39 @@
-"""THE run-state record, and what the server answers while the engine is
-still starting.
+"""THE run-state record: where this process is in its life, and what the
+server answers while it is not ready.
 
-The record (``RunState``, at ``app.state.run_state``) is how the start went:
-whether it is done, the sentence for the stage that stopped it, and each
-whole stage it went on past (a ``StartProblem``: the driver library, the
-plugin system, the script engine), worded once in core/start_stages.py.
-``openavc.main``'s lifespan makes it and its start writes it; a device, a
-plugin or a script that did not start says so on its own surface instead.
+The record (``RunState``, at ``app.state.run_state``) holds the phase
+(``PHASES``: starting, ready, failed to start, stopping), the sentence for the
+stage that stopped a start, each whole stage the start went on past (a
+``StartProblem``: the driver library, the plugin system, the script engine,
+worded once in core/start_stages.py), and the version that started.
+``openavc.main``'s lifespan makes it and writes each phase to the status
+folder the tray and the menu bar read (status_folder.write_run_state); its
+start says ready or failed, and stopping is said by the first of the stop
+signal (listen_sockets.hears_the_stop), an accepted restart (openavc/restart.py)
+and the lifespan's end. Stopping is final: a start that ends after it began
+leaves it said. A device, a plugin or a script that did not start says so on
+its own surface instead.
+
 ``/api/startup-status`` answers it (``startup_status``): from here while the
-start runs, from the route once it is ready, with the same fields.
+start runs, from the route once it has finished, with the same fields.
+``ready`` is the phase being ready, for the IDE's wait and the splash page's
+poll. ``/api/health`` answers 503 with the phase whenever the phase is not
+ready (``health_answer``), so a monitor, a container's health check and the
+tray hear of a start, a failed start and a stop alike.
 
 The HTTP listener comes up before the engine (``openavc.main`` starts the
 engine in the background so a browser gets an answer at once). Until the
-record is ready, the rest of the API answers 503 (the engine has no project
-yet), and every other path gets the splash page itself, which polls
+start has finished, the rest of the API answers 503 (the engine has no
+project yet), and every other path gets the splash page itself, which polls
 ``/api/startup-status`` and reloads once the engine is ready or shows the
-error that stopped it. An app whose lifespan made no record passes
-everything through.
+error that stopped it. Once it has finished, the API is served on through the
+stop: a save made in a restart's wait still reaches its route. An app whose
+lifespan made no record passes everything through.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -28,35 +41,98 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
 from openavc.core.start_stages import StartProblem, StartRun
+from openavc.utils.logger import get_logger
+from openavc.version import __version__
+
+log = get_logger(__name__)
+
+# Where the process is in its life, the words every reader is answered with.
+STARTING = "starting"
+READY = "ready"
+FAILED = "failed"
+STOPPING = "stopping"
+PHASES: tuple[str, ...] = (STARTING, READY, FAILED, STOPPING)
+
+# What the record tells at each phase it reaches: the phase, the version that
+# started, and the start's error with a failed start (None otherwise).
+Report = Callable[[str, str, "str | None"], None]
 
 
 class RunState:
-    """How this process's start went: ``ready`` once it finished, ``error``
-    for the stage that stopped it, and ``problems``, the whole stages it went
-    on past. Answered to anyone who asks, so it holds only sentences, never
-    an exception's text from a stage the start went on past."""
+    """Where this process is in its life: ``phase`` (``PHASES``), ``error``
+    for the stage that stopped the start, ``problems``, the whole stages it
+    went on past, and ``version``, the one that started. Answered to anyone
+    who asks, so it holds only sentences, never an exception's text from a
+    stage the start went on past.
 
-    def __init__(self) -> None:
-        self.ready = False
+    ``report`` is told each phase as it is reached, this first one included
+    (``openavc.main`` passes the status folder's writer); a report that
+    raises is logged, never raised, since the stop signal's handler is one
+    of the callers."""
+
+    def __init__(self, report: Report | None = None) -> None:
+        self.phase = STARTING
         self.error: str | None = None
         self.problems: tuple[StartProblem, ...] = ()
+        self.version = __version__
+        # The start has finished: the API is served from here, on through the
+        # stop. Not the phase, which a stop moves on from ready.
+        self._finished = False
+        self._report = report
+        self._tell()
+
+    @property
+    def ready(self) -> bool:
+        return self.phase == READY
+
+    @property
+    def serving(self) -> bool:
+        """Whether the API is served: from the end of a start that finished,
+        on through the stop."""
+        return self._finished
 
     def started(self, run: StartRun) -> None:
         """The start finished, past what it went on past."""
         self.problems = tuple(run.problems)
-        self.ready = True
+        self._finished = True
+        self._reach(READY)
 
     def stopped(self, run: StartRun, exc: BaseException) -> None:
         """The start stopped at ``run``'s stage with ``exc``."""
         self.problems = tuple(run.problems)
         self.error = run.stopped_by(exc)
+        self._reach(FAILED)
+
+    def stopping(self) -> None:
+        """The server is on its way down; said once, whoever says it first."""
+        self._reach(STOPPING)
+
+    def _reach(self, phase: str) -> None:
+        if self.phase in (phase, STOPPING):
+            return
+        self.phase = phase
+        self._tell()
+
+    def _tell(self) -> None:
+        if self._report is None:
+            return
+        try:
+            self._report(self.phase, self.version, self.error if self.phase == FAILED else None)
+        except Exception:
+            log.exception("Could not record that the server is %s", self.phase)
 
     def answer(self) -> dict[str, Any]:
         return {
+            "phase": self.phase,
             "ready": self.ready,
+            "version": self.version,
             "error": self.error,
             "problems": [problem.answer() for problem in self.problems],
         }
+
+    def health_answer(self) -> dict[str, Any]:
+        """``/api/health``'s 503 body while the phase is not ready."""
+        return {"status": self.phase, "version": self.version}
 
 
 def _record(app) -> RunState | None:
@@ -68,7 +144,10 @@ def startup_status(app) -> dict[str, Any]:
     to say on an app whose lifespan made none."""
     record = _record(app)
     if record is None:
-        return {"ready": True, "error": None, "problems": []}
+        return {
+            "phase": READY, "ready": True, "version": __version__,
+            "error": None, "problems": [],
+        }
     return record.answer()
 
 _STARTUP_PAGE = """\
@@ -144,14 +223,19 @@ _STARTUP_PAGE = """\
 
 
 class StartupSplashMiddleware(BaseHTTPMiddleware):
-    """Serves a loading page for UI routes while the engine is initializing."""
+    """Serves a loading page for UI routes while the engine is initializing,
+    and ``/api/health``'s 503 whenever the server is not ready."""
 
     async def dispatch(self, request: Request, call_next):
         record = _record(request.app)
-        if record is None or record.ready:
+        if record is None:
             return await call_next(request)
 
         path = request.url.path
+        if path == "/api/health" and not record.ready:
+            return JSONResponse(record.health_answer(), status_code=503)
+        if record.serving:
+            return await call_next(request)
 
         # Startup status endpoint — always available
         if path == "/api/startup-status":

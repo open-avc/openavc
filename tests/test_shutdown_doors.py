@@ -10,6 +10,7 @@ recorded instead of run.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from unittest.mock import AsyncMock
 
@@ -76,8 +77,9 @@ async def test_a_restart_and_a_service_stop_run_the_same_stages(doors, monkeypat
         raise _Exited(code)
 
     monkeypatch.setattr(os, "_exit", exit_)
-    async with main.lifespan(FastAPI(openapi_url=None, docs_url=None, redoc_url=None)):
-        restart.accept_restarts(engine)
+    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+    async with main.lifespan(app):
+        restart.accept_restarts(engine, app.state.run_state)
         assert restart.request_exit("hard", "api").accepted
         with pytest.raises(_Exited):
             await asyncio.gather(*restart._exiting)
@@ -97,6 +99,27 @@ async def test_a_restart_and_a_service_stop_run_the_same_stages(doors, monkeypat
     # restart's door included (it has no stop signal to say so first).
     assert engine.stopping_at_the_audit == [True, True]
     assert main.simulator_proxy.aclose_client.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_the_status_folder_hears_the_start_and_says_stopping_before_the_shutdown(
+    doors, monkeypatch, tmp_path,
+):
+    """The tray and the menu bar read where the server is in its life from
+    the folder: starting from the lifespan's first moment, stopping before
+    the first stage of the stop."""
+    monkeypatch.setenv("OPENAVC_DATA_DIR", str(tmp_path))
+    run_state = tmp_path / "status" / "run-state.json"
+    at_the_audit: list[str] = []
+
+    async def end_the_audit():
+        at_the_audit.append(json.loads(run_state.read_text(encoding="utf-8"))["phase"])
+
+    monkeypatch.setattr(main.audit_manager, "shutdown", AsyncMock(side_effect=end_the_audit))
+    async with main.lifespan(FastAPI(openapi_url=None, docs_url=None, redoc_url=None)):
+        assert json.loads(run_state.read_text(encoding="utf-8"))["phase"] == "starting"
+
+    assert at_the_audit == ["stopping"]
 
 
 @pytest.mark.asyncio

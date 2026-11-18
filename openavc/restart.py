@@ -78,6 +78,9 @@ UNDER_WAY = "under_way"
 # The engine an accepted request stops, set once the server is up
 # (``accept_restarts``); until then every request is refused.
 _engine: Any = None
+# The server's run-state record (middleware/startup_splash.py), which an
+# accepted request says stopping on at once, its wait included.
+_run_state: Any = None
 
 # The exit under way, held here so it is not collected while it runs; while
 # it is here, every further request is refused.
@@ -100,17 +103,21 @@ class ExitAnswer:
     sentence: str = ""
 
 
-def accept_restarts(engine) -> None:
-    """Arm the door: from now on an accepted request stops ``engine``.
-    ``openavc.main`` calls it once the engine is up."""
-    global _engine
+def accept_restarts(engine, run_state=None) -> None:
+    """Arm the door: from now on an accepted request stops ``engine`` and
+    says stopping on ``run_state``, the server's run-state record (none on a
+    server that keeps none). ``openavc.main`` calls it once the engine is
+    up."""
+    global _engine, _run_state
     _engine = engine
+    _run_state = run_state
 
 
 def reset() -> None:
     """Disarm the door and forget any exit in flight (tests)."""
-    global _engine
+    global _engine, _run_state
     _engine = None
+    _run_state = None
     _exiting.clear()
 
 
@@ -147,6 +154,8 @@ def request_exit(mode: Any, source: str) -> ExitAnswer:
         "Restart requested (source=%s, mode=%s); stopping %s",
         source, mode, f"in {wait} s" if wait else "now",
     )
+    if _run_state is not None:
+        _run_state.stopping()
     exiting = asyncio.create_task(_exit_after(wait, engine))
     _exiting.add(exiting)
     exiting.add_done_callback(_exiting.discard)
