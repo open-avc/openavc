@@ -54,6 +54,7 @@ from openavc.core.installed_equipment import InstalledEquipmentError
 from openavc.drivers.driver_change import (
     Admitted,
     DriverChange,
+    DriverChangedElsewhere,
     DriverRefused,
     Gates,
     admit,
@@ -61,6 +62,7 @@ from openavc.drivers.driver_change import (
     check_driver_file,
     claim,
     floor_refusal,
+    hold_to_revision,
     holding,
 )
 # Re-exported for the doors that do not call ``changed`` yet (module docstring).
@@ -137,11 +139,28 @@ def claim_or_answer(driver_id: str) -> None:
         raise _refusal_answer(e)
 
 
+def revision_or_answer(sent: Any, current: str) -> None:
+    """``driver_change.hold_to_revision`` as this API answers it, at every
+    door that saves over a driver file: a save naming a revision the stored
+    file no longer has is the 409 that says so, with ``code``
+    ``driver_changed`` and the stored file's ``revision`` beside it, which the
+    IDE turns into its reload, save mine over it, keep editing choice."""
+    try:
+        hold_to_revision(sent, current)
+    except DriverRefused as e:
+        raise _refusal_answer(e)
+
+
 def _refusal_answer(refusal: DriverRefused) -> HTTPException:
     """``admit``'s refusal as this API answers it: its status and sentence,
     with the loader's reasons beneath it when there are any. Gates that name
     no sentence of their own (the Builder's saves) answer under
-    ``definition_invalid``'s heading, which counts the reasons."""
+    ``definition_invalid``'s heading, which counts the reasons. A save from an
+    older copy answers the revision the file has now."""
+    if isinstance(refusal, DriverChangedElsewhere):
+        return StructuredApiError(
+            refusal.status_code, refusal.detail, code="driver_changed", revision=refusal.current
+        )
     if refusal.errors:
         return definition_invalid(
             list(refusal.errors), preamble=refusal.detail or None, status_code=refusal.status_code

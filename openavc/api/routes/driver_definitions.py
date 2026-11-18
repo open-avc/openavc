@@ -4,6 +4,14 @@ read, create and update through the same functions (``served_definition``,
 ``create_definition``, ``replace_definition``), answering a refusal in their
 own shape.
 
+Every read answers each definition with its file's revision (``_revision``,
+``driver_change.revision``), and every save answers the revision it stored.
+Replace and patch are held to the revision the definition they are sent
+carries (``_revision``, as the read answered it): a save from a copy another
+door has changed since is refused (409, ``code`` ``driver_changed``, the
+revision on disk beside it), checked once the door has found the save is its
+to make, before the definition is. A save that carries none is not held.
+
 Create, replace and patch each refuse what is theirs to refuse (an id already
 taken; a definition that is not there, a built-in, a rename onto another
 driver's id), then save through one function, ``_save_definition``: the strict
@@ -33,9 +41,14 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, endpoint_policy
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes.drivers import admit_or_answer, claim_or_answer, definition_invalid
+from openavc.api.routes.drivers import (
+    admit_or_answer,
+    claim_or_answer,
+    definition_invalid,
+    revision_or_answer,
+)
 from openavc.core.host_policy import HostCategory
-from openavc.drivers.driver_change import DriverChange, Gates, changed, holding
+from openavc.drivers.driver_change import DriverChange, Gates, changed, holding, revision
 from openavc.drivers.registry import register_driver
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -254,7 +267,8 @@ async def _save_definition(
     overriding a shipped built-in, the built-in is registered again so the old
     id keeps working, otherwise its registration is dropped. Then
     ``driver_change.changed`` for the new id and the old: the devices on each
-    are built again from what serves it now.
+    are built again from what serves it now. Answers the saved id, the devices
+    built again, and the revision of the file it stored.
     """
     from openavc.drivers.driver_loader import (
         definition_file,
@@ -284,7 +298,11 @@ async def _save_definition(
     for old_id in renamed:
         restore_driver_registration(old_id, dirs)
     outcome = await changed(new_id, *renamed)
-    return {"driver_id": new_id, "devices_reconnected": outcome.reconnected}
+    return {
+        "driver_id": new_id,
+        "devices_reconnected": outcome.reconnected,
+        "revision": revision(data),
+    }
 
 
 def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:
@@ -317,12 +335,15 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     return {"status": "created", **await create_definition(_requested_definition(body))}
 
 
-async def replace_definition(driver_id: str, driver_def: dict[str, Any]) -> dict[str, Any]:
+async def replace_definition(
+    driver_id: str, driver_def: dict[str, Any], read_at: Any = None
+) -> dict[str, Any]:
     """THE replace of a definition, the Builder's and the AI's, holding the id
     it replaces and the one it saves: the listing's own keys stripped; refused
     when no definition serves ``driver_id``, when that is a read-only
-    built-in, or when a rename takes an id already served; then
-    ``_save_definition``, which takes the replaced copy away. Raises the
+    built-in, or when a rename takes an id already served; then held to the
+    revision ``read_at`` names (``revision_or_answer``: None is not held);
+    then ``_save_definition``, which takes the replaced copy away. Raises the
     refusal as this API answers it."""
     from openavc.drivers.driver_loader import list_driver_definitions as _list
 
@@ -330,16 +351,20 @@ async def replace_definition(driver_id: str, driver_def: dict[str, Any]) -> dict
     driver_def = _strip_listing_decorations(driver_def)
     async with holding(driver_id, driver_def.get("id", "")):
         existing = _list(dirs)
-        _current_definition(driver_id, existing)
+        current = _current_definition(driver_id, existing)
         _refuse_built_in_edit(driver_id, dirs)
         _refuse_rename_onto_another(driver_def.get("id", ""), driver_id, existing, dirs)
+        revision_or_answer(read_at, current["_revision"])
         return await _save_definition(driver_def, dirs, replacing=driver_id)
 
 
 @router.put("/driver-definitions/{driver_id}")
 async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest) -> dict:
-    """Update an existing JSON driver definition (``replace_definition``)."""
-    return {"status": "updated", **await replace_definition(driver_id, _requested_definition(body))}
+    """Update an existing JSON driver definition (``replace_definition``),
+    held to the revision its ``_revision`` names."""
+    driver_def = _requested_definition(body)
+    saved = await replace_definition(driver_id, driver_def, driver_def.get("_revision"))
+    return {"status": "updated", **saved}
 
 
 def _merge_patch(current: Any, patch: Any) -> Any:
@@ -364,13 +389,15 @@ def _merge_patch(current: Any, patch: Any) -> Any:
 
 @router.patch("/driver-definitions/{driver_id}")
 async def patch_driver_definition(driver_id: str, body: dict) -> dict:
-    """Partially update a driver definition (JSON Merge Patch semantics)."""
+    """Partially update a driver definition (JSON Merge Patch semantics),
+    held to the revision the patch's ``_revision`` names."""
     from openavc.drivers.driver_loader import list_driver_definitions as _list
 
     dirs = _get_driver_dirs()
     async with holding(driver_id):
         current = _current_definition(driver_id, _list(dirs))
         _refuse_built_in_edit(driver_id, dirs)
+        revision_or_answer(body.get("_revision"), current["_revision"])
 
         # A patch never changes the id. The floor is read off the merge, so a
         # patch carrying a lower floor (or clearing it) is the way out of one.

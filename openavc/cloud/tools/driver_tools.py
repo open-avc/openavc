@@ -18,6 +18,13 @@ with no definition file, so ``get_driver_definition`` answers its loaded
 surface marked ``editable: false``, as it does a YAML driver still loaded
 after its file was removed, which it says is one. The marks a read adds (``READ_MARKS``)
 are dropped before a save, so a definition the AI read saves back as it is.
+
+A definition the AI reads carries its file's revision (``_revision``), and its
+update is held to it, as the Builder's save is: a definition read before
+another door changed the driver is refused instead of undoing that change, and
+one that carries no revision is refused too, so the AI reads the driver before
+it changes it. Create and update answer the ``_revision`` they stored, which
+the next update sends back.
 Create and update also answer with the checker's issue records, the ones the
 Driver Builder's Validate shows (errors and warnings, each with its place): a
 refused draft names each error, and a saved one the warnings it was saved
@@ -105,11 +112,18 @@ def _issues(definition: dict) -> list[dict[str, str]]:
     return validate_driver_issues(definition, strict=True)
 
 
-def _refused(refused: HTTPException, issues: list[dict[str, str]]) -> dict[str, Any]:
+def _refused(
+    refused: HTTPException, issues: list[dict[str, str]], changed_elsewhere: str
+) -> dict[str, Any]:
     """A refusal of the Builder's save as the AI answers it: the reasons
     beneath it when it has them, else its sentence, and every issue the
-    checker found in the draft beside it."""
-    errors = getattr(refused, "fields", {}).get("errors")
+    checker found in the draft beside it. A save held to an older revision
+    than the file's is ``changed_elsewhere``, with no issues: they are a
+    draft's that will not be saved."""
+    fields = getattr(refused, "fields", {})
+    if fields.get("code") == "driver_changed":
+        return {"error": changed_elsewhere}
+    errors = fields.get("errors")
     answer: dict[str, Any] = {"error": "; ".join(errors) if errors else str(refused.detail)}
     if issues:
         answer["issues"] = issues
@@ -122,7 +136,23 @@ def _saved(status: str, saved: dict[str, Any], issues: list[dict[str, str]]) -> 
         "id": saved["driver_id"],
         "issues": issues,
         "devices_reconnected": saved["devices_reconnected"],
+        "_revision": saved["revision"],
     }
+
+
+def _changed_elsewhere(driver_id: str, read_at: Any) -> str:
+    """Why the AI's update of ``driver_id`` was held back: the definition it
+    sent was read before the file changed, or carried no revision at all."""
+    if read_at:
+        return (
+            f"'{driver_id}' was changed after you read it, in the Driver Builder or another "
+            "session, so your update was not saved. Read it again with get_driver_definition "
+            "and make your change to that copy."
+        )
+    return (
+        f"Read '{driver_id}' with get_driver_definition first, and send back the definition "
+        "it answers with your change made to it: its _revision says which copy you changed."
+    )
 
 
 def _no_id(definition: Any) -> dict[str, str] | None:
@@ -133,7 +163,10 @@ def _no_id(definition: Any) -> dict[str, str] | None:
 
 
 async def _through_the_builder(
-    door: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]], status: str, sent: Any
+    door: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    status: str,
+    sent: Any,
+    changed_elsewhere: str = "",
 ) -> dict[str, Any]:
     """A definition the AI sent, saved through one of the Driver Builder's
     save doors (``door``) and answered in the AI's shape, with the checker's
@@ -146,7 +179,7 @@ async def _through_the_builder(
     try:
         saved = await door(definition)
     except HTTPException as refused:
-        return _refused(refused, issues)
+        return _refused(refused, issues, changed_elsewhere)
     return _saved(status, saved, issues)
 
 
@@ -226,10 +259,18 @@ class DriverToolsMixin:
         return await _through_the_builder(create_definition, "created", input.get("definition"))
 
     async def _update_driver_definition(self, input: dict) -> Any:
+        """The Builder's replace, always held to the revision the sent
+        definition was read at: one that names none names the empty
+        revision, which no file has (module docstring)."""
         from openavc.api.routes.driver_definitions import replace_definition
 
-        replace = partial(replace_definition, input.get("driver_id", ""))
-        return await _through_the_builder(replace, "updated", input.get("definition"))
+        driver_id = input.get("driver_id", "")
+        sent = input.get("definition")
+        read_at = sent.get("_revision") if isinstance(sent, dict) else None
+        replace = partial(replace_definition, driver_id, read_at=read_at or "")
+        return await _through_the_builder(
+            replace, "updated", sent, _changed_elsewhere(driver_id, read_at)
+        )
 
     async def _test_driver_command(self, input: dict) -> Any:
         from pydantic import ValidationError

@@ -217,7 +217,7 @@ async def test_plain_save_keeps_it_and_names_what_the_check_refuses(driver_repo)
 
     assert result["status"] == "saved"
     assert path.read_text(encoding="utf-8") == CHECK_REFUSED_SOURCE
-    assert set(result) == {"status", "driver_id", "issues"}
+    assert set(result) == {"status", "driver_id", "revision", "issues"}
     assert [i for i in result["issues"] if i.startswith("push: missing or unknown 'type'")]
 
 

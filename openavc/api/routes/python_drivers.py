@@ -36,7 +36,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
-from openavc.drivers.driver_change import changed, holding
+from openavc.drivers.driver_change import changed, file_revision, holding, revision
 from openavc.drivers.driver_loader import (
     driver_companions,
     driver_files_for,
@@ -114,22 +114,30 @@ async def list_python_drivers() -> dict:
 
 @router.get("/python-drivers/{driver_id}/source")
 async def get_python_driver_source(driver_id: str) -> dict:
-    """Read the source code of a Python driver file."""
+    """Read the source code of a Python driver file, with the revision of
+    the bytes it was read from (``driver_change.revision``), which a save
+    names."""
     filepath = _safe_driver_path(driver_id)
 
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
-    from openavc.drivers.python_source import SourceDecodeError, python_source
+    from openavc.drivers.python_source import SourceDecodeError, decode_python_source
 
     try:
-        source = python_source(filepath)
+        data = filepath.read_bytes()
+        source = decode_python_source(data, filepath.name)
     except SourceDecodeError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except OSError as e:
         raise _api_error(500, f"Could not read driver '{driver_id}'.", e)
 
-    return {"driver_id": driver_id, "filename": filepath.name, "source": source}
+    return {
+        "driver_id": driver_id,
+        "filename": filepath.name,
+        "source": source,
+        "revision": revision(data),
+    }
 
 
 @router.get("/python-drivers/{driver_id}/bundle")
@@ -190,7 +198,16 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     A refusal is reported at HTTP 200 in the body, matching the reload route
     next door (documented behaviour), because the editor needs the structured
     ``line`` to mark the offending row and an HTTPException detail is prose.
+
+    ``revision`` names the copy the source was read at (the read's
+    ``revision``): a save from a copy another session has saved over since
+    is refused before anything about the source is judged (409, ``code``
+    ``driver_changed``, the revision on disk beside it), by either button. A
+    body with no ``revision`` is not held. A write answers the revision it
+    stored.
     """
+    from openavc.api.routes.drivers import revision_or_answer
+
     async with holding(driver_id):
         require_mutable_driver(driver_id)
         filepath = _safe_driver_path(driver_id)
@@ -200,6 +217,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
 
         if not filepath.exists():
             raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+        revision_or_answer(body.get("revision"), file_revision(filepath))
 
         data = _source_bytes(source)
         require_mutable_driver_file(filepath.name, data)
@@ -212,7 +230,12 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
         except OSError as e:
             raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
 
-        return {"status": "saved", "driver_id": driver_id, **_kept(problems)}
+        return {
+            "status": "saved",
+            "driver_id": driver_id,
+            "revision": revision(data),
+            **_kept(problems),
+        }
 
 
 def _source_bytes(source: str) -> bytes:

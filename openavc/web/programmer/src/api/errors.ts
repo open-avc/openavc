@@ -96,6 +96,21 @@ export function apiErrorCode(e: unknown): string | undefined {
 }
 
 /**
+ * The revision a save refused as made from an older copy names (code
+ * `driver_changed`): the copy saved now, which a save over it names. Null when
+ * the refusal is another or carries none.
+ */
+export function changedElsewhereRevision(e: unknown): string | null {
+  if (apiErrorCode(e) !== "driver_changed" || !(e instanceof ApiError)) return null;
+  try {
+    const revision = JSON.parse(e.body)?.revision;
+    return typeof revision === "string" ? revision : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The `errors` list a structured refusal carries beside `detail` (a driver
  * definition that failed validation lists each problem there), or null when
  * the error has none.

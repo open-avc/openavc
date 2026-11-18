@@ -131,6 +131,11 @@ def _saved(env: Env, name: str) -> dict:
     return yaml.safe_load((env.repo / name).read_text(encoding="utf-8"))
 
 
+def _stored(env: Env, name: str) -> str:
+    """The revision a save answers: the stored file's (driver_change.revision)."""
+    return driver_change.file_revision(env.repo / name)
+
+
 # --- GET /driver-definitions ------------------------------------------------
 
 
@@ -213,6 +218,7 @@ async def test_create_saves_registers_reconnects_and_announces_in_that_order(env
     assert answer == {
         "status": "created", "driver_id": "acme_gadget",
         "devices_reconnected": ["acme_gadget-dev"],
+        "revision": _stored(env, "acme_gadget.avcdriver"),
     }
     assert env.events == [
         ("register", "acme_gadget", ("acme_gadget.avcdriver",)),
@@ -427,6 +433,7 @@ async def test_replace_in_place_removes_other_copies_and_reconnects_once(env):
     assert answer == {
         "status": "updated", "driver_id": "acme_widget",
         "devices_reconnected": ["acme_widget-dev"],
+        "revision": _stored(env, "acme_widget.avcdriver"),
     }
     assert env.events == [
         ("register", "acme_widget", ("acme_widget.avcdriver",)),
@@ -446,6 +453,7 @@ async def test_a_rename_restores_the_old_id_and_reconnects_both(env):
     assert answer == {
         "status": "updated", "driver_id": "acme_widget_two",
         "devices_reconnected": ["acme_widget_two-dev", "acme_widget-dev"],
+        "revision": _stored(env, "acme_widget_two.avcdriver"),
     }
     assert env.events == [
         ("register", "acme_widget_two", ("acme_widget_two.avcdriver",)),
@@ -674,6 +682,7 @@ async def test_patch_keeps_the_id_strips_the_listing_keys_and_saves_the_merge(en
     assert answer == {
         "status": "updated", "driver_id": "acme_widget",
         "devices_reconnected": ["acme_widget-dev"],
+        "revision": _stored(env, "acme_widget.avcdriver"),
     }
     assert env.events == [
         ("register", "acme_widget", ("acme_widget.avcdriver",)),
@@ -898,8 +907,12 @@ class _Assistant:
         return answer.get("error")
 
     async def replace(self, driver_id: str, definition: dict) -> str | None:
+        """As the AI is told to: the driver read first, and the definition
+        sent with the revision that read answered."""
+        read = await self.tools._get_driver_definition({"driver_id": driver_id})
+        read_at = {"_revision": read["_revision"]} if "_revision" in read else {}
         answer = await self.tools._update_driver_definition(
-            {"driver_id": driver_id, "definition": definition},
+            {"driver_id": driver_id, "definition": {**definition, **read_at}},
         )
         return answer.get("error")
 
@@ -1124,6 +1137,7 @@ async def test_the_assistant_reads_what_the_builder_reads_and_saves_it_back(env,
     assert answer == {
         "status": "updated", "id": "acme_widget", "issues": [],
         "devices_reconnected": ["acme_widget-dev"],
+        "_revision": _stored(env, "acme_widget.avcdriver"),
     }
     assert _saved(env, "acme_widget.avcdriver") == WIDGET
 

@@ -6,6 +6,8 @@ import { ScriptFileTree } from "../components/scripts/ScriptFileTree";
 import { ScriptEditor, type RuntimeError } from "../components/scripts/ScriptEditor";
 import { ScriptConsole } from "../components/scripts/ScriptConsole";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { ChangedElsewhereDialog } from "../components/shared/ChangedElsewhereDialog";
+import { useSourceRevision } from "../components/scripts/sourceRevision";
 import { CreateDriverDialog } from "../components/scripts/CreateDriverDialog";
 import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
@@ -61,6 +63,16 @@ export function ScriptView() {
   const [scriptRuntimeErrors, setScriptRuntimeErrors] = useState<Record<string, api.ScriptRuntimeError>>({});
   const [pythonDrivers, setPythonDrivers] = useState<PythonDriverInfo[]>([]);
   const [driverReloadErrors, setDriverReloadErrors] = useState<RuntimeError[]>([]);
+  // The revision the open Python driver was read at, which its saves name,
+  // and a save refused because another session saved it first.
+  const {
+    readAt: driverReadAt,
+    read: readDriverRevision,
+    refused: driverSaveRefused,
+    conflict: driverConflict,
+    saveMine: saveDriverMine,
+    dismiss: dismissDriverConflict,
+  } = useSourceRevision();
   const [uiFiles, setUiFiles] = useState<CustomUiFile[]>([]);
   // What the last save of a custom UI file reported. The server is the only
   // thing that can answer it — a control runs in a sandboxed frame in the
@@ -212,6 +224,8 @@ export function ScriptView() {
     setSelectedId(id);
     setSelectedType(type);
     setDriverReloadErrors([]);
+    readDriverRevision(null);
+    dismissDriverConflict();
     // Last file's warnings belong to last file.
     setUiWarnings([]);
     setLoading(true);
@@ -236,10 +250,13 @@ export function ScriptView() {
         }
         setSource(text);
         setOriginalSource(text);
+      } else if (type === "script") {
+        const result = await api.getScriptSource(id);
+        setSource(result.source);
+        setOriginalSource(result.source);
       } else {
-        const result = type === "script"
-          ? await api.getScriptSource(id)
-          : await api.getPythonDriverSource(id);
+        const result = await api.getPythonDriverSource(id);
+        readDriverRevision(result.revision);
         setSource(result.source);
         setOriginalSource(result.source);
       }
@@ -250,7 +267,7 @@ export function ScriptView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [readDriverRevision, dismissDriverConflict]);
 
   const handleSelectScript = useCallback((id: string) => {
     if (isDirty && selectedId) {
@@ -344,7 +361,10 @@ export function ScriptView() {
         // says so when what it kept will not load. The running driver goes on
         // working, so nothing else would tell you until a restart dropped it
         // and took its devices offline.
-        const res = await api.savePythonDriverSource(selectedId, source);
+        const res = await api.savePythonDriverSource(
+          selectedId, source, false, driverReadAt.current,
+        );
+        readDriverRevision(res.revision);
         announceKept(res);
         setDriverReloadErrors(
           res.syntax_error && res.line ? [{ line: res.line, message: res.syntax_error }] : []
@@ -352,12 +372,14 @@ export function ScriptView() {
       }
       setOriginalSource(source);
     } catch (e) {
+      // A save from a copy another session saved over since offers the choice.
+      if (selectedType === "driver" && driverSaveRefused(e, false)) return;
       console.error(`Failed to save ${selectedType}:`, e);
       showError(`Save failed: ${parseApiError(e)}`);
     } finally {
       setSaving(false);
     }
-  }, [selectedId, selectedType, source, loadUiFiles]);
+  }, [selectedId, selectedType, source, loadUiFiles, driverReadAt, readDriverRevision, driverSaveRefused]);
 
   // --- Reload handlers ---
 
@@ -439,7 +461,9 @@ export function ScriptView() {
     if (isDirty) {
       setSaving(true);
       try {
-        const res = await api.savePythonDriverSource(selectedId, source, true);
+        const res = await api.savePythonDriverSource(
+          selectedId, source, true, driverReadAt.current,
+        );
         if (res.status === "error") {
           showError(refusedMessage(res));
           if (res.line) {
@@ -450,9 +474,10 @@ export function ScriptView() {
           setSaving(false);
           return;
         }
+        readDriverRevision(res.revision);
         setOriginalSource(source);
       } catch (e) {
-        showError(`Save failed: ${parseApiError(e)}`);
+        if (!driverSaveRefused(e, true)) showError(`Save failed: ${parseApiError(e)}`);
         setSaving(false);
         return;
       }
@@ -513,7 +538,10 @@ export function ScriptView() {
     } finally {
       setReloading(false);
     }
-  }, [selectedId, selectedType, source, isDirty, loadPythonDrivers]);
+  }, [
+    selectedId, selectedType, source, isDirty, loadPythonDrivers,
+    driverReadAt, readDriverRevision, driverSaveRefused,
+  ]);
 
   // Keyboard shortcut: Ctrl+Shift+R to save & reload
   const handleReloadRef = useRef(selectedType === "driver" ? handleReloadDriver : handleReloadScript);
@@ -1061,6 +1089,15 @@ export function ScriptView() {
           confirmLabel={pendingConfirm.confirmLabel}
           onConfirm={pendingConfirm.onConfirm}
           onCancel={() => setPendingConfirm(null)}
+        />
+      )}
+
+      {driverConflict && (
+        <ChangedElsewhereDialog
+          message={driverConflict.message}
+          onReloadTheirs={() => { if (selectedId) void doSelect(selectedId, "driver"); }}
+          onSaveMine={() => saveDriverMine(driverConflict.reload ? handleReloadDriver : handleSave)}
+          onKeepEditing={dismissDriverConflict}
         />
       )}
 

@@ -67,6 +67,14 @@ export function driverFileDefinition(definition: DriverDefinition): DriverDefini
   ) as unknown as DriverDefinition;
 }
 
+/** The revision a listed or read definition was read at: the stored file's,
+ *  which a save over it names (the listing's `_revision`, not a driver-format
+ *  field, so `driverFileDefinition` drops it). */
+export function definitionRevision(definition: DriverDefinition): string | null {
+  const revision = (definition as { _revision?: unknown })._revision;
+  return typeof revision === "string" ? revision : null;
+}
+
 export function serializeDriverDefinition(definition: DriverDefinition): string {
   return yaml.dump(driverFileDefinition(definition), DRIVER_YAML_DUMP_OPTIONS);
 }

@@ -67,10 +67,21 @@ def driver_dirs(tmp_path, monkeypatch):
     unregister_driver("acme_yaml")
 
 
-def _existing(repo) -> None:
+def _existing(repo) -> str:
+    """An acme_yaml already saved, and the revision a read of it answers,
+    which the AI sends back with its update."""
+    from openavc.drivers.driver_change import file_revision
+
     (repo / "acme_yaml.avcdriver").write_text(
         "id: acme_yaml\nname: Old\ntransport: tcp\n", encoding="utf-8",
     )
+    return file_revision(repo / "acme_yaml.avcdriver")
+
+
+def _stored(repo) -> str:
+    from openavc.drivers.driver_change import file_revision
+
+    return file_revision(repo / "acme_yaml.avcdriver")
 
 
 async def test_a_created_driver_answers_the_warnings_it_was_saved_with(driver_dirs):
@@ -80,6 +91,7 @@ async def test_a_created_driver_answers_the_warnings_it_was_saved_with(driver_di
 
     assert answer == {
         "status": "created", "id": "acme_yaml", "issues": [UNLABELLED], "devices_reconnected": [],
+        "_revision": _stored(repo),
     }
     assert (repo / "acme_yaml.avcdriver").exists()
     assert is_driver_registered("acme_yaml")
@@ -88,14 +100,15 @@ async def test_a_created_driver_answers_the_warnings_it_was_saved_with(driver_di
 
 async def test_an_updated_driver_answers_the_warnings_it_was_saved_with(driver_dirs):
     repo, announced = driver_dirs
-    _existing(repo)
+    read_at = _existing(repo)
 
     answer = await _handler()._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": WARNS},
+        {"driver_id": "acme_yaml", "definition": {**WARNS, "_revision": read_at}},
     )
 
     assert answer == {
         "status": "updated", "id": "acme_yaml", "issues": [UNLABELLED], "devices_reconnected": [],
+        "_revision": _stored(repo),
     }
     assert "set_input" in (repo / "acme_yaml.avcdriver").read_text(encoding="utf-8")
     announced.assert_awaited_once_with("acme_yaml")
@@ -113,10 +126,10 @@ async def test_a_refused_create_names_each_issue_and_its_place(driver_dirs):
 
 async def test_a_refused_update_names_each_issue_and_its_place(driver_dirs):
     repo, announced = driver_dirs
-    _existing(repo)
+    read_at = _existing(repo)
 
     answer = await _handler()._update_driver_definition(
-        {"driver_id": "acme_yaml", "definition": BROKEN},
+        {"driver_id": "acme_yaml", "definition": {**BROKEN, "_revision": read_at}},
     )
 
     assert answer == {"error": "unknown key 'bogus'", "issues": [UNKNOWN_KEY, UNLABELLED]}

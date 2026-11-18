@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
-import { apiErrorList, parseApiError } from "../api/errors";
+import { apiErrorList, changedElsewhereRevision, parseApiError } from "../api/errors";
 import { showError } from "./toastStore";
 import type { SaveRefusal } from "../components/driver-builder/saveRefusal";
 import {
@@ -9,6 +9,7 @@ import {
   makeLatestWins,
   importBlockers,
   cloneDraft,
+  definitionRevision,
   driverFileDefinition,
   serializeDriverDefinition,
   type DriverDraft,
@@ -85,6 +86,14 @@ interface DriverBuilderState {
    *  of `dirty` so opening such a driver to look at it and moving on asks
    *  nothing; the editor offers Save while this is non-empty. */
   addedConnectionFields: string[];
+  /** The revision of the stored file the open driver was read at (when it
+   *  was opened, or what this tab's last save of it stored), which its save
+   *  names. Null for a new driver. */
+  revision: string | null;
+  /** A save refused because another session saved the driver first: the
+   *  server's sentence and the revision saved now. The editor offers reload
+   *  theirs, save mine over it and keep editing while this is set. */
+  changedElsewhere: { message: string; revision: string } | null;
 
   // All registered drivers (from GET /drivers)
   registeredDrivers: DriverInfo[];
@@ -105,6 +114,12 @@ interface DriverBuilderState {
   newDriver: () => void;
   updateDraft: (partial: Partial<DriverDraft>) => void;
   save: () => Promise<void>;
+  /** Throw the unsaved edit away and open the copy another session saved. */
+  reloadTheirs: () => Promise<void>;
+  /** Save the edit again, over the copy another session saved. */
+  saveMineOverIt: () => Promise<void>;
+  /** Close the choice and go on editing; the next save asks again. */
+  keepEditing: () => void;
   deleteDriver: (id: string) => Promise<void>;
   importDriver: (definition: DriverDefinition, updateExisting?: boolean) => Promise<void>;
   exportDriver: (id: string) => void;
@@ -155,6 +170,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         dirty: false,
         commentLines: 0,
         addedConnectionFields: [],
+        revision: null,
+        changedElsewhere: null,
       });
       return;
     }
@@ -170,8 +187,24 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         error: null,
         commentLines,
         addedConnectionFields: added,
+        revision: definitionRevision(found),
+        changedElsewhere: null,
       });
     }
+  };
+
+  // The open driver follows the copy saved now while it has no unsaved edit:
+  // a listing that shows another revision than the one it was opened at
+  // (another door saved it) opens it again. One with an unsaved edit is left
+  // as it is, and its save offers the choice. Never while a save of this
+  // tab's is under way: a save can run with no edit (connection fields the
+  // editor added), and its own answer says which revision it stored.
+  const followSavedCopy = (definitions: DriverDefinition[]) => {
+    const { selectedId, revision, dirty, saving } = get();
+    if (selectedId === null || dirty || saving) return;
+    const listed = definitions.find((d) => d.id === selectedId);
+    const now = listed ? definitionRevision(listed) : null;
+    if (now !== null && now !== revision) applySelection(selectedId);
   };
 
   return {
@@ -186,6 +219,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     saveRefusal: null,
     commentLines: 0,
     addedConnectionFields: [],
+    revision: null,
+    changedElsewhere: null,
 
     registeredDrivers: [],
     communityDrivers: [],
@@ -202,6 +237,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         const defs = await api.listDriverDefinitions();
         if (!defGuard.isCurrent(token)) return;
         set({ definitions: defs, loading: false });
+        followSavedCopy(defs);
       } catch (e) {
         if (!defGuard.isCurrent(token)) return;
         set({ error: parseApiError(e), loading: false });
@@ -224,6 +260,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         error: null,
         commentLines: 0,
         addedConnectionFields: [],
+        revision: null,
+        changedElsewhere: null,
       });
     },
 
@@ -239,28 +277,37 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       // edits (see reconcileAfterSave).
       const capturedDraft = get().draft;
       const selectionAtStart = get().selectedId;
+      const readAt = get().revision;
       if (!capturedDraft.id || !capturedDraft.name) {
         set({ error: "ID and Name are required" });
         return;
       }
       const savedId = capturedDraft.id;
-      set({ saving: true, error: null, saveRefusal: null });
+      set({ saving: true, error: null, saveRefusal: null, changedElsewhere: null });
       try {
-        if (selectionAtStart) {
-          await api.updateDriverDefinition(selectionAtStart, capturedDraft);
-        } else {
-          await api.createDriverDefinition(capturedDraft);
-        }
+        const saved = selectionAtStart
+          ? await api.updateDriverDefinition(selectionAtStart, capturedDraft, readAt)
+          : await api.createDriverDefinition(capturedDraft);
+        const patch = reconcileAfterSave({
+          savedId,
+          draftUnchanged: get().draft === capturedDraft,
+          selectionUnchanged: get().selectedId === selectionAtStart,
+        });
         set({
-          ...reconcileAfterSave({
-            savedId,
-            draftUnchanged: get().draft === capturedDraft,
-            selectionUnchanged: get().selectedId === selectionAtStart,
-          }),
+          ...patch,
+          // The editor still holds the driver this save stored, kept typing or
+          // not: its next save names what this one stored, or it would be
+          // refused against its own write.
+          ...("selectedId" in patch ? { revision: saved.revision ?? null } : {}),
           addedConnectionFields: [],
         });
         await get().loadDefinitions();
       } catch (e) {
+        const theirs = changedElsewhereRevision(e);
+        if (theirs !== null) {
+          set({ saving: false, changedElsewhere: { message: parseApiError(e), revision: theirs } });
+          return;
+        }
         const text = parseApiError(e);
         const errors = apiErrorList(e);
         set({
@@ -270,6 +317,21 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         });
       }
     },
+
+    reloadTheirs: async () => {
+      set({ changedElsewhere: null });
+      await get().loadDefinitions();
+      applySelection(get().selectedId);
+    },
+
+    saveMineOverIt: async () => {
+      const conflict = get().changedElsewhere;
+      if (!conflict) return;
+      set({ changedElsewhere: null, revision: conflict.revision });
+      await get().save();
+    },
+
+    keepEditing: () => set({ changedElsewhere: null }),
 
     deleteDriver: async (id) => {
       try {
@@ -281,6 +343,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
             draft: { ...EMPTY_DEFINITION },
             dirty: false,
             addedConnectionFields: [],
+            revision: null,
+            changedElsewhere: null,
           });
         }
         await get().loadDefinitions();
@@ -322,6 +386,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       }
       try {
         if (updateExisting) {
+          // An import replaces the saved driver with the chosen file, whatever
+          // was saved there since, so it names no revision.
           await api.updateDriverDefinition(definition.id, definition);
         } else {
           await api.createDriverDefinition(definition);

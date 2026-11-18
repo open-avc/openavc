@@ -1,6 +1,18 @@
 """THE two steps of a driver change: ``admit``, which puts a driver file on
-this server, and ``changed``, which follows every change at every door; and
-THE rule that orders two changes on one driver, ``holding``.
+this server, and ``changed``, which follows every change at every door; THE
+rule that orders two changes on one driver, ``holding``; and THE revision a
+save over a driver file is held to, ``hold_to_revision``.
+
+**A save names the copy it was made from.** A driver file's revision is the
+SHA-256 of its stored bytes (``revision``). Every read of a driver answers it
+(the Builder's listing and read, the AI's read, the Code view's source), and
+every save over a driver answers the revision it stored. A save that names a
+revision the file no longer has is refused (``DriverChangedElsewhere``, 409)
+with the revision it has now, so a save made from a copy another door has
+changed since says so instead of undoing that change; saving it again naming
+the revision answered is "save mine over it". The check is made inside
+``holding`` the id, so no other door's write can land between it and the
+save it lets through.
 
 **One change at a time on each driver id.** Every door that writes, removes,
 registers or reloads a driver (the community install, update and uninstall,
@@ -76,6 +88,7 @@ doors' lines have always been filed.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import os
 import re
@@ -270,6 +283,48 @@ def claim(driver_id: str) -> None:
     mine = _this_change.get()
     if mine is not None:
         mine.extend(holds.take(change, [driver_id]))
+
+
+# --- the revision a save is held to ---------------------------------------------
+
+#: What a save made from an older copy of a driver is refused with.
+CHANGED_ELSEWHERE = "This driver was changed by another session since you opened it."
+
+
+def revision(data: bytes) -> str:
+    """THE revision of a stored driver file, from its bytes: their SHA-256 in
+    hex. An opaque token, compared for equality and nothing else."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def file_revision(path: Path) -> str:
+    """``revision`` of the file at ``path`` as it is stored now."""
+    return revision(path.read_bytes())
+
+
+class DriverChangedElsewhere(DriverRefused):
+    """A save that named a revision the stored file no longer has, with the
+    revision it has now (``current``), which a save over it names."""
+
+    def __init__(self, current: str) -> None:
+        super().__init__(409, CHANGED_ELSEWHERE)
+        self.current = current
+
+
+def hold_to_revision(sent: Any, current: str) -> None:
+    """THE revision check, made by every door that saves over a driver file
+    (the Driver Builder's replace and patch, which the AI's update is, and the
+    Code view's save) while ``holding`` its id, once the door has found the
+    save is its to make and before the content in hand is judged or written:
+    a save naming a revision (``sent``) other than the stored file's
+    (``current``) is refused (``DriverChangedElsewhere``).
+
+    ``None`` names none, and is not held: a REST client that never read the
+    driver replaces it, as a project save with no If-Match does. The
+    Builder and the Code view name the revision their copy was read at; the
+    AI's update always names one, empty when its definition carried none."""
+    if sent is not None and sent != current:
+        raise DriverChangedElsewhere(current)
 
 
 # --- the platform floor ---------------------------------------------------------

@@ -1029,14 +1029,15 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
     a later directory's copy replaces an earlier one's in place, and in one
     directory the file named for the id is listed over a renamed copy. An id
     a Python file serves is not a definition's to list. ``_source_file`` on
-    each entry points at the listed file.
+    each entry points at the listed file, and ``_revision`` is that file's
+    (``driver_change.revision``).
 
     Returns a list of driver definition dicts.
     """
     loaded = {
-        filepath: driver_def
+        filepath: read
         for _dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}")
-        if (driver_def := load_driver_file(filepath)) is not None
+        if (read := _definition_at_revision(filepath)) is not None
     }
 
     def loads(path: Path) -> bool:  # each definition was just read
@@ -1047,16 +1048,33 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
         for driver_id, copies in _library_copies(directories).items()
     ]
     return [
-        _listed_definition(loaded[path], path)
+        _listed_definition(*loaded[path], path)
         for path in chosen
         if path is not None and path.suffix == DRIVER_EXTENSION
     ]
 
 
-def _listed_definition(driver_def: dict[str, Any], filepath: Path) -> dict[str, Any]:
+def _definition_at_revision(filepath: Path) -> tuple[dict[str, Any], str] | None:
+    """A definition file that loads, with its revision, or None. The revision
+    is read before the definition: a write landing between the two leaves the
+    revision older than what was read, so a save from it is refused as made
+    from an older copy, never let through over a change it never saw."""
+    from openavc.drivers.driver_change import file_revision
+
+    try:
+        revision = file_revision(filepath)
+    except OSError:
+        return None
+    driver_def = load_driver_file(filepath)
+    return None if driver_def is None else (driver_def, revision)
+
+
+def _listed_definition(driver_def: dict[str, Any], revision: str, filepath: Path) -> dict[str, Any]:
     """A definition as the Builder lists it: with the file it was read from
-    (``_source_file``) and how many comment lines that file holds."""
+    (``_source_file``), that file's revision, and how many comment lines it
+    holds."""
     driver_def["_source_file"] = str(filepath)
+    driver_def["_revision"] = revision
     driver_def["_comment_lines"] = count_comment_lines(filepath)
     return driver_def
 

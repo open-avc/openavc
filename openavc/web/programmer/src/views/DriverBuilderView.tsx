@@ -8,6 +8,7 @@ import { DriverEditor } from "../components/driver-builder/DriverEditor";
 import { CommunityBrowser } from "../components/driver-builder/CommunityBrowser";
 import { InstalledDriversView } from "../components/driver-builder/InstalledDriversView";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { ChangedElsewhereDialog } from "../components/shared/ChangedElsewhereDialog";
 import { Modal } from "../components/shared/Modal";
 import { ClipboardCheck } from "lucide-react";
 import { useAuditStore } from "../store/auditStore";
@@ -44,6 +45,10 @@ export function DriverPanel() {
     importDriver,
     exportDriver,
     duplicateDriver,
+    changedElsewhere,
+    reloadTheirs,
+    saveMineOverIt,
+    keepEditing,
   } = useDriverBuilderStore();
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -311,6 +316,15 @@ export function DriverPanel() {
           confirmLabel="Delete"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {changedElsewhere && (
+        <ChangedElsewhereDialog
+          message={changedElsewhere.message}
+          onReloadTheirs={() => { void reloadTheirs(); }}
+          onSaveMine={() => { void saveMineOverIt(); }}
+          onKeepEditing={keepEditing}
         />
       )}
     </div>

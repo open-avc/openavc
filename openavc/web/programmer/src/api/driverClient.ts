@@ -27,6 +27,13 @@ export async function listDrivers(): Promise<DriverInfo[]> {
 
 // --- Driver Definitions ---
 
+/** What a definition save answers: the revision of the file it stored. */
+export interface DefinitionSaved {
+  status: string;
+  driver_id: string;
+  revision: string;
+}
+
 export async function listDriverDefinitions(): Promise<DriverDefinition[]> {
   return (
     await request<{ definitions: DriverDefinition[] }>("/driver-definitions")
@@ -41,20 +48,28 @@ export async function getDriverDefinition(
 
 export async function createDriverDefinition(
   definition: DriverDefinition
-): Promise<{ status: string; driver_id: string }> {
+): Promise<DefinitionSaved> {
   return request("/driver-definitions", {
     method: "POST",
     body: JSON.stringify(definition),
   });
 }
 
+/**
+ * Replace a saved definition. `readAt` is the revision the copy being saved
+ * was opened at: a save from a copy another session has saved over since is
+ * refused (409, code `driver_changed`, the revision on disk as `revision`).
+ * Left out, the save replaces whatever is there (an import over a driver).
+ */
 export async function updateDriverDefinition(
   id: string,
-  definition: DriverDefinition
-): Promise<{ status: string; driver_id: string }> {
+  definition: DriverDefinition,
+  readAt?: string | null,
+): Promise<DefinitionSaved> {
+  const body = readAt ? { ...definition, _revision: readAt } : definition;
   return request(`/driver-definitions/${id}`, {
     method: "PUT",
-    body: JSON.stringify(definition),
+    body: JSON.stringify(body),
   });
 }
 
@@ -243,7 +258,7 @@ export async function getPythonDrivers(): Promise<{ drivers: PythonDriverInfo[] 
 
 export async function getPythonDriverSource(
   id: string
-): Promise<{ driver_id: string; filename: string; source: string }> {
+): Promise<{ driver_id: string; filename: string; source: string; revision: string }> {
   return request(`/python-drivers/${id}/source`);
 }
 
@@ -262,6 +277,9 @@ export interface SaveDriverSourceResult {
   /** Each problem the driver check found: the reason Save & Reload refused,
    *  or what a plain Save kept. Absent when there are none. */
   issues?: string[];
+  /** The revision of the file a "saved" answer stored, which the next save
+   *  names. */
+  revision?: string;
 }
 
 /**
@@ -271,15 +289,24 @@ export interface SaveDriverSourceResult {
  * it so the server refuses to persist source that cannot parse (the file on
  * disk keeps loading), while a plain Save leaves it off so work in progress is
  * never lost — and gets told when what it kept will not load.
+ *
+ * `readAt` is the revision the source was opened at: a save from a copy
+ * another session has saved over since is refused by either button (409,
+ * code `driver_changed`, the revision on disk as `revision`).
  */
 export async function savePythonDriverSource(
   id: string,
   source: string,
-  requireValidSyntax = false
+  requireValidSyntax = false,
+  readAt?: string | null,
 ): Promise<SaveDriverSourceResult> {
   return request(`/python-drivers/${id}/source`, {
     method: "PUT",
-    body: JSON.stringify({ source, require_valid_syntax: requireValidSyntax }),
+    body: JSON.stringify({
+      source,
+      require_valid_syntax: requireValidSyntax,
+      ...(readAt ? { revision: readAt } : {}),
+    }),
   });
 }
 

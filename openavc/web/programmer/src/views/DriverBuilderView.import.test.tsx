@@ -46,8 +46,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.listDriverDefinitions).mockResolvedValue([original]);
   vi.mocked(validateDriverDefinition).mockResolvedValue({ issues: [] });
-  vi.mocked(api.updateDriverDefinition).mockResolvedValue({ status: "updated", driver_id: original.id });
-  vi.mocked(api.createDriverDefinition).mockResolvedValue({ status: "created", driver_id: original.id });
+  vi.mocked(api.updateDriverDefinition).mockResolvedValue({ status: "updated", driver_id: original.id, revision: "r2" });
+  vi.mocked(api.createDriverDefinition).mockResolvedValue({ status: "created", driver_id: original.id, revision: "r1" });
   useDriverBuilderStore.setState({ definitions: [original], selectedId: null, dirty: false,
     saving: false, loading: false, error: null, saveRefusal: null });
   useProjectStore.setState({ project: { devices: [

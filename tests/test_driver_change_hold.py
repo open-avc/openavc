@@ -254,16 +254,21 @@ async def test_a_delete_waits_for_a_save_still_building_its_devices(world):
 
 
 async def test_the_assistant_s_edit_waits_for_a_save_so_every_device_runs_one_version(world):
+    """The assistant read the driver before the Builder's save; its edit,
+    sent while the save is building its devices, waits for the save, and is
+    then refused as made from the copy the save replaced. The save is the end
+    state, on every device."""
     world.installed("Acme Widget 1")
     world.devices.on = {"d1": DRIVER_ID, "d2": DRIVER_ID, "d3": DRIVER_ID}
+    assistant = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+    read = await assistant._get_driver_definition({"driver_id": DRIVER_ID})
     gate = world.devices.park()
     save = asyncio.create_task(_builder_save("Acme Widget 2"))
     await world.devices.parked.wait()
 
-    assistant = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
     edit = asyncio.create_task(
         assistant._update_driver_definition(
-            {"driver_id": DRIVER_ID, "definition": _definition("Acme Widget 3")}
+            {"driver_id": DRIVER_ID, "definition": {**read, "name": "Acme Widget 3"}}
         )
     )
     await _settle()
@@ -272,14 +277,31 @@ async def test_the_assistant_s_edit_waits_for_a_save_so_every_device_runs_one_ve
     saved, edited = await save, await edit
 
     assert saved["devices_reconnected"] == ["d1", "d2", "d3"]
-    # The edit, which came later, is the end state: every device runs what it
-    # saved.
+    assert edited["error"].startswith("'acme_widget' was changed after you read it")
+    assert world.devices.built == dict.fromkeys(["d1", "d2", "d3"], "Acme Widget 2")
+    assert world.stored() == {DRIVER_ID: "Acme Widget 2"}
+    assert world.serving() == "Acme Widget 2"
+    assert not edited_while_saving
+
+
+async def test_the_assistant_s_edit_from_a_read_after_the_save_is_the_end_state(world):
+    """Read again once the save answered, the same edit saves: every device
+    runs what it saved."""
+    world.installed("Acme Widget 1")
+    world.devices.on = {"d1": DRIVER_ID, "d2": DRIVER_ID, "d3": DRIVER_ID}
+    await _builder_save("Acme Widget 2")
+    assistant = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+    read = await assistant._get_driver_definition({"driver_id": DRIVER_ID})
+
+    edited = await assistant._update_driver_definition(
+        {"driver_id": DRIVER_ID, "definition": {**read, "name": "Acme Widget 3"}}
+    )
+
     assert edited["status"] == "updated"
     assert edited["devices_reconnected"] == ["d1", "d2", "d3"]
     assert world.devices.built == dict.fromkeys(["d1", "d2", "d3"], "Acme Widget 3")
     assert world.stored() == {DRIVER_ID: "Acme Widget 3"}
     assert world.serving() == "Acme Widget 3"
-    assert not edited_while_saving
 
 
 async def test_a_create_of_a_renamed_driver_s_old_id_waits_for_the_rename(world):
