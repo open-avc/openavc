@@ -490,6 +490,16 @@ class ProjectReconcileMixin:
                 f"config change and is stopped"
             )
 
+    def device_settings_moved(self) -> None:
+        """A device's settings changed and were taken live without a
+        reconcile (a setup action's update): what an applied change does for
+        them besides the device compare. The ports devices push to are
+        recorded again, and a bring-up round is asked for, which points a
+        simulated device back at the simulator its new address replaced and
+        starts again a simulator whose settings drifted."""
+        self._record_push_ports()
+        self._schedule_device_bringup()
+
     def _schedule_device_bringup(self) -> None:
         """Ask for a device bring-up round, starting the worker if it is idle.
 

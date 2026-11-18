@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from functools import partial
 from typing import Any
 from uuid import uuid4
 
@@ -38,6 +39,22 @@ from openavc.core.project_loader import ProjectSaveError
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+def _without_unset_connections(device_id: str, delta: dict[str, Any]) -> dict[str, Any]:
+    """``delta`` without a connection field set to ``None``, with a warning
+    naming each one dropped (``SetupActionContext.apply_config_update``)."""
+    from openavc.core.project_migration import CONNECTION_FIELDS
+
+    unset = sorted(k for k, v in delta.items() if k in CONNECTION_FIELDS and v is None)
+    if not unset:
+        return delta
+    log.warning(
+        "[%s] Setup action tried to unset connection field(s) %s — "
+        "ignored (unsetting connection fields is not supported)",
+        device_id, unset,
+    )
+    return {k: v for k, v in delta.items() if k not in unset}
 
 
 class SetupActionInProgress(Exception):
@@ -90,51 +107,45 @@ class SetupActionContext:
         """
         if not isinstance(delta, dict) or not delta:
             return
-        engine = self._engine
-        if getattr(engine, "project", None) is None:
+        if getattr(self._engine, "project", None) is None:
             raise RuntimeError("No project loaded")
+        delta = _without_unset_connections(self._device_id, delta)
+        if not delta:
+            return
+        await self._save(delta)
+        log.info("[%s] Setup action applied config update: %s",
+                 self._device_id, sorted(delta.keys()))
 
-        from openavc.core.project_migration import CONNECTION_FIELDS
-
-        device_id = self._device_id
-        none_conn = [k for k, v in delta.items()
-                     if k in CONNECTION_FIELDS and v is None]
-        if none_conn:
-            log.warning(
-                "[%s] Setup action tried to unset connection field(s) %s — "
-                "ignored (unsetting connection fields is not supported)",
-                device_id, sorted(none_conn),
-            )
-            delta = {k: v for k, v in delta.items() if k not in none_conn}
-            if not delta:
-                return
-
-        def put_in_project(project) -> None:
-            if not apply_config_delta(project, device_id, delta):
-                raise RuntimeError(f"Device '{device_id}' not found in project")
-
-        def take_live() -> None:
-            # Into the driver (what the next connect dials) and into the
-            # config the device manager compares with the project, so the
-            # next reconcile reads no edit; then what an applied change does
-            # for a device's settings besides that compare.
-            engine.devices.merge_live_config(device_id, delta)
-            engine.device_settings_moved()
-
-        # Runs in the action's background task, never under the reconcile
-        # lock, so awaiting the door directly is safe. The revision bump and
-        # project.reloaded broadcast mean a stale IDE PUT gets a 409 instead
-        # of silently reverting what the wizard just wrote.
+    async def _save(self, delta: dict[str, Any]) -> None:
+        """``delta`` through the change door, taken live once the file holds
+        it. Runs in the action's background task, never under the reconcile
+        lock, so awaiting the door directly is safe. The revision bump and
+        project.reloaded broadcast mean a stale IDE PUT gets a 409 instead of
+        silently reverting what the wizard just wrote."""
+        engine = self._engine
         try:
-            await engine.persist_bookkeeping_change(put_in_project, runtime_write=take_live)
+            await engine.persist_bookkeeping_change(
+                partial(self._put_in_project, delta),
+                runtime_write=partial(self._take_live, delta),
+            )
         except ProjectSaveError as failure:
             # Everything was put back, so the change was not applied.
             raise ProjectNotAppliedError(failure) from failure
         # A script may wait on this event for a saved change, and a setup
         # action's save has always sent it; the bookkeeping door does not.
         await engine.events.emit("system.project.reloaded")
-        log.info("[%s] Setup action applied config update: %s",
-                 device_id, sorted(delta.keys()))
+
+    def _put_in_project(self, delta: dict[str, Any], project: Any) -> None:
+        if not apply_config_delta(project, self._device_id, delta):
+            raise RuntimeError(f"Device '{self._device_id}' not found in project")
+
+    def _take_live(self, delta: dict[str, Any]) -> None:
+        """Into the driver (what the next connect dials) and into the config
+        the device manager compares with the project, so the next reconcile
+        reads no edit; then what an applied change does for a device's
+        settings besides that compare."""
+        self._engine.devices.merge_live_config(self._device_id, delta)
+        self._engine.device_settings_moved()
 
     async def reconnect(self) -> None:
         """Reconnect the device in place using its current config."""
