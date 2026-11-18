@@ -42,9 +42,10 @@ async def test_a_failed_save_leaves_the_device_as_saved_and_retries_without_anot
         assert not driver.config.get('model')
         assert engine.devices.get_driver('w1') is driver
         monkeypatch.setattr(project_changes, 'save_project_async', save)
-        await wait_for_condition(lambda: _disk_config(engine).get('model') == 'W100')
+        # The driver takes it once the file holds it, so it is the last to.
+        await wait_for_condition(lambda: driver.config.get('model') == 'W100')
+        assert _disk_config(engine).get('model') == 'W100'
         assert engine.project.devices[0].config['model'] == 'W100'
-        assert driver.config['model'] == 'W100'
         assert engine.devices.get_driver('w1') is driver
     finally:
         await engine.stop()

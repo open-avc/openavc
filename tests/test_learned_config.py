@@ -170,7 +170,7 @@ async def test_reported_values_are_saved_in_one_write(tmp_path, acme_widget):
     after_add = await _add(eng)
     driver = eng.devices.get_driver("w1")
     await wait_for_condition(
-        lambda: eng._revision_counter == after_add + 1,
+        lambda: _settled_config(eng).get("model") == "W200",
         message="the learned values were never saved",
     )
     await _settle()
@@ -334,6 +334,25 @@ async def test_a_reported_value_reaches_the_driver_only_once_saved(tmp_path, acm
         assert driver.config["model"] == "W100"
         assert eng.devices.get_device_config("w1")["config"]["model"] == "W100"
         assert eng.devices.get_driver("w1") is driver
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_an_edit_saved_before_a_reported_value_lands_does_not_restart_the_device(tmp_path, acme_widget):
+    eng, driver = await _connected_without_reports(tmp_path, acme_widget)
+    try:
+        async with eng._reload_lock:
+            # An edit already waiting for the lock, made from the project as
+            # it was before the device reported anything.
+            edit = asyncio.ensure_future(eng.apply_project(eng.project.model_copy(deep=True)))
+            await asyncio.sleep(0)
+            driver.set_state("model", "W100")
+        await edit
+        await eng._bookkeeping_task
+        assert eng.devices.get_driver("w1") is driver
+        assert _disk_config(eng)["model"] == "W100"
+        assert driver.config["model"] == "W100"
     finally:
         await eng.stop()
 
