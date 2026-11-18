@@ -340,7 +340,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `macro.error.<macro_id>` | `macro_id`, `name`, `error` | The macro stopped because a step failed. Only fires when the macro has **Stop on Error** set; without it the run continues and ends on `macro.completed` |
 | `system.started` | (none) | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | (none) | System shutting down |
-| `system.project.reloaded` | (none) | Project reloaded |
+| `system.project.reloaded` | (none) | The project was saved or reloaded, by any change, including the ones the system saves on its own (a setup action, a queued device setting, a value a device fills in, a plugin's own settings). Not fired for a save a handler of this event makes while it runs, or while the system shuts down |
 | `isc.*.<event>` | `source_instance`, ... | Event from a remote instance |
 | `custom.<anything>` | (user-defined) | User-defined events. Fired by a macro's **Emit Event** step, by the same action on a control, or by `events.emit()` |
 

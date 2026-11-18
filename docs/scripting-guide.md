@@ -520,7 +520,7 @@ log.info(f"Cancelled {count} timers")
 | `macro.error.<macro_id>` | The macro stopped because a step failed (payload includes `error`). Only fires on a macro with **Stop on Error** set — otherwise the run continues past the failure and ends on `macro.completed` |
 | `system.started` | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | System shutting down |
-| `system.project.reloaded` | Project reloaded (after save, import, or cloud push) |
+| `system.project.reloaded` | The project was saved or reloaded: an edit, an import, a cloud push, or a change the system saves on its own (a device setup action's settings, a setting queued for an offline device or cleared once the device takes it, a value a device fills in, a plugin's own settings). A save your handler makes while it runs does not fire it again, and it is not fired while the system shuts down |
 | `isc.*.<event>` | Event from a remote OpenAVC instance |
 | `custom.<anything>` | User-defined events |
 
