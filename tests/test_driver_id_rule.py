@@ -210,6 +210,18 @@ async def test_a_driver_the_old_save_renamed_saves_into_the_file_it_is_in(librar
     assert yaml.safe_load(path.read_text()) == {**WIDGET, "id": "acme.widget", "name": "Kept"}
 
 
+async def test_a_new_driver_is_held_to_the_pattern_beside_a_file_that_does_not_load(library):
+    refused = library / "acme-widget.avcdriver"
+    refused.write_text(_yaml({**WIDGET, "id": "acme-widget", "transport": "carrier_pigeon"}), encoding="utf-8")
+
+    with pytest.raises(HTTPException) as exc:
+        await create_driver_definition(DriverDefinitionRequest(**{**WIDGET, "id": "acme-widget"}))
+
+    status, errors = _refusal(exc)
+    assert status == 422 and _id_refusals(errors), errors
+    assert "carrier_pigeon" in refused.read_text()
+
+
 async def test_renaming_to_an_id_outside_the_pattern_is_refused(library):
     await create_driver_definition(DriverDefinitionRequest(**WIDGET))
 

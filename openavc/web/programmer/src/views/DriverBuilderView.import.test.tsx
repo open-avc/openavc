@@ -156,6 +156,15 @@ describe("Importing an edited driver", () => {
       expect.objectContaining({ id: "acme_amp_copy" })));
   });
 
+  it("names a duplicate of a driver installed under such an ID for an ID a new driver may have", async () => {
+    const kept = { ...original, id: "acme-amp" } as DriverDefinition;
+    vi.mocked(api.listDriverDefinitions).mockResolvedValue([kept]);
+    useDriverBuilderStore.setState({ definitions: [kept] });
+    await useDriverBuilderStore.getState().duplicateDriver("acme-amp");
+    expect(api.createDriverDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "acme_amp_copy", name: "Acme amplifier (Copy)" }));
+  });
+
   it("still imports a new ID directly", async () => {
     await offerImport({ ...edited, id: "another_amp" });
     await waitFor(() => expect(api.createDriverDefinition).toHaveBeenCalledWith(

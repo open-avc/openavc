@@ -311,30 +311,24 @@ async def _save_definition(
     are built again from what serves it now. Answers the saved id, the devices
     built again, and the revision of the file it stored.
     """
-    from openavc.drivers.driver_file_name import keeps_installed_id, other_driver_in
+    from openavc.drivers.driver_file_name import keeps_installed_id
     from openavc.drivers.driver_loader import (
-        definition_file,
         replaced_definition,
-        driver_files_for,
         restore_driver_registration,
         validate_driver_definition,
     )
 
     new_id = driver_def["id"]
+    kept = replacing == new_id
     errors = validate_driver_definition(
-        driver_def, strict=True, keeps_id=keeps_installed_id(dirs, new_id)
+        driver_def, strict=True, keeps_id=kept and keeps_installed_id(dirs, new_id)
     )
     if errors:
         raise definition_invalid(errors)
 
     repo = Path(dirs[1])  # driver_repo/
     repo.mkdir(parents=True, exist_ok=True)
-    kept = replacing == new_id
-    kept_in = next(iter(driver_files_for(repo, new_id, ".avcdriver")), None) if kept else None
-    name, data = definition_file(driver_def, in_place_of=kept_in)
-    other = other_driver_in(repo / name, new_id)
-    if other is not None and other != replacing:
-        raise _file_holds_another(name, other, kept)
+    name, data = _file_saved_as(driver_def, repo, replacing)
     replaced = (
         replaced_definition(replacing, dirs, keep=repo / name) if replacing is not None else None
     )
@@ -353,6 +347,25 @@ async def _save_definition(
         "devices_reconnected": outcome.reconnected,
         "revision": revision(data),
     }
+
+
+def _file_saved_as(
+    driver_def: dict[str, Any], repo: Path, replacing: str | None
+) -> tuple[str, bytes]:
+    """The name and bytes a save writes (``definition_file``): an id kept
+    that no file may be named for goes into its own definition file; refused
+    when that file holds another driver than the one the save replaces."""
+    from openavc.drivers.driver_file_name import other_driver_in
+    from openavc.drivers.driver_loader import definition_file, driver_files_for
+
+    new_id = driver_def["id"]
+    kept = replacing == new_id
+    kept_in = next(iter(driver_files_for(repo, new_id, ".avcdriver")), None) if kept else None
+    name, data = definition_file(driver_def, in_place_of=kept_in)
+    other = other_driver_in(repo / name, new_id)
+    if other is not None and other != replacing:
+        raise _file_holds_another(name, other, kept)
+    return name, data
 
 
 def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:

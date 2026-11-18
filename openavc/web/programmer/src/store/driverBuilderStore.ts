@@ -8,6 +8,7 @@ import type { SaveRefusal } from "../components/driver-builder/saveRefusal";
 import {
   reconcileAfterSave,
   makeLatestWins,
+  copyNamed,
   importBlockers,
   importedAs,
   importHeldBack,
@@ -446,18 +447,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       if (!original) return;
       if (!confirmDiscardDraft(get().dirty)) return;
 
-      // Pick a unique id and name for the copy. `<id>_copy`, `<id>_copy2`, …
-      const existingIds = new Set(definitions.map((d) => d.id));
-      let suffix = "_copy";
-      let counter = 1;
-      while (existingIds.has(`${original.id}${suffix}`)) {
-        counter += 1;
-        suffix = `_copy${counter}`;
-      }
-      const newId = `${original.id}${suffix}`;
-      const newName = original.name
-        ? `${original.name} (Copy${counter > 1 ? ` ${counter}` : ""})`
-        : newId;
+      const { id: newId, name: newName } = copyNamed(original, definitions);
 
       // Deep-clone so we don't mutate the original. Drop the verified flag —
       // verification is server-controlled and the copy hasn't been validated.

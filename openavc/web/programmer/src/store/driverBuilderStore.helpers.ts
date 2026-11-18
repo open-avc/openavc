@@ -94,19 +94,29 @@ export function serializeDriverDefinition(definition: DriverDefinition): string 
 
 /** A separate import keeps every existing driver and device binding intact. */
 export function importedDriverCopy(definition: DriverDefinition, siblings: DriverDefinition[]): DriverDefinition {
+  return {
+    ...driverFileDefinition(structuredClone(definition)),
+    ...copyNamed(definition, siblings),
+    verified: false,
+  };
+}
+
+/** The id and name a copy of `definition` is given, Import a Copy's and
+ *  Duplicate's: `<id>_copy`, `<id>_copy2`, … and "(Copy)", "(Copy 2)", ….
+ *  A copy is a new driver, so it is named for an id a new driver may have,
+ *  even when the driver it copies keeps one it may not. */
+export function copyNamed(
+  definition: DriverDefinition,
+  siblings: DriverDefinition[],
+): { id: string; name: string } {
   const ids = new Set(siblings.map((item) => item.id));
-  // A copy is a new driver: it is named for an id a new driver may have, even
-  // when the driver it copies keeps one it may not.
   const base = offeredDriverId(definition.id) || definition.id;
   let suffix = "_copy";
   let counter = 1;
   while (ids.has(`${base}${suffix}`)) suffix = `_copy${++counter}`;
-  return {
-    ...driverFileDefinition(structuredClone(definition)),
-    id: `${base}${suffix}`,
-    name: `${definition.name} (Copy${counter > 1 ? ` ${counter}` : ""})`,
-    verified: false,
-  };
+  const id = `${base}${suffix}`;
+  const name = definition.name ? `${definition.name} (Copy${counter > 1 ? ` ${counter}` : ""})` : id;
+  return { id, name };
 }
 
 /** The id a new driver made from `id` is given: `id` itself when a new
