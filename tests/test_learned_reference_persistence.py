@@ -28,7 +28,7 @@ async def disk_full(path, project):
 
 
 @pytest.mark.asyncio
-async def test_failed_save_rolls_back_and_retries_without_another_report(tmp_path, acme_widget, monkeypatch):
+async def test_a_failed_save_leaves_the_device_as_saved_and_retries_without_another_report(tmp_path, acme_widget, monkeypatch):
     engine, driver = await ready(tmp_path, acme_widget)
     before = engine.project_path.read_bytes()
     project_before = engine.project.model_dump()
@@ -51,7 +51,7 @@ async def test_failed_save_rolls_back_and_retries_without_another_report(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_batched_reports_undo_in_reverse_order_and_stop_cancels_retry(tmp_path, acme_widget, monkeypatch):
+async def test_batched_reports_that_fail_retry_once_and_a_stop_cancels_it(tmp_path, acme_widget, monkeypatch):
     engine, driver = await ready(tmp_path, acme_widget)
     before = engine.project.model_dump()
     handles = []

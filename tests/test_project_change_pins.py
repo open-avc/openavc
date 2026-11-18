@@ -497,6 +497,65 @@ async def test_an_on_saved_that_raises_does_not_stop_the_others_or_the_announcem
 
 
 @pytest.mark.asyncio
+async def test_a_queued_change_reaches_the_runtime_only_once_its_file_holds_it(tmp_path):
+    eng = _engine(tmp_path)
+    _capture_broadcasts(eng)
+    seen = []
+
+    def rename(project):
+        project.project.name = "Renamed"
+
+    def take_live():
+        # Under the lock, with the file already holding the change.
+        seen.append((eng._reload_lock.locked(), _disk(eng)["project"]["name"]))
+
+    async with eng._reload_lock:
+        eng.schedule_bookkeeping_change(rename, runtime_write=take_live)
+        assert seen == []
+    await eng._bookkeeping_task
+
+    assert seen == [(True, "Renamed")]
+
+
+@pytest.mark.asyncio
+async def test_a_queued_change_that_fails_never_reaches_the_runtime(tmp_path, monkeypatch):
+    eng = _engine(tmp_path)
+    _capture_broadcasts(eng)
+    taken = []
+
+    async def boom(path, project):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
+    eng.schedule_bookkeeping_change(lambda p: None, runtime_write=lambda: taken.append("live"))
+    await eng._bookkeeping_task
+
+    assert taken == []
+
+
+@pytest.mark.asyncio
+async def test_a_runtime_write_that_raises_does_not_stop_the_others_or_the_announcement(tmp_path, caplog):
+    eng = _engine(tmp_path)
+    sent = _capture_broadcasts(eng)
+    taken = []
+
+    def bad_write():
+        raise RuntimeError("the runtime refused it")
+
+    eng.schedule_bookkeeping_change(lambda p: None, runtime_write=bad_write)
+    eng.schedule_bookkeeping_change(lambda p: None, runtime_write=lambda: taken.append("second"))
+    with caplog.at_level(logging.ERROR):
+        await eng._bookkeeping_task
+
+    assert taken == ["second"]
+    assert sent == [{"type": "project.reloaded", "revision": eng._project_revision}]
+    assert any(
+        "Project saved, but the running system could not take the change" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
 async def test_a_deferred_save_with_no_project_is_dropped(tmp_path):
     eng = _engine(tmp_path)
     sent = _capture_broadcasts(eng)

@@ -27,14 +27,19 @@ When it does nothing:
   - for a value the field does not accept: an enum value it does not list, a
     number outside its range, an empty value. That is logged once.
 
-How it saves: the live driver's config and the device manager's stored copy
-first (``merge_live_config``), so the reconcile does not read the change as an
-edit and tear the device down; then the project through the engine's
-bookkeeping persist, which coalesces writes made together, bumps the revision
-and broadcasts ``project.reloaded`` (an open IDE tab refetches, or warns when it
-holds unsaved edits). The project split (connection fields to the connections
-table, the rest to the device's config) is ``device_config.apply_config_delta``,
-the same one a setup action uses.
+How it saves: the project first, through the engine's queued bookkeeping
+change (it may be running inside a reconcile, which holds the lock), which
+coalesces writes made together, bumps the revision and broadcasts
+``project.reloaded`` (an open IDE tab refetches, or warns when it holds unsaved
+edits). Only once the file holds the value does the running device take it,
+still under the lock (``Engine.take_device_settings``, as a setup action's
+settings): the live driver's config and the device manager's stored copy move
+together, so the next reconcile reads no edit and tears nothing down. A save
+that fails leaves the device as the file holds it, and is tried again on a
+timer, since the same report is not announced twice. A value waiting for its
+save is not queued again by a later report. The project split (connection
+fields to the connections table, the rest to the device's config) is
+``device_config.apply_config_delta``, the same one a setup action uses.
 
 A saved field that a declared child roster is built from (``instances``
 ``count_from`` or ``ids_from``) re-derives that roster at once, as the IDE's
@@ -45,7 +50,6 @@ for the next connection.
 from __future__ import annotations
 
 import asyncio
-import copy
 from typing import Any
 
 from openavc.core.device_config import apply_config_delta
@@ -165,6 +169,9 @@ class LearnedConfig:
         # What the simulator reported, by state key: what is left in state
         # after simulation stops is not the equipment's report.
         self._simulated: dict[str, Any] = {}
+        # device -> (the driver that reported, {field: value} queued for the
+        # file and not yet taken by that driver).
+        self._waiting: dict[str, tuple[Any, dict[str, Any]]] = {}
         self._active = False
 
     def start(self) -> None:
@@ -194,6 +201,7 @@ class LearnedConfig:
         self._state_ids.clear()
         self._watched.clear()
         self._simulated.clear()
+        self._waiting.clear()
 
     async def _on_connected(self, event: str, payload: Any = None) -> None:
         device_id = event[len(_CONNECTED_EVENT):]
@@ -247,9 +255,8 @@ class LearnedConfig:
             return {}
 
         schema = (getattr(driver, "DRIVER_INFO", {}) or {}).get("config_schema") or {}
-        config = getattr(driver, "config", None) or {}
+        config = {**(getattr(driver, "config", None) or {}), **self._waiting_for(device_id, driver)}
         delta: dict[str, Any] = {}
-        previous: dict[str, Any] = {}
         for field, source in learned_fields(driver).items():
             key = f"device.{device_id}.{source}"
             reported = engine.state.get(key)
@@ -271,13 +278,39 @@ class LearnedConfig:
             if _same(config.get(field), value):
                 continue
             delta[field] = value
-            previous[field] = config.get(field)
         if not delta:
             return {}
+        self._save(device_id, driver, schema, delta)
+        return delta
 
-        engine.devices.merge_live_config(device_id, delta)
+    def _waiting_for(self, device_id: str, driver: Any) -> dict[str, Any]:
+        """What ``driver`` reported that is queued for the file and not yet
+        taken; nothing for a driver that has been replaced since."""
+        waiting = self._waiting.get(device_id)
+        return waiting[1] if waiting and waiting[0] is driver else {}
+
+    def _done_waiting(self, device_id: str, driver: Any, delta: dict[str, Any]) -> None:
+        """Forget what ``delta`` queued, unless a later report queued another
+        value for the same field since."""
+        waiting = self._waiting.get(device_id)
+        if not waiting or waiting[0] is not driver:
+            return
+        for field, value in delta.items():
+            if field in waiting[1] and waiting[1][field] is value:
+                del waiting[1][field]
+        if not waiting[1]:
+            self._waiting.pop(device_id, None)
+
+    def _save(self, device_id: str, driver: Any, schema: dict[str, Any], delta: dict[str, Any]) -> None:
+        """Queue ``delta`` for the file, taken by the running device once the
+        file holds it."""
+        engine = self._engine
         project_id = engine.project.project.id
-        applied: list[Any] = []
+        written: list[bool] = []
+        waiting = self._waiting.get(device_id)
+        if not waiting or waiting[0] is not driver:
+            waiting = self._waiting[device_id] = (driver, {})
+        waiting[1].update(delta)
 
         def still_current() -> bool:
             return (engine.project is not None
@@ -289,27 +322,25 @@ class LearnedConfig:
             # replacement with the same project device ID.
             if not still_current():
                 return
-            device = next((d for d in project.devices if d.id == device_id), None)
-            if device is None:
+            if apply_config_delta(project, device_id, delta):
+                written.append(True)
+
+        def take_live() -> None:
+            # The file holds it: the running device takes it.
+            if not written or not still_current():
                 return
-            applied.append((project, device, copy.deepcopy(device.config),
-                            copy.deepcopy(project.connections.get(device_id))))
-            apply_config_delta(project, device_id, delta)
+            engine.take_device_settings(device_id, delta)
+            for field, value in delta.items():
+                label = (schema.get(field) or {}).get("label") or field
+                log.info("[%s] %s set to %s, as the device reports", device_id, label, value)
 
         def on_error() -> None:
-            if not applied:
+            self._done_waiting(device_id, driver, delta)
+            if not written or not still_current():
                 return
-            project, device, old_config, old_connection = applied.pop()
-            device.config = old_config
-            if old_connection is None:
-                project.connections.pop(device_id, None)
-            else:
-                project.connections[device_id] = old_connection
-            if not still_current():
-                return
-            engine.devices.merge_live_config(device_id, previous)
-            # Identical state reports do not emit another state change. Retry
-            # the save independently, with one bounded timer per device.
+            # The device still runs as the file holds it, and identical state
+            # reports do not emit another state change. Retry the save
+            # independently, with one bounded timer per device.
             if not self._active or not engine._running:
                 return
             old_handle = self._retry_handles.pop(device_id, None)
@@ -328,7 +359,8 @@ class LearnedConfig:
             self._retry_handles[device_id] = asyncio.get_running_loop().call_later(delay, retry)
 
         def on_saved() -> None:
-            if not applied or not self._active or not still_current():
+            self._done_waiting(device_id, driver, delta)
+            if not written or not self._active or not still_current():
                 return
             handle = self._retry_handles.pop(device_id, None)
             if handle:
@@ -337,11 +369,9 @@ class LearnedConfig:
             if roster_fields(driver) & set(delta):
                 self._refresh_rosters(device_id, driver)
 
-        engine.schedule_bookkeeping_change(mutate, on_error=on_error, on_saved=on_saved)
-        for field, value in delta.items():
-            label = (schema.get(field) or {}).get("label") or field
-            log.info("[%s] %s set to %s, as the device reports", device_id, label, value)
-        return delta
+        engine.schedule_bookkeeping_change(
+            mutate, on_error=on_error, on_saved=on_saved, runtime_write=take_live,
+        )
 
     def _refresh_rosters(self, device_id: str, driver: Any) -> None:
         """Re-derive the declared rosters from the config just saved."""

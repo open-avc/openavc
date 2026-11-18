@@ -32,14 +32,15 @@ count a later change resets. The words every door answers an outcome in, the
 change that was not applied, a conflict and a refusal included, are
 ``api/error_messages.py``'s. A **bookkeeping** one is a change the runtime
 takes without a reconcile (a device's pending settings cleared, a plugin's
-own ``save_config``, a setup action's settings): the door without the
-reconcile, swapped in and written as an edit is and put back when the write
-fails, and announced. The running system's own half of it (a setup action's
-settings merged into the live driver) is made once the file holds it,
-under the same lock (``persist_bookkeeping_change``'s ``runtime_write``).
-The code that makes one may be running
-inside a reconcile, which is why it can be queued
-(``schedule_bookkeeping_change``).
+own ``save_config``, a setup action's settings, a setting the device fills
+in): the door without the reconcile, swapped in and written as an edit is
+and put back when the write fails, and announced. The running system's own
+half of it (a device's settings merged into the live driver) is made once
+the file holds it, under the same lock (the ``runtime_write`` of
+``persist_bookkeeping_change`` and of ``schedule_bookkeeping_change``), so
+nothing is taken live first and nothing needs undoing when a save fails.
+The code that makes one may be running inside a reconcile, which is why it
+can be queued (``schedule_bookkeeping_change``).
 
 Both run under ``_reload_lock``, both mint the next revision here, and both
 make the next timed backup due once the file holds them. A revision is an
@@ -152,6 +153,19 @@ class _TakenIn:
     write: bool
 
 
+@dataclass(frozen=True)
+class _Queued:
+    """A bookkeeping change waiting for the lock: its ``mutate``, the
+    running system's own half of it (``runtime_write``, made once the file
+    holds the change, under the lock), and what runs when the save fails
+    (``on_error``) or once it is done (``on_saved``, outside the lock)."""
+
+    mutate: Any
+    on_error: Any = None
+    on_saved: Any = None
+    runtime_write: Any = None
+
+
 def _check_valid(project: ProjectConfig) -> None:
     """Raise ``ProjectInvalidError`` unless the models take ``project`` back
     as a load takes the file it is saved as. The models have no
@@ -220,10 +234,9 @@ class ProjectChangesMixin:
         # Reload serialization
         self._reload_lock = asyncio.Lock()
 
-        # Deferred bookkeeping persists (see persist_bookkeeping_change):
-        # queued mutation, rollback and saved callbacks and the task that flushes them
-        # outside the reconcile lock.
-        self._bookkeeping_queue: list[tuple[Any, Any, Any]] = []
+        # Deferred bookkeeping persists (see schedule_bookkeeping_change):
+        # the changes waiting for the lock and the task that flushes them.
+        self._bookkeeping_queue: list[_Queued] = []
         self._bookkeeping_task: asyncio.Task | None = None
 
     async def reload_project(self) -> None:
@@ -700,7 +713,9 @@ class ProjectChangesMixin:
         })
         return revision
 
-    def schedule_bookkeeping_change(self, mutate, *, on_error=None, on_saved=None) -> None:
+    def schedule_bookkeeping_change(
+        self, mutate, *, on_error=None, on_saved=None, runtime_write=None,
+    ) -> None:
         """Queue a bookkeeping persist to run outside the reconcile lock.
 
         Safe to call from anywhere — including event handlers awaited inline
@@ -715,10 +730,16 @@ class ProjectChangesMixin:
         flush time, so a project swap between schedule and flush can't
         resurrect stale state or drop the write.
 
-        ``on_saved`` runs outside the lock only after a successful save.
-        A callback failure cannot undo a file already written to disk.
+        ``runtime_write()`` is as for :meth:`persist_bookkeeping_change`:
+        made once the file holds the batch, still under the lock, each in
+        the order queued, and never when the save fails; so the running
+        system waits for the file as an awaited change does. A failure is
+        logged, never raised, and the others still run. ``on_error`` runs
+        when the batch is refused or its save fails, ``on_saved`` outside
+        the lock once it is saved; a callback failure cannot undo a file
+        already written to disk.
         """
-        self._bookkeeping_queue.append((mutate, on_error, on_saved))
+        self._bookkeeping_queue.append(_Queued(mutate, on_error, on_saved, runtime_write))
         if self._bookkeeping_task is None or self._bookkeeping_task.done():
             self._bookkeeping_task = asyncio.create_task(
                 self._flush_bookkeeping()
@@ -731,30 +752,36 @@ class ProjectChangesMixin:
             if revision is not None:
                 await self._after_batch_saved(batch, revision)
 
-    async def _save_batch(self) -> tuple[list[tuple[Any, Any, Any]], str | None]:
-        """Take everything queued and save it as one change; the batch and
-        its new revision, or ``None`` when nothing was saved. A refused or
-        failed change is undone under the lock, before another change can
-        land."""
+    async def _save_batch(self) -> tuple[list[_Queued], str | None]:
+        """Take everything queued and save it as one change, the running
+        system taking each part once the file holds it; the batch and its
+        new revision, or ``None`` when nothing was saved. A refused or
+        failed change has changed nothing, and its callers hear so under
+        the lock, before another change can land."""
         async with self._reload_lock:
             batch = list(self._bookkeeping_queue)
             self._bookkeeping_queue.clear()
             if not self.project:
                 return batch, None
             try:
-                mutates = [mutate for mutate, _on_error, _on_saved in batch]
+                mutates = [queued.mutate for queued in batch]
                 outcome = await self._change_locked(_each(mutates), reconcile=False)
-                return batch, outcome.revision
             except Exception as e:
                 log.error(f"Deferred project persist failed: {e}")
-                # Undo dependent changes in the reverse order they applied.
-                for _mutate, on_error, _on_saved in reversed(batch):
-                    await _call_logged(on_error, "Bookkeeping on_error callback failed")
+                # The later ones first, the reverse of the order queued.
+                for queued in reversed(batch):
+                    await _call_logged(queued.on_error, "Bookkeeping on_error callback failed")
                 return batch, None
+            for queued in batch:
+                await _call_logged(
+                    queued.runtime_write,
+                    "Project saved, but the running system could not take the change",
+                )
+            return batch, outcome.revision
 
-    async def _after_batch_saved(self, batch: list[tuple[Any, Any, Any]], revision: str) -> None:
-        for _mutate, _on_error, on_saved in batch:
-            await _call_logged(on_saved, "Bookkeeping on_saved callback failed")
+    async def _after_batch_saved(self, batch: list[_Queued], revision: str) -> None:
+        for queued in batch:
+            await _call_logged(queued.on_saved, "Bookkeeping on_saved callback failed")
         await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": revision,

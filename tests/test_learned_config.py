@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -305,6 +306,101 @@ async def test_a_running_setup_action_writes_nothing(tmp_path, acme_widget):
     eng.devices.get_driver("w1").set_state("model", "W200")
     await _settle()
     assert eng._revision_counter == after_add
+
+
+# --- The running device takes a filled-in value once the file holds it ------
+
+
+async def _connected_without_reports(tmp_path, acme_widget):
+    acme_widget.REPORT = {}
+    eng, _ = _engine(tmp_path)
+    await _add(eng)
+    return eng, eng.devices.get_driver("w1")
+
+
+@pytest.mark.asyncio
+async def test_a_reported_value_reaches_the_driver_only_once_saved(tmp_path, acme_widget):
+    eng, driver = await _connected_without_reports(tmp_path, acme_widget)
+    try:
+        async with eng._reload_lock:
+            driver.set_state("model", "W100")
+            assert eng._bookkeeping_queue
+            # Queued behind the change holding the lock: the device still
+            # dials, and the reconcile still compares, what the file holds.
+            assert not driver.config.get("model")
+            assert not eng.devices.get_device_config("w1")["config"].get("model")
+        await eng._bookkeeping_task
+        assert _disk_config(eng)["model"] == "W100"
+        assert driver.config["model"] == "W100"
+        assert eng.devices.get_device_config("w1")["config"]["model"] == "W100"
+        assert eng.devices.get_driver("w1") is driver
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_value_whose_save_fails_never_reaches_the_driver(tmp_path, acme_widget, monkeypatch):
+    eng, driver = await _connected_without_reports(tmp_path, acme_widget)
+    merged = []
+    merge = eng.devices.merge_live_config
+
+    def spy(device_id, delta):
+        merged.append(dict(delta))
+        merge(device_id, delta)
+
+    async def disk_full(path, project):
+        raise OSError("Injected unwritable project")
+
+    monkeypatch.setattr(eng.devices, "merge_live_config", spy)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", disk_full)
+    try:
+        driver.set_state("model", "W100")
+        await eng._bookkeeping_task
+        assert merged == []
+        assert not driver.config.get("model")
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_value_waiting_for_its_save_is_said_once_it_is_saved(tmp_path, acme_widget, caplog):
+    eng, driver = await _connected_without_reports(tmp_path, acme_widget)
+
+    def said():
+        return [r.getMessage() for r in caplog.records if "as the device reports" in r.getMessage()]
+
+    try:
+        with caplog.at_level(logging.INFO):
+            async with eng._reload_lock:
+                driver.set_state("model", "W100")
+                # A second report before the first is saved queues only
+                # what is new, not the model again.
+                driver.set_state("channel_count", 4)
+                assert said() == []
+            await eng._bookkeeping_task
+        assert said() == [
+            "[w1] Model set to W100, as the device reports",
+            "[w1] Channels set to 4, as the device reports",
+        ]
+        assert _disk_config(eng)["channels"] == "4"
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_saved_value_records_the_push_ports_and_asks_for_a_bring_up(tmp_path, acme_widget, monkeypatch):
+    """What an applied change does for a device's settings besides the
+    compare, as a setup action's settings do."""
+    eng, driver = await _connected_without_reports(tmp_path, acme_widget)
+    followed = []
+    monkeypatch.setattr(eng, "_record_push_ports", lambda: followed.append("ports"))
+    monkeypatch.setattr(eng, "_schedule_device_bringup", lambda: followed.append("bring-up"))
+    try:
+        driver.set_state("model", "W100")
+        await eng._bookkeeping_task
+        assert followed == ["ports", "bring-up"]
+    finally:
+        await eng.stop()
 
 
 def test_accepted_value():

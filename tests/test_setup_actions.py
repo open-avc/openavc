@@ -163,8 +163,10 @@ class _FakeEngine:
             runtime_write()
         return self._project_revision
 
-    def device_settings_moved(self) -> None:
-        pass
+    def take_device_settings(self, device_id: str, delta: dict[str, Any]) -> None:
+        # The live merge the engine makes; the push ports and the bring-up
+        # round it asks for are pinned by tests/test_setup_action_saves.py.
+        self.devices.merge_live_config(device_id, delta)
 
     async def broadcast_ws(
         self, message: dict[str, Any], *, client_type: str | None = None

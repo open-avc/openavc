@@ -490,13 +490,18 @@ class ProjectReconcileMixin:
                 f"config change and is stopped"
             )
 
-    def device_settings_moved(self) -> None:
-        """A device's settings changed and were taken live without a
-        reconcile (a setup action's update): what an applied change does for
-        them besides the device compare. The ports devices push to are
-        recorded again, and a bring-up round is asked for, which points a
-        simulated device back at the simulator its new address replaced and
-        starts again a simulator whose settings drifted."""
+    def take_device_settings(self, device_id: str, delta: dict) -> None:
+        """THE way a device's settings saved without a reconcile (a setup
+        action's update, a setting the device fills in) reach the running
+        system, once the file holds them: merged into the live driver and
+        into the config the device manager compares with the project
+        (``merge_live_config``), so the next reconcile reads no edit; then
+        what an applied change does for them besides that compare. The
+        ports devices push to are recorded again, and a bring-up round is
+        asked for, which points a simulated device back at the simulator
+        its new address replaced and starts again a simulator whose
+        settings drifted."""
+        self.devices.merge_live_config(device_id, delta)
         self._record_push_ports()
         self._schedule_device_bringup()
 

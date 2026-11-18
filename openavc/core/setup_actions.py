@@ -126,7 +126,7 @@ class SetupActionContext:
         try:
             await engine.persist_bookkeeping_change(
                 partial(self._put_in_project, delta),
-                runtime_write=partial(self._take_live, delta),
+                runtime_write=partial(engine.take_device_settings, self._device_id, delta),
             )
         except ProjectSaveError as failure:
             # Everything was put back, so the change was not applied.
@@ -138,14 +138,6 @@ class SetupActionContext:
     def _put_in_project(self, delta: dict[str, Any], project: Any) -> None:
         if not apply_config_delta(project, self._device_id, delta):
             raise RuntimeError(f"Device '{self._device_id}' not found in project")
-
-    def _take_live(self, delta: dict[str, Any]) -> None:
-        """Into the driver (what the next connect dials) and into the config
-        the device manager compares with the project, so the next reconcile
-        reads no edit; then what an applied change does for a device's
-        settings besides that compare."""
-        self._engine.devices.merge_live_config(self._device_id, delta)
-        self._engine.device_settings_moved()
 
     async def reconnect(self) -> None:
         """Reconnect the device in place using its current config."""
