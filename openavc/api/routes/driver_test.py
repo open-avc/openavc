@@ -629,7 +629,7 @@ def _not_opened(body: TestCommandRequest, error: BaseException) -> dict:
     }
 
 
-async def _exchange(transport: Any, body: TestCommandRequest) -> dict:
+async def _exchange(transport: Any, body: TestCommandRequest, data: bytes) -> dict:
     """Send the probe's bytes on an opened transport, wait for the reply,
     close the transport and report what came back."""
     import asyncio
@@ -637,8 +637,7 @@ async def _exchange(transport: Any, body: TestCommandRequest) -> dict:
     response_text = None
     error_text = None
     try:
-        cmd_data = body.command_string.encode().decode("unicode_escape").encode()
-        response = await transport.send_and_wait(cmd_data, timeout=body.timeout)
+        response = await transport.send_and_wait(data, timeout=body.timeout)
         response_text = display_text(response)
     except asyncio.TimeoutError:
         error_text = "Timeout waiting for response"
@@ -667,8 +666,30 @@ def _raw_port(body: TestCommandRequest, name: str) -> int:
         ) from None
 
 
+def _escaped(value: str, what: str) -> bytes:
+    """THE reading of a raw probe's text: ``value`` with its backslash escapes
+    (``\\r``, ``\\n``, ``\\x0D``) as the bytes they stand for. One it cannot
+    read (a truncated ``\\x``) is a 422 naming ``what``, raised before anything
+    is opened, so a probe that could not be sent never takes a device that
+    serves one connection at a time from its driver."""
+    try:
+        return value.encode().decode("unicode_escape").encode()
+    except UnicodeError:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"The {what} '{value}' has an incomplete backslash escape. Write a byte "
+                "as \\x and two hex digits, such as \\x0D, and a backslash itself as \\\\."
+            ),
+        ) from None
+
+
+def _raw_command(body: TestCommandRequest) -> bytes:
+    return _escaped(body.command_string, "command")
+
+
 def _raw_delimiter(body: TestCommandRequest) -> bytes:
-    return body.delimiter.encode().decode("unicode_escape").encode()
+    return _escaped(body.delimiter, "message delimiter")
 
 
 async def _test_tcp_raw(body: TestCommandRequest) -> dict:
@@ -676,6 +697,7 @@ async def _test_tcp_raw(body: TestCommandRequest) -> dict:
     verify_ssl, as the transport ladder builds a TCP connection)."""
     from openavc.transport.tcp import TCPTransport
 
+    data = _raw_command(body)
     delimiter = _raw_delimiter(body)
     port = _raw_port(body, "TCP")
     try:
@@ -691,7 +713,7 @@ async def _test_tcp_raw(body: TestCommandRequest) -> dict:
         )
     except ConnectionError as e:
         return _not_opened(body, e)
-    return await _exchange(transport, body)
+    return await _exchange(transport, body, data)
 
 
 async def _test_serial_raw(body: TestCommandRequest) -> dict:
@@ -710,6 +732,7 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
             detail="Serial port path is required (e.g. COM3 or /dev/ttyUSB0).",
         )
 
+    data = _raw_command(body)
     delimiter = _raw_delimiter(body)
     try:
         transport = await SerialTransport.create(
@@ -722,7 +745,7 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
         )
     except (OSError, ConnectionError) as e:
         return _not_opened(body, e)
-    return await _exchange(transport, body)
+    return await _exchange(transport, body, data)
 
 
 async def _test_udp_raw(body: TestCommandRequest) -> dict:
@@ -734,12 +757,13 @@ async def _test_udp_raw(body: TestCommandRequest) -> dict:
     """
     from openavc.transport.udp import UDPTransport
 
+    data = _raw_command(body)
     udp = UDPTransport(host=body.host, port=_raw_port(body, "UDP"), name="udp_test")
     try:
         await udp.open()
     except OSError as e:
         return _not_opened(body, e)
-    return await _exchange(udp, body)
+    return await _exchange(udp, body, data)
 
 
 def _raw_http_endpoint(body: TestCommandRequest) -> HttpEndpoint:
