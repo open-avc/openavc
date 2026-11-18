@@ -6,7 +6,9 @@ backup) is taken under the project lock as the push is taken in, so an edit
 saved a moment before the push still reaches both. It is read with the same
 function Save reads a whole project with: migrated through the format chain,
 repaired as an import is, validated, and refused when it carries no
-``openavc_version``, which the chain would read as the oldest format.
+``openavc_version``, which the chain would read as the oldest format. A push
+the cloud built on a read of this project names the revision it read, and a
+save made since refuses it.
 """
 
 from __future__ import annotations
@@ -51,7 +53,8 @@ def _handler(engine: Engine, sent: list[dict[str, Any]]):
 
     return CommandHandler(
         Agent(), engine.devices, engine.events,
-        apply_fn=engine.replace_project, project_path=str(engine.project_path),
+        apply_fn=engine.replace_project, read_fn=engine.read_saved_project,
+        project_path=str(engine.project_path),
     )
 
 
@@ -172,6 +175,108 @@ async def test_a_push_answers_the_project_it_replaced_and_runs_the_pushed_one(en
     assert engine.project.project.name == "Pushed"
     saved = json.loads(engine.project_path.read_text(encoding="utf-8"))
     assert saved["project"]["name"] == "Pushed"
+
+
+# --- A push built on a read --------------------------------------------------
+#
+# The cloud reads the project (get_project), builds a push on it (a template
+# merged in) and sends the revision it read back as expected_revision. A save
+# made between the read and the push refuses the push, as a Programmer tab
+# holding an older revision is refused.
+
+CHANGED_SINCE_READ = (
+    "Not applied: this system's project changed after the cloud read it, and this "
+    "push would have replaced that change. Push again to merge into the project as "
+    "it is now. The previous project is still running."
+)
+
+
+async def _read(engine: Engine) -> dict[str, Any]:
+    sent: list[dict[str, Any]] = []
+    await _handler(engine, sent)._handle_get_project({}, "req-gp", "tech@x.com")
+    return sent[-1]
+
+
+async def _push_on(engine: Engine, project_json: dict[str, Any], revision: str) -> dict[str, Any]:
+    sent: list[dict[str, Any]] = []
+    await _handler(engine, sent)._handle_config_push(
+        {"project_json": project_json, "mode": "selective_merge", "expected_revision": revision},
+        "req-1", "tech@x.com",
+    )
+    return sent[-1]
+
+
+def _rename(project) -> None:
+    project.project.name = "Renamed"
+
+
+async def test_a_read_answers_the_project_file_and_the_revision_it_holds(engine):
+    read = await _read(engine)
+
+    assert read["success"] is True, read
+    assert read["project_json"] == json.loads(engine.project_path.read_text(encoding="utf-8"))
+    assert read["revision"] == engine._project_revision
+
+
+async def test_a_push_built_on_a_read_a_later_save_moved_past_is_refused_and_keeps_that_save(engine):
+    read = await _read(engine)
+    await engine.apply_project_edit(_rename)
+    before = engine.project_path.read_bytes()
+
+    answer = await _push_on(engine, _pushed(), read["revision"])
+
+    assert answer["success"] is False
+    assert answer["error"] == CHANGED_SINCE_READ
+    assert engine.project.project.name == "Renamed"
+    assert engine.project_path.read_bytes() == before
+    assert _backups(engine, PUSH_BACKUP) == []
+
+
+async def test_a_push_built_on_the_project_as_it_is_is_applied(engine):
+    read = await _read(engine)
+
+    answer = await _push_on(engine, _pushed(), read["revision"])
+
+    assert answer["success"] is True, answer
+    assert engine.project.project.name == "Pushed"
+
+
+async def test_a_push_that_read_nothing_replaces_the_project_as_before(engine):
+    """A full replace sends no revision: the pushed project replaces
+    whatever the system holds, a save made a moment before included."""
+    await engine.apply_project_edit(_rename)
+
+    answer = await _push(engine, _pushed())
+
+    assert answer["success"] is True, answer
+    assert answer["result"]["previous_project_json"]["project"]["name"] == "Renamed"
+    assert engine.project.project.name == "Pushed"
+
+
+async def test_a_read_made_while_a_change_runs_waits_for_the_file_that_change_writes(engine, monkeypatch):
+    """A change takes its revision before its file is written. A read in
+    between that answered the file as it was with the new revision would let
+    a push built on it pass the check and replace that change."""
+    reconciling, finish = asyncio.Event(), asyncio.Event()
+
+    async def slow_reconcile(run):
+        reconciling.set()
+        await finish.wait()
+
+    monkeypatch.setattr(engine, "_reconcile", slow_reconcile)
+    edit = asyncio.create_task(engine.apply_project_edit(_rename))
+    await reconciling.wait()
+
+    reading = asyncio.create_task(_read(engine))
+    done, _ = await asyncio.wait({reading}, timeout=0.2)
+    assert not done, f"the read answered while the change was running: {reading.result()}"
+
+    finish.set()
+    await edit
+    read = await reading
+    assert read["project_json"]["project"]["name"] == "Renamed"
+    assert read["revision"] == engine._project_revision
+    assert (await _push_on(engine, _pushed(), read["revision"]))["success"] is True
 
 
 # --- The same read as Save ---------------------------------------------------

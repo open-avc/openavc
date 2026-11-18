@@ -289,6 +289,7 @@ class RuntimeServicesMixin:
             handler = CommandHandler(
                 self.cloud_agent, self.devices, self.events,
                 apply_fn=self.replace_project,
+                read_fn=self.read_saved_project,
                 update_manager=self.update_manager,
                 project_path=self.project_path,
                 panel_software=self.panel_software,

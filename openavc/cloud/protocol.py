@@ -577,11 +577,15 @@ def build_project_data_payload(
     success: bool,
     project_json: Any = None,
     error: str | None = None,
+    revision: str | None = None,
 ) -> dict[str, Any]:
-    """Result payload for get_project: project_json on success, error otherwise."""
+    """Result payload for get_project: project_json and the revision it was
+    read at on success, error otherwise."""
     payload: dict[str, Any] = {"request_id": request_id, "success": success}
     if success:
         payload["project_json"] = project_json
+        if revision is not None:
+            payload["revision"] = revision
     else:
         payload["error"] = error
     return payload

@@ -1215,6 +1215,11 @@
             "description": "The project; present on success only.",
             "x-since": "0.5.14"
           },
+          "revision": {
+            "type": "string",
+            "description": "The project's revision when it was read; present on success only. A push built on this project sends it back as expected_revision.",
+            "x-since": "0.41.0"
+          },
           "error": {
             "type": "string",
             "description": "Why not; present on failure only.",
@@ -1237,9 +1242,10 @@
           "success": true,
           "project_json": {
             "openavc_version": "0.17.0"
-          }
+          },
+          "revision": "3f9a2c1b-12"
         },
-        "sig": "fc9dd463805a3a695be8cb078f6218b2d2d65275ec5aeb0b96ff11b6e8518d00"
+        "sig": "cc2756dde3d8eca2df6748718208dc93d392c3ef9f5d17d15358bdeb38db4f22"
       }
     },
     "device_commands_data": {
@@ -2054,6 +2060,14 @@
             "default": null,
             "x-since": "0.5.14"
           },
+          "expected_revision": {
+            "type": "string",
+            "description": "The revision of the project this push was built on (project_data's revision). A push whose system has saved its project since is refused and changes nothing. Absent for a push built on no read, which replaces the project whatever it holds.",
+            "default": null,
+            "x-since": "0.41.0",
+            "x-ignorable": true,
+            "x-why": "The cloud sends it only back from a project_data revision, which an older agent never sends."
+          },
           "user_id": {
             "type": "string",
             "description": "The cloud user who asked, for this instance's own log.",
@@ -2087,10 +2101,11 @@
           "project_json": {
             "openavc_version": "0.17.0"
           },
+          "expected_revision": "3f9a2c1b-12",
           "user_id": "5b1d0c7e-2a44-4f1e-8d0a-6c9e1b2a3f40",
           "user_name": "Pat Example"
         },
-        "sig": "d8a1c33dee57b7b18ae373506e2243fa2cc09add8470e65c5e0e1e8001aa3fe7"
+        "sig": "1136566538005bd3a9b28e36b5b4ad6a3ca94923c4e9944b66e47c219d4072d1"
       }
     },
     "restart": {

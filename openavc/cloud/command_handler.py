@@ -55,6 +55,8 @@ def _not_applied_answer(exc: Exception) -> str:
         return not_applied(_NOT_REACHED)
     if failure.code == "not_applied":
         return failure.sentence
+    if failure.code == "conflict":
+        return not_applied(_CHANGED_SINCE_READ)
     return f"Not applied: {failure.sentence}"
 
 
@@ -72,6 +74,13 @@ def _schema_problems(exc: Exception) -> str:
 
 #: The reason the backup a push takes of the project it replaces is filed under.
 _PUSH_BACKUP = "Before cloud config push"
+
+#: Why a push built on a read of the project (``expected_revision``) was not
+#: applied: a save landed on this system after the read.
+_CHANGED_SINCE_READ = (
+    "this system's project changed after the cloud read it, and this push would have "
+    "replaced that change. Push again to merge into the project as it is now."
+)
 
 #: Why a push with no openavc_version was not applied.
 _NO_VERSION = (
@@ -146,6 +155,7 @@ class CommandHandler:
         devices: DeviceManager,
         events: EventBus,
         apply_fn=None,
+        read_fn=None,
         update_manager=None,
         project_path=None,
         panel_software=None,
@@ -157,7 +167,11 @@ class CommandHandler:
             events: EventBus for emitting audit events.
             apply_fn: Optional async callable (engine.replace_project) that
                 persists and reconciles a pushed project through the one seam,
-                taking what its migration changed as ``update_notes``.
+                taking what its migration changed as ``update_notes`` and the
+                revision a push was built on as ``expected_revision``.
+            read_fn: Optional async callable (engine.read_saved_project) that
+                answers get_project: the project file and the revision it
+                holds, read together under the project lock.
             update_manager: Optional UpdateManager for cloud-triggered updates.
             project_path: Path to the active project.avc file.
             panel_software: Optional PanelSoftwareUpdates for panel software
@@ -167,6 +181,7 @@ class CommandHandler:
         self._devices = devices
         self._events = events
         self._apply_fn = apply_fn
+        self._read_fn = read_fn
         self._update_manager = update_manager
         self._project_path = project_path
         self._panel_software = panel_software
@@ -284,12 +299,15 @@ class CommandHandler:
         kept = _RollbackCopy(Path(self._project_path))
         try:
             project, update_notes = _read_push(project_json)
-            # A fleet push wins by design (no expected_revision), through the
-            # door a replace takes: it persists the pushed bytes, fully
-            # reconciles, bumps the revision and broadcasts project.reloaded,
-            # so an open IDE 409s on its next save instead of reverting it.
+            # Through the door a replace takes: it persists the pushed bytes,
+            # fully reconciles, bumps the revision and broadcasts
+            # project.reloaded, so an open IDE 409s on its next save instead
+            # of reverting it. A push built on a read (a template merged into
+            # this system's project) names the revision it read, and a save
+            # since refuses it; one built on no read names none and wins.
             await self._apply_fn(
                 project, update_notes=update_notes,
+                expected_revision=payload["expected_revision"],
                 keep=KeepReplaced(before=kept.take, backup=_PUSH_BACKUP),
             )
         except _PushRefused as refusal:
@@ -574,50 +592,43 @@ class CommandHandler:
     async def _handle_get_project(
         self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
-        """Handle a get_project request — read the current project file and send it back."""
+        """Answer get_project with the project file and the revision it holds,
+        read together (``read_fn``): a push built on the read sends the
+        revision back, and a save made since refuses it."""
         log.info(f"Cloud get_project: {actor}")
 
-        if not self._project_path:
-            await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
-                request_id, False, error="Project path not configured",
-            ))
+        if self._read_fn is None:
+            await self._send_project_data(request_id, error="Project path not configured")
             return
-
         try:
-            import json
-            from pathlib import Path
-
-            project_path = Path(self._project_path)
-            if not project_path.exists():
-                await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
-                    request_id, False, error="Project file not found",
-                ))
-                return
-
-            project_json = json.loads(project_path.read_text(encoding="utf-8"))
-
-            # The reply must fit the 1 MB wire cap or the cloud drops it and
-            # the ProjectFetcher burns its full timeout with no explanation.
-            # Measure the embed as it will actually serialize on the wire.
-            embed_size = len(json.dumps(project_json))
-            if embed_size > MAX_EMBED_BYTES:
-                await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
-                    request_id, False,
-                    error=(
-                        f"project_too_large: project serializes to {embed_size} bytes, "
-                        f"which exceeds the {MAX_EMBED_BYTES}-byte cloud message limit"
-                    ),
-                ))
-                return
-
-            await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
-                request_id, True, project_json=project_json,
-            ))
+            read = await self._read_fn()
+        except FileNotFoundError:
+            await self._send_project_data(request_id, error="Project file not found")
+            return
         except Exception as e:
             log.exception("Error reading project file")
-            await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
-                request_id, False, error=str(e),
+            await self._send_project_data(request_id, error=str(e))
+            return
+
+        # The reply must fit the 1 MB wire cap or the cloud drops it and
+        # the ProjectFetcher burns its full timeout with no explanation.
+        # Measure the embed as it will actually serialize on the wire.
+        embed_size = len(json.dumps(read.project_json))
+        if embed_size > MAX_EMBED_BYTES:
+            await self._send_project_data(request_id, error=(
+                f"project_too_large: project serializes to {embed_size} bytes, "
+                f"which exceeds the {MAX_EMBED_BYTES}-byte cloud message limit"
             ))
+            return
+        await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+            request_id, True, project_json=read.project_json, revision=read.revision,
+        ))
+
+    async def _send_project_data(self, request_id: str, *, error: str) -> None:
+        """Answer get_project with why the project was not read."""
+        await self._agent.send_message(PROJECT_DATA, build_project_data_payload(
+            request_id, False, error=error,
+        ))
 
     async def _handle_get_device_commands(
         self, payload: dict[str, Any], request_id: str, actor: str

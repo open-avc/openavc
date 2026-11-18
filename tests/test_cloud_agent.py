@@ -356,11 +356,19 @@ class TestProtocol:
         }
 
     def test_build_project_data_payload_shapes(self):
-        """Success carries project_json; failure carries error — never both."""
+        """Success carries project_json and the revision it was read at;
+        failure carries error — never both."""
         ok = build_project_data_payload("r1", True, project_json={"version": "0.7.0"})
         assert ok == {
             "request_id": "r1", "success": True,
             "project_json": {"version": "0.7.0"},
+        }
+        read = build_project_data_payload(
+            "r1", True, project_json={"version": "0.7.0"}, revision="ab12cd34-3",
+        )
+        assert read == {
+            "request_id": "r1", "success": True,
+            "project_json": {"version": "0.7.0"}, "revision": "ab12cd34-3",
         }
         fail = build_project_data_payload("r1", False, error="not found")
         assert fail == {"request_id": "r1", "success": False, "error": "not found"}
@@ -2639,7 +2647,6 @@ class TestMessageSizeLimits:
     async def test_get_project_replies_typed_error_when_project_too_large(self, tmp_path):
         """An over-cap project answers project_data success=false instead of
         an oversize send the cloud would drop (opaque fetcher timeout)."""
-        import json as _json
         from openavc.core.state_store import StateStore
         from openavc.core.event_bus import EventBus
         from openavc.core.device_manager import DeviceManager
@@ -2656,16 +2663,20 @@ class TestMessageSizeLimits:
             async def send_message(self, msg_type, payload):
                 sent.append((msg_type, payload))
 
-        project_path = tmp_path / "project.avc"
+        from openavc.core.project_changes import SavedRead
+
         big_project = {
             "openavc_version": "0.7.0",
             "project": {"id": "big", "name": "Big"},
             "padding": "x" * (MAX_EMBED_BYTES + 1),
         }
-        project_path.write_text(_json.dumps(big_project), encoding="utf-8")
+
+        async def read_fn():
+            return SavedRead(big_project, "rev-1")
 
         handler = CommandHandler(
-            MockAgent(), devices, events, project_path=str(project_path),
+            MockAgent(), devices, events, read_fn=read_fn,
+            project_path=str(tmp_path / "project.avc"),
         )
         await handler._handle_get_project({}, "req-gp", "tech@x.com")
 

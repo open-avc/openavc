@@ -18,6 +18,10 @@ whole-project doors (``apply_project``, ``apply_named_save``,
 take-in. What a replace keeps of the project it replaces (the cloud push's
 rollback copy, a backup) is taken under the lock before anything changes,
 never before the lock, so an edit saved while the replace waited is in it.
+A change built elsewhere on a read of the project (the cloud's template
+merge) reads it with ``read_saved_project``, the file and the revision it
+holds together under the lock, and is sent back with that revision as its
+expected one, so a save made in between refuses it.
 A file beside the project that a change writes or removes with it (a
 script's ``.py``) is the door's too (``core/change_files.py``): written
 inside the change and put back when it is not applied, removed only once
@@ -71,6 +75,7 @@ Mixed into Engine (core/engine.py). Logs under the engine's name.
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
@@ -148,6 +153,16 @@ class ApplyOutcome:
 
     revision: str
     failed: tuple[FailedPart, ...] = ()
+
+
+@dataclass(frozen=True)
+class SavedRead:
+    """The project file as JSON and the revision it holds, read together
+    (:meth:`ProjectChangesMixin.read_saved_project`): a change built on the read
+    elsewhere is sent back with ``revision`` as its expected revision."""
+
+    project_json: Any
+    revision: str
 
 
 @dataclass(frozen=True)
@@ -433,6 +448,20 @@ class ProjectChangesMixin:
             outcome = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
             self.keep_update_notes(update_notes, replace=True)
             return outcome
+
+    async def read_saved_project(self) -> SavedRead:
+        """THE read a change built elsewhere starts from (the cloud reads the
+        project, merges a template into it and pushes the result back): the
+        project file and the revision it holds, read together under
+        ``_reload_lock``. A change takes its revision before its file is
+        written (:meth:`_swap_in`), so a read made beside the lock could pair
+        the file as it was with the new revision, and a change built on it
+        would pass the revision check and replace that change. Raises what
+        the read raises (``FileNotFoundError``, a ``ValueError`` for a file
+        that is not JSON)."""
+        async with self._reload_lock:
+            text = await asyncio.to_thread(self.project_path.read_text, encoding="utf-8")
+            return SavedRead(json.loads(text), self._project_revision)
 
     def _check_revision(self, expected_revision: str | None) -> None:
         """Refuse a save made against a revision this run has moved past;

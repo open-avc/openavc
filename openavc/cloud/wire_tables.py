@@ -346,6 +346,10 @@ MESSAGES: tuple[Message, ...] = (
         Field("success", "boolean", True, "Whether the project was read."),
         Field("project_json", "object", {"openavc_version": "0.17.0"},
               "The project; present on success only.", required=False),
+        Field("revision", "string", "3f9a2c1b-12",
+              "The project's revision when it was read; present on success only. A push "
+              "built on this project sends it back as expected_revision.",
+              required=False, since=FIRST_CONTRACT_RELEASE),
         Field("error", "string", doc="Why not; present on failure only.", required=False),
     ), priority=5),
     Message("device_commands_data", "up", "session", "Answers get_device_commands.", (
@@ -477,6 +481,14 @@ MESSAGES: tuple[Message, ...] = (
         Field("project_json", "object", {"openavc_version": "0.17.0"},
               "The project. A push without one, or with an empty one, is refused.",
               default=None),
+        Field("expected_revision", "string", "3f9a2c1b-12",
+              "The revision of the project this push was built on (project_data's "
+              "revision). A push whose system has saved its project since is refused and "
+              "changes nothing. Absent for a push built on no read, which replaces the "
+              "project whatever it holds.",
+              required=False, default=None, since=FIRST_CONTRACT_RELEASE, ignorable=True,
+              why="The cloud sends it only back from a project_data revision, which an older "
+                  "agent never sends."),
         _USER_ID, _USER_NAME,
     ), priority=7, requires="remote_access", answer="command_result"),
     Message("restart", "down", "session", "Restarts OpenAVC.", (
