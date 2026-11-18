@@ -23,7 +23,9 @@ from openavc.core.plugin_loader import (
     PluginLoader,
     register_plugin_class,
 )
+from openavc.core.project_changes import ApplyOutcome
 from openavc.core.project_loader import PluginConfig
+from openavc.core.project_reconcile import ProjectReconcileMixin
 from openavc.core.state_store import StateStore
 from tests.test_ai_tool_handler_surgical import _make_project
 
@@ -80,10 +82,19 @@ def loader():
     return PluginLoader(state, events, macros, MagicMock())
 
 
+class _PluginSync(ProjectReconcileMixin):
+    """The reconcile's plugin sync, run against one project and the loader."""
+
+    def __init__(self, project, plugin_loader) -> None:
+        self.project = project
+        self.plugin_loader = plugin_loader
+
+
 @pytest.fixture
 def engine(loader):
     """An engine stub with a real project and the real loader, applying edits
-    the way the seam does (copy, mutate, swap)."""
+    the way the seam does (copy, mutate, swap), its plugins followed by the
+    reconcile's own plugin sync, which is what hands a plugin its config."""
     eng = MagicMock()
     eng.project = _make_project()
     eng.plugin_loader = loader
@@ -92,6 +103,8 @@ def engine(loader):
         new_project = eng.project.model_copy(deep=True)
         mutate(new_project)
         eng.project = new_project
+        moves = await _PluginSync(new_project, loader)._sync_plugins()
+        return ApplyOutcome("1", plugin_moves=tuple(moves.items()))
 
     eng.apply_project_edit = AsyncMock(side_effect=_apply_edit)
     return eng
@@ -218,7 +231,7 @@ async def test_a_config_update_that_stops_the_plugin_says_its_refusal(handler, e
     )
     assert result["applied"] == "start_failed"
     assert result["warning"] == (
-        "Config saved, but plugin 'acme_widget' failed to restart with it and is "
+        "Config saved, but plugin 'acme_widget' failed to start with it and is "
         f"stopped: {MARKED}"
     )
 
@@ -234,7 +247,7 @@ async def test_a_config_update_that_stops_the_plugin_otherwise_points_at_the_log
         {"plugin_id": "acme_widget", "config": {"fail": "unmarked"}}
     )
     assert result["warning"] == (
-        "Config saved, but plugin 'acme_widget' failed to restart with it and is "
+        "Config saved, but plugin 'acme_widget' failed to start with it and is "
         "stopped. Check the config values and plugin logs."
     )
 
