@@ -86,12 +86,15 @@ class ProjectInvalidError(ValueError):
     load repairs one). Refused before the change is taken in, so nothing
     has changed. ``cause`` is the models' own ``ValidationError``; the
     refusal names each field it found and never a value, which may be a
-    login (``api/error_messages.describe_change_failure``)."""
+    login (``api/error_messages.describe_change_failure``). Its own text
+    names them the same way, for the log line of a queued change, which
+    has no door to answer it."""
 
     def __init__(self, cause: ValidationError) -> None:
-        super().__init__(
-            f"The change leaves the project invalid ({cause.error_count()} problem(s))"
-        )
+        from openavc.api.errors import validation_error_lines
+
+        problems = "; ".join(validation_error_lines(cause.errors()))
+        super().__init__(f"The change leaves the project invalid: {problems}")
         self.cause = cause
 
 

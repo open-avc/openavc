@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from unittest.mock import AsyncMock
 
 import pytest
@@ -155,6 +156,23 @@ async def test_a_refused_change_in_a_queued_batch_saves_none_of_it(engine):
     assert undone == ["no name", "rename"]
     assert _disk(engine)["project"]["name"] == "Hall"
     assert engine.project.project.name == "Hall"
+
+
+async def test_a_refused_queued_change_names_the_field_in_the_log_and_never_the_value(
+    engine, caplog,
+):
+    """A queued change has no door to answer it, so the log line is all
+    there is: it names the field, never what was in it."""
+    def bad_name(project):
+        project.project.name = ["Acme-Private-7731"]
+
+    with caplog.at_level(logging.ERROR):
+        engine.schedule_bookkeeping_change(bad_name)
+        await engine._bookkeeping_task
+
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "project.name: Input should be a valid string" in logged
+    assert "Acme-Private-7731" not in logged
 
 
 def test_the_refusal_is_answered_by_every_route():
