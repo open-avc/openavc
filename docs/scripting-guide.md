@@ -300,6 +300,8 @@ await events.emit(event_name, payload=None)
 await events.emit("custom.room_ready", {"room": "auditorium"})
 ```
 
+A name starting with `system.` is OpenAVC's own, and `events.emit()` raises an error for one. The script editor marks that line, and an `@on_event` for a `system.` name OpenAVC never sends, with the `custom.` name to use.
+
 #### Handlers with no emitter
 
 A `custom.` event comes from one of four places: a macro's **Emit Event**

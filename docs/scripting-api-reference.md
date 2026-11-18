@@ -158,7 +158,7 @@ Emit custom events on the event bus.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `await events.emit(event_name, payload=None)` | `None` | Fire an event. `payload` is a dict or `None`. |
+| `await events.emit(event_name, payload=None)` | `None` | Fire an event. `payload` is a dict or `None`. A name starting with `system.` is OpenAVC's own and raises `ValueError`. |
 
 ```python
 await events.emit("custom.room_ready", {"zone": "auditorium"})

@@ -430,7 +430,7 @@ The **Does** bucket is one or more **actions**, grouped by the interaction that 
 
 **Script Function** lists the plain functions your enabled scripts define, with each one's parameters filled in from the function itself. Fill those in and one function serves every button that calls it: three source buttons can all call `select_source`, each passing its own source, instead of needing a function apiece. Handlers written with `@on_event` are not listed, because the system calls those itself when their event fires.
 
-**Emit Event** is the same step the Macros view offers, written straight onto a control. Use it to reach something that is listening rather than something you can name: a trigger, a plugin, or a script handler subscribed to that event.
+**Emit Event** is the same step the Macros view offers, written straight onto a control. Use it to reach something that is listening rather than something you can name: a trigger, a plugin, or a script handler subscribed to that event. Name the event under `custom.`: a name starting with `system.` is OpenAVC's own, so the control sends nothing and **Validate** marks it.
 
 Both types take values the same way a Device Command takes params, so the **$** button hands them what the control itself is doing: a slider's position, a matrix row's input and output. See [Macros and Triggers](macros-and-triggers.md) for the full list of what each interaction delivers.
 
