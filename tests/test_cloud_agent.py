@@ -1198,9 +1198,13 @@ class TestCommandHandler:
         assert sent_messages[0][0] == COMMAND_RESULT
         assert sent_messages[0][1]["request_id"] == "req-1"
 
-    @pytest.mark.asyncio
-    async def test_handle_restart(self):
-        """Restart handler sends result before requesting restart."""
+    @staticmethod
+    def _restart_rig(monkeypatch, *, armed=True):
+        """A command handler whose answers and restart exits land in one
+        ordered list, the exit recorded instead of run."""
+        from types import SimpleNamespace
+
+        from openavc import restart
         from openavc.core.state_store import StateStore
         from openavc.core.event_bus import EventBus
         from openavc.core.device_manager import DeviceManager
@@ -1208,36 +1212,104 @@ class TestCommandHandler:
 
         state = StateStore()
         events = EventBus()
-        devices = DeviceManager(state, events)
-
-        sent = []
-        emitted = []
+        order: list = []
 
         class MockAgent:
             _config = {}
+
             async def send_message(self, msg_type, payload):
-                sent.append((msg_type, payload))
+                order.append(("answer", payload))
 
-        events.on("system.restart_requested", lambda e, p: emitted.append(p))
+        async def exit_after(wait, engine):
+            order.append(("exit", wait))
 
-        handler = CommandHandler(MockAgent(), devices, events)
+        events.on("cloud.restart", lambda e, p: order.append(("cloud.restart", p["mode"])))
+        monkeypatch.setattr(restart, "_exit_after", exit_after)
+        if armed:
+            restart.accept_restarts(SimpleNamespace(stopping=False))
+        handler = CommandHandler(MockAgent(), DeviceManager(state, events), events)
 
-        msg = {
-            "type": "restart",
-            "payload": {
-                "request_id": "req-2",
-                "mode": "graceful",
-                "user_id": "u1",
-                "user_name": "admin",
-            },
-        }
+        async def ask(mode, request_id="req-2"):
+            payload = {"request_id": request_id, "user_id": "u1", "user_name": "admin"}
+            if mode is not None:
+                payload["mode"] = mode
+            await handler.handle({"type": "restart", "payload": payload})
+            for _ in range(3):
+                await asyncio.sleep(0)
 
-        await handler.handle(msg)
+        return SimpleNamespace(ask=ask, order=order)
 
-        assert sent[0][1]["success"] is True
-        assert len(emitted) == 1
-        assert emitted[0]["mode"] == "graceful"
-        assert emitted[0]["source"] == "cloud"
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("mode, wait", [("graceful", 2), ("hard", 0), (None, 2)])
+    async def test_handle_restart(self, monkeypatch, caplog, mode, wait):
+        """The restart door decides; the answer goes out before the exit begins."""
+        import logging
+
+        rig = self._restart_rig(monkeypatch)
+        with caplog.at_level(logging.WARNING, logger="openavc.main"):
+            await rig.ask(mode)
+
+        said = mode or "graceful"
+        answer = rig.order[0]
+        assert answer[0] == "answer"
+        assert answer[1]["success"] is True
+        assert answer[1]["result"] == f"Restart ({said}) initiated"
+        assert ("exit", wait) in rig.order
+        assert ("cloud.restart", said) in rig.order
+        assert any(f"source=cloud, mode={said}" in m for m in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_a_restart_in_a_mode_the_door_refuses_answers_why(self, monkeypatch):
+        rig = self._restart_rig(monkeypatch)
+        await rig.ask("Hard")
+
+        assert rig.order == [("answer", {
+            "request_id": "req-2", "success": False, "result": None,
+            "error": "'Hard' is not a restart mode. Use graceful or hard.",
+        })]
+
+    @pytest.mark.asyncio
+    async def test_a_second_restart_is_refused_while_the_first_is_under_way(self, monkeypatch):
+        from openavc import restart
+
+        rig = self._restart_rig(monkeypatch)
+        held = asyncio.Event()
+
+        async def exit_after(wait, engine):
+            rig.order.append(("exit", wait))
+            await held.wait()
+
+        monkeypatch.setattr(restart, "_exit_after", exit_after)
+        try:
+            await rig.ask("graceful", "req-1")
+            await rig.ask("graceful", "req-2")
+        finally:
+            held.set()
+
+        second = rig.order[-1][1]
+        assert (second["request_id"], second["success"]) == ("req-2", False)
+        assert second["error"] == "A restart is already under way."
+        assert [e for e in rig.order if e[0] == "exit"] == [("exit", 2)]
+
+    @pytest.mark.asyncio
+    async def test_a_restart_before_the_server_is_up_is_refused_not_lost(self, monkeypatch):
+        """A restart that reaches the agent while the server is still starting
+        is answered as refused, and the retry once it is up restarts it."""
+        from types import SimpleNamespace
+
+        from openavc import restart
+
+        rig = self._restart_rig(monkeypatch, armed=False)
+        await rig.ask("graceful", "req-1")
+        assert rig.order == [("answer", {
+            "request_id": "req-1", "success": False, "result": None,
+            "error": "The server is still starting. Try the restart again once it is up.",
+        })]
+
+        restart.accept_restarts(SimpleNamespace(stopping=False))
+        await rig.ask("graceful", "req-2")
+        assert rig.order[1][1]["success"] is True
+        assert ("exit", 2) in rig.order
 
     @pytest.mark.asyncio
     async def test_config_push_migrates_old_schema(self, tmp_path):

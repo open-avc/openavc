@@ -2112,6 +2112,11 @@
           },
           "mode": {
             "type": "string",
+            "x-vocabulary": "restart_modes",
+            "enum": [
+              "graceful",
+              "hard"
+            ],
             "description": "How.",
             "default": "graceful",
             "x-since": "0.5.14"
@@ -3656,6 +3661,18 @@
         "value": "selective_merge",
         "since": "0.5.14",
         "description": "The cloud merged a template into this system's project before sending it; it replaces this one the same way."
+      }
+    ],
+    "restart_modes": [
+      {
+        "value": "graceful",
+        "since": "0.5.14",
+        "description": "Waits two seconds for the answer to get out, then stops and restarts."
+      },
+      {
+        "value": "hard",
+        "since": "0.5.14",
+        "description": "Stops and restarts at once."
       }
     ],
     "config_push_results": [

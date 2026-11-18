@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from fastapi import APIRouter, FastAPI, Request
 import pytest
 
+from openavc import restart
 from openavc.api import auth, session_tokens, ws
 from openavc.api._engine import set_engine
 from openavc.api.host_policy import (
@@ -318,13 +319,26 @@ async def test_revoked_optional_body_cannot_be_recovered_as_an_action(rig, monke
     rig.app.include_router(plugins.router)
     monkeypatch.setattr(plugins, '_engine', rig.engine)
     rig.engine.project.plugins['example'] = PluginConfig()
-    event = 'system.restart_requested' if kind == 'restart' else 'plugin.example.action.apply'
     path = '/api/system/restart' if kind == 'restart' else '/api/plugins/example/context-action/apply'
     effects = []
-    rig.engine.events.on(event, lambda name, payload: effects.append((name, payload)))
-    # Engine.start never runs: observe the real event, with no restart handler.
+    if kind == 'restart':
+        # The real restart door, armed with the rig's engine; the exit it
+        # starts is recorded instead of run.
+        async def exit_after(wait, engine):
+            effects.append(('exit', wait))
+        monkeypatch.setattr(restart, '_exit_after', exit_after)
+        restart.accept_restarts(rig.engine)
+    else:
+        rig.engine.events.on(
+            'plugin.example.action.apply', lambda name, payload: effects.append((name, payload)))
+
+    async def settle():
+        await asyncio.gather(*restart._exiting)
+        for _ in range(3):
+            await asyncio.sleep(0)
+
     assert (await http(rig, path, method='POST', body=None))[0] == 200
-    await asyncio.gather(*system._BACKGROUND_TASKS)
+    await settle()
     assert len(effects) == 1
     effects.clear()
 
@@ -332,7 +346,7 @@ async def test_revoked_optional_body_cannot_be_recovered_as_an_action(rig, monke
         assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
 
     result = await http(rig, path, method='POST', body=None, before_body=logout)
-    await asyncio.gather(*system._BACKGROUND_TASKS)
+    await settle()
     assert result[0] == 401
     assert effects == []
 

@@ -249,8 +249,8 @@ def _load_discovery_hints() -> None:
 
 def _watch_listen_choice() -> asyncio.Task:
     """Follow the chosen adapter: back, gone, or on a new DHCP address, the
-    server restarts through the restart request and listens again where the
-    choice now points (openavc/listen.py).
+    server restarts through the restart door (openavc/restart.py) and listens
+    again where the choice now points (openavc/listen.py).
 
     The same ten-second tick checks the safety net's deadline: a change that
     cut off the browser making it goes back by itself unless the Programmer
@@ -263,9 +263,10 @@ def _watch_listen_choice() -> asyncio.Task:
     from openavc.system_config import get_system_config
 
     async def restart_to_follow_adapter(_reason: str) -> None:
-        await engine.events.emit(
-            "system.restart_requested", {"mode": "graceful", "source": "listen"}
-        )
+        restart.request_exit("graceful", "listen")
+
+    async def restart_to_go_back(_reason: str) -> None:
+        restart.request_exit("graceful", "listen safety net")
 
     async def safety_net_tick() -> None:
         try:
@@ -273,7 +274,7 @@ def _watch_listen_choice() -> asyncio.Task:
                 await asyncio.to_thread(reach_devices.refresh)
         except Exception:  # the safety net below must still tick
             log.debug("Reach devices through: refresh failed", exc_info=True)
-        await listen_safety_net.tick(get_system_config(), restart_to_follow_adapter)
+        await listen_safety_net.tick(get_system_config(), restart_to_go_back)
 
     return asyncio.create_task(
         listen.ListenWatcher(restart_to_follow_adapter, on_tick=safety_net_tick).run()
@@ -375,13 +376,11 @@ async def _initialize_engine(app: FastAPI) -> None:
         with run.stage("loading the drivers' discovery data"):
             _load_discovery_hints()
 
-        # A restart request (Settings, the cloud agent, the listen watcher
-        # below) ends this process: openavc/restart.py.
+        # From here a restart request (Settings, the cloud agent, the listen
+        # watcher below) ends this process; before it, every one is refused:
+        # openavc/restart.py.
         with run.stage("setting up restarts"):
-            async def _on_restart_requested(_event: str, data: dict) -> None:
-                await restart.exit_for_restart(data, engine)
-
-            engine.events.on("system.restart_requested", _on_restart_requested)
+            restart.accept_restarts(engine)
             engine.listen_watcher = _watch_listen_choice()
 
         with run.stage("logging the addresses to open"):

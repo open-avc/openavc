@@ -254,6 +254,11 @@ def _reset_global_state():
     # Same for the Reach devices through address it keeps.
     from openavc import reach_devices
     reach_devices.forget()
+    # The restart door, armed by a boot a test drove: the next test's
+    # requests would otherwise reach that test's engine, or be refused as
+    # already under way.
+    from openavc import restart
+    restart.reset()
     # Device logins saved in the session's data folder, and the per-folder
     # stores holding them: an engine built on that folder would otherwise
     # start the next test with the last one's logins, and a project it loads

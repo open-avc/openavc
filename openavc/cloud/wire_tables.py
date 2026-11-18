@@ -481,7 +481,8 @@ MESSAGES: tuple[Message, ...] = (
     ), priority=7, requires="remote_access", answer="command_result"),
     Message("restart", "down", "session", "Restarts OpenAVC.", (
         _request_id(),
-        Field("mode", "string", "graceful", "How.", default="graceful"),
+        Field("mode", "string", "graceful", "How.", vocabulary="restart_modes",
+              default="graceful"),
         _USER_ID, _USER_NAME,
     ), priority=8, requires="remote_access", answer="command_result"),
     Message("diagnostic", "down", "session", "Runs a network check from this system.", (
@@ -763,6 +764,10 @@ VOCABULARIES: dict[str, tuple[Entry, ...]] = {
         Entry("full_replace", "The pushed project replaces this one."),
         Entry("selective_merge", "The cloud merged a template into this system's project "
                                  "before sending it; it replaces this one the same way."),
+    ),
+    "restart_modes": (
+        Entry("graceful", "Waits two seconds for the answer to get out, then stops and restarts."),
+        Entry("hard", "Stops and restarts at once."),
     ),
     "config_push_results": (
         Entry("Config applied", "A push's result when there was no earlier project to send "

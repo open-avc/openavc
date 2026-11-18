@@ -501,10 +501,12 @@ export interface RestartResult {
 
 /** Trigger an OpenAVC process restart.
  *
- *  The server emits `system.restart_requested` and exits ~2s later (graceful)
- *  or immediately (hard). Service managers (NSSM / systemd / Docker) bring
- *  the process back; dev mode spawns a detached replacement. The browser
- *  should poll `/api/health` on the post-restart URL until it returns 2xx. */
+ *  The server answers, then begins its stop 2 s later (graceful) or at once
+ *  (hard). It refuses an unknown mode (400), a restart while one is already
+ *  under way (409) and one before it is up (503). Service managers (NSSM /
+ *  systemd / Docker) bring the process back; dev mode spawns a detached
+ *  replacement. The browser should poll `/api/health` on the post-restart URL
+ *  until it returns 2xx. */
 export async function restartSystem(
   mode: "graceful" | "hard" = "graceful"
 ): Promise<RestartResult> {

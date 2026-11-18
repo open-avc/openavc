@@ -1,19 +1,26 @@
 """How the server restarts itself.
 
-A restart request (``system.restart_requested``: from Settings and the REST
-route, from the cloud agent once it has answered, and from the listen watcher
-following the chosen adapter) ends this process. A service manager (NSSM,
-systemd, Docker's restart policy) starts the next one; a dev session
+THE door every restart request takes: ``request_exit(mode, source)``, called
+by the REST route (Settings), the cloud agent's restart command, the listen
+watcher following the chosen adapter, and the listen safety net going back to
+the previous choice. It decides once, for all of them: the mode (``MODES``;
+none said is graceful), whether the server is up to restart (``openavc.main``
+arms the door with ``accept_restarts`` once the engine is up), and whether a
+restart or a stop is already under way. Each asker answers from what it
+decided (``ExitAnswer``): the REST route's status and delay, the cloud's
+result. A request is refused only here, and the same way at every door.
+
+An accepted request ends this process. A service manager (NSSM, systemd,
+Docker's restart policy) starts the next one; a dev session
 (``python -m openavc.main``) has none, so the process spawns its own
-replacement first. ``exit_for_restart`` is the request's handler, wired by
-``openavc.main`` once the engine is up.
+replacement first.
 
 The stop is the engine's ``shutdown``, the same one the lifespan runs at a
 service stop (core/engine_lifecycle.py), within the same deadline
 (core/stop_stages.py ``STOP_SECONDS``). It runs in a task of its own: the
-request arrives inside whoever emitted it, and the shutdown ends some of them
-(the listen watcher, the cloud agent's command handling), which would
-otherwise cancel the stop and the exit with them.
+asker may be one of the pieces the shutdown ends (the listen watcher, the
+cloud agent's command handling), which would otherwise cancel the stop and the
+exit with them.
 
 The rule worth knowing before changing it: the exit never depends on the event
 loop being healthy. ``EventBus.emit`` nests ``asyncio.gather()`` when handlers
@@ -31,7 +38,9 @@ import os
 import subprocess
 import sys
 import threading
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from openavc import system_config
 from openavc.core.event_bus import detach_emit_chain
@@ -48,27 +57,110 @@ WATCHDOG_MARGIN_SECONDS = 2.0
 # replacement retries its port for longer than this (openavc.main).
 LONGEST_EXIT_SECONDS = STOP_SECONDS + WATCHDOG_MARGIN_SECONDS
 
-# The exit under way, held here so it is not collected while it runs.
+# The ways a restart can be asked for, and how long each waits before the stop
+# begins: "graceful" waits so the request's own answer and log line get out
+# first, "hard" does not. The cloud's wire contract names the same two
+# (its "restart_modes" vocabulary; tests/test_cloud_wire_contract.py holds
+# them equal), so the portal refuses any other before it is sent.
+WAIT_SECONDS: dict[str, int] = {"graceful": 2, "hard": 0}
+MODES: tuple[str, ...] = tuple(WAIT_SECONDS)
+# What a request that names no mode gets.
+DEFAULT_MODE = "graceful"
+
+# Why a request was refused, for the asker's door to answer with: the REST
+# route turns each into its HTTP status.
+UNKNOWN_MODE = "unknown_mode"
+NOT_READY = "not_ready"
+UNDER_WAY = "under_way"
+
+# The engine an accepted request stops, set once the server is up
+# (``accept_restarts``); until then every request is refused.
+_engine: Any = None
+
+# The exit under way, held here so it is not collected while it runs; while
+# it is here, every further request is refused.
 _exiting: set[asyncio.Task] = set()
 
 
-async def exit_for_restart(data: dict | None, engine) -> None:
-    """End this process for a restart request; returns only through ``os._exit``.
+@dataclass(frozen=True)
+class ExitAnswer:
+    """What ``request_exit`` decided, for the asker to answer with.
 
-    ``data`` is the event's payload: ``mode`` ("graceful" waits 2 s so the
-    request's own reply and log line get out first, "hard" does not) and
-    ``source`` (who asked, for the log).
+    Accepted: ``mode`` is the one in force and ``wait_seconds`` how long
+    before the stop begins. Refused: ``refusal`` is ``UNKNOWN_MODE``,
+    ``NOT_READY`` or ``UNDER_WAY``, and ``sentence`` says why, for whoever
+    asked."""
+
+    accepted: bool
+    mode: str
+    wait_seconds: int = 0
+    refusal: str = ""
+    sentence: str = ""
+
+
+def accept_restarts(engine) -> None:
+    """Arm the door: from now on an accepted request stops ``engine``.
+    ``openavc.main`` calls it once the engine is up."""
+    global _engine
+    _engine = engine
+
+
+def reset() -> None:
+    """Disarm the door and forget any exit in flight (tests)."""
+    global _engine
+    _engine = None
+    _exiting.clear()
+
+
+def request_exit(mode: Any, source: str) -> ExitAnswer:
+    """Restart the server, or say why not: THE door every restart request
+    takes (this module's docstring names them).
+
+    ``mode`` is the asker's word for how (``MODES``; ``None``, not said, is
+    ``DEFAULT_MODE``) and ``source`` names the asker in the log. An accepted
+    request starts the exit in a task of its own and returns at once, so the
+    asker can answer; the stop begins ``wait_seconds`` later and the process
+    ends through ``os._exit``. Anything this refuses is logged and changes
+    nothing.
     """
-    mode = (data or {}).get("mode", "graceful")
-    source = (data or {}).get("source", "unknown")
+    if mode is None:
+        mode = DEFAULT_MODE
+    engine = _engine
+    if not isinstance(mode, str) or mode not in WAIT_SECONDS:
+        return _refuse(
+            source, mode, UNKNOWN_MODE,
+            f"{mode!r} is not a restart mode. Use {' or '.join(MODES)}.",
+        )
+    if engine is None:
+        return _refuse(
+            source, mode, NOT_READY,
+            "The server is still starting. Try the restart again once it is up.",
+        )
+    if _exiting:
+        return _refuse(source, mode, UNDER_WAY, "A restart is already under way.")
+    if engine.stopping:
+        return _refuse(source, mode, UNDER_WAY, "The server is already stopping.")
+    wait = WAIT_SECONDS[mode]
     log.warning(
-        "Restart requested (source=%s, mode=%s); exiting in 2s", source, mode,
+        "Restart requested (source=%s, mode=%s); stopping %s",
+        source, mode, f"in {wait} s" if wait else "now",
     )
-    await asyncio.sleep(0 if mode == "hard" else 2)
-    exiting = asyncio.create_task(_stop_and_exit(engine))
+    exiting = asyncio.create_task(_exit_after(wait, engine))
     _exiting.add(exiting)
     exiting.add_done_callback(_exiting.discard)
-    await asyncio.shield(exiting)
+    return ExitAnswer(accepted=True, mode=mode, wait_seconds=wait)
+
+
+def _refuse(source: str, mode: Any, refusal: str, sentence: str) -> ExitAnswer:
+    log.warning("Restart refused (source=%s, mode=%r): %s", source, mode, sentence)
+    return ExitAnswer(
+        accepted=False, mode=str(mode), refusal=refusal, sentence=sentence,
+    )
+
+
+async def _exit_after(wait: int, engine) -> None:
+    await asyncio.sleep(wait)
+    await _stop_and_exit(engine)
 
 
 async def _stop_and_exit(engine) -> None:

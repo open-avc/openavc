@@ -512,49 +512,73 @@ def test_system_config(client):
 # ── System restart ──
 
 
-def test_system_restart_default_graceful(client):
+@pytest.fixture
+def exits(client, monkeypatch):
+    """The restart door armed with the client's engine, each exit it starts
+    recorded as ``(wait_seconds, engine)`` instead of run."""
+    from openavc import restart
+
+    _c, engine = client
+    engine.stopping = False
+    started: list[tuple] = []
+
+    async def record(wait, engine_):
+        started.append((wait, engine_))
+
+    monkeypatch.setattr(restart, "_exit_after", record)
+    restart.accept_restarts(engine)
+    return started
+
+
+def test_system_restart_default_graceful(client, exits):
     """POST /api/system/restart with no body defaults to graceful mode."""
     c, engine = client
-
-    received: list[dict] = []
-
-    async def _capture(_event: str, data: dict) -> None:
-        received.append(data)
-
-    engine.events.on("system.restart_requested", _capture)
     resp = c.post("/api/system/restart")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "restarting"
     assert body["mode"] == "graceful"
     assert body["delay_seconds"] == 2
-    assert received == [{"mode": "graceful", "source": "api"}]
+    assert exits == [(2, engine)]
 
 
-def test_system_restart_hard_mode(client):
+def test_system_restart_hard_mode(client, exits):
     """Explicit hard mode is honored."""
     c, engine = client
-
-    received: list[dict] = []
-
-    async def _capture(_event: str, data: dict) -> None:
-        received.append(data)
-
-    engine.events.on("system.restart_requested", _capture)
     resp = c.post("/api/system/restart", json={"mode": "hard"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["mode"] == "hard"
     assert body["delay_seconds"] == 0
-    assert received == [{"mode": "hard", "source": "api"}]
+    assert exits == [(0, engine)]
 
 
-def test_system_restart_unknown_mode_falls_back_to_graceful(client):
-    """Garbage mode value is ignored, defaults to graceful."""
+@pytest.mark.parametrize("mode", ["wild-west", "Hard", 7])
+def test_system_restart_unknown_mode_is_refused(client, exits, mode):
+    """A mode the server does not know is refused, never read as graceful."""
+    c, _engine = client
+    resp = c.post("/api/system/restart", json={"mode": mode})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == f"{mode!r} is not a restart mode. Use graceful or hard."
+    assert exits == []
+
+
+def test_a_restart_during_a_service_stop_is_refused(client, exits):
     c, engine = client
-    resp = c.post("/api/system/restart", json={"mode": "wild-west"})
-    assert resp.status_code == 200
-    assert resp.json()["mode"] == "graceful"
+    engine.stopping = True
+    resp = c.post("/api/system/restart")
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "The server is already stopping."
+    assert exits == []
+
+
+def test_a_restart_before_the_server_is_up_is_refused(client):
+    c, _engine = client
+    resp = c.post("/api/system/restart")
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == (
+        "The server is still starting. Try the restart again once it is up."
+    )
 
 
 # ── ISC endpoints (no ISC configured) ──

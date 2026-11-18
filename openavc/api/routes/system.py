@@ -13,6 +13,7 @@ from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerR
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBasicCredentials
 
+from openavc import restart
 from openavc.api._engine import _get_engine
 from openavc.core.device_records import DISABLED, ORPHANED
 from openavc.core.host_policy import HostCategory
@@ -43,12 +44,6 @@ LISTEN_KEY = "_listen"
 # And for Reach devices through, resolved: the chosen adapter's name, the
 # address device traffic binds to now, and whether it is connected.
 REACH_KEY = "_reach_devices"
-
-# Strong references to fire-and-forget tasks. asyncio only holds a weak
-# reference to a bare create_task(), so an unreferenced task can be garbage
-# collected mid-flight; keep it alive until it finishes.
-_BACKGROUND_TASKS: set = set()
-
 
 @open_router.get("/startup-status")
 @endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
@@ -904,39 +899,44 @@ def _arm_or_disarm(cfg: Any, request: Request, choice: Any, adapters: list) -> d
 
 @router.post("/system/restart")
 async def restart_system(request: Request) -> dict[str, Any]:
-    """Trigger an OpenAVC process restart.
+    """Restart OpenAVC.
 
-    Emits ``system.restart_requested`` on the engine event bus. The handler
-    registered at startup (openavc/restart.py) flushes logs, runs a graceful
-    shutdown, and exits — service managers (NSSM / systemd / Docker) bring
-    the process back. In dev mode, ``spawn_replacement`` handles relaunch.
+    Body (optional): ``{"mode": "graceful" | "hard"}``. With no mode it is
+    graceful, which waits 2 seconds so this answer and the log get out
+    before the stop begins; "hard" stops at once. Any other mode is refused
+    with 400, a request while a restart or a stop is already under way with
+    409, and one before the server is up with 503.
 
-    Body (optional): ``{"mode": "graceful" | "hard"}``. Default is graceful,
-    which delays exit ~2s to flush logs. "hard" exits immediately.
+    The answer comes before the stop: the service manager (NSSM, systemd,
+    Docker) brings the server back, and a manual run starts its own
+    replacement. Poll ``/api/health`` for the new process.
     """
-    mode = "graceful"
-    try:
-        body = await request.json()
-        if isinstance(body, dict) and body.get("mode") in ("graceful", "hard"):
-            mode = body["mode"]
-    except Exception:  # noqa: BLE001 — no body / invalid JSON → default mode
-        pass
-
-    engine = _get_engine()
-    # Fire-and-forget: the registered handler sleeps a beat then exits the
-    # process, so awaiting emit() means the HTTP response never reaches the
-    # caller. Schedule the emit as a background task and respond immediately
-    # — the dialog uses this 200 as its cue to start polling for the new
-    # listener to come back up.
-    import asyncio
-    task = asyncio.create_task(
-        engine.events.emit("system.restart_requested", {"mode": mode, "source": "api"})
-    )
-    _BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_BACKGROUND_TASKS.discard)
-
+    answer = restart.request_exit(await _asked_restart_mode(request), "api")
+    if not answer.accepted:
+        raise HTTPException(
+            status_code=_RESTART_REFUSAL_STATUS[answer.refusal], detail=answer.sentence,
+        )
     return {
         "status": "restarting",
-        "mode": mode,
-        "delay_seconds": 2 if mode == "graceful" else 0,
+        "mode": answer.mode,
+        "delay_seconds": answer.wait_seconds,
     }
+
+
+# The HTTP status for each reason the restart door refuses.
+_RESTART_REFUSAL_STATUS = {
+    restart.UNKNOWN_MODE: 400,
+    restart.UNDER_WAY: 409,
+    restart.NOT_READY: 503,
+}
+
+
+async def _asked_restart_mode(request: Request) -> Any:
+    """The body's ``mode`` as sent, or None when the request names none (no
+    body, a body that is not a JSON object, or no ``mode`` in it). The
+    restart door decides what it means."""
+    try:
+        body = await request.json()
+    except ValueError:
+        return None
+    return body.get("mode") if isinstance(body, dict) else None

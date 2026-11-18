@@ -134,6 +134,16 @@ def test_limits_are_unchanged():
 # --- The vocabularies are the ones the code uses ---
 
 
+def test_restart_modes_are_the_restart_doors():
+    """The portal refuses a restart mode before sending it, from this list;
+    the restart door (openavc/restart.py) is what decides."""
+    from openavc import restart
+    assert protocol.vocabulary("restart_modes") == restart.MODES
+    restart_row = protocol.MESSAGE_ROWS["restart"]
+    (mode,) = [f for f in restart_row.fields if f.name == "mode"]
+    assert (mode.vocabulary, mode.default) == ("restart_modes", restart.DEFAULT_MODE)
+
+
 def test_deployment_modes_are_the_updaters():
     from openavc.updater.platform import DeploymentType
     assert {d.value for d in DeploymentType} == set(protocol.vocabulary("deployment_modes"))

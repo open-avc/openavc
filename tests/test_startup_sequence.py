@@ -11,6 +11,7 @@ function with the engine stubbed; nothing here starts a device or a listener.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from openavc import config, main, runtime_flags
+from openavc import config, main, restart as restart_door, runtime_flags
 from openavc.core.start_stages import GoOn
 from openavc.core.stop_stages import STOP_SECONDS
 from openavc.middleware.startup_splash import RunState
@@ -64,6 +65,7 @@ def boot(monkeypatch, tmp_path):
     engine = SimpleNamespace(
         start=AsyncMock(side_effect=lambda run: order.append("engine.start")),
         shutdown=AsyncMock(),
+        stopping=False,
         events=SimpleNamespace(on=Mock(), emit=AsyncMock()),
         get_status=Mock(return_value={"local_ip": ""}),
     )
@@ -119,12 +121,11 @@ def boot(monkeypatch, tmp_path):
     )
 
 
-def _restart_handler(boot):
-    (handler,) = [
-        c.args[1] for c in boot.engine.events.on.call_args_list
-        if c.args[0] == "system.restart_requested"
-    ]
-    return handler
+def _requests(monkeypatch):
+    """Every restart request the boot's doors make, recorded instead of run."""
+    asked: list[tuple] = []
+    monkeypatch.setattr(restart_door, "request_exit", lambda *args: asked.append(args))
+    return asked
 
 
 # ===========================================================================
@@ -377,9 +378,23 @@ async def test_discovery_gets_the_registered_drivers_and_both_driver_folders(boo
     )
 
 
-async def test_the_restart_request_is_wired_to_the_engine_events(boot):
+async def test_restarts_are_refused_until_the_engine_is_up_then_accepted(boot, monkeypatch):
+    accepted = []
+    monkeypatch.setattr(restart_door, "_exit_after", AsyncMock(side_effect=lambda *a: accepted.append(a)))
+    started = boot.engine.start.side_effect
+
+    def start(run):
+        # A request inside the start (the cloud agent is up by now) is refused.
+        refused = restart_door.request_exit("graceful", "cloud")
+        assert (refused.accepted, refused.refusal) == (False, restart_door.NOT_READY)
+        return started(run)
+
+    boot.engine.start.side_effect = start
     await boot.run()
-    assert callable(_restart_handler(boot))
+
+    assert restart_door.request_exit("graceful", "cloud").accepted
+    await asyncio.gather(*restart_door._exiting)
+    assert accepted == [(2, boot.engine)]
 
 
 # ===========================================================================
@@ -387,17 +402,35 @@ async def test_the_restart_request_is_wired_to_the_engine_events(boot):
 # ===========================================================================
 
 
-async def test_the_listen_watcher_restarts_through_the_restart_request(boot):
+async def test_the_listen_watcher_restarts_through_the_restart_door(boot, monkeypatch):
+    asked = _requests(monkeypatch)
     await boot.run()
     await boot.engine.listen_watcher
 
     restart = boot.watcher.call_args.args[0]
     await restart("adapter gone")
 
-    boot.engine.events.emit.assert_awaited_once_with(
-        "system.restart_requested", {"mode": "graceful", "source": "listen"},
-    )
+    assert asked == [("graceful", "listen")]
+    boot.engine.events.emit.assert_not_awaited()
     boot.watcher.return_value.run.assert_awaited_once()
+
+
+async def test_the_safety_net_restarts_through_the_door_under_its_own_name(boot, monkeypatch):
+    asked = _requests(monkeypatch)
+    restarts = []
+
+    async def tick(system, restart):
+        restarts.append(restart)
+        await restart("the safety net went back to the previous choice")
+
+    monkeypatch.setattr("openavc.reach_devices.choice", lambda: "")
+    monkeypatch.setattr("openavc.listen_safety_net.tick", tick)
+    await boot.run()
+
+    await boot.watcher.call_args.kwargs["on_tick"]()
+
+    assert asked == [("graceful", "listen safety net")]
+    assert restarts[0] is not boot.watcher.call_args.args[0]
 
 
 async def test_each_tick_refreshes_reach_devices_then_ticks_the_safety_net(boot, monkeypatch):
@@ -415,7 +448,7 @@ async def test_each_tick_refreshes_reach_devices_then_ticks_the_safety_net(boot,
     await on_tick()
 
     assert refreshed == ["refresh"]
-    assert ticked == [(boot.system, boot.watcher.call_args.args[0])]
+    assert [system for system, _restart in ticked] == [boot.system]
 
 
 async def test_a_tick_with_no_reach_choice_skips_the_refresh(boot, monkeypatch):
@@ -631,14 +664,15 @@ async def test_an_unresolved_plan_has_no_lan_line(boot, monkeypatch, caplog):
 
 
 # ===========================================================================
-# a restart request: the handler the boot wires to system.restart_requested
+# a restart request: the door the boot arms (openavc/restart.py)
 # ===========================================================================
 
 
 @pytest.fixture
 def restart(boot, monkeypatch, tmp_path):
-    """Fire the wired restart handler with the process exit, the watchdog
-    timer, the sleep and the child spawn all recorded instead of run."""
+    """Send a request through the armed restart door, with the process exit,
+    the watchdog timer, the sleep and the child spawn all recorded instead of
+    run."""
     import asyncio
     import os
     import subprocess
@@ -675,10 +709,11 @@ def restart(boot, monkeypatch, tmp_path):
             os.path, "exists", lambda p: False if p == "/.dockerenv" else real_exists(p),
         )
 
-    async def fire(data):
+    async def fire(mode=None, source="settings"):
         await boot.run()
+        assert restart_door.request_exit(mode, source).accepted
         with pytest.raises(_Exited) as exited:
-            await _restart_handler(boot)("system.restart_requested", data)
+            await asyncio.gather(*restart_door._exiting)
         return exited.value.code
 
     seen.fire = fire
@@ -688,7 +723,7 @@ def restart(boot, monkeypatch, tmp_path):
 
 async def test_a_graceful_restart_waits_arms_the_watchdog_stops_and_exits(restart, boot, caplog):
     with caplog.at_level(logging.WARNING, logger="openavc.main"):
-        code = await restart.fire({"source": "settings"})
+        code = await restart.fire(source="settings")
 
     assert code == 0
     assert restart.sleeps == [2]
@@ -699,31 +734,30 @@ async def test_a_graceful_restart_waits_arms_the_watchdog_stops_and_exits(restar
         timer.function()
     assert watchdog.value.code == 0
     assert restart.order == ["stop"]
-    assert "Restart requested (source=settings, mode=graceful); exiting in 2s" in _messages(caplog)
+    assert "Restart requested (source=settings, mode=graceful); stopping in 2 s" in _messages(caplog)
     # Filed where these lines have always been, whichever module logs them.
     assert {r.name for r in caplog.records} == {"openavc.main"}
 
 
-@pytest.mark.parametrize("data", [None, {}])
-async def test_a_bare_request_is_graceful_from_an_unknown_source(restart, caplog, data):
+async def test_a_request_that_names_no_mode_is_graceful(restart, caplog):
     with caplog.at_level(logging.WARNING, logger="openavc.main"):
-        await restart.fire(data)
+        await restart.fire(None, "api")
 
     assert restart.sleeps == [2]
-    assert "Restart requested (source=unknown, mode=graceful); exiting in 2s" in _messages(caplog)
+    assert "Restart requested (source=api, mode=graceful); stopping in 2 s" in _messages(caplog)
 
 
 async def test_a_hard_restart_does_not_wait(restart, caplog):
     with caplog.at_level(logging.WARNING, logger="openavc.main"):
-        await restart.fire({"mode": "hard", "source": "cloud"})
+        await restart.fire("hard", "cloud")
 
     assert restart.sleeps == [0]
-    assert "Restart requested (source=cloud, mode=hard); exiting in 2s" in _messages(caplog)
+    assert "Restart requested (source=cloud, mode=hard); stopping now" in _messages(caplog)
 
 
 async def test_with_no_service_manager_the_replacement_is_spawned_before_the_stop(restart):
     restart.unmanaged()
-    await restart.fire({})
+    await restart.fire()
     assert restart.order == ["spawn", "stop"]
 
 
@@ -731,21 +765,21 @@ async def test_with_no_service_manager_the_replacement_is_spawned_before_the_sto
 async def test_a_service_manager_relaunches_so_nothing_is_spawned(restart, monkeypatch, variable):
     restart.unmanaged()
     monkeypatch.setenv(variable, "1")
-    await restart.fire({})
+    await restart.fire()
     assert restart.order == ["stop"]
 
 
 async def test_the_stop_is_the_engines_shutdown_against_the_one_deadline(
         restart, boot, monkeypatch):
     monkeypatch.setattr("openavc.restart.stop_deadline", lambda: 1234.5)
-    assert await restart.fire({}) == 0
+    assert await restart.fire() == 0
     boot.engine.shutdown.assert_awaited_once_with(1234.5)
 
 
 async def test_a_stop_that_fails_is_logged_and_the_process_still_exits(restart, boot, caplog):
     boot.engine.shutdown.side_effect = RuntimeError("driver hung")
     with caplog.at_level(logging.WARNING, logger="openavc.main"):
-        assert await restart.fire({}) == 0
+        assert await restart.fire() == 0
 
     failed = [r for r in caplog.records if r.getMessage() == "Error during graceful shutdown before restart"]
     assert len(failed) == 1 and failed[0].exc_info[1].args == ("driver hung",)

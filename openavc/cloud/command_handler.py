@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, TYPE_CHECKING
 
+from openavc import restart
 from openavc.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, SOFTWARE_UPDATE,
     PANEL_SOFTWARE_UPDATE, GET_PROJECT, GET_DEVICE_COMMANDS,
@@ -287,34 +288,27 @@ class CommandHandler:
         else:
             await self._send_result(request_id, False, error="Apply not available")
 
-    _last_restart_time: float = 0
-
     async def _handle_restart(
         self, payload: dict[str, Any], request_id: str, actor: str
     ) -> None:
-        """Handle a restart request."""
+        """A restart from the cloud, decided by the restart door
+        (openavc/restart.py), which refuses it the way it refuses any other
+        asker's. The answer says what the door decided, and is sent before
+        anything else here: a graceful restart's stop waits 2 seconds for
+        it, a hard one's does not."""
         payload = read_payload(RESTART, payload)
-        import time as _time
-        now = _time.time()
-        if now - self._last_restart_time < 60:
-            await self._send_result(request_id, False, error="Restart rate limited (max 1 per 60s)")
+        answer = restart.request_exit(payload["mode"], "cloud")
+        if not answer.accepted:
+            await self._send_result(request_id, False, error=answer.sentence)
             return
-        self._last_restart_time = now
-        mode = payload["mode"]
-        log.info(f"Cloud restart: {actor} → mode={mode}")
-
+        log.info(f"Cloud restart: {actor} → mode={answer.mode}")
+        await self._send_result(request_id, True, result=f"Restart ({answer.mode}) initiated")
         await self._events.emit("cloud.restart", {
-            "mode": mode,
+            "mode": answer.mode,
             "user_name": payload["user_name"],
             "user_id": payload["user_id"],
             "request_id": request_id,
         })
-
-        # Send result before restarting
-        await self._send_result(request_id, True, result=f"Restart ({mode}) initiated")
-
-        # Emit the restart event — the engine or service manager handles the actual restart
-        await self._events.emit("system.restart_requested", {"mode": mode, "source": "cloud"})
 
     async def _handle_diagnostic(
         self, payload: dict[str, Any], request_id: str, actor: str

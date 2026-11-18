@@ -1,7 +1,7 @@
 """A service stop and a restart end the process through the same shutdown.
 
-The lifespan's end (a service stop) and the restart request's handler
-(``openavc.restart.exit_for_restart``) both run ``Engine.shutdown``: the same
+The lifespan's end (a service stop) and the restart door
+(``openavc.restart.request_exit``) both run ``Engine.shutdown``: the same
 stages, in the same order, within the same deadline. Each test drives a real
 Engine through the real door, with the process exit and the watchdog timer
 recorded instead of run.
@@ -77,8 +77,10 @@ async def test_a_restart_and_a_service_stop_run_the_same_stages(doors, monkeypat
 
     monkeypatch.setattr(os, "_exit", exit_)
     async with main.lifespan(FastAPI(openapi_url=None, docs_url=None, redoc_url=None)):
+        restart.accept_restarts(engine)
+        assert restart.request_exit("hard", "api").accepted
         with pytest.raises(_Exited):
-            await restart.exit_for_restart({"mode": "hard", "source": "settings"}, engine)
+            await asyncio.gather(*restart._exiting)
         by_the_restart = list(stages)
         stages.clear()
 
@@ -99,21 +101,16 @@ async def test_a_restart_and_a_service_stop_run_the_same_stages(doors, monkeypat
 
 @pytest.mark.asyncio
 async def test_a_restart_the_listen_watcher_asks_for_finishes_its_stop(doors, monkeypatch):
-    """The restart request arrives inside the watcher that asked, and the
+    """The restart request comes from inside the watcher that asked, and the
     shutdown ends that watcher: the stop and the exit still finish."""
     engine, stages = doors
     exited = asyncio.Event()
     monkeypatch.setattr(os, "_exit", lambda code: exited.set())
-
-    async def handler(_event, data):
-        await restart.exit_for_restart(data, engine)
-
-    engine.events.on("system.restart_requested", handler)
+    restart.accept_restarts(engine)
 
     async def watcher():
-        await engine.events.emit(
-            "system.restart_requested", {"mode": "hard", "source": "listen"},
-        )
+        restart.request_exit("hard", "listen")
+        await asyncio.Event().wait()  # watching on, as the real one does
 
     engine.listen_watcher = asyncio.create_task(watcher())
     await asyncio.wait_for(exited.wait(), timeout=5)
