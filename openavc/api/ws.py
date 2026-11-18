@@ -24,11 +24,8 @@ from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
 from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy
 from openavc.core.host_policy import HostCategory
 from openavc.api.error_messages import (
-    describe_change_failure,
-    describe_command_failure,
-    describe_press_failure,
-    device_error_label,
-    friendly_error,
+    describe_change_failure, describe_command_failure, describe_press_failure,
+    device_error_label, friendly_error,
 )
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
@@ -649,15 +646,14 @@ async def _ui_event(
     Only the first failed action is reported. A frame carries one sentence and
     the panel shows one message at a time, so a second frame would only replace
     the first; the log keeps every one of them.
-
-    Both are the room's sentence whoever sent the interaction: a failed action
-    carries ``CommandFailure.panel`` on its record, and an interaction that
-    raised is answered from the same record (``describe_press_failure``).
     """
     try:
         dispatched = await engine.handle_ui_event(event_type, element_id, data)
     except Exception as e:
-        # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
+        # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything.
+        # Both failures are the room's sentence whoever sent the interaction: a
+        # failed action carries CommandFailure.panel on its record, and one that
+        # raised is answered from the same record.
         log.exception(f"{msg_type} on '{element_id}' failed")
         await _send_ws_error(ws, msg_type, describe_press_failure(e).panel, element_id)
         return
@@ -685,6 +681,11 @@ _PANEL_ALLOWED_TYPES = frozenset({
     "ui.page", "command", "macro.execute", "macro.cancel", "state.set", "pong",
     "event.subscribe", "event.unsubscribe", "event.emit",
 })
+
+
+def _press_failure(exc: Exception, client_type: str) -> str:
+    """A press's own failure, in the words for the client that sent it."""
+    return describe_press_failure(exc).for_reader(at_panel=client_type == "panel")
 
 
 async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
@@ -716,8 +717,64 @@ async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
         # to correlate it to. Every message a panel may send comes from a
         # control, so a panel is told what a press that failed tells it.
         failed_type = msg.get("type") if isinstance(msg, dict) else None
-        failure = describe_press_failure(exc).for_reader(at_panel=client_type == "panel")
-        await _send_ws_error(ws, failed_type, failure)
+        await _send_ws_error(ws, failed_type, _press_failure(exc, client_type))
+
+
+async def _named_macro(ws: WebSocket, msg_type: str, engine: Any, msg: dict[str, Any]) -> Any:
+    """The macro a ``macro.execute`` or ``macro.cancel`` names, or ``""`` once
+    the refusal is sent: no macro named, or one the project does not have.
+
+    A missing macro is the sentence a bound button gets (``no_such_macro``),
+    because it is the same failure: a matrix preset and a button that runs a
+    macro are one thing to whoever is standing at the panel. Answered before
+    any task, so the run that cannot happen never starts.
+    """
+    macro_id = msg.get("macro_id", "")
+    if not macro_id:
+        await _send_ws_error(ws, msg_type, "Missing macro_id")
+        return ""
+    if not engine.macros.has_macro(macro_id):
+        await _send_ws_error(ws, msg_type, no_such_macro(macro_id))
+        return ""
+    return macro_id
+
+
+async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type: str) -> None:
+    """Start a macro in the background and acknowledge it at once.
+
+    A macro with delay steps (warm-up sequences run tens of seconds) would
+    otherwise hold this client's whole message loop: further taps queue in the
+    socket and the panel reads as hung. Macro lifecycle events stream the
+    progress; a run that raised around its steps (``execute`` reports a step's
+    own failure) is answered on this socket from the background task.
+    """
+    async def _run_macro() -> None:
+        try:
+            await engine.macros.execute(macro_id)
+        except Exception as e:
+            # Catch-all: whatever raised around the steps reaches nobody else.
+            log.exception(f"macro.execute of '{macro_id}' failed")
+            await _send_ws_error(ws, "macro.execute", _press_failure(e, client_type))
+
+    task = asyncio.create_task(_run_macro())
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+
+
+async def _cancel_macro(ws: WebSocket, engine: Any, macro_id: Any) -> None:
+    """Stop every running invocation of a macro. Open to a panel on the same
+    terms as ``macro.execute``: whoever may start a thirty-second warm-up may
+    stop it. The ack says whether anything was running to stop; the run
+    itself reports its end as ``macro.cancelled``. The cancel waits up to a
+    grace period for the steps to unwind, too long to hold this client's
+    message loop, so it runs in the background like the execute does."""
+    running = engine.macros.is_macro_running(macro_id)
+    if running:
+        task = asyncio.create_task(engine.macros.cancel(macro_id))
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
+    await _send_ws(ws, {"type": "macro.cancel.ack", "macro_id": macro_id, "cancelled": running})
 
 
 async def _handle_message(
@@ -900,67 +957,14 @@ async def _handle_message(
         # is the panel's preset button: a person pressing "Presentation Mode"
         # twice, or working a room quickly, must never be throttled. The macro
         # engine's own overlap/cooldown settings are the right control here.
-        macro_id = msg.get("macro_id", "")
-        if not macro_id:
-            await _send_ws_error(ws, msg_type, "Missing macro_id")
-            return
-        # The sentence a bound button gets (no_such_macro), because it is
-        # the same failure: a matrix preset and a button that runs a macro are
-        # one thing to whoever is standing at the panel, and the id in it is
-        # the only thing anybody can go and look up. Answered before the task
-        # rather than out of it, so the run that cannot happen never starts.
-        if not engine.macros.has_macro(macro_id):
-            await _send_ws_error(ws, msg_type, no_such_macro(macro_id))
-            return
-
-        async def _run_macro() -> None:
-            try:
-                await engine.macros.execute(macro_id)
-            except Exception as e:
-                # Catch-all: execute reports a step's failure itself, so what
-                # reaches here raised around the steps.
-                log.exception(f"macro.execute of '{macro_id}' failed")
-                await _send_ws_error(
-                    ws, msg_type,
-                    describe_press_failure(e).for_reader(at_panel=client_type == "panel"),
-                )
-
-        # Run in the background and ack receipt immediately: a macro with
-        # delay steps (warm-up sequences run tens of seconds) would otherwise
-        # head-of-line block this client's whole message loop — further taps
-        # queue in the socket and the panel reads as hung. Macro lifecycle
-        # events stream the actual progress; failures come back on this
-        # socket from the background task.
-        task = asyncio.create_task(_run_macro())
-        _bg_tasks.add(task)
-        task.add_done_callback(_bg_tasks.discard)
-        await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+        macro_id = await _named_macro(ws, msg_type, engine, msg)
+        if macro_id:
+            await _execute_macro(ws, engine, macro_id, client_type)
 
     elif msg_type == "macro.cancel":
-        # Stop every running invocation of a macro. Open to a panel on the
-        # same terms as macro.execute: whoever may start a thirty-second
-        # warm-up may stop it. The ack says whether anything was running to
-        # stop; the run itself reports its end as `macro.cancelled`. The
-        # cancel waits up to a grace period for the steps to unwind, which is
-        # too long to hold this client's message loop, so it runs in the
-        # background like the execute does.
-        macro_id = msg.get("macro_id", "")
-        if not macro_id:
-            await _send_ws_error(ws, msg_type, "Missing macro_id")
-            return
-        if not engine.macros.has_macro(macro_id):
-            await _send_ws_error(ws, msg_type, no_such_macro(macro_id))
-            return
-        running = engine.macros.is_macro_running(macro_id)
-        if running:
-            task = asyncio.create_task(engine.macros.cancel(macro_id))
-            _bg_tasks.add(task)
-            task.add_done_callback(_bg_tasks.discard)
-        await _send_ws(ws, {
-            "type": "macro.cancel.ack",
-            "macro_id": macro_id,
-            "cancelled": running,
-        })
+        macro_id = await _named_macro(ws, msg_type, engine, msg)
+        if macro_id:
+            await _cancel_macro(ws, engine, macro_id)
 
     elif msg_type == "project.reload":
         try:
