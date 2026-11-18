@@ -360,7 +360,8 @@ class UIEventRuntime:
             if dispatched is not None:
                 dispatched.append({"action": action, **fields})
                 if dry_run:
-                    dispatched[-1]["would_run"] = True
+                    # An action that says it would not run says so itself.
+                    dispatched[-1].setdefault("would_run", True)
 
         # The UI-event tokens a binding can reference. Built once so the
         # device.command and state.set branches resolve them identically: $value
@@ -585,7 +586,10 @@ class UIEventRuntime:
             payload[k] = resolve_ref(v, state=self._engine.state, event_ctx=event_ctx)
         refused = check_project_emit(event_name)
         if refused:
-            record(event=event_name, payload=payload, emitted=False, refused=refused)
+            record(
+                event=event_name, payload=payload, emitted=False, refused=refused,
+                **({"would_run": False} if dry_run else {}),
+            )
             self._warn_once(element, f"refused:{event_name}", f"has an Emit Event action that is refused. {refused}")
             return
         if not event_name:

@@ -470,7 +470,9 @@ def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, An
     ``message`` is the runtime's refusal, from ``required_sentence``; the
     lookups are :class:`_Lookups`, by keyword). A step
     whose command no macro can run (``file_command``) carries
-    ``refused: "file"``; its message is the runtime's own refusal.
+    ``refused: "file"``, and an Emit Event step naming one of the platform's
+    own events ``refused: "platform_event"``; each message is the runtime's
+    own refusal.
 
     Nothing here is a warning and nothing is a refusal: every record means the
     step or trigger as written cannot do what it says. Deliberately NOT

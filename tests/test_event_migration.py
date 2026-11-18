@@ -105,6 +105,24 @@ def test_an_event_trigger_only_a_project_could_hear_is_renamed(pattern, renamed)
         assert not notes
 
 
+def test_a_trigger_that_also_hears_the_platform_is_left_and_says_what_it_no_longer_hears():
+    data = _project(macros=[
+        {"id": "panic", "name": "Panic", "steps": [_emit("system.panic")]},
+        {"id": "log", "name": "Log everything", "steps": [],
+         "triggers": [{"id": "trg_all", "type": "event", "event_pattern": "system.*"}]},
+    ])
+
+    out, notes = _migrate(data)
+
+    assert out["macros"][1]["triggers"][0]["event_pattern"] == "system.*"
+    assert [(n.kind, n.location, n.message) for n in notes.notes][1:] == [(
+        FOUND, "Macros > Log everything > trg_all",
+        "Listens for 'system.*', which no longer hears this project's 'system.panic': it is "
+        "sent as 'custom.panic' now. Add an Event trigger for 'custom.panic' if this macro "
+        "should still run on it.",
+    )]
+
+
 def test_a_platform_event_a_project_sends_is_left_and_noted():
     """It has no name of its own to move to; it is refused now, and the note
     says so where the integrator reads it."""

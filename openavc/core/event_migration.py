@@ -18,7 +18,8 @@ keeps working:
   a value map's per-option actions, and a matrix row's own route actions;
 - an Event trigger whose pattern is under ``system.`` and matches none of the
   events the platform sends (``system.panic``, ``system.room_*``). A pattern
-  that also hears the platform (``system.*``, ``system.started``) is left.
+  that also hears the platform (``system.*``, ``system.started``) is left;
+  when it heard one of the events this step renames, the note says which.
 
 A step or a control that sends one of the platform's own events
 (``system.started``, ``system.stopping``, ``system.project.reloaded``) is left
@@ -35,6 +36,7 @@ of its day. Each rename is a note for the Programmer's notice.
 
 from collections.abc import Iterator
 from fnmatch import fnmatchcase
+from typing import NamedTuple
 
 from openavc.core.box_migration import element_places_0_17
 from openavc.core.project_update import MigrationNotes
@@ -49,20 +51,69 @@ _NESTED_ACTIONS_0_18 = ("off_action", "hold_action")
 _OUTSIDE_0_18 = "A Node-RED flow or another system listening for the old name needs the new one."
 
 
+class _Place0_18(NamedTuple):
+    """Where a note is said: its location, and the page and control it is on."""
+
+    location: str
+    page_id: str = ""
+    element_id: str = ""
+
+
+class _Renames0_18:
+    """One load's renames: the notes it writes, and each old name it moved
+    (old -> new), which a trigger left as written may have heard."""
+
+    def __init__(self, notes: MigrationNotes):
+        self.notes = notes
+        self.moved: dict[str, str] = {}
+
+    def changed(self, message: str, place: _Place0_18) -> None:
+        self.notes.changed(message, place.location, page_id=place.page_id, element_id=place.element_id)
+
+    def found(self, message: str, place: _Place0_18) -> None:
+        self.notes.found(message, place.location, page_id=place.page_id, element_id=place.element_id)
+
+
 def migrate_0_17_to_0_18(data: dict, notes: MigrationNotes | None = None) -> dict:
     """Migrate from 0.17.0 to 0.18.0: the project's own ``system.`` events,
     renamed in place to ``custom.`` (this module's docstring says which and
-    where), each rename a note."""
-    notes = MigrationNotes() if notes is None else notes
-    for macro in _dicts_0_18(data.get("macros")):
-        _rename_macro_0_18(macro, notes)
-    ui = data.get("ui")
+    where), each rename a note. What is sent is renamed first, so a trigger
+    left as written can say which of them it no longer hears."""
+    renames = _Renames0_18(MigrationNotes() if notes is None else notes)
+    macros = _dicts_0_18(data.get("macros"))
+    _rename_steps_0_18(macros, renames)
+    _rename_controls_0_18(data.get("ui"), renames)
+    _rename_triggers_0_18(macros, renames)
+    data["openavc_version"] = "0.18.0"
+    return data
+
+
+def _rename_steps_0_18(macros: list[dict], renames: _Renames0_18) -> None:
+    for macro in macros:
+        place = _Place0_18(_macro_place_0_18(macro))
+        for label, step in _steps_0_18(macro.get("steps"), "Step"):
+            _rename_emit_0_18(step, f"{label} (Emit Event)", renames, place)
+
+
+def _rename_controls_0_18(ui, renames: _Renames0_18) -> None:
     places = element_places_0_17(ui)
     for el in _elements_0_18(ui):
         page, page_id = places.get(id(el), ("", ""))
-        _rename_element_0_18(el, page, page_id, notes)
-    data["openavc_version"] = "0.18.0"
-    return data
+        element_id = str(el.get("id", ""))
+        place = _Place0_18(f"{page} > {element_id}", page_id, element_id)
+        for action in _element_actions_0_18(el):
+            _rename_emit_0_18(action, "Emit Event action", renames, place)
+
+
+def _rename_triggers_0_18(macros: list[dict], renames: _Renames0_18) -> None:
+    for macro in macros:
+        for trigger in _dicts_0_18(macro.get("triggers")):
+            place = _Place0_18(f"{_macro_place_0_18(macro)} > {trigger.get('id', '')}")
+            _rename_trigger_0_18(trigger, place, renames)
+
+
+def _macro_place_0_18(macro: dict) -> str:
+    return f"Macros > {macro.get('name') or macro.get('id', '')}"
 
 
 def _elements_0_18(ui) -> list[dict]:
@@ -74,14 +125,6 @@ def _elements_0_18(ui) -> list[dict]:
     return elements + _dicts_0_18(ui.get("master_elements"))
 
 
-def _rename_element_0_18(el: dict, page: str, page_id: str, notes: MigrationNotes) -> None:
-    element_id = str(el.get("id", ""))
-    for action in _element_actions_0_18(el):
-        said = _rename_emit_0_18(action, "Emit Event action")
-        if said:
-            said(notes, f"{page} > {element_id}", page_id=page_id, element_id=element_id)
-
-
 def _in_namespace_0_18(name) -> bool:
     return isinstance(name, str) and name.strip().casefold().startswith(PREFIX_0_18)
 
@@ -90,48 +133,48 @@ def _own_name_0_18(name: str) -> str:
     return OWN_PREFIX_0_18 + name.strip()[len(PREFIX_0_18):]
 
 
-def _rename_emit_0_18(holder: dict, what: str):
-    """Rename ``holder``'s event when it is a project's own under ``system.``;
-    return how to note what happened, or None when nothing did."""
-    if holder.get("action") != "event.emit":
-        return None
-    old = holder.get("event")
+def _rename_emit_0_18(holder: dict, what: str, renames: _Renames0_18, place: _Place0_18) -> None:
+    """Rename ``holder``'s event when it is a project's own under ``system.``,
+    and say so at ``place``; a platform event it sends is said and left."""
+    old = holder.get("event") if holder.get("action") == "event.emit" else None
     if not _in_namespace_0_18(old):
-        return None
-    if old.strip().casefold() in PLATFORM_EVENTS_0_18:
-        message = (
-            f"{what} sends '{old}', which only OpenAVC sends, so it is no longer sent. "
-            f"Remove it, or name this project's own event under '{OWN_PREFIX_0_18}'."
-        )
-        return lambda notes, location, **at: notes.found(message, location, **at)
-    new = holder["event"] = _own_name_0_18(old)
-    message = (
-        f"{what} now sends '{new}' in place of '{old}': names starting with "
-        f"'{PREFIX_0_18}' are OpenAVC's own. {_OUTSIDE_0_18}"
-    )
-    return lambda notes, location, **at: notes.changed(message, location, **at)
-
-
-def _rename_macro_0_18(macro: dict, notes: MigrationNotes) -> None:
-    location = f"Macros > {macro.get('name') or macro.get('id', '')}"
-    for label, step in _steps_0_18(macro.get("steps"), "Step"):
-        said = _rename_emit_0_18(step, f"{label} (Emit Event)")
-        if said:
-            said(notes, location)
-    for trigger in _dicts_0_18(macro.get("triggers")):
-        _rename_trigger_0_18(trigger, f"{location} > {trigger.get('id', '')}", notes)
-
-
-def _rename_trigger_0_18(trigger: dict, location: str, notes: MigrationNotes) -> None:
-    pattern = trigger.get("event_pattern")
-    if trigger.get("type") != "event" or not _only_a_project_hears_0_18(pattern):
         return
-    trigger["event_pattern"] = _own_name_0_18(pattern)
-    notes.changed(
-        f"Listens for '{trigger['event_pattern']}' in place of '{pattern}': a project's own "
-        f"events are named under '{OWN_PREFIX_0_18}'.",
-        location,
+    if old.strip().casefold() in PLATFORM_EVENTS_0_18:
+        renames.found(
+            f"{what} sends '{old}', which only OpenAVC sends, so it is no longer sent. "
+            f"Remove it, or name this project's own event under '{OWN_PREFIX_0_18}'.",
+            place,
+        )
+        return
+    new = holder["event"] = renames.moved[old] = _own_name_0_18(old)
+    renames.changed(
+        f"{what} now sends '{new}' in place of '{old}': names starting with "
+        f"'{PREFIX_0_18}' are OpenAVC's own. {_OUTSIDE_0_18}",
+        place,
     )
+
+
+def _rename_trigger_0_18(trigger: dict, place: _Place0_18, renames: _Renames0_18) -> None:
+    pattern = trigger.get("event_pattern")
+    if trigger.get("type") != "event" or not _in_namespace_0_18(pattern):
+        return
+    if _only_a_project_hears_0_18(pattern):
+        trigger["event_pattern"] = _own_name_0_18(pattern)
+        renames.changed(
+            f"Listens for '{trigger['event_pattern']}' in place of '{pattern}': a project's own "
+            f"events are named under '{OWN_PREFIX_0_18}'.",
+            place,
+        )
+        return
+    folded = pattern.strip().casefold()
+    for old, new in renames.moved.items():
+        if fnmatchcase(old.strip().casefold(), folded):
+            renames.found(
+                f"Listens for '{pattern}', which no longer hears this project's '{old}': it is "
+                f"sent as '{new}' now. Add an Event trigger for '{new}' if this macro should "
+                f"still run on it.",
+                place,
+            )
 
 
 def _only_a_project_hears_0_18(pattern) -> bool:

@@ -1863,6 +1863,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "left_kid", "right_kid",               # different containers
         "list_ok", "visible_only",             # bindings the renderer reads
         "nav_ok", "map_ok",                    # actions the runtime dispatches
+        "emit_ok",                             # an event a project may send
         "plugin_ok",                           # a real type both authoring surfaces omit
         "btn_with_state_labels",               # a button DOES draw state text
         "tab_audio", "tab_video",              # a tab strip: same key, different values

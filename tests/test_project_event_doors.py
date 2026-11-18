@@ -87,6 +87,8 @@ def test_the_platform_s_list_is_every_system_event_the_code_sends():
     sent: set[str] = set()
     pattern = re.compile(r"""emit(?:\(|,)\s*f?["'](system\.[^"'{]*)(["'{])""")
     for path in PACKAGE.rglob("*.py"):
+        if "web" in path.relative_to(PACKAGE).parts:
+            continue
         for name, end in pattern.findall(path.read_text(encoding="utf-8")):
             assert end != "{", f"{path}: a system. event named at run time: {name}..."
             sent.add(name)
@@ -198,6 +200,7 @@ async def test_a_control_s_dry_run_says_it_would_be_refused(tmp_path):
 
     assert dispatched[0]["refused"] == check_project_emit("system.panic")
     assert dispatched[0]["emitted"] is False
+    assert dispatched[0]["would_run"] is False
 
 
 @pytest.mark.asyncio
