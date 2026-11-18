@@ -276,7 +276,7 @@ async def test_a_project_pushed_from_the_cloud_with_a_later_word_and_a_value_pas
     state, events = StateStore(), EventBus()
     handler = CommandHandler(
         _Agent(), DeviceManager(state, events), events,
-        reload_fn=AsyncMock(), apply_fn=engine.replace_project, project_path=str(engine.project_path),
+        apply_fn=engine.replace_project, project_path=str(engine.project_path),
     )
     pushed = _past_bounds()
     pushed["macros"][0]["triggers"].append({"id": "t9", "type": UNKNOWN})

@@ -475,7 +475,8 @@ MESSAGES: tuple[Message, ...] = (
         Field("mode", "string", "full_replace", "How.", vocabulary="config_push_modes",
               default="full_replace"),
         Field("project_json", "object", {"openavc_version": "0.17.0"},
-              "The project; a push without one reloads the project on disk.", default=None),
+              "The project. A push without one, or with an empty one, is refused.",
+              default=None),
         _USER_ID, _USER_NAME,
     ), priority=7, requires="remote_access", answer="command_result"),
     Message("restart", "down", "session", "Restarts OpenAVC.", (

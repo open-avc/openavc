@@ -288,7 +288,6 @@ class RuntimeServicesMixin:
             # when they start; a system paired while running has them already.
             handler = CommandHandler(
                 self.cloud_agent, self.devices, self.events,
-                reload_fn=self.reload_project,
                 apply_fn=self.replace_project,
                 update_manager=self.update_manager,
                 project_path=self.project_path,

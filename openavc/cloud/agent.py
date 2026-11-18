@@ -34,7 +34,7 @@ from openavc.cloud.protocol import (
     build_pong_payload, build_gap_report_payload,
     build_heartbeat_payload, build_tunnel_failed_payload,
     parse_message, is_handshake_message,
-    read_as, read_message, ProtocolError,
+    read_as, read_request, request_id_of, extract_payload, ProtocolError, RequestRefused,
     _now_iso,
 )
 from openavc.cloud.session import Session, SessionInvalid
@@ -866,9 +866,10 @@ class CloudAgent:
 
         # Capability gating: refuse messages the cloud sent for features this
         # session didn't negotiate. The protocol's rule: "If `tunnel` is not
-        # enabled, the agent does not listen for `tunnel_open` messages." The
-        # refusal answers with the request's typed failure result so the cloud
-        # fails fast instead of burning its request timeout.
+        # enabled, the agent does not listen for `tunnel_open` messages." Then
+        # a request is checked against its contract row. Each refusal answers
+        # with the request's typed failure result, naming what was wrong, so
+        # the cloud fails fast instead of burning its request timeout.
         required = _CAPABILITY_GATED.get(msg_type)
         if required and required not in self._enabled_capabilities:
             log.warning(
@@ -881,6 +882,14 @@ class CloudAgent:
                 f"enabled for this system",
             )
             return
+        if msg_type in REQUEST_ANSWERS:
+            try:
+                read_request(msg)
+            except RequestRefused as refused:
+                # One with no request_id is only logged: nothing can match an answer.
+                log.warning(f"Cloud agent: not running {msg_type}: {refused.reason}")
+                await self._nack_undispatched(msg, refused.reason)
+                return
 
         # Dispatch by type
         if msg_type == PING:
@@ -901,7 +910,8 @@ class CloudAgent:
             self._handle_throttle(msg)
         elif msg_type == ERROR:
             self._handle_error(msg)
-        elif msg_type in (COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, GET_PROJECT, GET_DEVICE_COMMANDS):
+        elif msg_type in (COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, GET_PROJECT,
+                          GET_DEVICE_COMMANDS, SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE):
             if self._command_handler:
                 await self._command_handler.handle(msg)
             else:
@@ -926,12 +936,6 @@ class CloudAgent:
                 await self._tunnel_handler.handle_tunnel_close(msg)
             else:
                 log.info("Cloud agent: received tunnel_close but no tunnel handler")
-        elif msg_type in (SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE):
-            if self._command_handler:
-                await self._command_handler.handle(msg)
-            else:
-                log.info(f"Cloud agent: received {msg_type} but no command handler")
-                await self._nack_undispatched(msg, "subsystem_unavailable: command handler not running")
         elif msg_type == CERT_RESULT:
             if self._cert_manager:
                 await self._cert_manager.handle_cert_result(msg)
@@ -962,19 +966,17 @@ class CloudAgent:
         cloud-side future (and requests without a request_id) send nothing.
         """
         msg_type = msg.get("type", "")
-        payload = read_message(msg)
         if msg_type == TUNNEL_OPEN:
-            tunnel_id = payload["tunnel_id"]
-            if tunnel_id:
+            payload = extract_payload(msg)
+            tunnel_id = payload.get("tunnel_id") if isinstance(payload, dict) else None
+            if tunnel_id and isinstance(tunnel_id, str):
                 await self.send_message(
                     TUNNEL_FAILED, build_tunnel_failed_payload(tunnel_id, error)
                 )
             return
         result_type = _DROP_NACK_TYPES.get(msg_type)
-        if not result_type:
-            return
-        request_id = payload["request_id"]
-        if not request_id:
+        request_id = request_id_of(msg)
+        if not result_type or not request_id:
             return
         # Every result-shaped payload builder accepts these keywords, so the
         # NACK is built by the request's own typed-result builder.

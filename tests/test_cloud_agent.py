@@ -1268,11 +1268,7 @@ class TestCommandHandler:
             encoding="utf-8",
         )
 
-        reloaded = []
         applied = []
-
-        async def reload_fn():
-            reloaded.append(True)
 
         # Mirror the seam contract: apply_project persists the pushed project
         # (the reconcile itself is pinned by the engine tests).
@@ -1284,7 +1280,7 @@ class TestCommandHandler:
 
         handler = CommandHandler(
             MockAgent(), devices, events,
-            reload_fn=reload_fn, apply_fn=apply_fn, project_path=str(project_path),
+            apply_fn=apply_fn, project_path=str(project_path),
         )
 
         # Push a 0.6.0-schema project; the current schema is 0.7.0.
@@ -1303,17 +1299,17 @@ class TestCommandHandler:
         assert saved["project"]["id"] == "pushed"
         # The push went through the seam — LOAD origin, no OCC check (a fleet
         # push wins by design, but the apply bumps + broadcasts so an open IDE
-        # 409s instead of silently reverting it). No double reload-from-disk.
+        # 409s instead of silently reverting it).
         from openavc.core.project_update import MigrationNotes
         # The push replaces the running project: what its migration changed
         # (nothing, here) becomes the notice for it.
         assert applied == [{"update_notes": MigrationNotes()}]
-        assert reloaded == []
         assert sent and sent[-1][1]["success"] is True
 
     @pytest.mark.asyncio
-    async def test_bare_config_push_reloads_from_disk(self, tmp_path):
-        """A config_push with no project_json is a plain reload-from-disk."""
+    async def test_a_config_push_with_no_project_is_refused(self, tmp_path):
+        """A config_push with no project_json changes nothing, so it is
+        refused rather than answered success."""
         import json
         from openavc.core.state_store import StateStore
         from openavc.core.event_bus import EventBus
@@ -1336,11 +1332,7 @@ class TestCommandHandler:
             encoding="utf-8",
         )
 
-        reloaded = []
         applied = []
-
-        async def reload_fn():
-            reloaded.append(True)
 
         async def apply_fn(project, **kwargs):
             applied.append(kwargs)
@@ -1348,14 +1340,16 @@ class TestCommandHandler:
 
         handler = CommandHandler(
             MockAgent(), devices, events,
-            reload_fn=reload_fn, apply_fn=apply_fn, project_path=str(project_path),
+            apply_fn=apply_fn, project_path=str(project_path),
         )
 
         await handler._handle_config_push({"mode": "reload"}, "req-cfg2", "tech@x.com")
 
-        assert reloaded == [True]
         assert applied == []
-        assert sent and sent[-1][1]["success"] is True
+        assert sent[-1][1]["success"] is False
+        assert sent[-1][1]["error"] == (
+            "Not applied: the push carried no project. The previous project is still running."
+        )
 
     @pytest.mark.parametrize("failure,says", [
         ("write", "Not applied: the project file could not be written. The disk is full. "
@@ -1721,7 +1715,7 @@ class TestAgentCapabilityGating:
         )
         await agent._handle_message({
             "type": "software_update",
-            "payload": {"target_version": "1.2.3"},
+            "payload": {"request_id": "r1", "target_version": "1.2.3"},
         })
         assert agent._command_handler.called == "software_update"
 

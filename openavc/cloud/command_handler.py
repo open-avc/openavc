@@ -73,7 +73,7 @@ class CommandHandler:
 
     Commands are dispatched by type:
     - command: Send a command to a device via DeviceManager
-    - config_push: Reload the project configuration
+    - config_push: Replace the project with the one the cloud sent
     - restart: Restart the OpenAVC service
     - diagnostic: Run a network diagnostic (future)
     """
@@ -83,7 +83,6 @@ class CommandHandler:
         agent: CloudAgent,
         devices: DeviceManager,
         events: EventBus,
-        reload_fn=None,
         apply_fn=None,
         update_manager=None,
         project_path=None,
@@ -94,8 +93,6 @@ class CommandHandler:
             agent: The CloudAgent to send responses through.
             devices: DeviceManager for device commands.
             events: EventBus for emitting audit events.
-            reload_fn: Optional async callable to reload the project from disk
-                (used by a bare config_push that carries no project_json).
             apply_fn: Optional async callable (engine.replace_project) that
                 persists and reconciles a pushed project through the one seam,
                 taking what its migration changed as ``update_notes``.
@@ -107,7 +104,6 @@ class CommandHandler:
         self._agent = agent
         self._devices = devices
         self._events = events
-        self._reload_fn = reload_fn
         self._apply_fn = apply_fn
         self._update_manager = update_manager
         self._project_path = project_path
@@ -208,7 +204,17 @@ class CommandHandler:
             "request_id": request_id,
         })
 
-        if (self._apply_fn or self._reload_fn) and self._project_path:
+        if not project_json:
+            # Missing, null or {}: there is nothing to apply, and answering
+            # success would report a push that changed nothing.
+            from openavc.api.error_messages import not_applied
+
+            await self._send_result(
+                request_id, False, error=not_applied("the push carried no project."),
+            )
+            return
+
+        if self._apply_fn and self._project_path:
             try:
                 from pathlib import Path
                 from openavc.core.project_loader import ProjectConfig
@@ -245,40 +251,30 @@ class CommandHandler:
                         )
                         return
 
-                if project_json:
-                    if self._apply_fn is None:
-                        await self._send_result(request_id, False, error="Apply not available")
-                        return
-                    # Migrate an old-schema push to the current format BEFORE
-                    # validating/saving, matching load_project — otherwise a
-                    # pre-current-schema cloud project is persisted with stale
-                    # field placement and misread until the next disk reload.
-                    update_notes = MigrationNotes()
-                    try:
-                        migrated_json, _ = migrate_project(project_json, update_notes)
-                        project = ProjectConfig.model_validate(migrated_json)
-                    except (ValueError, TypeError) as ve:
-                        await self._send_result(
-                            request_id, False, error=f"Invalid project schema: {_schema_problems(ve)}",
-                        )
-                        return
+                # Migrate an old-schema push to the current format BEFORE
+                # validating/saving, matching load_project — otherwise a
+                # pre-current-schema cloud project is persisted with stale
+                # field placement and misread until the next disk reload.
+                update_notes = MigrationNotes()
+                try:
+                    migrated_json, _ = migrate_project(project_json, update_notes)
+                    project = ProjectConfig.model_validate(migrated_json)
+                except (ValueError, TypeError) as ve:
+                    await self._send_result(
+                        request_id, False, error=f"Invalid project schema: {_schema_problems(ve)}",
+                    )
+                    return
 
-                    # Create backup before overwriting
-                    import asyncio
-                    await asyncio.to_thread(create_backup, project_path, "Before cloud config push")
+                # Create backup before overwriting
+                import asyncio
+                await asyncio.to_thread(create_backup, project_path, "Before cloud config push")
 
-                    # A fleet push wins by design — no expected_revision — but
-                    # it goes through the one seam: a replace persists the
-                    # pushed bytes, fully reconciles, bumps the revision, and
-                    # broadcasts project.reloaded, so an open IDE 409s on its
-                    # next save instead of silently reverting the push.
-                    await self._apply_fn(project, update_notes=update_notes)
-                else:
-                    if self._reload_fn is None:
-                        await self._send_result(request_id, False, error="Reload not available")
-                        return
-                    # Bare push: re-read whatever is on disk (LOAD reload).
-                    await self._reload_fn()
+                # A fleet push wins by design — no expected_revision — but
+                # it goes through the one seam: a replace persists the
+                # pushed bytes, fully reconciles, bumps the revision, and
+                # broadcasts project.reloaded, so an open IDE 409s on its
+                # next save instead of silently reverting the push.
+                await self._apply_fn(project, update_notes=update_notes)
 
                 # Include previous config in result for rollback
                 result_data = {"previous_project_json": previous_json} if previous_json else "Config applied"
@@ -289,7 +285,7 @@ class CommandHandler:
                 return
             await self._send_result(request_id, True, result=result_data)
         else:
-            await self._send_result(request_id, False, error="Reload not available")
+            await self._send_result(request_id, False, error="Apply not available")
 
     _last_restart_time: float = 0
 

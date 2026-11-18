@@ -2050,7 +2050,7 @@
           },
           "project_json": {
             "type": "object",
-            "description": "The project; a push without one reloads the project on disk.",
+            "description": "The project. A push without one, or with an empty one, is refused.",
             "default": null,
             "x-since": "0.5.14"
           },

@@ -8,7 +8,11 @@ derives the message sets, the buffer priorities, the capability each
 downstream request needs and the result that answers it, and it reads each
 downstream payload through ``read_payload`` (or ``read_tunnel_data`` on a
 tunnel's data socket), which fills in the table's default for a field the
-cloud left out. It also builds every upstream message. ``contract_gen.py``
+cloud left out. A request (a message ``REQUEST_ANSWERS`` names) is read
+through ``read_request`` first, which refuses one whose payload is not an
+object, that carries no ``request_id``, or that sends a field as a JSON type
+its row does not declare, before any handler runs. It also builds every
+upstream message. ``contract_gen.py``
 renders the same rows into ``wire_contract.json`` for the cloud.
 
 Messages fall into three phases:
@@ -28,6 +32,7 @@ from typing import Any
 
 from openavc.cloud import wire_tables
 from openavc.cloud.crypto import sign_message, verify_message_signature
+from openavc.cloud.tools.input_shapes import json_kind
 from openavc.cloud.wire_tables import ABSENT, MESSAGES, VOCABULARIES
 
 
@@ -779,6 +784,119 @@ def read_as(msg_type: str, msg: dict[str, Any]) -> dict[str, Any]:
     """The payload of ``msg``, read through ``msg_type``'s row: for a handler
     that only ever receives that one type."""
     return read_payload(msg_type, extract_payload(msg))
+
+
+class RequestRefused(ProtocolError):
+    """A downstream request the contract's reader will not hand to a handler.
+
+    ``request_id`` is the id to answer the refusal with, ``""`` when the
+    request carries none: the cloud matches an answer to its request only by
+    that id, so a request without one is logged and not run.
+    """
+
+    def __init__(self, reason: str, request_id: str = ""):
+        super().__init__(reason)
+        self.reason = reason
+        self.request_id = request_id
+
+
+# The Python value each JSON type name reads as. A boolean is read apart: in
+# Python it is also an int, and on the wire it is never a number.
+_PYTHON_TYPES: dict[str, type | tuple[type, ...]] = {
+    "string": str, "integer": int, "number": (int, float), "boolean": bool,
+    "object": dict, "array": list, "null": type(None),
+}
+
+_JSON_TYPE_WORDS = {
+    "string": "a string", "integer": "an integer", "number": "a number",
+    "boolean": "a boolean", "object": "an object", "array": "an array", "null": "null",
+}
+
+
+def _type_parts(type_expr: str) -> list[tuple[str, str | None]]:
+    """``"string|null"`` as ``[("string", None), ("null", None)]``, and
+    ``"array<string>"`` as ``[("array", "string")]``."""
+    parts = []
+    for part in type_expr.split("|"):
+        if part.startswith("array<") and part.endswith(">"):
+            parts.append(("array", part[len("array<"):-1]))
+        else:
+            parts.append((part, None))
+    return parts
+
+
+def _is_json_type(value: Any, kind: str) -> bool:
+    if isinstance(value, bool):
+        return kind == "boolean"
+    return isinstance(value, _PYTHON_TYPES[kind])
+
+
+def _is_part(value: Any, kind: str, item_kind: str | None) -> bool:
+    """Whether ``value`` is ``kind``, and each item ``item_kind`` when it names one."""
+    if not _is_json_type(value, kind):
+        return False
+    return item_kind is None or all(_is_json_type(item, item_kind) for item in value)
+
+
+def _is_of_type(value: Any, type_expr: str) -> bool:
+    """Whether ``value`` is one of the JSON types a field's ``type`` names."""
+    if type_expr == "any":
+        return True
+    return any(_is_part(value, kind, item_kind) for kind, item_kind in _type_parts(type_expr))
+
+
+def _type_words(type_expr: str) -> str:
+    words = []
+    for kind, item_kind in _type_parts(type_expr):
+        if item_kind is None:
+            words.append(_JSON_TYPE_WORDS[kind])
+        else:
+            words.append(f"an array of {_JSON_TYPE_WORDS[item_kind].split(' ', 1)[-1]}s")
+    return " or ".join(words)
+
+
+def request_id_of(msg: dict[str, Any]) -> str:
+    """The id a downstream request is answered with: ``""`` when its payload
+    is not an object or its ``request_id`` is not a string."""
+    payload = extract_payload(msg)
+    request_id = payload.get("request_id") if isinstance(payload, dict) else None
+    return request_id if isinstance(request_id, str) else ""
+
+
+def read_request(msg: dict[str, Any]) -> dict[str, Any]:
+    """A downstream request's payload, checked against its row before any
+    handler runs, then read as ``read_payload`` reads it.
+
+    Raises ``RequestRefused`` for a payload that is not an object, a
+    ``request_id`` that is missing or not a string, and a field sent as a
+    JSON type its row does not declare, naming the field. A null is kept as
+    sent, for the handler to read as it always has, and a field the cloud left
+    out takes the table's default; a field the row does not know is read past,
+    because a newer cloud may send one.
+    """
+    msg_type = msg.get("type", "")
+    payload = extract_payload(msg)
+    if not isinstance(payload, dict):
+        raise RequestRefused(f"{msg_type} payload is not an object")
+    request_id = request_id_of(msg)
+    if not request_id:
+        raise RequestRefused(f"{msg_type} carries no request_id")
+    row = MESSAGE_ROWS[msg_type]
+    problem = _wrong_field(row, payload)
+    if problem:
+        raise RequestRefused(problem, request_id)
+    return _fill_defaults(row, payload)
+
+
+def _wrong_field(row: wire_tables.Message, payload: dict[str, Any]) -> str | None:
+    """The refusal for the first field sent as a type its row does not
+    declare; None when every sent field is of its type, or null."""
+    for f in row.fields:
+        value = payload.get(f.name)
+        if value is not None and not _is_of_type(value, f.type):
+            return (f"invalid_field: {f.name} must be {_type_words(f.type)}, "
+                    f"not {json_kind(value)}.")
+    return None
 
 
 def read_tunnel_data(msg: dict[str, Any], msg_type: str | None = None) -> dict[str, Any]:
