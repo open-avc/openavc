@@ -7,8 +7,9 @@ the triggers start (so startup triggers fire), and on the way down
 everything that can fire a macro stops before macros are cancelled, which
 happens before the devices they command disconnect.
 
-Also pinned: how a failing part of the start is counted and reported, how
-the update manager is handed to a cloud agent, and that a stop waits for a
+Also pinned: how a failing part of the start is named, what the start keeps
+of a whole stage it went on past and how it names the stage that stopped
+it (core/start_stages.py), how the update manager is handed to a cloud agent, and that a stop waits for a
 bookkeeping save that is still running.
 """
 
@@ -201,9 +202,10 @@ async def test_start_publishes_a_recovery_left_on_record(tmp_path, no_update_che
 
 
 @pytest.mark.asyncio
-async def test_start_names_each_part_that_failed_and_counts_none(
+async def test_start_names_each_part_that_failed_and_keeps_the_whole_stages(
         tmp_path, monkeypatch, caplog, acme_driver, no_update_checks):
     from openavc.core.script_engine import ScriptEngine
+    from openavc.core.start_stages import StartRun
 
     eng = Engine(_project(tmp_path, devices=["good", "bad"]))
     order: list[str] = []
@@ -221,28 +223,66 @@ async def test_start_names_each_part_that_failed_and_counts_none(
     def load_scripts(self, *_a, **_k):
         raise RuntimeError("script folder unreadable")
 
+    def load_builtin_drivers():
+        raise RuntimeError("driver folder unreadable")
+
     eng.devices.add_device = add_device
     eng.plugin_loader.scan_plugins = scan_plugins
     monkeypatch.setattr(ScriptEngine, "load_scripts", load_scripts)
+    monkeypatch.setattr(
+        "openavc.drivers.driver_loader.load_builtin_drivers", load_builtin_drivers,
+    )
+    run = StartRun()
     try:
         with caplog.at_level(logging.INFO, logger=ENGINE_LOG):
-            await eng.start()
-        # Each part says so on its own surface; nothing counts them.
+            await eng.start(run)
+        # A device says so on its own card; a whole stage the start went on
+        # past is kept for the run-state record, in words, by its stage.
         assert eng.state.get("system.startup_errors") is None
+        assert [p.stage for p in run.problems] == ["drivers", "plugins", "scripts"]
+        details = " ".join(p.detail for p in run.problems)
+        assert "unreadable" not in details
+        assert details.count("Check the server log for the reason.") == 3
         engine_lines = [
             (r.levelno, r.getMessage()) for r in caplog.records if r.name == ENGINE_LOG
         ]
         assert (logging.ERROR, "Failed to add device 'bad': no such port") in engine_lines
-        assert (logging.ERROR, "Plugin system failed to start") in engine_lines
-        assert (logging.ERROR, "Script engine failed to load scripts") in engine_lines
+        assert (logging.ERROR, "Loading the driver library failed") in engine_lines
+        assert (logging.ERROR, "Starting the plugins failed") in engine_lines
+        assert (logging.ERROR, "Loading the scripts failed") in engine_lines
         assert (
             logging.WARNING,
-            "Engine started with 3 error(s): Device 'bad': no such port; "
+            "Engine started with 4 error(s): Drivers: driver folder unreadable; "
+            "Device 'bad': no such port; "
             "Plugins: plugin folder unreadable; Scripts: script folder unreadable",
         ) in engine_lines
         # A failed part does not stop the rest of the start.
         assert eng.state.get("system.started") is True
         assert "good" in {d["id"] for d in eng.devices.list_devices()}
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_stage_that_stops_the_start_is_named_by_its_stage(
+        tmp_path, acme_driver, no_update_checks):
+    from openavc.core.start_stages import StartRun
+
+    eng = Engine(_project(tmp_path, devices=["good"]))
+    _quiet_services(eng, [])
+
+    def load_triggers():
+        raise RuntimeError("trigger table unreadable")
+
+    eng._load_triggers = load_triggers
+    run = StartRun()
+    try:
+        with pytest.raises(RuntimeError) as raised:
+            await eng.start(run)
+        assert run.stopped_by(raised.value) == (
+            "Loading the triggers failed: trigger table unreadable"
+        )
+        assert run.problems == []
     finally:
         await eng.stop()
 
@@ -553,7 +593,7 @@ async def test_a_driver_load_that_fails_is_named_and_the_start_goes_on(
         assert order == [label for _, _, label in _HOST_STEPS]
         assert eng.state.get("system.started") is True
         lines = [r.getMessage() for r in caplog.records if r.name == ENGINE_LOG]
-        assert "Could not load the driver library" in lines
+        assert "Loading the driver library failed" in lines
         assert "Engine started with 1 error(s): Drivers: drivers broke" in lines
     finally:
         await eng.stop()

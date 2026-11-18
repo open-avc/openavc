@@ -88,6 +88,7 @@ from openavc.api.routes import root as root_routes
 from openavc.api.routes import setup as setup_routes
 from openavc.audit.session import AuditManager
 from openavc.core.engine import Engine
+from openavc.core.start_stages import StartRun
 from openavc.core.stop_stages import stop_deadline
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.redirects import build_http_listener_app, build_redirect_app, certified_host_for
@@ -337,21 +338,28 @@ def _log_lan_urls(plan, local_ip: str, scheme: str, port: int) -> None:
 async def _initialize_engine(app: FastAPI) -> None:
     """Run engine initialization in the background so HTTP serves immediately.
 
-    Every step is inside the one ``try``: a failure anywhere is left in
-    ``app.state.engine_error`` for the splash page and the log, never raised.
+    Every stage runs inside the one ``try`` through one ``StartRun``
+    (core/start_stages.py), the engine's own stages among them. Whatever
+    stops the start is named by its stage in the run-state record
+    (``app.state.run_state``, middleware/startup_splash.py) for the splash
+    page, and logged, never raised; the record keeps what the start went on
+    past either way.
     """
+    run = StartRun()
     try:
-        plan = _resolve_listen_plan()
-        _warn_if_open_without_password(plan)
+        with run.stage("working out who can connect"):
+            plan = _resolve_listen_plan()
+            _warn_if_open_without_password(plan)
 
-        from openavc.system_config import get_system_config
-        from openavc.updater.host import get_firmware_host
-        firmware_host = get_firmware_host()
-        if not firmware_host:
-            data_dir = get_system_config().data_dir
-            _settle_updates_before_start(data_dir)
+        with run.stage("checking the last update"):
+            from openavc.system_config import get_system_config
+            from openavc.updater.host import get_firmware_host
+            firmware_host = get_firmware_host()
+            if not firmware_host:
+                data_dir = get_system_config().data_dir
+                _settle_updates_before_start(data_dir)
 
-        await engine.start()
+        await engine.start(run)
 
         # The engine is up on this version, which is the only evidence that an
         # update worked: the code imported, the project loaded, devices and
@@ -359,25 +367,29 @@ async def _initialize_engine(app: FastAPI) -> None:
         # any of it. Confirm here rather than on a timer — a timer measures
         # whether anybody restarted the box, and an appliance is restarted by
         # its own supervisor and power-cycled in the room it lives in.
-        if not firmware_host:
-            from openavc.updater.rollback import confirm_startup
-            confirm_startup(data_dir)
+        with run.stage("confirming the last update"):
+            if not firmware_host:
+                from openavc.updater.rollback import confirm_startup
+                confirm_startup(data_dir)
 
-        _load_discovery_hints()
+        with run.stage("loading the drivers' discovery data"):
+            _load_discovery_hints()
 
         # A restart request (Settings, the cloud agent, the listen watcher
         # below) ends this process: openavc/restart.py.
-        async def _on_restart_requested(_event: str, data: dict) -> None:
-            await restart.exit_for_restart(data, engine)
+        with run.stage("setting up restarts"):
+            async def _on_restart_requested(_event: str, data: dict) -> None:
+                await restart.exit_for_restart(data, engine)
 
-        engine.events.on("system.restart_requested", _on_restart_requested)
-        engine.listen_watcher = _watch_listen_choice()
+            engine.events.on("system.restart_requested", _on_restart_requested)
+            engine.listen_watcher = _watch_listen_choice()
 
-        app.state.engine_ready = True
-        _log_banner(plan)
+        with run.stage("logging the addresses to open"):
+            _log_banner(plan)
+        app.state.run_state.started(run)
     except Exception as e:
-        app.state.engine_error = str(e)
-        log.exception("Engine startup failed: %s", e)
+        app.state.run_state.stopped(run, e)
+        log.exception("Engine startup failed: %s", app.state.run_state.error)
 
 
 @asynccontextmanager
@@ -385,8 +397,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     validate_policies(app)
     app.state.host_policy_started = True
-    app.state.engine_ready = False
-    app.state.engine_error = None
+    app.state.run_state = RunState()
 
     # Keep plugin tokens presented via the _plugin_token query param out of
     # uvicorn's access log. Done here (not at import) so uvicorn has already
@@ -553,7 +564,7 @@ from openavc.middleware.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
 # Served while the engine initializes.
-from openavc.middleware.startup_splash import StartupSplashMiddleware
+from openavc.middleware.startup_splash import RunState, StartupSplashMiddleware
 app.add_middleware(StartupSplashMiddleware)
 
 # Serve Panel UI static files

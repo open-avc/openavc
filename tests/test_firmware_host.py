@@ -246,7 +246,9 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
     original = stale_records(data)
     import openavc.main as main
 
-    app = SimpleNamespace(state=SimpleNamespace(engine_ready=False, engine_error=None))
+    from openavc.middleware.startup_splash import RunState
+
+    app = SimpleNamespace(state=SimpleNamespace(run_state=RunState()))
     with (
         patch(
             "openavc.system_config.get_system_config",
@@ -280,7 +282,7 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
         # watcher's later tick must still read the server configuration.
         await watcher.call_args.kwargs["on_tick"]()
         assert safety_tick.await_args.args[0] is system_config.return_value
-    assert app.state.engine_ready and app.state.engine_error is None
+    assert app.state.run_state.answer() == {"ready": True, "error": None, "problems": []}
     start.assert_awaited_once()
     assert files(data) == original
 

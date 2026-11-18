@@ -31,6 +31,7 @@ from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
 from openavc.core.project_reconcile import RECONCILE_STAGES, ReconcileRun
+from openavc.core.start_stages import StartRun
 from openavc.drivers import registry
 from openavc.drivers.base import BaseDriver
 
@@ -131,9 +132,10 @@ async def test_the_start_brings_every_other_device_up_and_names_the_one_it_could
     engine, case, caplog,
 ):
     engine.project = _project(case)
-    errors: list[str] = []
+    run = StartRun()
     with caplog.at_level(logging.ERROR, logger=ENGINE_LOG):
-        await engine._add_devices_at_start(errors)
+        await engine._add_devices_at_start(run)
+    errors = run.named
 
     assert {"good1", "br", "good2"} <= _running(engine)
     assert engine.state.get("device.good1.connected") is True

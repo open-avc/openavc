@@ -78,7 +78,9 @@ def _run_startup(tmp_path: Path):
     """
     import openavc.main as main
 
-    app = SimpleNamespace(state=SimpleNamespace(engine_ready=False, engine_error=None))
+    from openavc.middleware.startup_splash import RunState
+
+    app = SimpleNamespace(state=SimpleNamespace(run_state=RunState()))
     cfg = SimpleNamespace(data_dir=tmp_path)
 
     with patch("openavc.system_config.get_system_config", return_value=cfg), \

@@ -1,20 +1,75 @@
-"""What the server answers while the engine is still starting.
+"""THE run-state record, and what the server answers while the engine is
+still starting.
+
+The record (``RunState``, at ``app.state.run_state``) is how the start went:
+whether it is done, the sentence for the stage that stopped it, and each
+whole stage it went on past (a ``StartProblem``: the driver library, the
+plugin system, the script engine), worded once in core/start_stages.py.
+``openavc.main``'s lifespan makes it and its start writes it; a device, a
+plugin or a script that did not start says so on its own surface instead.
+``/api/startup-status`` answers it (``startup_status``): from here while the
+start runs, from the route once it is ready, with the same fields.
 
 The HTTP listener comes up before the engine (``openavc.main`` starts the
 engine in the background so a browser gets an answer at once). Until the
-lifespan sets ``app.state.engine_ready``, ``/api/startup-status`` answers
-``{"ready": false, "error": ...}`` for the splash page's poll, the rest of the
-API answers 503 (the engine has no project yet), and every other path gets
-the splash page itself, which polls that route and reloads once the engine is
-ready or shows the error that stopped it. An app whose lifespan never set the
-flag passes everything through.
+record is ready, the rest of the API answers 503 (the engine has no project
+yet), and every other path gets the splash page itself, which polls
+``/api/startup-status`` and reloads once the engine is ready or shows the
+error that stopped it. An app whose lifespan made no record passes
+everything through.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
+
+from openavc.core.start_stages import StartProblem, StartRun
+
+
+class RunState:
+    """How this process's start went: ``ready`` once it finished, ``error``
+    for the stage that stopped it, and ``problems``, the whole stages it went
+    on past. Answered to anyone who asks, so it holds only sentences, never
+    an exception's text from a stage the start went on past."""
+
+    def __init__(self) -> None:
+        self.ready = False
+        self.error: str | None = None
+        self.problems: tuple[StartProblem, ...] = ()
+
+    def started(self, run: StartRun) -> None:
+        """The start finished, past what it went on past."""
+        self.problems = tuple(run.problems)
+        self.ready = True
+
+    def stopped(self, run: StartRun, exc: BaseException) -> None:
+        """The start stopped at ``run``'s stage with ``exc``."""
+        self.problems = tuple(run.problems)
+        self.error = run.stopped_by(exc)
+
+    def answer(self) -> dict[str, Any]:
+        return {
+            "ready": self.ready,
+            "error": self.error,
+            "problems": [problem.answer() for problem in self.problems],
+        }
+
+
+def _record(app) -> RunState | None:
+    return getattr(app.state, "run_state", None)
+
+
+def startup_status(app) -> dict[str, Any]:
+    """``/api/startup-status``'s answer: the record, or ready with nothing
+    to say on an app whose lifespan made none."""
+    record = _record(app)
+    if record is None:
+        return {"ready": True, "error": None, "problems": []}
+    return record.answer()
 
 _STARTUP_PAGE = """\
 <!DOCTYPE html>
@@ -92,17 +147,15 @@ class StartupSplashMiddleware(BaseHTTPMiddleware):
     """Serves a loading page for UI routes while the engine is initializing."""
 
     async def dispatch(self, request: Request, call_next):
-        if getattr(request.app.state, "engine_ready", True):
+        record = _record(request.app)
+        if record is None or record.ready:
             return await call_next(request)
 
         path = request.url.path
 
         # Startup status endpoint — always available
         if path == "/api/startup-status":
-            return JSONResponse({
-                "ready": False,
-                "error": request.app.state.engine_error,
-            })
+            return JSONResponse(record.answer())
 
         # Block API routes during startup (engine.project is None, etc.)
         if path.startswith("/api/"):

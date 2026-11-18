@@ -33,6 +33,7 @@ from openavc.api import rest
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
 from openavc.main import app
+from openavc.middleware.startup_splash import RunState
 from tests.listen_helpers import use_bind
 
 EMPTY_PROJECT = {
@@ -85,7 +86,7 @@ def _banner(monkeypatch, caplog, bind: str, local_ip: str = LAN_IP, before=None)
     monkeypatch.setattr(config, "HTTP_PORT", 8080)
 
     app_stub = SimpleNamespace(
-        state=SimpleNamespace(engine_ready=False, engine_error=None)
+        state=SimpleNamespace(run_state=RunState())
     )
     with caplog.at_level(logging.INFO, logger="openavc.main"):
         with patch.object(main.engine, "start", new=AsyncMock()), \

@@ -38,6 +38,7 @@ from starlette.websockets import WebSocketDisconnect
 from openavc import main
 from openavc.api.host_policy import validate_policies
 from openavc.core.host_policy import HostPolicy, PolicySnapshot
+from openavc.middleware.startup_splash import RunState
 
 class ProductPolicy(HostPolicy):
     current = PolicySnapshot(1, True, True)
@@ -72,11 +73,10 @@ try:
         else:
             raise AssertionError('Disabled panel stayed open')
 
-    main.app.state.engine_ready = False
-    main.app.state.engine_error = None
+    main.app.state.run_state = RunState()
     host.current = PolicySnapshot(4, False, False)
     assert client.get('/panel/').status_code == 403  # No startup-splash bypass.
-    assert client.get('/api/startup-status').json() == {'ready': False, 'error': None}
+    assert client.get('/api/startup-status').json() == {'ready': False, 'error': None, 'problems': []}
 
     scope = {'type': 'http', 'asgi': {'version': '3.0', 'spec_version': '2.4'},
              'method': 'POST', 'path': '/api/auth/setup', 'raw_path': b'/api/auth/setup',

@@ -16,6 +16,7 @@ from fastapi.security import HTTPBasicCredentials
 from openavc.api._engine import _get_engine
 from openavc.core.device_records import DISABLED, ORPHANED
 from openavc.core.host_policy import HostCategory
+from openavc.middleware import startup_splash
 from openavc.api.auth import _basic, local_console_auth_satisfied, programmer_auth_satisfied
 from openavc.utils.request_origin import (
     is_local_console_request,
@@ -51,9 +52,11 @@ _BACKGROUND_TASKS: set = set()
 
 @open_router.get("/startup-status")
 @endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
-async def startup_status() -> dict[str, Any]:
-    """Returns whether the engine has finished initializing."""
-    return {"ready": True, "error": None}
+async def startup_status(request: Request) -> dict[str, Any]:
+    """How the start went, once it is ready: the run-state record
+    (middleware/startup_splash.py), which answers this route itself until
+    then."""
+    return startup_splash.startup_status(request.app)
 
 
 @open_router.get("/status")

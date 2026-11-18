@@ -36,6 +36,7 @@ from openavc.core.connection_fault import INVALID_CONFIG
 from openavc.core.device_config import device_connections
 from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
+from openavc.core.start_stages import StartRun
 from openavc.drivers import registry
 from openavc.drivers.base import BaseDriver
 
@@ -116,7 +117,7 @@ async def engine(tmp_path, monkeypatch):
     rest.set_engine(eng)
     try:
         with patch("openavc.transport.tcp.TCPTransport.create", AsyncMock()):
-            await eng._add_devices_at_start([])
+            await eng._add_devices_at_start(StartRun())
             yield eng
     finally:
         rest.set_engine(None)

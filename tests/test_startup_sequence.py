@@ -20,7 +20,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from openavc import config, main, runtime_flags
+from openavc.core.start_stages import GoOn
 from openavc.core.stop_stages import STOP_SECONDS
+from openavc.middleware.startup_splash import RunState
 from openavc.restart import WATCHDOG_MARGIN_SECONDS
 
 
@@ -60,7 +62,7 @@ def boot(monkeypatch, tmp_path):
 
     calls: dict[str, list] = {}
     engine = SimpleNamespace(
-        start=AsyncMock(side_effect=lambda: order.append("engine.start")),
+        start=AsyncMock(side_effect=lambda run: order.append("engine.start")),
         shutdown=AsyncMock(),
         events=SimpleNamespace(on=Mock(), emit=AsyncMock()),
         get_status=Mock(return_value={"local_ip": ""}),
@@ -106,7 +108,7 @@ def boot(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "TLS_PORT", 8443)
     monkeypatch.setattr(runtime_flags, "port80_active", False)
 
-    app = SimpleNamespace(state=SimpleNamespace(engine_ready=False, engine_error=None))
+    app = SimpleNamespace(state=SimpleNamespace(run_state=RunState()))
 
     async def run():
         await main._initialize_engine(app)
@@ -140,8 +142,7 @@ async def test_a_good_boot_checks_sweeps_starts_then_confirms(boot):
     assert boot.calls["check_rollback_needed"] == [((boot.data_dir,), {})]
     assert boot.calls["clear_stale_rollback_marker"] == [((boot.data_dir,), {})]
     assert boot.calls["confirm_startup"] == [((boot.data_dir,), {})]
-    assert boot.app.state.engine_ready is True
-    assert boot.app.state.engine_error is None
+    assert boot.app.state.run_state.answer() == {"ready": True, "error": None, "problems": []}
 
 
 async def test_a_failed_update_is_rolled_back_before_the_engine_starts(boot, monkeypatch):
@@ -200,7 +201,7 @@ async def test_a_rollback_that_could_not_start_carries_on_booting(boot, monkeypa
 
     assert boot.order[:2] == ["restore_pre_update_data", "put_back_for_rollback"]
     assert "engine.start" in boot.order
-    assert boot.app.state.engine_ready is True
+    assert boot.app.state.run_state.ready is True
     assert not any("Rollback initiated" in r.getMessage() for r in caplog.records)
 
 
@@ -295,7 +296,7 @@ async def test_a_stale_apply_record_that_cannot_be_removed_does_not_stop_the_boo
     assert [r.getMessage() for r in errors] == [
         "Could not remove stale apply-update.json at startup"
     ]
-    assert boot.app.state.engine_ready is True
+    assert boot.app.state.run_state.ready is True
 
 
 async def test_with_no_stale_record_nothing_is_logged_about_one(boot, caplog):
@@ -309,17 +310,60 @@ async def test_with_no_stale_record_nothing_is_logged_about_one(boot, caplog):
 # ===========================================================================
 
 
-async def test_an_engine_that_fails_to_start_leaves_its_error_for_the_splash(boot, caplog):
-    boot.engine.start.side_effect = RuntimeError("project unreadable")
+_PLUGINS = GoOn("plugins", "starting the plugins", "The plugins did not start.")
+
+
+async def test_an_engine_that_fails_to_start_leaves_its_stage_and_error_for_the_splash(
+        boot, caplog):
+    async def start(run):
+        await run.go_on(_PLUGINS, Mock(side_effect=RuntimeError("plugin folder unreadable")))
+        await run.run("loading the project", Mock(side_effect=RuntimeError("project unreadable")))
+
+    boot.engine.start.side_effect = start
 
     with caplog.at_level(logging.ERROR, logger="openavc.main"):
         await boot.run()
 
-    assert boot.app.state.engine_error == "project unreadable"
-    assert boot.app.state.engine_ready is False
+    # The stage that stopped the start is named, and what it went on past
+    # before that is kept.
+    assert boot.app.state.run_state.answer() == {
+        "ready": False,
+        "error": "Loading the project failed: project unreadable",
+        "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
+    }
     assert "confirm_startup" not in boot.order
-    assert "Engine startup failed: project unreadable" in [r.getMessage() for r in caplog.records]
+    assert (
+        "Engine startup failed: Loading the project failed: project unreadable"
+        in [r.getMessage() for r in caplog.records]
+    )
     assert not hasattr(boot.engine, "listen_watcher")
+
+
+async def test_a_stage_of_the_servers_own_that_stops_the_start_is_named(boot, monkeypatch):
+    monkeypatch.setattr(main, "_load_discovery_hints", Mock(side_effect=RuntimeError("no index")))
+
+    await boot.run()
+
+    assert boot.app.state.run_state.answer() == {
+        "ready": False,
+        "error": "Loading the drivers' discovery data failed: no index",
+        "problems": [],
+    }
+
+
+async def test_a_start_that_went_on_past_a_stage_is_ready_and_keeps_it(boot):
+    async def start(run):
+        await run.go_on(_PLUGINS, Mock(side_effect=RuntimeError("plugin folder unreadable")))
+
+    boot.engine.start.side_effect = start
+
+    await boot.run()
+
+    assert boot.app.state.run_state.answer() == {
+        "ready": True,
+        "error": None,
+        "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
+    }
 
 
 async def test_discovery_gets_the_registered_drivers_and_both_driver_folders(boot):
@@ -474,7 +518,7 @@ async def test_a_plan_that_cannot_be_resolved_is_logged_and_the_boot_goes_on(
     lines = _messages(caplog)
     assert "Could not resolve who can connect" in lines
     assert not any("LAN access" in m or "NO authentication" in m for m in lines)
-    assert boot.app.state.engine_ready is True
+    assert boot.app.state.run_state.ready is True
 
 
 def _banner(caplog) -> list[str]:

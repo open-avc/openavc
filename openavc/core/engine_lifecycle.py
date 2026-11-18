@@ -20,16 +20,20 @@ is written at its start, before any stage can hang. ``_reconcile``
 (core/project_reconcile.py) shares these orderings, so a change to one is
 checked against the other.
 
-A part of the start that fails is named in one warning; it never stops the
-rest of the start. The driver library's load is one of them: a start whose
-load fails goes on, and the devices whose driver did not register wait for
-it. So is each device that cannot be worked out or added, named on its own
-(core/device_sync.py): the others still start. A device, a plugin or a script
-that does not run says so on its own surface until it is fixed (the device
-manager's record, the plugin loader's status, the script engine's load
-error), the same surface a project change's outcome reads; nothing counts
-them. Each step that settles a decision or converts something on disk before
-the project loads (``prepare_host``) is logged and never fatal, but not named.
+Each stage of the start runs through one ``StartRun`` (core/start_stages.py).
+Three whole stages the start goes on past when they fail: the driver
+library's load (the devices whose driver did not register wait for it), the
+plugin system and the script engine's load. Each is kept, by its stage and in
+words, in the run-state record (middleware/startup_splash.py) that
+``/api/startup-status`` answers. Any other stage that raises stops the start,
+and the record names that stage. Each device that cannot be worked out or
+added is named on its own (core/device_sync.py) and the others still start. A
+device, a plugin or a script that does not run says so on its own surface
+until it is fixed (the device manager's record, the plugin loader's status,
+the script engine's load error), the same surface a project change's outcome
+reads. Every part that failed is also named in one warning. Each step that
+settles a decision or converts something on disk before the project loads
+(``prepare_host``) is logged and never fatal, but not named.
 
 A stage of the stop that raises or overruns is named in one warning too, and
 the stages after it still run (core/stop_stages.py runs each on its own,
@@ -48,6 +52,7 @@ from pathlib import Path
 from openavc import runtime_flags
 from openavc.core.device_sync import add_devices, work_out_each
 from openavc.core.script_engine import ScriptEngine
+from openavc.core.start_stages import GoOn, StartRun
 from openavc.core.stop_stages import StopRun
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -251,6 +256,25 @@ def prepare_host(project_dir: Path):
     return sys_config
 
 
+# The stages a start goes on past when they fail, each with the sentence the
+# run-state record keeps for it (core/start_stages.py).
+_DRIVER_LIBRARY = GoOn(
+    "drivers", "loading the driver library",
+    "The driver library did not finish loading, so a device whose driver did "
+    "not load is not running. Check the server log for the reason.",
+)
+_PLUGINS = GoOn(
+    "plugins", "starting the plugins",
+    "The plugins did not finish starting, so some may not be running. "
+    "Check the server log for the reason.",
+)
+_SCRIPTS = GoOn(
+    "scripts", "loading the scripts",
+    "The scripts did not finish loading, so some may not be running. "
+    "Check the server log for the reason.",
+)
+
+
 class EngineLifecycleMixin:
     """``start``, ``shutdown``, ``stop`` and ``_stop_inner``, each a list of
     stages.
@@ -280,9 +304,12 @@ class EngineLifecycleMixin:
         a start has finished."""
         return runtime_flags.stopping or self._stopping
 
-    async def start(self) -> None:
+    async def start(self, run: StartRun | None = None) -> None:
         """
-        Start the engine:
+        Start the engine, one stage at a time through ``run``
+        (core/start_stages.py; ``openavc.main`` passes the server's, so the
+        run-state record names the stage that stopped a start and keeps the
+        ones it went on past):
         1. Start state batch push (first: clients can already be connected)
         2. Load project.avc
         3. Initialize user variables
@@ -300,46 +327,54 @@ class EngineLifecycleMixin:
         devices. A change to the reconcile ordering must be checked against
         this sequence too, and vice versa.
         """
+        run = run or StartRun()
         log.info("Engine starting...")
         self._stopping = False
         self._start_time = time.monotonic()
-        self._push_state_to_clients()
-        startup_errors: list[str] = []
-        sys_config = prepare_host(self.project_path.parent)
-        self._load_drivers_at_start(startup_errors)
-        self._publish_system_keys(sys_config)
-        await self._load_project_at_start()
-        self._start_variables()
-        self._load_macro_definitions(macros=True, groups=True)
-        await self._add_devices_at_start(startup_errors)
-        await self._start_plugins_at_start(startup_errors)
-        await self._seal_the_start_backup()
-        self._start_scripts(startup_errors)
-        self._load_triggers()
-        self._bridge_events_to_ws()
+        await run.run("starting live updates to open screens", self._push_state_to_clients)
+        sys_config = await run.run(
+            "preparing the system settings", lambda: prepare_host(self.project_path.parent),
+        )
+        await run.go_on(_DRIVER_LIBRARY, self._load_drivers_at_start)
+        await run.run("setting up the system status", lambda: self._publish_system_keys(sys_config))
+        await run.run("loading the project", self._load_project_at_start)
+        await run.run("loading the variables", self._start_variables)
+        await run.run(
+            "loading the macros", lambda: self._load_macro_definitions(macros=True, groups=True),
+        )
+        await run.run("adding the devices", lambda: self._add_devices_at_start(run))
+        await run.go_on(_PLUGINS, self._start_plugins_at_start)
+        await run.run("saving the start-up backup", self._seal_the_start_backup)
+        await run.run("starting the script engine", self._make_script_engine)
+        await run.go_on(_SCRIPTS, self._load_scripts_at_start)
+        await run.run("loading the triggers", self._load_triggers)
+        await run.run("starting live macro and plugin updates", self._bridge_events_to_ws)
         # Save a value a device reports into a config field that asks for it
-        self.learned_config.start()
-        await self._start_network_services()
-        self._start_background_tasks()
+        await run.run("starting the settings devices report", self.learned_config.start)
+        await run.run("starting the network services", self._start_network_services)
+        await run.run("starting the periodic backup and clean-up", self._start_background_tasks)
         # Files staged for a command by an earlier run are gone with it.
-        self.file_staging.start()
+        await run.run("clearing files left by earlier commands", self.file_staging.start)
         self._running = True
         # Pre-warm the network-info cache off the event loop so the first
         # status/health poll never blocks on socket / gethostname syscalls.
         _in_background(asyncio.to_thread(self._detect_network_info))
-        self._log_startup_errors(startup_errors)
-        self.state.set("system.started", True, source="system")
-        await self.events.emit("system.started")
+        run.report()
+        await run.run("marking the system started", self._announce_started)
         # Start trigger engine after system.started (so startup triggers work)
-        await self.triggers.start()
-        await self._start_update_manager()
+        await run.run("starting the triggers", self.triggers.start)
+        await run.run("starting the update checks", self._start_update_manager)
         # Panel software updates on appliance hardware, through the update manager
-        await self._start_panel_software()
+        await run.run("starting panel software updates", self._start_panel_software)
         log.info(
             f'Engine started — project "{self.project.project.name}" '
             f"({len(self.project.devices)} devices, "
             f"{len(self.project.macros)} macros)"
         )
+
+    async def _announce_started(self) -> None:
+        self.state.set("system.started", True, source="system")
+        await self.events.emit("system.started")
 
     def _push_state_to_clients(self) -> None:
         # The WebSocket hub listens to the state store and pushes from here
@@ -373,20 +408,17 @@ class EngineLifecycleMixin:
         # a quiet day rather than a blank that reads as a broken binding.
         self.help.declare_keys()
 
-    def _load_drivers_at_start(self, startup_errors: list[str]) -> None:
+    def _load_drivers_at_start(self) -> None:
         """Register every driver on disk: the built-in definitions and
         anything installed into driver_repo/. After ``prepare_host`` (its
         repo migration) and before the project loads, since resolving a
         device's config and reporting its driver dependencies both ask the
         registry what exists. The load skips a file it cannot take on its
-        own; a load that fails anyway is named and the start goes on."""
+        own; a load that fails anyway is a stage the start goes on past
+        (``_DRIVER_LIBRARY``)."""
         from openavc.drivers.driver_loader import load_builtin_drivers
 
-        try:
-            load_builtin_drivers()
-        except Exception as e:
-            log.exception("Could not load the driver library")
-            startup_errors.append(f"Drivers: {e}")
+        load_builtin_drivers()
 
     async def _load_project_at_start(self) -> None:
         """The project, with corruption recovery, composed with the product
@@ -414,13 +446,13 @@ class EngineLifecycleMixin:
         from openavc.api.assets import publish_assets_state
         publish_assets_state(self)
 
-    async def _add_devices_at_start(self, startup_errors: list[str]) -> None:
+    async def _add_devices_at_start(self, run: StartRun) -> None:
         """Add every project device, in parallel with the connection table
         merged into each one's config, connected unless a simulation is coming
         back; then the ports they push to. A device that cannot be worked out
-        or added is named among the start's errors, by id with why, and the
-        others still start (``core/device_sync.py``); one that cannot be
-        worked out is kept by the device manager with why on its card."""
+        or added is named in the start's warning, by id with why, and the
+        others still start (``core/device_sync.py``); the device manager
+        keeps it with why on its card, which is where it is told."""
         self._sweep_device_logins()
         resolved = work_out_each(self.project.devices, self.resolved_device_config)
         # A simulation that was on when the server stopped comes back
@@ -430,7 +462,7 @@ class EngineLifecycleMixin:
         resume_simulation = self.simulation.load_resume()
 
         def failed(device_id: str, error: Exception) -> None:
-            startup_errors.append(f"Device '{device_id}': {error}")
+            run.name(f"Device '{device_id}': {error}")
             log.error(f"Failed to add device '{device_id}': {error}")
 
         for device_id, error in resolved.failed.items():
@@ -444,35 +476,32 @@ class EngineLifecycleMixin:
             await self.wait_for_device_bringup()
         self._record_push_ports()
 
-    async def _start_plugins_at_start(self, startup_errors: list[str]) -> None:
-        """Scan the plugins, move their logins, start the project's."""
-        try:
-            self.plugin_loader.set_save_config_fn(self._save_plugin_config)
-            self.plugin_loader.scan_plugins()
-            # The plugins now say which of their settings are logins: those
-            # move before any plugin starts, and the Project Library's copies
-            # with every login they still hold.
-            await self._move_logins_at_start()
-            if self.project.plugins:
-                plugins_dict = {
-                    pid: pc.model_dump() if hasattr(pc, "model_dump") else pc
-                    for pid, pc in self.project.plugins.items()
-                }
-                await self.plugin_loader.start_plugins(plugins_dict)
-        except Exception as e:  # Catch-all: isolates plugin system errors from core startup
-            startup_errors.append(f"Plugins: {e}")
-            log.exception("Plugin system failed to start")
+    async def _start_plugins_at_start(self) -> None:
+        """Scan the plugins, move their logins, start the project's. A stage
+        the start goes on past (``_PLUGINS``)."""
+        self.plugin_loader.set_save_config_fn(self._save_plugin_config)
+        self.plugin_loader.scan_plugins()
+        # The plugins now say which of their settings are logins: those
+        # move before any plugin starts, and the Project Library's copies
+        # with every login they still hold.
+        await self._move_logins_at_start()
+        if self.project.plugins:
+            plugins_dict = {
+                pid: pc.model_dump() if hasattr(pc, "model_dump") else pc
+                for pid, pc in self.project.plugins.items()
+            }
+            await self.plugin_loader.start_plugins(plugins_dict)
 
-    def _start_scripts(self, startup_errors: list[str]) -> None:
+    def _make_script_engine(self) -> None:
         project_dir = self.project_path.parent
         self.scripts = ScriptEngine(self.state, self.events, self.devices, project_dir, self.macros)
         self.scripts.install()
-        try:
-            scripts_data = [s.model_dump() for s in self.project.scripts]
-            self.scripts.load_scripts(scripts_data)
-        except Exception as e:  # Catch-all: isolates script loading errors from core startup
-            startup_errors.append(f"Scripts: {e}")
-            log.exception("Script engine failed to load scripts")
+
+    def _load_scripts_at_start(self) -> None:
+        """The project's scripts. A script that fails says so on its own
+        (the script engine's load error); a load that fails as a whole is a
+        stage the start goes on past (``_SCRIPTS``)."""
+        self.scripts.load_scripts([s.model_dump() for s in self.project.scripts])
 
     def _start_background_tasks(self) -> None:
         # Periodic backup (every 30 min if project has changed)
@@ -487,11 +516,6 @@ class EngineLifecycleMixin:
         self._os_programs_task = _in_background(
             ensure_programs_loop(self._retry_client_missing_devices)
         )
-
-    def _log_startup_errors(self, startup_errors: list[str]) -> None:
-        """Name every part of the start that failed, in one warning."""
-        if startup_errors:
-            log.warning(f"Engine started with {len(startup_errors)} error(s): {'; '.join(startup_errors)}")
 
     def attach_server(self, *, start: asyncio.Task | None = None, audit=None) -> None:
         """What the server around the engine runs that a shutdown also ends:

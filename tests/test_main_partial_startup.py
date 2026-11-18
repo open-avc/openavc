@@ -9,6 +9,7 @@ import pytest
 
 from openavc import main
 from openavc.core.engine import Engine
+from openavc.core.start_stages import StartRun
 from openavc.drivers.base import BaseDriver
 from openavc.drivers import registry
 
@@ -52,9 +53,11 @@ async def test_shutdown_releases_real_driver_client_before_and_after_readiness(t
             await engine.devices.add_device({"id": "device", "driver": "acme_startup", "name": "Acme", "config": {}})
             await engine.devices.bring_up()
             if phase == "ready":
-                app.state.engine_ready = True
+                app.state.run_state.started(StartRun())
             elif phase == "failed":
-                app.state.engine_error = "Initialization failed after acquiring a resource"
+                app.state.run_state.stopped(
+                    StartRun(), RuntimeError("Initialization failed after acquiring a resource"),
+                )
             entered.set()
             if phase == "initializing":
                 await asyncio.Event().wait()
