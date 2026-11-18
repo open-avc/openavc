@@ -1,0 +1,163 @@
+"""
+The project format's 0.18.0 step: a project's own events move out of the
+platform's namespace.
+
+From 0.18.0 a project cannot send an event named ``system.<anything>``: a
+macro's Emit Event step, a control's event action and a script's
+``events.emit`` refuse one (``core/event_bus.check_project_emit``), because
+``system.`` is where the platform says something happened to it. Before that,
+the Macro editor suggested three such names for a project's own events (Room
+occupied, Room vacant, System panic), so a project may send one and listen for
+it. This step renames each such event a project sends, and each Event trigger
+that could only hear one, to the same name under ``custom.``, so the wiring
+keeps working:
+
+- a macro's Emit Event step, including one inside a conditional's branches;
+- a control's Emit Event action, wherever an action can sit on a page or a
+  master element: an interaction's list, a press mode's off and hold actions,
+  a value map's per-option actions, and a matrix row's own route actions;
+- an Event trigger whose pattern is under ``system.`` and matches none of the
+  events the platform sends (``system.panic``, ``system.room_*``). A pattern
+  that also hears the platform (``system.*``, ``system.started``) is left.
+
+A step or a control that sends one of the platform's own events
+(``system.started``, ``system.stopping``, ``system.project.reloaded``) is left
+as written, since it has no name of its own to move to; it is now refused, and
+the note says so. A script is code and is not rewritten: the script check marks
+a line that sends a ``system.`` name, or listens for one the platform never
+sends, with the name to use. Anything outside the project listening for an old
+name (a Node-RED flow, another system on the API) is told by the note.
+
+The names are the step's own, as they stood at 0.18.0, for the reason
+``core/project_migration.py`` gives: a step says what it did to the projects
+of its day. Each rename is a note for the Programmer's notice.
+"""
+
+from collections.abc import Iterator
+from fnmatch import fnmatchcase
+
+from openavc.core.box_migration import element_places_0_17
+from openavc.core.project_update import MigrationNotes
+
+PREFIX_0_18 = "system."
+OWN_PREFIX_0_18 = "custom."
+# The `system.` events the platform sent at 0.18.0.
+PLATFORM_EVENTS_0_18 = frozenset({"system.started", "system.stopping", "system.project.reloaded"})
+
+# Where a press mode hangs another action off the first one.
+_NESTED_ACTIONS_0_18 = ("off_action", "hold_action")
+_OUTSIDE_0_18 = "A Node-RED flow or another system listening for the old name needs the new one."
+
+
+def rename_project_events_0_18(data: dict, elements: list[dict], notes: MigrationNotes) -> None:
+    """The project's own ``system.`` events, renamed in place; ``elements``
+    are its page and master elements, as the step reads them."""
+    for macro in _dicts_0_18(data.get("macros")):
+        _rename_macro_0_18(macro, notes)
+    places = element_places_0_17(data.get("ui"))
+    for el in elements:
+        page, page_id = places.get(id(el), ("", ""))
+        element_id = str(el.get("id", ""))
+        at = {"page_id": page_id, "element_id": element_id}
+        for action in _element_actions_0_18(el):
+            said = _rename_emit_0_18(action, "Emit Event action")
+            if said:
+                said(notes, f"{page} > {element_id}", **at)
+
+
+def _in_namespace_0_18(name) -> bool:
+    return isinstance(name, str) and name.strip().casefold().startswith(PREFIX_0_18)
+
+
+def _own_name_0_18(name: str) -> str:
+    return OWN_PREFIX_0_18 + name.strip()[len(PREFIX_0_18):]
+
+
+def _rename_emit_0_18(holder: dict, what: str):
+    """Rename ``holder``'s event when it is a project's own under ``system.``;
+    return how to note what happened, or None when nothing did."""
+    if holder.get("action") != "event.emit":
+        return None
+    old = holder.get("event")
+    if not _in_namespace_0_18(old):
+        return None
+    if old.strip().casefold() in PLATFORM_EVENTS_0_18:
+        message = (
+            f"{what} sends '{old}', which only OpenAVC sends, so it is no longer sent. "
+            f"Remove it, or name this project's own event under '{OWN_PREFIX_0_18}'."
+        )
+        return lambda notes, location, **at: notes.found(message, location, **at)
+    new = holder["event"] = _own_name_0_18(old)
+    message = (
+        f"{what} now sends '{new}' in place of '{old}': names starting with "
+        f"'{PREFIX_0_18}' are OpenAVC's own. {_OUTSIDE_0_18}"
+    )
+    return lambda notes, location, **at: notes.changed(message, location, **at)
+
+
+def _rename_macro_0_18(macro: dict, notes: MigrationNotes) -> None:
+    name = macro.get("name") or macro.get("id", "")
+    for label, step in _steps_0_18(macro.get("steps"), "Step"):
+        said = _rename_emit_0_18(step, f"{label} (Emit Event)")
+        if said:
+            said(notes, f"Macros > {name}")
+    for trigger in _dicts_0_18(macro.get("triggers")):
+        pattern = trigger.get("event_pattern")
+        if trigger.get("type") != "event" or not _only_a_project_hears_0_18(pattern):
+            continue
+        trigger["event_pattern"] = _own_name_0_18(pattern)
+        notes.changed(
+            f"Listens for '{trigger['event_pattern']}' in place of '{pattern}': a project's own "
+            f"events are named under '{OWN_PREFIX_0_18}'.",
+            f"Macros > {name} > {trigger.get('id', '')}",
+        )
+
+
+def _only_a_project_hears_0_18(pattern) -> bool:
+    """A pattern under ``system.`` that matches none of the platform's events."""
+    if not _in_namespace_0_18(pattern):
+        return False
+    folded = pattern.strip().casefold()
+    return not any(fnmatchcase(event, folded) for event in PLATFORM_EVENTS_0_18)
+
+
+def _steps_0_18(steps, label: str) -> Iterator[tuple[str, dict]]:
+    """Every step, a conditional's branches included, with the label the
+    Macro editor numbers it by ("Step 2, Then step 1")."""
+    for i, step in enumerate(steps if isinstance(steps, list) else []):
+        if not isinstance(step, dict):
+            continue
+        here = f"{label} {i + 1}"
+        yield here, step
+        for branch, word in (("then_steps", "Then step"), ("else_steps", "Else step")):
+            yield from _steps_0_18(step.get(branch), f"{here}, {word}")
+
+
+def _element_actions_0_18(el: dict) -> Iterator[dict]:
+    """Every action dict a control can run, as the 0.18.0 runtime reached them."""
+    bindings = el.get("bindings")
+    do = bindings.get("do") if isinstance(bindings, dict) else None
+    for binding in (do.values() if isinstance(do, dict) else ()):
+        for action in binding if isinstance(binding, list) else [binding]:
+            yield from _action_tree_0_18(action)
+    config = el.get("matrix_config")
+    destinations = config.get("destinations") if isinstance(config, dict) else None
+    for entry in destinations if isinstance(destinations, list) else ():
+        route = entry.get("route") if isinstance(entry, dict) else None
+        for action in route if isinstance(route, list) else ():
+            yield from _action_tree_0_18(action)
+
+
+def _action_tree_0_18(action) -> Iterator[dict]:
+    if not isinstance(action, dict):
+        return
+    yield action
+    for field in _NESTED_ACTIONS_0_18:
+        yield from _action_tree_0_18(action.get(field))
+    mapped = action.get("map") if action.get("action") == "value_map" else None
+    for value in mapped.values() if isinstance(mapped, dict) else ():
+        yield from _action_tree_0_18(value)
+
+
+def _dicts_0_18(items) -> list[dict]:
+    return [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []

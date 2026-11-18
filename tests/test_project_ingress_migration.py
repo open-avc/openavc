@@ -71,7 +71,7 @@ class TestPutProjectMigrates:
         assert resp.status_code == 200
 
         project = mock_engine.apply_named_save.call_args.args[0]
-        assert project.openavc_version == "0.17.0"
+        assert project.openavc_version == "0.18.0"
         # 0.1.0 -> 0.2.0 moves connection fields into the connections table.
         assert project.connections["proj1"]["host"] == "10.0.0.5"
         assert project.connections["proj1"]["port"] == 4352
@@ -87,7 +87,7 @@ class TestPutProjectMigrates:
         resp = client.put("/api/project", json=body)
         assert resp.status_code == 200
         project = mock_engine.apply_named_save.call_args.args[0]
-        assert project.openavc_version == "0.17.0"
+        assert project.openavc_version == "0.18.0"
 
     def test_non_object_body_is_422(self, client):
         resp = client.put("/api/project", json=[1, 2, 3])
@@ -122,7 +122,7 @@ class TestOpenFromLibraryDoor:
                               "legacy", "Legacy")
 
         written = json.loads(active.read_text(encoding="utf-8"))
-        assert written["openavc_version"] == "0.17.0"
+        assert written["openavc_version"] == "0.18.0"
         assert written["connections"]["proj1"]["host"] == "10.0.0.5"
         assert "host" not in written["devices"][0]["config"]
 

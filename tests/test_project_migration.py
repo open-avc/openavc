@@ -24,6 +24,7 @@ from openavc.core.project_migration import (
     migrate_0_14_to_0_15,
     migrate_0_15_to_0_16,
     migrate_0_16_to_0_17,
+    migrate_0_17_to_0_18,
     migrate_project,
 )
 from openavc.core.project_loader import ProjectConfig
@@ -404,7 +405,8 @@ class TestFullMigrationChain:
         data = migrate_0_13_to_0_14(data)
         data = migrate_0_14_to_0_15(data)
         data = migrate_0_15_to_0_16(data)
-        data = migrate_0_16_to_0_17(data)  # Now at CURRENT_VERSION
+        data = migrate_0_16_to_0_17(data)
+        data = migrate_0_17_to_0_18(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
