@@ -116,6 +116,12 @@ async def engine(tmp_path):
             {"id": "flash_caught", "type": "button", "bindings": {"do": {"press": [
                 {"action": "script.call", "function": "flash_and_catch"},
             ]}}},
+            {"id": "typo", "type": "button", "bindings": {"do": {"press": [
+                {"action": "device.command", "device": "acme1", "command": "flsh_led"},
+            ]}}},
+            {"id": "typo_script", "type": "button", "bindings": {"do": {"press": [
+                {"action": "script.call", "function": "flash_typo"},
+            ]}}},
         ]}]},
     }))
     scripts = tmp_path / "scripts"
@@ -133,6 +139,9 @@ async def engine(tmp_path):
                 state.set("var.caught", "timeout: " + str(e))
             except Exception as e:
                 state.set("var.caught", type(e).__name__ + ": " + str(e))
+
+        async def flash_typo():
+            await devices.send("acme1", "flsh_led")
     """))
     result = Engine(str(path))
     result.project = load_project(path)
@@ -302,3 +311,12 @@ async def test_the_scripts_view_shows_the_sentence_and_the_traceback_keeps_the_d
     assert errors[0]["error"] == FOR_THE_PROGRAMMER
     assert PRIVATE in errors[0]["traceback"]
     assert errors[0]["traceback"].rstrip().endswith(f"RuntimeError: {FOR_THE_PROGRAMMER}")
+
+
+async def test_a_script_button_tells_the_room_what_a_direct_button_does(engine):
+    """A command the driver does not have reads the same at the panel whether
+    the button sends it or a script it calls does."""
+    pressed = await engine.handle_ui_event("press", "typo")
+    called = await engine.handle_ui_event("press", "typo_script")
+    assert called[0]["error"] == pressed[0]["error"]
+    assert called[0]["error"] == "Command 'flsh_led' not found on device 'acme1'"
