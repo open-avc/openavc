@@ -175,7 +175,6 @@ def world(tmp_path, monkeypatch):
     engine.devices.reload_driver = _reload
     engine.devices.get_devices_using_driver = _using
     engine.simulation.drivers_changed = _simulation
-    monkeypatch.setattr(routes, "_get_engine", lambda: engine)
     monkeypatch.setattr(driver_change, "_running_engine", lambda: engine)
 
     async def _announce(driver_id=None):
@@ -1109,21 +1108,22 @@ async def test_bundle_whose_orphan_retry_fails(world):
 @pytest.mark.asyncio
 async def test_uninstall_refuses_a_driver_devices_use(world):
     world.engine.project = SimpleNamespace(devices=[
-        SimpleNamespace(id="room_a", driver=DRIVER_ID),
-        SimpleNamespace(id="room_b", driver="other"),
-        SimpleNamespace(id="room_c", driver=DRIVER_ID),
+        SimpleNamespace(id="room_a", name="Room A", driver=DRIVER_ID),
+        SimpleNamespace(id="room_b", name="Room B", driver="other"),
+        SimpleNamespace(id="room_c", name="Room C", driver=DRIVER_ID),
     ])
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     refusal = await _refused(uninstall_driver(DRIVER_ID))
     assert (refusal.status_code, refusal.detail) == (
-        409, "Cannot uninstall: driver is in use by device(s): room_a, room_c",
+        409,
+        "2 devices use this driver: Room A, Room C. Open each one and choose another driver first.",
     )
     assert set(_tree(world.repo)) == {"acme_widget.avcdriver"}
 
 
 @pytest.mark.asyncio
 async def test_uninstall_with_a_project_no_device_of_which_uses_it(world):
-    world.engine.project = SimpleNamespace(devices=[SimpleNamespace(id="a", driver="other")])
+    world.engine.project = SimpleNamespace(devices=[SimpleNamespace(id="a", name="A", driver="other")])
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     result = await uninstall_driver(DRIVER_ID)
     assert result == {"status": "uninstalled", "driver_id": DRIVER_ID}

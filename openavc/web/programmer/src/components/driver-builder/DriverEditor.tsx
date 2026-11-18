@@ -49,6 +49,7 @@ import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
 import { parseApiError } from "../../api/errors";
 import { saveErrorText, type SaveRefusal } from "./saveRefusal";
+import { devicesOnDriver } from "../shared/driverInUse";
 import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 type TabId =
@@ -225,9 +226,7 @@ export function DriverEditor({
 
   // Devices in the current project that reference the loaded driver by its
   // original id. Used to warn the user that renaming will orphan them.
-  const devicesUsingDriver = originalId
-    ? (devices ?? []).filter((d) => d.driver === originalId)
-    : [];
+  const devicesUsingDriver = originalId ? devicesOnDriver(devices, originalId) : [];
   const idChanged = originalId !== null && draft.id !== originalId;
 
   const tabs: { id: TabId; label: string }[] = [
@@ -649,7 +648,7 @@ export function DriverEditor({
                 >
                   Renaming from <code>{originalId}</code> to <code>{draft.id || "?"}</code>.
                   {devicesUsingDriver.length > 0
-                    ? ` ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project reference the old id and will need to be reassigned (${devicesUsingDriver.map((d) => d.name || d.id).join(", ")}).`
+                    ? ` ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project reference the old id and will need to be reassigned (${devicesUsingDriver.map((d) => d.name).join(", ")}).`
                     : " No devices in the current project reference this driver."}
                 </div>
               ) : (

@@ -155,7 +155,6 @@ def cat(tmp_path, monkeypatch):
     engine.devices.retry_all_orphans = _retry
     engine.devices.reload_driver = _reload
     engine.devices.get_devices_using_driver = lambda driver_id: []
-    monkeypatch.setattr(routes, "_get_engine", lambda: engine)
 
     async def _announce(driver_id=None):
         events.append(("announce", driver_id))

@@ -171,7 +171,6 @@ def world(tmp_path: Path, monkeypatch):
         devices=devices, simulation=None, project=None, ws=SimpleNamespace(broadcast=_broadcast)
     )
     monkeypatch.setattr(driver_change, "_running_engine", lambda: engine)
-    monkeypatch.setattr(LIBRARY, "_get_engine", lambda: engine)
     monkeypatch.setattr(CODE_VIEW, "_get_engine", lambda: engine)
 
     async def _refresh() -> None:

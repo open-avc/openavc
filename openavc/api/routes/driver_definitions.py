@@ -41,7 +41,12 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, endpoint_policy
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes.drivers import admit_or_answer, claim_or_answer, definition_invalid
+from openavc.api.routes.drivers import (
+    admit_or_answer,
+    claim_or_answer,
+    definition_invalid,
+    in_use_or_answer,
+)
 from openavc.core.host_policy import HostCategory
 from openavc.drivers.driver_change import (
     DriverChange,
@@ -448,6 +453,7 @@ async def _delete_definition(driver_id: str, dirs: Any) -> dict:
             status_code=403,
             detail="Built-in drivers can't be deleted.",
         )
+    in_use_or_answer(driver_id)
 
     deleted = delete_driver_definition(driver_id, dirs)
     if not deleted:

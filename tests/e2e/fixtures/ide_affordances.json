@@ -34,7 +34,7 @@
     "BUTTON New Python driver",
     "BUTTON Copy driver ID",
     "BUTTON Export driver + companions as a .zip bundle",
-    "BUTTON Cannot delete: used by ctrl1",
+    "BUTTON Delete driver",
     "BUTTON Add files, a folder, or a .zip of a control",
     "BUTTON New custom control file",
     "CLICKABLE Scripts (0)",

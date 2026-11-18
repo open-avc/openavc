@@ -115,7 +115,6 @@ def lib(tmp_path, monkeypatch):
     engine.devices.retry_all_orphans = _none
     engine.devices.reload_driver = _none
     engine.devices.get_devices_using_driver = lambda driver_id: []
-    monkeypatch.setattr(routes, "_get_engine", lambda: engine)
     # And without its module: another test in the same process can leave
     # openavc_driver_acme_widget imported, which a refusal must not be blamed for.
     modules_before = {n: m for n, m in sys.modules.items() if "acme" in n}

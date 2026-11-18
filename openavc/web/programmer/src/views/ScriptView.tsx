@@ -6,6 +6,7 @@ import { ScriptFileTree } from "../components/scripts/ScriptFileTree";
 import { ScriptEditor, type RuntimeError } from "../components/scripts/ScriptEditor";
 import { ScriptConsole } from "../components/scripts/ScriptConsole";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { useCodeViewDriverDelete } from "../components/scripts/useCodeViewDriverDelete";
 import {
   SourceConflictDialog,
   reportSaveFailure,
@@ -701,36 +702,20 @@ export function ScriptView() {
     [selectedId, selectedType, scripts, load]
   );
 
-  const handleDeleteDriver = useCallback(
-    (id: string) => {
-      const driver = pythonDrivers.find((d) => d.id === id);
-      if (driver && driver.devices_using.length > 0) {
-        showError(`Cannot delete: driver is used by ${driver.devices_using.join(", ")}`);
-        return;
+  const driverDelete = useCodeViewDriverDelete({
+    pythonDrivers,
+    isDirty,
+    ask: setPendingConfirm,
+    onDeleted: async (id) => {
+      await loadPythonDrivers();
+      if (selectedId === id && selectedType === "driver") {
+        setSelectedId(null);
+        setSelectedType(null);
+        setSource("");
+        setOriginalSource("");
       }
-      setPendingConfirm({
-        title: "Delete Driver",
-        message: `Delete Python driver "${driver?.name || id}"? This will remove the driver file from driver_repo/.`,
-        confirmLabel: "Delete",
-        onConfirm: async () => {
-          setPendingConfirm(null);
-          try {
-            await api.deletePythonDriver(id);
-            await loadPythonDrivers();
-            if (selectedId === id && selectedType === "driver") {
-              setSelectedId(null);
-              setSelectedType(null);
-              setSource("");
-              setOriginalSource("");
-            }
-          } catch (e) {
-            showError(`Delete failed: ${parseApiError(e)}`);
-          }
-        },
-      });
     },
-    [selectedId, selectedType, pythonDrivers, loadPythonDrivers]
-  );
+  });
 
   // --- Template insertion ---
 
@@ -919,7 +904,7 @@ export function ScriptView() {
             onImportUiFiles={() => uiFileInputRef.current?.click()}
             onExportDriver={handleExportDriver}
             onDeleteScript={handleDeleteScript}
-            onDeleteDriver={handleDeleteDriver}
+            onDeleteDriver={driverDelete.request}
             onDeleteUiFile={handleDeleteUiFile}
             onDropUiFiles={(files) => { void handleUploadUiFiles(files); }}
           />
@@ -1040,6 +1025,8 @@ export function ScriptView() {
           )}
         </Panel>
       </PanelGroup>
+
+      {driverDelete.dialog}
 
       {pendingConfirm && (
         <ConfirmDialog

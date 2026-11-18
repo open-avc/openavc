@@ -87,13 +87,10 @@ def stub_engine_wiring(monkeypatch):
     fake_engine.simulation.drivers_changed = AsyncMock(return_value=False)
     fake_engine.ws.broadcast = AsyncMock(return_value=None)
     # Each module under test reads the engine through its own namespace: the
-    # uninstall's in-use check from routes.drivers, the delete from
-    # routes.python_drivers, and what follows every change from the
-    # driver-change step, so a single patch would leave one of them reaching
-    # for the real (unstarted) engine.
-    monkeypatch.setattr(
-        "openavc.api.routes.drivers._get_engine", lambda: fake_engine
-    )
+    # in-use check and what follows every change from the driver-change step,
+    # the Code view's listing and reload from routes.python_drivers, so a
+    # single patch would leave one of them reaching for the real (unstarted)
+    # engine.
     monkeypatch.setattr(
         "openavc.drivers.driver_change._running_engine", lambda: fake_engine
     )

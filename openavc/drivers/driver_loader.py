@@ -1152,11 +1152,11 @@ def _load_status(driver_id: str, filepath: Path) -> tuple[bool, str | None]:
 def _registered_from(driver_id: str, filepath: Path) -> bool:
     """Whether the class registered under ``driver_id`` was imported from
     the Python file ``filepath``."""
-    from openavc.drivers.python_modules import module_name
+    from openavc.drivers.python_modules import imported_from
     from openavc.drivers.registry import get_driver_class
 
     driver_class = get_driver_class(driver_id)
-    return driver_class is not None and driver_class.__module__ == module_name(filepath)
+    return driver_class is not None and imported_from(driver_class, filepath)
 
 
 def _ast_dict_to_simple(node: Any) -> dict[str, str | int | float | bool]:

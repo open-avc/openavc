@@ -177,7 +177,6 @@ def driver_repo(tmp_path, monkeypatch):
     monkeypatch.setattr("openavc.drivers.driver_change.register_driver", lambda cls: None)
     fake_engine = MagicMock()
     fake_engine.devices.retry_all_orphans = AsyncMock(return_value=[])
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: fake_engine)
     monkeypatch.setattr(
         "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),

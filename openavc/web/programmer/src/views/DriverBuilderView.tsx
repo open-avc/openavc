@@ -9,6 +9,8 @@ import { CommunityBrowser } from "../components/driver-builder/CommunityBrowser"
 import { InstalledDriversView } from "../components/driver-builder/InstalledDriversView";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { ChangedElsewhereDialog } from "../components/shared/ChangedElsewhereDialog";
+import { devicesOnDriver } from "../components/shared/driverInUse";
+import { useBuilderDelete } from "../components/driver-builder/useBuilderDelete";
 import { Modal } from "../components/shared/Modal";
 import { ClipboardCheck } from "lucide-react";
 import { useAuditStore } from "../store/auditStore";
@@ -41,13 +43,12 @@ export function DriverPanel() {
     newDriver,
     updateDraft,
     save,
-    deleteDriver,
     importDriver,
     exportDriver,
     duplicateDriver,
   } = useDriverBuilderStore();
 
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const builderDelete = useBuilderDelete();
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [pendingImport, setPendingImport] = useState<DriverDefinition | null>(null);
   const devices = useProjectStore((state) => state.project?.devices);
@@ -56,17 +57,6 @@ export function DriverPanel() {
   useEffect(() => {
     loadDefinitions();
   }, [loadDefinitions]);
-
-  const handleDelete = async (id: string) => {
-    setDeleteConfirm(id);
-  };
-
-  const confirmDelete = async () => {
-    if (deleteConfirm) {
-      await deleteDriver(deleteConfirm);
-      setDeleteConfirm(null);
-    }
-  };
 
   const handleImportClick = () => {
     useDriverBuilderStore.setState({ error: null });
@@ -93,7 +83,7 @@ export function DriverPanel() {
   };
   const importTarget = pendingImport && definitions.find((item) => item.id === pendingImport.id);
   const importReadOnly = importTarget?.source === "builtin";
-  const affectedDevices = (devices ?? []).filter((device) => device.driver === pendingImport?.id);
+  const affectedDevices = pendingImport ? devicesOnDriver(devices, pendingImport.id) : [];
 
   const handleImportFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -212,7 +202,7 @@ export function DriverPanel() {
             onImport={handleImportClick}
             onExport={handleExport}
             onDuplicate={duplicateDriver}
-            onDelete={handleDelete}
+            onDelete={builderDelete.request}
             onViewAsInstalled={(id) => {
               setInstalledDriverId(id);
               setViewTab("installed");
@@ -292,7 +282,7 @@ export function DriverPanel() {
               </p>
               {!importReadOnly && <p style={{ marginTop: "var(--space-md)" }}>
                 {affectedDevices.length > 0
-                  ? `The ${affectedDevices.length === 1 ? "device" : "devices"} using it in this project will reconnect: ${affectedDevices.map((device) => device.name || device.id).join(", ")}. Their IDs and connection settings stay the same.`
+                  ? `The ${affectedDevices.length === 1 ? "device" : "devices"} using it in this project will reconnect: ${affectedDevices.map((device) => device.name).join(", ")}. Their IDs and connection settings stay the same.`
                   : "No devices in this project use this driver."}
               </p>}
             </>
@@ -305,15 +295,7 @@ export function DriverPanel() {
         />
       )}
 
-      {deleteConfirm && (
-        <ConfirmDialog
-          title="Delete Driver"
-          message={`Are you sure you want to delete the driver "${deleteConfirm}"? This cannot be undone.`}
-          confirmLabel="Delete"
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteConfirm(null)}
-        />
-      )}
+      {builderDelete.dialogs}
 
       <BuilderChangedElsewhere />
     </div>

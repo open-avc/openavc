@@ -468,13 +468,8 @@ export function ScriptFileTree({
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onDeleteDriver(d.id); }}
-                        disabled={d.devices_using.length > 0}
-                        style={{
-                          ...deleteBtnStyle,
-                          opacity: d.devices_using.length > 0 ? 0.3 : 1,
-                          cursor: d.devices_using.length > 0 ? "not-allowed" : "pointer",
-                        }}
-                        title={d.devices_using.length > 0 ? `Cannot delete: used by ${d.devices_using.join(", ")}` : "Delete driver"}
+                        style={deleteBtnStyle}
+                        title="Delete driver"
                       >
                         <Trash2 size={14} />
                       </button>

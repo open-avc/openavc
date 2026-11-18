@@ -37,6 +37,7 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
 from openavc.drivers.driver_change import changed, file_revision, holding, revision
+from openavc.drivers.driver_in_use import project_devices_on
 from openavc.drivers.driver_loader import (
     driver_companions,
     driver_files_for,
@@ -104,10 +105,10 @@ async def list_python_drivers() -> dict:
 
     drivers = _list([DRIVER_REPO_DIR])
 
-    # Add devices_using info from device manager
-    engine = _get_engine()
+    # The project devices on each driver, as its delete is refused for
     for driver in drivers:
-        driver["devices_using"] = engine.devices.get_devices_using_driver(driver["id"])
+        devices = project_devices_on({driver["id"]})
+        driver["devices_using"] = [device.id for device in devices]
 
     return {"drivers": drivers}
 
@@ -372,15 +373,9 @@ async def _delete_python_driver(driver_id: str) -> dict:
 
     if not files:
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
+    from openavc.api.routes.drivers import in_use_or_answer
 
-    # Check if devices are using this driver
-    engine = _get_engine()
-    using = engine.devices.get_devices_using_driver(driver_id)
-    if using:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot delete driver '{driver_id}': used by devices: {', '.join(using)}",
-        )
+    in_use_or_answer(driver_id, files)
 
     # Remove each file + its sibling companions (discovery / sim), so deleting
     # a driver that was imported or installed as a bundle doesn't leave orphans.

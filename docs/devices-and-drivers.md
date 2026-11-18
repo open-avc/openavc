@@ -293,7 +293,7 @@ The left panel lists all registered drivers. Click a driver to see its details. 
 - **Open in Builder** — open a YAML driver in the Driver Builder for editing.
 - **Customize a Copy** — built-in drivers are read-only; this clones one into your library so you can edit the copy.
 - **Open in Code Editor** — open a Python driver in the script editor.
-- **Uninstall** — remove the driver from the system. The button is disabled while a device in the current project uses it; the detail panel lists those devices so you know what to move first.
+- **Uninstall** — remove the driver from the system. The button is disabled while a device in the current project uses it; the detail panel lists those devices, each with **Open Device**, so you can move them to another driver first.
 
 A driver with a newer version in the community library shows **Update to v&lt;version&gt;** on its row, and the top of the list counts the updates available. See [Updating Drivers](#updating-drivers).
 
@@ -368,7 +368,7 @@ To remove a driver you no longer need:
 2. Click the driver in the left panel
 3. Click **Uninstall** in the detail header, then confirm
 
-You cannot uninstall a driver while a device in the project is using it. The Uninstall button is disabled in that case, and the detail panel lists the devices that reference the driver. Remove or reassign those devices first, then uninstall. You can always reinstall from Browse Community.
+You cannot uninstall or delete a driver while a device in the project uses it. The Uninstall button is disabled in that case, and the detail panel lists the devices that use the driver, each with **Open Device**. Open each one and choose another driver in **Edit Device** (or delete the device), then uninstall. The delete buttons in the Driver Builder and the Code view show the same list instead of deleting the driver. You can always reinstall from Browse Community.
 
 ### Drivers a Project Needs
 

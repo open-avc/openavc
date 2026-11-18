@@ -400,8 +400,8 @@ def doors(tmp_path, isolated, monkeypatch):
     async def _changed(*driver_ids, gone=()):
         followed.append((driver_ids, tuple(gone)))
 
+    monkeypatch.setattr(python_routes, "_get_engine", lambda: engine)
     for routes in (drivers_routes, python_routes):
-        monkeypatch.setattr(routes, "_get_engine", lambda: engine)
         monkeypatch.setattr(routes, "changed", _changed)
     return SimpleNamespace(built_in=built_in, repo=repo, followed=followed)
 

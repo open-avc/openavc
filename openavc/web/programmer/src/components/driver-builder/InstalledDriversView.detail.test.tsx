@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 // What shipped broken: the panel read config_schema, commands and
 // state_variables off the driver and nothing else, so a driver whose real
@@ -10,6 +10,7 @@ import { render, screen } from "@testing-library/react";
 
 import { DriverDetailPanel } from "./InstalledDriversView";
 import type { DriverInfo } from "../../api/types";
+import { useNavigationStore } from "../../store/navigationStore";
 
 const DRIVER: DriverInfo = {
   id: "acme_amp",
@@ -158,5 +159,36 @@ describe("Driver detail: the surface a driver actually declares", () => {
     expect(screen.queryByText("Device Settings")).toBeNull();
     expect(screen.queryByText("Channels")).toBeNull();
     expect(screen.getByText("Firmware Version")).toBeTruthy();
+  });
+});
+
+describe("Driver detail: a driver devices in the project use", () => {
+  it("keeps Uninstall off and offers to open each device to choose another driver", () => {
+    useNavigationStore.setState({ activeView: "devices", pendingFocus: null });
+    render(
+      <DriverDetailPanel
+        driver={DRIVER}
+        installed={null}
+        isPython={false}
+        isBuiltin={false}
+        canUninstall
+        devicesUsingDriver={[{ id: "room_a", name: "Room A Amp" }]}
+        confirmUninstall={false}
+        uninstalling={false}
+        uninstallError={null}
+        canOpenInBuilder={false}
+        onRequestUninstall={() => {}}
+        onConfirmUninstall={() => {}}
+        onCancelUninstall={() => {}}
+        onDismissUninstallError={() => {}}
+      />,
+    );
+
+    expect((screen.getByRole("button", { name: /Uninstall/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("driver-in-use").textContent).toContain("Room A Amp");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Device" }));
+
+    expect(useNavigationStore.getState().pendingFocus).toEqual({ type: "device", id: "room_a" });
   });
 });

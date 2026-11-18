@@ -366,10 +366,6 @@ async def test_uninstall_drops_companion_alongside_yaml(driver_repo, monkeypatch
     # Stub the engine — uninstall checks for devices using the driver.
     fake_engine = MagicMock()
     fake_engine.project = None
-    monkeypatch.setattr(
-        "openavc.api.routes.drivers._get_engine",
-        lambda: fake_engine,
-    )
 
     with patch(
         "openavc.api.discovery.refresh_all_device_matches",
@@ -395,10 +391,6 @@ async def test_uninstall_leaves_unrelated_py_files_alone(driver_repo, monkeypatc
 
     fake_engine = MagicMock()
     fake_engine.project = None
-    monkeypatch.setattr(
-        "openavc.api.routes.drivers._get_engine",
-        lambda: fake_engine,
-    )
 
     with patch(
         "openavc.api.discovery.refresh_all_device_matches",

@@ -31,13 +31,13 @@ get_installed_drivers answers too.
 """
 
 import re
+from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 
-from openavc.api._engine import _get_engine
 from openavc.api.errors import StructuredApiError
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import CommunityDriverInstallRequest
@@ -63,6 +63,7 @@ from openavc.drivers.driver_change import (
     floor_refusal,
     holding,
 )
+from openavc.drivers.driver_in_use import DriverInUse, refuse_while_in_use
 # Re-exported for the doors that do not call ``changed`` yet (module docstring).
 from openavc.drivers.driver_change import announce as announce_drivers_changed  # noqa: F401
 from openavc.drivers.driver_loader import (
@@ -135,6 +136,21 @@ def claim_or_answer(driver_id: str) -> None:
         claim(driver_id)
     except DriverRefused as e:
         raise _refusal_answer(e)
+
+
+def in_use_or_answer(driver_id: str, removing: Iterable[Path] = ()) -> None:
+    """``driver_in_use.refuse_while_in_use`` as this API answers it, at every
+    door that takes a driver away (the uninstall here, the Driver Builder's
+    delete, the Code view's delete): the 409 naming the project devices on the
+    driver, with ``code`` ``driver_in_use`` and the ``devices`` (``id`` and
+    ``name``) beside it, which the IDE turns into its in-use box."""
+    try:
+        refuse_while_in_use(driver_id, removing)
+    except DriverInUse as e:
+        raise StructuredApiError(
+            e.status_code, e.detail, code="driver_in_use",
+            devices=[device.answer() for device in e.devices],
+        ) from e
 
 
 def _refusal_answer(refusal: DriverRefused) -> HTTPException:
@@ -709,19 +725,6 @@ async def list_installed_community_drivers() -> dict[str, Any]:
     return {"drivers": installed_drivers(_get_driver_repo_dir())}
 
 
-def _refuse_while_in_use(driver_id: str) -> None:
-    """A driver a project device uses is never uninstalled; the 409 names them."""
-    engine = _get_engine()
-    if not engine.project:
-        return
-    using_devices = [d.id for d in engine.project.devices if d.driver == driver_id]
-    if using_devices:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot uninstall: driver is in use by device(s): {', '.join(using_devices)}",
-        )
-
-
 def _remove_installed_file(deleted_file: Path, driver_repo: Path) -> None:
     """Remove one installed driver file and the companions that travel with it.
 
@@ -748,8 +751,6 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     async with holding(driver_id):
         require_mutable_driver(driver_id)
 
-        _refuse_while_in_use(driver_id)
-
         driver_repo = _get_driver_repo_dir()
         if not driver_repo.exists():
             raise HTTPException(status_code=404, detail="Driver not found")
@@ -762,6 +763,7 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
         )
         if not driver_files:
             raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
+        in_use_or_answer(driver_id, driver_files)
 
         for deleted_file in driver_files:
             _remove_installed_file(deleted_file, driver_repo)

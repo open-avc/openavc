@@ -70,6 +70,11 @@ def module_name(filepath: Path) -> str:
     return f"openavc_driver_{filepath.stem}"
 
 
+def imported_from(driver_class: type, filepath: Path) -> bool:
+    """Whether ``driver_class`` was imported from the driver file ``filepath``."""
+    return driver_class.__module__ == module_name(filepath)
+
+
 def is_imported(filepath: Path) -> bool:
     """Whether a driver file's module is in ``sys.modules``."""
     return module_name(filepath) in sys.modules

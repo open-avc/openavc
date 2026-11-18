@@ -3,6 +3,7 @@ import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } f
 import * as api from "../api/restClient";
 import { apiErrorList, changedElsewhereRevision, parseApiError } from "../api/errors";
 import { showError } from "./toastStore";
+import { inUseDevices, type DeviceOnDriver } from "../components/shared/driverInUse";
 import type { SaveRefusal } from "../components/driver-builder/saveRefusal";
 import {
   reconcileAfterSave,
@@ -121,7 +122,9 @@ interface DriverBuilderState {
   saveMineOverIt: () => Promise<void>;
   /** Close the choice and go on editing; the next save asks again. */
   keepEditing: () => void;
-  deleteDriver: (id: string) => Promise<void>;
+  /** Delete a driver definition; the devices that use it when the server
+   *  refused it as in use (the Builder shows them in the in-use box), else null. */
+  deleteDriver: (id: string) => Promise<DeviceOnDriver[] | null>;
   importDriver: (definition: DriverDefinition, updateExisting?: boolean) => Promise<void>;
   exportDriver: (id: string) => void;
   duplicateDriver: (id: string) => Promise<void>;
@@ -347,8 +350,11 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
           });
         }
         await get().loadDefinitions();
+        return null;
       } catch (e) {
-        set({ error: parseApiError(e) });
+        const inUse = inUseDevices(e);
+        if (!inUse) set({ error: parseApiError(e) });
+        return inUse;
       }
     },
 

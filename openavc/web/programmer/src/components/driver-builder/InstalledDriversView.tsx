@@ -6,6 +6,8 @@ import { useNavigationStore } from "../../store/navigationStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { parseApiError } from "../../api/errors";
 import { InlineError } from "../shared/InlineError";
+import { DriverInUseNotice } from "../shared/DriverInUseNotice";
+import { devicesOnDriver, openDevice, type DeviceOnDriver } from "../shared/driverInUse";
 import {
   driverUpdates,
   installableCount,
@@ -140,9 +142,7 @@ export function InstalledDriversView({
   const isBuiltin = selectedDefinition?.source === "builtin"
     || (!selectedInstalled && !!selectedDefinition);
 
-  const devicesUsingDriver = selectedDriver && devices
-    ? devices.filter((d) => d.driver === selectedDriver.id)
-    : [];
+  const devicesUsingDriver = selectedDriver ? devicesOnDriver(devices, selectedDriver.id) : [];
 
   const handleOpenInCodeEditor = (driverId: string, filename?: string) => {
     navigateTo("scripts", {
@@ -302,7 +302,7 @@ export function InstalledDriversView({
               isPython={isPython}
               isBuiltin={isBuiltin}
               canUninstall={canUninstall}
-              devicesUsingDriver={devicesUsingDriver.map((d) => d.name || d.id)}
+              devicesUsingDriver={devicesUsingDriver}
               confirmUninstall={confirmUninstall}
               uninstalling={uninstalling}
               uninstallError={uninstallError}
@@ -387,7 +387,7 @@ export function DriverDetailPanel({
   isPython: boolean;
   isBuiltin: boolean;
   canUninstall: boolean;
-  devicesUsingDriver: string[];
+  devicesUsingDriver: DeviceOnDriver[];
   confirmUninstall: boolean;
   uninstalling: boolean;
   uninstallError: string | null;
@@ -498,7 +498,7 @@ export function DriverDetailPanel({
                 disabled={inUse}
                 title={
                   inUse
-                    ? `In use by ${devicesUsingDriver.length} device(s). Remove or reassign them before uninstalling.`
+                    ? "Devices use this driver. Choose another driver for each one first."
                     : "Removes the driver file. You can reinstall from Browse Community."
                 }
                 style={{
@@ -575,28 +575,12 @@ export function DriverDetailPanel({
           style={{ marginTop: "var(--space-sm)" }}
         />
         {canUninstall && inUse && !uninstallError && (
-          <div
-            style={{
-              marginTop: "var(--space-sm)",
-              padding: "var(--space-sm) var(--space-md)",
-              background: "rgba(244,67,54,0.08)",
-              borderRadius: "var(--radius)",
-              fontSize: 12,
-              color: "var(--text-secondary)",
-            }}
-          >
-            <strong>In use:</strong> {devicesUsingDriver.length} device(s) reference this driver:
-            <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
-              {devicesUsingDriver.slice(0, 5).map((name, i) => (
-                <li key={i}>{name}</li>
-              ))}
-              {devicesUsingDriver.length > 5 && (
-                <li>...and {devicesUsingDriver.length - 5} more</li>
-              )}
-            </ul>
-            <div style={{ marginTop: 4 }}>
-              Remove or reassign these devices before uninstalling.
-            </div>
+          <div style={{ marginTop: "var(--space-sm)" }}>
+            <DriverInUseNotice
+              devices={devicesUsingDriver}
+              action="uninstall"
+              onOpenDevice={openDevice}
+            />
           </div>
         )}
       </div>
