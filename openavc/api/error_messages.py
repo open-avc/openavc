@@ -2,7 +2,10 @@
 User-friendly error message mapping.
 
 Maps common Python exceptions to actionable messages that AV integrators
-can understand and act on, instead of raw tracebacks. THE words for what a
+can understand and act on, instead of raw tracebacks. THE words for a device
+command that did not run (``describe_command_failure``): every door that
+sends one answers from them, a script's ``devices.send`` through
+``script_command_error``. THE words for what a
 project change did (``describe_change_failure``, ``describe_not_running``):
 every door that changes the project answers from them. THE words for a press
 whose own handling failed (``describe_press_failure``): the WebSocket door
@@ -12,6 +15,7 @@ and the cloud AI's simulated press answer from it.
 from __future__ import annotations
 
 import errno
+import functools
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Iterable
@@ -82,8 +86,9 @@ def describe_command_failure(
     """What every door that sent a device command says when it did not run.
 
     One rule for Send Command, a device action, a panel press, a control's
-    script call, a macro or group step, the WebSocket ``command`` frame, a peer
-    system, the cloud and the cloud AI. The exceptions the platform raises for
+    script call, a script's ``devices.send`` (``script_command_error``), a
+    macro or group step, the WebSocket ``command`` frame, a peer system, the
+    cloud and the cloud AI. The exceptions the platform raises for
     a command, and a ``CommandRefusedError`` (the device saying no, in a
     sentence written for the reader), keep their own sentence. Anything else a
     driver raises, a ``ValueError`` or ``KeyError`` included, was not written
@@ -98,6 +103,91 @@ def describe_command_failure(
         logged_as=f"Command '{command}'",
         doing=lambda: f"run {_declared_label(driver, 'commands', command, 'the command')}",
     )
+
+
+def script_command_error(
+    exc: Exception, device_id: str, command: str, *,
+    state: StateStore, project: ProjectConfig | None = None, driver: Any = None,
+) -> Exception:
+    """The exception a script's ``devices.send`` raises for a command that did
+    not run: the Programmer's half of ``describe_command_failure``, since a
+    script's reader is whoever wrote it, as an exception of the type that was
+    raised, so a script's ``except TimeoutError`` or ``except ConnectionError``
+    catches it as before.
+
+    ``exc`` itself when its text already is the sentence (the platform's own
+    refusals, a device's refusal), so nothing it carries changes. Otherwise a
+    new exception of its class holding the sentence and everything ``exc``
+    carried; the caller raises it from ``exc``, so the traceback keeps the
+    driver's text. A class whose text is not its argument (``KeyError`` quotes
+    it, a driver's class may write its own) is given the sentence through a
+    subclass of the same name, which the same ``except`` catches. A class that
+    cannot be built from one sentence is answered with ``exc`` as it was.
+
+    Either way the answer carries the whole failure (``carried_command_failure``),
+    so a control that called the script words it for the room without
+    describing it, and logging it, a second time.
+    """
+    failure = describe_command_failure(
+        exc, device_id, command, state=state, project=project, driver=driver,
+    )
+    worded = exc if str(exc) == failure.programmer else _carrying(exc, failure.programmer)
+    try:
+        worded.command_failure = failure
+    except (AttributeError, TypeError):
+        # A class that takes no attributes: the control's script call words
+        # it from the exception instead.
+        pass
+    return worded
+
+
+def carried_command_failure(exc: BaseException | None) -> CommandFailure | None:
+    """The failure ``script_command_error`` built for ``exc``, when it did."""
+    failure = getattr(exc, "command_failure", None)
+    return failure if isinstance(failure, CommandFailure) else None
+
+
+def _carrying(exc: Exception, sentence: str) -> Exception:
+    """``exc``'s class, or a subclass of the same name, holding ``sentence``
+    and ``exc``'s attributes; ``exc`` itself when neither can be built."""
+    try:
+        worded = type(exc).__new__(type(exc), sentence)
+        worded.__dict__.update(vars(exc))
+    except Exception:  # Catch-all: a driver's class may refuse to be built so
+        return exc
+    if _reads(worded, sentence):
+        return worded
+    sentence_class = _sentence_class(type(exc))
+    if sentence_class is None:
+        return exc
+    worded = sentence_class.__new__(sentence_class, sentence)
+    worded.__dict__.update(vars(exc))
+    return worded
+
+
+def _reads(exc: Exception, sentence: str) -> bool:
+    try:
+        return str(exc) == sentence
+    except Exception:  # Catch-all: a driver's __str__ may raise anything
+        return False
+
+
+@functools.lru_cache(maxsize=32)
+def _sentence_class(cls: type[Exception]) -> type[Exception] | None:
+    """A subclass of ``cls`` whose text is its argument, named as ``cls`` is so
+    a traceback reads the same; None for a class that takes no subclass."""
+    try:
+        return type(cls.__name__, (cls,), {
+            "__str__": _first_argument,
+            "__module__": cls.__module__,
+            "__qualname__": cls.__qualname__,
+        })
+    except TypeError:
+        return None
+
+
+def _first_argument(self: BaseException) -> str:
+    return str(self.args[0]) if self.args else ""
 
 
 def describe_setting_failure(

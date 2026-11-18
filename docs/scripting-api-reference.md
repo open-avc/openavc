@@ -100,7 +100,7 @@ Control connected AV equipment.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `await devices.send(device_id, command, params=None)` | `Any` | Send a command to a device. `params` is a dict or `None`. |
+| `await devices.send(device_id, command, params=None)` | `Any` | Send a command to a device. `params` is a dict or `None`. A command that does not run raises with the sentence Send Command shows for it; an offline device raises `ConnectionError`. |
 | `devices.list()` | `list[dict]` | List all devices with connection status. |
 
 ```python

@@ -217,6 +217,15 @@ await devices.send("dsp1", "set_fader", {"channel": "program", "level": -12.0})
 all_devices = devices.list()
 ```
 
+When a command does not run, `devices.send` raises with the sentence Send Command shows for the same failure, such as "Main Projector couldn't run Power On. The Device Log on its page has the details." A device that is offline raises `ConnectionError`, so a script can handle that case on its own:
+
+```python
+try:
+    await devices.send("projector_main", "power_on")
+except ConnectionError:
+    state.set("var.projector_status", "Offline")
+```
+
 ### state (State Store)
 
 ```python

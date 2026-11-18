@@ -648,17 +648,25 @@ class UIEventRuntime:
         is standing at the panel; it is still on the record, in the log, and in
         the ``script.error`` event the IDE shows.
 
-        A command the function sent that the driver failed is marked with its
-        device and command by the device manager (``failed_command``), so it
-        reads as a press on that command does. A refusal the device manager
-        raised before sending carries only the device's id.
+        A command the function sent through ``devices.send`` raises with its
+        whole failure already worded (``carried_command_failure``), so the
+        room gets that failure's half and the device's log is not written
+        twice. Otherwise a command the driver failed is marked with its device
+        and command by the device manager (``failed_command``), so it reads as
+        a press on that command does, and a refusal the device manager raised
+        before sending carries only the device's id.
 
         Anything else -- a name that does not exist, two scripts defining it,
         arguments that do not fit, a mistake inside the function, the author's
         own ``PanelMessage`` -- keeps the sentence ``ScriptCallError`` already
         carries, because there is no device in it to name.
         """
+        from openavc.api.error_messages import carried_command_failure
+
         cause = exc.__cause__
+        carried = carried_command_failure(cause)
+        if carried is not None:
+            return carried.panel
         sent = failed_command(cause)
         if sent is not None:
             return self._command_error(sent[0], sent[1], cause)

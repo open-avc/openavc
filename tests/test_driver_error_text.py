@@ -441,7 +441,12 @@ async def test_script_error_reaches_the_programmer_and_no_panel(engine, sockets)
     errors = programmer.frames("script.error")
     assert len(errors) == 1
     assert errors[0]["handler"] == "flash"
-    assert PRIVATE in errors[0]["error"]
+    # The sentence Send Command answers with; the driver's own text is the
+    # Programmer's too, in the traceback beneath it.
+    assert errors[0]["error"] == (
+        "Lobby Widget couldn't run Flash LED. The Device Log on its page has the details."
+    )
+    assert PRIVATE in errors[0]["traceback"]
     assert "Traceback" in errors[0]["traceback"]
 
 

@@ -278,9 +278,25 @@ class _DeviceProxy:
     async def send(
         self, device_id: str, command: str, params: dict[str, Any] | None = None
     ) -> Any:
-        if self._manager is None:
+        """Send a device command. A command that did not run raises in the
+        words Send Command answers with, as the type that was raised
+        (``error_messages.script_command_error``)."""
+        manager = self._manager
+        if manager is None:
             raise RuntimeError("Script API not configured — devices proxy not bound")
-        return await self._manager.send_command(device_id, command, params)
+        try:
+            return await manager.send_command(device_id, command, params)
+        except Exception as exc:
+            # Deferred, as every core door into the API's wording is.
+            from openavc.api.error_messages import script_command_error
+
+            worded = script_command_error(
+                exc, device_id, command, state=manager.state,
+                driver=manager.get_driver(device_id),
+            )
+            if worded is exc:
+                raise
+            raise worded from exc
 
     @_leashed
     def list(self) -> list[dict[str, Any]]:
