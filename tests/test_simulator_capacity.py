@@ -169,9 +169,12 @@ async def test_the_device_takes_one_message_per_process_ms(echo):
         while b"\r" in buf:
             _, buf = buf.split(b"\r", 1)
             arrived.append(loop.time() - start)
-    # The first is taken at once, each later one 50 ms after the one before.
+    # The first is taken at once, each later one 50 ms after the one before,
+    # so the k-th answer cannot be read before k * 50 ms. Measured from the
+    # start rather than between answers: a reader the test machine runs late
+    # reads two answers at once, which a gap between them would count as none.
     assert arrived[0] < 0.04
-    assert all(b - a >= 0.045 for a, b in zip(arrived, arrived[1:]))
+    assert all(at >= k * 0.045 for k, at in enumerate(arrived))
 
 
 async def test_silence_lasts_until_the_connection_closes(echo):
