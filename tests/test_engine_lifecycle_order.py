@@ -57,12 +57,12 @@ def acme_driver():
     unregister_driver("acme_widget_lifecycle")
 
 
-def _project(tmp_path, *, devices=(), plugins=None, scripts=()) -> str:
+def _project(tmp_path, *, devices=(), plugins=None, scripts=(), variables=None, macros=None) -> str:
     project = {
         "version": "0.16.0",
         "project": {"id": "p", "name": "Lifecycle"},
-        "variables": [{"id": "v", "type": "string", "default": ""}],
-        "macros": [{"id": "m", "name": "M", "steps": []}],
+        "variables": variables or [{"id": "v", "type": "string", "default": ""}],
+        "macros": macros or [{"id": "m", "name": "M", "steps": []}],
         "devices": [
             {"id": d, "driver": "acme_widget_lifecycle", "name": d, "config": {"host": "10.0.0.1"}}
             for d in devices
@@ -340,6 +340,7 @@ async def test_stop_tears_down_in_order(tmp_path, acme_driver, no_update_checks)
     eng.isc = fake("isc")
     _spy(order, eng, "_stop_panel_software", "panel software")
     _spy(order, eng.learned_config, "stop", "learned config")
+    _spy(order, eng, "_flush_persister", "persister flush")
     _spy(order, eng.persister, "stop", "persister")
     _spy(order, eng.triggers, "stop", "triggers")
     _spy(order, eng.scripts, "unload_all", "scripts")
@@ -364,10 +365,10 @@ async def test_stop_tears_down_in_order(tmp_path, acme_driver, no_update_checks)
     assert subscribed > 0
     assert eng._event_sub_ids == [] and eng._state_sub_ids == []
     assert order == [
-        "update manager", "panel software", "learned config", "persister",
+        "update manager", "panel software", "learned config", "persister flush",
         "system.stopping", "triggers", "cloud", "mdns", "isc", "scripts",
-        "plugins", "state flush", "macros", "command runs", "file staging",
-        "devices", "simulation", "pending events",
+        "plugins", "state flush", "macros", "persister", "command runs",
+        "file staging", "devices", "simulation", "pending events",
     ]
     assert eng.cloud_agent is None and eng.mdns_advertiser is None and eng.isc is None
     assert eng.state.get("system.started") is False
@@ -721,6 +722,86 @@ async def test_after_a_stop_state_changes_no_longer_reach_the_websocket_hub(tmp_
     pushed.clear()
     eng.state.set("var.v", "after", source="ui")
     assert pushed == []
+
+
+# ===========================================================================
+# persistent variables: what the stop saves
+# ===========================================================================
+
+
+_SAVED_VARIABLE = [{"id": "v", "type": "string", "default": "", "persist": True}]
+
+
+def _saved(tmp_path) -> dict:
+    path = tmp_path / "state.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _sets_v_on(event_pattern: str, value: str) -> list[dict]:
+    """A macro that sets var.v, fired by an event trigger on ``event_pattern``."""
+    return [{
+        "id": "m", "name": "M",
+        "steps": [{"action": "state.set", "key": "var.v", "value": value}],
+        "triggers": [{"id": "t", "type": "event", "event_pattern": event_pattern}],
+    }]
+
+
+@pytest.mark.asyncio
+async def test_a_variable_a_system_stopping_trigger_sets_is_saved_by_the_stop(
+        tmp_path, no_update_checks):
+    eng = Engine(_project(
+        tmp_path, variables=_SAVED_VARIABLE,
+        macros=_sets_v_on("system.stopping", "set at the stop"),
+    ))
+    _quiet_services(eng, [])
+    await eng.start()
+    await eng.stop()
+    # The trigger ran its macro, and the stop saved what it set.
+    assert eng.state.get("var.v") == "set at the stop"
+    assert _saved(tmp_path).get("var.v") == "set at the stop"
+
+
+@pytest.mark.asyncio
+async def test_a_variable_a_script_sets_at_system_stopping_is_saved_by_the_stop(
+        tmp_path, no_update_checks):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "on_stop.py").write_text(
+        "from openavc import on_event, state\n"
+        "\n"
+        "@on_event(\"system.stopping\")\n"
+        "def remember(event):\n"
+        "    state.set(\"var.v\", \"set by a script\")\n",
+        encoding="utf-8",
+    )
+    eng = Engine(_project(
+        tmp_path, variables=_SAVED_VARIABLE,
+        scripts=[{"id": "on_stop", "file": "on_stop.py"}],
+    ))
+    _quiet_services(eng, [])
+    await eng.start()
+    await eng.stop()
+    assert eng.state.get("var.v") == "set by a script"
+    assert _saved(tmp_path).get("var.v") == "set by a script"
+
+
+@pytest.mark.asyncio
+async def test_what_was_set_before_the_stop_is_written_before_any_stage_can_hang(
+        tmp_path, no_update_checks):
+    eng = Engine(_project(tmp_path, variables=_SAVED_VARIABLE))
+    _quiet_services(eng, [])
+    await eng.start()
+    # Set inside the persister's one-second wait, so only the stop writes it.
+    eng.state.set("var.v", "set before the stop", source="ui")
+    on_disk: list = []
+    real_stop = eng.triggers.stop
+
+    async def triggers_stop():
+        on_disk.append(_saved(tmp_path).get("var.v"))
+        await real_stop()
+
+    eng.triggers.stop = triggers_stop
+    await eng.stop()
+    assert on_disk == ["set before the stop"]
 
 
 # ===========================================================================

@@ -13,8 +13,12 @@ devices and variables before scripts (scripts subscribe to ``var.*`` /
 ``device.*`` keys at import), and starts the triggers only after
 ``system.started``, so startup triggers fire. A stop ends everything that
 can fire a macro, then cancels the macros, then disconnects the devices they
-command. ``_reconcile`` (core/project_reconcile.py) shares these orderings, so
-a change to one is checked against the other.
+command. THE point where a stop saves the persistent variables is between
+those last two, once nothing that can set one is left (a "System Stopping"
+trigger's macro, a script's or a plugin's stop); what was set before the stop
+is written at its start, before any stage can hang. ``_reconcile``
+(core/project_reconcile.py) shares these orderings, so a change to one is
+checked against the other.
 
 A part of the start that fails is named in one warning; it never stops the
 rest of the start. The driver library's load is one of them: a start whose
@@ -573,8 +577,9 @@ class EngineLifecycleMixin:
         await run.run("learned config", self.learned_config.stop)
         # Unsubscribe all event/state handlers to prevent leaks on reload
         await run.run("the engine's subscriptions", self._drop_subscriptions)
-        # Flush and stop state persister
-        await run.run("the state persister", self._stop_persister)
+        # What was set before the stop is written now, before any stage can
+        # hang; the persister keeps watching until the macros are done.
+        await run.run("the variables set before the stop", self._flush_persister)
         await run.run("system.stopping", lambda: self.events.emit("system.stopping"))
         await run.run("the triggers", self.triggers.stop)
         await run.run("the cloud agent", self._stop_cloud_agent)
@@ -596,6 +601,10 @@ class EngineLifecycleMixin:
         # would error its remaining steps into a half-stopped engine. Late on
         # purpose: nothing that could restart one is still running.
         await run.run("the macros", self.macros.cancel_all)
+        # Nothing that can set a variable is left (a "System Stopping"
+        # trigger's macro, a script's or a plugin's stop): save the
+        # persistent ones and stop watching, before the devices let go.
+        await run.run("the state persister", self._stop_persister)
         # Stop file commands still running, then delete every staged file.
         await run.run("the file commands", self.command_runs.stop)
         await run.run("the staged files", self.file_staging.stop)
@@ -612,6 +621,10 @@ class EngineLifecycleMixin:
 
     def _mark_stopped(self) -> None:
         self.state.set("system.started", False, source="system")
+
+    def _flush_persister(self) -> None:
+        if self.persister:
+            self.persister.flush()
 
     def _stop_persister(self) -> None:
         if self.persister:
