@@ -289,89 +289,62 @@ class LearnedConfig:
         waiting = self._waiting.get(device_id)
         return waiting[1] if waiting and waiting[0] is driver else {}
 
-    def _done_waiting(self, device_id: str, driver: Any, delta: dict[str, Any]) -> None:
-        """Forget what ``delta`` queued, unless a later report queued another
-        value for the same field since."""
-        waiting = self._waiting.get(device_id)
-        if not waiting or waiting[0] is not driver:
-            return
-        for field, value in delta.items():
-            if field in waiting[1] and waiting[1][field] is value:
-                del waiting[1][field]
-        if not waiting[1]:
-            self._waiting.pop(device_id, None)
-
     def _save(self, device_id: str, driver: Any, schema: dict[str, Any], delta: dict[str, Any]) -> None:
         """Queue ``delta`` for the file, taken by the running device once the
-        file holds it."""
-        engine = self._engine
-        project_id = engine.project.project.id
-        written: list[bool] = []
+        file holds it (``_Report``)."""
         waiting = self._waiting.get(device_id)
         if not waiting or waiting[0] is not driver:
             waiting = self._waiting[device_id] = (driver, {})
         waiting[1].update(delta)
+        labels = {field: (schema.get(field) or {}).get("label") or field for field in delta}
+        _Report(self, device_id, driver, delta, labels).queue()
 
-        def still_current() -> bool:
-            return (engine.project is not None
-                    and engine.project.project.id == project_id
-                    and engine.devices.get_driver(device_id) is driver)
+    def _done_waiting(self, report: "_Report") -> None:
+        """Forget what ``report`` queued, unless a later report queued another
+        value for the same field since."""
+        waiting = self._waiting.get(report.device_id)
+        if not waiting or waiting[0] is not report.driver:
+            return
+        queued = waiting[1]
+        for field, value in report.delta.items():
+            if queued.get(field) is value:
+                del queued[field]
+        if not queued:
+            self._waiting.pop(report.device_id, None)
 
-        def mutate(project: Any) -> None:
-            # A queued report belongs to the device that produced it, not a
-            # replacement with the same project device ID.
-            if not still_current():
-                return
-            if apply_config_delta(project, device_id, delta):
-                written.append(True)
-
-        def take_live() -> None:
-            # The file holds it: the running device takes it.
-            if not written or not still_current():
-                return
-            engine.take_device_settings(device_id, delta)
-            for field, value in delta.items():
-                label = (schema.get(field) or {}).get("label") or field
-                log.info("[%s] %s set to %s, as the device reports", device_id, label, value)
-
-        def on_error() -> None:
-            self._done_waiting(device_id, driver, delta)
-            if not written or not still_current():
-                return
-            # The device still runs as the file holds it, and identical state
-            # reports do not emit another state change. Retry the save
-            # independently, with one bounded timer per device.
-            if not self._active or not engine._running:
-                return
-            old_handle = self._retry_handles.pop(device_id, None)
-            if old_handle:
-                old_handle.cancel()
-            delay = self._retry_delays.get(device_id, 1.0)
-            self._retry_delays[device_id] = min(delay * 2, 30.0)
-
-            def retry() -> None:
-                self._retry_handles.pop(device_id, None)
-                if self._active and engine._running and still_current():
-                    if self.evaluate(device_id):
-                        return
-                self._retry_delays.pop(device_id, None)
-
-            self._retry_handles[device_id] = asyncio.get_running_loop().call_later(delay, retry)
-
-        def on_saved() -> None:
-            self._done_waiting(device_id, driver, delta)
-            if not written or not self._active or not still_current():
-                return
-            handle = self._retry_handles.pop(device_id, None)
-            if handle:
-                handle.cancel()
-            self._retry_delays.pop(device_id, None)
-            if roster_fields(driver) & set(delta):
-                self._refresh_rosters(device_id, driver)
-
-        engine.schedule_bookkeeping_change(
-            mutate, on_error=on_error, on_saved=on_saved, runtime_write=take_live,
+    def _retry_later(self, report: "_Report") -> None:
+        """Try a failed save again on a timer, one bounded timer per device:
+        the device still runs as the file holds it, and identical state
+        reports do not emit another state change."""
+        if not self._active or not self._engine._running:
+            return
+        old_handle = self._retry_handles.pop(report.device_id, None)
+        if old_handle:
+            old_handle.cancel()
+        delay = self._retry_delays.get(report.device_id, 1.0)
+        self._retry_delays[report.device_id] = min(delay * 2, 30.0)
+        self._retry_handles[report.device_id] = asyncio.get_running_loop().call_later(
+            delay, self._retry, report,
         )
+
+    def _retry(self, report: "_Report") -> None:
+        self._retry_handles.pop(report.device_id, None)
+        if self._active and self._engine._running and report.still_current():
+            if self.evaluate(report.device_id):
+                return
+        self._retry_delays.pop(report.device_id, None)
+
+    def _saved(self, report: "_Report") -> None:
+        """A report the file now holds: its retry is over, and a roster built
+        from it is derived again."""
+        if not self._active:
+            return
+        handle = self._retry_handles.pop(report.device_id, None)
+        if handle:
+            handle.cancel()
+        self._retry_delays.pop(report.device_id, None)
+        if roster_fields(report.driver) & set(report.delta):
+            self._refresh_rosters(report.device_id, report.driver)
 
     def _refresh_rosters(self, device_id: str, driver: Any) -> None:
         """Re-derive the declared rosters from the config just saved."""
@@ -393,3 +366,62 @@ class LearnedConfig:
         task = loop.create_task(refresh())
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+
+class _Report:
+    """One device's reported values on their way to the project file: written
+    into the project current when the queued save runs, then taken by the
+    running device, still under the lock; a failed save is tried again. A
+    queued report belongs to the device that produced it, not a replacement
+    with the same project device ID (``still_current``)."""
+
+    def __init__(
+        self, learned: LearnedConfig, device_id: str, driver: Any,
+        delta: dict[str, Any], labels: dict[str, str],
+    ) -> None:
+        self._learned = learned
+        self._engine = learned._engine
+        self.device_id = device_id
+        self.driver = driver
+        self.delta = delta
+        self._labels = labels
+        self._project_id = self._engine.project.project.id
+        self._written = False
+
+    def queue(self) -> None:
+        self._engine.schedule_bookkeeping_change(
+            self.mutate, on_error=self.on_error, on_saved=self.on_saved,
+            runtime_write=self.take_live,
+        )
+
+    def still_current(self) -> bool:
+        project = self._engine.project
+        if project is None or project.project.id != self._project_id:
+            return False
+        return self._engine.devices.get_driver(self.device_id) is self.driver
+
+    def _landed(self) -> bool:
+        """Written into the project, by the device still running."""
+        return self._written and self.still_current()
+
+    def mutate(self, project: Any) -> None:
+        if self.still_current():
+            self._written = apply_config_delta(project, self.device_id, self.delta)
+
+    def take_live(self) -> None:
+        """The file holds it: the running device takes it."""
+        if not self._landed():
+            return
+        self._engine.take_device_settings(self.device_id, self.delta)
+        for field, value in self.delta.items():
+            log.info("[%s] %s set to %s, as the device reports", self.device_id, self._labels[field], value)
+
+    def on_error(self) -> None:
+        self._learned._done_waiting(self)
+        if self._landed():
+            self._learned._retry_later(self)
+
+    def on_saved(self) -> None:
+        self._learned._done_waiting(self)
+        if self._landed():
+            self._learned._saved(self)
