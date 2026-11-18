@@ -570,7 +570,9 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
 
     A conflict with a newer revision and a refusal of the change itself (the
     installed equipment, a word this version does not know) keep their own
-    sentence, which was written for the reader. A change the running system
+    sentence, which was written for the reader; a change whose result is
+    not a valid project names each field at fault, as Save names one in a
+    project it was sent. A change the running system
     could not take (``ProjectNotAppliedError``) says it was not applied, why,
     and that the previous project is still running: a write that failed says
     why without the path or the operating system's text, and any other cause
@@ -578,7 +580,11 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
     for an exception that is not one of these.
     """
     from openavc.core.installed_equipment import InstalledEquipmentError
-    from openavc.core.project_changes import ProjectNotAppliedError, ProjectRevisionConflictError
+    from openavc.core.project_changes import (
+        ProjectInvalidError,
+        ProjectNotAppliedError,
+        ProjectRevisionConflictError,
+    )
     from openavc.core.project_loader import ProjectSaveError
     from openavc.core.saved_values import UnknownWordError
 
@@ -588,6 +594,8 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
         return ChangeFailure(409, "refused", str(exc))
     if isinstance(exc, UnknownWordError):
         return ChangeFailure(422, "refused", str(exc))
+    if isinstance(exc, ProjectInvalidError):
+        return ChangeFailure(422, "refused", invalid_project(exc.cause))
     if not isinstance(exc, ProjectNotAppliedError):
         return None
     cause = exc.cause
@@ -596,6 +604,20 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
         if isinstance(cause, ProjectSaveError) else _NOT_TAKEN
     )
     return ChangeFailure(500, "not_applied", not_applied(why))
+
+
+#: The heading over each field at fault in a project that is not valid.
+INVALID_PROJECT = "Invalid project configuration"
+
+
+def invalid_project(exc: Any) -> str:
+    """A project that is not valid, as every door that refuses one says
+    it: the heading, then each field at fault and why, one per line, never
+    the value (``api/errors.validation_error_lines``)."""
+    from openavc.api.errors import validation_error_lines
+
+    lines = validation_error_lines(exc.errors())
+    return f"{INVALID_PROJECT}:\n" + "\n".join(lines) if lines else INVALID_PROJECT
 
 
 def not_applied(why: str) -> str:

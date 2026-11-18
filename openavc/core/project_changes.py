@@ -1,27 +1,46 @@
 """How a change to the project reaches disk and the running system while the
 engine runs, and the revision every such change is saved under.
 
-Two kinds of change. An **applied** one (``apply_project`` and the doors
-built on it) is taken in, compared with the running project, swapped in,
-reconciled (``core/project_reconcile.py``) and only then saved, so the file
-always holds what runs: a failure in the swap, the reconcile or the write (a
-full disk) puts the runtime and the logins the change filed back, with the
-file not written, and raises ``ProjectNotAppliedError``. Then it is
-announced; the announcement cannot turn a change that is already running
-into a failure. What an applied change did is its ``ApplyOutcome``, THE
-answer every door gives from: the revision it runs under and each part of it
-the system could not run (a device, a plugin, a script), with why. A part
-that failed is said by its own surface until it is fixed, never as a count a
-later change resets. The words every door answers an outcome in, the change
-that was not applied, a conflict and a refusal included, are
-``api/error_messages.py``'s. A **bookkeeping** one is a change the
-runtime already has (a device's pending settings cleared, a plugin's own
-``save_config``): it is only saved and announced, never reconciled, and the
-code that makes one may be running inside a reconcile, which is why it can
-be queued (``schedule_bookkeeping_change``).
+THE take-in is ``_take_in``: every project that comes in while the engine
+runs passes it before it runs or is saved. Its typed values are trimmed, it
+is checked as a valid project (``ProjectInvalidError`` when the file it
+would write would not load or holds a value past a bound), an edit is held
+to the installed equipment and to the words this version knows, the
+installed equipment is composed in, and its logins move into the login file.
+Every refusal comes before that move, so a refused change has filed nothing.
 
-Both run under ``_reload_lock``, and both mint the next revision here. A
-revision is an opaque token, compared for equality and nothing else; see
+THE change door is ``_change_locked``: a change given as ``mutate(project)``
+runs under ``_reload_lock`` against a copy of the project current at that
+moment, never one taken before the lock, then the take-in and the save.
+``apply_project_edit`` and both bookkeeping saves are its callers; the
+whole-project doors (``apply_project``, ``apply_named_save``,
+``replace_project``, ``reassign_installed_equipment``) end in the same
+take-in.
+
+Two kinds of change. An **applied** one (``apply_project``, the door's edits,
+and the doors built on them) is taken in, compared with the running project,
+swapped in, reconciled (``core/project_reconcile.py``) and only then saved,
+so the file always holds what runs: a failure in the swap, the reconcile or
+the write (a full disk) puts the runtime and the logins the change filed
+back, with the file not written, and raises ``ProjectNotAppliedError``. Then
+it is announced; the announcement cannot turn a change that is already
+running into a failure. What an applied change did is its ``ApplyOutcome``,
+THE answer every door gives from: the revision it runs under and each part
+of it the system could not run (a device, a plugin, a script), with why. A
+part that failed is said by its own surface until it is fixed, never as a
+count a later change resets. The words every door answers an outcome in, the
+change that was not applied, a conflict and a refusal included, are
+``api/error_messages.py``'s. A **bookkeeping** one is a change the runtime
+already has (a device's pending settings cleared, a plugin's own
+``save_config``): the door without the reconcile, swapped in and written as
+an edit is and put back when the write fails, and announced. The code that
+makes one may be running
+inside a reconcile, which is why it can be queued
+(``schedule_bookkeeping_change``).
+
+Both run under ``_reload_lock``, both mint the next revision here, and both
+make the next timed backup due once the file holds them. A revision is an
+opaque token, compared for equality and nothing else; see
 ``_init_project_changes``. Every reader and writer of the bookkeeping queue
 and its flush task is in this module, the wait a stop makes for it included.
 
@@ -35,6 +54,8 @@ import secrets
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
+
+from pydantic import ValidationError
 
 from openavc.core import project_update
 from openavc.core.client_origin import reload_origin
@@ -57,6 +78,21 @@ log = get_logger("openavc.core.engine")
 
 class ProjectRevisionConflictError(Exception):
     """A revision-checked save found a newer project revision on the server."""
+
+
+class ProjectInvalidError(ValueError):
+    """A change whose result is not a valid project: the file it would write
+    would not load, or holds a value past a bound that a save refuses (a
+    load repairs one). Refused before the change is taken in, so nothing
+    has changed. ``cause`` is the models' own ``ValidationError``; the
+    refusal names each field it found and never a value, which may be a
+    login (``api/error_messages.describe_change_failure``)."""
+
+    def __init__(self, cause: ValidationError) -> None:
+        super().__init__(
+            f"The change leaves the project invalid ({cause.error_count()} problem(s))"
+        )
+        self.cause = cause
 
 
 class ProjectNotAppliedError(Exception):
@@ -108,6 +144,31 @@ class _TakenIn:
     project: ProjectConfig
     logins: LoginChange
     write: bool
+
+
+def _check_valid(project: ProjectConfig) -> None:
+    """Raise ``ProjectInvalidError`` unless the models take ``project`` back
+    as a load takes the file it is saved as. The models have no
+    ``validate_assignment``, so a change made by setting a field is checked
+    here and nowhere else. A check only: the project kept is the one given.
+    A project that cannot even be written out as JSON is left to the write,
+    which fails it as any failed write fails."""
+    try:
+        written = project.model_dump(mode="json")
+    except Exception:
+        return
+    try:
+        ProjectConfig.model_validate(written)
+    except ValidationError as invalid:
+        raise ProjectInvalidError(invalid) from invalid
+
+
+def _each(mutates) -> Any:
+    """One mutate that runs each of ``mutates`` in turn: a queued batch."""
+    def run(project: ProjectConfig) -> None:
+        for mutate in mutates:
+            mutate(project)
+    return run
 
 
 async def _call(callback) -> None:
@@ -291,12 +352,57 @@ class ProjectChangesMixin:
         project reads (find-by-id, 404 checks) belong inside it, since the
         project it sees may differ from what the caller inspected before the
         lock was acquired. An exception from ``mutate`` aborts the edit with
-        nothing applied. Returns its outcome.
+        nothing applied. Returns its outcome. The change door
+        (:meth:`_change_locked`), reconciled.
         """
         async with self._reload_lock:
-            new_project = self.project.model_copy(deep=True)
-            mutate(new_project)
-            return await self._apply_project_locked(new_project, ProjectOrigin.EDIT, persist=True)
+            return await self._change_locked(mutate, reconcile=True)
+
+    async def _change_locked(self, mutate, *, reconcile: bool) -> ApplyOutcome:
+        """THE change door: ``mutate`` run against a copy of the project
+        current now, under ``_reload_lock`` (the caller holds it), then the
+        one take-in (``_take_in``) and the save. With ``reconcile``, an
+        edit: the running system is reconciled to it before the file is
+        written, and the outcome names each part it could not run
+        (:meth:`_apply_project_locked`). Without, a bookkeeping change the
+        runtime already has: swapped in and written as an edit is, with no
+        reconcile (:meth:`_keep_locked`). Either way it runs under a
+        new revision with the next backup due, and a refusal or a failure
+        leaves the running project, the file and the login file as they
+        were, raising it."""
+        proposed = self.project.model_copy(deep=True)
+        mutate(proposed)
+        if reconcile:
+            return await self._apply_project_locked(proposed, ProjectOrigin.EDIT, persist=True)
+        return await self._keep_locked(proposed)
+
+    async def _keep_locked(self, proposed: ProjectConfig) -> ApplyOutcome:
+        """The change door's end for a bookkeeping change: ``proposed`` taken
+        in as an edit is, made the running project under a new revision as
+        an edit is, and written, with the next backup due once the file
+        holds it. Swapped in before the write, as an edit is: a change made
+        in place while the file is written (a plugin's save during it)
+        lands on the project that is kept. A failed write puts the project
+        and the revision back, takes back the logins it filed and raises.
+        Caller holds ``_reload_lock``."""
+        taken = self._take_in(proposed, ProjectOrigin.EDIT, True, None)
+        previous = (self.project, self._project_revision, self._revision_counter)
+        self.project = taken.project
+        self._project_revision = self._new_revision()
+        try:
+            await save_project_async(self.project_path, taken.project)
+        except Exception:
+            self.project, self._project_revision, self._revision_counter = previous
+            self._take_back_logins(taken.logins)
+            raise
+        self._dirty_since_backup = True
+        # The file holds the change, so what follows is logged, never raised.
+        await _call_logged(
+            self._apply_project_settings,
+            "Project saved, but its settings could not be put on the running system",
+        )
+        await self._refresh_crash_copy(taken)
+        return ApplyOutcome(self._project_revision)
 
     async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> ApplyOutcome:
         """Explicitly apply a product's product hardware to existing programming."""
@@ -353,14 +459,17 @@ class ProjectChangesMixin:
         reassigned_equipment: str | None,
     ) -> _TakenIn:
         """The project as this system will run it, not yet running or saved
-        (``_TakenIn``): the installed equipment composed in and its logins
-        moved into the login file, which its devices dial with."""
+        (``_TakenIn``): its typed values trimmed, checked as a valid project,
+        the installed equipment composed in and its logins moved into the
+        login file, which its devices dial with. Every refusal comes before
+        the move, so a refused change has filed nothing."""
         if persist:
             # Every door that saves a device's settings ends here, so this is
             # where a stray space typed around an address or a login comes off
             # (core/typed_fields.py). Before the diff, so a re-save of a padded
             # value reconnects the device on the clean one.
             trim_device_settings(new_project)
+        _check_valid(new_project)
         if origin is ProjectOrigin.EDIT:
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
             # A word a later release saved stays; one this edit adds is refused.
@@ -419,15 +528,21 @@ class ProjectChangesMixin:
                       "project state", exc_info=True)
             await self._roll_back(previous, run, taken.logins)
             raise ProjectNotAppliedError(failure) from failure
-        if taken.write and taken.project is not taken.as_given:
-            # The crash copy is the file this save replaced, which held the
-            # logins just moved when they came in on disk (a backup restored,
-            # a bare push). The save has landed, so a failure here is logged.
-            await _call_logged(
-                partial(asyncio.to_thread, refresh_crash_copy, self.project_path),
-                "Project applied, but its crash copy still holds the logins it moved",
-            )
+        if taken.write:
+            await self._refresh_crash_copy(taken)
         return run
+
+    async def _refresh_crash_copy(self, taken: _TakenIn) -> None:
+        """Once ``taken`` is written: when it moved logins out, the crash
+        copy is the file that write replaced, which held them when they came
+        in on disk (a backup restored, a bare push), so it is made the file
+        as now saved. The save has landed, so a failure here is logged."""
+        if taken.project is taken.as_given:
+            return
+        await _call_logged(
+            partial(asyncio.to_thread, refresh_crash_copy, self.project_path),
+            "Project saved, but its crash copy still holds the logins it moved",
+        )
 
     async def _roll_back(self, previous: tuple, run: ReconcileRun, logins: LoginChange) -> None:
         """The runtime back on the project it ran before a failed swap,
@@ -529,10 +644,13 @@ class ProjectChangesMixin:
         applied to the running project now and ``deferred(project)`` is
         queued to be written right after the reconcile; it is applied to the
         project current then, so it can read what the runtime holds at that
-        moment rather than what the caller captured.
+        moment rather than what the caller captured. Either way the log
+        redaction learns the project's secrets once the running project
+        holds the change.
         """
         if self._reload_lock.locked():
             mutate(self.project)
+            self._register_project_secrets()
             self.schedule_bookkeeping_change(deferred, on_error=on_error)
         else:
             await self.persist_bookkeeping_change(mutate, on_error=on_error)
@@ -543,9 +661,10 @@ class ProjectChangesMixin:
         ``project.reloaded`` broadcast (so an open IDE's stale ETag gets a
         409 instead of silently reverting the change).
 
-        ``mutate(project)`` is applied to the current project under the
-        reconcile lock. On a save failure ``on_error`` runs (to revert the
-        mutation) and the exception propagates.
+        ``mutate(project)`` goes through the change door
+        (:meth:`_change_locked`) without the reconcile. When it is refused
+        or the save fails, ``on_error`` runs and the exception propagates;
+        the running project is then as it was.
 
         MUST NOT be called from code that can run while the reconcile lock
         is held — event handlers fired during a reconcile (device connect,
@@ -554,14 +673,11 @@ class ProjectChangesMixin:
         """
         async with self._reload_lock:
             try:
-                mutate(self.project)
-                await save_project_async(self.project_path, self.project)
+                revision = (await self._change_locked(mutate, reconcile=False)).revision
             except Exception:
                 if on_error is not None:
                     await _call(on_error)
                 raise
-            self._project_revision = self._new_revision()
-            revision = self._project_revision
         await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": revision,
@@ -577,10 +693,12 @@ class ProjectChangesMixin:
         inside ``_sync_devices``, plugin hooks inside ``_sync_plugins``),
         where awaiting the lock would deadlock the engine.
 
-        Writes queued in the same tick coalesce into one save and one
-        revision bump. Each ``mutate(project)`` is applied to whatever
-        project object is current at flush time, so a project swap between
-        schedule and flush can't resurrect stale state or drop the write.
+        Writes queued in the same tick coalesce into one change through the
+        change door (:meth:`_change_locked`, without the reconcile): one
+        save and one revision bump, and one refusal or failure for all of
+        them. Each ``mutate(project)`` is applied to the project current at
+        flush time, so a project swap between schedule and flush can't
+        resurrect stale state or drop the write.
 
         ``on_saved`` runs outside the lock only after a successful save.
         A callback failure cannot undo a file already written to disk.
@@ -600,19 +718,18 @@ class ProjectChangesMixin:
 
     async def _save_batch(self) -> tuple[list[tuple[Any, Any, Any]], str | None]:
         """Take everything queued and save it as one change; the batch and
-        its new revision, or ``None`` when nothing was saved. A failed save
-        is undone under the lock, before another change can land."""
+        its new revision, or ``None`` when nothing was saved. A refused or
+        failed change is undone under the lock, before another change can
+        land."""
         async with self._reload_lock:
             batch = list(self._bookkeeping_queue)
             self._bookkeeping_queue.clear()
             if not self.project:
                 return batch, None
             try:
-                for mutate, _on_error, _on_saved in batch:
-                    mutate(self.project)
-                await save_project_async(self.project_path, self.project)
-                self._project_revision = self._new_revision()
-                return batch, self._project_revision
+                mutates = [mutate for mutate, _on_error, _on_saved in batch]
+                outcome = await self._change_locked(_each(mutates), reconcile=False)
+                return batch, outcome.revision
             except Exception as e:
                 log.error(f"Deferred project persist failed: {e}")
                 # Undo dependent changes in the reverse order they applied.

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from openavc.api._engine import _get_engine
-from openavc.api.error_messages import describe_not_running
+from openavc.api.error_messages import INVALID_PROJECT, describe_not_running
 from openavc.api.errors import api_error as _api_error, change_failure_error, validation_failed
 from openavc.api.models import (
     LibraryDuplicateRequest,
@@ -366,7 +366,7 @@ def _migrated_body(body: dict[str, Any], mode: str) -> tuple[ProjectConfig, Any]
     except ValidationError as e:
         # The field list is the whole repair story for whoever sent this --
         # a person, an integration, or the AI writing a project section.
-        raise validation_failed(422, "Invalid project configuration", e)
+        raise validation_failed(422, INVALID_PROJECT, e)
     except Exception as e:
         raise _api_error(422, "Invalid project configuration", e)
 

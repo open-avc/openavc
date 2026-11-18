@@ -322,7 +322,9 @@ class ProjectLoginsMixin:
         inline (``on_start``, ``on_config_changed``, an event handler), so
         it goes through ``persist_or_defer_bookkeeping_change``: saved before
         returning, raising on failure (the PluginAPI contract), unless the
-        reconcile holds the lock, when the write runs right after it.
+        reconcile holds the lock, when the write runs right after it. A login
+        the plugin made or changed is masked in the log from then on (the
+        door registers the project's secrets).
         """
         if not self.project or plugin_id not in self.project.plugins:
             return
@@ -344,8 +346,6 @@ class ProjectLoginsMixin:
         except Exception as e:
             log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
             raise
-        # A login the plugin made or changed is masked in the log from now on.
-        self._register_project_secrets()
 
     async def _plugin_config_not_saved(self, plugin_id: str, previous: dict) -> None:
         # Revert the in-memory project so it matches disk. Otherwise a

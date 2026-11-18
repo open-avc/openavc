@@ -583,6 +583,29 @@ async def test_a_plugin_save_refreshes_the_log_redaction(tmp_path, monkeypatch):
     assert refreshed == [1]
 
 
+@pytest.mark.asyncio
+async def test_a_plugin_save_during_a_reconcile_refreshes_the_log_redaction_at_once(
+    tmp_path, monkeypatch,
+):
+    """The running project holds the change before its file does, so the
+    redaction learns it then, and again once the queued save lands."""
+    eng = _engine(tmp_path, plugins={"plug1": {"enabled": False, "config": {"x": 1}}})
+    _capture_broadcasts(eng)
+    registry = get_secret_registry()
+    refreshed = []
+    monkeypatch.setattr(
+        registry, "set_project_secrets",
+        lambda values: refreshed.append(eng.project.plugins["plug1"].config["x"]),
+    )
+
+    async with eng._reload_lock:
+        await eng._save_plugin_config("plug1", {"x": 2})
+        assert refreshed == [2]
+    await eng._bookkeeping_task
+
+    assert refreshed == [2, 2]
+
+
 # --- The plugin sync ---------------------------------------------------------
 
 
