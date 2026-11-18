@@ -868,11 +868,16 @@ async def invoke_device_action(
 
 @router.get("/devices/{device_id}/settings")
 async def get_device_settings(device_id: str) -> dict[str, Any]:
-    """Get device settings with current values for a device."""
+    """Get device settings with current values for a device, and the values
+    queued for it (``pending``, key -> value) that have not landed yet."""
     engine = _get_engine()
     try:
         settings = engine.devices.get_device_settings(device_id)
-        return {"device_id": device_id, "settings": settings}
+        return {
+            "device_id": device_id,
+            "settings": settings,
+            "pending": engine.devices.queued_settings(device_id),
+        }
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
 
@@ -899,6 +904,8 @@ async def store_pending_settings(
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
 
+    # Checked, saved to the project and then taken by the running queue
+    # (core/pending_queue.py); a refused or failed save queues nothing.
     try:
         await engine.devices.store_pending_settings(device_id, body.settings)
     except DeviceSettingValueError as e:
@@ -907,23 +914,6 @@ async def store_pending_settings(
         raise _api_error(400, str(e), e)
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
-
-    # Persist the device manager's queue, not the raw body: intake validation
-    # may have coerced values, and persisting the exact runtime dict keeps the
-    # reconciler's device compare convergent (a skewed copy would re-add the
-    # device on the next device-section reconcile for a change that is
-    # already live).
-    runtime_cfg = engine.devices.get_device_config(device_id) or {}
-    pending = dict(runtime_cfg.get("pending_settings", {}))
-
-    def mutate(project):
-        for dev in project.devices:
-            if dev.id == device_id:
-                dev.pending_settings = pending
-                return
-        raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found in project")
-
-    await engine.apply_project_edit(mutate)
     return {"status": "pending", "device_id": device_id, "settings": body.settings}
 
 

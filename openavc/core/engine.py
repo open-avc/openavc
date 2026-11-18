@@ -41,6 +41,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
 from openavc.core.learned_config import LearnedConfig
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.pending_queue import ProjectQueue
 from openavc.core.panel_devices import (
     ACCESS_APPROVED,
     CLOSE_CODE_NOT_APPROVED,
@@ -120,6 +121,9 @@ class Engine(
         self.installed_equipment.register()
         self.devices = DeviceManager(self.state, self.events)
         self.devices.installed_equipment = self.installed_equipment
+        # Each device's queue of settings waiting for it is kept in the
+        # project, through the change door (core/pending_queue.py).
+        self.devices.keep_queue_with(ProjectQueue(self))
         # A driver reload re-adds its devices undialed and asks for a bring-up
         # round, so the simulation redirect lands before the first connect.
         self.devices.request_bringup = self._schedule_device_bringup
@@ -490,8 +494,8 @@ class Engine(
 
     def _bridge_events_to_ws(self) -> None:
         """Subscribe the forwarders below to the engine events they carry to
-        the WebSocket clients, and the persist after pending settings apply.
-        Once, at a start, after everything that raises them exists."""
+        the WebSocket clients. Once, at a start, after everything that
+        raises them exists."""
         # Bridge macro events to WebSocket for live progress tracking
         self._event_sub_ids.append(self.events.on("macro.started.*", self._on_macro_event))
         self._event_sub_ids.append(self.events.on("macro.progress.*", self._on_macro_event))
@@ -516,40 +520,6 @@ class Engine(
         self._event_sub_ids.append(self.events.on("plugin.stopped", self._on_plugin_event))
         self._event_sub_ids.append(self.events.on("plugin.error", self._on_plugin_event))
         self._event_sub_ids.append(self.events.on("plugin.missing", self._on_plugin_event))
-
-        # Persist project file when pending device settings are applied
-        self._event_sub_ids.append(self.events.on(
-            "device.pending_settings_applied",
-            self._on_pending_settings_applied,
-        ))
-
-    async def _on_pending_settings_applied(
-        self, event: str, payload: dict[str, Any]
-    ) -> None:
-        """Persist the project after pending device settings are applied.
-
-        Fires on device connect — which can be inside ``_sync_devices``
-        while ``apply_project`` holds the reconcile lock (this handler is
-        awaited inline by the EventBus). Always defers: the DeviceManager
-        already cleared the applied settings from the live config, so only
-        the persist (+ revision bump, so a stale IDE PUT can't silently
-        restore the queue) is outstanding.
-        """
-        device_id = payload.get("device_id", "")
-        if not self.project or not device_id:
-            return
-
-        remaining = payload.get("remaining", {})
-
-        def mutate(project) -> None:
-            for dev in project.devices:
-                if dev.id == device_id:
-                    dev.pending_settings = remaining
-                    break
-
-        self.schedule_bookkeeping_change(mutate)
-        log.info(f"[{device_id}] Project persist queued after applying "
-                 f"pending settings")
 
     async def _on_script_error(self, event: str, payload: dict[str, Any]) -> None:
         """Forward script error events to the Programmer's WebSocket clients.

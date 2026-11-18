@@ -577,9 +577,7 @@ async def test_a_deferred_save_with_no_project_is_dropped(tmp_path):
 async def test_pending_settings_with_no_device_queue_nothing(tmp_path):
     eng = _engine(tmp_path)
 
-    await eng._on_pending_settings_applied(
-        "device.pending_settings_applied", {"device_id": "", "remaining": {}},
-    )
+    await eng.devices._clear_applied_pending("ghost", ["input"], {"input": "hdmi1"})
 
     assert eng._bookkeeping_queue == []
     assert eng._bookkeeping_task is None

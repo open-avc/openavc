@@ -12,9 +12,11 @@ device, for the device manager to try one such device again. Devices are added b
 through them, each batch in parallel, and a device that fails to add never
 stops the others. A running device is
 re-added only when a field ``add_device`` acts on changed (``needs_readd``):
-not just its name, driver or connection, but whether it is enabled, its
-child entities and its pending settings too, with a missing ``enabled``
-read as on and no map the same as an empty one.
+not just its name, driver or connection, but whether it is enabled and its
+child entities too, with a missing ``enabled`` read as on and no map the same
+as an empty one. Its queue of pending settings is never a reason: one that
+differs is handed to the running device in place
+(``DeviceManager.take_project_queue``, core/pending_settings.py).
 
 Functions of the device manager and the state, so they need no engine.
 Logs under the engine's name, which is how the log view files these lines.
@@ -34,12 +36,12 @@ log = get_logger("openavc.core.engine")
 
 # The resolved-config fields add_device acts on, each with what a missing one
 # reads as. A change to any of them re-adds the device, not just a name, driver
-# or connection change: enabled gates connect/poll, child_entities seeds child
-# labels, and pending_settings is applied on (re)connect, so leaving one out
-# left that edit inert on the hot-reload path until a restart.
+# or connection change: enabled gates connect/poll and child_entities seeds
+# child labels, so leaving one out left that edit inert on the hot-reload path
+# until a restart. pending_settings is not one: the queue is taken in place.
 _READD_FIELDS = {"name": None, "driver": None, "enabled": True, "config": {}}
-# The same, for the two where no map and an empty map mean the same thing.
-_READD_MAPS = ("child_entities", "pending_settings")
+# The same, for the one where no map and an empty map mean the same thing.
+_READD_MAPS = ("child_entities",)
 
 
 def needs_readd(old: dict, new: dict) -> bool:
@@ -212,18 +214,27 @@ def delete_device_keys(state, device_id: str) -> None:
         log.info(f"Cleaned up {len(orphaned)} orphaned state key(s) for removed device '{device_id}'")
 
 
+def take_queues_in_place(devices, device_ids, project_devices) -> None:
+    """Hand each of ``device_ids``, running on, its project queue of
+    pending settings (``DeviceManager.take_project_queue``)."""
+    for did in device_ids:
+        devices.take_project_queue(did, project_devices[did].get("pending_settings") or {})
+
+
 async def update_changed_devices(devices, device_ids, project_devices, *, defer_connect) -> None:
     """Re-add, in parallel, each of ``device_ids`` whose running config
     differs from its project one in a field add_device acts on
     (``needs_readd``), and each its driver could not set up, which every sync
     tries again; ``update_device`` is remove + add. A device whose settings
     could not be worked out before has no config to compare, so it is
-    re-added whenever they can be now."""
+    re-added whenever they can be now. Every other one takes its project
+    queue of pending settings in place."""
     changed_ids = [
         did for did in device_ids
         if devices.build_failed(did)
         or needs_readd(devices.get_device_config(did) or {}, project_devices[did])
     ]
+    take_queues_in_place(devices, set(device_ids) - set(changed_ids), project_devices)
     if not changed_ids:
         return
     update_results = await asyncio.gather(

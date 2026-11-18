@@ -1,15 +1,14 @@
-"""Engine bookkeeping persists — project writes whose runtime effect is
-already applied (pending-settings clears, plugin ``save_config``) must
+"""Engine bookkeeping persists — project writes the running system takes
+without a reconcile (pending-settings clears, plugin ``save_config``) must
 persist the file, bump the revision, and broadcast ``project.reloaded``
 WITHOUT running a reconcile.
 
 The hard constraint pinned here: the code that triggers such a write can be
-running while the engine holds the reconcile lock. Device connect happens
-inside ``_sync_devices`` (under ``apply_project``'s lock), and the
-``device.pending_settings_applied`` event is awaited inline from there — so
-a handler that naively called ``apply_project`` would deadlock the engine.
-The first test reproduces exactly that call shape and guards it with a
-timeout.
+running while the engine holds the reconcile lock. A device can connect
+while a project change holds it, and the pending-settings clear its connect
+makes is handed to the queue keeper from there — so a keeper that naively
+called ``apply_project`` would deadlock the engine. The first test
+reproduces exactly that call shape and guards it with a timeout.
 """
 
 import asyncio
@@ -20,6 +19,7 @@ import pytest
 
 from openavc.drivers.registry import register_driver, unregister_driver
 from openavc.core.engine import Engine
+from openavc.core.pending_settings import PendingClear
 from openavc.core.project_loader import load_project
 from openavc.drivers.base import BaseDriver
 from tests.helpers import wait_for_condition
@@ -121,10 +121,6 @@ async def test_pending_settings_persist_from_inside_reconcile_no_deadlock(
     """
     eng = _engine(tmp_path)
     sent = _capture_broadcasts(eng)
-    # Wire the subscription Engine.start() would have made.
-    eng.events.on(
-        "device.pending_settings_applied", eng._on_pending_settings_applied
-    )
 
     from openavc.core.project_loader import DeviceConfig
 
@@ -170,10 +166,7 @@ async def test_scheduled_bookkeeping_outside_lock_persists_and_bumps(tmp_path):
     }])
     sent = _capture_broadcasts(eng)
 
-    await eng._on_pending_settings_applied(
-        "device.pending_settings_applied",
-        {"device_id": "panel1", "applied": ["input"], "remaining": {}},
-    )
+    await eng.devices._queue_keeper.drop(PendingClear("panel1", {"input": "hdmi1"}))
     await wait_for_condition(
         lambda: eng._revision_counter == 1,
         message="bookkeeping persist never bumped the revision",
@@ -225,10 +218,7 @@ async def test_bookkeeping_mutation_applies_to_swapped_project(tmp_path):
     async with eng._reload_lock:
         # Fires under the lock -> must defer, not deadlock.
         await asyncio.wait_for(
-            eng._on_pending_settings_applied(
-                "device.pending_settings_applied",
-                {"device_id": "panel1", "remaining": {}},
-            ),
+            eng.devices._queue_keeper.drop(PendingClear("panel1", {"input": "hdmi1"})),
             timeout=5,
         )
         # Swap the project object before the flush can run.

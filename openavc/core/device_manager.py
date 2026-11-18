@@ -212,9 +212,6 @@ class DeviceManager(
         # re-added the device for a change nobody made: under simulation that
         # is the WHOLE fleet on every save, which is where renaming one
         # device on a 107-device project came to cost 109 seconds.
-        # routes/devices.py says the same thing about the pending-settings
-        # write it makes ("a skewed copy would re-add the device on the next
-        # device-section reconcile for a change that is already live").
         config = dict(device_config.get("config", {}))
 
         # Adding a device is a fresh start, so it must not inherit a
@@ -397,8 +394,6 @@ class DeviceManager(
         """
         pending = [d for d in self._deferred_connects if d in self._devices]
         self._deferred_connects.clear()
-        if not pending:
-            return
         configs = {
             did: self._device_configs[did]
             for did in pending
@@ -415,6 +410,9 @@ class DeviceManager(
                 (did, result) for did, result in zip(batch, results)
                 if isinstance(result, Exception)
             )
+        # A queue handed to a connected device in place, sent once the
+        # change that handed it has answered (core/pending_settings.py).
+        await self._send_handed_queues(set(pending))
 
     async def remove_device(self, device_id: str) -> None:
         """Disconnect and remove a device for good, in any state, why it was

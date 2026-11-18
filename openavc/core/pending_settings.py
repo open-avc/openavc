@@ -22,6 +22,16 @@ Anything else stays queued for the next connect and says so on
 ``device.error.<id>``. A clear only ever drops the entry the pass took, never a
 newer value queued since.
 
+Where the queue is kept is the device manager's ``queue keeper``: on its own
+it keeps each queue in its record of the device (``InMemoryQueue``); the
+engine gives it one that keeps them in the project too, each intake and each
+clear a change through the project's change door, taken by the running
+system once the file holds it (core/pending_queue.py). The running queue is
+never ahead of the file, so a clear whose save fails leaves the entry queued
+in both, sent again on the next connect. A queue that comes in with a project
+is handed to the device in place (``take_project_queue``), never by adding
+the device again, and a connected device is sent it at the bring-up.
+
 Mixed into DeviceManager (core/device_manager.py). Logs under the device
 manager's name, which is how the log view files a line as the device's.
 """
@@ -49,6 +59,9 @@ if TYPE_CHECKING:
 # The device manager's logger: utils/log_buffer.py files a line under the
 # device category by this name, and the device page shows that category.
 log = get_logger("openavc.core.device_manager")
+
+# A key a queue does not hold, told apart from one it holds as None.
+_NOT_HELD = object()
 
 
 # A queued write used to be cleared the moment ``set_device_setting`` returned
@@ -170,16 +183,46 @@ def _still_taken(pending: dict[str, Any], keys: list[str], taken: dict[str, Any]
     ]
 
 
-def _cleared_payload(
-    device_id: str, cleared: list[str], refused: dict[str, Any], pending: dict[str, Any],
-) -> dict[str, Any]:
+def remaining_after(pending: dict[str, Any], taken: dict[str, Any]) -> dict[str, Any]:
+    """``pending`` without each entry a clear took that is still the value
+    it took (``taken``, key -> that value): what a clear leaves of a queue,
+    for the project's copy and the running one alike."""
+    gone = set(_still_taken(pending, list(taken), taken))
+    return {key: value for key, value in pending.items() if key not in gone}
+
+
+def _hold_queue(config: dict[str, Any], queue: dict[str, Any]) -> dict[str, Any]:
+    """Make ``queue`` the queue a device's record holds, with no entry for
+    an empty one; the queue it held before."""
+    held = config.pop("pending_settings", None) or {}
+    if queue:
+        config["pending_settings"] = dict(queue)
+    return held
+
+
+def _gains_an_entry(held: dict[str, Any], queue: dict[str, Any]) -> bool:
+    """Does ``queue`` hold an entry ``held`` did not, or another value?"""
+    return any(held.get(key, _NOT_HELD) != value for key, value in queue.items())
+
+
+@dataclass(frozen=True)
+class PendingClear:
+    """Entries a pass is done with: ``taken`` maps each key to the queued
+    value the pass took (sent and settled, or refused), and ``refused`` names
+    the keys the driver's declaration refused."""
+
+    device_id: str
+    taken: dict[str, Any]
+    refused: frozenset[str] = frozenset()
+
+
+def _cleared_payload(clear: PendingClear, pending: dict[str, Any]) -> dict[str, Any]:
     """What ``device.pending_settings_applied`` says: the keys a pass cleared,
-    split into those sent and those the driver refused, and the queue left,
-    which the engine saves into the project."""
+    split into those sent and those the driver refused, and the queue left."""
     return {
-        "device_id": device_id,
-        "applied": [key for key in cleared if key not in refused],
-        "refused": [key for key in cleared if key in refused],
+        "device_id": clear.device_id,
+        "applied": [key for key in clear.taken if key not in clear.refused],
+        "refused": [key for key in clear.taken if key in clear.refused],
         "remaining": dict(pending),
     }
 
@@ -197,6 +240,24 @@ def _checked_value(driver: BaseDriver, device_id: str, key: str, value: Any) -> 
     return validate_device_setting_value(key, defs[key], value)
 
 
+class InMemoryQueue:
+    """The queue keeper of a device manager with nothing else to keep its
+    queues in: each in its record of the device, taken at once. The engine's
+    keeper (core/pending_queue.py) has the same two doors."""
+
+    def __init__(self, manager: PendingSettingsMixin) -> None:
+        self._manager = manager
+
+    async def add(self, device_id: str, settings: dict[str, Any]) -> None:
+        """Add checked ``settings`` to the device's queue."""
+        self._manager.take_pending(device_id, settings)
+
+    async def drop(self, clear: PendingClear) -> None:
+        """Drop the entries ``clear`` took that are still queued as taken."""
+        self._manager.drop_taken(clear)
+        await self._manager.announce_cleared(clear)
+
+
 class PendingSettingsMixin:
     """The setting doors, and the queue of settings waiting for a device, from
     intake to clear.
@@ -204,7 +265,9 @@ class PendingSettingsMixin:
     Its state is set up by ``_init_pending``. From its host (DeviceManager) it
     reads ``events``, ``_devices`` and ``_device_configs`` and asks
     ``_live_driver``, ``_require_control_target`` and ``accepts_commands``
-    (core/device_commands.py).
+    (core/device_commands.py). Its queue keeper (``keep_queue_with``) decides
+    where a queue is kept; the keeper calls ``take_pending``, ``drop_taken``
+    and ``announce_cleared`` back.
     """
 
     events: EventBus
@@ -216,6 +279,21 @@ class PendingSettingsMixin:
         # watcher that decides whether a queued write actually landed before
         # the queue is cleared (see _confirm_pending_settings).
         self._pending_confirm_tasks: dict[str, asyncio.Task] = {}
+        self._queue_keeper: Any = InMemoryQueue(self)
+        # Devices handed a queue in place while connected, sent it at the
+        # next bring-up (take_project_queue, _send_handed_queues).
+        self._handed_queues: set[str] = set()
+
+    def keep_queue_with(self, keeper: Any) -> None:
+        """Keep every queue with ``keeper`` (``add`` and ``drop``, as
+        ``InMemoryQueue`` has them) from now on."""
+        self._queue_keeper = keeper
+
+    def queued_settings(self, device_id: str) -> dict[str, Any]:
+        """The device's queue as the running system holds it, a copy."""
+        config = self._device_configs.get(device_id) or {}
+        pending = config.get("pending_settings")
+        return dict(pending) if isinstance(pending, dict) else {}
 
     async def set_device_setting(
         self, device_id: str, key: str, value: Any
@@ -265,12 +343,64 @@ class PendingSettingsMixin:
         """Store pending settings for a device (will be applied on next connect).
 
         Validated against the driver's schema when it is installed; an
-        orphaned device stores them as given (``_queue_pending``).
+        orphaned device stores them as given (``_checked_intake``). Kept by
+        the queue keeper, which with the engine's saves them to the project
+        first and raises when it cannot; the running queue takes them once
+        it has.
         """
+        if device_id not in self._device_configs:
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        await self._queue_keeper.add(device_id, self._checked_intake(device_id, settings))
+
+    def take_pending(self, device_id: str, settings: dict[str, Any]) -> None:
+        """Add checked ``settings`` to the running queue (a keeper's intake,
+        once the queue is kept). A device gone by then has no queue to take."""
         config = self._device_configs.get(device_id)
         if config is None:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        self._queue_pending(device_id, config, settings)
+            return
+        config.setdefault("pending_settings", {}).update(settings)
+        log.info(f"[{device_id}] Stored {len(settings)} pending setting(s)")
+
+    def drop_taken(self, clear: PendingClear) -> None:
+        """Drop from the running queue each entry ``clear`` took that is
+        still the value it took; a queue left empty goes."""
+        config = self._device_configs.get(clear.device_id)
+        pending = config.get("pending_settings") if config is not None else None
+        if isinstance(pending, dict):
+            _hold_queue(config, remaining_after(pending, clear.taken))
+
+    async def announce_cleared(self, clear: PendingClear) -> None:
+        """Say on ``device.pending_settings_applied`` what a clear took and
+        the queue it left."""
+        await self.events.emit(
+            "device.pending_settings_applied",
+            _cleared_payload(clear, self.queued_settings(clear.device_id)),
+        )
+
+    def take_project_queue(self, device_id: str, queue: dict[str, Any]) -> None:
+        """The device's queue as a project that came in holds it (a reload,
+        a restore, a whole-project save), taken in place: a queue is never a
+        reason to add the device again. A connected device given an entry it
+        did not hold is sent its queue at the next bring-up
+        (``_send_handed_queues``), as the reconnect a re-add made used to."""
+        config = self._device_configs.get(device_id)
+        if config is None:
+            return
+        held = _hold_queue(config, queue)
+        if _gains_an_entry(held, queue) and self.accepts_commands(device_id):
+            self._handed_queues.add(device_id)
+
+    async def _send_handed_queues(self, dialed: set[str]) -> None:
+        """Send each queue handed in place to a device still connected; one
+        the bring-up just ``dialed`` was sent its queue by the connect."""
+        handed, self._handed_queues = self._handed_queues, set()
+        for device_id in handed - dialed:
+            if not self.accepts_commands(device_id):
+                continue
+            try:
+                await self._apply_pending_settings(device_id)
+            except Exception:  # Catch-all: one device's queue never costs the others theirs
+                log.exception(f"[{device_id}] Sending its queued settings failed")
 
     def _cancel_pending_confirm(self, device_id: str) -> None:
         """Stop a device's read-back watcher, if one is running."""
@@ -284,11 +414,8 @@ class PendingSettingsMixin:
             task.cancel()
         self._pending_confirm_tasks.clear()
 
-    def _queue_pending(
-        self, device_id: str, config: dict[str, Any], settings: dict[str, Any]
-    ) -> None:
-        """Add ``settings`` to the queue in ``config`` (``store_pending_settings``,
-        for a device the manager holds a config for).
+    def _checked_intake(self, device_id: str, settings: dict[str, Any]) -> dict[str, Any]:
+        """``settings`` as the queue's intake stores them.
 
         Validated at intake when the driver is available: a typo'd key or an
         out-of-range value used to sit in the queue and fail on every
@@ -298,16 +425,12 @@ class PendingSettingsMixin:
         (:meth:`_send_pending`).
         """
         driver = self._devices.get(device_id)
-        if driver is not None:
-            settings = {
-                key: _checked_value(driver, device_id, key, value)
-                for key, value in settings.items()
-            }
-
-        if "pending_settings" not in config:
-            config["pending_settings"] = {}
-        config["pending_settings"].update(settings)
-        log.info(f"[{device_id}] Stored {len(settings)} pending setting(s)")
+        if driver is None:
+            return dict(settings)
+        return {
+            key: _checked_value(driver, device_id, key, value)
+            for key, value in settings.items()
+        }
 
     async def _apply_pending_settings(self, device_id: str) -> None:
         """Apply any pending device settings after a successful connect.
@@ -423,13 +546,15 @@ class PendingSettingsMixin:
         *, refused: dict[str, Any] | None = None,
     ) -> None:
         """Drop applied keys, and the ``refused`` ones (key -> the value the
-        pass took), from the queue and have the engine persist it.
+        pass took), from the queue, through the queue keeper.
 
         Only drops a key whose queued entry is still the one this pass took: a
         confirmation can land a poll cycle after the write, and something can
         queue a NEWER value for the same setting in between. Clearing that one
         would throw away a write nobody has made yet. A key absent from
-        ``queued_values`` carries no such opinion and is dropped as-is.
+        ``queued_values`` is taken as its entry stands now, and the keeper
+        drops that value only, wherever the queue is kept and however long
+        its save waits.
         """
         config = self._device_configs.get(device_id)
         if config is None:
@@ -439,20 +564,12 @@ class PendingSettingsMixin:
             return
 
         refused = refused or {}
-        cleared = _still_taken(pending, [*applied_keys, *refused], {**queued_values, **refused})
+        values = {**queued_values, **refused}
+        cleared = _still_taken(pending, [*applied_keys, *refused], values)
         if not cleared:
             return
-        for key in cleared:
-            pending.pop(key, None)
-
-        # If all pending settings were applied, remove the dict entirely
-        if not pending:
-            config.pop("pending_settings", None)
-
-        # Notify the engine to persist the change
-        await self.events.emit(
-            "device.pending_settings_applied", _cleared_payload(device_id, cleared, refused, pending),
-        )
+        taken = {key: values.get(key, pending[key]) for key in cleared}
+        await self._queue_keeper.drop(PendingClear(device_id, taken, frozenset(refused)))
 
     @staticmethod
     def _device_is_reporting(driver: BaseDriver) -> bool:

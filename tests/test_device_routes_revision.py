@@ -138,11 +138,47 @@ async def test_pending_settings_store_bumps_revision(rev_engine):
     assert engine._project_revision != before
     dev = load_project(engine.project_path).devices[0]
     assert dev.pending_settings == {"brightness": 50}
-    # Runtime queue and persisted queue stay identical (reconciler stays
-    # convergent — no device bounce on the next device-section edit).
+    # The running queue takes what the file holds.
     assert engine.devices.get_device_config("ctrl1")["pending_settings"] == {
         "brightness": 50
     }
+
+
+async def test_pending_settings_are_in_the_settings_answer(rev_engine):
+    """The device page reads what is waiting from the settings it polls,
+    as the server's queue holds it, in the declared type."""
+    client, engine = rev_engine
+    reloaded: list[str] = []
+    engine.events.on("system.project.reloaded", lambda event, _payload: reloaded.append(event))
+
+    assert client.get("/api/devices/ctrl1/settings").json()["pending"] == {}
+    resp = client.post(
+        "/api/devices/ctrl1/settings/pending", json={"settings": {"brightness": "50"}}
+    )
+    assert resp.status_code == 200
+    assert client.get("/api/devices/ctrl1/settings").json()["pending"] == {"brightness": 50}
+    # Queuing a setting still tells a script the project was saved.
+    assert reloaded == ["system.project.reloaded"]
+
+
+async def test_a_queue_whose_save_fails_is_answered_as_not_applied(rev_engine, monkeypatch):
+    """A full disk while queuing: the answer says the change was not
+    applied, and nothing is queued."""
+    from openavc.core import project_changes
+    from openavc.core.project_loader import ProjectSaveError
+
+    client, engine = rev_engine
+
+    async def full_disk(*_args, **_kwargs):
+        raise ProjectSaveError(OSError("No space left on device"))
+
+    monkeypatch.setattr(project_changes, "save_project_async", full_disk)
+    resp = client.post(
+        "/api/devices/ctrl1/settings/pending", json={"settings": {"brightness": 50}}
+    )
+    assert resp.status_code == 500
+    assert resp.json()["detail"].startswith("Not applied: the project file could not be written.")
+    assert engine.devices.queued_settings("ctrl1") == {}
 
 
 async def test_child_entity_patch_bumps_revision_without_device_bounce(rev_engine):

@@ -2,7 +2,8 @@
 
 Covers, one finding per test where practical:
 
-- _sync_devices re-adds on enabled / child_entities / pending_settings changes
+- _sync_devices re-adds on enabled / child_entities changes, and takes a
+  changed pending_settings queue in place
 - chained variable bindings propagate; cycles terminate
 - network info detection caches and never leaks the socket FD
 - stop() serializes against an in-flight reload (holds _reload_lock)
@@ -64,12 +65,11 @@ def _write_project(tmp_path, *, variables=None, devices=None, ui_pages=None,
 @pytest.mark.parametrize("field,old,new", [
     ("enabled", True, False),
     ("child_entities", {}, {"encoder": {"001": {"label": "Lobby"}}}),
-    ("pending_settings", {}, {"brightness": 50}),
 ])
 @pytest.mark.asyncio
 async def test_sync_devices_reapplies_enabled_child_pending(tmp_path, field, old, new):
-    """_sync_devices must re-add a device when enabled / child_entities /
-    pending_settings change — not only name / driver / connection."""
+    """_sync_devices must re-add a device when enabled / child_entities
+    change — not only name / driver / connection."""
     device = {"id": "d1", "driver": "generic_tcp", "name": "D1",
               "config": {"host": "1.2.3.4"}, field: new}
     eng = Engine(_write_project(tmp_path, devices=[device]))
@@ -94,6 +94,37 @@ async def test_sync_devices_reapplies_enabled_child_pending(tmp_path, field, old
 
     devices.update_device.assert_awaited_once()
     assert devices.update_device.await_args.args[0] == "d1"
+
+
+@pytest.mark.asyncio
+async def test_sync_devices_takes_a_changed_queue_in_place(tmp_path):
+    """A device whose only change is its queue of pending settings is not
+    removed and added again: the running device takes the queue in place."""
+    device = {"id": "d1", "driver": "generic_tcp", "name": "D1",
+              "config": {"host": "1.2.3.4"}, "pending_settings": {"brightness": 50}}
+    eng = Engine(_write_project(tmp_path, devices=[device]))
+    eng.project = load_project(eng.project_path)
+
+    new_resolved = eng.resolved_device_config(eng.project.devices[0])
+    old_resolved = json.loads(json.dumps(new_resolved))
+    old_resolved["pending_settings"] = {}
+
+    devices = MagicMock()
+    devices.get_device_configs.return_value = {"d1": old_resolved}
+    devices.get_device_config.return_value = old_resolved
+    devices.build_failed.return_value = False
+    devices.update_device = AsyncMock()
+    devices.add_device = AsyncMock()
+    devices.remove_device = AsyncMock()
+    devices.device_records.side_effect = lambda: [
+        DeviceRecord(did, RUNNING, cfg) for did, cfg in devices.get_device_configs().items()
+    ]
+    eng.devices = devices
+
+    await eng._sync_devices()
+
+    devices.update_device.assert_not_awaited()
+    devices.take_project_queue.assert_called_once_with("d1", {"brightness": 50})
 
 
 @pytest.mark.asyncio

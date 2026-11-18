@@ -31,7 +31,7 @@ export type ProjectReloadDecision =
   // response carries the revision), or our own edit through a dedicated
   // endpoint or a setup wizard this tab started while edits are unsaved: a
   // refetch would drop them, so the caller re-syncs what it changed
-  // (syncDeviceConfig, syncAfterSetupAction, syncPendingSettings).
+  // (syncDeviceConfig, syncAfterSetupAction).
   | "own"
   // Another writer's change (another tab, a learned setting, a cloud push)
   // while our project save is in flight: decided again once the save is done.
@@ -73,7 +73,7 @@ export function decideProjectReload(
 // Whether a refetch asked for by project.reloaded still has anything to bring
 // when its debounce fires: not when the store already holds the revision the
 // last notice named, which a caller that re-synced itself (syncDeviceConfig,
-// syncAfterSetupAction, syncPendingSettings) has fetched by then.
+// syncAfterSetupAction) has fetched by then.
 export function reloadStillNeeded(
   storeRevision: string | null,
   noticeRevision: string | null | undefined,

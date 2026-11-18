@@ -109,7 +109,8 @@ async def test_a_changed_field_add_device_reads_re_adds_the_device(tmp_path, fie
     ({"child_entities": None}, {"child_entities": {}}, False),
     ({"pending_settings": None}, {"pending_settings": {}}, False),
     ({}, {"pending_settings": {}}, False),
-    ({"pending_settings": {}}, {"pending_settings": {"brightness": 1}}, True),
+    # The queue of pending settings is taken in place, never a re-add.
+    ({"pending_settings": {}}, {"pending_settings": {"brightness": 1}}, False),
 ])
 @pytest.mark.asyncio
 async def test_which_differences_count(tmp_path, old_has, new_has, re_added):

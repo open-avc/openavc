@@ -174,7 +174,7 @@ describe("a setting's row", () => {
   });
 
   it("marks a value that is waiting, in words that depend on the connection", async () => {
-    setProject({ pending: { volume: 40 } });
+    mocks.getDeviceSettings.mockResolvedValue({ settings: SETTINGS, pending: { volume: 40 } });
     await showPage();
     await screen.findByText("Device Settings");
     expect(screen.getByText("pending").title).toBe(
@@ -183,11 +183,20 @@ describe("a setting's row", () => {
   });
 
   it("says a waiting value goes out when a disconnected device connects", async () => {
-    setProject({ pending: { volume: 40 } });
+    mocks.getDeviceSettings.mockResolvedValue({ settings: SETTINGS, pending: { volume: 40 } });
     setLive({ "device.amp.connected": false });
     await showPage();
     await screen.findByText("Device Settings");
     expect(screen.getByText("pending").title).toBe("Pending: 40, will be applied when device connects");
+  });
+
+  it("reads what is waiting from the server, not from this tab's copy of the project", async () => {
+    // The server cleared the queue (the device took it); a tab holding an
+    // older project still has the value in its copy.
+    setProject({ pending: { volume: 40 } });
+    await showPage();
+    await screen.findByText("Device Settings");
+    expect(screen.queryByText("pending")).toBeNull();
   });
 
   it("can be edited only while the device is connected", async () => {

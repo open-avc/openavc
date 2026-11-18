@@ -164,9 +164,15 @@ export async function resumeDevice(
 
 // --- Device Settings ---
 
+/** The device's settings with their current values, and the values queued
+ *  for it that have not landed yet (`pending`, key -> value). */
 export async function getDeviceSettings(
   deviceId: string
-): Promise<{ device_id: string; settings: Record<string, DeviceSettingValue> }> {
+): Promise<{
+  device_id: string;
+  settings: Record<string, DeviceSettingValue>;
+  pending?: Record<string, unknown>;
+}> {
   return request(`/devices/${deviceId}/settings`);
 }
 

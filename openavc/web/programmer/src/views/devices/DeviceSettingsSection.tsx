@@ -5,13 +5,13 @@
  *
  * A value is checked against the setting's definition before it is sent
  * (validateSettingValue), never coerced: a blank or mistyped number is refused
- * rather than written to the hardware as 0. A value sent to a device that has
- * not reported it back is marked pending; the server sends it again on the
- * next connection. The list is read again every five seconds and a second
- * after a save, and the value shown is the live one when the device reports
- * it.
+ * rather than written to the hardware as 0. A value queued for the device that
+ * has not landed is marked pending, as the server's queue holds it; the server
+ * sends it again on the next connection. The list and the queue are read again
+ * every five seconds and a second after a save, and the value shown is the
+ * live one when the device reports it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Loader2, Pencil, Settings, X } from "lucide-react";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
@@ -19,16 +19,18 @@ import type { DeviceSettingValue } from "../../api/types";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { normalizeOptionList, settingValueText } from "../../components/shared/paramOptions";
 import { useConnectionStore } from "../../store/connectionStore";
-import { useProjectStore } from "../../store/projectStore";
 import { validateSettingValue } from "./deviceUtils";
 import { sectionTitleStyle, surfaceStyle } from "./deviceSectionStyles";
 
 type SaveResult = { key: string; success: boolean; error?: string };
 
-/** The device's settings as the server last read them, polled while shown.
- *  `reloadSoon` reads them again a second after a save. */
+const NOTHING_QUEUED: Record<string, unknown> = {};
+
+/** The device's settings and its queue as the server last read them, polled
+ *  while shown. `reloadSoon` reads them again a second after a save. */
 function useDeviceSettings(deviceId: string) {
   const [settings, setSettings] = useState<Record<string, DeviceSettingValue>>({});
+  const [pending, setPending] = useState<Record<string, unknown>>(NOTHING_QUEUED);
   const [loaded, setLoaded] = useState(false);
   const mounted = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,6 +40,7 @@ function useDeviceSettings(deviceId: string) {
     api.getDeviceSettings(deviceId).then((data) => {
       if (!mounted.current) return;
       setSettings(data.settings);
+      setPending(data.pending ?? NOTHING_QUEUED);
       setLoaded(true);
     }).catch(() => { if (mounted.current) setLoaded(true); });
   }, [deviceId]);
@@ -57,7 +60,7 @@ function useDeviceSettings(deviceId: string) {
     if (mounted.current) refreshTimer.current = setTimeout(loadSettings, 1000);
   };
 
-  return { settings, loaded, reloadSoon };
+  return { settings, pending, loaded, reloadSoon };
 }
 
 /** The value on the device now: the live state under the setting's state key
@@ -74,12 +77,7 @@ function currentValueOf(
 
 export function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; connected: boolean }) {
   const liveState = useConnectionStore((s) => s.liveState);
-  const devices = useProjectStore((s) => s.project?.devices);
-  const pendingSettings = useMemo(() => {
-    const dev = devices?.find((d) => d.id === deviceId);
-    return dev?.pending_settings ?? {};
-  }, [devices, deviceId]);
-  const { settings, loaded, reloadSoon } = useDeviceSettings(deviceId);
+  const { settings, pending: pendingSettings, loaded, reloadSoon } = useDeviceSettings(deviceId);
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");

@@ -179,7 +179,7 @@ async def test_start_runs_its_stages_in_order(tmp_path, monkeypatch, acme_driver
         assert eng.state.get("system.version") and eng.state.get("system.deployment_type")
         assert eng._running is True
         # The listeners that carry engine events to the WebSocket.
-        assert len(eng._event_sub_ids) >= 18
+        assert len(eng._event_sub_ids) >= 17
     finally:
         await eng.stop()
 
@@ -630,12 +630,6 @@ async def test_start_prewarms_the_network_info_off_the_loop(tmp_path, no_update_
 async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_checks):
     eng = Engine(_project(tmp_path))
     _quiet_services(eng, [])
-    persisted = []
-
-    async def pending_applied(event, payload):
-        persisted.append(payload)
-
-    eng._on_pending_settings_applied = pending_applied
     try:
         await eng.start()
         sent = []
@@ -653,6 +647,8 @@ async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_
         ]
         for event in events:
             await eng.events.emit(event, {})
+        # Saying a queue was cleared reaches no client and saves nothing: the
+        # clear was saved before it is said (core/pending_queue.py).
         await eng.events.emit("device.pending_settings_applied", {"device_id": "d1"})
         assert sent == [
             ("macro.started", None), ("macro.progress", None), ("macro.completed", None),
@@ -664,7 +660,7 @@ async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_
             ("plugin.started", None), ("plugin.stopped", None), ("plugin.error", None),
             ("plugin.missing", None),
         ]
-        assert persisted == [{"device_id": "d1"}]
+        assert eng._bookkeeping_queue == []
     finally:
         await eng.stop()
 

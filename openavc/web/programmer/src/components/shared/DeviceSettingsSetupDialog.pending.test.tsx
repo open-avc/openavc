@@ -3,10 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Settings queued for a device that is not connected yet are saved into the
-// project on the server. The project.reloaded that follows names this tab, so
-// nothing else refetches: the dialog has to bring the store up to date, or the
-// device page shows nothing pending and the tab's next save is refused as
-// another session's (its revision is one behind the server's).
+// project on the server, which owns the queue: the device page reads what is
+// waiting from the server. The dialog brings a clean tab to the server's
+// project and revision, or its next save is refused as another session's, and
+// copies no queue into a tab with unsaved edits, which keeps them.
 
 const mocks = vi.hoisted(() => ({
   setDeviceSetting: vi.fn(),
@@ -90,22 +90,23 @@ beforeEach(() => {
 });
 
 describe("DeviceSettingsSetupDialog: settings queued for a device not connected yet", () => {
-  it("brings the store up to date: the queue shows, and the revision is the server's", async () => {
+  it("queues them on the server and brings a clean tab to the server's revision", async () => {
     seedStore();
     await applyHighDensityYes();
+    expect(mocks.storePendingSettings).toHaveBeenCalledWith(DEVICE_ID, { high_density: true });
     await waitFor(() => expect(useProjectStore.getState().revision).toBe("r2"));
-    const device = useProjectStore.getState().project?.devices.find((d) => d.id === DEVICE_ID);
-    expect(device?.pending_settings).toEqual({ high_density: true });
+    expect(useProjectStore.getState().dirty).toBe(false);
   });
 
-  it("with unsaved edits, copies only the device's queue and keeps the edits", async () => {
+  it("copies no queue into a tab with unsaved edits, which keeps them", async () => {
     const unsaved = { id: "m1", name: "New Macro", steps: [] };
     seedStore({ project: project({}, [unsaved]), dirty: true });
     await applyHighDensityYes();
-    await waitFor(() => {
-      const device = useProjectStore.getState().project?.devices.find((d) => d.id === DEVICE_ID);
-      expect(device?.pending_settings).toEqual({ high_density: true });
-    });
+    await screen.findByText(/Queued/);
+    await waitFor(() => expect(mocks.getProject).toHaveBeenCalled());
+    const device = useProjectStore.getState().project?.devices.find((d) => d.id === DEVICE_ID);
+    expect(device?.pending_settings).toEqual({});
     expect(useProjectStore.getState().project?.macros).toEqual([unsaved]);
+    expect(useProjectStore.getState().revision).toBe("r1");
   });
 });

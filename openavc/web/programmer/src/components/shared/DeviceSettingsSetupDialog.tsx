@@ -1,7 +1,7 @@
 import { useState } from "react";
 import * as api from "../../api/restClient";
-import { syncPendingSettings } from "../../store/projectStore";
 import { ApiError, parseApiError } from "../../api/errors";
+import { syncDeviceFromServer } from "../../store/projectStore";
 import type { DriverInfo } from "../../api/types";
 import { validateSettingValue } from "../driver-builder/deviceSettingsHelpers";
 import { Modal } from "./Modal";
@@ -133,10 +133,11 @@ export function DeviceSettingsSetupDialog({
         setSaving(false);
         return;
       }
-      // Queuing saved the project on the server: bring this tab's copy up to
-      // date, or the device page shows nothing pending and the next save is
-      // refused as another session's.
-      await syncPendingSettings(deviceId);
+      // The server owns the queue and the device page reads it from there.
+      // Queuing saved the project, so bring a clean tab to the new revision
+      // or its next save is refused as another session's; a tab with unsaved
+      // edits keeps them, and no copy of the queue goes into it.
+      await syncDeviceFromServer(deviceId);
     }
 
     setResults(newResults);
