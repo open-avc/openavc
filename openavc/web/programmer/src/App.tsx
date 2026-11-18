@@ -11,6 +11,7 @@ import { ListenNotice } from "./components/shared/ListenNotice";
 import { SimulationBar } from "./components/shared/SimulationBar";
 import { ProjectLoadFailedBanner } from "./components/shared/ProjectLoadFailedBanner";
 import { SaveFailedBanner } from "./components/shared/SaveFailedBanner";
+import { ProjectDraftOffer } from "./components/shared/ProjectDraftOffer";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
@@ -19,6 +20,7 @@ import { DashboardView } from "./views/DashboardView";
 import { useProjectStore } from "./store/projectStore";
 import { useDriverBuilderStore } from "./store/driverBuilderStore";
 import { useNavigationStore } from "./store/navigationStore";
+import { startProjectDraft } from "./store/projectDraft";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { showInfo } from "./store/toastStore";
 import {
@@ -141,6 +143,10 @@ function AuthedApp() {
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const loadProject = useProjectStore((s) => s.load);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Keep an unsaved edit across a reload, and offer back the one an earlier
+  // page kept, from before the first load lands.
+  useEffect(() => startProjectDraft(), []);
 
   // Connect WebSocket and load project on mount
   useWebSocket();
@@ -326,6 +332,7 @@ function AuthedApp() {
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
       <MissingDriversWatcher />
       <DeviceAuditHost />
+      <ProjectDraftOffer />
     </div>
   );
 }

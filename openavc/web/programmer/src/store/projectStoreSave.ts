@@ -25,6 +25,12 @@ export interface SaveStatePatch {
   error?: string | null;
   /** Seconds until a failed save is tried again; null while none waits. */
   saveRetryIn?: number | null;
+  /** The id of the save out now, or of the last one whose answer never
+   *  came, and the project it sent; null once the server has answered.
+   *  A reloaded tab keeps them with its unsaved project, so the next page
+   *  can ask whether that save landed (store/projectDraft.ts). */
+  saveOperation?: string | null;
+  saveSending?: ProjectConfig | null;
 }
 
 /**
@@ -97,7 +103,10 @@ function judgeFailure(
 }
 
 async function trySave(deps: SaveAttemptDeps, request: SaveRequest): Promise<"saved"> {
-  deps.setState({ saving: true, savePending: false, error: null, saveRetryIn: null });
+  deps.setState({
+    saving: true, savePending: false, error: null, saveRetryIn: null,
+    saveOperation: request.operation, saveSending: request.project,
+  });
   const result = await deps.saveProject(request.project, request.etag ?? undefined, request.operation);
   const newEtag = result.etag ?? null;
   // The ETag is an opaque token — kept as it came, compared for equality.
@@ -112,9 +121,13 @@ async function trySave(deps: SaveAttemptDeps, request: SaveRequest): Promise<"sa
     etag: newEtag,
     revision: newRevision,
     conflictDetected: false,
+    ...ANSWERED,
   });
   return "saved";
 }
+
+/** The save is answered: nothing is left to ask the server about. */
+const ANSWERED = { saveOperation: null, saveSending: null } as const;
 
 /**
  * Attempt the project write, trying a failure again up to `maxRetries` times
@@ -145,12 +158,15 @@ export async function runSaveWithRetry(
       if (kind === "conflict") {
         deps.setState({
           saving: false, saveRetryIn: null, conflictDetected: true, error: deps.conflictMessage(e),
+          ...ANSWERED,
         });
         return "conflict";
       }
       const failed = judgeFailure(deps.failureMessage(e), kind, previousNotTaken, attempt >= maxRetries);
       if (failed.final) {
-        deps.setState({ error: failed.message, saving: false, saveRetryIn: null });
+        // A save that never heard back may still have landed: its id stays.
+        const answered = kind === "unknown" ? {} : ANSWERED;
+        deps.setState({ error: failed.message, saving: false, saveRetryIn: null, ...answered });
         return "failed";
       }
       previousNotTaken = failed.notTaken;

@@ -9,6 +9,9 @@ interface ConfirmDialogProps {
   extraActionLabel?: string;
   onExtraAction?: () => void;
   destructive?: boolean;
+  /** False for a choice that must be answered: Escape and a backdrop click
+   *  then do nothing, rather than answering Cancel for the user. */
+  dismissable?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -21,12 +24,13 @@ export function ConfirmDialog({
   extraActionLabel,
   onExtraAction,
   destructive = false,
+  dismissable = true,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   return (
     <Modal
-      onClose={onCancel}
+      onClose={dismissable ? onCancel : undefined}
       role="alertdialog"
       labelledBy="confirm-dialog-title"
       describedBy="confirm-dialog-desc"

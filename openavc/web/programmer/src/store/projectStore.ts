@@ -81,6 +81,8 @@ function adopted(copy: ServerCopy, loadGeneration: number) {
     dirty: false,
     loadGeneration: loadGeneration + 1,
     conflictDetected: false,
+    saveOperation: null,
+    saveSending: null,
   };
 }
 
@@ -126,6 +128,10 @@ interface ProjectStore {
   /** Seconds until a failed save is tried again, while one waits: a retry,
    *  said as one (store/saveState.ts), never as `error`. */
   saveRetryIn: number | null;
+  /** The save out now, or the last one never answered, and what it sent
+   *  (store/projectStoreSave.ts). */
+  saveOperation: string | null;
+  saveSending: ProjectConfig | null;
   /** Why the last project load failed, until a load gets the project. */
   loadError: string | null;
   dirty: boolean;
@@ -172,6 +178,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   savePending: false,
   error: null,
   saveRetryIn: null,
+  saveOperation: null,
+  saveSending: null,
   loadError: null,
   dirty: false,
   revision: null,

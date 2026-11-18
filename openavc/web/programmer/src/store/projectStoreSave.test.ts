@@ -285,3 +285,49 @@ describe("which failed saves are tried again", () => {
     expect(patches.at(-1)).toMatchObject({ saveRetryIn: null });
   });
 });
+
+describe("the save whose answer never came", () => {
+  // A tab reloaded before its save was answered keeps the save's id with its
+  // unsaved project, so the next page can ask the server whether that save
+  // made the current revision (store/projectDraft.ts).
+  const lastOperation = (patches: SaveStatePatch[]) =>
+    patches.filter((p) => "saveOperation" in p).at(-1);
+
+  it("is named while the save is out", async () => {
+    let seen: SaveStatePatch | undefined;
+    const { d, patches } = deps({
+      saveProject: vi.fn(async () => {
+        seen = lastOperation(patches);
+        return { etag: '"def"' };
+      }),
+    });
+    await runSaveWithRetry(d);
+    expect(seen).toMatchObject({ saveOperation: "op-1", saveSending: PROJECT });
+  });
+
+  it("is forgotten once the save is answered", async () => {
+    const { d, patches } = deps();
+    await runSaveWithRetry(d);
+    expect(lastOperation(patches)).toMatchObject({ saveOperation: null, saveSending: null });
+  });
+
+  it("is forgotten once the server refuses it", async () => {
+    const { d, patches } = deps({
+      saveProject: vi.fn(async () => {
+        throw new ApiError(422, '{"detail":"Invalid project"}');
+      }),
+    });
+    await runSaveWithRetry(d);
+    expect(lastOperation(patches)).toMatchObject({ saveOperation: null, saveSending: null });
+  });
+
+  it("is kept when the tries run out with no answer", async () => {
+    const { d, patches } = deps({
+      saveProject: vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    });
+    expect(await runSaveWithRetry(d)).toBe("failed");
+    expect(lastOperation(patches)).toMatchObject({ saveOperation: "op-1", saveSending: PROJECT });
+  });
+});
