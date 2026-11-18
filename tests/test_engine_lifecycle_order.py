@@ -407,8 +407,8 @@ async def test_stop_tears_down_in_order(tmp_path, acme_driver, no_update_checks)
     assert order == [
         "update manager", "panel software", "learned config", "persister flush",
         "system.stopping", "triggers", "cloud", "mdns", "isc", "scripts",
-        "plugins", "state flush", "macros", "persister", "command runs",
-        "file staging", "devices", "simulation", "pending events",
+        "plugins", "state flush", "pending events", "macros", "persister",
+        "command runs", "file staging", "devices", "simulation", "pending events",
     ]
     assert eng.cloud_agent is None and eng.mdns_advertiser is None and eng.isc is None
     assert eng.state.get("system.started") is False
@@ -844,6 +844,50 @@ async def test_what_was_set_before_the_stop_is_written_before_any_stage_can_hang
     assert on_disk == ["set before the stop"]
 
 
+@pytest.mark.asyncio
+async def test_a_variable_a_script_state_handler_sets_on_its_way_out_is_saved_by_the_stop(
+        tmp_path, no_update_checks):
+    # The handler is still running when the stop begins: unloading the script
+    # lets it finish, and the stop waits for it before it saves.
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "follow.py").write_text(
+        "from openavc import delay, on_state_change, state\n"
+        "\n"
+        "@on_state_change(\"var.go\")\n"
+        "async def follow(key, old, new):\n"
+        "    await delay(0.3)\n"
+        "    state.set(\"var.v\", \"set by a handler\")\n",
+        encoding="utf-8",
+    )
+    eng = Engine(_project(
+        tmp_path, variables=[*_SAVED_VARIABLE, {"id": "go", "type": "number", "default": 0}],
+        scripts=[{"id": "follow", "file": "follow.py"}],
+    ))
+    _quiet_services(eng, [])
+    await eng.start()
+    eng.state.set("var.go", 1, source="ui")
+    await eng.stop()
+    assert eng.state.get("var.v") == "set by a handler"
+    assert _saved(tmp_path).get("var.v") == "set by a handler"
+
+
+@pytest.mark.asyncio
+async def test_the_stop_waits_for_what_its_own_last_write_sets_off(tmp_path, no_update_checks):
+    eng = Engine(_project(tmp_path))
+    _quiet_services(eng, [])
+    await eng.start()
+    await eng.state.flush_pending_events()
+    heard = []
+
+    async def system_started(event, payload):
+        await asyncio.sleep(0.05)
+        heard.append(payload["new_value"])
+
+    eng.events.on("state.changed.system.started", system_started)
+    await eng.stop()
+    assert heard == [False]
+
+
 # ===========================================================================
 # a stage that raises or hangs: the stages after it still run
 # ===========================================================================
@@ -964,3 +1008,40 @@ async def test_a_project_change_that_hangs_does_not_keep_the_devices_up(
     assert problems[0] == "the project change still running: did not finish in time and was left"
     assert order == ["macros", "devices", "simulation"]
     assert not driver._connected
+
+
+@pytest.mark.asyncio
+async def test_a_state_callback_that_never_ends_is_cancelled_and_the_equipment_still_lets_go(
+        tmp_path, monkeypatch, acme_driver, no_update_checks):
+    import time
+
+    from openavc.core import stop_stages
+
+    eng = Engine(_project(tmp_path, devices=["d1"]))
+    _quiet_services(eng, [])
+    await eng.start()
+    driver = eng.devices._devices["d1"]
+    order: list[str] = []
+    ended = []
+
+    async def never_ends(key, old, new, source):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            ended.append(key)
+
+    eng.state.subscribe("var.v", never_ends)
+    eng.state.set("var.v", "go", source="ui")
+    _recorded_end(eng, order)
+    monkeypatch.setattr(stop_stages, "EQUIPMENT_SECONDS", 1.0)
+    began = time.monotonic()
+    problems = await eng.stop(deadline=began + 2.0)
+
+    # The wait for it ends at the run-up's bound and cancels it; the
+    # equipment still gets its own time.
+    assert time.monotonic() - began < 2.0
+    assert problems == ["the state callbacks: did not finish in time and was left"]
+    assert ended == ["var.v"]
+    assert order == ["macros", "devices", "simulation"]
+    assert not driver._connected
+    assert eng.state.get("system.started") is False

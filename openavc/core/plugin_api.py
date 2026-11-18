@@ -215,6 +215,8 @@ class PluginAPI:
                 if failure_reporter:
                     failure_reporter()
 
+        # Named for the plugin, which a stop that cuts the callback off logs.
+        _wrapper.__qualname__ = f"plugin {self._plugin_id}"
         sub_id = self._state.subscribe(pattern, _wrapper)
         self._registry.track_state_subscription(sub_id)
         return sub_id

@@ -52,6 +52,8 @@ An `async def` handler runs alongside the rest of the system, between its `await
 
 Each run of a handler gets 30 seconds. An async handler still running then is stopped. A plain one cannot be stopped mid-line: it is reported as timed out, and its next call into OpenAVC is refused, which ends it. Code that never calls in again runs on until it finishes. While three runs of one script are stuck like that, its plain handlers are refused until the script is reloaded or the server restarts.
 
+When the server stops or restarts, an `@on_state_change` handler that is still running gets a few seconds to finish, so a persisted variable it sets is saved. One still running after that is stopped.
+
 The same rules apply to `after()`/`every()` timer callbacks and to functions a control calls. A handler or callback that fails or times out raises a `script.error` event rather than failing silently.
 
 ```python

@@ -28,6 +28,13 @@ High-volume listeners that only need the aggregate delta can register
 via ``subscribe_bulk(pattern, callback)``; the callback receives a list
 of (key, old_value, new_value, source) tuples once per set/set_batch/
 delete transaction, instead of one call per key.
+
+A listener that returns a coroutine (an ``async def``) runs as a task after
+the write returns, and so do each transaction's ``state.changed`` events. The
+store holds every such task until it ends: ``flush_pending_events`` is THE
+wait for the work a write has set off, which the engine's stop runs before
+it saves the persistent variables and again as its last stage, bounded by
+the stop's deadline (core/stop_stages.py).
 """
 
 from __future__ import annotations
@@ -35,7 +42,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -86,6 +93,13 @@ class _Sub:
     pattern: str
     callback: Callable
     bulk: bool
+
+
+def _listener_name(sub: _Sub) -> str:
+    """The name an async listener's task carries, which a stop that cuts it
+    off logs: whose code it is and the pattern it was subscribed to."""
+    whose = getattr(sub.callback, "__qualname__", None) or repr(sub.callback)
+    return f"{whose} on {sub.pattern!r}"
 
 
 # The characters that make a subscription pattern a glob (fnmatch) rather than
@@ -246,7 +260,9 @@ class StateStore:
         self._all_subs: dict[str, _Sub] = {}                  # sub_id -> sub (for unsubscribe)
         self._history: deque[HistoryEntry] = deque(maxlen=1000)
         self._event_bus: EventBus | None = None
-        self._pending_event_tasks: set[asyncio.Task] = set()
+        # Every task the store has set off and not yet seen end: each
+        # transaction's events and each async listener's run.
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def set_event_bus(self, event_bus: EventBus) -> None:
         """Wire up the EventBus after construction (avoids circular dependency)."""
@@ -521,17 +537,58 @@ class StateStore:
     # Async housekeeping
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _log_task_exception(task: asyncio.Task) -> None:
-        """Log exceptions from completed async callback tasks."""
+    def _set_off(self, coro: Any, name: str) -> None:
+        """Run ``coro`` as a task the store holds until it ends, so
+        ``flush_pending_events`` waits for it; a failure is logged. With no
+        running loop (a sync caller) it is closed unrun."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            coro.close()
+            return
+        task = loop.create_task(coro, name=name)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._task_ended)
+
+    def _task_ended(self, task: asyncio.Task) -> None:
+        self._pending_tasks.discard(task)
         if not task.cancelled() and task.exception() is not None:
             log.error(f"State callback error: {task.exception()}")
 
     async def flush_pending_events(self) -> None:
-        """Wait for all pending event emission tasks to complete."""
-        if self._pending_event_tasks:
-            await asyncio.gather(*self._pending_event_tasks, return_exceptions=True)
-            self._pending_event_tasks.clear()
+        """Wait until every task the store has set off has ended: each
+        write's ``state.changed`` events and each async listener, including
+        those set off while it waits (a listener that writes another key).
+
+        It has no bound of its own; the stop runs it as a stage, which bounds
+        it. Cancelled there, it cancels what is still running and names it."""
+        try:
+            while pending := self._still_running():
+                await asyncio.wait(pending)
+        except asyncio.CancelledError:
+            self._cancel_what_is_left()
+            raise
+
+    def _still_running(self) -> list[asyncio.Task]:
+        me = asyncio.current_task()
+        return [t for t in self._pending_tasks if t is not me and not t.done()]
+
+    def _cancel_what_is_left(self) -> None:
+        left = self._still_running()
+        if not left:
+            return
+        names = Counter(t.get_name() for t in left)
+        shown = "; ".join(
+            name if count == 1 else f"{name} (x{count})"
+            for name, count in names.most_common(5)
+        )
+        more = len(names) - 5
+        log.warning(
+            f"{len(left)} state callback(s) still running when the wait for "
+            f"them ended, cancelled: {shown}{f'; and {more} more' if more > 0 else ''}"
+        )
+        for task in left:
+            task.cancel()
 
     # ------------------------------------------------------------------
     # Internals
@@ -680,12 +737,7 @@ class StateStore:
         try:
             result = sub.callback(key, old, new, source)
             if asyncio.iscoroutine(result):
-                try:
-                    loop = asyncio.get_running_loop()
-                    task = loop.create_task(result)
-                    task.add_done_callback(self._log_task_exception)
-                except RuntimeError:
-                    pass  # No event loop — skip
+                self._set_off(result, _listener_name(sub))
         except Exception:  # Catch-all: isolates listener callback errors
             log.exception(f"Error in state listener for pattern '{sub.pattern}'")
 
@@ -695,12 +747,7 @@ class StateStore:
         try:
             result = sub.callback(changes)
             if asyncio.iscoroutine(result):
-                try:
-                    loop = asyncio.get_running_loop()
-                    task = loop.create_task(result)
-                    task.add_done_callback(self._log_task_exception)
-                except RuntimeError:
-                    pass
+                self._set_off(result, _listener_name(sub))
         except Exception:
             log.exception(f"Error in state bulk listener for pattern '{sub.pattern}'")
 
@@ -715,7 +762,7 @@ class StateStore:
         A bulk ``set_batch`` (device/child poll, project reload) can carry
         tens of thousands of changes; the old per-key fan-out scheduled 2N
         tasks at once and pinned a strong reference to every one of them in
-        ``_pending_event_tasks`` until they completed — a memory/scheduler
+        ``_pending_tasks`` until they completed — a memory/scheduler
         spike on a common path. Collapsing to one task bounds that to a
         single live reference per transaction. Each ``emit`` still dispatches
         its own matching handlers concurrently, and ordering the emits by
@@ -724,14 +771,7 @@ class StateStore:
         """
         if self._event_bus is None or not changes:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return  # No event loop — skip async events (sync tests)
-
-        task = loop.create_task(self._dispatch_change_events(changes))
-        self._pending_event_tasks.add(task)
-        task.add_done_callback(self._pending_event_tasks.discard)
+        self._set_off(self._dispatch_change_events(changes), "state.changed events")
 
     async def _dispatch_change_events(
         self, changes: list[tuple[str, Any, Any, str]]

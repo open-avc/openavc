@@ -1,5 +1,9 @@
 """Tests for StateStore."""
 
+import asyncio
+import logging
+
+import pytest
 
 
 def test_get_set_basic(state):
@@ -377,11 +381,11 @@ async def test_emit_events_coalesces_into_one_task_per_batch(wired):
     updates = {f"var.k{i}": i for i in range(50)}
     state.set_batch(updates)
     # Old per-key fan-out would have scheduled 2*50 = 100 tasks here.
-    assert len(state._pending_event_tasks) == 1
+    assert len(state._pending_tasks) == 1
 
     await state.flush_pending_events()
     assert sorted(received) == sorted(updates.keys())
-    assert state._pending_event_tasks == set()
+    assert state._pending_tasks == set()
 
 
 async def test_emit_events_per_key_event_still_delivered(wired):
@@ -392,6 +396,90 @@ async def test_emit_events_per_key_event_still_delivered(wired):
     state.set("var.target", 7)
     await state.flush_pending_events()
     assert hits == [7]
+
+
+# --- The drain: every task the store sets off ---
+
+
+async def _a_few_turns():
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+async def test_the_drain_waits_for_an_async_listener_still_running(state):
+    """An async listener runs as a task after the write returns; the drain
+    waits for it to finish."""
+    finished = []
+
+    async def listener(key, old, new, source):
+        await _a_few_turns()
+        finished.append(new)
+
+    state.subscribe("var.slow", listener)
+    state.set("var.slow", 1)
+    await state.flush_pending_events()
+    assert finished == [1]
+
+
+async def test_the_drain_waits_for_an_async_bulk_listener_still_running(state):
+    finished = []
+
+    async def listener(changes):
+        await _a_few_turns()
+        finished.append([key for key, *_ in changes])
+
+    state.subscribe_bulk("var.*", listener)
+    state.set_batch({"var.a": 1, "var.b": 2})
+    await state.flush_pending_events()
+    assert finished == [["var.a", "var.b"]]
+
+
+async def test_the_drain_waits_for_what_is_set_off_while_it_waits(wired):
+    """A handler that writes another key while the drain waits sets off more
+    work; one drain waits for that too."""
+    state, events = wired
+    heard = []
+
+    async def chain(event, payload):
+        await _a_few_turns()
+        state.set("var.second", payload["new_value"] + 1)
+
+    async def last(event, payload):
+        await _a_few_turns()
+        heard.append(payload["new_value"])
+
+    events.on("state.changed.var.first", chain)
+    events.on("state.changed.var.second", last)
+    state.set("var.first", 1)
+    await state.flush_pending_events()
+    assert heard == [2]
+
+
+async def test_a_drain_that_is_cut_off_cancels_and_names_what_is_still_running(
+    state, caplog
+):
+    """The stop bounds the drain. What is still running when it is cut off
+    is cancelled and named, by the pattern it was subscribed to."""
+    stuck = asyncio.Event()
+    ended = []
+
+    async def never_ends(key, old, new, source):
+        try:
+            await stuck.wait()
+        finally:
+            ended.append(key)
+
+    state.subscribe("var.stuck", never_ends)
+    state.set("var.stuck", 1)
+    with caplog.at_level(logging.WARNING, logger="openavc.core.state_store"):
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(state.flush_pending_events(), 0.1)
+        await _a_few_turns()
+    assert ended == ["var.stuck"]
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "1 state callback" in warnings[0]
+    assert "'var.stuck'" in warnings[0]
 
 
 def test_get_history_narrowed_to_one_prefix(state):

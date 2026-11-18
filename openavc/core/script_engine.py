@@ -22,6 +22,7 @@ import threading
 import time
 import traceback
 import types
+from collections.abc import Coroutine
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, TYPE_CHECKING
@@ -893,19 +894,23 @@ class ScriptEngine:
         returns: an ``async def`` on the loop, a plain ``def`` on the script's
         worker thread, both under ``HANDLER_TIMEOUT``. Because each is a task,
         the state-change cascade depth bounds a plain handler's feedback loop
-        the same way it bounds an async one's.
+        the same way it bounds an async one's. The wrapper hands the run back
+        to the state store as a coroutine, so the store holds the task and a
+        stop waits for a handler still running (StateStore.flush_pending_events).
         """
 
-        def wrapped(key: str, old_value: Any, new_value: Any, source: str) -> None:
+        def wrapped(
+            key: str, old_value: Any, new_value: Any, source: str,
+        ) -> Coroutine[Any, Any, None] | None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
             except RuntimeError:
                 # Written from a thread with no loop (a sync caller, a plugin's
                 # own thread): run it right here, as before there was a runner.
                 self._run_state_handler_here(
                     handler, script_id, key, old_value, new_value
                 )
-                return
+                return None
 
             # Bound the state-change cascade so a toggling value (which evades
             # StateStore's unchanged-value short-circuit) can't spawn tasks
@@ -921,11 +926,11 @@ class ScriptEngine:
                 )
                 log.warning(msg)
                 self._schedule_state_error(script_id, handler, key, msg, "")
-                return
+                return None
 
-            loop.create_task(self._run_state_handler(
+            return self._run_state_handler(
                 handler, (key, old_value, new_value), depth + 1, script_id, key,
-            ))
+            )
 
         wrapped.__name__ = getattr(handler, "__name__", "anonymous")
         wrapped.__qualname__ = f"{script_id}.{wrapped.__name__}"

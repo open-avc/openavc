@@ -15,7 +15,8 @@ devices and variables before scripts (scripts subscribe to ``var.*`` /
 can fire a macro, then cancels the macros, then disconnects the devices they
 command. THE point where a stop saves the persistent variables is between
 those last two, once nothing that can set one is left (a "System Stopping"
-trigger's macro, a script's or a plugin's stop); what was set before the stop
+trigger's macro, a script's or a plugin's stop, a state callback either set
+off: the run-up's last stage waits for those); what was set before the stop
 is written at its start, before any stage can hang. ``_reconcile``
 (core/project_reconcile.py) shares these orderings, so a change to one is
 checked against the other.
@@ -616,6 +617,11 @@ class EngineLifecycleMixin:
         await run.run("the periodic backup", lambda: _cancel_and_wait(self._periodic_backup_task))
         await run.run("the panel sweep", self._end_panel_sweep)
         await run.run("the programs installer", self._end_os_programs)
+        # A script's or a plugin's state callback still running may yet set a
+        # persistent variable: wait for what the state store has set off
+        # before the persister stops. Last in the run-up, so a callback that
+        # never ends costs only the run-up.
+        await run.run("the state callbacks", self.state.flush_pending_events)
         # Everything that can fire a macro (triggers, scripts, plugins) has
         # stopped. From here the stages let go of the equipment, and each may
         # run to the deadline itself.
@@ -637,10 +643,10 @@ class EngineLifecycleMixin:
         # which hands nothing back to the real equipment and keeps the record,
         # so simulation comes back when the server starts again.
         await run.run("the simulator", self.simulation.shutdown)
-        # Drain any in-flight state.changed EventBus emissions so they aren't
-        # silently dropped mid-shutdown.
-        await run.run("the pending events", self.state.flush_pending_events)
         await run.run("system.started", self._mark_stopped)
+        # Last: wait for what the stop's own writes set off (the devices'
+        # going offline, system.started), so none of it is dropped.
+        await run.run("the pending events", self.state.flush_pending_events)
         log.info("Engine stopped")
 
     def _mark_stopped(self) -> None:
