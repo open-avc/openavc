@@ -8,7 +8,9 @@ engine subsystem and sends command_result responses.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from openavc import restart
@@ -66,6 +68,65 @@ def _schema_problems(exc: Exception) -> str:
     if isinstance(exc, ValidationError):
         return "; ".join(validation_error_lines(exc.errors(include_url=False, include_input=False)))
     return str(exc)
+
+
+#: The reason the backup a push takes of the project it replaces is filed under.
+_PUSH_BACKUP = "Before cloud config push"
+
+#: Why a push with no openavc_version was not applied.
+_NO_VERSION = (
+    "the project has no openavc_version, so this system cannot tell which format it "
+    "was saved in. Push the whole project as a system exports it, openavc_version included."
+)
+
+
+class _PushRefused(Exception):
+    """A push refused before the running system was given it; its text is
+    the answer."""
+
+
+def _read_push(project_json: dict[str, Any]) -> tuple[Any, MigrationNotes]:
+    """The pushed project as Save reads a whole project
+    (``core/sent_project.py``), repaired as an import is, and what its
+    migration changed; a refusal in the push's own words."""
+    from openavc.api.error_messages import not_applied
+    from openavc.core import sent_project
+
+    try:
+        return sent_project.read_sent_project(project_json, repair=True)
+    except sent_project.ProjectVersionMissingError as missing:
+        raise _PushRefused(not_applied(_NO_VERSION)) from missing
+    except (ValueError, TypeError) as invalid:
+        raise _PushRefused(f"Invalid project schema: {_schema_problems(invalid)}") from invalid
+
+
+class _RollbackCopy:
+    """The project file a push replaces, read as JSON under the project lock
+    once the push has its turn (``Engine.replace_project``'s ``before``), so
+    an edit saved while the push waited is in it. It goes back in the push's
+    answer for the cloud's rollback (``previous``; ``None`` when the file
+    could not be read), so it has to fit the cloud message limit: one too
+    large refuses the push before anything changes. Applied first, the
+    answer could not be sent, and the fleet operation would be left on a
+    system running the push with no copy on either side."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self.previous: dict[str, Any] | None = None
+
+    def take(self) -> None:
+        try:
+            previous = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return  # Best-effort: the push goes on without a rollback copy
+        size = len(json.dumps(previous))
+        if size > MAX_EMBED_BYTES:
+            raise _PushRefused(
+                f"rollback_snapshot_too_large: current project serializes to {size} bytes, "
+                f"which exceeds the {MAX_EMBED_BYTES}-byte cloud message limit; "
+                f"config push refused so rollback stays possible"
+            )
+        self.previous = previous
 
 
 class CommandHandler:
@@ -215,78 +276,32 @@ class CommandHandler:
             )
             return
 
-        if self._apply_fn and self._project_path:
-            try:
-                from pathlib import Path
-                from openavc.core.project_loader import ProjectConfig
-                from openavc.core.project_migration import migrate_project
-                from openavc.core.backup_manager import create_backup
-
-                project_path = Path(self._project_path)
-
-                # Capture previous config for rollback support
-                previous_json = None
-                try:
-                    import json
-                    if project_path.exists():
-                        previous_json = json.loads(project_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError, ValueError):
-                    pass  # Best-effort: previous config capture is optional for rollback
-
-                # The rollback snapshot travels back inside the command_result,
-                # which must fit the 1 MB wire cap. Refuse BEFORE applying:
-                # applying first and then failing to report would leave the
-                # fleet operation stranded on a system already running the new
-                # config, with no rollback snapshot on either side.
-                if previous_json is not None:
-                    snapshot_size = len(json.dumps(previous_json))
-                    if snapshot_size > MAX_EMBED_BYTES:
-                        await self._send_result(
-                            request_id, False,
-                            error=(
-                                f"rollback_snapshot_too_large: current project "
-                                f"serializes to {snapshot_size} bytes, which exceeds "
-                                f"the {MAX_EMBED_BYTES}-byte cloud message limit; "
-                                f"config push refused so rollback stays possible"
-                            ),
-                        )
-                        return
-
-                # Migrate an old-schema push to the current format BEFORE
-                # validating/saving, matching load_project — otherwise a
-                # pre-current-schema cloud project is persisted with stale
-                # field placement and misread until the next disk reload.
-                update_notes = MigrationNotes()
-                try:
-                    migrated_json, _ = migrate_project(project_json, update_notes)
-                    project = ProjectConfig.model_validate(migrated_json)
-                except (ValueError, TypeError) as ve:
-                    await self._send_result(
-                        request_id, False, error=f"Invalid project schema: {_schema_problems(ve)}",
-                    )
-                    return
-
-                # Create backup before overwriting
-                import asyncio
-                await asyncio.to_thread(create_backup, project_path, "Before cloud config push")
-
-                # A fleet push wins by design — no expected_revision — but
-                # it goes through the one seam: a replace persists the
-                # pushed bytes, fully reconciles, bumps the revision, and
-                # broadcasts project.reloaded, so an open IDE 409s on its
-                # next save instead of silently reverting the push.
-                await self._apply_fn(project, update_notes=update_notes)
-
-                # Include previous config in result for rollback
-                result_data = {"previous_project_json": previous_json} if previous_json else "Config applied"
-            except Exception as e:
-                # A push that fails anywhere (the backup, the apply, its write)
-                # was not taken in: the project before it still runs.
-                await self._send_result(request_id, False, error=_not_applied_answer(e))
-                return
-            await self._send_result(request_id, True, result=result_data)
-        else:
+        if not (self._apply_fn and self._project_path):
             await self._send_result(request_id, False, error="Apply not available")
+            return
+        from openavc.core.project_changes import KeepReplaced
+
+        kept = _RollbackCopy(Path(self._project_path))
+        try:
+            project, update_notes = _read_push(project_json)
+            # A fleet push wins by design (no expected_revision), through the
+            # door a replace takes: it persists the pushed bytes, fully
+            # reconciles, bumps the revision and broadcasts project.reloaded,
+            # so an open IDE 409s on its next save instead of reverting it.
+            await self._apply_fn(
+                project, update_notes=update_notes,
+                keep=KeepReplaced(before=kept.take, backup=_PUSH_BACKUP),
+            )
+        except _PushRefused as refusal:
+            await self._send_result(request_id, False, error=str(refusal))
+            return
+        except Exception as e:
+            # A push that fails anywhere (the backup, the apply, its write)
+            # was not taken in: the project before it still runs.
+            await self._send_result(request_id, False, error=_not_applied_answer(e))
+            return
+        result = {"previous_project_json": kept.previous} if kept.previous else "Config applied"
+        await self._send_result(request_id, True, result=result)
 
     async def _handle_restart(
         self, payload: dict[str, Any], request_id: str, actor: str

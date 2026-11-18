@@ -15,7 +15,9 @@ moment, never one taken before the lock, then the take-in and the save.
 ``apply_project_edit`` and both bookkeeping saves are its callers; the
 whole-project doors (``apply_project``, ``apply_named_save``,
 ``replace_project``, ``reassign_installed_equipment``) end in the same
-take-in.
+take-in. What a replace keeps of the project it replaces (the cloud push's
+rollback copy, a backup) is taken under the lock before anything changes,
+never before the lock, so an edit saved while the replace waited is in it.
 
 Two kinds of change. An **applied** one (``apply_project``, the door's edits,
 and the doors built on them) is taken in, compared with the running project,
@@ -64,7 +66,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from openavc.core import project_update
+from openavc.core import backup_manager, project_update
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_logins import LoginChange
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
@@ -131,6 +133,26 @@ class ApplyOutcome:
 
     revision: str
     failed: tuple[FailedPart, ...] = ()
+
+
+@dataclass(frozen=True)
+class KeepReplaced:
+    """What a caller of ``replace_project`` keeps of the project it
+    replaces, taken under the lock before anything changes, so it is the
+    project replaced, an edit saved while the replace waited included:
+    ``before`` (a plain or coroutine function: the cloud push's rollback
+    copy, which may refuse the push by raising), then a backup named
+    ``backup``. A failure in either leaves the running project and its file
+    as they were, and is raised as it is."""
+
+    before: Any = None
+    backup: str | None = None
+
+    async def take(self, project_path) -> None:
+        if self.before is not None:
+            await _call(self.before)
+        if self.backup is not None:
+            await asyncio.to_thread(backup_manager.create_backup, project_path, self.backup)
 
 
 @dataclass(frozen=True)
@@ -357,14 +379,18 @@ class ProjectChangesMixin:
 
     async def replace_project(
         self, new_project: ProjectConfig, update_notes: MigrationNotes, *,
-        expected_revision: str | None = None,
+        expected_revision: str | None = None, keep: KeepReplaced | None = None,
     ) -> ApplyOutcome:
         """A project that replaces the running one (an import, a new blank
         project, a whole project pushed from the cloud), applied as a load
         and saved; once that has worked, the update notice is what its
-        migration changed, or none (``keep_update_notes``)."""
+        migration changed, or none (``keep_update_notes``). What the caller
+        keeps of the project it replaces (``keep``) is taken under the lock
+        once the revision is checked, before anything changes."""
         async with self._lock_for_a_change():
             self._check_revision(expected_revision)
+            if keep is not None:
+                await keep.take(self.project_path)
             outcome = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
             self.keep_update_notes(update_notes, replace=True)
             return outcome

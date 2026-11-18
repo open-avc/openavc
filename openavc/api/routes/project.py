@@ -352,17 +352,22 @@ async def dismiss_update_notice() -> dict[str, Any]:
 
 def _migrated_body(body: dict[str, Any], mode: str) -> tuple[ProjectConfig, Any]:
     """A whole project document as this release reads it, and what its
-    migration changed. The format chain runs before validating, so an older
-    export (the Programmer's import saves through here) migrates as a disk
-    load would; an import is also repaired as a load is
-    (core/saved_values.py), where a save refuses a value past a bound."""
-    from openavc.core.project_migration import migrate_project
-    from openavc.core.project_update import MigrationNotes
+    migration changed (``core/sent_project.py``, which a cloud push reads
+    one with too), refused in this route's words. An import is repaired as a
+    load is (core/saved_values.py), where a save refuses a value past a
+    bound."""
+    from openavc.core import sent_project
 
-    update_notes = MigrationNotes()
     try:
-        body, _ = migrate_project(body, update_notes, repair=mode == "import")
-        return ProjectConfig(**body), update_notes
+        return sent_project.read_sent_project(body, repair=mode == "import")
+    except sent_project.ProjectVersionMissingError:
+        # Every legitimate producer (the IDE, exports, the library, the
+        # seed) includes the field, so its absence is a caller bug.
+        raise HTTPException(
+            status_code=422,
+            detail="Project body is missing 'openavc_version'. Send the whole "
+                   "document from GET /api/project, version field included.",
+        )
     except ValidationError as e:
         # The field list is the whole repair story for whoever sent this --
         # a person, an integration, or the AI writing a project section.
@@ -424,19 +429,6 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     expected_rev: str | None = None
     if if_match is not None:
         expected_rev = if_match.strip('"')
-
-    # The migration chain keys on this field and treats a missing one as the
-    # OLDEST format -- running the whole chain over a current-format body,
-    # which collapses every placement and re-divides every rem value, then
-    # saves the wreckage stamped current. Every legitimate producer (the IDE,
-    # exports, the library, the seed) includes it, so absence is a caller bug;
-    # refuse it loudly instead of corrupting the project silently.
-    if "openavc_version" not in body:
-        raise HTTPException(
-            status_code=422,
-            detail="Project body is missing 'openavc_version'. Send the whole "
-                   "document from GET /api/project, version field included.",
-        )
 
     project, update_notes = _migrated_body(body, mode)
     # Compare-and-set runs inside the engine, under the same lock that

@@ -1374,8 +1374,11 @@ class TestCommandHandler:
         # 409s instead of silently reverting it).
         from openavc.core.project_update import MigrationNotes
         # The push replaces the running project: what its migration changed
-        # (nothing, here) becomes the notice for it.
-        assert applied == [{"update_notes": MigrationNotes()}]
+        # (nothing, here) becomes the notice for it. Its rollback copy and
+        # backup are the door's to take (tests/test_config_push_takes_in.py).
+        assert [(a["update_notes"], a["keep"].backup) for a in applied] == [
+            (MigrationNotes(), "Before cloud config push"),
+        ]
         assert sent and sent[-1][1]["success"] is True
 
     @pytest.mark.asyncio
@@ -1428,8 +1431,6 @@ class TestCommandHandler:
                   "Free up disk space and try again. The previous project is still running."),
         ("reconcile", "Not applied: the running system could not take the change. The "
                       "Programmer's Log has the details. The previous project is still running."),
-        ("backup", "Not applied: the system could not prepare the change. The Programmer's "
-                   "Log has the details. The previous project is still running."),
     ])
     @pytest.mark.asyncio
     async def test_a_push_the_system_does_not_run_answers_not_applied(self, tmp_path, failure, says):
@@ -1441,7 +1442,6 @@ class TestCommandHandler:
         from openavc.cloud.command_handler import CommandHandler
         from openavc.core.device_manager import DeviceManager
         from openavc.core.event_bus import EventBus
-        from unittest.mock import MagicMock, patch
 
         from openavc.core.project_changes import ProjectNotAppliedError
         from openavc.core.project_loader import ProjectSaveError
@@ -1466,21 +1466,16 @@ class TestCommandHandler:
                 raise ProjectNotAppliedError(cause) from cause
             raise ProjectNotAppliedError(RuntimeError(f"the reconcile failed at {project_path}"))
 
-        def backup_fails(path, reason, **kwargs):
-            raise OSError(errno.EIO, "Input/output error", str(path))
-
         events = EventBus()
         handler = CommandHandler(
             MockAgent(), DeviceManager(StateStore(), events), events,
             apply_fn=apply_fn, project_path=str(project_path),
         )
-        with patch("openavc.core.backup_manager.create_backup",
-                   backup_fails if failure == "backup" else MagicMock()):
-            await handler._handle_config_push(
-                {"project_json": {"openavc_version": "0.7.0", "project": {"id": "pushed", "name": "Room"}},
-                 "mode": "full_replace"},
-                "req-cfg3", "tech@x.com",
-            )
+        await handler._handle_config_push(
+            {"project_json": {"openavc_version": "0.7.0", "project": {"id": "pushed", "name": "Room"}},
+             "mode": "full_replace"},
+            "req-cfg3", "tech@x.com",
+        )
 
         assert sent[-1][1]["success"] is False
         assert sent[-1][1]["error"] == says
@@ -2680,60 +2675,3 @@ class TestMessageSizeLimits:
         assert payload["success"] is False
         assert payload["error"].startswith("project_too_large:")
         assert "project_json" not in payload or not payload.get("project_json")
-
-    @pytest.mark.asyncio
-    async def test_config_push_refused_when_rollback_snapshot_too_large(self, tmp_path):
-        """If the CURRENT project can't travel back as the rollback snapshot,
-        the push is refused BEFORE applying — otherwise the fleet target
-        strands on a system already running the new config with the
-        rollback snapshot lost."""
-        import json as _json
-        from openavc.core.state_store import StateStore
-        from openavc.core.event_bus import EventBus
-        from openavc.core.device_manager import DeviceManager
-        from openavc.cloud.command_handler import CommandHandler
-        from openavc.cloud.protocol import MAX_EMBED_BYTES
-
-        state = StateStore()
-        events = EventBus()
-        devices = DeviceManager(state, events)
-
-        sent = []
-
-        class MockAgent:
-            async def send_message(self, msg_type, payload):
-                sent.append((msg_type, payload))
-
-        project_path = tmp_path / "project.avc"
-        previous = {
-            "openavc_version": "0.7.0",
-            "project": {"id": "old", "name": "Old"},
-            "padding": "x" * (MAX_EMBED_BYTES + 1),
-        }
-        original_text = _json.dumps(previous)
-        project_path.write_text(original_text, encoding="utf-8")
-
-        applied = []
-
-        async def apply_fn(project, **kwargs):
-            applied.append(kwargs)
-            return 1
-
-        handler = CommandHandler(
-            MockAgent(), devices, events,
-            apply_fn=apply_fn, project_path=str(project_path),
-        )
-
-        pushed = {"openavc_version": "0.7.0", "project": {"id": "new", "name": "New"}}
-        await handler._handle_config_push(
-            {"project_json": pushed, "mode": "full_replace"}, "req-cp", "tech@x.com",
-        )
-
-        assert len(sent) == 1
-        msg_type, payload = sent[0]
-        assert msg_type == "command_result"
-        assert payload["success"] is False
-        assert "rollback_snapshot_too_large" in payload["error"]
-        # Nothing was applied and the on-disk project is untouched.
-        assert applied == []
-        assert project_path.read_text(encoding="utf-8") == original_text
