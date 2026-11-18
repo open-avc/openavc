@@ -33,10 +33,10 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 
 from openavc.api.errors import api_error as _api_error
+from openavc.drivers.driver_file_name import DRIVER_FILE_STEM
 from openavc.drivers.driver_loader import (
     COMPANION_SUFFIXES,
     DISCOVERY_COMPANION_SUFFIX,
-    DRIVER_FILE_STEM,
     companion_relpath_from_yaml,
     declared_driver_info,
     require_mutable_driver_file,
@@ -169,8 +169,15 @@ async def _catalog_hashes(driver_id: str, force: bool = False):
 
 async def catalog_check(driver_id: str):
     """One install's or update's check against the catalog (main file and
-    companions alike), which fetches the catalog again once before refusing."""
+    companions alike), which fetches the catalog again once before refusing.
+    An id the catalog cannot hold (``driver_id``: its build refuses one
+    outside the id pattern) is refused before anything is fetched."""
+    from openavc.drivers.driver_id import id_refusal
     from openavc.utils.community_integrity import CatalogCheck
+
+    refused = id_refusal(driver_id)
+    if refused:
+        raise HTTPException(status_code=422, detail=f"Not a driver id the catalog publishes: {refused}")
 
     return await CatalogCheck.fetch(
         lambda force: _catalog_hashes(driver_id, force=force),
@@ -199,8 +206,8 @@ async def _verify_against_catalog(catalog, url: str, data: bytes) -> None:
 
 def _companion_name(suffixes: tuple[str, ...]) -> "re.Pattern[str]":
     """A companion file name the catalog doors will write: a driver file stem,
-    then one of ``suffixes``."""
-    return re.compile(rf"^{DRIVER_FILE_STEM}({'|'.join(map(re.escape, suffixes))})$")
+    then one of ``suffixes``, judged whole (``fullmatch``)."""
+    return re.compile(rf"{DRIVER_FILE_STEM}({'|'.join(map(re.escape, suffixes))})")
 
 
 # The companion a YAML driver declares is its discovery file, and a Python
@@ -293,8 +300,9 @@ class CatalogFiles:
         self.driver_repo = driver_repo
         self.catalog = catalog
         self.kind = _driver_file_kind(url)
-        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
-        self.file_name = f"{safe_id}{self.kind}"
+        # Named for the id as it is written: catalog_check has refused an id
+        # outside the pattern, and the catalog publishes none.
+        self.file_name = f"{driver_id}{self.kind}"
         self.path = driver_repo / self.file_name
 
     async def _fetch(self, url: str, *, absent_ok: bool = False) -> Any:
@@ -405,7 +413,7 @@ class CatalogFiles:
         # arbitrary .py file in driver_repo. The uninstall path uses the
         # same suffix check before removing companion files, so this keeps
         # the install / uninstall contract symmetric.
-        if not _DECLARED_COMPANION_NAME.match(companion_filename):
+        if not _DECLARED_COMPANION_NAME.fullmatch(companion_filename):
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -465,7 +473,7 @@ class CatalogFiles:
 
         # Convention-named, but validate anyway: only the documented suffixes,
         # so a redirect can't land an arbitrary .py in driver_repo.
-        if not _CONVENTIONAL_COMPANION_NAME.match(companion_filename):
+        if not _CONVENTIONAL_COMPANION_NAME.fullmatch(companion_filename):
             return CompanionFetch(None)
         companion_url = urljoin(self.url, companion_filename)
         if not _is_catalog_url(companion_url):

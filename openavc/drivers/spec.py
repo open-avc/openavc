@@ -46,7 +46,10 @@ CONFIDENCE_LEVELS: tuple[str, ...] = ("full", "partial", "untested")
 # Shared shape patterns (regex source strings). One definition so the
 # schema, the catalog validator, and the Builder agree on what a legal id,
 # version, tag, or reference URL looks like.
-DRIVER_ID_PATTERN = r"^[a-z0-9_]+$"
+# The characters a driver id may hold (a regex character class's inside), and
+# the id pattern made of them; ``driver_id`` holds an id to it.
+DRIVER_ID_CHARS = "a-z0-9_"
+DRIVER_ID_PATTERN = rf"^[{DRIVER_ID_CHARS}]+$"
 SEMVER_PATTERN = r"^\d+\.\d+\.\d+(?:[\-+][\w.\-]+)?$"
 TAG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 URL_PATTERN = r"^[Hh][Tt][Tt][Pp][Ss]?://"

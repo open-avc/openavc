@@ -497,6 +497,12 @@
  "frame_parser_unknown_type": [
   "frame_parser: unknown type 'crc16' (expected 'length_prefix' or 'fixed_length')"
  ],
+ "id_empty": [
+  "id: an empty id names no driver; use only lowercase letters, digits and underscores"
+ ],
+ "id_outside_the_pattern": [
+  "id: 'acme.widget' can use only lowercase letters, digits and underscores"
+ ],
  "instances_count_exceeds_max": [
   "child_entity_types.zone.instances: count (99) exceeds id_format.max (8)"
  ],

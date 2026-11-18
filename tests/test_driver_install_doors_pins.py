@@ -526,16 +526,17 @@ async def test_install_of_a_python_driver_fetches_its_companions_before_register
 
 
 @pytest.mark.asyncio
-async def test_install_under_an_empty_id_is_refused_for_the_id_it_declares(world):
+async def test_install_under_an_empty_id_is_refused_before_anything_is_fetched(world):
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml()
     refusal = await _refused(install_community_driver(CommunityDriverInstallRequest(
         driver_id="", file_url=CATALOG + "acme_widget.avcdriver",
     )))
     assert (refusal.status_code, refusal.detail) == (
         422,
-        "Downloaded driver declares id 'acme_widget', not the requested ''. "
-        "Install it under id 'acme_widget'.",
+        "Not a driver id the catalog publishes: an empty id names no driver; "
+        "use only lowercase letters, digits and underscores",
     )
+    assert world.events == []
     assert _tree(world.repo) == {}
 
 
@@ -666,18 +667,20 @@ async def test_update_finds_a_yaml_by_the_id_it_declares_and_removes_the_old_nam
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("driver_id", "file_name"),
-    [("acme-widget", "acme-widget.avcdriver"), ("acme.widget", "acme_widget.avcdriver")],
-)
-async def test_update_names_the_file_for_the_id_in_safe_characters(world, driver_id, file_name):
+@pytest.mark.parametrize("driver_id", ["acme-widget", "acme.widget"])
+async def test_update_of_an_id_the_catalog_cannot_hold_fetches_nothing(world, driver_id):
     (world.repo / f"{driver_id}.avcdriver").write_bytes(_yaml(driver_id))
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(driver_id, version="2.0.0")
-    result = await update_driver(
+    refusal = await _refused(update_driver(
         driver_id, _json_request({"file_url": CATALOG + "acme_widget.avcdriver"})
+    ))
+    assert (refusal.status_code, refusal.detail) == (
+        422,
+        f"Not a driver id the catalog publishes: {driver_id!r} can use only "
+        "lowercase letters, digits and underscores",
     )
-    assert result["file"] == file_name
-    assert set(_tree(world.repo)) == {file_name}
+    assert world.events == []
+    assert _tree(world.repo) == {f"{driver_id}.avcdriver": _yaml(driver_id)}
 
 
 @pytest.mark.asyncio

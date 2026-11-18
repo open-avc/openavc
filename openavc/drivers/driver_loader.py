@@ -34,6 +34,7 @@ from typing import Any, Callable, Iterator, Sequence
 
 import yaml
 
+from openavc.drivers.driver_file_name import is_driver_file_stem
 from openavc.drivers.avcdriver_semantic import (
     DefinitionVerdict,
     check_driver_definition as _check_definition_rules,
@@ -79,10 +80,6 @@ DRIVER_EXTENSION = ".avcdriver"
 # ``discovery:`` block names; a Python driver's go by name, one per suffix.
 DISCOVERY_COMPANION_SUFFIX = "_discovery.py"
 COMPANION_SUFFIXES: tuple[str, ...] = (DISCOVERY_COMPANION_SUFFIX, "_sim.py")
-
-# What the name of a driver file the import and install doors write may be
-# made of, before its extension or companion suffix (a regular expression).
-DRIVER_FILE_STEM = r"[a-zA-Z0-9_\-]+"
 
 
 def declared_driver_info(filename: str, content: bytes) -> dict[str, Any]:
@@ -178,7 +175,7 @@ def _is_driver_file(filepath: Path) -> bool:
 
 
 def validate_driver_definition(
-    driver_def: dict[str, Any], *, strict: bool = False
+    driver_def: dict[str, Any], *, strict: bool = False, keeps_id: bool = False
 ) -> list[str]:
     """
     Validate a driver definition.
@@ -192,9 +189,10 @@ def validate_driver_definition(
     ``strict`` is the author's doors' switch (save, Validate, the AI tool,
     ``drivers.check``): leave it off when loading a driver, where
     ``check_driver_definition`` returns what it moves as notices.
+    ``keeps_id``: the save keeps an id the library already serves.
     """
     return _validate_definition_rules(
-        driver_def, platform_version=__version__, strict=strict
+        driver_def, platform_version=__version__, strict=strict, keeps_id=keeps_id
     )
 
 
@@ -209,7 +207,7 @@ def check_driver_definition(
 
 
 def validate_driver_issues(
-    driver_def: dict[str, Any], *, strict: bool = False
+    driver_def: dict[str, Any], *, strict: bool = False, keeps_id: bool = False
 ) -> list[dict[str, str]]:
     """The same validation as ``validate_driver_definition``, as issue records.
 
@@ -219,7 +217,7 @@ def validate_driver_issues(
     second copy of the contract rules.
     """
     return _validate_definition_issues(
-        driver_def, platform_version=__version__, strict=strict
+        driver_def, platform_version=__version__, strict=strict, keeps_id=keeps_id
     )
 
 
@@ -806,19 +804,28 @@ def load_builtin_drivers() -> int:
     return loaded
 
 
-def definition_file(driver_def: dict[str, Any]) -> tuple[str, bytes]:
-    """THE file a definition is saved as: its name, the driver's id with each
-    character a driver file name cannot hold made ``_``, and its bytes, YAML
-    in the definition's own key order."""
-    driver_id = str(driver_def.get("id", "unknown"))
-    safe_id = "".join(c if (c.isascii() and c.isalnum()) or c in "-_" else "_" for c in driver_id)
+def definition_file(
+    driver_def: dict[str, Any], *, in_place_of: Path | str | None = None
+) -> tuple[str, bytes]:
+    """THE file a definition is saved as: its name, the driver's id as it is
+    written plus ``.avcdriver``, and its bytes, YAML in the definition's own
+    key order. An id no file may be named for (``driver_file_name``), which
+    only a driver installed before ids were held to their pattern has, is
+    saved into the file it is in, ``in_place_of``; with none, ``ValueError``."""
+    driver_id = driver_def.get("id")
+    if is_driver_file_stem(driver_id):
+        name = f"{driver_id}{DRIVER_EXTENSION}"
+    elif in_place_of is not None:
+        name = Path(in_place_of).name
+    else:
+        raise ValueError(f"The driver id {driver_id!r} cannot name a driver file")
     text = yaml.dump(
         driver_def,
         default_flow_style=False,
         allow_unicode=True,
         sort_keys=False,
     )
-    return f"{safe_id}{DRIVER_EXTENSION}", text.encode("utf-8")
+    return name, text.encode("utf-8")
 
 
 def save_driver_definition(

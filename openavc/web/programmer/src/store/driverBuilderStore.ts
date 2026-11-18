@@ -9,6 +9,8 @@ import {
   reconcileAfterSave,
   makeLatestWins,
   importBlockers,
+  importedAs,
+  importHeldBack,
   changedRevision,
   cloneDraft,
   definitionRevision,
@@ -361,7 +363,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     importDriver: async (imported, updateExisting = false) => {
       if (get().saving) return;
       if (!confirmDiscardDraft(get().dirty)) return;
-      const definition = driverFileDefinition(imported);
+      const { definition, note } = importedAs(imported, updateExisting);
       const target = get().definitions.find((item) => item.id === definition.id);
       if (updateExisting && (!target || target.source === "builtin")) {
         const error = target
@@ -373,11 +375,15 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       }
       const originalId = updateExisting ? definition.id : null;
       set({ saving: true, error: null, saveRefusal: null });
-      // Validate before writing. A driver with blocking problems loads into the
-      // editor as a dirty draft so the user fixes it against the same inline
-      // IssueList the form editor shows, instead of getting a terse backend 422.
-      const blockers = await importBlockers(definition, get().definitions, originalId);
-      if (blockers.length > 0) {
+      // Validate before writing. A driver with blocking problems, or one offered
+      // a cleaned id, loads into the editor as a dirty draft so the user checks
+      // it against the same inline IssueList the form editor shows, instead of
+      // getting a terse backend 422.
+      const heldBack = importHeldBack(
+        note,
+        await importBlockers(definition, get().definitions, originalId),
+      );
+      if (heldBack) {
         const { draft, added } = draftForEditing(definition);
         set({
           selectedId: originalId,
@@ -387,7 +393,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
           revision: null,
           dirty: true,
           saving: false,
-          error: `This driver needs fixes before it can be saved: ${blockers.join(" ")}`,
+          error: heldBack,
         });
         return;
       }

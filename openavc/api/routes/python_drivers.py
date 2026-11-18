@@ -5,7 +5,11 @@ delete, hot-reload, and export as a bundle. Every path resolves through
 `_safe_driver_path`, so a driver id can only ever name a file inside
 ``driver_repo/``, and it names the file that IS that driver
 (``driver_loader.python_driver_file``): the one whose source declares the id,
-whatever it was called when it was uploaded.
+whatever it was called when it was uploaded. An id names a file by the
+driver file name rule (``driver_file_name``), which a driver
+installed with a hyphen or capitals in its id meets; New Driver holds the id
+it gives to the narrower id pattern (``driver_id``), and a save holds a new
+id it writes into DRIVER_INFO to it too.
 
 **A Python driver is a file set, not a file.** The main ``<id>.py`` travels
 with its conventional siblings — ``<id>_discovery.py`` (discovery probe) and
@@ -37,7 +41,9 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
 from openavc.drivers.driver_change import changed, file_revision, holding, revision
+from openavc.drivers.driver_id import id_refusal
 from openavc.drivers.driver_in_use import project_devices_on
+from openavc.drivers.driver_file_name import id_installed, is_driver_file_stem
 from openavc.drivers.driver_loader import (
     driver_companions,
     driver_files_for,
@@ -76,8 +82,7 @@ def remove_python_companions(main_path: Path) -> list[str]:
 
 def _check_driver_id(driver_id: str) -> None:
     """Refuse a driver ID that could not be a file name in driver_repo/."""
-    import re
-    if not re.fullmatch(r'[a-zA-Z0-9_-]+', driver_id):
+    if not is_driver_file_stem(driver_id):
         raise HTTPException(status_code=400, detail="Invalid driver ID: only alphanumeric, underscore, and hyphen allowed")
 
 
@@ -285,11 +290,14 @@ def _source_refusals(source: str, filename: str) -> list[str]:
         python_driver_refusals,
     )
 
+    from openavc.system_config import DRIVER_REPO_DIR
+
     try:
         info, _ = extract_python_driver_info_from_source(source, filename)
     except ExtractError:
         return []
-    return python_driver_refusals(info)
+    kept = id_installed([DRIVER_REPO_DIR], info.get("id"))
+    return python_driver_refusals(info, keeps_id=kept)
 
 
 def _issues_sentence(issues: list[str]) -> str:
@@ -310,6 +318,9 @@ async def _create_python_driver(body: PythonDriverCreateRequest) -> dict:
     """The Code view's create, from its first check to its announcement."""
     from openavc.system_config import DRIVER_REPO_DIR
 
+    refused = id_refusal(body.id)
+    if refused:
+        raise HTTPException(status_code=400, detail=f"Invalid driver ID: {refused}")
     require_mutable_driver(body.id)
     filepath = _safe_driver_path(body.id)
     data = _source_bytes(body.source)

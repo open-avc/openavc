@@ -182,6 +182,10 @@ CASES: dict[str, Any] = {
     # --- top level ---
     "not_a_mapping": ["not", "a", "dict"],
     "missing_required_fields": {"description": "nothing declared"},
+    # A driver id outside the pattern: refused where it is given, kept by a
+    # driver installed under it (tests/test_driver_id_rule.py).
+    "id_outside_the_pattern": _d(id="acme.widget"),
+    "id_empty": _d(id=""),
     "unsupported_transport": _d(transport="carrier_pigeon"),
     "ir_codes_not_bool": _d(ir_codes="yes"),
     # A misspelled key is the quietest failure there is: the driver loads,

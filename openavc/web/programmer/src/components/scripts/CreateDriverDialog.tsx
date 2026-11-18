@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal } from "../shared/Modal";
 import { DRIVER_TEMPLATES } from "./driverTemplates";
 import { DRIVER_CATEGORIES } from "../driver-builder/driverCategories";
+import { cleanedDriverId } from "../shared/driverId";
 
 interface CreateDriverDialogProps {
   onSubmit: (id: string, source: string) => void;
@@ -25,7 +26,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
   const [transport, setTransport] = useState("tcp");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("tcp");
 
-  const sanitizedId = driverId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  const sanitizedId = cleanedDriverId(driverId);
   const isDuplicate = existingIds.includes(sanitizedId);
   const isValid = sanitizedId.length > 0 && driverName.trim().length > 0 && !isDuplicate;
 

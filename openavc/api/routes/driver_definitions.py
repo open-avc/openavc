@@ -97,6 +97,15 @@ def _id_taken(driver_id: str) -> StructuredApiError:
     )
 
 
+def _file_holds_another(name: str, other: str) -> StructuredApiError:
+    """409 for a save whose file already holds a different driver: it is
+    never written over."""
+    return definition_invalid(
+        [f'The file {name} already holds another driver, "{other}". Choose a different ID.'],
+        status_code=409,
+    )
+
+
 def revision_or_answer(sent: Any, current: str) -> None:
     """``driver_change.hold_to_revision`` as this API answers it, at every
     door that saves over a driver file (replace and patch here, the Code
@@ -188,6 +197,7 @@ async def validate_driver_definition_draft(
     and a mistyped field is exactly what an author needs a readable message
     about. A draft that isn't a mapping comes back as one issue, not an error.
     """
+    from openavc.drivers.driver_file_name import id_installed
     from openavc.drivers.driver_loader import validate_driver_issues
 
     if not isinstance(body, dict):
@@ -207,8 +217,11 @@ async def validate_driver_definition_draft(
     draft = _strip_listing_decorations(body)
 
     # strict: this is an authoring surface, so an undeclared key is a typo to
-    # show now rather than a mystery when the save refuses it.
-    issues = validate_driver_issues(draft, strict=True)
+    # show now rather than a mystery when the save refuses it. An id the
+    # library already serves is kept, not given (the save's own rule).
+    issues = validate_driver_issues(
+        draft, strict=True, keeps_id=id_installed(_get_driver_dirs(), draft.get("id"))
+    )
     return {"issues": issues + _missing_companion_issues(draft)}
 
 
@@ -277,7 +290,11 @@ async def _save_definition(
     The three save doors (create, replace, patch) refuse what is theirs to
     refuse first, then all come here. The contract check is strict: this is an
     authoring gate, so an undeclared key is a typo to reject now, not a mystery
-    to debug later. Then ``driver_change.admit``: the platform floor, read off
+    to debug later. The id is held to its pattern when the save gives it (a
+    create or a rename); a save that keeps an id the library already serves
+    is not (``driver_file_name.id_installed``): its devices name it. The file is
+    the id as written plus ``.avcdriver`` (``definition_file``), never one
+    that holds another driver. Then ``driver_change.admit``: the platform floor, read off
     the definition in hand, never the stored copy, so lowering a floor that
     blocks the save is always possible (the Builder's "import a definition"
     lands here too); the file written beside the folder and held to the
@@ -293,20 +310,29 @@ async def _save_definition(
     are built again from what serves it now. Answers the saved id, the devices
     built again, and the revision of the file it stored.
     """
+    from openavc.drivers.driver_file_name import id_installed, other_driver_in
     from openavc.drivers.driver_loader import (
         definition_file,
         replaced_definition,
         restore_driver_registration,
+        serving_file,
         validate_driver_definition,
     )
 
-    errors = validate_driver_definition(driver_def, strict=True)
+    new_id = driver_def["id"]
+    errors = validate_driver_definition(
+        driver_def, strict=True, keeps_id=id_installed(dirs, new_id)
+    )
     if errors:
         raise definition_invalid(errors)
 
     repo = Path(dirs[1])  # driver_repo/
     repo.mkdir(parents=True, exist_ok=True)
-    name, data = definition_file(driver_def)
+    kept_in = serving_file(dirs, new_id, refused_too=True) if replacing == new_id else None
+    name, data = definition_file(driver_def, in_place_of=kept_in)
+    other = other_driver_in(repo / name, new_id)
+    if other is not None and other != replacing:
+        raise _file_holds_another(name, other)
     replaced = (
         replaced_definition(replacing, dirs, keep=repo / name) if replacing is not None else None
     )
@@ -316,7 +342,6 @@ async def _save_definition(
         failed="The driver was not saved, and the copy you had is unchanged. The Programmer's Log has the details.",
     )
 
-    new_id = driver_def["id"]
     renamed = [replacing] if replacing is not None and replacing != new_id else []
     for old_id in renamed:
         restore_driver_registration(old_id, dirs)

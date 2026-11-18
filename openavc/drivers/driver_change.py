@@ -104,9 +104,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from openavc.drivers import refused_files
+from openavc.drivers.driver_file_name import DRIVER_FILE_NAME
 from openavc.drivers.driver_loader import (
     DRIVER_EXTENSION,
-    DRIVER_FILE_STEM,
     companion_relpath_from_yaml,
     declared_driver_info,
     load_python_driver_file,
@@ -120,7 +120,7 @@ from openavc.utils.logger import get_logger
 log = get_logger("openavc.api.routes.drivers")
 
 # A file a change brings: a driver file name, never a path.
-_FILE_NAME = re.compile(rf"{DRIVER_FILE_STEM}\.(avcdriver|py)")
+_FILE_NAME = DRIVER_FILE_NAME
 
 # A file a change removes, already in the folder under whatever name it was
 # given: one plain name on every platform (no separator, drive or stream).

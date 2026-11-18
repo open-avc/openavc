@@ -45,7 +45,7 @@ from __future__ import annotations
 import difflib as _difflib
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 from openavc.drivers.action_checks import (
     action_entry_errors,
@@ -66,6 +66,7 @@ from openavc.drivers.conversion_checks import (
     value_conversion_issues,
 )
 from openavc.drivers.discovery_block import DiscoveryRead, read_discovery_block
+from openavc.drivers.driver_id import id_messages
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY as UNEVALUATED_KEY,
     DeclaredSections,
@@ -128,67 +129,7 @@ from openavc.drivers.substitution_checks import (
     substitution_issues,
     validate_substitutions as validate_substitutions,
 )
-
-
-class _TaggedErrors(list):
-    """A real ``list[str]`` that also records *where in the definition* each
-    entry came from.
-
-    A message reaches the list one of two ways. A check the walk asks about
-    the one place it is standing on (a command, a response rule, a block) is
-    tagged with that place: the walk stamps it on the list first, ``errors.ctx
-    = "commands.power_on"``, and everything the check appends there, however
-    deep inside a helper, carries it. A check that speaks about places of its
-    own (a name inside a map, a conversion on whichever variable or parameter
-    declares one, a placeholder in whichever template holds it) hands each
-    place back with its message, ``errors.at(place, message)`` or
-    ``errors.at_each(pairs)``, so the message never borrows the place where
-    the walk last stood.
-
-    Two properties make this safe to drop into the existing walk:
-
-    * It **is** a list, so ``validate_driver_definition`` keeps its
-      ``list[str]`` contract and no existing caller changes — the loader, the
-      save routes, ``build_index.py`` and the vendored catalog copy all see
-      exactly what they saw before.
-    * ``list.extend`` does not route through a subclass's ``append``, so both
-      are overridden. A sub-list that carries its own (finer) tags keeps them;
-      anything else inherits the current section.
-
-    ``validate_driver_issues`` reads the tags to give the Driver Builder
-    something to anchor each issue to, and ``check_driver_definition`` reads
-    them to leave out a shape sentence about a place another message already
-    speaks for.
-    """
-
-    def __init__(self, *args: Any) -> None:
-        super().__init__(*args)
-        self.ctx: str = ""
-        self.tags: list[str] = [""] * len(self)
-
-    def append(self, item: Any) -> None:
-        super().append(item)
-        self.tags.append(self.ctx)
-
-    def extend(self, items: Any) -> None:
-        sub_tags = getattr(items, "tags", None)
-        items = list(items)
-        super().extend(items)
-        if sub_tags is not None and len(sub_tags) == len(items):
-            self.tags.extend(sub_tags)
-        else:
-            self.tags.extend([self.ctx] * len(items))
-
-    def at(self, place: str, message: str) -> None:
-        """Add ``message`` tagged with ``place``, the place the check that
-        wrote it says it is about."""
-        super().append(message)
-        self.tags.append(place)
-
-    def at_each(self, placed: Iterable[tuple[str, str]]) -> None:
-        """Add each ``(place, message)`` a check hands back, in its order."""
-        for place, message in placed:
-            self.at(place, message)
+from openavc.drivers.tagged_errors import TaggedErrors as _TaggedErrors
 
 
 def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
@@ -323,6 +264,7 @@ def validate_driver_definition(
     *,
     platform_version: str | None = None,
     strict: bool = False,
+    keeps_id: bool = False,
 ) -> list[str]:
     """
     Validate a driver definition.
@@ -347,7 +289,7 @@ def validate_driver_definition(
     each issue to. This never raises.
     """
     return check_driver_definition(
-        driver_def, platform_version=platform_version, strict=strict
+        driver_def, platform_version=platform_version, strict=strict, keeps_id=keeps_id
     ).errors
 
 
@@ -355,7 +297,7 @@ def validate_driver_definition(
 class DefinitionVerdict:
     """What judging one definition came to: the ``errors`` that refuse it,
     and the ``notices``, refusals of the author's doors that a door loading
-    the driver reports instead (empty in strict mode)."""
+    the driver reports instead (in strict mode, only a kept id's)."""
 
     errors: list[str]
     notices: list[str]
@@ -366,6 +308,7 @@ def check_driver_definition(
     *,
     platform_version: str | None = None,
     strict: bool = False,
+    keeps_id: bool = False,
 ) -> DefinitionVerdict:
     """THE verdict on a driver definition, at either kind of door.
 
@@ -388,6 +331,8 @@ def check_driver_definition(
     (the loader logs an undeclared key, ``unknown_key_errors`` says why: a
     correct driver written for a newer platform carries keys this one does
     not know). Every refusal the author's doors add later is a notice at load.
+    So is the id's pattern (``driver_id``) where ``keeps_id`` says the save
+    keeps an id the library already serves: its devices name it by that id.
     """
     # A file can parse to something other than a mapping. It is reported, not
     # raised on, so one bad file never stops the others loading.
@@ -401,13 +346,14 @@ def check_driver_definition(
         _guarded(walk.authored, part, section)
     shapes = _TaggedErrors()
     _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors), "")
+    said_of_id = _TaggedErrors()
+    said_of_id.at_each(("id", m) for m in id_messages(driver_def.get("id"), strict and not keeps_id))
     if not strict:
-        return DefinitionVerdict(walk.errors, _joined(shapes, walk.authored))
+        return DefinitionVerdict(walk.errors, _joined(shapes, said_of_id, walk.authored))
     undeclared = _TaggedErrors()
     _guarded(undeclared, partial(_undeclared, undeclared, driver_def), "")
-    return DefinitionVerdict(
-        _joined(shapes, walk.errors, walk.authored, undeclared), _TaggedErrors()
-    )
+    refused, kept = (_TaggedErrors(), said_of_id) if keeps_id else (said_of_id, _TaggedErrors())
+    return DefinitionVerdict(_joined(shapes, walk.errors, refused, walk.authored, undeclared), kept)
 
 
 def _joined(*parts: _TaggedErrors) -> _TaggedErrors:
@@ -901,6 +847,7 @@ def validate_driver_issues(
     *,
     platform_version: str | None = None,
     strict: bool = False,
+    keeps_id: bool = False,
 ) -> list[dict[str, str]]:
     """The same rules as ``validate_driver_definition``, as issue records.
 
@@ -916,7 +863,7 @@ def validate_driver_issues(
     instead of carrying its own copy of the rules in another language.
     """
     errors = validate_driver_definition(
-        driver_def, platform_version=platform_version, strict=strict
+        driver_def, platform_version=platform_version, strict=strict, keeps_id=keeps_id
     )
     warnings = validate_driver_warnings(driver_def)
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")

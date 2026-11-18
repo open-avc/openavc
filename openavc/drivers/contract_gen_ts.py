@@ -599,8 +599,12 @@ ALIASES: tuple[Alias, ...] = (
 _LIST = "list"
 _SET = "set"
 _NUM_SET = "num_set"
+_TEXT = "text"
 
 CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
+    ("DRIVER_ID_CHARS", _TEXT, lambda: spec.DRIVER_ID_CHARS,
+     "The characters a driver id may hold, as the inside of a regular "
+     "expression's character class (driverId.ts builds its checks from it)."),
     ("YAML_TRANSPORTS", _LIST, lambda: spec.YAML_TRANSPORTS,
      "Transports a YAML driver may declare."),
     ("PYTHON_ONLY_TRANSPORTS", _LIST, lambda: spec.PYTHON_ONLY_TRANSPORTS,
@@ -674,24 +678,28 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
 )
 
 
+def _quoted(values: Any) -> str:
+    return ", ".join(f'"{v}"' for v in values)
+
+
+# Each shape's declaration, from the constant's name and its values.
+_CONSTANT_SHAPES: dict[str, Callable[[str, Any], str]] = {
+    _LIST: lambda name, values: f"export const {name} = [{_quoted(values)}] as const;\n",
+    _SET: lambda name, values: (
+        f"export const {name}: ReadonlySet<string> = new Set([{_quoted(sorted(values))}]);\n"
+    ),
+    _NUM_SET: lambda name, values: (
+        f"export const {name}: ReadonlySet<number> = "
+        f"new Set([{', '.join(str(v) for v in values)}]);\n"
+    ),
+    _TEXT: lambda name, values: f"export const {name} = {json.dumps(values)};\n",
+}
+
+
 def _render_constant(name: str, shape: str, values: Any, doc: str) -> str:
-    out = _doc_block(doc, "")
-    if shape == _LIST:
-        items = ", ".join(f'"{v}"' for v in values)
-        out += f"export const {name} = [{items}] as const;\n"
-    elif shape == _SET:
-        items = ", ".join(f'"{v}"' for v in sorted(values))
-        out += (
-            f"export const {name}: ReadonlySet<string> = new Set([{items}]);\n"
-        )
-    elif shape == _NUM_SET:
-        items = ", ".join(str(v) for v in values)
-        out += (
-            f"export const {name}: ReadonlySet<number> = new Set([{items}]);\n"
-        )
-    else:
+    if shape not in _CONSTANT_SHAPES:
         raise ValueError(shape)
-    return out
+    return _doc_block(doc, "") + _CONSTANT_SHAPES[shape](name, values)
 
 
 def _push_keys_by_type() -> str:

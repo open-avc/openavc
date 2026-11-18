@@ -33,6 +33,7 @@ from typing import Any, Callable
 # The definition walk's guard and tagged list: every part of this walk is
 # asked the way each part of that one is, so a check that raises on a value
 # of a kind it does not read is a message in both.
+from openavc.drivers.driver_id import id_notices, id_refusals
 from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     DefinitionVerdict,
@@ -286,15 +287,18 @@ def check_python_driver_info(
     walk = _PythonWalk(info, overrides_run_setup_action, overrides_set_device_setting)
     if strict:
         return DefinitionVerdict(walk.errors + walk.shared, [])
-    return DefinitionVerdict(walk.errors, walk.shared)
+    return DefinitionVerdict(walk.errors, id_notices(info.get("id")) + walk.shared)
 
 
-def python_driver_refusals(info: dict[str, Any]) -> list[str]:
+def python_driver_refusals(info: dict[str, Any], *, keeps_id: bool = False) -> list[str]:
     """What the author's doors refuse in a ``DRIVER_INFO`` read from source:
-    a key the contract does not declare, then ``python_driver_info_issues``.
-    ``drivers.check`` and the Code view's save ask this; catalog CI asks the
-    two itself, around its own platform-floor rule."""
-    return unknown_key_errors(info) + python_driver_info_issues(info)
+    a key the contract does not declare, the id's pattern (``driver_id``,
+    unless ``keeps_id``: the save keeps an id the library already serves),
+    then ``python_driver_info_issues``. ``drivers.check`` and the Code view's
+    save ask this; catalog CI asks the first and last itself, around its own
+    platform-floor rule, and holds the id to the pattern in its own schema."""
+    said_of_id = [] if keeps_id else id_refusals(info.get("id"))
+    return unknown_key_errors(info) + said_of_id + python_driver_info_issues(info)
 
 
 def python_driver_info_issues(

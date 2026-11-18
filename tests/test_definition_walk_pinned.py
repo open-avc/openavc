@@ -1807,7 +1807,7 @@ def test_strict_reports_the_same_and_then_the_keys(case: str) -> None:
 def test_the_error_list_is_a_list_with_a_tag_for_each_message(case: str) -> None:
     for strict in (False, True):
         errors = validate_driver_definition(_definition(case), strict=strict)
-        assert type(errors).__name__ == "_TaggedErrors"
+        assert type(errors) is _TaggedErrors
         assert isinstance(errors, list)
         expected = [m for s, _, m in (STRICT_EXPECTED if strict else EXPECTED)[case] if s == "error"]
         assert list(errors) == expected

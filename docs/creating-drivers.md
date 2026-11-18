@@ -316,6 +316,11 @@ be imported as copies. If validation fails, the imported definition opens as a
 draft to correct; the saved driver and its devices keep running until a valid
 update is saved.
 
+A new driver's ID can use only lowercase letters, digits and underscores. When
+the file's ID has anything else (`Acme.Widget-2`), the import opens as an
+unsaved draft with a cleaned ID filled in (`acme_widget_2`) and a line saying
+so: check it, then save. A copy is named the same way (`acme_widget_2_copy`).
+
 #### What about Python drivers?
 
 Python drivers (`.py` files) can also be imported through the UI or installed from the community repository. They are saved to `driver_repo/` and loaded automatically at startup.
@@ -505,7 +510,7 @@ The tables below document each field in detail.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | Yes | Unique driver identifier. Lowercase, underscores. |
+| `id` | Yes | Unique driver identifier: lowercase letters, digits and underscores only (`a-z`, `0-9`, `_`). The file is saved as the ID plus `.avcdriver`. |
 | `name` | Yes | Human-readable display name. |
 | `transport` | Yes | `"tcp"`, `"serial"`, `"http"`, `"udp"`, `"osc"`, or `"bridge"` (an IR device that emits through a bridge; see IR devices below). |
 | `manufacturer` | No | Manufacturer name. Default: `"Generic"`. |
@@ -4478,9 +4483,13 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 2. **Duplicate driver ID.** A save that gives a driver another driver's ID, new or renamed, is refused, and the General tab says `Another driver named "acme_sw4" already exists. Choose a different ID.` Driver IDs must be unique across all sources (built-in, community, user-created).
 
-3. **Python driver missing DRIVER_INFO.** For Python drivers, the file must contain a class that inherits from `BaseDriver` and has a `DRIVER_INFO` dict with at least `id`, `name`, and `transport`.
+3. **An ID with other characters.** A new driver, a rename, an import, the Code view's **New Driver** and `python -m openavc.drivers.check` refuse an ID with anything but lowercase letters, digits and underscores: `id: 'acme.widget' can use only lowercase letters, digits and underscores`. A driver already installed under such an ID (the Code view's **New Driver** once let a hyphen through) keeps working under it: it opens, saves, exports and imports as before, so the devices that use it are not affected. Its entry under **Installed** says a new driver's ID cannot use those characters.
 
-4. **File not in the right directory.** Drivers must be in `driver_repo/` (or `openavc/drivers/definitions/` for built-in drivers). The directory is scanned at startup.
+4. **The file already holds another driver.** A save is refused with `The file acme_widget.avcdriver already holds another driver, "acme.widget". Choose a different ID.` when a driver file of that name, placed by hand or saved by an older release, is a different driver. The save never writes over it.
+
+5. **Python driver missing DRIVER_INFO.** For Python drivers, the file must contain a class that inherits from `BaseDriver` and has a `DRIVER_INFO` dict with at least `id`, `name`, and `transport`.
+
+6. **File not in the right directory.** Drivers must be in `driver_repo/` (or `openavc/drivers/definitions/` for built-in drivers). The directory is scanned at startup.
 
 ### Device reconnects constantly
 

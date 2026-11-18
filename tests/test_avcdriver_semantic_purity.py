@@ -2,11 +2,11 @@
 
 ``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py`` and the
 check modules it imports (``action_checks``, ``command_checks``, ``condition_checks``,
-``child_fault_checks``, ``child_type_checks``, ``conversion_checks``, ``declared_names``, ``discovery_block``, ``discovery_hint``, ``driver_warnings``, ``framing_checks``,
+``child_fault_checks``, ``child_type_checks``, ``conversion_checks``, ``declared_names``, ``discovery_block``, ``discovery_hint``, ``driver_id``, ``driver_warnings``, ``framing_checks``,
 ``liveness_checks``,
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``,
 ``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``serial_line``, ``setting_checks``,
-``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``),
+``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``, ``tagged_errors``),
 ``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
@@ -37,6 +37,7 @@ ALLOWED = {
     "openavc.drivers.declared_names",
     "openavc.drivers.discovery_block",
     "openavc.drivers.discovery_hint",
+    "openavc.drivers.driver_id",
     "openavc.drivers.driver_warnings",
     "openavc.drivers.framing_checks",
     "openavc.drivers.liveness_checks",
@@ -54,6 +55,7 @@ ALLOWED = {
     "openavc.drivers.sign_in_checks",
     "openavc.drivers.state_variable_checks",
     "openavc.drivers.substitution_checks",
+    "openavc.drivers.tagged_errors",
     "openavc.drivers.transport_choice",
     "openavc.utils",
     "openavc.utils.regex_safety",

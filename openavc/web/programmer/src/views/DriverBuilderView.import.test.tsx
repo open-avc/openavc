@@ -122,6 +122,40 @@ describe("Importing an edited driver", () => {
     expect(api.createDriverDefinition).not.toHaveBeenCalled();
   });
 
+  it("offers a new import whose ID a new driver cannot have the cleaned ID, unsaved", async () => {
+    await offerImport({ ...edited, id: "Acme.Amp-2" });
+    await waitFor(() => expect(useDriverBuilderStore.getState().dirty).toBe(true));
+    const state = useDriverBuilderStore.getState();
+    expect(state.draft.id).toBe("acme_amp_2");
+    expect(state.selectedId).toBeNull();
+    expect(state.error).toContain("“Acme.Amp-2”");
+    expect(state.error).toContain("“acme_amp_2”");
+    expect(api.createDriverDefinition).not.toHaveBeenCalled();
+    expect(api.updateDriverDefinition).not.toHaveBeenCalled();
+  });
+
+  it("updates a driver installed under such an ID under its own ID", async () => {
+    const kept = { ...original, id: "acme-amp" } as DriverDefinition;
+    vi.mocked(api.listDriverDefinitions).mockResolvedValue([kept]);
+    useDriverBuilderStore.setState({ definitions: [kept] });
+    await offerImport({ ...edited, id: "acme-amp" });
+    await screen.findByRole("alertdialog", { name: "Update Existing Driver" });
+    fireEvent.click(screen.getByRole("button", { name: "Update Driver" }));
+    await waitFor(() => expect(api.updateDriverDefinition).toHaveBeenCalledWith("acme-amp",
+      expect.objectContaining({ id: "acme-amp" })));
+  });
+
+  it("names a copy of a driver installed under such an ID for an ID a new driver may have", async () => {
+    const kept = { ...original, id: "acme-amp" } as DriverDefinition;
+    vi.mocked(api.listDriverDefinitions).mockResolvedValue([kept]);
+    useDriverBuilderStore.setState({ definitions: [kept] });
+    await offerImport({ ...edited, id: "acme-amp" });
+    await screen.findByRole("alertdialog");
+    fireEvent.click(screen.getByRole("button", { name: "Import a Copy" }));
+    await waitFor(() => expect(api.createDriverDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "acme_amp_copy" })));
+  });
+
   it("still imports a new ID directly", async () => {
     await offerImport({ ...edited, id: "another_amp" });
     await waitFor(() => expect(api.createDriverDefinition).toHaveBeenCalledWith(

@@ -5,6 +5,12 @@
 
 // --- contract constant tables ---
 
+/**
+ * The characters a driver id may hold, as the inside of a regular expression's
+ * character class (driverId.ts builds its checks from it).
+ */
+export const DRIVER_ID_CHARS = "a-z0-9_";
+
 /** Transports a YAML driver may declare. */
 export const YAML_TRANSPORTS = ["tcp", "serial", "udp", "http", "osc", "bridge"] as const;
 

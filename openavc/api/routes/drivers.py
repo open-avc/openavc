@@ -30,7 +30,6 @@ by. Drivers > Installed's rows are `installed_drivers`, which the AI's
 get_installed_drivers answers too.
 """
 
-import re
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -66,10 +65,10 @@ from openavc.drivers.driver_change import (
 from openavc.drivers.driver_in_use import DriverInUse, refuse_while_in_use
 # Re-exported for the doors that do not call ``changed`` yet (module docstring).
 from openavc.drivers.driver_change import announce as announce_drivers_changed  # noqa: F401
+from openavc.drivers.driver_file_name import is_driver_file_name, is_driver_file_stem
 from openavc.drivers.driver_loader import (
     COMPANION_SUFFIXES,
     DISCOVERY_COMPANION_SUFFIX,
-    DRIVER_FILE_STEM,
     companion_relpath_from_yaml,
     declared_driver_info,
     driver_companions,
@@ -374,13 +373,6 @@ _UPDATE_REFUSED = (
     "The driver was not updated. Its new file did not load, and the version you had is unchanged"
 )
 
-# A driver id that can also be its file name.
-_FILE_NAME_ID = re.compile(rf"^{DRIVER_FILE_STEM}$")
-
-# A driver file name an upload may keep, and a bundle may hold.
-_DRIVER_FILE_NAME = re.compile(rf"^{DRIVER_FILE_STEM}\.(avcdriver|py)$")
-
-
 def _named_for_its_id(filename: str, content: bytes) -> str | None:
     """The file name an uploaded driver is saved under: its declared id plus
     its extension, or None when the id cannot be read or cannot be a file name.
@@ -390,7 +382,7 @@ def _named_for_its_id(filename: str, content: bytes) -> str | None:
     arrived with is not the one it keeps.
     """
     driver_id = declared_driver_info(filename, content).get("id")
-    if not isinstance(driver_id, str) or not _FILE_NAME_ID.match(driver_id):
+    if not is_driver_file_stem(driver_id):
         return None
     return f"{driver_id}{Path(filename).suffix}"
 
@@ -473,7 +465,7 @@ async def _import_driver_file(driver_repo: Path, filename: str, content: bytes) 
     named = _named_for_its_id(filename, content)
     if named is not None:
         filename = named
-    elif not _DRIVER_FILE_NAME.match(filename):
+    elif not is_driver_file_name(filename):
         raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     _check_driver_file(filename, content)
@@ -562,7 +554,7 @@ def _bundle_entries(content: bytes) -> dict[str, bytes]:
     entries: dict[str, bytes] = {}
     for member in members:
         base = PurePosixPath(member.filename).name
-        if not base or not _DRIVER_FILE_NAME.match(base):
+        if not is_driver_file_name(base):
             raise HTTPException(
                 status_code=422,
                 detail=(

@@ -109,10 +109,14 @@ def _drafted(definition: dict[str, Any]) -> dict[str, Any]:
 def _issues(definition: dict) -> list[dict[str, str]]:
     """Every issue the checker finds in a draft, errors and warnings, each
     with its place: the records the Driver Builder's Validate answers
-    (``validate_driver_issues``), strict because the AI is authoring here."""
+    (``validate_driver_issues``), strict because the AI is authoring here,
+    with an id the library already serves kept, as the save keeps it."""
+    from openavc.api.routes.driver_definitions import _get_driver_dirs
+    from openavc.drivers.driver_file_name import id_installed
     from openavc.drivers.driver_loader import validate_driver_issues
 
-    return validate_driver_issues(definition, strict=True)
+    kept = id_installed(_get_driver_dirs(), definition.get("id"))
+    return validate_driver_issues(definition, strict=True, keeps_id=kept)
 
 
 def _refused(

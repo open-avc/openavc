@@ -2,6 +2,7 @@ import yaml from "js-yaml";
 import type { DriverDefinition } from "../api/types";
 import { validateDriverSafely } from "../components/driver-builder/validateDriver";
 import { validateDriverDefinition } from "../api/driverClient";
+import { cleanedDriverId, isDriverId } from "../components/shared/driverId";
 
 /** A driver definition is a mapping. Excludes null, arrays, and scalars —
  *  mirrors the runtime loader's isinstance(dict) gate. */
@@ -94,15 +95,57 @@ export function serializeDriverDefinition(definition: DriverDefinition): string 
 /** A separate import keeps every existing driver and device binding intact. */
 export function importedDriverCopy(definition: DriverDefinition, siblings: DriverDefinition[]): DriverDefinition {
   const ids = new Set(siblings.map((item) => item.id));
+  // A copy is a new driver: it is named for an id a new driver may have, even
+  // when the driver it copies keeps one it may not.
+  const base = offeredDriverId(definition.id) || definition.id;
   let suffix = "_copy";
   let counter = 1;
-  while (ids.has(`${definition.id}${suffix}`)) suffix = `_copy${++counter}`;
+  while (ids.has(`${base}${suffix}`)) suffix = `_copy${++counter}`;
   return {
     ...driverFileDefinition(structuredClone(definition)),
-    id: `${definition.id}${suffix}`,
+    id: `${base}${suffix}`,
     name: `${definition.name} (Copy${counter > 1 ? ` ${counter}` : ""})`,
     verified: false,
   };
+}
+
+/** The id a new driver made from `id` is given: `id` itself when a new
+ *  driver may have it, else the cleaned id (empty when nothing usable is left). */
+function offeredDriverId(id: unknown): string {
+  if (isDriverId(id)) return id;
+  return typeof id === "string" ? cleanedDriverId(id) : "";
+}
+
+/** A file the Builder imports, as it is imported. An update keeps the id of
+ *  the driver it replaces. A new import, which no device uses yet, whose id a
+ *  new driver cannot have is offered the cleaned id in its place, with the
+ *  `note` that says so; the import then opens unsaved, for the author to
+ *  check it. */
+export function importedAs(
+  imported: DriverDefinition,
+  updateExisting: boolean,
+): { definition: DriverDefinition; note: string | null } {
+  const definition = driverFileDefinition(imported);
+  if (updateExisting) return { definition, note: null };
+  const offered = offeredDriverId(definition.id) || definition.id;
+  if (offered === definition.id) return { definition, note: null };
+  return {
+    definition: { ...definition, id: offered },
+    note:
+      `This file's driver ID, “${definition.id}”, has characters a driver ID cannot use ` +
+      `(only lowercase letters, digits and underscores), so it is filled in as “${offered}”. ` +
+      "Check it, then save.",
+  };
+}
+
+/** Why an import opens as an unsaved draft instead of being saved: the id it
+ *  was offered (`importedAs`), then what blocks the save. Null when nothing
+ *  holds it back. */
+export function importHeldBack(note: string | null, blockers: string[]): string | null {
+  const blocked = blockers.length > 0
+    ? `This driver needs fixes before it can be saved: ${blockers.join(" ")}`
+    : null;
+  return [note, blocked].filter(Boolean).join(" ") || null;
 }
 
 /**

@@ -45,6 +45,7 @@ import {
   type ValidationIssue,
 } from "./validateDriver";
 import * as api from "../../api/restClient";
+import { typedDriverId } from "../shared/driverId";
 import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
 import { parseApiError } from "../../api/errors";
@@ -614,13 +615,7 @@ export function DriverEditor({
               <label style={labelStyle}>Driver ID</label>
               <input
                 value={draft.id}
-                onChange={(e) =>
-                  onUpdate({
-                    id: e.target.value
-                      .replace(/[^a-z0-9_]/gi, "")
-                      .toLowerCase(),
-                  })
-                }
+                onChange={(e) => onUpdate({ id: typedDriverId(e.target.value) })}
                 placeholder="e.g., extron_sw4"
                 style={{ width: "100%" }}
               />
