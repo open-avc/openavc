@@ -18,6 +18,10 @@ whole-project doors (``apply_project``, ``apply_named_save``,
 take-in. What a replace keeps of the project it replaces (the cloud push's
 rollback copy, a backup) is taken under the lock before anything changes,
 never before the lock, so an edit saved while the replace waited is in it.
+A file beside the project that a change writes or removes with it (a
+script's ``.py``) is the door's too (``core/change_files.py``): written
+inside the change and put back when it is not applied, removed only once
+the project file holds it.
 
 Two kinds of change. An **applied** one (``apply_project``, the door's edits,
 and the doors built on them) is taken in, compared with the running project,
@@ -77,6 +81,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from openavc.core import backup_manager, project_update
+from openavc.core.change_files import ChangeFiles
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_logins import LoginChange
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
@@ -453,7 +458,7 @@ class ProjectChangesMixin:
         self._revision_counter += 1
         return f"{self._boot_id}-{self._revision_counter}"
 
-    async def apply_project_edit(self, mutate) -> ApplyOutcome:
+    async def apply_project_edit(self, mutate, *, files: ChangeFiles | None = None) -> ApplyOutcome:
         """Apply an edit built from the current project, atomically.
 
         Callers that copy ``engine.project``, mutate the copy, and then call
@@ -467,12 +472,16 @@ class ProjectChangesMixin:
         project it sees may differ from what the caller inspected before the
         lock was acquired. An exception from ``mutate`` aborts the edit with
         nothing applied. Returns its outcome. The change door
-        (:meth:`_change_locked`), reconciled.
+        (:meth:`_change_locked`), reconciled; ``files`` is what ``mutate``
+        writes and removes beside the project with it
+        (``core/change_files.py``).
         """
         async with self._lock_for_a_change():
-            return await self._change_locked(mutate, reconcile=True)
+            return await self._change_locked(mutate, reconcile=True, files=files)
 
-    async def _change_locked(self, mutate, *, reconcile: bool) -> ApplyOutcome:
+    async def _change_locked(
+        self, mutate, *, reconcile: bool, files: ChangeFiles | None = None,
+    ) -> ApplyOutcome:
         """THE change door: ``mutate`` run against a copy of the project
         current now, under ``_reload_lock`` (the caller holds it), then the
         one take-in (``_take_in``) and the save. With ``reconcile``, an
@@ -483,12 +492,22 @@ class ProjectChangesMixin:
         reconcile (:meth:`_keep_locked`). Either way it runs under a
         new revision with the next backup due, and a refusal or a failure
         leaves the running project, the file and the login file as they
-        were, raising it."""
-        proposed = self.project.model_copy(deep=True)
-        mutate(proposed)
-        if reconcile:
-            return await self._apply_project_locked(proposed, ProjectOrigin.EDIT, persist=True)
-        return await self._keep_locked(proposed)
+        were, raising it; the files ``mutate`` wrote beside the project
+        (``files``) are put back too, and the ones it removes go only once
+        the project file holds the change."""
+        files = files if files is not None else ChangeFiles()
+        try:
+            proposed = self.project.model_copy(deep=True)
+            mutate(proposed)
+            if reconcile:
+                outcome = await self._apply_project_locked(proposed, ProjectOrigin.EDIT, persist=True)
+            else:
+                outcome = await self._keep_locked(proposed)
+        except Exception:
+            files.put_back()
+            raise
+        files.settle()
+        return outcome
 
     async def _keep_locked(self, proposed: ProjectConfig) -> ApplyOutcome:
         """The change door's end for a bookkeeping change: ``proposed`` taken
