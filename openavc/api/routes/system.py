@@ -84,7 +84,10 @@ async def get_status(
 @open_router.get("/health")
 @endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
 async def health_check() -> dict[str, Any]:
-    """Health check for monitoring and container orchestration."""
+    """Health check for monitoring and container orchestration: the answer
+    while the server is ready. While it is starting, after a start that
+    failed, and while it is stopping, the run-state record answers 503 with
+    the phase in its place (middleware/startup_splash.py)."""
     engine = _get_engine()
     status = engine.get_status()
     devices_list = engine.devices.list_devices() if engine.devices else []

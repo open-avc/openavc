@@ -658,7 +658,7 @@ Platform notes:
 It answers `200` only while the server is running. While the server is starting, after a start that failed, and from the moment a restart or a stop begins, it answers `503` with what the server is doing (`starting`, `failed` or `stopping`) and the version:
 
 ```json
-{ "status": "stopping", "version": "0.41.0" }
+{ "status": "stopping", "version": "0.22.0" }
 ```
 
 `GET /api/startup-status` gives the reason when a start failed.
