@@ -1,6 +1,6 @@
 """A script's ``.py`` file moves with the project change that adds or drops
-the script, at the IDE's script routes, on a running engine whose save is
-made to fail.
+the script, at both doors that do (the AI's script tools and the IDE's
+script routes), on a running engine whose save is made to fail.
 
 - A create writes its file inside the change, under the project's lock,
   and a change that is not applied takes the file back: a new file is
@@ -8,23 +8,28 @@ made to fail.
 - A delete removes the file only once the project file holds the change. A
   change that is not applied keeps the file, the record and the running
   script, which the failed change's undo loads again from that file.
+- The assistant's own lock is taken before the project's, never inside it.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import errno
 import json
 import textwrap
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from openavc.api import rest
+from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core import project_changes
 from openavc.core.engine import Engine
+from openavc.core.project_changes import ProjectNotAppliedError
 from openavc.core.project_loader import load_project
 from openavc.core.script_engine import ScriptEngine
 
@@ -90,6 +95,13 @@ def _what_holds(eng) -> dict:
 
 
 @pytest.fixture
+def assistant():
+    handler = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+    handler._find_references = lambda kind, ref: {}
+    return handler
+
+
+@pytest.fixture
 async def ide(engine, isolated_auth_config):
     isolated_auth_config.set("auth", "programmer_username", "engineer")
     isolated_auth_config.set("auth", "programmer_password", "disposable-script-password")
@@ -102,6 +114,74 @@ async def ide(engine, isolated_auth_config):
         headers={"Authorization": "Basic " + credential},
     ) as client:
         yield client
+
+
+# --- the assistant ------------------------------------------------------------------------------
+
+
+async def test_the_assistant_writes_a_new_script_only_inside_the_change(engine, assistant):
+    """Nothing is written while another change holds the project, and the
+    assistant's own lock is already held by then: it is taken first."""
+    async with engine._reload_lock:
+        task = asyncio.create_task(assistant._run_tool(
+            "create_script", assistant._create_script, {"id": "shades", "source": NEW},
+        ))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert assistant._project_lock.locked()
+        assert not (_scripts(engine) / "shades.py").exists()
+
+    assert await task == {"status": "created", "id": "shades"}
+    assert (_scripts(engine) / "shades.py").read_text(encoding="utf-8") == NEW
+
+
+async def test_a_create_the_assistant_could_not_save_leaves_no_file(engine, assistant, full_disk):
+    before = _what_holds(engine)
+
+    with pytest.raises(ProjectNotAppliedError):
+        await assistant._create_script({"id": "shades", "source": NEW})
+
+    assert _what_holds(engine) == before
+
+
+async def test_a_create_the_assistant_could_not_save_puts_back_the_file_it_replaced(
+    engine, assistant, full_disk,
+):
+    (_scripts(engine) / "shades.py").write_text("kept = True\n", encoding="utf-8")
+
+    with pytest.raises(ProjectNotAppliedError):
+        await assistant._create_script({"id": "shades", "source": NEW})
+
+    assert (_scripts(engine) / "shades.py").read_text(encoding="utf-8") == "kept = True\n"
+
+
+async def test_a_delete_the_assistant_could_not_save_keeps_the_script(engine, assistant, full_disk):
+    before = _what_holds(engine)
+
+    with pytest.raises(ProjectNotAppliedError):
+        await assistant._delete_script({"script_id": "lights"})
+
+    assert _what_holds(engine) == before
+    assert (_scripts(engine) / "lights.py").read_text(encoding="utf-8") == LIGHTS
+
+
+async def test_the_assistant_removes_a_deleted_script_once_the_project_file_holds_it(
+    engine, assistant, monkeypatch,
+):
+    saved = project_changes.save_project_async
+    present_at_save: list[bool] = []
+
+    async def save(path, project):
+        present_at_save.append((_scripts(engine) / "lights.py").exists())
+        await saved(path, project)
+
+    monkeypatch.setattr(project_changes, "save_project_async", save)
+
+    assert await assistant._delete_script({"script_id": "lights"}) == {"status": "deleted"}
+
+    assert present_at_save == [True]
+    assert not (_scripts(engine) / "lights.py").exists()
+    assert _what_holds(engine)["records"] == []
 
 
 # --- the IDE --------------------------------------------------------------------------------------

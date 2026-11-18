@@ -11,11 +11,13 @@ a write fails here:
   (nothing written), a syntax error (checked before
   the file name, and nothing written), the file name defaulting to the id, an
   empty source written without a check, what the record holds, and a
-  duplicate that appears while the edit runs (the file is already written).
+  duplicate that appears while the edit runs (nothing written: the file is
+  written inside the change, after the check).
 - ``update_script_source``: no project, an unknown script, a syntax error
   (nothing written), an empty source, the reload's answer, no script runtime.
 - ``delete_script``: no project, an unknown script, a file already gone, what
-  still reaches into the script riding back.
+  still reaches into the script riding back, and a script that went while
+  the edit ran (its file untouched: it goes only with the change).
 
 Path containment and the dead-listener warnings have their own files
 (test_ai_script_tools_path_traversal.py, test_dead_event_listeners.py).
@@ -50,12 +52,19 @@ def harness(tmp_path):
     engine.scripts = None
     edits: list[Any] = []
 
-    async def apply_edit(mutate):
+    async def apply_edit(mutate, files=None):
         new_project = engine.project.model_copy(deep=True)
         for extra in edits:
             extra(new_project)
-        mutate(new_project)
+        try:
+            mutate(new_project)
+        except Exception:
+            if files is not None:
+                files.put_back()
+            raise
         engine.project = new_project
+        if files is not None:
+            files.settle()
         return ApplyOutcome("1")
 
     engine.apply_project_edit = AsyncMock(side_effect=apply_edit)
@@ -225,14 +234,14 @@ async def test_create_script_refuses_a_syntax_error_before_the_file_name(harness
     engine.apply_project_edit.assert_not_awaited()
 
 
-async def test_create_script_that_appears_meanwhile_leaves_the_file(harness):
+async def test_create_script_that_appears_meanwhile_writes_nothing(harness):
     handler, engine, scripts_dir, edits = harness
     edits.append(lambda project: project.scripts.append(ScriptConfig(id="shades", file="other.py")))
 
     answer = await handler._create_script({"id": "shades", "source": "x = 1\n"})
 
     assert answer == {"error": "Script 'shades' already exists"}
-    assert (scripts_dir / "shades.py").read_text(encoding="utf-8") == "x = 1\n"
+    assert not (scripts_dir / "shades.py").exists()
 
 
 # --- update_script_source --------------------------------------------------------------------
@@ -333,9 +342,9 @@ async def test_delete_script_of_an_unknown_script(harness):
     engine.apply_project_edit.assert_not_awaited()
 
 
-async def test_delete_script_that_went_meanwhile(harness):
+async def test_delete_script_that_went_meanwhile_leaves_the_file(harness):
     handler, engine, scripts_dir, edits = harness
     edits.append(lambda project: setattr(project, "scripts", []))
 
     assert await handler._delete_script({"script_id": "lights"}) == {"error": "Script 'lights' not found"}
-    assert not (scripts_dir / "lights.py").exists()
+    assert (scripts_dir / "lights.py").read_text(encoding="utf-8") == LIGHTS

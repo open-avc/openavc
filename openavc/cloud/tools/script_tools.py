@@ -9,6 +9,12 @@ written source goes live (the running script is reloaded, the new version
 imported before the old one is unloaded), and the answer names every handler
 in it that nothing in the project can reach and every timer that stops at its
 next edit: the IDE's script lint, at the other door that writes a script.
+
+A create writes its file and a delete removes it inside the project change
+(``core/change_files.py``): a change that is not applied leaves the folder
+as it was, and a deleted script's file goes only once the project file no
+longer names it. Every tool here runs under the assistant's own lock, which
+is taken before the change door's (``_reload_lock``), never inside it.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core.change_files import ChangeFiles
 from openavc.core.event_references import (
     NO_EMITTER,
     PLATFORM_EVENT,
@@ -62,8 +69,12 @@ def _scripts_dir(engine: Any) -> Path:
     return engine.project_path.parent / "scripts"
 
 
+def _find_script_in(project: Any, script_id: str) -> Any:
+    return next((s for s in project.scripts if s.id == script_id), None)
+
+
 def _find_script(engine: Any, script_id: str) -> Any:
-    return next((s for s in engine.project.scripts if s.id == script_id), None)
+    return _find_script_in(engine.project, script_id)
 
 
 def _refuse_syntax_error(script_id: str, source: str, filename: str) -> None:
@@ -123,11 +134,21 @@ def _append_script(project: Any, new_script: Any) -> None:
     project.scripts.append(new_script)
 
 
-def _remove_script(project: Any, script_id: str) -> None:
-    original_count = len(project.scripts)
-    project.scripts = [s for s in project.scripts if s.id != script_id]
-    if len(project.scripts) == original_count:
+def _remove_script(project: Any, script_id: str) -> Any:
+    """The script's record taken out of ``project``, or ToolEditError when it has none."""
+    removed = _find_script_in(project, script_id)
+    if removed is None:
         raise ToolEditError({"error": f"Script '{script_id}' not found"})
+    project.scripts = [s for s in project.scripts if s.id != script_id]
+    return removed
+
+
+def _script_file(scripts_dir: Path, script: Any) -> Path:
+    """Where ``script``'s file is, or ToolEditError for a path outside ``scripts_dir``."""
+    path = safe_path_within(scripts_dir, script.file)
+    if path is None:
+        raise ToolEditError({"error": "Invalid script filename"})
+    return path
 
 
 class ScriptToolsMixin:
@@ -200,17 +221,21 @@ class ScriptToolsMixin:
             path = _new_script_path(scripts_dir, filename)
         except ToolEditError as refused:
             return refused.result
-        # Built before the file is written: an id the project refuses is
-        # answered without leaving a file behind.
+        # Built before the change: an id the project refuses is answered
+        # with nothing written.
         new_script = ScriptConfig(
             id=script_id, file=filename,
             enabled=input.get("enabled", True), description=input.get("description", ""),
         )
-        scripts_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(source, encoding="utf-8")
+        files = ChangeFiles()
 
-        # The scripts reconcile loads just this script.
-        err = await apply_tool_edit(engine, lambda project: _append_script(project, new_script))
+        def mutate(project: Any) -> None:
+            _append_script(project, new_script)
+            files.write(path, source)
+
+        # The scripts reconcile loads just this script, from the file the
+        # change has just written.
+        err = await apply_tool_edit(engine, mutate, files=files)
         if err:
             return err
         return _with_script_warnings({"status": "created", "id": script_id}, engine, script_id, source)
@@ -250,19 +275,24 @@ class ScriptToolsMixin:
         script = _find_script(engine, script_id)
         if script is None:
             return {"error": f"Script '{script_id}' not found"}
-        path = safe_path_within(_scripts_dir(engine), script.file)
-        if path is None:
-            return {"error": "Invalid script filename"}
+        scripts_dir = _scripts_dir(engine)
+        try:
+            _script_file(scripts_dir, script)
+        except ToolEditError as refused:
+            return refused.result
 
         # Read before the file goes: what is about to be stranded, in the same
         # shape delete_device / delete_macro / delete_variable hand back. The
         # delete still succeeds -- the impact is what to tell the user to fix.
         impact = self._find_references("script", script_id)
-        if path.exists():
-            path.unlink()
+        files = ChangeFiles()
 
-        # The scripts reconcile unloads just this script.
-        err = await apply_tool_edit(engine, lambda project: _remove_script(project, script_id))
+        def mutate(project: Any) -> None:
+            files.remove(_script_file(scripts_dir, _remove_script(project, script_id)))
+
+        # The scripts reconcile unloads just this script; its file goes once
+        # the project file no longer names it.
+        err = await apply_tool_edit(engine, mutate, files=files)
         if err:
             return err
         result: dict[str, Any] = {"status": "deleted"}

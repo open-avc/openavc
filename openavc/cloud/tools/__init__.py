@@ -43,16 +43,19 @@ class ToolEditError(Exception):
         self.result = result
 
 
-async def apply_tool_edit(engine, mutate) -> dict | None:
+async def apply_tool_edit(engine, mutate, *, files=None) -> dict | None:
     """Run ``engine.apply_project_edit(mutate)`` for an AI tool.
 
     Returns the :class:`ToolEditError` result dict when the mutate aborted,
     else None. Any other exception propagates to the tool dispatcher, which
     words a change that was not applied. A change that ran with a part it
     could not start is noted for the tool's answer (``note_applied``).
+    ``files`` is the ``core/change_files.ChangeFiles`` the mutate writes and
+    removes beside the project with, handed to the door.
     """
+    with_files = {} if files is None else {"files": files}
     try:
-        note_applied(await engine.apply_project_edit(mutate))
+        note_applied(await engine.apply_project_edit(mutate, **with_files))
     except ToolEditError as e:
         return e.result
     except ValueError as e:

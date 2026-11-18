@@ -34,11 +34,19 @@ def _make_handler(tmp_path, scripts=None):
 
     # Mirror the seam's contract — the tools hand a mutate callback to
     # apply_project_edit, which copies the current project, applies the
-    # mutation, and swaps it in (no reconcile in this unit harness).
-    async def _apply_edit(mutate):
+    # mutation, and swaps it in (no reconcile in this unit harness), with
+    # the files the mutate writes or removes put back or settled.
+    async def _apply_edit(mutate, files=None):
         new_project = engine.project.model_copy(deep=True)
-        mutate(new_project)
+        try:
+            mutate(new_project)
+        except Exception:
+            if files is not None:
+                files.put_back()
+            raise
         engine.project = new_project
+        if files is not None:
+            files.settle()
         return 1
 
     engine.apply_project_edit = AsyncMock(side_effect=_apply_edit)
