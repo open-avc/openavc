@@ -41,6 +41,15 @@ def _free_udp_port() -> int:
         return s.getsockname()[1]
 
 
+def _held_sender() -> socket.socket:
+    """A socket kept bound to a free local port: a simulator's sender. While
+    it is open the OS cannot hand its number to another sender as an
+    ephemeral port, which would make that sender look like the simulator."""
+    tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    tx.bind(("127.0.0.1", 0))
+    return tx
+
+
 def _send(port: int, data: bytes, source_port: int = 0) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tx:
         tx.bind(("127.0.0.1", source_port))
@@ -154,9 +163,11 @@ async def test_a_simulated_device_takes_only_what_its_own_port_sends():
 async def test_a_simulated_device_ignores_a_local_sender_on_another_port():
     port = _free_udp_port()
     got: list[bytes] = []
-    await ul.subscribe(port, "127.0.0.1", lambda d, s: got.append(d), "sim", source_port=_free_udp_port())
-    _send(port, b"LEVEL 9\r")  # an ephemeral port: some other program
-    await asyncio.sleep(0.1)
+    with _held_sender() as sim_tx:
+        sim_port = sim_tx.getsockname()[1]
+        await ul.subscribe(port, "127.0.0.1", lambda d, s: got.append(d), "sim", source_port=sim_port)
+        _send(port, b"LEVEL 9\r")  # an ephemeral port: some other program
+        await asyncio.sleep(0.1)
     assert got == []
 
 
@@ -168,13 +179,14 @@ async def test_a_real_local_device_still_gets_a_packet_from_any_port():
     real: list[bytes] = []
     sim: list[bytes] = []
     await ul.subscribe(port, "127.0.0.1", lambda d, s: real.append(d), "real")
-    sim_port = _free_udp_port()
-    await ul.subscribe(port, "127.0.0.1", lambda d, s: sim.append(d), "sim", source_port=sim_port)
-    _send(port, b"LEVEL 3\r")  # the real program, from an ephemeral port
-    await _wait_for(lambda: real)
-    _send(port, b"LEVEL 4\r", source_port=sim_port)  # the simulator
-    await _wait_for(lambda: sim)
-    await asyncio.sleep(0.05)
+    with _held_sender() as sim_tx:
+        sim_port = sim_tx.getsockname()[1]
+        await ul.subscribe(port, "127.0.0.1", lambda d, s: sim.append(d), "sim", source_port=sim_port)
+        _send(port, b"LEVEL 3\r")  # the real program, from an ephemeral port
+        await _wait_for(lambda: real)
+        sim_tx.sendto(b"LEVEL 4\r", ("127.0.0.1", port))  # the simulator
+        await _wait_for(lambda: sim)
+        await asyncio.sleep(0.05)
     # Each got its own: the simulated packet did not reach the real device.
     assert real == [b"LEVEL 3\r"]
     assert sim == [b"LEVEL 4\r"]
