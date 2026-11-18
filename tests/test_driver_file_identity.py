@@ -351,3 +351,78 @@ def test_the_simulator_builds_each_definition_from_the_copy_that_runs(library):
     assert definitions == {
         driver_id: _running(driver_id) for driver_id in ("acme_override", "acme_widget", "acme_refused")
     }
+
+
+# --- the removers' doors: what serves the id once a copy is taken away --------
+
+
+@pytest.fixture
+def doors(tmp_path, isolated, monkeypatch):
+    """A built-in folder and a driver folder, the routes pointed at them and
+    what follows a change recorded."""
+    from types import SimpleNamespace
+
+    import openavc.system_config as system_config
+    from openavc.api.routes import drivers as drivers_routes
+    from openavc.api.routes import python_drivers as python_routes
+
+    built_in, repo = tmp_path / "built_in", tmp_path / "repo"
+    built_in.mkdir()
+    repo.mkdir()
+    monkeypatch.setattr(system_config, "DRIVER_DEFINITIONS_DIR", built_in)
+    monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", repo)
+    monkeypatch.setattr(drivers_routes, "_get_driver_repo_dir", lambda: repo)
+    engine = SimpleNamespace(project=None, devices=SimpleNamespace(get_devices_using_driver=lambda _id: []))
+    followed: list[tuple] = []
+
+    async def _changed(*driver_ids, gone=()):
+        followed.append((driver_ids, tuple(gone)))
+
+    for routes in (drivers_routes, python_routes):
+        monkeypatch.setattr(routes, "_get_engine", lambda: engine)
+        monkeypatch.setattr(routes, "changed", _changed)
+    return SimpleNamespace(built_in=built_in, repo=repo, followed=followed)
+
+
+async def test_uninstalling_an_override_lets_the_built_in_serve_again(doors):
+    from openavc.api.routes.drivers import uninstall_driver
+    from openavc.drivers.driver_loader import load_all_drivers
+
+    (doors.built_in / "acme_widget.avcdriver").write_text(_definition("acme_widget", "Built in"), encoding="utf-8")
+    (doors.repo / "acme_widget.py").write_text(_python("WidgetDriver", "acme_widget", "Override"), encoding="utf-8")
+    load_all_drivers([doors.built_in, doors.repo])
+    assert _running("acme_widget") == "Override"
+
+    await uninstall_driver("acme_widget")
+
+    assert _running("acme_widget") == "Built in"
+    assert doors.followed == [(("acme_widget",), ())]
+    assert "openavc_driver_acme_widget" not in sys.modules
+
+
+async def test_deleting_a_python_driver_lets_the_definition_beside_it_serve(doors):
+    from openavc.api.routes.python_drivers import delete_python_driver
+    from openavc.drivers.driver_loader import load_all_drivers
+
+    (doors.repo / "acme_widget.avcdriver").write_text(_definition("acme_widget", "Definition"), encoding="utf-8")
+    (doors.repo / "acme_widget.py").write_text(_python("WidgetDriver", "acme_widget", "Python"), encoding="utf-8")
+    load_all_drivers([doors.built_in, doors.repo])
+    assert _running("acme_widget") == "Python"
+
+    await delete_python_driver("acme_widget")
+
+    assert _running("acme_widget") == "Definition"
+    assert doors.followed == [(("acme_widget",), ())]
+
+
+async def test_deleting_the_only_copy_drops_the_id(doors):
+    from openavc.api.routes.python_drivers import delete_python_driver
+    from openavc.drivers.driver_loader import load_all_drivers
+
+    (doors.repo / "acme_widget.py").write_text(_python("WidgetDriver", "acme_widget", "Python"), encoding="utf-8")
+    load_all_drivers([doors.built_in, doors.repo])
+
+    await delete_python_driver("acme_widget")
+
+    assert registry.get_driver_class("acme_widget") is None
+    assert doors.followed == [((), ("acme_widget",))]

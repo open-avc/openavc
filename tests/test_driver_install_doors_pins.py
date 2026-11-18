@@ -632,6 +632,19 @@ async def test_update_finds_a_python_file_by_the_id_it_declares_and_removes_the_
 
 
 @pytest.mark.asyncio
+async def test_update_to_a_definition_replaces_a_python_driver_and_its_companions(world):
+    """The catalog's driver is now a definition: the Python file that served
+    the id goes, and its simulator and discovery files with it."""
+    (world.repo / "acme_widget.py").write_bytes(_python(mark="old"))
+    (world.repo / "acme_widget_sim.py").write_bytes(b"SIM = 1\n")
+    (world.repo / "acme_widget_discovery.py").write_bytes(b"async def probe(ctx):\n    return None\n")
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")
+    result = await _update("acme_widget.avcdriver")
+    assert result["file"] == "acme_widget.avcdriver"
+    assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml(version="2.0.0")}
+
+
+@pytest.mark.asyncio
 async def test_update_finds_a_yaml_by_the_id_it_declares_and_removes_the_old_name(world):
     (world.repo / "renamed.avcdriver").write_bytes(_yaml())
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")

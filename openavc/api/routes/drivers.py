@@ -731,6 +731,9 @@ def _remove_installed_file(deleted_file: Path, driver_repo: Path) -> None:
     _remove_files(companion)
     if deleted_file.suffix == ".py":
         remove_python_companions(deleted_file)
+        from openavc.drivers.python_modules import forget_module
+
+        forget_module(deleted_file)
 
 
 @router.delete("/drivers/installed/{driver_id}")
@@ -787,7 +790,8 @@ def _file_an_update_replaces(driver_repo: Path, driver_id: str) -> Path | None:
 def _what_an_update_removes(
     old_file: Path, old_companion: Path | None, files: CatalogFiles, download: CatalogDownload
 ) -> list[str]:
-    """The files an update takes away: the old copy when it had another name;
+    """The files an update takes away: the old copy when it had another name,
+    with a Python copy's own companions when the new version is a definition;
     the old YAML's companion when the new one names another or none; and a
     Python companion the catalog answered a definite 404 for, since this
     version dropped it and the old copy would outlive its driver. Only on a
@@ -796,6 +800,8 @@ def _what_an_update_removes(
     removes = list(download.unpublished)
     if old_file != files.path:
         removes.append(old_file.name)
+        if old_file.suffix == ".py" and files.kind != ".py":
+            removes.extend(companion.name for companion in driver_companions(old_file))
     if old_companion is not None and old_companion.name not in download.files:
         removes.append(old_companion.name)
     return removes

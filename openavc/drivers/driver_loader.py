@@ -10,7 +10,12 @@ Directories scanned:
     - openavc/drivers/definitions/  (built-in .avcdriver definitions)
     - driver_repo/                 (community/user drivers — .avcdriver and .py)
 
-Each valid driver is registered in the global driver registry. Whether a
+Each valid driver is registered in the global driver registry. Which file
+serves a driver id is THE rule ``serving_file`` keeps (``_rank``), and the
+id a file declares THE one ``driver_id_from_file`` reads (a ``.py`` file's
+from the class the runtime registers, ``python_info.driver_info_ast``): the
+loader, every listing, remover, updater and exporter, the audit and the
+simulator ask them. Whether a
 file loads, and why not, is decided once per kind (``read_driver_file``,
 ``python_modules.read_python_driver_file``); the library pass keeps each
 refused file's reasons in ``refused_files`` (``read_library_definition``,
@@ -468,10 +473,9 @@ def driver_files_for(
 
     A driver uploaded before uploads were named by their id keeps the name it
     arrived with, and a renamed copy can sit beside the properly named one, so
-    a driver id is looked up by what each file declares. When several files
-    are the same driver, the one named for its id is the one that loads, is
-    edited in Code and is exported; deleting the driver removes them all.
-    Companions and underscore helpers are never driver files.
+    a driver id is looked up by what each file declares. Which of several is
+    the one that serves is ``serving_file``'s; deleting the driver removes
+    them all. Companions and underscore helpers are never driver files.
     """
     directory = Path(directory)
     if not directory.is_dir():
@@ -485,38 +489,15 @@ def driver_files_for(
     return found
 
 
-class AmbiguousDriverFile(Exception):
-    """Several files are one driver and none is named for its id."""
-
-    def __init__(self, driver_id: str, files: Sequence[Path]):
-        self.driver_id = driver_id
-        self.files = list(files)
-        names = ", ".join(path.name for path in self.files)
-        super().__init__(
-            f"More than one file in the driver library is driver "
-            f"'{driver_id}' ({names}). Delete the driver, then import the "
-            f"copy you want to keep."
-        )
-
-
 def python_driver_file(directory: Path | str, driver_id: str) -> Path:
-    """THE file that is Python driver ``driver_id`` in ``directory``.
-
-    ``<id>.py`` when it is that driver, else the one file that declares the
-    id, else ``<id>.py`` (which may not exist: the caller decides whether
-    that is "not found" or "create it"). Raises ``AmbiguousDriverFile`` when
-    several files declare the id and none is named for it, rather than
-    guessing which one to edit or replace.
-    """
-    conventional = Path(directory) / f"{driver_id}.py"
-    if conventional.is_file() and _is_driver(conventional, driver_id):
-        return conventional  # it wins over any renamed copy anyway
-    files = driver_files_for(directory, driver_id, ".py")
-    if not files:
-        return conventional
-    if len(files) == 1 or files[0].stem == driver_id:
-        return files[0]
-    raise AmbiguousDriverFile(driver_id, files)
+    """The file that is Python driver ``driver_id`` in ``directory``: the
+    copy that serves it (``serving_file``'s rule among the Python files, so
+    the one the Code view lists), or, when none loads, the one that would;
+    ``<id>.py`` when no file there is the driver (which may not exist: the
+    caller decides whether that is "not found" or "create it")."""
+    python = [(0, path) for path in driver_files_for(directory, driver_id, ".py")]
+    chosen = _chosen(sorted(python), driver_id, _loads, refused_too=True)
+    return chosen if chosen is not None else Path(directory) / f"{driver_id}.py"
 
 
 def _library_files(

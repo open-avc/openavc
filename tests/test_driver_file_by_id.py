@@ -210,14 +210,14 @@ async def test_half_written_source_stays_the_driver_its_name_says(driver_repo):
 
 
 @pytest.mark.asyncio
-async def test_two_renamed_copies_are_refused_for_editing_and_deleted_together(driver_repo):
+async def test_two_renamed_copies_open_the_one_that_loads_and_are_deleted_together(driver_repo):
+    """Neither is named for the id, so the first by name is the copy that
+    loads, lists and opens."""
     (driver_repo / "copy-one.py").write_text(_source("one"), encoding="utf-8")
     (driver_repo / "copy-two.py").write_text(_source("two"), encoding="utf-8")
 
-    with pytest.raises(HTTPException) as refused:
-        await get_python_driver_source("acme_widget")
-    assert refused.value.status_code == 409
-    assert "copy-one.py" in refused.value.detail and "copy-two.py" in refused.value.detail
+    opened = await get_python_driver_source("acme_widget")
+    assert opened["source"] == _source("one")
 
     await delete_python_driver("acme_widget")
     assert _py_files(driver_repo) == []

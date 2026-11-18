@@ -38,7 +38,6 @@ from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
 from openavc.drivers.driver_change import changed, holding
 from openavc.drivers.driver_loader import (
-    AmbiguousDriverFile,
     driver_companions,
     driver_files_for,
     python_driver_file,
@@ -86,10 +85,7 @@ def _safe_driver_path(driver_id: str) -> Path:
     from openavc.system_config import DRIVER_REPO_DIR
 
     _check_driver_id(driver_id)
-    try:
-        filepath = python_driver_file(DRIVER_REPO_DIR, driver_id)
-    except AmbiguousDriverFile as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    filepath = python_driver_file(DRIVER_REPO_DIR, driver_id)
 
     # Ensure path stays within driver_repo/
     try:
