@@ -77,7 +77,7 @@ def test_an_audit_runs_through_the_programmer_and_hands_over_its_report(
     with zipfile.ZipFile(io.BytesIO(saved.read_bytes())) as zf:
         assert set(zf.namelist()) == {"summary.html", "report.json", "timeline.txt", "log.txt", "README.txt"}
         report = json.loads(zf.read("report.json"))
-    assert report["report_version"] == 1
+    assert report["report_version"] == 2
     assert report["target"]["ip"] == "127.0.0.1"
     assert report["session"]["tester"] == {"name": "Browser Test"}
     assert report["complete"] is True

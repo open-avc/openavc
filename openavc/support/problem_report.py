@@ -15,7 +15,8 @@ the device nothing and never pauses it. It reads only this one device's
 records, so nothing about any other device, the project, its macros, scripts
 or variables, the system's settings or its credentials is in it.
 
-``report.json`` (``report_version`` 1, ``report_kind`` ``problem_report``):
+``report.json`` (``report_kind`` ``problem_report``; its ``report_version`` and the
+fields a reader relies on are the report contract's, ``support/report_contract.py``):
 
 - ``report_id`` (a UUID, one per file built), ``created_at`` (seconds since
   1970 UTC), ``generator`` (OpenAVC version, OS, Python, how OpenAVC was
@@ -93,6 +94,7 @@ from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.core.device_traffic import RING_ENTRIES, get_traffic_recorder, serialize_entry
 from openavc.drivers.registry import get_driver_class
 from openavc.drivers.spec import is_secret_setting
+from openavc.support.report_contract import report_version
 from openavc.utils.log_buffer import get_log_buffer
 from openavc.utils.log_redaction import (
     REDACTED,
@@ -106,7 +108,7 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 REPORT_KIND = "problem_report"
-REPORT_VERSION = 1
+REPORT_VERSION = report_version(REPORT_KIND)
 NAME_RE = re.compile(r"^openavc-problem-report-[a-z0-9-]+\.zip$")
 HISTORY_ROWS = 1000
 LOG_LINES = 200

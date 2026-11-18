@@ -176,8 +176,11 @@ def test_an_unsigned_401_is_final(tmp_path):
 
 def test_report_identity_reads_kind_and_id_from_the_zip(tmp_path):
     assert ru.report_identity(_zip(tmp_path)) == ("problem_report", REPORT_ID)
-    old_audit = _zip(tmp_path, {"report_version": 1, "report_id": REPORT_ID}, name="a.zip")
-    assert ru.report_identity(old_audit) == ("device_audit", REPORT_ID)
+    # A report that names no kind is one the service refuses, so it is
+    # refused here, before anything is sent.
+    no_kind = _zip(tmp_path, {"report_version": 2, "report_id": REPORT_ID}, name="a.zip")
+    with pytest.raises(ru.ReportUnreadable):
+        ru.report_identity(no_kind)
     with pytest.raises(ru.ReportUnreadable):
         ru.report_identity(_zip(tmp_path, {"report_kind": "device_audit"}, name="b.zip"))
     with pytest.raises(ru.ReportUnreadable):

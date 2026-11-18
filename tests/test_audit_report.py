@@ -259,7 +259,7 @@ async def test_the_record_has_every_section():
         report = build_report(session)
     finally:
         await manager.shutdown()
-    assert report["report_version"] == REPORT_VERSION == 1
+    assert report["report_version"] == REPORT_VERSION == 2
     assert report["report_kind"] == REPORT_KIND == "device_audit"
     assert set(report) >= {
         "generator", "session", "target", "device", "catalog", "footprint", "evidence",

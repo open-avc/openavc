@@ -4,8 +4,10 @@
 vocabulary and limit the agent and the cloud exchange. This module renders it
 into ``openavc/cloud/wire_contract.json``: a JSON Schema and a whole example
 per message, the vocabularies and the limits, each entry with the release it
-arrived in, and the crypto vectors (``wire_vectors.py``) both sides run. The
-cloud copies that file and tests its own builders and readers against it.
+arrived in, the crypto vectors (``wire_vectors.py``) both sides run, and the
+report contract (``openavc/support/report_contract.py``): each kind of report's
+version, the fields its readers rely on, the caps and an example. The cloud
+copies that file and tests its own builders and readers against it.
 
 Regenerate after any change to the tables:
 
@@ -29,6 +31,7 @@ Pure stdlib on purpose.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import subprocess
@@ -39,6 +42,7 @@ from typing import Any, Iterator
 from openavc.cloud import wire_tables, wire_vectors
 from openavc.cloud.crypto import sign_message
 from openavc.cloud.wire_tables import ABSENT, Field, Message
+from openavc.support import report_contract
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
 SCHEMA_META = "https://json-schema.org/draft/2020-12/schema"
@@ -221,6 +225,84 @@ def _vocabulary_entry(e: wire_tables.Entry) -> dict[str, Any]:
     return out
 
 
+# --- Reports ---
+
+_TYPE_PLAIN: dict[str, Any] = {
+    "string": "", "integer": 0, "number": 0, "boolean": False, "object": {}, "array": [],
+    "null": None, "any": None,
+}
+
+
+def _plain(type_expr: str) -> Any:
+    """The plain value of a field's first type, fresh each time."""
+    return copy.deepcopy(_TYPE_PLAIN[type_expr.split("|")[0]])
+
+
+def _into(node: Any, tok: str, after: str) -> Any:
+    """The container one step down a field's path, made when it is not there."""
+    fresh = [] if after == "[]" else {}
+    if tok == "[]":
+        if not node:
+            node.append(fresh)
+        return node[0]
+    if tok == "*":
+        if not node:
+            node["example"] = fresh
+        return next(iter(node.values()))
+    if not isinstance(node.get(tok), (dict, list)):
+        node[tok] = fresh
+    return node[tok]
+
+
+def report_example(kind: report_contract.ReportKind) -> dict[str, Any]:
+    """One report of ``kind`` holding every declared field: each its own
+    example, else its type's plain value; a list holds one item and a map one
+    key, ``example``."""
+    out: dict[str, Any] = {}
+    for f in kind.fields:
+        toks = report_contract.tokens(f.path)
+        node: Any = out
+        for i, tok in enumerate(toks[:-1]):
+            node = _into(node, tok, toks[i + 1])
+        if not isinstance(node.get(toks[-1]), (dict, list)):
+            node[toks[-1]] = _plain(f.type) if f.example is report_contract.ABSENT else f.example
+    out["report_version"] = kind.report_version
+    return out
+
+
+def _report_field(kind: report_contract.ReportKind, f: report_contract.ReportField) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "path": f.path, "type": f.type, "required": f.required,
+        "since": report_contract.field_since(kind, f), "readers": list(f.readers),
+    }
+    if f.doc:
+        entry["description"] = f.doc
+    return entry
+
+
+def _report_kind(kind: report_contract.ReportKind) -> dict[str, Any]:
+    return {
+        "since": kind.since,
+        "description": kind.doc,
+        "report_version": kind.report_version,
+        "versions": [
+            {"version": v.version, "since": v.since, "description": v.doc, "shape": v.shape}
+            for v in kind.versions
+        ],
+        "fields": [_report_field(kind, f) for f in kind.fields],
+        "example": report_example(kind),
+    }
+
+
+def build_reports() -> dict[str, Any]:
+    return {
+        "limits": {name: {"value": value, "description": doc}
+                   for name, (value, doc) in report_contract.LIMITS.items()},
+        "readers": list(report_contract.READERS),
+        "kinds": {name: _report_kind(kind) for name, kind in report_contract.KINDS.items()},
+    }
+
+
 def build_contract() -> dict[str, Any]:
     limits = wire_tables.LIMITS
     return {
@@ -239,6 +321,7 @@ def build_contract() -> dict[str, Any]:
         "vocabularies": {name: [_vocabulary_entry(e) for e in entries]
                          for name, entries in wire_tables.VOCABULARIES.items()},
         "vectors": wire_vectors.VECTORS,
+        "reports": build_reports(),
     }
 
 
@@ -284,6 +367,12 @@ def sinces() -> Iterator[tuple[str, str]]:
     for name, entries in wire_tables.VOCABULARIES.items():
         for e in entries:
             yield f"{name}: {e.value}", e.since
+    for kind in report_contract.KINDS.values():
+        yield f"report {kind.kind}", kind.since
+        for v in kind.versions:
+            yield f"report {kind.kind} version {v.version}", v.since
+        for f in kind.fields:
+            yield f"report {kind.kind}: {f.path}", report_contract.field_since(kind, f)
 
 
 def unshipped_sinces(cutting: str, previous: str) -> list[str]:
@@ -334,7 +423,8 @@ def _cut(repo_root: Path, cutting: str, previous: str | None) -> int:
         print(
             f"wire contract: cutting {final_of(cutting)} after {previous}, these name a "
             f"release that is neither shipped nor this one. Set each since to "
-            f"{final_of(cutting)} in openavc/cloud/wire_tables.py and regenerate:",
+            f"{final_of(cutting)} in openavc/cloud/wire_tables.py (a report's in "
+            f"openavc/support/report_contract.py) and regenerate:",
             file=sys.stderr,
         )
         for line in problems:

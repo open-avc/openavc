@@ -461,7 +461,7 @@ async def test_tester_report_and_recent_reports(wired):
     }
 
     record = await routes.session_report(session_id, format="json")
-    assert record["report_version"] == 1
+    assert record["report_version"] == 2
     assert record["session"]["tester"] == {"name": "Pat", "notes": "Bench unit"}
 
     response = await routes.session_report(session_id)

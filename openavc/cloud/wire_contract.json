@@ -3948,5 +3948,2279 @@
         "signature": "9a501816a197bba51bfcdeb48ad884855829ec0263b61f66fc8664b440ffc402"
       }
     ]
+  },
+  "reports": {
+    "limits": {
+      "max_report_bytes": {
+        "value": 20971520,
+        "description": "The largest report zip either end takes."
+      },
+      "max_report_json_bytes": {
+        "value": 5242880,
+        "description": "The largest report.json inside it; read only this far."
+      }
+    },
+    "readers": [
+      "receiver",
+      "triage"
+    ],
+    "kinds": {
+      "problem_report": {
+        "since": "0.38.0",
+        "description": "One device's diagnostics, sent from its page.",
+        "report_version": 2,
+        "versions": [
+          {
+            "version": 1,
+            "since": "0.38.0",
+            "description": "Stamped while fields arrived; no shape recorded.",
+            "shape": null
+          },
+          {
+            "version": 2,
+            "since": "0.41.0",
+            "description": "The first recorded shape.",
+            "shape": "19ae8fad9a1cd523"
+          }
+        ],
+        "fields": [
+          {
+            "path": "report_version",
+            "type": "integer",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "Which shape of this kind the file is."
+          },
+          {
+            "path": "report_kind",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "What made the file."
+          },
+          {
+            "path": "report_id",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "A UUID new with every file built; the receiver keeps one report per id."
+          },
+          {
+            "path": "generator",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "The OpenAVC that built the file."
+          },
+          {
+            "path": "generator.openavc_version",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "generator.os",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "generator.deployment_type",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "How OpenAVC was installed."
+          },
+          {
+            "path": "generator.python",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "limits",
+            "type": "array",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "What the report could not include, and why."
+          },
+          {
+            "path": "limits[].id",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "limits[].text",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "created_at",
+            "type": "number",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Seconds since 1970 UTC."
+          },
+          {
+            "path": "sender",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "What the person typed in the dialog, all optional."
+          },
+          {
+            "path": "sender.message",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "sender.name",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "sender.email",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "sender.leave_out_serial",
+            "type": "boolean",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "context",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Where the press came from, as the page sent it."
+          },
+          {
+            "path": "context.source",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "The one device the report is about."
+          },
+          {
+            "path": "device.id",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.name",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.enabled",
+            "type": "boolean",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.transport",
+            "type": "string|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.address",
+            "type": "object|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Where it really connects, from the saved record."
+          },
+          {
+            "path": "device.simulated",
+            "type": "boolean",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.manufacturer",
+            "type": "string|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver"
+            ],
+            "description": "As the device reported it."
+          },
+          {
+            "path": "device.model",
+            "type": "string|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver"
+            ],
+            "description": "As the device reported it."
+          },
+          {
+            "path": "device.driver_identity",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "Exactly which driver: its files hashed against the driver library's."
+          },
+          {
+            "path": "device.driver_identity.id",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.name",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "device.driver_identity.manufacturer",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver"
+            ]
+          },
+          {
+            "path": "device.driver_identity.version",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.format",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.source",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.modified",
+            "type": "boolean|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "True when a file differs from the library's, false when every file matches, null when nothing was compared."
+          },
+          {
+            "path": "device.driver_identity.files",
+            "type": "array",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.files[].name",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "device.driver_identity.files[].matches_catalog",
+            "type": "boolean|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.catalog",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.driver_identity.catalog.version",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver"
+            ]
+          },
+          {
+            "path": "device.driver_identity.catalog.checked",
+            "type": "boolean",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "Whether the driver library was reached at all."
+          },
+          {
+            "path": "state",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The device's values now, and three of the system's."
+          },
+          {
+            "path": "state.device",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "state.system",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "history",
+            "type": "array",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "This device's rows of the state history."
+          },
+          {
+            "path": "traffic",
+            "type": "object",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The device's recent messages."
+          },
+          {
+            "path": "traffic.window_start",
+            "type": "number|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "traffic.count",
+            "type": "integer",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "traffic.entries",
+            "type": "array",
+            "required": true,
+            "since": "0.38.0",
+            "readers": []
+          },
+          {
+            "path": "log",
+            "type": "array",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "OpenAVC's recent log lines about the device."
+          }
+        ],
+        "example": {
+          "report_version": 2,
+          "report_kind": "problem_report",
+          "report_id": "2f6d0b8e-5a41-4c2e-9e1f-7b3a9c0d4e51",
+          "generator": {
+            "openavc_version": "0.41.0",
+            "os": "Linux-6.8.0-x86_64-with-glibc2.39",
+            "deployment_type": "linux",
+            "python": "3.12.3"
+          },
+          "limits": [
+            {
+              "id": "catalog_unreachable",
+              "text": "The driver library could not be reached."
+            }
+          ],
+          "created_at": 1794967158.0,
+          "sender": {
+            "message": "It stopped answering after the update.",
+            "name": "Pat Example",
+            "email": "pat@example.com",
+            "leave_out_serial": false
+          },
+          "context": {
+            "source": "driver_line"
+          },
+          "device": {
+            "id": "hall_widget",
+            "name": "Hall Widget",
+            "enabled": true,
+            "transport": "tcp",
+            "address": {
+              "host": "10.0.0.50",
+              "port": 23
+            },
+            "simulated": false,
+            "manufacturer": "Acme",
+            "model": "Widget 3000",
+            "driver_identity": {
+              "id": "acme_widget",
+              "name": "Acme Widget",
+              "manufacturer": "Acme",
+              "version": "1.2.0",
+              "format": "avcdriver",
+              "source": "catalog",
+              "modified": null,
+              "files": [
+                {
+                  "name": "acme_widget.avcdriver",
+                  "matches_catalog": null
+                }
+              ],
+              "catalog": {
+                "version": "1.2.0",
+                "checked": true
+              }
+            }
+          },
+          "state": {
+            "device": {},
+            "system": {}
+          },
+          "history": [],
+          "traffic": {
+            "window_start": null,
+            "count": 0,
+            "entries": []
+          },
+          "log": []
+        }
+      },
+      "device_audit": {
+        "since": "0.36.0",
+        "description": "One device and its driver tested end to end.",
+        "report_version": 2,
+        "versions": [
+          {
+            "version": 1,
+            "since": "0.36.0",
+            "description": "Stamped while fields arrived; no shape recorded.",
+            "shape": null
+          },
+          {
+            "version": 2,
+            "since": "0.41.0",
+            "description": "The first recorded shape.",
+            "shape": "85cb92f8b71ad5ed"
+          }
+        ],
+        "fields": [
+          {
+            "path": "report_version",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "Which shape of this kind the file is."
+          },
+          {
+            "path": "report_kind",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "What made the file."
+          },
+          {
+            "path": "report_id",
+            "type": "string",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "A UUID new with every file built; the receiver keeps one report per id."
+          },
+          {
+            "path": "generator",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "The OpenAVC that built the file."
+          },
+          {
+            "path": "generator.openavc_version",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "generator.os",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "generator.deployment_type",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "How OpenAVC was installed."
+          },
+          {
+            "path": "generator.python",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": []
+          },
+          {
+            "path": "limits",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "What the report could not include, and why."
+          },
+          {
+            "path": "limits[].id",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": []
+          },
+          {
+            "path": "limits[].text",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "complete",
+            "type": "boolean",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Whether the network check finished."
+          },
+          {
+            "path": "session",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "session.started_at",
+            "type": "number",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "session.status",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "session.tester",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "\"About you\" on the report step, all optional."
+          },
+          {
+            "path": "session.tester.name",
+            "type": "string",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "session.tester.company",
+            "type": "string",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "session.tester.email",
+            "type": "string",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "session.tester.notes",
+            "type": "string",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "session.follows_report",
+            "type": "object|null",
+            "required": true,
+            "since": "0.38.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The problem report sent just before, when the audit was started from it."
+          },
+          {
+            "path": "target",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "target.address",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "target.ip",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "target.same_subnet",
+            "type": "boolean|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.entered",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "As the person typed it on \"Which driver?\"."
+          },
+          {
+            "path": "device.entered.manufacturer",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.entered.model",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.entered.firmware",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "device.reported",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "As the device reported itself."
+          },
+          {
+            "path": "device.reported.manufacturer",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "device.reported.model",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "catalog",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The driver catalog the audit was checked against."
+          },
+          {
+            "path": "catalog.used",
+            "type": "string",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "catalog.driver_count",
+            "type": "integer",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "catalog.sha256",
+            "type": "string|null",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Every raw observation of the network check."
+          },
+          {
+            "path": "footprint.mac",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mac.address",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ports",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ports.open",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ports.refused",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ports.filtered",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.greetings",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "What each open port sent first, by port."
+          },
+          {
+            "path": "footprint.greetings.*.hex",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Each port's answer to GET /, by port."
+          },
+          {
+            "path": "footprint.web.*.url",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.status_line",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.headers",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.title",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.server",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.www_authenticate",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.body",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.body.hex",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.web.*.followed",
+            "type": "object|null",
+            "required": true,
+            "since": "0.39.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The page a redirect on the same address and port led to."
+          },
+          {
+            "path": "footprint.certificates",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Each TLS port's certificate, by port."
+          },
+          {
+            "path": "footprint.certificates.*.subject",
+            "type": "any",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mdns",
+            "type": "object|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mdns.hostname",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mdns.address_name",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mdns.services",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mdns.services[].service_type",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.mdns.services[].txt",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ssdp",
+            "type": "object|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ssdp.device_types",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ssdp.manufacturer",
+            "type": "string|null",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.ssdp.model_name",
+            "type": "string|null",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "footprint.amx_ddp",
+            "type": "any",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "evidence",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The discovery Evidence built from those observations."
+          },
+          {
+            "path": "evidence[].tier",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "evidence[].source",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "evidence[].data",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "evidence[].at",
+            "type": "number",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "The matcher's identification and each named driver's signals judged against the device."
+          },
+          {
+            "path": "verdict.sentence",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.explanation",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.explanation.signals",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.explanation.signals[].source",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.explanation.signals[].drivers",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Each named driver's declared signals, by driver id."
+          },
+          {
+            "path": "verdict.checks.*[].kind",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].declared",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].status",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].detail",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].probes",
+            "type": "array",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].probes[].matched",
+            "type": "boolean",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].probes[].reply",
+            "type": "object|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "verdict.checks.*[].probes[].reply.hex",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "One entry per driver chosen, in order."
+          },
+          {
+            "path": "drivers[].driver",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "Exactly which driver: its files hashed against the driver library's."
+          },
+          {
+            "path": "drivers[].driver.id",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.name",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": []
+          },
+          {
+            "path": "drivers[].driver.manufacturer",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver"
+            ]
+          },
+          {
+            "path": "drivers[].driver.version",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.format",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.source",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.modified",
+            "type": "boolean|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "True when a file differs from the library's, false when every file matches, null when nothing was compared."
+          },
+          {
+            "path": "drivers[].driver.files",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.files[].name",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": []
+          },
+          {
+            "path": "drivers[].driver.files[].matches_catalog",
+            "type": "boolean|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.catalog",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].driver.catalog.version",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver"
+            ]
+          },
+          {
+            "path": "drivers[].driver.catalog.checked",
+            "type": "boolean",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "receiver",
+              "triage"
+            ],
+            "description": "Whether the driver library was reached at all."
+          },
+          {
+            "path": "drivers[].verdict_agreement",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Every connect and listen, in order."
+          },
+          {
+            "path": "drivers[].attempts[].status",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].started_at",
+            "type": "number|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].connected_at",
+            "type": "number|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].drops",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].declared",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].reported",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].status_table",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].status_table.variables",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].status_table.variables[].name",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].status_table.variables[].value",
+            "type": "any",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].status_table.variables[].reported",
+            "type": "boolean",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].contract",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].contract.counts",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.count",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.sent",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.received",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.not_captured",
+            "type": "boolean",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.entries",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.entries[].seq",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.entries[].t",
+            "type": "number",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.entries[].direction",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.entries[].hex",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].attempts[].traffic.entries[].chunk",
+            "type": "boolean",
+            "required": false,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "A raw receive chunk before framing."
+          },
+          {
+            "path": "drivers[].commands",
+            "type": "object|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ],
+            "description": "Null when the driver never connected."
+          },
+          {
+            "path": "drivers[].commands.trials",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].number",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].command",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].params",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].connect_attempt",
+            "type": "integer|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].error",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].summary",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].answer",
+            "type": "object|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].answer.answer",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].traffic",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].traffic.entries",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].traffic.entries[].seq",
+            "type": "integer",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].traffic.entries[].direction",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].commands.trials[].traffic.entries[].hex",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].outages",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].outages[].kind",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].outages[].summary",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].settings",
+            "type": "object",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].settings.trials",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].settings.trials[].key",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "drivers[].settings.trials[].summary",
+            "type": "string",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
+            "path": "timeline",
+            "type": "array",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [],
+            "description": "Every event in order."
+          }
+        ],
+        "example": {
+          "report_version": 2,
+          "report_kind": "device_audit",
+          "report_id": "2f6d0b8e-5a41-4c2e-9e1f-7b3a9c0d4e51",
+          "generator": {
+            "openavc_version": "0.41.0",
+            "os": "Linux-6.8.0-x86_64-with-glibc2.39",
+            "deployment_type": "linux",
+            "python": "3.12.3"
+          },
+          "limits": [
+            {
+              "id": "catalog_unreachable",
+              "text": "The driver library could not be reached."
+            }
+          ],
+          "complete": true,
+          "session": {
+            "started_at": 1794967158.0,
+            "status": "active",
+            "tester": {
+              "name": "Pat Example",
+              "company": "Acme AV",
+              "email": "pat@example.com",
+              "notes": "Bench unit, latest firmware."
+            },
+            "follows_report": null
+          },
+          "target": {
+            "address": "10.0.0.50",
+            "ip": "10.0.0.50",
+            "same_subnet": true
+          },
+          "device": {
+            "entered": {
+              "manufacturer": "Acme",
+              "model": "Widget 3000",
+              "firmware": null
+            },
+            "reported": {
+              "manufacturer": "Acme",
+              "model": "Widget 3000"
+            }
+          },
+          "catalog": {
+            "used": "fresh",
+            "driver_count": 1,
+            "sha256": null
+          },
+          "footprint": {
+            "mac": {
+              "address": null
+            },
+            "ports": {
+              "open": [],
+              "refused": [],
+              "filtered": []
+            },
+            "greetings": {
+              "example": {
+                "hex": ""
+              }
+            },
+            "web": {
+              "example": {
+                "url": "",
+                "status_line": "",
+                "headers": [],
+                "title": "",
+                "server": "",
+                "www_authenticate": "",
+                "body": {
+                  "hex": ""
+                },
+                "followed": {}
+              }
+            },
+            "certificates": {
+              "example": {
+                "subject": null
+              }
+            },
+            "mdns": {
+              "hostname": "",
+              "address_name": "",
+              "services": [
+                {
+                  "service_type": "",
+                  "txt": {}
+                }
+              ]
+            },
+            "ssdp": {
+              "device_types": [],
+              "manufacturer": "",
+              "model_name": ""
+            },
+            "amx_ddp": null
+          },
+          "evidence": [
+            {
+              "tier": "",
+              "source": "",
+              "data": {},
+              "at": 0
+            }
+          ],
+          "verdict": {
+            "sentence": "OpenAVC does not recognize this device.",
+            "explanation": {
+              "signals": [
+                {
+                  "source": "",
+                  "drivers": []
+                }
+              ]
+            },
+            "checks": {
+              "example": [
+                {
+                  "kind": "",
+                  "declared": "",
+                  "status": "",
+                  "detail": "",
+                  "probes": [
+                    {
+                      "matched": false,
+                      "reply": {
+                        "hex": ""
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "drivers": [
+            {
+              "driver": {
+                "id": "acme_widget",
+                "name": "Acme Widget",
+                "manufacturer": "Acme",
+                "version": "1.2.0",
+                "format": "avcdriver",
+                "source": "catalog",
+                "modified": null,
+                "files": [
+                  {
+                    "name": "acme_widget.avcdriver",
+                    "matches_catalog": null
+                  }
+                ],
+                "catalog": {
+                  "version": "1.2.0",
+                  "checked": true
+                }
+              },
+              "verdict_agreement": "",
+              "attempts": [
+                {
+                  "status": "",
+                  "started_at": 0,
+                  "connected_at": 0,
+                  "drops": 0,
+                  "declared": 0,
+                  "reported": 0,
+                  "status_table": {
+                    "variables": [
+                      {
+                        "name": "",
+                        "value": null,
+                        "reported": false
+                      }
+                    ]
+                  },
+                  "contract": {
+                    "counts": {}
+                  },
+                  "traffic": {
+                    "count": 0,
+                    "sent": 0,
+                    "received": 0,
+                    "not_captured": false,
+                    "entries": [
+                      {
+                        "seq": 0,
+                        "t": 0,
+                        "direction": "",
+                        "hex": "",
+                        "chunk": false
+                      }
+                    ]
+                  }
+                }
+              ],
+              "commands": {
+                "trials": [
+                  {
+                    "number": 0,
+                    "command": "",
+                    "params": {},
+                    "connect_attempt": 0,
+                    "error": "",
+                    "summary": "",
+                    "answer": {
+                      "answer": ""
+                    },
+                    "traffic": {
+                      "entries": [
+                        {
+                          "seq": 0,
+                          "direction": "",
+                          "hex": ""
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "outages": [
+                {
+                  "kind": "",
+                  "summary": ""
+                }
+              ],
+              "settings": {
+                "trials": [
+                  {
+                    "key": "",
+                    "summary": ""
+                  }
+                ]
+              }
+            }
+          ],
+          "timeline": []
+        }
+      }
+    }
   }
 }

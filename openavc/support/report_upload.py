@@ -21,7 +21,9 @@ TLS, a proxy, a timeout) or a server error says "try another way": the
 Programmer then sends the same file from the browser, whose certificate store
 and proxy settings may get through where this server's do not.
 
-A file over ``MAX_REPORT_BYTES`` is refused before any connection opens.
+A file over ``MAX_REPORT_BYTES`` is refused before any connection opens, and
+so is one whose ``report.json`` names no kind the report contract
+(``support/report_contract.py``) declares: the service refuses it too.
 """
 
 from __future__ import annotations
@@ -39,18 +41,18 @@ from urllib.parse import urlsplit
 import httpx
 
 from openavc import config as cfg
+from openavc.support.report_contract import KINDS as _CONTRACT_KINDS
+from openavc.support.report_contract import MAX_REPORT_BYTES, MAX_REPORT_JSON_BYTES
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_client
 
 log = get_logger(__name__)
 
-# The cloud's own cap on the file; the form around it may add 64 KiB.
-MAX_REPORT_BYTES = 20 * 1024 * 1024
+# The caps (the zip, and report.json read only this far) are the report
+# contract's, which the receiving service holds a report to as well.
 CONNECT_TIMEOUT = 10.0
 TOTAL_TIMEOUT = 120.0
-KINDS = ("problem_report", "device_audit")
-# report.json is read from the zip only this far; the cloud's limit is 5 MiB.
-_REPORT_JSON_MAX = 5 * 1024 * 1024
+KINDS = tuple(_CONTRACT_KINDS)
 
 # Why a send did not arrive. Every kind but NETWORK is the cloud's (or this
 # server's) final answer; NETWORK means the browser may try the same file.
@@ -100,16 +102,16 @@ def report_identity(path: Path) -> tuple[str, str]:
     try:
         with zipfile.ZipFile(path) as zf:
             with zf.open("report.json") as fh:
-                raw = fh.read(_REPORT_JSON_MAX + 1)
+                raw = fh.read(MAX_REPORT_JSON_BYTES + 1)
     except (OSError, KeyError, zipfile.BadZipFile) as exc:
         raise ReportUnreadable(f"{path.name} has no readable report.json") from exc
-    if len(raw) > _REPORT_JSON_MAX:
+    if len(raw) > MAX_REPORT_JSON_BYTES:
         raise ReportUnreadable(f"{path.name}'s report.json is too large")
     try:
         report = json.loads(raw)
     except ValueError as exc:
         raise ReportUnreadable(f"{path.name}'s report.json is not JSON") from exc
-    kind = report.get("report_kind", "device_audit") if isinstance(report, dict) else None
+    kind = report.get("report_kind") if isinstance(report, dict) else None
     report_id = report.get("report_id") if isinstance(report, dict) else None
     if kind not in KINDS:
         raise ReportUnreadable(f"{path.name} is not a report kind OpenAVC receives")

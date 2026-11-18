@@ -13,7 +13,8 @@
       README.txt       what report.json's fields mean where the name does
                        not say (``FIELD_GUIDE``)
 
-``report.json`` (``report_version`` 1) holds:
+``report.json`` holds the fields below; its ``report_version`` and the fields a
+reader of it relies on are the report contract's (``support/report_contract.py``):
 
 - ``report_version``; ``report_kind``, what made the file (``device_audit``);
   ``report_id``, a UUID new with every file built (a resave gets a new one);
@@ -271,6 +272,7 @@ from openavc.audit.report_text import (
 )
 from openavc.audit.session import footprint_of
 from openavc.audit.signal_text import signal_text
+from openavc.support.report_contract import report_version
 from openavc.utils.boolean_words import value_text
 
 if TYPE_CHECKING:
@@ -278,8 +280,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("audit.report")
 
-REPORT_VERSION = 1
 REPORT_KIND = "device_audit"
+REPORT_VERSION = report_version(REPORT_KIND)
 REPORTS_KEPT = 10
 _NAME_RE = re.compile(r"^openavc-device-audit-[a-z0-9-]+\.zip$")
 

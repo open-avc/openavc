@@ -196,7 +196,7 @@ def test_a_command_password_is_masked_in_the_context_and_the_log(engine):
 def test_report_json_carries_what_the_receiving_service_reads(engine):
     report, files = _build(engine, message="msg", name="Pat", email="pat@example.com")
     assert json.loads(files["report.json"])["report_id"] == report["report_id"]
-    assert report["report_kind"] == "problem_report" and report["report_version"] == 1
+    assert report["report_kind"] == "problem_report" and report["report_version"] == 2
     uuid.UUID(report["report_id"])
     assert isinstance(report["created_at"], float)
     assert report["sender"] == {"message": "msg", "name": "Pat", "email": "pat@example.com",
