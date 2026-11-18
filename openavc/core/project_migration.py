@@ -34,7 +34,7 @@ from typing import NamedTuple
 
 from openavc.core.bound_migration import repair_bounds_0_17
 from openavc.core.box_migration import repair_boxes_0_17
-from openavc.core.event_migration import rename_project_events_0_18
+from openavc.core.event_migration import migrate_0_17_to_0_18
 from openavc.core.layout_migration import convert_grid_layout
 from openavc.core.project_update import MigrationNotes
 
@@ -828,27 +828,6 @@ def migrate_0_16_to_0_17(data: dict, notes: MigrationNotes | None = None) -> dic
         repair_boxes_0_17(ui, notes)
 
     data["openavc_version"] = "0.17.0"
-    return data
-
-
-def migrate_0_17_to_0_18(data: dict, notes: MigrationNotes | None = None) -> dict:
-    """
-    Migrate from 0.17.0 to 0.18.0 -- a project's own events move out of the
-    platform's namespace.
-
-    A macro's Emit Event step, a control's event action and a script now
-    refuse an event named ``system.<anything>``: that namespace is where the
-    platform says something happened to it. The Macro editor used to suggest
-    three such names for a project's own events, so each one a project sends,
-    and each Event trigger that could only hear one, is renamed to the same
-    name under ``custom.``, and the wiring keeps working. A step or a control
-    that sends one of the platform's own events is left as written, and noted;
-    a script is not rewritten, and the script check marks it. What the step
-    reaches and says is ``core/event_migration.py``.
-    """
-    notes = MigrationNotes() if notes is None else notes
-    rename_project_events_0_18(data, _elements(data), notes)
-    data["openavc_version"] = "0.18.0"
     return data
 
 

@@ -177,11 +177,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
     if reason:
         found.append(_finding(path, reason, action=action, refused="file"))
 
-    if action == "event.emit":
-        # The runtime's refusal, word for word: the platform's own names.
-        refused = check_project_emit(step.get("event"))
-        if refused:
-            found.append(_finding(path, refused, action=action, refused="platform_event"))
+    found.extend(_refused_emit_findings(step, path))
 
     if action == "delay":
         seconds = step.get("seconds")
@@ -263,6 +259,31 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
             ))
 
     return found
+
+
+def _refused_emit_findings(step: dict, path: str) -> list[dict[str, Any]]:
+    """An Emit Event step naming one of the platform's own events, in the
+    runtime's refusal, word for word (``core/event_bus.check_project_emit``)."""
+    if step.get("action") != "event.emit":
+        return []
+    refused = check_project_emit(step.get("event"))
+    if not refused:
+        return []
+    return [_finding(path, refused, action="event.emit", refused="platform_event")]
+
+
+def _event_trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
+    """An Event trigger with no pattern, or one that can hear nothing: under
+    ``system.`` and matching none of the events the platform sends."""
+    pattern = trigger.get("event_pattern")
+    if not pattern:
+        return [_finding(
+            path, "event trigger requires 'event_pattern'",
+            action="event", missing="event_pattern",
+        )]
+    if silent_platform_pattern(pattern):
+        return [_finding(path, silent_pattern_sentence(pattern), action="event")]
+    return []
 
 
 def _missing_param_findings(
@@ -359,14 +380,7 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                 action=ttype,
             ))
     elif ttype == "event":
-        pattern = trigger.get("event_pattern")
-        if not pattern:
-            found.append(_finding(
-                path, "event trigger requires 'event_pattern'",
-                action=ttype, missing="event_pattern",
-            ))
-        elif silent_platform_pattern(pattern):
-            found.append(_finding(path, silent_pattern_sentence(pattern), action=ttype))
+        found.extend(_event_trigger_findings(trigger, path))
 
     found.extend(_execution_findings(trigger, path, ttype))
 

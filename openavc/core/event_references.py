@@ -71,7 +71,6 @@ from typing import Any
 
 from openavc.core.event_bus import (
     check_project_emit,
-    is_platform_event,
     silent_pattern_sentence,
     silent_platform_pattern,
 )
@@ -254,24 +253,34 @@ def platform_names(source: str) -> list[dict[str, Any]]:
     tree = _parse(source)
     if tree is None:
         return []
-    found: list[dict[str, Any]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        callee = _callee(node)
-        if callee == "emit":
-            name = _readable_name(_first_arg(node))
-            if name != UNREADABLE and is_platform_event(name):
-                found.append(_platform_issue(node.lineno, name, check_project_emit(name)))
-        elif callee == "on_event":
-            pattern = _literal(_first_arg(node))
-            if silent_platform_pattern(pattern):
-                found.append(_platform_issue(node.lineno, pattern, silent_pattern_sentence(pattern)))
-    return found
+    calls = (node for node in ast.walk(tree) if isinstance(node, ast.Call))
+    return [issue for issue in map(_platform_issue_at, calls) if issue]
 
 
-def _platform_issue(line: int, event: str, message: str | None) -> dict[str, Any]:
-    return {"kind": PLATFORM_EVENT, "line": line, "event": event, "message": message or ""}
+def _platform_issue_at(node: ast.Call) -> dict[str, Any] | None:
+    callee = _callee(node)
+    if callee == "emit":
+        return _refused_emit_issue(node)
+    if callee == "on_event":
+        return _silent_listener_issue(node)
+    return None
+
+
+def _refused_emit_issue(node: ast.Call) -> dict[str, Any] | None:
+    name = _readable_name(_first_arg(node))
+    refused = check_project_emit(name) if name != UNREADABLE else None
+    return _platform_issue(node.lineno, name, refused) if refused else None
+
+
+def _silent_listener_issue(node: ast.Call) -> dict[str, Any] | None:
+    pattern = _literal(_first_arg(node))
+    if not silent_platform_pattern(pattern):
+        return None
+    return _platform_issue(node.lineno, pattern, silent_pattern_sentence(pattern))
+
+
+def _platform_issue(line: int, event: str, message: str) -> dict[str, Any]:
+    return {"kind": PLATFORM_EVENT, "line": line, "event": event, "message": message}
 
 
 def _dump(obj: Any) -> Mapping[str, Any]:

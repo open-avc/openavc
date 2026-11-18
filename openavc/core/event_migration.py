@@ -49,20 +49,37 @@ _NESTED_ACTIONS_0_18 = ("off_action", "hold_action")
 _OUTSIDE_0_18 = "A Node-RED flow or another system listening for the old name needs the new one."
 
 
-def rename_project_events_0_18(data: dict, elements: list[dict], notes: MigrationNotes) -> None:
-    """The project's own ``system.`` events, renamed in place; ``elements``
-    are its page and master elements, as the step reads them."""
+def migrate_0_17_to_0_18(data: dict, notes: MigrationNotes | None = None) -> dict:
+    """Migrate from 0.17.0 to 0.18.0: the project's own ``system.`` events,
+    renamed in place to ``custom.`` (this module's docstring says which and
+    where), each rename a note."""
+    notes = MigrationNotes() if notes is None else notes
     for macro in _dicts_0_18(data.get("macros")):
         _rename_macro_0_18(macro, notes)
-    places = element_places_0_17(data.get("ui"))
-    for el in elements:
+    ui = data.get("ui")
+    places = element_places_0_17(ui)
+    for el in _elements_0_18(ui):
         page, page_id = places.get(id(el), ("", ""))
-        element_id = str(el.get("id", ""))
-        at = {"page_id": page_id, "element_id": element_id}
-        for action in _element_actions_0_18(el):
-            said = _rename_emit_0_18(action, "Emit Event action")
-            if said:
-                said(notes, f"{page} > {element_id}", **at)
+        _rename_element_0_18(el, page, page_id, notes)
+    data["openavc_version"] = "0.18.0"
+    return data
+
+
+def _elements_0_18(ui) -> list[dict]:
+    """Every page element, then every master element; anything that is not a
+    dict, and a missing or null list, reads as nothing."""
+    if not isinstance(ui, dict):
+        return []
+    elements = [el for page in _dicts_0_18(ui.get("pages")) for el in _dicts_0_18(page.get("elements"))]
+    return elements + _dicts_0_18(ui.get("master_elements"))
+
+
+def _rename_element_0_18(el: dict, page: str, page_id: str, notes: MigrationNotes) -> None:
+    element_id = str(el.get("id", ""))
+    for action in _element_actions_0_18(el):
+        said = _rename_emit_0_18(action, "Emit Event action")
+        if said:
+            said(notes, f"{page} > {element_id}", page_id=page_id, element_id=element_id)
 
 
 def _in_namespace_0_18(name) -> bool:
@@ -96,21 +113,25 @@ def _rename_emit_0_18(holder: dict, what: str):
 
 
 def _rename_macro_0_18(macro: dict, notes: MigrationNotes) -> None:
-    name = macro.get("name") or macro.get("id", "")
+    location = f"Macros > {macro.get('name') or macro.get('id', '')}"
     for label, step in _steps_0_18(macro.get("steps"), "Step"):
         said = _rename_emit_0_18(step, f"{label} (Emit Event)")
         if said:
-            said(notes, f"Macros > {name}")
+            said(notes, location)
     for trigger in _dicts_0_18(macro.get("triggers")):
-        pattern = trigger.get("event_pattern")
-        if trigger.get("type") != "event" or not _only_a_project_hears_0_18(pattern):
-            continue
-        trigger["event_pattern"] = _own_name_0_18(pattern)
-        notes.changed(
-            f"Listens for '{trigger['event_pattern']}' in place of '{pattern}': a project's own "
-            f"events are named under '{OWN_PREFIX_0_18}'.",
-            f"Macros > {name} > {trigger.get('id', '')}",
-        )
+        _rename_trigger_0_18(trigger, f"{location} > {trigger.get('id', '')}", notes)
+
+
+def _rename_trigger_0_18(trigger: dict, location: str, notes: MigrationNotes) -> None:
+    pattern = trigger.get("event_pattern")
+    if trigger.get("type") != "event" or not _only_a_project_hears_0_18(pattern):
+        return
+    trigger["event_pattern"] = _own_name_0_18(pattern)
+    notes.changed(
+        f"Listens for '{trigger['event_pattern']}' in place of '{pattern}': a project's own "
+        f"events are named under '{OWN_PREFIX_0_18}'.",
+        location,
+    )
 
 
 def _only_a_project_hears_0_18(pattern) -> bool:
@@ -134,18 +155,23 @@ def _steps_0_18(steps, label: str) -> Iterator[tuple[str, dict]]:
 
 
 def _element_actions_0_18(el: dict) -> Iterator[dict]:
-    """Every action dict a control can run, as the 0.18.0 runtime reached them."""
+    """Every action dict a control can run, as the 0.18.0 runtime reached them:
+    its interactions' actions, then each matrix row's own route actions."""
     bindings = el.get("bindings")
     do = bindings.get("do") if isinstance(bindings, dict) else None
     for binding in (do.values() if isinstance(do, dict) else ()):
-        for action in binding if isinstance(binding, list) else [binding]:
-            yield from _action_tree_0_18(action)
+        yield from _action_list_0_18(binding)
     config = el.get("matrix_config")
     destinations = config.get("destinations") if isinstance(config, dict) else None
-    for entry in destinations if isinstance(destinations, list) else ():
-        route = entry.get("route") if isinstance(entry, dict) else None
-        for action in route if isinstance(route, list) else ():
-            yield from _action_tree_0_18(action)
+    for entry in _dicts_0_18(destinations):
+        yield from _action_list_0_18(_dicts_0_18(entry.get("route")))
+
+
+def _action_list_0_18(binding) -> Iterator[dict]:
+    """A list of actions, or the single one an interaction may hold, each
+    with what nests inside it."""
+    for action in binding if isinstance(binding, list) else [binding]:
+        yield from _action_tree_0_18(action)
 
 
 def _action_tree_0_18(action) -> Iterator[dict]:

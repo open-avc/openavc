@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from openavc.core.condition_eval import match_key, same_value
 from openavc.core.device_manager import failed_command
@@ -545,29 +545,7 @@ class UIEventRuntime:
                     )
 
         elif action == "event.emit":
-            # The macro step, reachable from a control. The event NAME comes
-            # from the project rather than the panel, so this grants a panel
-            # exactly the authority running a macro already did -- and it
-            # reaches the two things a script call cannot: a trigger, and a
-            # plugin.
-            event_name = action_def.get("event", "")
-            payload = dict(action_def.get("payload") or {})
-            for k, v in payload.items():
-                payload[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
-            refused = check_project_emit(event_name)
-            if refused:
-                # The platform's own name: sent, it would tell every Startup
-                # trigger, or the cloud's alert monitor, something that did
-                # not happen. Recorded for the AI's simulated press and
-                # logged once, with no `error` field for the same reason as
-                # an action nothing dispatches (below): the room cannot act
-                # on it. The UI Builder's page check marks the control.
-                record(event=event_name, payload=payload, emitted=False, refused=refused)
-                self._warn_once(element, f"refused:{event_name}", f"has an Emit Event action that is refused. {refused}")
-            elif event_name:
-                if not dry_run:
-                    await engine.events.emit(event_name, payload)
-                record(event=event_name, payload=payload)
+            await self._emit_action(action_def, event_ctx, element, record, dry_run=dry_run)
 
         else:
             # Everything above is a name this runtime knows. Anything else used
@@ -583,6 +561,38 @@ class UIEventRuntime:
             # an action.
             record(ran=False)
             self._warn_undispatched(action, element)
+
+    async def _emit_action(
+        self, action_def: dict[str, Any], event_ctx: dict[str, Any], element: Any,
+        record: Callable[..., None], *, dry_run: bool,
+    ) -> None:
+        """A control's ``event.emit``: the macro step, reachable from a control.
+
+        The event NAME comes from the project rather than the panel, so this
+        grants a panel exactly the authority running a macro already did --
+        and it reaches the two things a script call cannot: a trigger, and a
+        plugin. The platform's own names are refused
+        (``core/event_bus.check_project_emit``): sent, one would tell every
+        Startup trigger, or the cloud's alert monitor, something that did not
+        happen. A refusal is recorded for the AI's simulated press and logged
+        once, with no ``error`` field for the same reason as an action nothing
+        dispatches: the room cannot act on it. The UI Builder's page check
+        marks the control.
+        """
+        event_name = action_def.get("event", "")
+        payload = dict(action_def.get("payload") or {})
+        for k, v in payload.items():
+            payload[k] = resolve_ref(v, state=self._engine.state, event_ctx=event_ctx)
+        refused = check_project_emit(event_name)
+        if refused:
+            record(event=event_name, payload=payload, emitted=False, refused=refused)
+            self._warn_once(element, f"refused:{event_name}", f"has an Emit Event action that is refused. {refused}")
+            return
+        if not event_name:
+            return
+        if not dry_run:
+            await self._engine.events.emit(event_name, payload)
+        record(event=event_name, payload=payload)
 
     def _warn_once(self, element: Any, key: str, what: str) -> bool:
         """Say something about one element's binding, once.
