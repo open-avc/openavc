@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
+from openavc.core.event_bus import check_project_emit, silent_pattern_sentence, silent_platform_pattern
 from openavc.core.project_loader import SECONDS_MIN, MacroStep, TriggerConfig, choice_rule
 from openavc.drivers.param_labels import param_label as _readable_param
 from openavc.drivers.param_validation import required_param_sentence
@@ -175,6 +176,12 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
     reason = lookups.file_command(step) if lookups.file_command is not None else None
     if reason:
         found.append(_finding(path, reason, action=action, refused="file"))
+
+    if action == "event.emit":
+        # The runtime's refusal, word for word: the platform's own names.
+        refused = check_project_emit(step.get("event"))
+        if refused:
+            found.append(_finding(path, refused, action=action, refused="platform_event"))
 
     if action == "delay":
         seconds = step.get("seconds")
@@ -352,11 +359,14 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                 action=ttype,
             ))
     elif ttype == "event":
-        if not trigger.get("event_pattern"):
+        pattern = trigger.get("event_pattern")
+        if not pattern:
             found.append(_finding(
                 path, "event trigger requires 'event_pattern'",
                 action=ttype, missing="event_pattern",
             ))
+        elif silent_platform_pattern(pattern):
+            found.append(_finding(path, silent_pattern_sentence(pattern), action=ttype))
 
     found.extend(_execution_findings(trigger, path, ttype))
 

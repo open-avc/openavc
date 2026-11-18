@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
+from openavc.core.event_bus import check_project_emit
 from openavc.core.group_command import reached_nobody
 from openavc.core.project_loader import MacroStep, reads_as
 from openavc.core.saved_params import saved_kwargs
@@ -392,6 +393,9 @@ class MacroSteps:
 
     async def _emit_event(self, step: dict[str, Any], run: StepRun, _path: StepPath) -> None:
         event_name = step.get("event", "")
+        refused = check_project_emit(event_name)
+        if refused:
+            raise ValueError(refused)
         # Resolved, like every other value a step carries, so a `$var.`
         # reference in the payload means what it means in a binding action.
         payload = self._resolve_params(step.get("payload") or {}, run.context)

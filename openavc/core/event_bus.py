@@ -20,6 +20,8 @@ Event types follow a dotted namespace convention:
     ui.page.<page_id>          — page navigation
     system.started             — engine started
     system.stopping            — engine shutting down
+    system.project.reloaded    — project reloaded (the platform's alone:
+                                 check_project_emit)
     macro.started.<macro_id>   — macro execution began
     macro.completed.<macro_id> — macro finished
     schedule.<schedule_id>     — scheduled event fired
@@ -54,7 +56,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import uuid
-from fnmatch import fnmatch
+from fnmatch import fnmatch, fnmatchcase
 from typing import Any, Callable
 
 from openavc.utils.logger import get_logger
@@ -116,6 +118,79 @@ def check_event_emit(event: Any, payload: Any) -> str | None:
     if payload is not None and not isinstance(payload, dict):
         return "Event payload must be a JSON object"
     return None
+
+
+# --- The platform's own events -----------------------------------------------
+#
+# THE rule for the event doors a project reaches: a macro's Emit Event step, a
+# control's event action and a script's `events.emit`. They may send any name
+# but the platform's. A `system.` event is the platform saying something
+# happened to it: `system.started` runs every Startup trigger,
+# `system.stopping` every stopping one, and `system.project.reloaded` has the
+# cloud's alert monitor read its rules again. A project that sent one would be
+# telling all of them something that did not happen, so the whole namespace is
+# refused there, not only the names below: an event the platform adds later is
+# protected the day it is added. The remote doors above are narrower still
+# (`custom.` only), and a plugin's emits are prefixed with its own id.
+#
+# Refused by name as the bus matches it: `fnmatch` folds case where the file
+# system does (Windows), so `System.Started` would reach a `system.started`
+# trigger there, and a padded name is no different to the person who wrote it.
+
+PLATFORM_EVENT_PREFIX = "system."
+
+#: The `system.` events the platform sends today. Listening for one of these
+#: is how a project hears the platform; listening for any other `system.` name
+#: hears nothing, since no project can send one. Pinned against every emit in
+#: the code by tests/test_project_event_doors.py.
+PLATFORM_EVENTS = frozenset({"system.started", "system.stopping", "system.project.reloaded"})
+
+
+def is_platform_event(event: Any) -> bool:
+    """Whether ``event`` is in the platform's namespace, as the bus matches it."""
+    return isinstance(event, str) and event.strip().casefold().startswith(PLATFORM_EVENT_PREFIX)
+
+
+def project_event_name(event: str) -> str:
+    """The name a project gives its own event that it wrote under ``system.``:
+    the same name under ``custom.``, the namespace the API's doors take."""
+    return EXTERNAL_EMIT_PREFIXES[0] + event.strip()[len(PLATFORM_EVENT_PREFIX):]
+
+
+def check_project_emit(event: Any) -> str | None:
+    """Why a project's door does not send ``event``, or None when it may.
+
+    The one sentence for every door a project reaches and for the checks that
+    mark it before it runs (the macro editor's, the UI Builder's, the script
+    editor's, and the AI's tools, which refuse it): what was refused, and the
+    name to use instead.
+    """
+    if not is_platform_event(event):
+        return None
+    return (
+        f"Event '{event}' is not sent: names starting with '{PLATFORM_EVENT_PREFIX}' are "
+        f"OpenAVC's own. Name this event '{project_event_name(event)}'."
+    )
+
+
+def silent_platform_pattern(pattern: Any) -> bool:
+    """Whether listening for ``pattern`` can hear nothing: it is in the
+    platform's namespace and matches none of the events the platform sends,
+    and no project can send one there (``check_project_emit``)."""
+    if not is_platform_event(pattern):
+        return False
+    folded = pattern.strip().casefold()
+    return not any(fnmatchcase(event, folded) for event in PLATFORM_EVENTS)
+
+
+def silent_pattern_sentence(pattern: str) -> str:
+    """What the checks say about a pattern ``silent_platform_pattern`` finds."""
+    *first, last = sorted(PLATFORM_EVENTS)
+    sent = f"{', '.join(first)} and {last}"
+    return (
+        f"Nothing sends '{pattern}': under '{PLATFORM_EVENT_PREFIX}' OpenAVC sends only {sent}. "
+        f"A project's own event is named '{project_event_name(pattern)}'."
+    )
 
 
 # Recursion depth of a SINGLE emit chain (emit -> handler -> emit -> ...), not

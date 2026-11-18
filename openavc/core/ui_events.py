@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from openavc.core.condition_eval import match_key, same_value
 from openavc.core.device_manager import failed_command
+from openavc.core.event_bus import check_project_emit
 from openavc.core.macro_text import no_such_macro
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.script_engine import ScriptCallError
@@ -553,7 +554,17 @@ class UIEventRuntime:
             payload = dict(action_def.get("payload") or {})
             for k, v in payload.items():
                 payload[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
-            if event_name:
+            refused = check_project_emit(event_name)
+            if refused:
+                # The platform's own name: sent, it would tell every Startup
+                # trigger, or the cloud's alert monitor, something that did
+                # not happen. Recorded for the AI's simulated press and
+                # logged once, with no `error` field for the same reason as
+                # an action nothing dispatches (below): the room cannot act
+                # on it. The UI Builder's page check marks the control.
+                record(event=event_name, payload=payload, emitted=False, refused=refused)
+                self._warn_once(element, f"refused:{event_name}", f"has an Emit Event action that is refused. {refused}")
+            elif event_name:
                 if not dry_run:
                     await engine.events.emit(event_name, payload)
                 record(event=event_name, payload=payload)

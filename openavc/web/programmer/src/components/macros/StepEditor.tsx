@@ -716,12 +716,14 @@ function TypedValueInput({
 
 // --- Event Emit Editor (with suggestions) ---
 
+// A project's own names. `system.` is the platform's, and an Emit Event step
+// naming one is refused (core/event_bus.check_project_emit).
 const COMMON_EVENTS = [
   { value: "", label: "Type a custom event name..." },
   { value: "custom.", label: "custom.*: Custom application events" },
-  { value: "system.room_occupied", label: "Room occupied" },
-  { value: "system.room_vacant", label: "Room vacant" },
-  { value: "system.panic", label: "System panic/emergency" },
+  { value: "custom.room_occupied", label: "Room occupied" },
+  { value: "custom.room_vacant", label: "Room vacant" },
+  { value: "custom.panic", label: "System panic/emergency" },
   { value: "schedule.morning_on", label: "Scheduled: morning startup" },
   { value: "schedule.evening_off", label: "Scheduled: evening shutdown" },
 ];

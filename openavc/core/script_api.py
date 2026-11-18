@@ -24,6 +24,7 @@ from typing import Any, Callable, TYPE_CHECKING
 
 from openavc.core import script_runs
 from openavc.core.condition_eval import eval_operator
+from openavc.core.event_bus import check_project_emit
 from openavc.core.isc import ISCRemoteError
 from openavc.utils.logger import get_logger
 
@@ -352,6 +353,12 @@ class _EventProxy:
     async def emit(self, event: str, payload: dict[str, Any] | None = None) -> None:
         if self._bus is None:
             raise RuntimeError("Script API not configured — event proxy not bound")
+        # The platform's own names are refused here as at a macro's step and
+        # a control (core/event_bus.check_project_emit); the script editor
+        # marks the line before it runs.
+        refused = check_project_emit(event)
+        if refused:
+            raise ValueError(refused)
         await self._bus.emit(event, payload)
 
 
