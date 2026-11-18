@@ -11,6 +11,7 @@ import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
 import { CustomUiEditor } from "../components/scripts/CustomUiEditor";
 import { announceKept, announceReloaded, refusedMessage } from "../components/scripts/driverProblems";
+import { driverLogSource } from "../components/scripts/driverLogSource";
 import { isEditableUiPath, starterUiContent } from "../components/scripts/customUiFiles";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -1008,7 +1009,7 @@ export function ScriptView() {
                 {selectedType === "driver" ? (
                   <ScriptConsole
                     filterCategory="driver"
-                    filterSource={`openavc_driver_${selectedId}`}
+                    filterSource={driverLogSource(pythonDrivers, selectedId ?? "")}
                     emptyText="Driver output will appear here. Click Save & Reload Driver or press Ctrl+Shift+R."
                     focusId={selectedId}
                     focusType="python_driver"

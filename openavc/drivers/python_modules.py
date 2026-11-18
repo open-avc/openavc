@@ -25,8 +25,9 @@ all ask it, so a file that passes the trial is one the final import accepts.
 
 The name is also what the IDE files a driver's own log lines under (a driver
 that logs through ``getLogger(__name__)``): the Code view's console matches
-the ``openavc_driver_`` prefix and builds one driver's filter from it, so a
-change to the name changes those two places in ``web/programmer`` too.
+the ``openavc_driver_`` prefix (``ScriptConsole.tsx``) and builds one driver's
+filter from the file name its listing row carries (``driverLogSource.ts``), so
+a change to the name changes those two places in ``web/programmer`` too.
 
 Logs as ``openavc.drivers.driver_loader``, where these lines have always
 appeared. ``driver_loader`` re-exports ``load_python_driver_file``,
