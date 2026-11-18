@@ -844,21 +844,33 @@ async def test_what_was_set_before_the_stop_is_written_before_any_stage_can_hang
     assert on_disk == ["set before the stop"]
 
 
+_ASYNC_HANDLER = (
+    "from openavc import delay, on_state_change, state\n"
+    "\n"
+    "@on_state_change(\"var.go\")\n"
+    "async def follow(key, old, new):\n"
+    "    await delay(0.3)\n"
+    "    state.set(\"var.v\", \"set by a handler\")\n"
+)
+_PLAIN_HANDLER = (
+    "import time\n"
+    "from openavc import on_state_change, state\n"
+    "\n"
+    "@on_state_change(\"var.go\")\n"
+    "def follow(key, old, new):\n"
+    "    time.sleep(0.3)\n"
+    "    state.set(\"var.v\", \"set by a handler\")\n"
+)
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize("script", [_ASYNC_HANDLER, _PLAIN_HANDLER], ids=["async", "plain"])
 async def test_a_variable_a_script_state_handler_sets_on_its_way_out_is_saved_by_the_stop(
-        tmp_path, no_update_checks):
+        tmp_path, no_update_checks, script):
     # The handler is still running when the stop begins: unloading the script
     # lets it finish, and the stop waits for it before it saves.
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "follow.py").write_text(
-        "from openavc import delay, on_state_change, state\n"
-        "\n"
-        "@on_state_change(\"var.go\")\n"
-        "async def follow(key, old, new):\n"
-        "    await delay(0.3)\n"
-        "    state.set(\"var.v\", \"set by a handler\")\n",
-        encoding="utf-8",
-    )
+    (tmp_path / "scripts" / "follow.py").write_text(script, encoding="utf-8")
     eng = Engine(_project(
         tmp_path, variables=[*_SAVED_VARIABLE, {"id": "go", "type": "number", "default": 0}],
         scripts=[{"id": "follow", "file": "follow.py"}],
