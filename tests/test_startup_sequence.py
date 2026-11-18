@@ -674,7 +674,6 @@ def restart(boot, monkeypatch, tmp_path):
     the watchdog timer, the sleep and the child spawn all recorded instead of
     run."""
     import asyncio
-    import os
     import subprocess
 
     seen = SimpleNamespace(timers=[], sleeps=[], order=[])
@@ -702,12 +701,13 @@ def restart(boot, monkeypatch, tmp_path):
     boot.engine.shutdown.side_effect = lambda deadline: seen.order.append("stop")
 
     def unmanaged():
+        from openavc.updater import platform
+
         monkeypatch.delenv("OPENAVC_SERVICE_MANAGED", raising=False)
         monkeypatch.delenv("INVOCATION_ID", raising=False)
-        real_exists = os.path.exists
-        monkeypatch.setattr(
-            os.path, "exists", lambda p: False if p == "/.dockerenv" else real_exists(p),
-        )
+        # The one deployment detection, seeing neither a container nor a marker.
+        monkeypatch.setattr(platform, "_is_docker", lambda: False)
+        monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", tmp_path / "no-marker")
 
     async def fire(mode=None, source="settings"):
         await boot.run()

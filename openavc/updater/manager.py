@@ -22,9 +22,10 @@ from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
     DeploymentType,
     detect_deployment_type,
-    can_self_update,
     offline_update_instructions,
-    update_instructions,
+    rollback_refusal,
+    self_update_refusal,
+    updates_itself,
 )
 from openavc.version import __version__
 from openavc.utils.outbound import internet_client, internet_failure
@@ -529,7 +530,7 @@ class UpdateManager:
             return response
 
         self._set_state("system.update_available", result.version)
-        can_update = can_self_update(self._deployment_type)
+        can_update = updates_itself(self._deployment_type)
 
         response = {
             "update_available": True,
@@ -544,7 +545,8 @@ class UpdateManager:
         }
 
         if not can_update:
-            response["instructions"] = update_instructions(self._deployment_type, result.version)
+            response["instructions"] = self_update_refusal(
+                self._deployment_type, result.version)["instructions"]
 
         return response
 
@@ -582,12 +584,8 @@ class UpdateManager:
         if release is None:
             return {"success": False, "error": "No update available. Run check first."}
 
-        if not can_self_update(self._deployment_type):
-            return {
-                "success": False,
-                "error": "This deployment type does not support self-update.",
-                "instructions": update_instructions(self._deployment_type, release.version),
-            }
+        if not updates_itself(self._deployment_type):
+            return self_update_refusal(self._deployment_type, release.version)
 
         self._update_in_progress = True
         self._set_state("system.update_error", "")
@@ -664,12 +662,8 @@ class UpdateManager:
         if self._update_in_progress:
             return {"success": False, "error": "Update already in progress"}
 
-        if not can_self_update(self._deployment_type):
-            return {
-                "success": False,
-                "error": "This deployment type does not support self-update.",
-                "instructions": update_instructions(self._deployment_type, target_version),
-            }
+        if not updates_itself(self._deployment_type):
+            return self_update_refusal(self._deployment_type, target_version)
 
         # Validate the cloud-provided URL before fetching anything: require
         # https so a plain-HTTP or downgraded URL can't steer the download to an
@@ -1037,8 +1031,9 @@ class UpdateManager:
         if self._update_in_progress:
             return {"success": False, "error": "Cannot rollback while an update is in progress"}
 
-        if not can_rollback(APP_DIR):
-            return {"success": False, "error": "No previous version available for rollback"}
+        refusal = rollback_refusal(self._deployment_type, can_rollback(APP_DIR))
+        if refusal:
+            return {"success": False, "error": refusal}
 
         # Resolve the actual target version up front so history can record a
         # real version instead of a placeholder.
@@ -1096,7 +1091,7 @@ class UpdateManager:
         from openavc.updater.rollback import can_rollback
         from openavc.system_config import APP_DIR
 
-        has_rollback = can_rollback(APP_DIR)
+        has_rollback = updates_itself(self._deployment_type) and can_rollback(APP_DIR)
         rollback_version = ""
         if has_rollback:
             # Derive the rollback target from what perform_rollback would
@@ -1112,7 +1107,7 @@ class UpdateManager:
         return {
             "current_version": __version__,
             "deployment_type": self._deployment_type.value,
-            "can_self_update": can_self_update(self._deployment_type),
+            "can_self_update": updates_itself(self._deployment_type),
             "update_available": self._state.get("system.update_available", "") if self._state else "",
             "update_channel": self._state.get("system.update_channel", "stable") if self._state else "stable",
             "update_status": self._state.get("system.update_status", "idle") if self._state else "idle",
@@ -1265,7 +1260,7 @@ class UpdateManager:
         # starting a new one, so two loops can't transiently overlap.
         await self._cancel_maintenance_task()
 
-        if policy != "auto" or not can_self_update(self._deployment_type):
+        if policy != "auto" or not updates_itself(self._deployment_type):
             return
 
         # This loop is the only thing anywhere that installs an update with

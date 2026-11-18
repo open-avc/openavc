@@ -76,6 +76,8 @@ How updates are applied depends on how OpenAVC was installed:
 
 Docker and Git deployments still check for updates and show notifications, but you apply them manually using your normal workflow.
 
+An installed system offers the in-app update and Rollback only while OpenAVC runs as its service. A copy started by hand from a terminal says so instead: start the OpenAVC service, then update from there.
+
 Every deployment above can also be updated without an internet connection. See [Updating a System With No Internet Access](#updating-a-system-with-no-internet-access).
 
 ## Behind a Proxy or a Firewall That Inspects Encrypted Traffic

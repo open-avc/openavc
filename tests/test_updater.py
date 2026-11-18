@@ -29,6 +29,10 @@ from openavc.updater.rollback import (
 )
 from openavc.updater.manager import UpdateManager
 
+# An installed system that updates itself, running under its service (the
+# shared fixture says what that means).
+pytestmark = pytest.mark.usefixtures("under_its_service")
+
 
 # --- Semver Parsing ---
 

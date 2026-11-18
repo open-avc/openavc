@@ -320,6 +320,15 @@ def claimed_engine(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def under_its_service(monkeypatch):
+    """This process runs under its service, which starts the server again once
+    it exits (restart.is_service_managed): what an installed system's update
+    and rollback stand on. A test process has nothing of the kind, so the
+    updater would refuse to update it."""
+    monkeypatch.setenv("OPENAVC_SERVICE_MANAGED", "1")
+
+
+@pytest.fixture
 def access_mode():
     """``panels.access`` set for one test and put back afterwards, the file
     included. Yields a setter taking "approved" or "open"."""

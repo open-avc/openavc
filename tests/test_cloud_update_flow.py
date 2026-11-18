@@ -15,6 +15,10 @@ import pytest
 
 from openavc.cloud.command_handler import CommandHandler
 
+# An installed system that updates itself, running under its service (the
+# shared fixture says what that means).
+pytestmark = pytest.mark.usefixtures("under_its_service")
+
 
 # ===========================================================================
 # UpdateManager._verify_hash tests
@@ -110,7 +114,7 @@ async def test_apply_cloud_update_full_flow(tmp_path):
     mgr._download_artifact = fake_download
 
     # Mock platform checks and apply
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.manager.__version__", "0.2.0"), \
          patch("openavc.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
          patch("openavc.updater.backup.cleanup_old_backups"), \
@@ -168,7 +172,7 @@ async def test_apply_cloud_update_bad_checksum(tmp_path):
 
     mgr._download_artifact = fake_download
 
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.manager.__version__", "0.2.0"), \
          patch("openavc.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
          patch("openavc.updater.backup.cleanup_old_backups"), \
@@ -219,7 +223,7 @@ async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
 
     mgr._download_artifact = fake_download
 
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.manager.__version__", "0.2.0"), \
          patch("openavc.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
          patch("openavc.updater.backup.cleanup_old_backups"), \

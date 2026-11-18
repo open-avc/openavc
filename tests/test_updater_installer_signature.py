@@ -34,6 +34,10 @@ from openavc.updater.installer_signature import (
     signature_problem,
 )
 
+# An installed system that updates itself, running under its service (the
+# shared fixture says what that means).
+pytestmark = pytest.mark.usefixtures("under_its_service")
+
 # What Windows reports for a release installer (subject and issuer exactly as
 # Get-AuthenticodeSignature writes them for OpenAVC-Setup-0.38.0.exe).
 GOOD = {
@@ -306,7 +310,7 @@ DOORS = {"cloud-pushed": _cloud_update, "github-discovered": _github_update}
 
 
 async def _run_door(mgr, door, report):
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.manager.__version__", "0.9.0"), \
          patch("openavc.updater.backup.create_backup", return_value=mgr._data_dir / "b.zip"), \
          patch("openavc.updater.backup.cleanup_old_backups"), \

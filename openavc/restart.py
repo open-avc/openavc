@@ -10,10 +10,12 @@ restart or a stop is already under way. Each asker answers from what it
 decided (``ExitAnswer``): the REST route's status and delay, the cloud's
 result. A request is refused only here, and the same way at every door.
 
-An accepted request ends this process. A service manager (NSSM, systemd,
-Docker's restart policy) starts the next one; a dev session
-(``python -m openavc.main``) has none, so the process spawns its own
-replacement first.
+An accepted request ends this process. Whatever manages it (NSSM, systemd,
+launchd, Docker's restart policy, appliance hardware's device supervisor)
+starts the next one; a dev session (``python -m openavc.main``) has none, so
+the process spawns its own replacement first. Which of the two holds is
+``is_service_managed``, THE answer to who brings the server back, which the
+updater asks too.
 
 The stop is the engine's ``shutdown``, the same one the lifespan runs at a
 service stop (core/engine_lifecycle.py), within the same deadline
@@ -181,30 +183,45 @@ async def _stop_and_exit(engine) -> None:
 
 
 def is_service_managed() -> bool:
-    """True when a host service manager (NSSM / systemd / Docker) will relaunch us.
+    """Whether something outside this process starts the next one once it
+    ends: THE answer to who brings the server back, asked by a restart here
+    and by the updater before an update or rollback that ends in an exit.
 
-    When True, a plain ``os._exit(0)`` is enough to restart: the manager
-    spawns a replacement. When False (typical dev session), we must spawn
-    a replacement ourselves before exiting or the user is left with a
-    dead server.
+    True: ending the process is the whole restart, and whatever manages it
+    starts the next one. False (a dev session): nothing will, so a restart
+    spawns the replacement itself, and the updater does not offer to update.
 
-    Detection signals:
-      OPENAVC_SERVICE_MANAGED=1  — set by the installer/service unit (canonical)
-      INVOCATION_ID env var      — set by systemd
-      PID 1 or /.dockerenv       — running inside a Docker container
+    What says so, first match wins:
+      OPENAVC_SERVICE_MANAGED=1  the installers' service units and the Docker
+                                 image (the canonical signal)
+      INVOCATION_ID              any systemd unit, an integrator's own included
+      the deployment             appliance hardware (its device supervisor)
+                                 and Docker (the container's restart policy),
+                                 from the one deployment detection
+                                 (updater/platform.py)
+      PID 1                      a container of any other kind
     """
     if os.environ.get("OPENAVC_SERVICE_MANAGED") == "1":
         return True
     if os.environ.get("INVOCATION_ID"):
         return True
-    try:
-        if os.getpid() == 1:
-            return True
-    except OSError:
-        pass
-    if os.path.exists("/.dockerenv"):
+    if _deployed_under_a_supervisor():
         return True
-    return False
+    try:
+        return os.getpid() == 1
+    except OSError:
+        return False
+
+
+def _deployed_under_a_supervisor() -> bool:
+    # Imported here: the updater package loads its manager, which asks this
+    # module.
+    from openavc.updater.platform import DeploymentType, detect_deployment_type
+
+    return detect_deployment_type() in (
+        DeploymentType.ANDROID_APPLIANCE,
+        DeploymentType.DOCKER,
+    )
 
 
 def spawn_replacement() -> None:

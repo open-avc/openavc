@@ -17,6 +17,10 @@ import pytest
 from openavc.updater.manager import UpdateManager
 from openavc.updater.platform import DeploymentType
 
+# An installed system that updates itself, running under its service (the
+# shared fixture says what that means).
+pytestmark = pytest.mark.usefixtures("under_its_service")
+
 
 def _bare_manager(tmp_path, deployment=DeploymentType.LINUX_PACKAGE):
     """Build an UpdateManager without running __init__ (no disk/network at import)."""
@@ -105,7 +109,7 @@ def _utc(hour, minute):
 @pytest.mark.asyncio
 async def test_apply_policy_garbage_does_not_schedule(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("openavc.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.platform.can_self_update", return_value=True):
         # unknown policy -> manual, no task
         await mgr.apply_update_policy({"policy": "destroy_everything"})
         assert mgr._maintenance_task is None
@@ -130,7 +134,7 @@ async def test_apply_policy_valid_schedules_one_task_and_reconfigures(tmp_path):
         await asyncio.sleep(3600)
     mgr._maintenance_window_loop = _never
 
-    with patch("openavc.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.platform.can_self_update", return_value=True):
         policy = {
             "policy": "auto",
             "maintenance_window_start": "02:00",
@@ -214,7 +218,7 @@ def test_get_status_rollback_version_from_real_target(tmp_path):
     mgr = _bare_manager(tmp_path)
     # A prior rollback success entry would mislead a history-based derivation.
     mgr._history = [{"from_version": "0.14.0", "to_version": "rollback", "status": "success"}]
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.rollback.can_rollback", return_value=True), \
          patch("openavc.updater.rollback.rollback_target_version", return_value="0.12.0") as rtv, \
          patch("openavc.system_config.APP_DIR", tmp_path):
@@ -245,7 +249,7 @@ async def test_cancelled_apply_records_failed_and_propagates(tmp_path):
         raise asyncio.CancelledError()
     mgr._download_update = _cancel
 
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.manager.__version__", "0.9.0"), \
          patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
          patch("openavc.updater.backup.cleanup_old_backups"), \
@@ -268,7 +272,7 @@ async def test_staged_update_kept_on_apply_failure(tmp_path):
     async def _fail(*_a, **_k):
         return {"success": False, "error": "network blip"}
     mgr.apply_cloud_update = _fail
-    with patch("openavc.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.platform.can_self_update", return_value=True):
         result = await mgr.apply_update()
     assert result["success"] is False
     assert mgr.get_staged_update() is not None   # retained for retry
@@ -378,7 +382,7 @@ async def test_auto_check_interval_coerced(tmp_path):
 @pytest.mark.asyncio
 async def test_apply_cloud_update_rejects_non_https(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("openavc.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.platform.can_self_update", return_value=True):
         result = await mgr.apply_cloud_update("1.0.0", "http://evil/u.tar.gz", "abc")
     assert result["success"] is False
     assert "HTTPS" in result["error"] or "https" in result["error"]
@@ -404,13 +408,13 @@ def test_safe_artifact_filename(tmp_path, url_path, version, deployment, expecte
 
 def test_get_status_includes_staged_version(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.rollback.can_rollback", return_value=False), \
          patch("openavc.system_config.APP_DIR", tmp_path):
         assert mgr.get_status()["staged_version"] == ""
 
     mgr.stage_update("9.9.9", "https://x/u.tar.gz", "deadbeef")
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
          patch("openavc.updater.rollback.can_rollback", return_value=False), \
          patch("openavc.system_config.APP_DIR", tmp_path):
         assert mgr.get_status()["staged_version"] == "9.9.9"
@@ -511,7 +515,7 @@ async def test_notify_only_refuses_the_cloud_maintenance_window(tmp_path):
         "maintenance_window_start": "02:00",
         "maintenance_window_end": "03:00",
     }
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
             patch("openavc.system_config.get_system_config", return_value=_Cfg(True)):
         await mgr.apply_update_policy(policy)
         assert mgr._maintenance_task is None, (
@@ -520,7 +524,7 @@ async def test_notify_only_refuses_the_cloud_maintenance_window(tmp_path):
 
     # And the default (off) still schedules, so the fix costs nobody their
     # cloud-managed maintenance window.
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
             patch("openavc.system_config.get_system_config", return_value=_Cfg(False)):
         await mgr.apply_update_policy(policy)
         assert mgr._maintenance_task is not None
@@ -546,7 +550,7 @@ async def test_notify_only_leaves_a_deliberate_install_alone(tmp_path):
         reached.append("backup")
         raise RuntimeError("stop here")
 
-    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
             patch("openavc.updater.backup.create_backup", _backup), \
             patch("openavc.system_config.get_system_config", return_value=_Cfg(True)):
         result = await mgr.apply_update()

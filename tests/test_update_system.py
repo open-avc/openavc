@@ -36,6 +36,10 @@ from openavc.updater.rollback import (
     _rollback_linux,
 )
 
+# An installed system that updates itself, running under its service (the
+# shared fixture says what that means).
+pytestmark = pytest.mark.usefixtures("under_its_service")
+
 HELPER_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "update-helper.sh"
 MAC_WRAPPER_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "openavc-macos-run.sh"
 BUILD_MACOS_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "build-macos.sh"
@@ -666,6 +670,7 @@ class TestRollbackAPISchedulesRestart:
         mock_state = MagicMock()
         mock_state.set = MagicMock()
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
+        mgr._deployment_type = DeploymentType.LINUX_PACKAGE
 
         with patch("openavc.updater.rollback.can_rollback", return_value=True), \
              patch("openavc.updater.rollback.perform_rollback", return_value=True), \

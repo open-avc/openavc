@@ -210,16 +210,18 @@ def test_without_orig_argv_it_relaunches_from_executable_and_argv(spawn_capture,
 
 
 @pytest.fixture
-def no_manager(monkeypatch):
+def no_manager(monkeypatch, tmp_path):
     import os
 
     from openavc.restart import is_service_managed
+    from openavc.updater import platform
 
     monkeypatch.delenv("OPENAVC_SERVICE_MANAGED", raising=False)
     monkeypatch.delenv("INVOCATION_ID", raising=False)
     monkeypatch.setattr(os, "getpid", lambda: 4242)
-    real_exists = os.path.exists
-    monkeypatch.setattr(os.path, "exists", lambda p: False if p == "/.dockerenv" else real_exists(p))
+    # The one deployment detection, seeing neither a container nor a marker.
+    monkeypatch.setattr(platform, "_is_docker", lambda: False)
+    monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", tmp_path / "no-marker")
     return is_service_managed
 
 
@@ -245,8 +247,37 @@ def test_process_one_is_a_container(no_manager, monkeypatch):
     assert no_manager() is True
 
 
-def test_a_docker_marker_file_is_a_container(no_manager, monkeypatch):
-    import os
+def test_a_container_is_the_deployment_detections_answer(no_manager, monkeypatch):
+    from openavc.updater import platform
 
-    monkeypatch.setattr(os.path, "exists", lambda p: p == "/.dockerenv")
+    monkeypatch.setattr(platform, "_is_docker", lambda: True)
     assert no_manager() is True
+
+
+def test_appliance_hardware_has_its_device_supervisor(no_manager, monkeypatch, tmp_path):
+    """Appliance hardware starts the server with none of the environment
+    signals; its deployment marker says what the box is, and the device
+    supervisor starts the server again. A copy spawned there runs beside the
+    supervisor, which may stop it as unresponsive while it is still
+    starting."""
+    from openavc.updater import platform
+
+    marker = tmp_path / "openavc-deployment"
+    marker.write_text("android_appliance\n", encoding="utf-8")
+    monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", marker)
+    assert no_manager() is True
+
+
+@pytest.mark.parametrize("deployment", [
+    "linux_package", "windows_installer", "macos_app", "git_dev", "unknown",
+])
+def test_how_it_was_installed_does_not_say_who_started_it(
+        no_manager, monkeypatch, tmp_path, deployment):
+    """An installed copy started by hand has nothing to start it again: the
+    service units say so in the environment, the install type does not."""
+    from openavc.updater import platform
+
+    marker = tmp_path / "openavc-deployment"
+    marker.write_text(deployment, encoding="utf-8")
+    monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", marker)
+    assert no_manager() is False

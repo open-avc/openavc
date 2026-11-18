@@ -20,6 +20,7 @@ import sys
 from enum import Enum
 from pathlib import Path
 
+from openavc import restart
 from openavc.system_config import INSTALL_DIR, _is_docker
 
 
@@ -142,6 +143,46 @@ def can_self_update(deployment_type: DeploymentType) -> bool:
 # Where the full per-deployment procedures live. Both instruction helpers below
 # stay short enough to read in a card and point here for the steps.
 OFFLINE_GUIDE_URL = "https://docs.openavc.com/updates#updating-a-system-with-no-internet-access"
+
+# What an install that updates itself says instead when this copy was started
+# by hand: the update ends the process and leaves the apply and the start to
+# the service, so here it would stay stopped (restart.is_service_managed).
+STARTED_BY_HAND = (
+    "This copy of OpenAVC was started by hand rather than as a service, so it "
+    "would stay stopped after installing an update. Start the OpenAVC service "
+    "instead, then install the update."
+)
+_NOT_THIS_TYPE = "This deployment type does not support self-update."
+
+
+def updates_itself(deployment_type: DeploymentType) -> bool:
+    """THE answer to whether the in-app update and rollback are offered:
+    this kind of install updates itself, and something starts the server
+    again after the exit that installs it (restart.is_service_managed, the
+    restart door's answer). An installed copy started by hand has nothing to
+    apply the update or start it."""
+    return can_self_update(deployment_type) and restart.is_service_managed()
+
+
+def self_update_refusal(deployment_type: DeploymentType, version: str) -> dict:
+    """What an update refused by ``updates_itself`` answers: why, and what
+    to do instead."""
+    if can_self_update(deployment_type):
+        return {"success": False, "error": STARTED_BY_HAND, "instructions": STARTED_BY_HAND}
+    return {
+        "success": False,
+        "error": _NOT_THIS_TYPE,
+        "instructions": update_instructions(deployment_type, version),
+    }
+
+
+def rollback_refusal(deployment_type: DeploymentType, has_previous: bool) -> str:
+    """Why a rollback is refused, or "" when it may go ahead."""
+    if not has_previous:
+        return "No previous version available for rollback"
+    if not updates_itself(deployment_type):
+        return STARTED_BY_HAND if can_self_update(deployment_type) else _NOT_THIS_TYPE
+    return ""
 
 
 def update_instructions(deployment_type: DeploymentType, version: str) -> str:
