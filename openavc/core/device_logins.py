@@ -994,36 +994,32 @@ def keep_waiting_logins(
     login file with the rest of the change, in the change door's take-in.
 
     ``current`` is the config the project holds now. A login it marks that
-    this system has nothing behind was handed to the plugin as ``""``
-    (``filled_plugin_config``); handed back still empty, it keeps the marker,
-    so saving something else does not turn "needs entering here" into "not
-    set"."""
-    secrets = plugin_secrets.declared_for(plugin_id)
-    still_waiting = [
-        (item, field) for item, field, _ in plugin_secrets.places(config, secrets)
-        if plugin_secrets.get_field(plugin_secrets.holder_of(config, item), field) == ""
-        and plugin_secrets.get_field(plugin_secrets.holder_of(current, item), field) == SAVED_LOGIN
-        and logins.secret(plugin_owner(plugin_id, item), field) is None
-    ]
-    if not still_waiting:
+    this system has nothing behind (``plugin_secrets.waiting``) was handed to
+    the plugin as ``""`` (``filled_plugin_config``); handed back still empty,
+    it keeps the marker, so saving something else does not turn "needs
+    entering here" into "not set"."""
+    handed_back_empty = _waiting_and_handed_back_empty(plugin_id, config, current, logins)
+    if not handed_back_empty:
         return config
     out = copy.deepcopy(config)
-    for item, field in still_waiting:
+    for item, field in handed_back_empty:
         plugin_secrets.set_field(plugin_secrets.holder_of(out, item), field, SAVED_LOGIN)
     return out
-    secrets = plugin_secrets.declared_for(plugin_id)
-    still_waiting = [
-        (item, field) for item, field, _ in plugin_secrets.places(out, secrets)
-        if plugin_secrets.get_field(plugin_secrets.holder_of(out, item), field) == ""
-        and plugin_secrets.get_field(plugin_secrets.holder_of(current, item), field) == SAVED_LOGIN
-        and logins.secret(plugin_owner(plugin_id, item), field) is None
+
+
+def _waiting_and_handed_back_empty(
+    plugin_id: str, config: dict[str, Any], current: dict[str, Any], logins: DeviceLogins,
+) -> list[tuple[str, str]]:
+    """The places ``current`` marks with nothing saved behind them that
+    ``config`` holds as ``""``."""
+    waiting = plugin_secrets.waiting(
+        current, plugin_secrets.declared_for(plugin_id),
+        lambda item, field: logins.secret(plugin_owner(plugin_id, item), field),
+    )
+    return [
+        (item, field) for item, field in waiting
+        if plugin_secrets.get_field(plugin_secrets.holder_of(config, item), field) == ""
     ]
-    if not still_waiting:
-        return out
-    out = copy.deepcopy(out)
-    for item, field in still_waiting:
-        plugin_secrets.set_field(plugin_secrets.holder_of(out, item), field, SAVED_LOGIN)
-    return out
 
 
 # --- putting them back -------------------------------------------------------------

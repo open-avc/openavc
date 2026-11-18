@@ -6,10 +6,8 @@ Each plugin instance receives its own PluginAPI with:
 - Namespace isolation (state writes restricted to plugin.<id>.*)
 - Event auto-prefixing (emitted events prefixed with plugin.<id>.)
 - Automatic registration tracking for cleanup
-- THE two views of its config while its own save is on its way to the
-  project file: the plugin's (``config``, the save at once) and the
-  platform's (``_config``, once the file holds it), and which waiting save
-  may still be written (``OwnSave``)
+- Two views of its config while its own save is on its way to the project
+  file (``core/plugin_own_save.py``)
 """
 
 import asyncio
@@ -17,6 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
+from openavc.core.plugin_own_save import OwnSave
 from openavc.core.state_store import is_flat_primitive
 from openavc.utils.logger import get_logger
 from openavc.utils.net_safety import assert_safe_outbound_url
@@ -39,56 +38,6 @@ _HOP_BY_HOP = frozenset({
 VIEWER_LOCAL = "local"
 VIEWER_REMOTE = "remote"
 VIEWER_REMOTE_BLOCKED = "remote_blocked"
-
-
-class OwnSave:
-    """One ``api.save_config`` on its way to the project file.
-
-    Two views of a plugin's config while it is: the plugin's own
-    (``api.config``) holds what it saved at once, so a save it builds on that
-    one keeps it; the platform's (``api._config``: what a project change
-    compares with, ``get_running_config``) moves only once the file holds
-    the save (:meth:`taken`). A save that fails leaves both on the saved
-    config (:meth:`dropped`).
-
-    A save may land after another change has reached the plugin
-    (:meth:`current`): one the platform handed it since (a hot apply, a
-    restart, a stop), or a later save of its own that reached the file
-    first. Writing it then would put the older config back, so the engine
-    writes it only while it is current.
-    """
-
-    def __init__(self, api: "PluginAPI", config: dict) -> None:
-        self.config = config
-        self._api = api
-        api._saves += 1
-        self._number = api._saves
-        self._handed = api._handed
-
-    def current(self) -> bool:
-        """Whether this save is still the newest thing the plugin has asked
-        for or been handed."""
-        api = self._api
-        return (not api._retired and api._handed == self._handed
-                and self._number > api._saved)
-
-    def taken(self) -> None:
-        """The file holds this save: the platform's copy moves to it, and
-        the plugin's own view reads the platform's once nothing newer waits.
-        Nothing when the save is no longer current."""
-        if not self.current():
-            return
-        api = self._api
-        api._config = self.config
-        api._saved = self._number
-        if api._unsaved is self.config:
-            api._unsaved = None
-
-    def dropped(self) -> None:
-        """This save will not reach the file: the plugin's own view reads the
-        saved config again, unless it has saved again since."""
-        if self._api._unsaved is self.config:
-            self._api._unsaved = None
 
 
 class PluginPermissionError(Exception):

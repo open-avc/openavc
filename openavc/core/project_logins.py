@@ -75,6 +75,9 @@ class ProjectLoginsMixin:
         self._logins_backed_up_at_start = False
         self._logins_backup_at_start: Path | None = None
         self._logins_unsaved_at_start = False
+        # plugin id -> the logins its latest own save holds, masked in the
+        # log from the save on, whether or not it reached the file.
+        self._plugin_save_logins: dict[str, set[str]] = {}
 
     def _register_project_secrets(self) -> None:
         """Hand the log redaction the project's own secrets
@@ -89,8 +92,8 @@ class ProjectLoginsMixin:
     def _project_secrets(self) -> set[str]:
         """The mesh key and every plugin login, from the login file where the
         project holds the marker, as the project holds them where it does not
-        (a move that could not finish), and as a running plugin saved them
-        while that save is on its way to the file."""
+        (a move that could not finish), and as each plugin's latest own save
+        holds them, which may not have reached the file yet."""
         values = {v for v in project_secret_values(self.project) if v != SAVED_LOGIN}
         if self.project is None:
             return values
@@ -100,11 +103,8 @@ class ProjectLoginsMixin:
         for found in saved_logins_of(self.project, StoreView(self.device_logins)):
             if found.kind != DEVICE:
                 values |= set(found.fields.values())
-        # A plugin's own save on its way to the file: the plugin holds its
-        # logins already, so the log masks them before the file does.
-        for plugin_id, config in self.plugin_loader.unsaved_configs().items():
-            for found in find_plugin_logins(plugin_id, config):
-                values |= {v for v in found.fields.values() if v != SAVED_LOGIN}
+        # The plugin holds what it saved before the file does.
+        values.update(*self._plugin_save_logins.values())
         return values
 
     def saved_param_value(self, name: str) -> str | None:
@@ -334,6 +334,9 @@ class ProjectLoginsMixin:
             if own is not None:
                 own.dropped()
             return
+        self._plugin_save_logins[plugin_id] = {
+            value for found in find_plugin_logins(plugin_id, config) for value in found.fields.values()
+        }
         self._register_project_secrets()
         try:
             await self.persist_or_defer_bookkeeping_change(

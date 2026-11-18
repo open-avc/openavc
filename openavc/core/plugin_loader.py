@@ -1006,20 +1006,9 @@ class PluginLoader:
 
     def get_running_config(self, plugin_id: str) -> dict[str, Any]:
         """Return the config dict of a running plugin, or empty dict if not
-        running: the platform's view, which a save of the plugin's own
-        reaches only once the file holds it (``plugin_api.OwnSave``)."""
+        running: the platform's view (``core/plugin_own_save.py``)."""
         api = self._apis.get(plugin_id)
         return api._config if api else {}
-
-    def unsaved_configs(self) -> dict[str, dict[str, Any]]:
-        """``{plugin id: config}`` for each running plugin whose own save
-        has not reached the file yet: the logins in it are masked in the
-        log before the file holds them."""
-        return {
-            plugin_id: dict(api._unsaved)
-            for plugin_id, api in self._apis.items()
-            if api._unsaved is not None
-        }
 
     # ──── Info & Status ────
 
