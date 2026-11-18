@@ -961,11 +961,9 @@ class PluginLoader:
         it, and its outcome is that change's answer for the plugin.
 
         Holds the per-plugin lock across the whole check → hot-apply →
-        stop → start sequence. The cloud AI layer fans tool calls out as
-        tasks, so two overlapping updates (or an update racing a disable)
-        could otherwise interleave in the not-running window mid-restart —
-        one returning "nothing to do" while the other restarts with a config
-        the project file no longer holds.
+        stop → start sequence, so a start, a stop or an auto-disable of the
+        same plugin made outside a project change (an enable, too many
+        failed callbacks) cannot land in the not-running window mid-restart.
 
         Returns the outcome: "hot_applied", "restarted", "not_running"
         (nothing to do), or "start_failed" — the restart's start step
