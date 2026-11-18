@@ -189,7 +189,7 @@ def validate_driver_definition(
     ``strict`` is the author's doors' switch (save, Validate, the AI tool,
     ``drivers.check``): leave it off when loading a driver, where
     ``check_driver_definition`` returns what it moves as notices.
-    ``keeps_id``: the save keeps an id the library already serves.
+    ``keeps_id``: the save keeps an id outside the id pattern the library serves.
     """
     return _validate_definition_rules(
         driver_def, platform_version=__version__, strict=strict, keeps_id=keeps_id

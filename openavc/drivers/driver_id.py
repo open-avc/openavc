@@ -10,14 +10,13 @@ Where an id is first given (a new driver, a rename, a new import, Validate,
 Driver, a community install), an id outside the pattern is refused, naming
 the characters it may use (``id_refusal``; ``id_refusals`` at the place
 ``id``). A driver already installed under such an id (the Code view's New
-Driver let a hyphen through, and the definition save once turned other
-characters into ``_`` only in the file name) keeps loading, opening and
-saving under it: its devices name it by that id. What is said of it, on its
-Installed entry and in an upload's result, is ``id_notices``. The YAML checker (``avcdriver_semantic``) says the
-refusal in strict mode unless the door says the save keeps an id the library
-already serves (``keeps_id``, from ``driver_file_name.id_installed``), and the
-notice everywhere else; a Python driver's refusal is ``python_info``'s
-``python_driver_refusals`` and its notice that module's load verdict.
+Driver let a hyphen through) keeps loading, opening and saving under it: its
+devices name it by that id. The YAML checker (``avcdriver_semantic``) refuses
+in strict mode unless the door says the save keeps an id the library already
+serves (``keeps_id``, from ``driver_file_name.keeps_installed_id``); a Python
+driver's refusal is ``python_info.python_driver_refusals``. The Installed
+entry of a driver kept under such an id says so in the IDE's words, from the
+same characters (``driverId.ts``).
 
 Purity contract: standard library plus ``spec``, like every module the
 definition walk imports; vendored into openavc-drivers and openavc-sdk with
@@ -64,20 +63,3 @@ def id_refusals(value: Any) -> list[str]:
     """``id_refusal`` as the checkers say it, at the place ``id``."""
     refusal = id_refusal(value)
     return [] if refusal is None else [f"id: {refusal}"]
-
-
-def id_messages(value: Any, refuses: bool) -> list[str]:
-    """``id_refusals`` at a door that gives the id, else ``id_notices``."""
-    return id_refusals(value) if refuses else id_notices(value)
-
-
-def id_notices(value: Any) -> list[str]:
-    """What is said of a driver installed under ``value`` that the pattern
-    does not take: it keeps working under it, and a new driver cannot use
-    it. Nothing for an empty id, which no driver loads under."""
-    if not _breaks_the_rule(value) or not value.strip():
-        return []
-    return [
-        f"id: {value!r} has characters a new driver's id cannot use (only {_ALLOWED}). "
-        "This driver keeps working under it"
-    ]

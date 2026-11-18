@@ -295,7 +295,7 @@ export function InstalledDriversView({
       <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-lg)" }}>
         {selectedDriver ? (
           <>
-            <LoadNotes notLoaded={listed.notLoaded.has(selectedDriver.id)} installed={installedById.get(selectedDriver.id)} />
+            <LoadNotes driverId={selectedDriver.id} notLoaded={listed.notLoaded.has(selectedDriver.id)} installed={installedById.get(selectedDriver.id)} />
             <DriverDetailPanel
               driver={selectedDriver}
               installed={selectedInstalled}

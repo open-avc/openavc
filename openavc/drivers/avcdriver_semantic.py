@@ -66,7 +66,7 @@ from openavc.drivers.conversion_checks import (
     value_conversion_issues,
 )
 from openavc.drivers.discovery_block import DiscoveryRead, read_discovery_block
-from openavc.drivers.driver_id import id_messages
+from openavc.drivers.driver_id import id_refusals
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY as UNEVALUATED_KEY,
     DeclaredSections,
@@ -297,7 +297,7 @@ def validate_driver_definition(
 class DefinitionVerdict:
     """What judging one definition came to: the ``errors`` that refuse it,
     and the ``notices``, refusals of the author's doors that a door loading
-    the driver reports instead (in strict mode, only a kept id's)."""
+    the driver reports instead (empty in strict mode)."""
 
     errors: list[str]
     notices: list[str]
@@ -331,8 +331,8 @@ def check_driver_definition(
     (the loader logs an undeclared key, ``unknown_key_errors`` says why: a
     correct driver written for a newer platform carries keys this one does
     not know). Every refusal the author's doors add later is a notice at load.
-    So is the id's pattern (``driver_id``) where ``keeps_id`` says the save
-    keeps an id the library already serves: its devices name it by that id.
+    The id's pattern (``driver_id``) refuses in strict mode only, and not where
+    ``keeps_id`` says the save keeps an id the library already serves.
     """
     # A file can parse to something other than a mapping. It is reported, not
     # raised on, so one bad file never stops the others loading.
@@ -346,14 +346,15 @@ def check_driver_definition(
         _guarded(walk.authored, part, section)
     shapes = _TaggedErrors()
     _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors), "")
-    said_of_id = _TaggedErrors()
-    said_of_id.at_each(("id", m) for m in id_messages(driver_def.get("id"), strict and not keeps_id))
     if not strict:
-        return DefinitionVerdict(walk.errors, _joined(shapes, said_of_id, walk.authored))
+        return DefinitionVerdict(walk.errors, _joined(shapes, walk.authored))
     undeclared = _TaggedErrors()
     _guarded(undeclared, partial(_undeclared, undeclared, driver_def), "")
-    refused, kept = (_TaggedErrors(), said_of_id) if keeps_id else (said_of_id, _TaggedErrors())
-    return DefinitionVerdict(_joined(shapes, walk.errors, refused, walk.authored, undeclared), kept)
+    refused_id = _TaggedErrors()
+    refused_id.at_each(("id", m) for m in id_refusals(driver_def.get("id")) if not keeps_id)
+    return DefinitionVerdict(
+        _joined(shapes, walk.errors, refused_id, walk.authored, undeclared), _TaggedErrors()
+    )
 
 
 def _joined(*parts: _TaggedErrors) -> _TaggedErrors:

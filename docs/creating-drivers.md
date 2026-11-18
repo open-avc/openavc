@@ -4483,9 +4483,9 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 2. **Duplicate driver ID.** A save that gives a driver another driver's ID, new or renamed, is refused, and the General tab says `Another driver named "acme_sw4" already exists. Choose a different ID.` Driver IDs must be unique across all sources (built-in, community, user-created).
 
-3. **An ID with other characters.** A new driver, a rename, an import, the Code view's **New Driver** and `python -m openavc.drivers.check` refuse an ID with anything but lowercase letters, digits and underscores: `id: 'acme.widget' can use only lowercase letters, digits and underscores`. A driver already installed under such an ID (the Code view's **New Driver** once let a hyphen through) keeps working under it: it opens, saves, exports and imports as before, so the devices that use it are not affected. Its entry under **Installed** says a new driver's ID cannot use those characters.
+3. **An ID with other characters.** A new driver, a rename, an import, the Code view's **New Driver** and `python -m openavc.drivers.check` refuse an ID with anything but lowercase letters, digits and underscores: `id: 'acme.widget' can use only lowercase letters, digits and underscores`. A driver already installed under such an ID keeps working under it: it opens, saves, exports, imports and deletes as before, and the devices that use it are not affected. Its page under **Installed** says a new driver's ID cannot use those characters.
 
-4. **The file already holds another driver.** A save is refused with `The file acme_widget.avcdriver already holds another driver, "acme.widget". Choose a different ID.` when a driver file of that name, placed by hand or saved by an older release, is a different driver. The save never writes over it.
+4. **The file already holds another driver.** A save never writes over a driver file that holds a different driver. A new driver or a rename is refused with `The file acme_widget.avcdriver already holds another driver, "acme.widget". Choose a different ID.`; a save that keeps its ID says to rename or delete the other driver first.
 
 5. **Python driver missing DRIVER_INFO.** For Python drivers, the file must contain a class that inherits from `BaseDriver` and has a `DRIVER_INFO` dict with at least `id`, `name`, and `transport`.
 

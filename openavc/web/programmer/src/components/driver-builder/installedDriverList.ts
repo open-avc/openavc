@@ -39,6 +39,12 @@ export function listedDrivers(
   };
 }
 
+/** What a driver page says when the driver keeps an ID a new driver could not
+ *  be given (isDriverId); it and its devices go on working under it. */
+export const KEPT_ID_TEXT =
+  "This driver's ID has characters a new driver's ID cannot use (only lowercase letters, " +
+  "digits and underscores). It and its devices keep working under this ID.";
+
 /** What a driver page says above the mistakes in a file that loaded anyway. */
 export const LOADED_WITH_NOTICES_TEXT =
   "This driver loaded and devices can use it, but its file has mistakes the Driver Builder " +

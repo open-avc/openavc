@@ -33,7 +33,7 @@ from typing import Any, Callable
 # The definition walk's guard and tagged list: every part of this walk is
 # asked the way each part of that one is, so a check that raises on a value
 # of a kind it does not read is a message in both.
-from openavc.drivers.driver_id import id_notices, id_refusals
+from openavc.drivers.driver_id import id_refusals
 from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     DefinitionVerdict,
@@ -287,7 +287,7 @@ def check_python_driver_info(
     walk = _PythonWalk(info, overrides_run_setup_action, overrides_set_device_setting)
     if strict:
         return DefinitionVerdict(walk.errors + walk.shared, [])
-    return DefinitionVerdict(walk.errors, id_notices(info.get("id")) + walk.shared)
+    return DefinitionVerdict(walk.errors, walk.shared)
 
 
 def python_driver_refusals(info: dict[str, Any], *, keeps_id: bool = False) -> list[str]:

@@ -6,8 +6,8 @@ door an author gives a driver its id through: the checker in strict mode
 CI), a rename, the Code view's New Driver, a community install. A driver
 already installed under an id that breaks it (the Code view's New Driver let a
 hyphen through, the save route turned any other character into ``_``) keeps
-loading under that id: it opens, saves under its own id and uploads as before,
-and its Installed entry says why a new driver could not use the id.
+loading under that id, with nothing new to fix: it opens, saves under its own
+id, uploads and deletes as before.
 
 A save writes ``<id>.avcdriver`` as the id is written, and never over a file
 that holds another driver.
@@ -97,7 +97,7 @@ def library(tmp_path: Path, monkeypatch):
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )
     yield repo
-    for driver_id in ("acme_widget", "acme.widget", "acme-widget", "Acme-Widget", "acme_gadget"):
+    for driver_id in ("acme_widget", "acme.widget", "acme-widget", "Acme-Widget", "acme_gadget", "acme-gadget"):
         unregister_driver(driver_id)
 
 
@@ -114,25 +114,21 @@ def test_an_id_in_the_pattern_is_not_refused():
     assert validate_driver_definition(dict(WIDGET), strict=True) == []
 
 
-def test_a_yaml_driver_with_such_an_id_still_loads_and_says_why(tmp_path):
+def test_a_yaml_driver_with_such_an_id_still_loads_with_nothing_to_fix(tmp_path):
     path = tmp_path / "acme-widget.avcdriver"
     path.write_text(_yaml({**WIDGET, "id": "acme-widget"}), encoding="utf-8")
 
     read = read_driver_file(path)
 
-    assert read.reasons == ()
-    assert read.declared_id == "acme-widget"
-    notices = [n for n in read.notices if "acme-widget" in n]
-    assert notices and "keeps working" in notices[0]
+    assert (read.reasons, read.notices, read.declared_id) == ((), (), "acme-widget")
 
 
-def test_a_python_driver_info_with_such_an_id_is_refused_where_written_and_noted_where_loaded():
+def test_a_python_driver_info_with_such_an_id_is_refused_only_where_written():
     info = {"id": "acme-widget", "name": "Acme Widget", "transport": "tcp"}
 
     assert _id_refusals(python_driver_refusals(info))
     loaded = check_python_driver_info(info)
-    assert not _id_refusals(loaded.errors)
-    assert [n for n in loaded.notices if "keeps working" in n]
+    assert (loaded.errors, loaded.notices) == ([], [])
 
 
 def test_a_computed_python_id_is_not_judged():
@@ -183,6 +179,7 @@ async def test_a_save_never_writes_over_a_file_that_holds_another_driver(library
     status, errors = _refusal(exc)
     assert status == 409
     assert "acme.widget" in errors[0] and "acme_widget.avcdriver" in errors[0]
+    assert errors[0].endswith("Choose a different ID.")
     assert held.read_text() == before
 
 
@@ -264,6 +261,16 @@ async def test_the_code_views_new_driver_refuses_such_an_id(library):
     assert list(library.iterdir()) == []
 
 
+async def test_the_code_views_new_driver_refuses_such_an_id_in_its_source(library):
+    with pytest.raises(HTTPException) as exc:
+        await python_routes.create_python_driver(
+            PythonDriverCreateRequest(id="acme_widget", source=_python("acme-widget"))
+        )
+
+    assert exc.value.status_code == 400 and ALLOWED in str(exc.value.detail)
+    assert list(library.iterdir()) == []
+
+
 async def test_a_python_driver_installed_under_such_an_id_opens_and_saves(library):
     path = library / "acme-widget.py"
     path.write_text(_python("acme-widget"), encoding="utf-8")
@@ -317,13 +324,23 @@ def _form(filename: str, data: bytes):
     return SimpleNamespace(form=_read_form)
 
 
-async def test_an_upload_of_a_driver_under_such_an_id_still_loads_and_says_why(library):
+async def test_an_upload_of_a_driver_under_such_an_id_still_loads(library):
     data = _yaml({**WIDGET, "id": "Acme-Widget"}).encode()
 
     answer = await driver_routes.upload_driver(_form("Acme-Widget.avcdriver", data))
 
-    assert (answer["status"], answer["driver_id"]) == ("uploaded", "Acme-Widget")
-    assert [n for n in answer["notices"] if "Acme-Widget" in n and "keeps working" in n]
+    assert (answer["status"], answer["driver_id"], answer["notices"]) == ("uploaded", "Acme-Widget", [])
+    assert (library / "Acme-Widget.avcdriver").read_bytes() == data
+
+
+async def test_drivers_installed_under_such_an_id_delete_as_before(library):
+    (library / "acme-widget.avcdriver").write_text(_yaml({**WIDGET, "id": "acme-widget"}), encoding="utf-8")
+    (library / "acme-gadget.py").write_text(_python("acme-gadget"), encoding="utf-8")
+
+    await definition_routes.delete_driver_definition_endpoint("acme-widget")
+    await python_routes.delete_python_driver("acme-gadget")
+
+    assert list(library.iterdir()) == []
 
 
 async def test_a_community_install_of_an_id_outside_the_pattern_fetches_nothing(library, monkeypatch):

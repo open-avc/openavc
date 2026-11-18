@@ -1,7 +1,9 @@
 import { UpdateRowButton } from "../shared/CatalogUpdateControls";
 import type { CatalogUpdate } from "../shared/catalogUpdates";
 import type { DriverInfo, InstalledDriver } from "../../api/types";
+import { isDriverId } from "../shared/driverId";
 import {
+  KEPT_ID_TEXT,
   LOADED_WITH_NOTICES_TEXT,
   NOT_LOADED_TEXT,
   NOT_LOADED_WITH_REASON_TEXT,
@@ -151,12 +153,20 @@ export function LoadNoticesNote({ notices }: { notices: string[] }) {
 }
 
 /** What a driver page says above its details about how its file loaded:
- *  that it did not, with why, or the mistakes in a file that loaded anyway. */
-export function LoadNotes({ notLoaded, installed }: { notLoaded: boolean; installed?: InstalledDriver }) {
+ *  that it did not, with why, or the mistakes in a file that loaded anyway;
+ *  and when it keeps an ID a new driver could not be given, that it does. */
+export function LoadNotes({ driverId, notLoaded, installed }: {
+  driverId: string; notLoaded: boolean; installed?: InstalledDriver;
+}) {
   return (
     <>
       <NotLoadedNote show={notLoaded} reason={installed?.load_error ?? null} />
       <LoadNoticesNote notices={installed?.load_notices ?? []} />
+      {!isDriverId(driverId) && (
+        <p style={{ margin: "0 0 var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+          {KEPT_ID_TEXT}
+        </p>
+      )}
     </>
   );
 }

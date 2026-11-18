@@ -43,8 +43,9 @@ from openavc.api.models import PythonDriverCreateRequest
 from openavc.drivers.driver_change import changed, file_revision, holding, revision
 from openavc.drivers.driver_id import id_refusal
 from openavc.drivers.driver_in_use import project_devices_on
-from openavc.drivers.driver_file_name import id_installed, is_driver_file_stem
+from openavc.drivers.driver_file_name import is_driver_file_stem, keeps_installed_id
 from openavc.drivers.driver_loader import (
+    declared_driver_info,
     driver_companions,
     driver_files_for,
     python_driver_file,
@@ -296,7 +297,7 @@ def _source_refusals(source: str, filename: str) -> list[str]:
         info, _ = extract_python_driver_info_from_source(source, filename)
     except ExtractError:
         return []
-    kept = id_installed([DRIVER_REPO_DIR], info.get("id"))
+    kept = keeps_installed_id([DRIVER_REPO_DIR], info.get("id"))
     return python_driver_refusals(info, keeps_id=kept)
 
 
@@ -318,12 +319,10 @@ async def _create_python_driver(body: PythonDriverCreateRequest) -> dict:
     """The Code view's create, from its first check to its announcement."""
     from openavc.system_config import DRIVER_REPO_DIR
 
-    refused = id_refusal(body.id)
-    if refused:
-        raise HTTPException(status_code=400, detail=f"Invalid driver ID: {refused}")
+    data = _source_bytes(body.source)
+    _refuse_a_new_id(body.id, declared_driver_info(f"{body.id}.py", data).get("id"))
     require_mutable_driver(body.id)
     filepath = _safe_driver_path(body.id)
-    data = _source_bytes(body.source)
     require_mutable_driver_file(filepath.name, data)
 
     # Ensure driver_repo/ exists
@@ -348,6 +347,15 @@ async def _create_python_driver(body: PythonDriverCreateRequest) -> dict:
 
     await _announce(body.id)
     return {"status": "created", "driver_id": body.id}
+
+
+def _refuse_a_new_id(*ids: Any) -> None:
+    """New Driver gives a driver its id twice, the file's name and the id its
+    DRIVER_INFO declares (the one it registers under), so both are held to
+    the id pattern; an id the source computes is not judged."""
+    refused = next((reason for reason in map(id_refusal, ids) if reason), None)
+    if refused:
+        raise HTTPException(status_code=400, detail=f"Invalid driver ID: {refused}")
 
 
 def _claim_created(driver_id: str, filepath: Path) -> None:

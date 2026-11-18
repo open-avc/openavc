@@ -11,9 +11,9 @@ a trailing newline through.
 
 Before a save names a file for a driver it asks two things of the library:
 whether that file already holds another driver (``other_driver_in``: a save
-never writes over one), and whether the driver's id is one the library
-already serves (``id_installed``: a save that keeps such an id is not held to
-the id pattern, since the devices on it name it by that id).
+never writes over one), and whether it keeps an id outside the id pattern
+that the library already serves (``keeps_installed_id``: such a save is not
+held to the pattern, since the devices on it name it by that id).
 """
 
 from __future__ import annotations
@@ -51,11 +51,13 @@ def other_driver_in(path: Path | str, driver_id: str) -> str | None:
     return declared if declared is not None and declared != driver_id else None
 
 
-def id_installed(directories: Sequence[Path | str], driver_id: Any) -> bool:
-    """Whether a file in the library already serves ``driver_id``, a refused
-    copy too (``driver_loader.serving_file``)."""
+def keeps_installed_id(directories: Sequence[Path | str], driver_id: Any) -> bool:
+    """Whether a save of ``driver_id`` keeps an id outside the id pattern
+    that a file in the library already serves, a refused copy too
+    (``driver_loader.serving_file``). An id in the pattern reads no file."""
+    from openavc.drivers.driver_id import id_refusal
     from openavc.drivers.driver_loader import serving_file
 
-    if not isinstance(driver_id, str) or not driver_id:
+    if not driver_id or id_refusal(driver_id) is None:
         return False
     return serving_file(directories, driver_id, refused_too=True) is not None
