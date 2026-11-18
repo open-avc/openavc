@@ -3980,7 +3980,7 @@
             "version": 2,
             "since": "0.41.0",
             "description": "The first recorded shape.",
-            "shape": "19ae8fad9a1cd523"
+            "shape": "2810cbb98a31e4ac"
           }
         ],
         "fields": [
@@ -4152,13 +4152,13 @@
           },
           {
             "path": "context",
-            "type": "object",
+            "type": "object|null",
             "required": true,
             "since": "0.38.0",
             "readers": [
               "triage"
             ],
-            "description": "Where the press came from, as the page sent it."
+            "description": "Where the press came from, as the page sent it; null when it sent nothing."
           },
           {
             "path": "context.source",
@@ -4554,7 +4554,7 @@
             "version": 2,
             "since": "0.41.0",
             "description": "The first recorded shape.",
-            "shape": "85cb92f8b71ad5ed"
+            "shape": "a5a748e0011d5a64"
           }
         ],
         "fields": [
@@ -4883,6 +4883,15 @@
             ]
           },
           {
+            "path": "device.reported.firmware",
+            "type": "string|null",
+            "required": true,
+            "since": "0.36.0",
+            "readers": [
+              "triage"
+            ]
+          },
+          {
             "path": "catalog",
             "type": "object",
             "required": true,
@@ -4927,12 +4936,12 @@
             "readers": [
               "triage"
             ],
-            "description": "Every raw observation of the network check."
+            "description": "Every raw observation of the network check; its sections are written once the check has run."
           },
           {
             "path": "footprint.mac",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -4950,7 +4959,7 @@
           {
             "path": "footprint.ports",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -4986,7 +4995,7 @@
           {
             "path": "footprint.greetings",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5005,7 +5014,7 @@
           {
             "path": "footprint.web",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5097,7 +5106,7 @@
           {
             "path": "footprint.certificates",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5116,7 +5125,7 @@
           {
             "path": "footprint.mdns",
             "type": "object|null",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5170,7 +5179,7 @@
           {
             "path": "footprint.ssdp",
             "type": "object|null",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5206,7 +5215,7 @@
           {
             "path": "footprint.amx_ddp",
             "type": "any",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5266,12 +5275,12 @@
             "readers": [
               "triage"
             ],
-            "description": "The matcher's identification and each named driver's signals judged against the device."
+            "description": "The matcher's identification and each named driver's signals judged against the device; empty until the network check has run."
           },
           {
             "path": "verdict.sentence",
             "type": "string",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5280,7 +5289,7 @@
           {
             "path": "verdict.explanation",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5316,7 +5325,7 @@
           {
             "path": "verdict.checks",
             "type": "object",
-            "required": true,
+            "required": false,
             "since": "0.36.0",
             "readers": [
               "triage"
@@ -5940,12 +5949,13 @@
           },
           {
             "path": "drivers[].settings",
-            "type": "object",
+            "type": "object|null",
             "required": true,
             "since": "0.36.0",
             "readers": [
               "triage"
-            ]
+            ],
+            "description": "Null until the settings check ran."
           },
           {
             "path": "drivers[].settings.trials",
@@ -6024,7 +6034,8 @@
             },
             "reported": {
               "manufacturer": "Acme",
-              "model": "Widget 3000"
+              "model": "Widget 3000",
+              "firmware": null
             }
           },
           "catalog": {
