@@ -19,7 +19,7 @@ const project = {
 } as unknown as ProjectConfig;
 
 function offer(kind: "current" | "stale", reenter: string[] = []): void {
-  const draft = draftOf(project, '"b-1"', "b-1", () => null);
+  const draft = draftOf(project, { etag: '"b-1"', revision: "b-1" }, () => null);
   sessionStorage.setItem(draftKey(), JSON.stringify(draft));
   useDraftOffer.setState({ offer: { kind, draft, reenter } });
 }

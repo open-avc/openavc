@@ -91,8 +91,14 @@ export type SecretFieldsOf = (driverId: string) => ReadonlySet<string> | null;
 
 type Values = Record<string, unknown>;
 
+function isBlank(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
+/** Whether a setting holds a value somebody typed: anything but blank or
+ *  the saved-login marker. */
 function holdsValue(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== "" && value !== SAVED_LOGIN;
+  return !isBlank(value) && value !== SAVED_LOGIN;
 }
 
 function blankHolder(
@@ -112,11 +118,16 @@ function blankHolder(
   return kept;
 }
 
+/** The ETag and revision an edit would be saved against. */
+export interface DraftBase {
+  etag: string | null;
+  revision: string | null;
+}
+
 /** The copy of `project` a draft keeps: every login typed in it left out. */
 export function draftOf(
   project: ProjectConfig,
-  etag: string | null,
-  revision: string | null,
+  base: DraftBase,
   secretsOf: SecretFieldsOf,
   save: SaveInFlight = NO_SAVE,
 ): ProjectDraft {
@@ -137,8 +148,8 @@ export function draftOf(
   return {
     format: FORMAT,
     projectId: project.project?.id ?? "",
-    etag,
-    revision,
+    etag: base.etag,
+    revision: base.revision,
     project: { ...project, devices, connections },
     blanked,
     ...save,
@@ -171,8 +182,7 @@ export function filledFromServer(draft: ProjectDraft, server: ProjectConfig): Pr
 function devicesToReenter(draft: ProjectDraft, server: ProjectConfig): string[] {
   const names: string[] = [];
   for (const place of draft.blanked) {
-    const value = serverValue(server, place);
-    if (value !== undefined && value !== null && value !== "") continue;
+    if (!isBlank(serverValue(server, place))) continue;
     const device = draft.project.devices.find((d) => d.id === place.deviceId);
     const name = device?.name || place.deviceId;
     if (!names.includes(name)) names.push(name);
@@ -180,17 +190,29 @@ function devicesToReenter(draft: ProjectDraft, server: ProjectConfig): string[] 
   return names;
 }
 
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+function sameList(a: unknown[], b: unknown): boolean {
+  return Array.isArray(b) && a.length === b.length && a.every((item, i) => sameValue(item, b[i]));
+}
+
+/** The keys an object holds a value under (JSON leaves out the rest). */
+function keysOf(o: object): string[] {
+  return Object.keys(o).filter((k) => (o as Values)[k] !== undefined);
+}
+
+function sameRecord(a: object, b: object): boolean {
+  if (Array.isArray(b)) return false;
+  const aKeys = keysOf(a);
+  return aKeys.length === keysOf(b).length && aKeys.every((k) => sameValue((a as Values)[k], (b as Values)[k]));
+}
+
 function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((item, i) => sameValue(item, b[i]));
-  }
-  const keysOf = (o: object) => Object.keys(o).filter((k) => (o as Values)[k] !== undefined);
-  const aKeys = keysOf(a);
-  const bKeys = keysOf(b);
-  return aKeys.length === bKeys.length && aKeys.every((k) => sameValue((a as Values)[k], (b as Values)[k]));
+  if (!isObject(a) || !isObject(b)) return false;
+  return Array.isArray(a) ? sameList(a, b) : sameRecord(a, b);
 }
 
 export type DraftJudgement = "current" | "stale" | "drop" | "ask";
@@ -406,6 +428,19 @@ async function askForDrivers(): Promise<boolean> {
   }
 }
 
+type StoreState = ReturnType<typeof useProjectStore.getState>;
+
+/** Whether the store holds the server's copy of the project yet. */
+function loadedIn(s: StoreState): boolean {
+  return s.project !== null && s.loadGeneration > 0;
+}
+
+/** Whether the store holds an edit the server does not have, on a revision
+ *  it knows: what a draft is kept for. */
+function keepsDraft(s: StoreState): boolean {
+  return s.project !== null && s.etag !== null && holdsUnsavedEdit(s);
+}
+
 /** Judge the draft an earlier page kept against the first copy this page
  *  loaded: dropped, or offered. */
 async function judgeStoredDraft(server: ServerCopy): Promise<void> {
@@ -434,24 +469,25 @@ export function startProjectDraft(): () => void {
     useProjectStore.getState().loadGeneration > 0 ? "keeping" : "waiting";
   let stopped = false;
   const holding = () => stopped || stage !== "keeping" || useDraftOffer.getState().offer !== null;
+  const firstLoad = (s: StoreState) => stage === "waiting" && loadedIn(s);
 
   const write = () => {
     clearTimeout(timer);
     timer = undefined;
     if (holding()) return;
     const s = useProjectStore.getState();
-    if (!s.project || !s.etag || !holdsUnsavedEdit(s)) return;
+    if (!s.project || !keepsDraft(s)) return;
     const save = { operation: s.saveOperation, sameAsSave: s.project === s.saveSending };
-    writeDraft(draftOf(s.project, s.etag, s.revision, knownSecrets, save));
+    writeDraft(draftOf(s.project, s, knownSecrets, save));
     const unknown = s.project.devices.some((d) => knownSecrets(d.driver) === null);
     if (unknown && Date.now() - driversAskedAt > DRIVER_REFRESH_MS) {
       void askForDrivers().then((asked) => asked && write());
     }
   };
 
-  const keep = (s: ReturnType<typeof useProjectStore.getState>) => {
+  const keep = (s: StoreState) => {
     if (holding()) return;
-    if (s.project && s.etag && holdsUnsavedEdit(s)) {
+    if (keepsDraft(s)) {
       timer ??= setTimeout(write, WRITE_DELAY_MS);
       return;
     }
@@ -461,7 +497,7 @@ export function startProjectDraft(): () => void {
   };
 
   const unsubscribe = useProjectStore.subscribe((s) => {
-    if (stage === "waiting" && s.project && s.loadGeneration > 0) {
+    if (firstLoad(s) && s.project) {
       stage = "judging";
       void judgeStoredDraft({ project: s.project, etag: s.etag, revision: s.revision }).finally(() => {
         stage = "keeping";

@@ -69,6 +69,9 @@ function withTypedWidget(base = lobby()): ProjectConfig {
   } as ProjectConfig;
 }
 
+/** The revision the drafts below were made on. */
+const B1 = { etag: '"b-1"', revision: "b-1" };
+
 const knownSecrets = (driver: string) =>
   driver === "acme_widget" ? new Set(["password", "access_code"]) : null;
 
@@ -118,7 +121,7 @@ afterEach(() => {
 
 describe("what a draft keeps of a login", () => {
   it("leaves a typed login out and keeps the saved-login marker", () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets);
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets);
     const text = JSON.stringify(draft);
     expect(text).not.toContain(TYPED);
     expect(draft.project.devices[0].config.access_code).toBe(SAVED);
@@ -138,7 +141,7 @@ describe("what a draft keeps of a login", () => {
       devices: [{ id: "mystery", driver: "not_here", name: "Mystery", config: { code: "4417", label: "M" } }],
       connections: { mystery: { host: "10.0.0.9", port: 23 } },
     } as Partial<ProjectConfig>);
-    const draft = draftOf(project, '"b-1"', "b-1", () => null);
+    const draft = draftOf(project, B1, () => null);
     const text = JSON.stringify(draft);
     expect(text).not.toContain("4417");
     expect(text).not.toContain("10.0.0.9");
@@ -146,7 +149,7 @@ describe("what a draft keeps of a login", () => {
 
   it("fills each value left out from the system's copy, where it has one", () => {
     const server = lobby();
-    const draft = draftOf(withTypedWidget(server), '"b-1"', "b-1", () => null);
+    const draft = draftOf(withTypedWidget(server), B1, () => null);
     const filled = filledFromServer(draft, server);
     expect(filled.devices[0].config).toEqual(server.devices[0].config);
     expect(filled.connections.widget1).toEqual(server.connections.widget1);
@@ -157,12 +160,12 @@ describe("what a draft keeps of a login", () => {
 
 describe("judging a draft against the system's copy", () => {
   it("is current while the system has the revision it was made on", () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets);
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets);
     expect(judgeDraft(draft, { project: lobby(), revision: "b-1" })).toBe("current");
   });
 
   it("is stale once the system's revision has moved", () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets);
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets);
     expect(judgeDraft(draft, { project: lobby(), revision: "b-2" })).toBe("stale");
   });
 
@@ -170,7 +173,7 @@ describe("judging a draft against the system's copy", () => {
     // This tab's own save landed after the draft was written: the system
     // has the edit, its login moved out to the marker.
     const edited = withTypedWidget();
-    const draft = draftOf(edited, '"b-1"', "b-1", knownSecrets);
+    const draft = draftOf(edited, B1, knownSecrets);
     const onSystem = withTypedWidget();
     onSystem.devices[1].config.access_code = SAVED;
     onSystem.connections.widget2.password = SAVED;
@@ -178,12 +181,12 @@ describe("judging a draft against the system's copy", () => {
   });
 
   it("asks the server when its revision has moved and the draft names an unanswered save", () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: true });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: true });
     expect(judgeDraft(draft, { project: lobby(), revision: "b-2" })).toBe("ask");
   });
 
   it("is dropped for another project", () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets);
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets);
     const other = lobby({ project: { id: "atrium", name: "Atrium" } } as Partial<ProjectConfig>);
     expect(judgeDraft(draft, { project: other, revision: "b-1" })).toBe("drop");
   });
@@ -194,7 +197,7 @@ describe("asking the server about the draft's unanswered save", () => {
 
   it("drops a draft that is the save the server recognises", async () => {
     const resend = vi.fn(async () => ({}));
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: true });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: true });
     expect(await settleDraft(draft, moved, resend)).toBe("drop");
     // Sent against the draft's own revision, with the server's copy as its body.
     expect(resend).toHaveBeenCalledWith(moved.project, '"b-1"', "op-7");
@@ -202,7 +205,7 @@ describe("asking the server about the draft's unanswered save", () => {
 
   it("keeps edits made after that save as current against the server's revision", async () => {
     const resend = vi.fn(async () => ({}));
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: false });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: false });
     expect(await settleDraft(draft, moved, resend)).toBe("current");
   });
 
@@ -210,13 +213,13 @@ describe("asking the server about the draft's unanswered save", () => {
     const resend = vi.fn(async () => {
       throw new ConflictError("Project was modified by another session.");
     });
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: true });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: true });
     expect(await settleDraft(draft, moved, resend)).toBe("stale");
   });
 
   it("does not ask while the draft's revision is the server's", async () => {
     const resend = vi.fn(async () => ({}));
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: true });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: true });
     expect(await settleDraft(draft, { ...moved, etag: '"b-1"', revision: "b-1" }, resend)).toBe("current");
     expect(resend).not.toHaveBeenCalled();
   });
@@ -291,7 +294,7 @@ describe("the tab's draft", () => {
   });
 
   it("is offered back on the next load while its revision is current, and restored and saved", async () => {
-    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets)));
+    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), B1, knownSecrets)));
     getProject.mockImplementation(async () => ({ ...lobby(), _etag: '"b-1"' }));
     saveProject.mockResolvedValue({ etag: '"b-2"' });
     const stop = started();
@@ -315,7 +318,7 @@ describe("the tab's draft", () => {
   });
 
   it("is offered as a conflict once the project has moved, and never saved over it", async () => {
-    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets)));
+    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), B1, knownSecrets)));
     getProject.mockImplementation(async () => ({ ...lobby(), _etag: '"c-4"' }));
     const stop = started();
     loaded(lobby(), "c-4");
@@ -333,7 +336,7 @@ describe("the tab's draft", () => {
   });
 
   it("is not offered when the server recognises it as its own landed save, and is removed", async () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: true });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: true });
     sessionStorage.setItem(draftKey(), JSON.stringify(draft));
     saveProject.mockResolvedValue({ etag: '"b-2"' });
     // The server's copy of that save: its login moved out, its defaults filled in.
@@ -350,7 +353,7 @@ describe("the tab's draft", () => {
   });
 
   it("restores edits made after a save the server recognises, saved against the server's revision", async () => {
-    const draft = draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets, { operation: "op-7", sameAsSave: false });
+    const draft = draftOf(withTypedWidget(), B1, knownSecrets, { operation: "op-7", sameAsSave: false });
     sessionStorage.setItem(draftKey(), JSON.stringify(draft));
     const onSystem = { ...lobby(), devices: [{ ...lobby().devices[0], enabled: true }] } as ProjectConfig;
     getProject.mockImplementation(async () => ({ ...structuredClone(onSystem), _etag: '"b-2"' }));
@@ -371,7 +374,7 @@ describe("the tab's draft", () => {
   });
 
   it("restores as a conflict when another session saves while the offer is open", async () => {
-    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets)));
+    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), B1, knownSecrets)));
     const stop = started();
     loaded(lobby(), "b-1");
     await vi.advanceTimersByTimeAsync(0);
@@ -398,7 +401,7 @@ describe("the tab's draft", () => {
   });
 
   it("is not offered when the system already holds it, and is removed", async () => {
-    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(lobby(), '"b-1"', "b-1", knownSecrets)));
+    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(lobby(), B1, knownSecrets)));
     const stop = started();
     loaded(lobby(), "c-4");
     await vi.advanceTimersByTimeAsync(0);
@@ -408,7 +411,7 @@ describe("the tab's draft", () => {
   });
 
   it("is kept while the offer is open, and removed when it is discarded", async () => {
-    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), '"b-1"', "b-1", knownSecrets)));
+    sessionStorage.setItem(draftKey(), JSON.stringify(draftOf(withTypedWidget(), B1, knownSecrets)));
     const stop = started();
     loaded(lobby(), "b-1");
     await vi.advanceTimersByTimeAsync(5_000);

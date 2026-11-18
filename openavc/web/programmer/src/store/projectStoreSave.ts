@@ -91,6 +91,8 @@ interface FailedTry {
   final: boolean;
   /** The answer, when the server said nothing was taken in. */
   notTaken: string | null;
+  /** The server answered: false when no answer came, so the save may have landed. */
+  answered: boolean;
 }
 
 function judgeFailure(
@@ -103,7 +105,7 @@ function judgeFailure(
   // A save the server did not take, answered the same way twice, would be
   // answered so again.
   const repeated = notTaken !== null && notTaken === previousNotTaken;
-  return { message, final: kind === "final" || repeated || outOfTries, notTaken };
+  return { message, final: kind === "final" || repeated || outOfTries, notTaken, answered: kind !== "unknown" };
 }
 
 async function trySave(deps: SaveAttemptDeps, request: SaveRequest): Promise<"saved"> {
@@ -132,6 +134,13 @@ async function trySave(deps: SaveAttemptDeps, request: SaveRequest): Promise<"sa
 
 /** The save is answered: nothing is left to ask the server about. */
 const ANSWERED = { saveOperation: null, saveSending: null } as const;
+
+/** The store once a save has stopped trying. A save that never heard back
+ *  may still have landed: its id stays. */
+function gaveUp(failed: FailedTry): SaveStatePatch {
+  const patch = { error: failed.message, saving: false, saveRetryIn: null };
+  return failed.answered ? { ...patch, ...ANSWERED } : patch;
+}
 
 /**
  * Attempt the project write, trying a failure again up to `maxRetries` times
@@ -168,9 +177,7 @@ export async function runSaveWithRetry(
       }
       const failed = judgeFailure(deps.failureMessage(e), kind, previousNotTaken, attempt >= maxRetries);
       if (failed.final) {
-        // A save that never heard back may still have landed: its id stays.
-        const answered = kind === "unknown" ? {} : ANSWERED;
-        deps.setState({ error: failed.message, saving: false, saveRetryIn: null, ...answered });
+        deps.setState(gaveUp(failed));
         return "failed";
       }
       previousNotTaken = failed.notTaken;
