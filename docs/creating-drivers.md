@@ -275,6 +275,16 @@ Click the **YAML** button in the editor header to open a side pane showing the s
 - **Duplicate** (copy icon in the driver list) — clones the driver with a unique ID and `(Copy)` appended to the name. Replaces the export/reimport ritual for branching a driver. The verified flag is cleared on the copy since it hasn't been validated.
 - **Export .avcdriver** — downloads the driver file to share with others or commit to a git repo.
 
+#### When someone else changes the driver you have open
+
+Another Programmer, a second browser tab, or the AI assistant can save the same driver while you have it open. If you haven't changed anything yet, the editor opens their copy as soon as they save it. If you have unsaved edits, your next **Save** stops with "This driver was changed by another session since you opened it." and three choices:
+
+- **Reload Theirs** opens the copy they saved. Your unsaved edits are discarded.
+- **Save Mine Over It** saves your edits. Their change is replaced.
+- **Keep Editing** closes the message and leaves your edits in the editor. The next Save asks again.
+
+The Code view's **Save** and **Save & Reload Driver** do the same for a Python driver.
+
 ### Importing and Exporting Drivers
 
 #### Exporting a driver to share it
@@ -2958,7 +2968,7 @@ The editor opens with a pre-filled template. Edit the code, then click **Save & 
 - **Save & Reload Driver** makes the edit the live driver, so it won't write a file that can't be parsed, or one the driver check refuses (the same check `python -m openavc.drivers.check` runs, described under [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)). If your code has a syntax error, nothing is written, the copy on disk is left alone, and the message tells you which line stopped the parser. If the check finds something in your `DRIVER_INFO`, nothing is written either, and the message lists each problem and what to write instead. That matters because the running driver would go on working either way — the damage shows up at the next restart, when a file that can't load takes its devices offline with it.
 - **Save** keeps whatever you've got, finished or not, because a half-written edit is the normal state of an editor and losing it would be worse. If what it kept won't parse, it says so and marks the line, so you know the file on disk no longer loads even though the device in the room is still responding. If the driver check finds something, it keeps the file and lists each problem.
 
-Only a syntax error or the driver check stops Save & Reload. Either button refuses a character that the encoding named on the file's coding line cannot hold: it names the line and writes nothing. Delete the coding line to save the file as UTF-8. Code that parses but can't import yet — a package you haven't installed, a module you're about to write — saves normally; that's ordinary work in progress, and the reload is where you'll hear about it. A driver that reloads with something the check refuses still loads, and the reload lists the same problems.
+In the code itself, only a syntax error or the driver check stops Save & Reload. Either button also stops when someone else saved the driver after you opened it, and offers Reload Theirs, Save Mine Over It or Keep Editing ([When someone else changes the driver you have open](#when-someone-else-changes-the-driver-you-have-open)). Either button refuses a character that the encoding named on the file's coding line cannot hold: it names the line and writes nothing. Delete the coding line to save the file as UTF-8. Code that parses but can't import yet — a package you haven't installed, a module you're about to write — saves normally; that's ordinary work in progress, and the reload is where you'll hear about it. A driver that reloads with something the check refuses still loads, and the reload lists the same problems.
 
 ### A Python driver is a bundle
 
