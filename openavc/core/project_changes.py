@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -251,15 +251,28 @@ class ProjectChangesMixin:
         awaited (:meth:`persist_or_defer_bookkeeping_change`): the holder of
         ``_reload_lock`` is running code that can make one, a plugin hook or
         an event handler it awaits, so a change that waited for the lock
-        would wait for itself. An applied change raises it for all of its
-        run (the reconcile, its undo, the announcement) and the stop for its
-        teardown. A bookkeeping save runs none, so a change made beside one
-        waits its turn and hears its own failure."""
+        would wait for itself. An applied change raises it from the moment
+        it waits for the lock to the end of its run (the reconcile, its
+        undo, the announcement: :meth:`_lock_for_a_change`) and the stop for
+        its wait and its teardown. A bookkeeping save runs none, so a change
+        made beside one waits its turn and hears its own failure."""
         self._hook_runs += 1
         try:
             yield
         finally:
             self._hook_runs -= 1
+
+    @asynccontextmanager
+    async def _lock_for_a_change(self):
+        """``_reload_lock`` for an applied change, inside
+        :meth:`_running_hooks` from the moment it starts to wait. A plugin's
+        save made while the change waits is queued behind it, never parked
+        on the lock ahead of a holder that may itself wait on that plugin;
+        the lock is first come, first served, so a save parked before the
+        change began to wait is written before it."""
+        with self._running_hooks():
+            async with self._reload_lock:
+                yield
 
     async def reload_project(self) -> None:
         """Hot-reload project.avc from disk (LOAD origin — full reconcile).
@@ -268,7 +281,7 @@ class ProjectChangesMixin:
         latest persisted bytes, never a snapshot taken before a concurrent
         save finished.
         """
-        async with self._reload_lock:
+        async with self._lock_for_a_change():
             new_project = load_project(self.project_path, keep_notes=True)
             await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=False)
             project_update.publish(self.state, self.project_path.parent)
@@ -308,7 +321,7 @@ class ProjectChangesMixin:
         the exact race the 409 contract exists to prevent. Raises
         :class:`ProjectRevisionConflictError` on mismatch.
         """
-        async with self._reload_lock:
+        async with self._lock_for_a_change():
             self._check_revision(expected_revision)
             return await self._apply_project_locked(new_project, origin, persist)
 
@@ -320,7 +333,7 @@ class ProjectChangesMixin:
         again under the same id, because its answer was lost, is answered
         with what it did rather than applied twice or refused as another
         session's change (:meth:`_resent_outcome`)."""
-        async with self._reload_lock:
+        async with self._lock_for_a_change():
             resent = self._resent_outcome(operation)
             if resent is not None:
                 return resent
@@ -350,7 +363,7 @@ class ProjectChangesMixin:
         project, a whole project pushed from the cloud), applied as a load
         and saved; once that has worked, the update notice is what its
         migration changed, or none (``keep_update_notes``)."""
-        async with self._reload_lock:
+        async with self._lock_for_a_change():
             self._check_revision(expected_revision)
             outcome = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
             self.keep_update_notes(update_notes, replace=True)
@@ -396,7 +409,7 @@ class ProjectChangesMixin:
         nothing applied. Returns its outcome. The change door
         (:meth:`_change_locked`), reconciled.
         """
-        async with self._reload_lock:
+        async with self._lock_for_a_change():
             return await self._change_locked(mutate, reconcile=True)
 
     async def _change_locked(self, mutate, *, reconcile: bool) -> ApplyOutcome:
@@ -447,7 +460,7 @@ class ProjectChangesMixin:
 
     async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> ApplyOutcome:
         """Explicitly apply a product's product hardware to existing programming."""
-        async with self._reload_lock:
+        async with self._lock_for_a_change():
             proposed = self.project.model_copy(deep=True)
             target = next((device for device in proposed.devices if self.installed_equipment.matches(device)), None)
             if target is None:
@@ -478,8 +491,8 @@ class ProjectChangesMixin:
         running one, swapped in, reconciled and saved (all of it undone on a
         failure, the file never written), and then announced. Returns the
         outcome, which a failure in the announcing no longer changes: the
-        change is running. Its plugin hooks and event handlers run inside it
-        (:meth:`_running_hooks`)."""
+        change is running. Its plugin hooks and event handlers run inside
+        :meth:`_running_hooks`, raised by the door (:meth:`_lock_for_a_change`)."""
         taken = self._take_in(new_project, origin, persist, reassigned_equipment)
         if origin is ProjectOrigin.LOAD:
             diff = ProjectDiff.all_dirty()
@@ -488,10 +501,9 @@ class ProjectChangesMixin:
             # marker leaves the marker in place, and the device still has to
             # reconnect with the new login.
             diff = ProjectDiff.compute(self.project, taken.as_given)
-        with self._running_hooks():
-            run = await self._swap_in(taken, diff, origin)
-            outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
-            await self._announce_applied(diff, origin, outcome)
+        run = await self._swap_in(taken, diff, origin)
+        outcome = ApplyOutcome(self._project_revision, tuple(run.failed))
+        await self._announce_applied(diff, origin, outcome)
         return outcome
 
     def _take_in(

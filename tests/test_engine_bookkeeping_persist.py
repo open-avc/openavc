@@ -334,10 +334,10 @@ async def test_bookkeeping_scheduled_during_stop_teardown_persists(tmp_path):
 # --- when a plugin's own save waits its turn, and when it is queued ---------
 
 
-def _hold_the_first_write_and_fail_the_rest(monkeypatch) -> asyncio.Event:
+def _hold_the_first_write(monkeypatch, *, fail_the_rest: bool = False) -> asyncio.Event:
     """The first project write waits until the returned event is set, so the
-    save making it holds the reload lock meanwhile; every write after it
-    raises, as a full disk does."""
+    save making it holds the reload lock meanwhile. With ``fail_the_rest``
+    every write after it raises, as a full disk does."""
     from openavc.core import project_changes
 
     real = project_changes.save_project_async
@@ -349,9 +349,9 @@ def _hold_the_first_write_and_fail_the_rest(monkeypatch) -> asyncio.Event:
         writes += 1
         if writes == 1:
             await released.wait()
-            await real(path, project)
-            return
-        raise OSError("Injected unwritable project")
+        elif fail_the_rest:
+            raise OSError("Injected unwritable project")
+        await real(path, project)
 
     monkeypatch.setattr(project_changes, "save_project_async", save)
     return released
@@ -373,7 +373,7 @@ async def test_a_plugin_save_that_waited_beside_another_raises_its_own_failure(t
         "plug1": {"enabled": False, "config": {"x": 1}},
     })
     _capture_broadcasts(eng)
-    released = _hold_the_first_write_and_fail_the_rest(monkeypatch)
+    released = _hold_the_first_write(monkeypatch, fail_the_rest=True)
     other = await _another_save_holding_the_lock(eng)
 
     saving = asyncio.create_task(eng._save_plugin_config("plug1", {"x": 2}))
@@ -386,6 +386,34 @@ async def test_a_plugin_save_that_waited_beside_another_raises_its_own_failure(t
     assert eng.project.plugins["plug1"].config == {"x": 1}
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 1}
     assert eng._revision_counter == 1
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_save_made_while_a_change_waits_for_the_lock_is_queued_behind_it(tmp_path, monkeypatch):
+    """A change that runs plugin code may wait on that plugin, so a save
+    made while the change waits for the lock is queued behind it rather
+    than waiting on the lock ahead of it."""
+    eng = _engine(tmp_path, plugins={
+        "plug1": {"enabled": False, "config": {"x": 1}},
+    })
+    _capture_broadcasts(eng)
+    released = _hold_the_first_write(monkeypatch)
+    other = await _another_save_holding_the_lock(eng)
+    applied = eng.project.model_copy(deep=True)
+    applied.project.name = "Applied"
+    applying = asyncio.create_task(eng.apply_project(applied))
+    await asyncio.sleep(0.05)
+    assert not applying.done()
+
+    await asyncio.wait_for(eng._save_plugin_config("plug1", {"x": 2}), timeout=1)
+    assert eng.project.plugins["plug1"].config == {"x": 1}
+    released.set()
+    await other
+    await applying
+    await eng._bookkeeping_task
+
+    assert _disk_project(eng)["project"]["name"] == "Applied"
+    assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
 
 
 @pytest.mark.asyncio
