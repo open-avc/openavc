@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -217,6 +218,27 @@ async def test_a_setup_action_s_save_is_announced_to_scripts_once(engine):
     await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
 
     assert heard == ["system.project.reloaded"]
+
+
+async def test_a_setup_action_whose_notice_cannot_be_sent_still_succeeds(engine, caplog):
+    """The settings are saved and live by the time open tabs are told, so a
+    notice that cannot be sent is logged, never the wizard's error; scripts
+    still hear the save."""
+    driver = engine.devices.get_driver("dev1")
+    heard: list[str] = []
+
+    async def no_socket(message, *, client_type=None):
+        raise RuntimeError("the hub is gone")
+
+    engine.broadcast_ws = no_socket
+    engine.events.on("system.project.reloaded", lambda event, _payload: heard.append(event))
+    with caplog.at_level(logging.ERROR):
+        await SetupActionContext(engine, "dev1").apply_config_update({"port": 9999})
+
+    assert driver.config["port"] == 9999
+    assert _disk(engine)["connections"]["dev1"]["port"] == 9999
+    assert heard == ["system.project.reloaded"]
+    assert any(r.exc_info and "the hub is gone" in str(r.exc_info[1]) for r in caplog.records)
 
 
 async def test_a_setup_action_s_settings_record_the_push_ports_and_ask_for_a_bring_up(engine):

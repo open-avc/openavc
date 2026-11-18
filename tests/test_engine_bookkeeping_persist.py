@@ -13,6 +13,7 @@ reproduces exactly that call shape and guards it with a timeout.
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -416,19 +417,38 @@ async def test_a_plugin_save_made_while_a_change_waits_for_the_lock_is_queued_be
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
 
 
+def _save_on_every_reload(eng) -> list[str]:
+    """A plugin that saves a new config each time it hears
+    ``system.project.reloaded``; what it heard."""
+    heard: list[str] = []
+
+    async def save_on_reload(event, payload):
+        heard.append(event)
+        await eng._save_plugin_config("plug1", {"x": len(heard) + 1})
+
+    eng.events.on("system.project.reloaded", save_on_reload)
+    return heard
+
+
+async def _settled(eng) -> None:
+    """Let every queued save and every announcement it sets off finish."""
+    for _ in range(20):
+        if eng._bookkeeping_task is not None:
+            await eng._bookkeeping_task
+        await asyncio.sleep(0.01)
+
+
 @pytest.mark.asyncio
 async def test_a_plugin_save_from_a_project_reloaded_handler_lands_without_a_deadlock(tmp_path):
     """The bus event an applied change sends is awaited under its lock, so
-    a plugin saving from its handler is queued behind the change."""
+    a plugin saving from its handler is queued behind the change. That save
+    tells open tabs, but not the bus: a handler that saves on every reload
+    would otherwise hear its own save, save again, and never stop."""
     eng = _engine(tmp_path, plugins={
         "plug1": {"enabled": False, "config": {"x": 1}},
     })
     _capture_broadcasts(eng)
-
-    async def save_on_reload(event, payload):
-        await eng._save_plugin_config("plug1", {"x": 2})
-
-    eng.events.on("system.project.reloaded", save_on_reload)
+    heard = _save_on_every_reload(eng)
     renamed = eng.project.model_copy(deep=True)
     _rename(renamed)
     await asyncio.wait_for(eng.apply_project(renamed), timeout=5)
@@ -437,8 +457,156 @@ async def test_a_plugin_save_from_a_project_reloaded_handler_lands_without_a_dea
         lambda: eng._revision_counter == 2,
         message="the plugin's save from the handler never landed",
     )
+    await _settled(eng)
+    assert heard == ["system.project.reloaded"]
+    assert eng._revision_counter == 2
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
     assert _disk_project(eng)["project"]["name"] == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_save_from_the_handler_of_a_bookkeeping_save_is_heard_once(tmp_path):
+    """A bookkeeping save tells the bus too, after its lock is let go, so a
+    plugin saving from that handler waits its turn for the lock; its own
+    save tells the bus nothing, so the round ends there."""
+    eng = _engine(tmp_path, plugins={
+        "plug1": {"enabled": False, "config": {"x": 1}},
+    })
+    _capture_broadcasts(eng)
+    heard = _save_on_every_reload(eng)
+
+    await asyncio.wait_for(eng.persist_bookkeeping_change(_rename), timeout=5)
+    await _settled(eng)
+
+    assert heard == ["system.project.reloaded"]
+    assert eng._revision_counter == 2
+    assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
+
+
+@pytest.mark.asyncio
+async def test_a_save_a_reload_handler_leaves_for_later_is_heard_on_its_own(tmp_path):
+    """Only a save made while the handler runs is its echo. A task the
+    handler started (a plugin restarting its poll loop) that saves once the
+    handler is done is a change of its own, and the bus hears it."""
+    eng = _engine(tmp_path)
+    _capture_broadcasts(eng)
+    heard: list[str] = []
+    release = asyncio.Event()
+    later: list[asyncio.Task] = []
+
+    async def save_later():
+        await release.wait()
+        await eng.persist_bookkeeping_change(lambda p: setattr(p.project, "name", "Later"))
+
+    async def on_reload(event, payload):
+        heard.append(event)
+        if len(heard) == 1:
+            later.append(asyncio.create_task(save_later()))
+
+    eng.events.on("system.project.reloaded", on_reload)
+    await eng.persist_bookkeeping_change(_rename)
+    assert later, "the bookkeeping save never reached the bus"
+    release.set()
+    await asyncio.wait_for(later[0], timeout=5)
+
+    assert heard == ["system.project.reloaded", "system.project.reloaded"]
+    assert _disk_project(eng)["project"]["name"] == "Later"
+
+
+@pytest.mark.asyncio
+async def test_a_queued_batch_is_heard_when_any_save_in_it_was_not_a_handler_s(tmp_path):
+    """A batch holds whatever was queued together: a value the device filled
+    in that shares one with a reload handler's save is still heard."""
+    import contextvars
+
+    eng = _engine(tmp_path, variables=[{"id": "v1", "type": "number", "default": 1}])
+    _capture_broadcasts(eng)
+    heard: list[str] = []
+
+    def from_the_device(project):
+        project.variables[0].default = 2
+
+    async def on_reload(event, payload):
+        heard.append(event)
+        if len(heard) == 1:
+            eng.schedule_bookkeeping_change(lambda p: setattr(p.project, "name", "Handler"))
+            # Queued in the same tick from outside any handler.
+            contextvars.Context().run(eng.schedule_bookkeeping_change, from_the_device)
+
+    eng.events.on("system.project.reloaded", on_reload)
+    await eng.persist_bookkeeping_change(_rename)
+    await _settled(eng)
+
+    assert heard == ["system.project.reloaded", "system.project.reloaded"]
+    assert eng._revision_counter == 2
+    assert _disk_project(eng)["variables"][0]["default"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_queued_save_tells_open_tabs_and_the_bus(tmp_path):
+    """A setting the device fills in, a queued setting that landed, a
+    plugin's own save made inside a change: each is announced as any save
+    is, the revision to open tabs and ``system.project.reloaded`` on the
+    bus, which a script or a trigger may wait on."""
+    eng = _engine(tmp_path)
+    sent = _capture_broadcasts(eng)
+    heard: list[str] = []
+    eng.events.on("system.project.reloaded", lambda event, _payload: heard.append(event))
+
+    eng.schedule_bookkeeping_change(_rename)
+    await eng._bookkeeping_task
+
+    assert sent == [{"type": "project.reloaded", "revision": eng._project_revision}]
+    assert heard == ["system.project.reloaded"]
+
+
+@pytest.mark.asyncio
+async def test_a_queued_save_whose_notice_cannot_be_sent_still_saves_what_queued_behind_it(
+    tmp_path, caplog,
+):
+    """The file holds the batch by the time it is announced, so a notice that
+    cannot be sent is logged, and the flush goes on to what was queued
+    meanwhile rather than ending with it stranded."""
+    eng = _engine(tmp_path, variables=[{"id": "v1", "type": "number", "default": 1}])
+    sends = 0
+
+    async def flaky(msg, namespaces=None):
+        nonlocal sends
+        sends += 1
+        if sends == 1:
+            raise RuntimeError("the hub is gone")
+
+    def behind(project):
+        project.variables[0].default = 2
+
+    eng.broadcast_ws = flaky
+    eng.schedule_bookkeeping_change(
+        _rename, on_saved=lambda: eng.schedule_bookkeeping_change(behind),
+    )
+    with caplog.at_level(logging.ERROR):
+        await asyncio.wait_for(eng._bookkeeping_task, timeout=5)
+
+    assert _disk_project(eng)["project"]["name"] == "Renamed"
+    assert _disk_project(eng)["variables"][0]["default"] == 2
+    assert eng._revision_counter == 2
+    assert any(r.exc_info and "the hub is gone" in str(r.exc_info[1]) for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_a_save_flushed_while_the_engine_stops_tells_open_tabs_but_not_the_bus(tmp_path):
+    """Once the engine is on its way down, a trigger or a script that heard
+    the save would start work the stop is about to cancel."""
+    eng = _engine(tmp_path)
+    sent = _capture_broadcasts(eng)
+    heard: list[str] = []
+    eng.events.on("system.project.reloaded", lambda event, _payload: heard.append(event))
+    eng._stopping = True
+
+    eng.schedule_bookkeeping_change(_rename)
+    await eng._bookkeeping_task
+
+    assert sent == [{"type": "project.reloaded", "revision": eng._project_revision}]
+    assert heard == []
 
 
 @pytest.mark.asyncio

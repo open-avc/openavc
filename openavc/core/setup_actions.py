@@ -119,9 +119,11 @@ class SetupActionContext:
     async def _save(self, delta: dict[str, Any]) -> None:
         """``delta`` through the change door, taken live once the file holds
         it. Runs in the action's background task, never under the reconcile
-        lock, so awaiting the door directly is safe. The revision bump and
-        project.reloaded broadcast mean a stale IDE PUT gets a 409 instead of
-        silently reverting what the wizard just wrote."""
+        lock, so awaiting the door directly is safe. The door announces it
+        as every saved change is (open tabs learn the revision, so a stale
+        IDE PUT gets a 409 instead of silently reverting what the wizard
+        just wrote, and a script hears ``system.project.reloaded``); a
+        notice that cannot be sent is logged there, never this run's error."""
         engine = self._engine
         try:
             await engine.persist_bookkeeping_change(
@@ -131,9 +133,6 @@ class SetupActionContext:
         except ProjectSaveError as failure:
             # Everything was put back, so the change was not applied.
             raise ProjectNotAppliedError(failure) from failure
-        # A script may wait on this event for a saved change, and a setup
-        # action's save has always sent it; the bookkeeping door does not.
-        await engine.events.emit("system.project.reloaded")
 
     def _put_in_project(self, delta: dict[str, Any], project: Any) -> None:
         if not apply_config_delta(project, self._device_id, delta):

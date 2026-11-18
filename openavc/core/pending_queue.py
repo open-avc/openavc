@@ -67,8 +67,9 @@ class ProjectQueue:
 
     async def add(self, device_id: str, settings: dict[str, Any]) -> None:
         """Queue checked ``settings`` for the device: saved to the project,
-        then taken by the running queue. A refusal or a failed save raises
-        (a failed save as ``ProjectNotAppliedError``) with nothing queued."""
+        then taken by the running queue, and announced as every saved change
+        is. A refusal or a failed save raises (a failed save as
+        ``ProjectNotAppliedError``) with nothing queued."""
         engine = self._engine
         try:
             await engine.persist_bookkeeping_change(
@@ -77,9 +78,6 @@ class ProjectQueue:
             )
         except ProjectSaveError as failure:
             raise ProjectNotAppliedError(failure) from failure
-        # A script may wait on this event for a saved change, and queuing a
-        # setting has always sent it; the bookkeeping door does not.
-        await engine.events.emit("system.project.reloaded")
 
     async def drop(self, clear: PendingClear) -> None:
         """Clear the entries ``clear`` took, queued to run once the change

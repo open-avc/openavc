@@ -52,6 +52,15 @@ opaque token, compared for equality and nothing else; see
 ``_init_project_changes``. Every reader and writer of the bookkeeping queue
 and its flush task is in this module, the wait a stop makes for it included.
 
+THE announcement of a saved change is ``_announce_saved``, the same from
+every door: the revision to open tabs (``project.reloaded``, naming the tab
+that made the change when one did; a queued change names none), then
+``system.project.reloaded`` on the event bus, each logged on a failure,
+never raised, since the file already holds the change. The bus is not told
+of a save made while a handler of that event runs (``_an_echo``), which
+would hear its own save and could save again without end, nor once the
+engine is stopping.
+
 Mixed into Engine (core/engine.py). Logs under the engine's name.
 """
 
@@ -60,6 +69,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -182,13 +192,37 @@ class _TakenIn:
 class _Queued:
     """A bookkeeping change waiting for the lock: its ``mutate``, the
     running system's own half of it (``runtime_write``, made once the file
-    holds the change, under the lock), and what runs when the save fails
-    (``on_error``) or once it is done (``on_saved``, outside the lock)."""
+    holds the change, under the lock), what runs when the save fails
+    (``on_error``) or once it is done (``on_saved``, outside the lock), and
+    whether it was queued by a handler of a saved change's announcement
+    (``echo``, ``_an_echo``)."""
 
     mutate: Any
     on_error: Any = None
     on_saved: Any = None
     runtime_write: Any = None
+    echo: bool = False
+
+
+class _ReloadEmit:
+    """One ``system.project.reloaded`` emit while its handlers run. Emptied
+    when it ends: a task a handler started, which keeps the context, makes
+    a change of its own once the handler is done (``_an_echo``)."""
+
+    __slots__ = ("running",)
+
+    def __init__(self) -> None:
+        self.running = True
+
+
+_announcing: ContextVar[_ReloadEmit | None] = ContextVar("openavc_announcing_a_save", default=None)
+
+
+def _an_echo() -> bool:
+    """Whether a save made now is a handler's answer to a saved change's
+    ``system.project.reloaded``, made while that emit runs."""
+    emit = _announcing.get()
+    return emit is not None and emit.running
 
 
 def _check_valid(project: ProjectConfig) -> None:
@@ -665,11 +699,10 @@ class ProjectChangesMixin:
         parts = (
             (partial(self._publish_applied, diff), "publishing its state"),
             (partial(self._announce_panel_definition, diff), "sending the panel definition"),
-            (self._announce_revision, "announcing its revision"),
-            (partial(self.events.emit, "system.project.reloaded"), "emitting system.project.reloaded"),
         )
         for part, what in parts:
             await _call_logged(part, f"Project applied, but {what} failed")
+        await self._announce_saved(outcome.revision, reload_origin(), echo=_an_echo())
         applied = f"Project applied (origin={origin.value}, revision={outcome.revision})"
         if not outcome.failed:
             log.info(applied)
@@ -691,15 +724,37 @@ class ProjectChangesMixin:
             if self.mdns_advertiser:
                 self.mdns_advertiser.update_name(self.project.project.name)
 
-    async def _announce_revision(self) -> None:
-        """Notify the Programmer IDE to refetch project data. Always sent:
-        external editors need to learn the new revision even for changes
-        they can't see in the UI definition."""
-        await self.broadcast_ws({
-            "type": "project.reloaded",
-            "revision": self._project_revision,
-            **reload_origin(),
-        })
+    async def _announce_saved(self, revision: str, origin: dict[str, str], *, echo: bool) -> None:
+        """THE announcement of a saved change, from every door. Open tabs
+        learn ``revision`` (``project.reloaded``, with ``origin``, the tab
+        that made the change, when one did), always, even for a change
+        they cannot see, so a stale copy is refused rather than saved over
+        it. Then ``system.project.reloaded`` on the event bus, which a
+        script, a trigger or a plugin may wait on: not for an ``echo``, a
+        save made while a handler of that event ran (``_an_echo``), and not
+        once the engine is stopping, when a trigger or a script would start
+        work the stop is about to cancel. The file holds the change, so a
+        part that fails is logged and the next still goes out."""
+        await _call_logged(
+            partial(self.broadcast_ws, {"type": "project.reloaded", "revision": revision, **origin}),
+            "Project saved, but announcing its revision failed",
+        )
+        if echo or self.stopping:
+            return
+        await _call_logged(
+            self._tell_the_bus, "Project saved, but emitting system.project.reloaded failed",
+        )
+
+    async def _tell_the_bus(self) -> None:
+        """Emit ``system.project.reloaded``, its handlers' own saves marked
+        as its echo while it runs."""
+        emit = _ReloadEmit()
+        token = _announcing.set(emit)
+        try:
+            await self.events.emit("system.project.reloaded")
+        finally:
+            emit.running = False
+            _announcing.reset(token)
 
     async def _announce_panel_definition(self, diff: ProjectDiff) -> None:
         """Push the new UI definition to connected panels, only when what it
@@ -736,9 +791,10 @@ class ProjectChangesMixin:
 
     async def persist_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> str:
         """Persist a project change the running system takes without a
-        reconcile — save + revision bump + ``project.reloaded`` broadcast (so
-        an open IDE's stale ETag gets a 409 instead of silently reverting the
-        change).
+        reconcile — save + revision bump, then the announcement every door
+        makes (:meth:`_announce_saved`, once the lock is let go, so an open
+        IDE's stale ETag gets a 409 instead of silently reverting the
+        change, and a handler of it that saves waits its turn).
 
         ``mutate(project)`` goes through the change door
         (:meth:`_change_locked`) without the reconcile. When it is refused
@@ -759,6 +815,7 @@ class ProjectChangesMixin:
         :meth:`persist_or_defer_bookkeeping_change` to await it when they
         are not inside one.
         """
+        echo = _an_echo()
         async with self._reload_lock:
             try:
                 revision = (await self._change_locked(mutate, reconcile=False)).revision
@@ -769,11 +826,7 @@ class ProjectChangesMixin:
             await _call_logged(
                 runtime_write, "Project saved, but the running system could not take the change",
             )
-        await self.broadcast_ws({
-            "type": "project.reloaded",
-            "revision": revision,
-            **reload_origin(),
-        })
+        await self._announce_saved(revision, reload_origin(), echo=echo)
         return revision
 
     def schedule_bookkeeping_change(
@@ -800,9 +853,14 @@ class ProjectChangesMixin:
         logged, never raised, and the others still run. ``on_error`` runs
         when the batch is refused or its save fails, ``on_saved`` outside
         the lock once it is saved; a callback failure cannot undo a file
-        already written to disk.
+        already written to disk. Then the batch is announced
+        (:meth:`_announce_saved`), naming no tab: a tab whose request a
+        queued change came out of did not make it. The bus hears it unless
+        every change in it was queued as an echo.
         """
-        self._bookkeeping_queue.append(_Queued(mutate, on_error, on_saved, runtime_write))
+        self._bookkeeping_queue.append(
+            _Queued(mutate, on_error, on_saved, runtime_write, echo=_an_echo()),
+        )
         if self._bookkeeping_task is None or self._bookkeeping_task.done():
             self._bookkeeping_task = asyncio.create_task(
                 self._flush_bookkeeping()
@@ -845,10 +903,7 @@ class ProjectChangesMixin:
     async def _after_batch_saved(self, batch: list[_Queued], revision: str) -> None:
         for queued in batch:
             await _call_logged(queued.on_saved, "Bookkeeping on_saved callback failed")
-        await self.broadcast_ws({
-            "type": "project.reloaded",
-            "revision": revision,
-        })
+        await self._announce_saved(revision, {}, echo=all(queued.echo for queued in batch))
 
     async def _drain_bookkeeping(self, when: str) -> None:
         task = self._bookkeeping_task
