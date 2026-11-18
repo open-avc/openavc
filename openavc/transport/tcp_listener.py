@@ -115,6 +115,8 @@ class TcpListenerSubscription:
         if self._closed:
             return
         self._closed = True
+        # This device's handler runs still to come end with it.
+        self._handler_runs.close()
         await _registry.unsubscribe(self)
 
 
@@ -259,6 +261,7 @@ class _Registry:
             for listener in list(self._listeners.values()):
                 for sub in list(listener.subscriptions):
                     sub._closed = True
+                    sub._handler_runs.close()
                 listener.subscriptions.clear()
                 listener.close_server()
             self._listeners.clear()

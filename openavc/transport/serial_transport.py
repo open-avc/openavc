@@ -571,6 +571,8 @@ class SerialTransport:
         """Close the serial port gracefully."""
         self._connected = False
         self._wake_response_waiter()
+        # The handler runs still to come were the closed port's.
+        self._handler_runs.close()
         if self._reader_task and not self._reader_task.done():
             self._reader_task.cancel()
             try:

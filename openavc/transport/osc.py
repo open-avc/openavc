@@ -257,6 +257,10 @@ class OSCTransport:
 
     async def close(self) -> None:
         """Close all sockets."""
+        # The feedback socket's handler runs still to come end with it (the
+        # send sockets' end in their own close).
+        if self._listen_protocol is not None:
+            self._listen_protocol.end_runs()
         if self._tcp:
             await self._tcp.close()
             self._tcp = None
@@ -361,6 +365,10 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
                 self._handler_runs.run(self._on_data(data))
             except Exception:
                 log.exception("Error in OSC listen on_data callback")
+
+    def end_runs(self) -> None:
+        """End the handler runs still to come, at the socket's close."""
+        self._handler_runs.close()
 
     def error_received(self, exc: Exception) -> None:
         log.warning(f"[{self._name}] OSC listen error: {exc}")

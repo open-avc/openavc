@@ -212,6 +212,8 @@ class UDPTransport:
             raise
         self._sock = sock
         self._local_addr = local_addr or None
+        # A socket opened again after a close handles messages again.
+        self._handler_runs.reopen()
         self._multicast_sources = None
         self._connected = True
         log.debug(f"[{self._name}] UDP socket opened (bound to {bind_addr})")
@@ -504,6 +506,8 @@ class UDPTransport:
         """Close the UDP socket."""
         self._connected = False
         self._wake_response_waiter()
+        # The handler runs still to come were the closed socket's.
+        self._handler_runs.close()
         if self._transport:
             self._transport.close()
             self._transport = None

@@ -27,6 +27,16 @@ handler must not wait on one (``docs/creating-drivers.md`` says so).
 A run that raises is reported by the transport's own callback, and the next
 one still runs. A run cancelled while it waits for its turn closes its
 handler unstarted, so nothing is left un-awaited.
+
+THE end of a connection's runs is its close (``close()``): the runs still
+waiting and the one still running belong to a connection that is gone, and a
+device removed or re-added must not have its old values written back by them.
+Each holder ends them when it closes: the transport's ``close()``, the OSC
+transport's for its feedback socket, a push subscription's ``close()``, and
+each listener registry's ``close_all()``. The run doing the closing (a handler
+that hangs up its own connection) is left to finish. A message that reaches a
+closed holder is not handled; ``reopen()`` is for a holder opened again (a UDP
+socket).
 """
 
 from __future__ import annotations
@@ -58,17 +68,44 @@ class HandlerRuns:
         self._on_done = on_done
         self.tasks: set[asyncio.Task[Any]] = set()
         self._last: asyncio.Task[Any] | None = None
+        self._closed = False
 
     def run(self, result: object) -> None:
         """Take what the handler returned for one message. A coroutine runs
-        once the run before it has ended; anything else has already run."""
+        once the run before it has ended; anything else has already run. Once
+        closed, a coroutine is closed unstarted."""
         if not asyncio.iscoroutine(result):
+            return
+        if self._closed:
+            result.close()
             return
         task = asyncio.create_task(_after(self._last, result))
         self._last = task
         self.tasks.add(task)
         task.add_done_callback(self._ended)
         task.add_done_callback(self._on_done)
+        # A run cancelled before its first step never reaches _after's own
+        # close of its handler; this closes it whatever happened (a handler
+        # that ran is already finished, and closing it again does nothing).
+        task.add_done_callback(lambda _task: result.close())
+
+    def close(self) -> None:
+        """End every run: the ones waiting their turn close their handlers
+        unstarted, and the one running is cancelled where it awaits. The run
+        calling this (a handler closing its own connection) is left to
+        finish. Later messages are not handled until ``reopen()``."""
+        self._closed = True
+        try:
+            closing = asyncio.current_task()
+        except RuntimeError:  # no running loop: nothing is running
+            closing = None
+        for task in list(self.tasks):
+            if task is not closing:
+                task.cancel()
+
+    def reopen(self) -> None:
+        """Handle messages again, for a holder opened again after a close."""
+        self._closed = False
 
     def _ended(self, task: asyncio.Task[Any]) -> None:
         self.tasks.discard(task)

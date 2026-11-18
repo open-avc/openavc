@@ -593,6 +593,8 @@ class SSHTransport:
     async def close(self) -> None:
         """Terminate the ssh process and clean up."""
         self._connected = False
+        # The handler runs still to come were the closed session's.
+        self._handler_runs.close()
         for task in (self._reader_task, self._stderr_task):
             if task and not task.done():
                 task.cancel()

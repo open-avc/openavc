@@ -97,6 +97,8 @@ class MulticastSubscription:
         if self._closed:
             return
         self._closed = True
+        # This device's handler runs still to come end with it.
+        self._handler_runs.close()
         await _registry.unsubscribe(self)
 
 
@@ -192,7 +194,9 @@ class _PortListener:
         src_ip = addr[0]
         delivered = False
         for sub in list(self.subscriptions):
-            if not sub.matches_source(src_ip):
+            # A subscription that is closing may wait for the registry's
+            # lock before it is detached; nothing reaches it meanwhile.
+            if sub._closed or not sub.matches_source(src_ip):
                 continue
             delivered = True
             record_traffic(
@@ -287,6 +291,7 @@ class _Registry:
             for listener in list(self._listeners.values()):
                 for sub in list(listener.subscriptions):
                     sub._closed = True
+                    sub._handler_runs.close()
                 listener.subscriptions.clear()
                 listener.close_transport()
             self._listeners.clear()
