@@ -239,18 +239,24 @@ class CommunityDevicesCache:
         return devices
 
 
+def _device_key(row: dict[str, Any]) -> tuple[str, str] | None:
+    """A row's (manufacturer, model), lowercased; None when either is not
+    text or is empty."""
+    names = (row.get("manufacturer"), row.get("model"))
+    if all(isinstance(name, str) and name for name in names):
+        return names[0].lower(), names[1].lower()
+    return None
+
+
 def _devices_lookup(devices: list[dict[str, Any]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """(manufacturer, model), lowercased, to the driver entries of every row
     naming them. A row whose manufacturer or model is not text, or whose
     drivers are not a list, is skipped, as is a driver entry that is not an
     object."""
     lookup: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for d in devices:
-        mfr, model, drivers = d.get("manufacturer"), d.get("model"), d.get("drivers")
-        if not (isinstance(mfr, str) and isinstance(model, str) and mfr and model):
+    for row in devices:
+        key, drivers = _device_key(row), row.get("drivers")
+        if key is None or not isinstance(drivers, list):
             continue
-        if not isinstance(drivers, list):
-            continue
-        rows = lookup.setdefault((mfr.lower(), model.lower()), [])
-        rows.extend(drv for drv in drivers if isinstance(drv, dict))
+        lookup.setdefault(key, []).extend(drv for drv in drivers if isinstance(drv, dict))
     return lookup
