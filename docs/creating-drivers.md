@@ -3419,6 +3419,17 @@ step log; `pct` is an optional 0–100. Inside a run — and only inside one —
 can also `await self.request_config_update({...})` to persist new connection
 settings and `await self.request_reconnect()` to bring the device up on them.
 
+From OpenAVC 0.40.1, a setup action can also declare a `type: "file"`
+parameter, with `accept`, `max_bytes` and `required` just like a file command.
+The wizard uploads the selected file before starting the action. The handler
+receives a `CommandFile` in `params`, with `.name`, `.size`, `await file.read()`
+and `file.chunks()`; it never receives a browser path. The upload is tied to
+that device, action and parameter and is deleted when the run finishes,
+fails or is cancelled. Copy only the information the device needs into its
+configuration. A password used only to decode an import should be a secret
+action parameter, not a saved device setting. Setup files require
+`min_platform_version: "0.40.1"`; ordinary file commands retain their 0.37.2 floor.
+
 **Write the message for the person who pressed the button.** It is the whole
 report: what you reached, and any count they should sanity-check before they
 build a room on it ("Found 5 endpoints — 2 encoders, 3 decoders"). The wizard

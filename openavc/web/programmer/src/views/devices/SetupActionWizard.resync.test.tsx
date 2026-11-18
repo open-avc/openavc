@@ -14,6 +14,14 @@ const { invokeDeviceAction, getProject, saveProject } = vi.hoisted(() => ({
   saveProject: vi.fn(),
 }));
 
+const { uploadCommandFiles, discardUpload } = vi.hoisted(() => ({
+  uploadCommandFiles: vi.fn(), discardUpload: vi.fn(),
+}));
+vi.mock("../../api/commandFileClient", () => ({
+  uploadCommandFiles, discardUpload,
+  setupUploadOpener: () => "setup-opener",
+}));
+
 vi.mock("../../api/restClient", () => ({
   invokeDeviceAction,
   getProject,
@@ -82,6 +90,8 @@ async function runWizard() {
 }
 
 beforeEach(() => {
+  uploadCommandFiles.mockReset().mockResolvedValue({});
+  discardUpload.mockReset().mockResolvedValue(undefined);
   wsHandlers.length = 0;
   invokeDeviceAction.mockReset().mockResolvedValue({ run_id: "r1", status: "started" });
   getProject.mockReset().mockImplementation(async () => ({
@@ -98,6 +108,35 @@ beforeEach(() => {
     error: null,
     conflictDetected: false,
   });
+});
+
+it("requires a suitable file and sends its upload handle separately from ordinary inputs", async () => {
+  const importAction: DeviceAction = {
+    ...action, id: "import", params: {
+      project: { type: "file", required: true, accept: [".xml"], max_bytes: 100 },
+      label: { type: "string", default: "Rooms" },
+    },
+  };
+  uploadCommandFiles.mockResolvedValue({ project: "upload-123" });
+  render(<SetupActionWizard deviceId="dev1" action={importAction} onClose={() => {}} />);
+  const start = screen.getByRole("button", { name: "Start" });
+  expect(start).toBeDisabled();
+  const file = new File(["<rooms/>"], "rooms.xml", { type: "text/xml" });
+  await userEvent.upload(screen.getByTestId("file-param-project"), file);
+  expect(start).toBeEnabled();
+  await userEvent.click(start);
+  await waitFor(() => expect(invokeDeviceAction).toHaveBeenCalledWith(
+    "dev1", "import", { label: "Rooms" }, { project: "upload-123" },
+  ));
+  expect(uploadCommandFiles.mock.calls[0][1]).toEqual({ project: file });
+});
+
+it("discards uploaded files if starting the setup action is refused", async () => {
+  uploadCommandFiles.mockResolvedValue({ project: "upload-123" });
+  invokeDeviceAction.mockRejectedValue(new Error("Another setup is running"));
+  await runWizard();
+  await waitFor(() => expect(discardUpload).toHaveBeenCalledWith("upload-123"));
+  expect(screen.getByText("Another setup is running")).toBeInTheDocument();
 });
 
 describe("a tab that ran a setup wizard", () => {

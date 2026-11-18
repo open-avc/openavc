@@ -13,6 +13,8 @@ import {
 import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { parseApiError } from "../../api/errors";
 import { syncAfterSetupAction } from "../../store/projectStore";
+import { fileParamsBlocked } from "../../components/shared/commandFiles";
+import { discardUpload, setupUploadOpener, uploadCommandFiles } from "../../api/commandFileClient";
 
 type Phase = "input" | "running" | "done" | "error";
 
@@ -34,6 +36,40 @@ function resultMessage(result: unknown): string {
   const message = (result as Record<string, unknown>).message;
   return typeof message === "string" ? message.trim() : "";
 }
+
+async function invokeWithFiles(run: {
+  deviceId: string;
+  action: DeviceAction;
+  values: Record<string, string>;
+  files: Record<string, File | null>;
+  signal: AbortSignal;
+  onProgress: (steps: Step[]) => void;
+}): Promise<void> {
+  const chosen = Object.fromEntries(
+    Object.entries(run.files).filter((entry): entry is [string, File] => entry[1] !== null),
+  );
+  const uploads = await uploadCommandFiles(
+    setupUploadOpener(run.deviceId, run.action.id), chosen,
+    (sent, total, file) => run.onProgress([{
+      step: `Uploading ${file.name}`, pct: Math.round(sent * 100 / total), status: "running",
+    }]), run.signal,
+  );
+  try {
+    if (run.signal.aborted) throw new Error("The upload was stopped.");
+    await api.invokeDeviceAction(run.deviceId, run.action.id, buildParams(run.action.params, run.values), uploads);
+  } catch (error) {
+    await Promise.all(Object.values(uploads).map((id) => discardUpload(id)));
+    throw error;
+  }
+}
+
+const btnStyle = (variant: "primary" | "muted"): React.CSSProperties => ({
+  padding: "var(--space-sm) var(--space-lg)",
+  borderRadius: "var(--border-radius)",
+  background: variant === "primary" ? "var(--accent-bg)" : "var(--bg-hover)",
+  color: variant === "primary" ? "var(--text-on-accent)" : "var(--text-primary)",
+  display: "flex", alignItems: "center", gap: "var(--space-xs)",
+});
 
 /**
  * Setup-action wizard — runs a driver-declared provisioning action (kind:"setup")
@@ -63,17 +99,22 @@ export function SetupActionWizard({
     seedParamValues(action.params),
   );
   const [steps, setSteps] = useState<Step[]>([]);
+  const [files, setFiles] = useState<Record<string, File | null>>({});
   const [summary, setSummary] = useState<string>("");
   const [error, setError] = useState<string>("");
   const unsubRef = useRef<null | (() => void)>(null);
+  const uploadAbort = useRef<AbortController | null>(null);
 
   // Stop listening if the wizard unmounts mid-run.
-  useEffect(() => () => unsubRef.current?.(), []);
+  useEffect(() => () => {
+    unsubRef.current?.();
+    uploadAbort.current?.abort();
+  }, []);
 
   const hasParams = Object.keys(action.params).length > 0;
   const blocked =
     hasMissingRequired(action.params, values) ||
-    hasInvalidParams(action.params, values);
+    hasInvalidParams(action.params, values) || fileParamsBlocked(action.params, files);
   const confirmNote = typeof action.confirm === "string" ? action.confirm : null;
 
   const startRun = useCallback(async () => {
@@ -107,33 +148,23 @@ export function SetupActionWizard({
       }
     });
     try {
-      await api.invokeDeviceAction(
-        deviceId,
-        action.id,
-        buildParams(action.params, values),
-      );
+      uploadAbort.current = new AbortController();
+      await invokeWithFiles({ deviceId, action, values, files,
+        signal: uploadAbort.current.signal, onProgress: setSteps });
     } catch (e) {
       unsubRef.current?.();
       setError(parseApiError(e));
       setPhase("error");
+    } finally {
+      uploadAbort.current = null;
     }
-  }, [deviceId, action, values]);
+  }, [deviceId, action, values, files]);
 
   const close = useCallback(() => {
     unsubRef.current?.();
     onComplete?.();
     onClose();
   }, [onClose, onComplete]);
-
-  const btnStyle = (variant: "primary" | "muted"): React.CSSProperties => ({
-    padding: "var(--space-sm) var(--space-lg)",
-    borderRadius: "var(--border-radius)",
-    background: variant === "primary" ? "var(--accent-bg)" : "var(--bg-hover)",
-    color: variant === "primary" ? "var(--text-on-accent)" : "var(--text-primary)",
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--space-xs)",
-  });
 
   return (
     <Dialog
@@ -159,6 +190,8 @@ export function SetupActionWizard({
                 values={values}
                 onChange={(name, val) => setValues((v) => ({ ...v, [name]: val }))}
                 deviceId={deviceId}
+                files={files}
+                onFileChange={(name, file) => setFiles((current) => ({ ...current, [name]: file }))}
               />
             </div>
           )}

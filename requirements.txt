@@ -23,6 +23,9 @@ truststore==0.10.5           # MIT - pure Python; OS certificate store for inter
 # MQTT client (for MQTT transport — pub/sub devices, BMS/IoT bridges)
 gmqtt==0.7.0                 # MIT - pure Python, asyncio-native
 bacpypes3==0.1.0             # MIT - BACnet/IP; no optional extras
+xknx==4.1.1                  # MIT - KNXnet/IP and KNX Secure
+pyzipper==0.4.0              # MIT/PSF - password-protected project imports
+pycryptodomex==3.24.2         # BSD-2/Public Domain - AES ZIP support
 
 # Scheduling
 croniter==6.2.2              # MIT

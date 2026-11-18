@@ -47,6 +47,7 @@ export function buildParams(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [name, def] of Object.entries(params)) {
+    if (def.type === "file") continue;
     const raw = values[name] ?? "";
     if (raw === "" && !def.required) continue;
     out[name] = coerceParam(raw, def.type);
@@ -60,7 +61,7 @@ export function hasMissingRequired(
   values: Record<string, string>,
 ): boolean {
   return Object.keys(params).some(
-    (k) => params[k].required && (values[k] ?? "").trim() === "",
+    (k) => params[k].type !== "file" && params[k].required && (values[k] ?? "").trim() === "",
   );
 }
 
@@ -71,12 +72,16 @@ export function ActionParamFields({
   values,
   onChange,
   deviceId,
+  files = {},
+  onFileChange,
 }: {
   params: Record<string, ActionParam>;
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
   /** Enables child_id dropdowns for action params that reference a child type. */
   deviceId?: string;
+  files?: Record<string, File | null>;
+  onFileChange?: (name: string, file: File | null) => void;
 }) {
   return (
     <>
@@ -98,6 +103,7 @@ export function ActionParamFields({
               {def.required && <span style={{ color: "var(--color-error)" }}> *</span>}
             </label>
             <ParamInput
+              name={name}
               def={def as Partial<DriverParamDef>}
               value={current}
               onChange={(val) => onChange(name, val)}
@@ -106,6 +112,8 @@ export function ActionParamFields({
               params={params as Record<string, Partial<DriverParamDef>>}
               placeholder={label}
               style={{ width: "100%" }}
+              file={files[name] ?? null}
+              onFile={onFileChange ? (file) => onFileChange(name, file) : undefined}
             />
             {def.help && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>

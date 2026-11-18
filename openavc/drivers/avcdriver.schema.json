@@ -1746,9 +1746,9 @@
         },
         "params": {
           "type": "object",
-          "description": "Input dialog fields. For kind:\"command\", defaults to the promoted command's params.",
+          "description": "Input dialog fields. For kind:\"command\", defaults to the promoted command's params. Setup actions may receive a CommandFile from a file picker from platform 0.40.1.",
           "additionalProperties": {
-            "$ref": "#/$defs/paramEntry"
+            "$ref": "#/$defs/actionParamEntry"
           }
         },
         "visible_when": {
@@ -3730,6 +3730,186 @@
           "additionalProperties": false
         }
       ]
+    },
+    "actionParamEntry": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "enum",
+            "child_id"
+          ],
+          "description": "The kind of value the parameter takes. Python drivers may also declare \"file\": a file the person picks on the device page, which the driver receives as a CommandFile. A command with a file parameter runs only from Send Command on the device page and from a Device Audit."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "The command cannot run without this parameter. Enforced by the runtime at command time for every caller and both driver formats: omitting it (or passing null) is refused before the command reaches the driver, in the names the Programmer shows: \"Set Level: Level Value is required.\" A blank string still counts as supplied. Leave it off for a parameter the driver can do without; a value the driver should assume when the user gives none is a default, not a requirement. Enforced from platform 0.24.0. Before that it only drew the asterisk beside the input, and omitting one surfaced as a generic \"Failed to send command\"."
+        },
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value.",
+          "items": {
+            "$ref": "#/$defs/enumValue"
+          }
+        },
+        "child_type": {
+          "type": "string",
+          "description": "For child_id type: the child_entity_types name this parameter targets."
+        },
+        "options_state": {
+          "type": "string",
+          "description": "Make this param a picker sourced from a device-relative state key. The IDE reads device.<id>.<options_state> (a JSON-encoded list of strings or {value,label} objects) and offers it as a dropdown. The driver publishes the enumerable set as a state variable."
+        },
+        "options_from": {
+          "type": "object",
+          "description": "Cascade: source this param's options from a sibling param's chosen value.",
+          "required": [
+            "param",
+            "source"
+          ],
+          "properties": {
+            "param": {
+              "type": "string",
+              "description": "The sibling param whose value selects the option set."
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "child_schema"
+              ],
+              "description": "child_schema: offer the controls of the child picked in the sibling child_id param."
+            },
+            "types": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Offer only the controls of these types, e.g. [boolean] for a toggle. Omit to offer every control.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "enum",
+                  "float"
+                ]
+              }
+            },
+            "units": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Offer only the controls with one of these units (case ignored), e.g. [dB] for a level step. Omit to offer every control.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "type_from": {
+          "type": "object",
+          "description": "Make this param's input type follow the control chosen in a sibling cascade. The named param is itself an options_from child_schema cascade; this param then renders as that control's type (number+range, Yes/No, etc.).",
+          "required": [
+            "param"
+          ],
+          "properties": {
+            "param": {
+              "type": "string",
+              "description": "The sibling options_from(child_schema) param whose chosen control supplies this param's type/min/max."
+            }
+          },
+          "additionalProperties": false
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum for an integer/number param. Enforced by the runtime at command time; the IDE also flags violations while authoring."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum for an integer/number param. Enforced by the runtime at command time; the IDE also flags violations while authoring."
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For a number param: round the value to this many decimal places on the wire (0 = whole number). An integer param always coerces to a whole number, so decimals is not needed there. For fixed-width or hex output, use a format spec on the placeholder instead (e.g. {level:03d}, {addr:02X})."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit shown beside the input when the command is run (e.g. %, ms, dB). Display only: it is never sent on the wire, so the value the device receives is unchanged. Use it where the number alone is ambiguous; the same key on a state variable or device setting means the same thing."
+        },
+        "pattern": {
+          "type": "string",
+          "format": "regex",
+          "description": "Regex a free-text value must fully match: a shape check for values that can't be enumerated (IP, hostname, fixed-length ID). The runtime validates it at command time; the IDE shows an inline error while authoring. Must compile and avoid catastrophic backtracking."
+        },
+        "trim": {
+          "type": "boolean",
+          "description": "For string params. Default true: leading/trailing whitespace is trimmed before the value goes on the wire. Set false to pass the value through verbatim, for raw payloads where edge whitespace is meaningful (typed text, verbatim titles, relay bodies whose trailing terminator is part of the protocol). Requires platform 0.22.0."
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing. Set it wherever a credential would otherwise sit on screen in plain text."
+        },
+        "default": true,
+        "scale": {
+          "type": "number",
+          "description": "YAML drivers, numeric types only. What one step of the device's own number is worth in real units: the real value is raw × scale + offset (e.g. 0.01 for a fader the device reports in hundredths of a dB). Default 1. On a command parameter it converts the other way before sending: raw = (value - offset) / scale, rounded to a whole number. Requires platform 0.37.0."
+        },
+        "offset": {
+          "type": "number",
+          "description": "YAML drivers, numeric types only. Added after scale: the real value is raw × scale + offset (e.g. -18 for gain the device sends as 000-060 meaning -18 to +42 dB). Default 0. Declare the same scale and offset on the state variable that holds the value and on the command parameter that sets it; a device setting converts through its state variable. Requires platform 0.37.0."
+        },
+        "map": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Wire-value translation applied after validation, before substitution: the validated value (string-keyed) is replaced by the mapped wire value. Values not in the map pass through unchanged. A boolean param matches the keys \"true\" and \"false\" in any case. Most useful on child_id params whose local ids differ from the protocol's channel numbers, and on a boolean the device spells as a word (ON / OFF) or a digit.",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Accepted alias for help. Read either, write help."
+        },
+        "accept": {
+          "type": "array",
+          "minItems": 1,
+          "description": "For a file param: the file-name endings it takes, e.g. [\".bin\"] or [\".pem\", \".crt\"]. Case is ignored. The file picker offers only these, and a file with any other ending is refused before it is uploaded. Omit to take any file. Requires platform 0.37.2.",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824,
+          "description": "For a file param: the largest file it takes, in bytes. A larger one is refused before it is uploaded. Omit for the platform limit (1 GiB). Requires platform 0.37.2."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

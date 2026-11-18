@@ -2097,9 +2097,9 @@ DEFS = {
             },
             'params': {
                 'type': 'object',
-                'doc': 'Input dialog fields. For kind:"command", defaults to the promoted command\'s params.',
+                'doc': 'Input dialog fields. For kind:"command", defaults to the promoted command\'s params. Setup actions may receive a CommandFile from a file picker from platform 0.40.1.',
                 'extra': {
-                    'ref': 'paramEntry',
+                    'ref': 'actionParamEntry',
                 },
             },
             'visible_when': {
@@ -3494,6 +3494,20 @@ DEFS = {
                 'extra': False,
             },
         ),
+    },
+}
+
+
+# Action dialogs gained file upload after Send Command. Share every other
+# parameter rule while recording the actual floor of this particular door.
+DEFS['actionParamEntry'] = {
+    **DEFS['paramEntry'],
+    'fields': {
+        **DEFS['paramEntry']['fields'],
+        'type': {
+            **DEFS['paramEntry']['fields']['type'],
+            'since_values': {'file': '0.40.1'},
+        },
     },
 }
 

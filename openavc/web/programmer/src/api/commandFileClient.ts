@@ -75,6 +75,14 @@ export function auditUploadOpener(sessionId: string, command: string): UploadOpe
     });
 }
 
+export function setupUploadOpener(deviceId: string, actionId: string): UploadOpener {
+  return (param, file) =>
+    request<UploadOpened>(`/devices/${enc(deviceId)}/actions/${enc(actionId)}/files`, {
+      method: "POST",
+      body: JSON.stringify({ param, name: file.name, size: file.size }),
+    });
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Send one opened upload's bytes; resolves with the upload's id. */

@@ -159,6 +159,7 @@ class SetupActionRunner:
 
     async def start(
         self, device_id: str, action: dict[str, Any], params: dict[str, Any],
+        files: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Kick off a setup action as a background task. Returns immediately with
         a ``run_id``; progress streams over the ``action.progress`` WS channel.
@@ -174,6 +175,11 @@ class SetupActionRunner:
         if device_id in self._active:
             raise SetupActionInProgress(device_id, self._active[device_id])
 
+        from openavc.core.setup_files import take_setup_files
+
+        params, uploads = take_setup_files(
+            getattr(self._engine, "file_staging", None), device_id, action, params or {}, files or {},
+        )
         run_id = uuid4().hex
         self._active[device_id] = run_id
         # The run is the asking tab's own and outlives its request: the config
@@ -183,8 +189,16 @@ class SetupActionRunner:
             self._run_for(request_client_id(), device_id, action, params or {}, run_id)
         )
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(partial(self._completed, device_id, run_id, uploads))
         return {"run_id": run_id, "status": "started", "action_id": action["id"]}
+
+    def _completed(self, device_id, run_id, uploads, task):
+        """Also release files if cancelled before the coroutine starts."""
+        self._tasks.discard(task)
+        if self._active.get(device_id) == run_id:
+            self._active.pop(device_id)
+        if uploads:
+            self._engine.file_staging.discard_all(uploads)
 
     async def _run_for(
         self,

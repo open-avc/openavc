@@ -112,11 +112,12 @@ export async function irDbFunctions(
 export async function invokeDeviceAction(
   deviceId: string,
   actionId: string,
-  params: Record<string, unknown> = {}
+  params: Record<string, unknown> = {},
+  files: Record<string, string> = {},
 ): Promise<{ success: boolean; result: unknown; action_id: string }> {
   return request(`/devices/${deviceId}/actions/${actionId}`, {
     method: "POST",
-    body: JSON.stringify({ params }),
+    body: JSON.stringify({ params, files }),
   });
 }
 

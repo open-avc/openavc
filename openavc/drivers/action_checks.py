@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any
 
 from openavc.drivers.condition_checks import condition_block_errors
+from openavc.drivers.command_checks import file_command_errors
 from openavc.drivers.declared_names import UNEVALUATED_KEY
 from openavc.drivers.param_aid_checks import param_aid_errors
 from openavc.drivers.spec import (
@@ -151,8 +152,10 @@ def _confirm_errors(where: str, entry: dict[str, Any]) -> list[str]:
 
 def _params_errors(where: str, entry: dict[str, Any]) -> list[str]:
     params = entry.get("params")
-    if params is None or isinstance(params, dict):
+    if params is None:
         return []
+    if isinstance(params, dict):
+        return file_command_errors(where, {"params": params}, python=_kind(entry) == "setup")
     return [f"{where}: 'params' must be a mapping"]
 
 

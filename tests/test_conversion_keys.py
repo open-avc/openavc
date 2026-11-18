@@ -17,6 +17,7 @@ _DECLARED_ON = {
     "stateVariableEntry": ("scale", "offset", "unknown"),
     "childStateVariableEntry": ("scale", "offset", "unknown"),
     "paramEntry": ("scale", "offset"),
+    "actionParamEntry": ("scale", "offset"),
 }
 _CONVERSION_FIELDS = (spec.VALUE_SCALE, spec.VALUE_OFFSET, spec.VALUE_UNKNOWN)
 

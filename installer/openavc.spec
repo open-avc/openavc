@@ -12,6 +12,7 @@ Output: dist/openavc/
 import os
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -55,6 +56,9 @@ datas = [(src, dst) for src, dst in datas if os.path.exists(src)]
 
 # Hidden imports that PyInstaller can't detect (dynamic imports in FastAPI, uvicorn, etc.)
 hiddenimports = [
+    # Driver-owned protocol and project-import libraries are loaded at runtime.
+    'xknx',
+    'pyzipper',
     # Community BACnet/IP drivers and simulators import this stack at runtime.
     'bacpypes3.app',
     'bacpypes3.ipv4.bvll',
@@ -324,6 +328,9 @@ excludes = [
     'test',
     'distutils',
     'setuptools',
+    # Runtime CFFI uses prebuilt libraries through dlopen. Its optional C
+    # compiler support would import setuptools' distutils, excluded above.
+    'cffi._shimmed_dist_utils',
     'pip',
     'numpy',
     'scipy',
@@ -331,6 +338,9 @@ excludes = [
     'pandas',
     'PIL',  # Pillow not needed at runtime
 ]
+
+# XKNX's data-type registry imports its implementations dynamically.
+hiddenimports += collect_submodules('xknx')
 
 a = Analysis(
     [str(PROJECT_ROOT / 'openavc' / 'main.py')],

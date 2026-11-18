@@ -67,11 +67,12 @@ def test_python_variant_differs_only_in_the_python_tier() -> None:
     t["description"] = spec.node_doc(spec.FIELDS["transport"], t["enum"])
     kind = yaml_schema["$defs"]["actionEntry"]["properties"]["kind"]
     kind["enum"] = list(spec.ACTION_KINDS)
-    ptype = yaml_schema["$defs"]["paramEntry"]["properties"]["type"]
-    ptype["enum"] = ptype["enum"] + list(spec.PYTHON_ONLY_PARAM_TYPES)
-    ptype["description"] = spec.node_doc(
-        spec.DEFS["paramEntry"]["fields"]["type"], ptype["enum"],
-    )
+    for entry in ("paramEntry", "actionParamEntry"):
+        ptype = yaml_schema["$defs"][entry]["properties"]["type"]
+        ptype["enum"] = ptype["enum"] + list(spec.PYTHON_ONLY_PARAM_TYPES)
+        ptype["description"] = spec.node_doc(
+            spec.DEFS[entry]["fields"]["type"], ptype["enum"],
+        )
     push_type = yaml_schema["$defs"]["pushBlock"]["properties"]["type"]
     push_type["description"] = spec.node_doc(
         spec.DEFS["pushBlock"]["fields"]["type"], push_type["enum"], "python",

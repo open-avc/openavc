@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from openavc.api._engine import _get_engine
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import ProgrammerRoute
-from openavc.api.models import CommandFileBeginRequest, CommandRunRequest
+from openavc.api.models import CommandFileBeginRequest, CommandRunRequest, SetupFileBeginRequest
 from openavc.api.routes.devices import command_failure
 from openavc.core.command_runs import CommandRunInProgress, RunFailure, device_owner
 from openavc.core.device_manager import DeviceNotFoundError
@@ -30,6 +30,8 @@ from openavc.core.file_staging import (
     chunk_size_for,
 )
 from openavc.utils.request_origin import is_tunneled_request
+from openavc.core.setup_files import setup_owner
+from openavc.drivers.actions import resolve_device_actions
 
 router = APIRouter(route_class=ProgrammerRoute)
 
@@ -100,17 +102,40 @@ async def begin_device_upload(
     device_id: str, body: CommandFileBeginRequest, request: Request,
 ) -> dict[str, Any]:
     """Open an upload for one file param of one of this device's commands."""
-    engine = _get_engine()
-    driver = engine.devices.get_driver(device_id)
+    commands = device_driver_info(device_id).get("commands")
+    pdef = file_param_def(commands, body.command, body.param)
+    return begin_upload(request, dict(
+        owner=device_owner(device_id), command=body.command, param=body.param,
+        pdef=pdef, name=body.name, size=body.size,
+    ))
+
+
+@router.post("/devices/{device_id}/actions/{action_id}/files")
+async def begin_setup_upload(
+    device_id: str, action_id: str, body: SetupFileBeginRequest, request: Request,
+) -> dict[str, Any]:
+    """Open a file for this setup action; ordinary chunk upload follows."""
+    actions = {
+        action["id"]: action for action in resolve_device_actions(device_driver_info(device_id))
+        if action["kind"] == "setup"
+    }
+    pdef = file_param_def(actions, action_id, body.param)
+    return begin_upload(request, dict(
+        owner=setup_owner(device_id), command=action_id, param=body.param,
+        pdef=pdef, name=body.name, size=body.size,
+    ))
+
+
+def device_driver_info(device_id: str) -> dict[str, Any]:
+    driver = _get_engine().devices.get_driver(device_id)
     if driver is None:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
-    commands = (getattr(driver, "DRIVER_INFO", {}) or {}).get("commands")
-    pdef = file_param_def(commands, body.command, body.param)
+    return getattr(driver, "DRIVER_INFO", {}) or {}
+
+
+def begin_upload(request: Request, selection: dict[str, Any]) -> dict[str, Any]:
     try:
-        upload = engine.file_staging.begin(
-            owner=device_owner(device_id), command=body.command, param=body.param,
-            pdef=pdef, name=body.name, size=body.size,
-        )
+        upload = _get_engine().file_staging.begin(**selection)
     except StagingError as exc:
         raise staging_refusal(exc) from None
     return upload_answer(upload, request)

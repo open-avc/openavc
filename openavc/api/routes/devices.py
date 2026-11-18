@@ -849,18 +849,19 @@ async def invoke_device_action(
     # background run and returns a run_id; progress streams over the WS
     # `action.progress` channel until status "done" or "error".
     from openavc.core.setup_actions import SetupActionInProgress
+    from openavc.core.file_staging import StagingError
 
     try:
-        return await engine.setup_actions.start(device_id, action, body.params)
+        return await engine.setup_actions.start(device_id, action, body.params, body.files)
     except SetupActionInProgress as e:
         raise HTTPException(
             status_code=409,
             detail=f"A setup action is already running on device '{device_id}'",
         ) from e
-    except DeviceNotFoundError as e:
+    except (DeviceNotFoundError, StagingError) as e:
         # The pre-check above already answered the ordinary case; this is the
         # device going away between the two, so it says what the runner found.
-        raise _api_error(404, str(e), e)
+        raise _api_error(getattr(e, "status", 404), str(e), e)
 
 
 # --- Device Settings ---

@@ -47,6 +47,16 @@ class CommandRunRequest(BaseModel):
     files: dict[str, str] = Field(default_factory=dict, max_length=16)
 
 
+class SetupFileBeginRequest(BaseModel):
+    """Open an upload for a setup action's file parameter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    param: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=1024)
+    size: int = Field(ge=0)
+
+
 class RawSendRequest(BaseModel):
     """Body for ``POST /api/devices/{id}/send-raw`` — the device-page
     "Send raw" box. ``data`` is the literal command string; the driver encodes
@@ -82,6 +92,7 @@ class ActionInvokeRequest(BaseModel):
     """
 
     params: dict[str, Any] = {}
+    files: dict[str, str] = Field(default_factory=dict, max_length=16)
 
 
 class StateSetRequest(BaseModel):

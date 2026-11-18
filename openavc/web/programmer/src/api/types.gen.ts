@@ -155,6 +155,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   routingPlane: new Set(["command", "destination_child_type", "destination_param", "label", "params", "route_property", "source_child_type", "source_param"]),
   discoveryBlock: new Set(["amx_ddp", "hostname", "manufacturer_alias", "mdns", "oui", "port_open", "python", "requires", "snmp_pen", "ssdp", "tcp_probe", "udp_probe"]),
   amxDdpItem: new Set(["cross_vendor", "make", "model_pattern"]),
+  actionParamEntry: new Set(["accept", "child_type", "decimals", "default", "description", "help", "label", "map", "max", "max_bytes", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
 };
 
 /**
@@ -974,7 +975,8 @@ export interface DriverActionDef {
   url?: string;
   /**
    * Input dialog fields. For kind:"command", defaults to the promoted
-   * command's params.
+   * command's params. Setup actions may receive a CommandFile from a file
+   * picker from platform 0.40.1.
    */
   params?: Record<string, DriverParamDef>;
   /** Show the action only while this condition holds. */

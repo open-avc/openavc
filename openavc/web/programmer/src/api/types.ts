@@ -646,7 +646,9 @@ export type ActionVisibleWhen =
 /** A param field for an action's input dialog (subset of the command/config
  *  schema field shape the Send Command form already renders). */
 export interface ActionParam {
-  type?: string; // string, integer, number, boolean, enum, password, child_id
+  type?: string; // string, integer, number, boolean, enum, password, child_id, file
+  accept?: string[];
+  max_bytes?: number;
   label?: string;
   help?: string;
   required?: boolean;

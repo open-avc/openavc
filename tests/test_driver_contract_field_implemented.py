@@ -407,7 +407,10 @@ def _anchors_by_block() -> dict[str | None, frozenset[str]]:
     blocks_by_name: dict[str, set[str | None]] = {}
     for block, name in _contract_fields():
         per_block.setdefault(block, set()).add(name)
-        blocks_by_name.setdefault(name, set()).add(block)
+        # Actions use the same parameter readers/editors, with a later file
+        # version floor. Preserve their shared anchors without collapsing paths.
+        family = "paramEntry" if block == "actionParamEntry" else block
+        blocks_by_name.setdefault(name, set()).add(family)
     return {
         block: frozenset(n for n in names if len(blocks_by_name[n]) == 1)
         for block, names in per_block.items()
@@ -703,15 +706,16 @@ def test_the_walk_separates_a_name_declared_in_more_than_one_block() -> None:
     """
     fields = _contract_fields()
     blocks = sorted(b for b, n in fields if n == "secret" and b)
-    assert blocks == ["configSchemaEntry", "paramEntry"], blocks
+    assert blocks == ["actionParamEntry", "configSchemaEntry", "paramEntry"], blocks
 
     param_paths = fields[("paramEntry", "secret")]
     assert param_paths == frozenset({
-        "actions[].params.*.secret",
         "commands.*.params.*.secret",
     }), param_paths
-    # ...and one obligation, not two: both paths $ref the same block, so one
-    # editor covers them.
+    assert fields[("actionParamEntry", "secret")] == frozenset({
+        "actions[].params.*.secret",
+    })
+    # The parameter shapes share readers, while their version floors differ.
     assert ("paramEntry", "secret") in fields
 
 

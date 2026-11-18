@@ -129,6 +129,7 @@ EXPECTED_CONTROL = {
     ("POST", "/api/devices/{bridge_id}/ir-emit"),
     ("POST", "/api/devices/{bridge_id}/ir-import"),
     ("POST", "/api/devices/{device_id}/actions/{action_id}"),
+    ("POST", "/api/devices/{device_id}/actions/{action_id}/files"),
     ("POST", "/api/devices/{device_id}/children/refresh"),
     ("POST", "/api/devices/{device_id}/command"),
     ("POST", "/api/devices/{device_id}/pause"),

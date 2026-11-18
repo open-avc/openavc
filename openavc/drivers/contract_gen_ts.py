@@ -43,6 +43,7 @@ DEF_TS_NAMES: dict[str, str] = {
     "commandEntry": "DriverCommandDef",
     "udpSendEntry": "DriverUdpSend",
     "paramEntry": "DriverParamDef",
+    "actionParamEntry": "DriverParamDef",  # Same editor shape; setup files have a later version floor.
     "oscArg": "DriverOscArg",
     "mappingEntry": "DriverResponseMapping",
     "responseEntry": "DriverResponseDef",
