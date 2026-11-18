@@ -135,7 +135,8 @@ def cat(tmp_path, monkeypatch):
         driver_change, "register_driver", lambda cls: events.append(("register", cls.DRIVER_INFO.get("id")))
     )
     monkeypatch.setattr(
-        routes, "unregister_driver", lambda driver_id: events.append(("unregister", driver_id))
+        routes, "restore_driver_registration",
+        lambda driver_id, dirs: events.append(("unregister", driver_id)) or False,
     )
 
     async def _refresh():

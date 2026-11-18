@@ -21,6 +21,7 @@ the driver not installed asks.
 from __future__ import annotations
 
 import ast
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,9 +46,7 @@ from openavc.drivers.python_modules import (
     read_python_driver_file as read_python_driver_file,
     reload_python_driver as reload_python_driver,
 )
-from openavc.drivers.python_source import python_source
 from openavc.drivers.registry import (
-    is_driver_registered,
     register_driver,
     unregister_driver,
 )
@@ -402,61 +401,48 @@ def missing_companion(driver_def: dict[str, Any], folder: Path) -> str | None:
     )
 
 
-def _python_driver_id(filepath: Path) -> str | None:
-    """Extract ``DRIVER_INFO['id']`` from a .py driver via AST (no import)."""
-    tree = ast.parse(python_source(filepath))
-    # DRIVER_INFO may be a module-level assignment or a class attribute;
-    # ast.walk covers both. The first dict that names an id decides: an empty
-    # one reads as no id.
-    for node in ast.walk(tree):
-        if _assigns_driver_info_dict(node):
-            declared = _literal_id(node.value)
-            if declared is not None:
-                return declared or None
-    return None
+def python_driver_info(filepath: Path) -> dict[str, str | int | float | bool]:
+    """The values written out in a ``.py`` driver's ``DRIVER_INFO``, read
+    without running it from the class the runtime registers
+    (``python_info.driver_info_ast``); empty when no class has a table, or the
+    source cannot be read or parsed. A value built in code is left out."""
+    from openavc.drivers.python_info import ExtractError, driver_info_ast
 
-
-def _assigns_driver_info_dict(node: ast.AST) -> bool:
-    """``DRIVER_INFO = {...}``, alone or among several names (not annotated)."""
-    if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
-        return False
-    return any(isinstance(t, ast.Name) and t.id == "DRIVER_INFO" for t in node.targets)
-
-
-def _literal_id(node: ast.Dict) -> str | None:
-    """The first ``"id"`` key's text value, or None if no key gives one."""
-    for key, value in zip(node.keys, node.values):
-        if not (isinstance(key, ast.Constant) and key.value == "id"):
-            continue
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            return value.value
-    return None
+    try:
+        return _ast_dict_to_simple(driver_info_ast(filepath))
+    except ExtractError:  # no class with a table, or source that does not parse
+        return {}
+    except OSError as e:
+        log.debug(f"Could not read DRIVER_INFO from {filepath}: {e}")
+        return {}
 
 
 def driver_id_from_file(filepath: Path) -> str | None:
-    """Return the driver id a file *declares*, without importing it.
+    """THE id a driver file declares, read without importing it.
 
-    Drivers are registered under their declared id, which may differ from the
-    filename stem (uploads keep their original filename — routes/drivers.py
-    does not rename). Resolving a repo file by stem alone therefore misses
-    such drivers; callers that map an id back to its file (export bundling,
-    builtin/community source classification) use this instead.
+    A driver is registered under the id it declares, which may differ from
+    its file name (a file placed by hand, or imported before imports were
+    named for their id), so a reader that maps an id back to its file asks
+    here rather than going by the name.
 
-    - ``.py``: the ``id`` key of the module/class ``DRIVER_INFO`` dict, read
-      via ``ast`` so the module is never executed.
+    - ``.py``: the ``id`` the class the runtime registers declares
+      (``python_driver_info``, which agrees with ``driver_class_in``), when
+      it is written out as text.
     - everything else (``.avcdriver`` YAML): the top-level ``id`` field.
 
     Returns the declared id, or None if it can't be determined.
     """
+    if filepath.suffix == ".py":
+        declared = python_driver_info(filepath).get("id")
+        return declared if isinstance(declared, str) and declared else None
     try:
-        if filepath.suffix == ".py":
-            return _python_driver_id(filepath)
         data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            did = data.get("id")
-            return did if isinstance(did, str) and did else None
-    except (OSError, yaml.YAMLError, SyntaxError, ValueError) as e:
+    except (OSError, yaml.YAMLError, ValueError) as e:
         log.debug(f"Could not read driver id from {filepath}: {e}")
+        return None
+    if isinstance(data, dict):
+        did = data.get("id")
+        return did if isinstance(did, str) and did else None
     return None
 
 
@@ -533,45 +519,6 @@ def python_driver_file(directory: Path | str, driver_id: str) -> Path:
     raise AmbiguousDriverFile(driver_id, files)
 
 
-def find_driver_file_by_id(
-    directories: Sequence[Path | str], driver_id: str
-) -> Path | None:
-    """Find the ``.avcdriver`` file on disk that declares ``driver_id``.
-
-    Scans the given directories for a YAML driver whose declared id matches.
-    When more than one directory declares the id, the match from the LAST
-    directory wins — mirroring load precedence, where a user copy in
-    ``driver_repo`` overrides a same-id built-in — so callers always get the
-    file that actually serves the driver. Matches on the declared id, not
-    the filename stem, since uploads keep their original name (see
-    ``driver_id_from_file``). Returns the path, or None if no
-    ``.avcdriver`` declares that id. (Python ``.py`` drivers are out of
-    scope — they have their own reload path keyed by filename.)
-    """
-    found: Path | None = None
-    for directory in directories:
-        match = _definition_in(Path(directory), driver_id)
-        if match is not None:
-            found = match  # a later directory overrides
-    return found
-
-
-def _definition_in(dir_path: Path, driver_id: str) -> Path | None:
-    """The ``.avcdriver`` in one directory that declares ``driver_id``: the
-    file named for the id first, as everywhere (``driver_files_for``), then
-    by name."""
-    if not dir_path.is_dir():
-        return None
-    candidates = sorted(
-        dir_path.glob(f"*{DRIVER_EXTENSION}"),
-        key=lambda path: (path.stem != driver_id, path.name),
-    )
-    return next(
-        (filepath for filepath in candidates if driver_id_from_file(filepath) == driver_id),
-        None,
-    )
-
-
 def _library_files(
     directories: Sequence[Path | str], pattern: str
 ) -> Iterator[tuple[int, Path]]:
@@ -599,33 +546,113 @@ def _python_driver_files(
             yield dir_index, filepath
 
 
+def _rank(dir_index: int, filepath: Path, driver_id: str) -> tuple[bool, int, bool]:
+    """THE order in which the copies of one driver id serve it, highest
+    first: a Python file over a definition (the loader registers every Python
+    file after every definition), a later directory over an earlier one, and
+    in one directory the file named for the id over a renamed copy. Copies
+    that rank the same: the first by name serves."""
+    return (filepath.suffix == ".py", dir_index, filepath.stem == driver_id)
+
+
 def _takes_the_id(
     loaded: tuple[int, Path] | None, dir_index: int, filepath: Path, driver_id: str
 ) -> bool:
     """Whether ``filepath`` should serve ``driver_id`` over the copy already
-    loaded (``(dir index, file)``, or None). A later directory wins; within
-    one, the file named for the id wins over a renamed copy, and otherwise
-    the first file stays."""
+    loaded (``(dir index, file)``, or None), by ``_rank``; logged."""
     if loaded is None:
         return True
     loaded_index, loaded_path = loaded
+    takes = _rank(dir_index, filepath, driver_id) > _rank(loaded_index, loaded_path, driver_id)
     if loaded_index != dir_index:
         log.info(
             f"Driver '{driver_id}' from {filepath.name} overrides the copy "
             f"loaded from an earlier directory"
         )
-        return True
-    if filepath.stem == driver_id and loaded_path.stem != driver_id:
-        log.warning(
-            f"Driver '{driver_id}' is in both {loaded_path.name} and "
-            f"{filepath.name}; {filepath.name} is used"
-        )
-        return True
+        return takes
+    used = filepath if takes else loaded_path
     log.warning(
         f"Driver '{driver_id}' is in both {loaded_path.name} and "
-        f"{filepath.name}; {loaded_path.name} is used"
+        f"{filepath.name}; {used.name} is used"
     )
-    return False
+    return takes
+
+
+def _chosen(
+    copies: Sequence[tuple[int, Path]], driver_id: str, loads: Callable[[Path], bool],
+    *, refused_too: bool,
+) -> Path | None:
+    """The copy (``(dir index, file)``, in library order) that serves
+    ``driver_id`` by ``_rank`` among those that load; when none does and
+    ``refused_too``, the one that would serve if they all did."""
+    pool = [copy for copy in copies if loads(copy[1])]
+    if not pool and refused_too:
+        pool = list(copies)
+    best: tuple[int, Path] | None = None
+    for copy in pool:
+        if best is None or _rank(*copy, driver_id) > _rank(*best, driver_id):
+            best = copy
+    return best[1] if best is not None else None
+
+
+def _loads(filepath: Path) -> bool:
+    """Whether the loader takes a library file: not refused at its last load
+    (``refused_files``) and, for a definition, one that reads and passes its
+    check now. A Python file is never imported only to answer this."""
+    if refused_files.refusal_of(filepath) is not None:
+        return False
+    if filepath.suffix == DRIVER_EXTENSION:
+        return read_driver_file(filepath).definition is not None
+    return True
+
+
+def _library_copies(directories: Sequence[Path | str]) -> dict[str, list[tuple[int, Path]]]:
+    """Every main driver file in the library by the driver it is (the id it
+    declares, else its file name), definitions then Python files, each in
+    library order."""
+    copies: dict[str, list[tuple[int, Path]]] = {}
+    files = [
+        *_library_files(directories, f"*{DRIVER_EXTENSION}"),
+        *_python_driver_files(directories),
+    ]
+    for dir_index, filepath in files:
+        driver_id = driver_id_from_file(filepath) or filepath.stem
+        copies.setdefault(driver_id, []).append((dir_index, filepath))
+    return copies
+
+
+def serving_file(
+    directories: Sequence[Path | str], driver_id: str, *, refused_too: bool = False
+) -> Path | None:
+    """THE file that serves ``driver_id`` from the library's directories, of
+    either kind: the copy the loader registers (``_rank`` among the files
+    that load), or None when no file is that driver or none loads.
+
+    ``refused_too``: when no copy loads, the one that would serve if it did,
+    which is the file a listing shows with its reasons, an update replaces
+    and a reload reads again.
+
+    Every reader that maps an id back to its file asks here (the listings,
+    the removers' restore, the update, the export, the audit and the
+    simulator), so none acts on a copy that does not run."""
+    return _chosen(
+        _library_copies(directories).get(driver_id, []), driver_id, _loads,
+        refused_too=refused_too,
+    )
+
+
+def serving_files(
+    directories: Sequence[Path | str], *, refused_too: bool = False
+) -> dict[str, Path]:
+    """``serving_file`` for every driver in the library: each id the files
+    declare, with the file that serves it (by first appearance in library
+    order). An id no file of which loads is left out, unless ``refused_too``."""
+    served: dict[str, Path] = {}
+    for driver_id, copies in _library_copies(directories).items():
+        chosen = _chosen(copies, driver_id, _loads, refused_too=refused_too)
+        if chosen is not None:
+            served[driver_id] = chosen
+    return served
 
 
 def load_driver_files(directories: Sequence[Path | str]) -> int:
@@ -885,26 +912,11 @@ def is_builtin_driver(
 def _definitions_declaring(
     directories: Sequence[Path | str], driver_id: str
 ) -> Iterator[Path]:
-    """Each ``.avcdriver`` file whose top-level ``id`` is ``driver_id``.
-
-    Directories in the order given, files in the order the file system lists
-    them (``delete_driver_definition`` removes the first it may). A file that
-    cannot be read, decoded or parsed is passed over.
-    ``find_driver_file_by_id`` reads ids by its own rule (``driver_id_from_file``).
-    """
-    for dir_path in directories:
-        dir_path = Path(dir_path)
-        if dir_path.exists():
-            yield from _declaring_in(dir_path, driver_id)
-
-
-def _declaring_in(dir_path: Path, driver_id: str) -> Iterator[Path]:
-    for filepath in dir_path.glob(f"*{DRIVER_EXTENSION}"):
-        try:
-            data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-        except (OSError, ValueError, yaml.YAMLError):  # ValueError: not UTF-8
-            continue
-        if isinstance(data, dict) and data.get("id") == driver_id:
+    """Each ``.avcdriver`` file that declares ``driver_id``
+    (``driver_id_from_file``), in library order: directories in the order
+    given, files by name. A file whose id cannot be read is passed over."""
+    for _dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
+        if driver_id_from_file(filepath) == driver_id:
             yield filepath
 
 
@@ -912,32 +924,49 @@ def restore_driver_registration(
     driver_id: str,
     directories: Sequence[Path | str],
 ) -> bool:
-    """Re-register ``driver_id`` from whatever ``.avcdriver`` file still serves it.
+    """Register ``driver_id`` again from whatever file serves it now
+    (``serving_file``), once a door has taken a copy away.
 
     After a user copy that overrode a built-in is deleted (or renamed away),
-    the registry still holds the removed copy's class. If any on-disk
-    definition still declares the id — normally the shipped built-in — load
-    and register it so the id keeps working with its original behavior;
-    otherwise drop the stale registration.
+    or a definition beside a Python driver of the same id is, the registry
+    may still hold the removed copy's class, or have dropped the id. When a
+    file still serves the id it is registered, so the id keeps working with
+    that file's behaviour; otherwise the stale registration is dropped.
 
-    Returns True if a definition was re-registered, False if the id is now
-    unregistered. (YAML definitions only; Python drivers have their own
-    filename-keyed reload path.)
+    Returns True if a file was registered, False if the id is now
+    unregistered.
     """
-    from openavc.drivers.configurable import create_configurable_driver_class
-
-    filepath = find_driver_file_by_id(directories, driver_id)
+    filepath = serving_file(directories, driver_id)
     if filepath is not None:
-        driver_def = load_driver_file(filepath)
-        if driver_def is not None:
-            try:
-                register_driver(create_configurable_driver_class(driver_def))
+        try:
+            driver_class = _class_from(filepath)
+            if driver_class is not None:
+                register_driver(driver_class)
                 log.info(f"Restored driver '{driver_id}' from {filepath}")
                 return True
-            except Exception:  # Catch-all: class creation can fail in many ways
-                log.exception(f"Failed to restore driver '{driver_id}' from {filepath}")
+        except Exception:  # Catch-all: class creation can fail in many ways
+            log.exception(f"Failed to restore driver '{driver_id}' from {filepath}")
     unregister_driver(driver_id)
     return False
+
+
+def _class_from(filepath: Path) -> type | None:
+    """The driver class a library file defines: a definition's built from it,
+    a Python file's from its module when it is imported, else imported now."""
+    if filepath.suffix == DRIVER_EXTENSION:
+        from openavc.drivers.configurable import create_configurable_driver_class
+
+        driver_def = read_library_definition(filepath).definition
+        return create_configurable_driver_class(driver_def) if driver_def is not None else None
+    from openavc.drivers.python_modules import driver_class_in, module_name
+
+    name = module_name(filepath)
+    module = sys.modules.get(name)
+    if module is not None:
+        driver_class = driver_class_in(module, name)
+        if driver_class is not None:
+            return driver_class
+    return read_library_python_driver(filepath).driver_class
 
 
 def delete_driver_definition(
@@ -947,7 +976,9 @@ def delete_driver_definition(
     keep: Path | str | None = None,
 ) -> bool:
     """
-    Delete a driver definition file by driver ID.
+    Delete every definition file of a driver ID: a renamed copy too, as the
+    uninstall and the Code view's delete take every file that is the driver,
+    so no copy left behind can serve the id at the next start.
 
     Searches all provided directories. Returns True if a file was deleted.
 
@@ -962,13 +993,13 @@ def delete_driver_definition(
     crash lost the driver.
     """
     kept = Path(keep).resolve() if keep is not None else None
-    for filepath in _definitions_declaring(directories, driver_id):
+    deleted = False
+    for filepath in list(_definitions_declaring(directories, driver_id)):
         try:
-            if _delete_definition_file(filepath, kept):
-                return True
+            deleted = _delete_definition_file(filepath, kept) or deleted
         except OSError:
             continue
-    return False
+    return deleted
 
 
 def replaced_definition(
@@ -1010,61 +1041,59 @@ def _delete_definition_file(filepath: Path, kept: Path | None) -> bool:
 
 def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str, Any]]:
     """
-    List all driver definitions from the given directories.
+    List the driver definitions that serve their ids in the given directories.
 
-    Duplicate ids resolve the same way loading does: a definition in a
-    later directory (the user's ``driver_repo``) replaces a same-id one
-    from an earlier directory (the built-ins), so the listing shows the
-    copy that actually serves the id at runtime. ``_source_file`` on each
-    entry points at the winning file.
+    One entry per id, the copy the loader registers (``serving_file``'s rule
+    among the definitions that load), in the order each id is first met:
+    a later directory's copy replaces an earlier one's in place, and in one
+    directory the file named for the id is listed over a renamed copy. An id
+    a Python file serves is not a definition's to list. ``_source_file`` on
+    each entry points at the listed file.
 
     Returns a list of driver definition dicts.
     """
-    definitions: list[dict[str, Any]] = []
-    # driver_id -> (index of the dir it came from, position in definitions)
-    slots: dict[str, tuple[int, int]] = {}
-
-    for dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
+    loaded: dict[Path, dict[str, Any]] = {}
+    for _dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
         driver_def = load_driver_file(filepath)
-        if driver_def is None:
-            continue
-        driver_id = driver_def.get("id", "")
-        driver_def["_source_file"] = str(filepath)
-        driver_def["_comment_lines"] = count_comment_lines(filepath)
-        slot = slots.get(driver_id)
-        if slot is None:
-            slots[driver_id] = (dir_index, len(definitions))
-            definitions.append(driver_def)
-        elif slot[0] != dir_index:  # a later directory replaces it in place
-            definitions[slot[1]] = driver_def
-            slots[driver_id] = (dir_index, slot[1])
-        # else a duplicate within one directory: its first file stays
+        if driver_def is not None:
+            loaded[filepath] = driver_def
 
+    def loads(path: Path) -> bool:  # each definition was just read
+        return path in loaded if path.suffix == DRIVER_EXTENSION else _loads(path)
+
+    definitions: list[dict[str, Any]] = []
+    for driver_id, copies in _library_copies(directories).items():
+        chosen = _chosen(copies, driver_id, loads, refused_too=False)
+        if chosen is None or chosen.suffix != DRIVER_EXTENSION:
+            continue
+        driver_def = loaded[chosen]
+        driver_def["_source_file"] = str(chosen)
+        driver_def["_comment_lines"] = count_comment_lines(chosen)
+        definitions.append(driver_def)
     return definitions
 
 
 def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any]]:
     """
-    List all Python driver files (.py) from the given directories.
+    List the Python driver files (.py) in the given directories, one per id.
 
-    Returns metadata for each file without doing a full import — uses AST
-    parsing to extract DRIVER_INFO safely.
+    The file listed for an id is the copy the loader registers
+    (``serving_file``'s rule among the Python files), or, when none of them
+    loaded, the one that would, with why it did not. In the order each id is
+    first met in library order. Metadata is read from the source without
+    importing it (``python_driver_info``).
     """
-    drivers: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for _dir_index, filepath in _python_driver_files(directories):
-        entry = _listed_entry(filepath)
-        driver_id = entry["id"]
-        if driver_id in seen_ids:
-            # The file named for the id is the one that loads
-            # (load_python_drivers), so it is the one listed.
-            if filepath.stem != driver_id:
-                continue
-            drivers[:] = [d for d in drivers if d["id"] != driver_id]
-        seen_ids.add(driver_id)
-        entry["loaded"], entry["load_error"] = _load_status(driver_id, filepath)
-        drivers.append(entry)
-    return drivers
+    rows: list[tuple[int, dict[str, Any]]] = []
+    order = {path: n for n, (_index, path) in enumerate(_python_driver_files(directories))}
+    for driver_id, copies in _library_copies(directories).items():
+        python = [copy for copy in copies if copy[1].suffix == ".py"]
+        chosen = _chosen(python, driver_id, _loads, refused_too=True)
+        if chosen is None:
+            continue
+        entry = _listed_entry(chosen)
+        entry["loaded"], entry["load_error"] = _load_status(entry["id"], chosen)
+        rows.append((order[chosen], entry))
+    return [entry for _position, entry in sorted(rows, key=lambda row: row[0])]
 
 
 _LISTED_FIELDS = ("id", "name", "manufacturer", "category")
@@ -1083,62 +1112,43 @@ def _listed_entry(filepath: Path) -> dict[str, Any]:
         "load_error": None,
         "devices_using": [],
     }
-    try:
-        info = _first_class_driver_info(filepath)
-    except Exception:
-        info = {}  # unreadable source keeps the file-name defaults
+    info = python_driver_info(filepath)  # unreadable source keeps the defaults
     for field in _LISTED_FIELDS:
         if info.get(field):
             entry[field] = info[field]
     return entry
 
 
-def _first_class_driver_info(filepath: Path) -> dict[str, str | int | float | bool]:
-    """The literal values of the first class's ``DRIVER_INFO = {...}``.
-
-    Only the file's first class is read, and only a plain assignment in its
-    body, so a helper class written first leaves the defaults. Loading and
-    ``driver_id_from_file`` read a file's id by other rules.
-    """
-    tree = ast.parse(python_source(filepath))
-    first_class = next(
-        (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)), None
-    )
-    if first_class is None:
-        return {}
-    for item in first_class.body:
-        if _is_plain_driver_info(item):
-            return _ast_dict_to_simple(item.value)
-    return {}
-
-
-def _is_plain_driver_info(node: ast.stmt) -> bool:
-    """``DRIVER_INFO = {...}``: one name, a dict literal."""
-    if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-        return False
-    target = node.targets[0]
-    return isinstance(target, ast.Name) and target.id == "DRIVER_INFO" and isinstance(node.value, ast.Dict)
-
-
 def _load_status(driver_id: str, filepath: Path) -> tuple[bool, str | None]:
     """``(loaded, load_error)`` for a listed file.
 
-    Registered under its id: loaded. Otherwise the Code view says why: the
-    reason it did not load (``refused_files``), else its module is in
-    ``sys.modules`` but nothing is registered under this id (a duplicate id,
-    or a last reload that left another id registered), or it never imported.
+    Loaded when the class registered under its id came from this file.
+    Otherwise the Code view says why: the reason it did not load
+    (``refused_files``), else its module is in ``sys.modules`` but what is
+    registered under this id is not from it (a duplicate id, or a last reload
+    that left another id registered), or it never imported.
     """
-    if is_driver_registered(driver_id):
-        return True, None
     refused = refused_files.load_error(filepath)
     if refused is not None:
         return False, refused
+    if _registered_from(driver_id, filepath):
+        return True, None
     if _is_imported(filepath):
         return False, (
             "Imported but not registered: a duplicate driver ID "
             "or a failed last reload"
         )
     return False, "Not loaded"
+
+
+def _registered_from(driver_id: str, filepath: Path) -> bool:
+    """Whether the class registered under ``driver_id`` was imported from
+    the Python file ``filepath``."""
+    from openavc.drivers.python_modules import module_name
+    from openavc.drivers.registry import get_driver_class
+
+    driver_class = get_driver_class(driver_id)
+    return driver_class is not None and driver_class.__module__ == module_name(filepath)
 
 
 def _ast_dict_to_simple(node: Any) -> dict[str, str | int | float | bool]:

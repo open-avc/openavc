@@ -253,8 +253,8 @@ def silence_register_and_refresh(monkeypatch):
         lambda cls: None,
     )
     monkeypatch.setattr(
-        "openavc.api.routes.drivers.unregister_driver",
-        lambda driver_id: None,
+        "openavc.api.routes.drivers.restore_driver_registration",
+        lambda driver_id, dirs: False,
     )
     yield
 

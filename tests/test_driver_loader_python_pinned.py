@@ -7,12 +7,9 @@ in ``sys.modules``, what is logged and under which logger), the hot reload
 entry, which copy is listed when two files are one driver) and the scans that
 find a YAML definition by the id it declares.
 
-Several of these record behaviour that looks wrong, deliberately, so that a
-change to it is a decision rather than a side effect: the listing reads only
-the first class in a file and keeps the first directory's copy of an id where
-loading keeps the last; the YAML listing keeps the first file of a directory
-where loading keeps the one named for the id. Each such test says so, and
-fixing one changes its assertion. A ``.avcdriver`` that is not UTF-8, and a
+The listings show the copy loading serves (``serving_file``'s rule), and read
+a ``.py`` file's id from the class the runtime registers; the agreement itself
+is held in ``test_driver_file_identity.py``. A ``.avcdriver`` that is not UTF-8, and a
 Python class whose ``DRIVER_INFO`` is not a mapping, are passed over with a
 warning: neither may stop the server starting.
 
@@ -506,14 +503,14 @@ def test_listing_python_drivers(tmp_path, isolated, monkeypatch):
             "        'manufacturer': 'Acme', 'category': 'utility', 1: 'x',\n"
             "        'description': 'not listed'}\n"
         ),
-        # only the first class is read: a helper first leaves the file's name
+        # the class with a table is read, a helper written before it or not
         first / "pin_ls_helper_first.py": (
             "class Helper:\n    pass\n"
             "class Real:\n    DRIVER_INFO = {'id': 'pin_ls_real', 'name': 'Real'}\n"
         ),
-        # the first class's DRIVER_INFO, but no id or an empty one
+        # a table with an empty id: its fields are read, the id stays the file's
         first / "pin_ls_no_id.py": "class A:\n    DRIVER_INFO = {'name': 'Named', 'id': ''}\n",
-        # an annotated DRIVER_INFO is not read
+        # an annotated DRIVER_INFO is read
         first / "pin_ls_annotated.py": "class A:\n    DRIVER_INFO: dict = {'id': 'pin_ls_ann'}\n",
         # a module-level DRIVER_INFO is not read
         first / "pin_ls_module_level.py": "DRIVER_INFO = {'id': 'pin_ls_module'}\n",
@@ -532,9 +529,8 @@ def test_listing_python_drivers(tmp_path, isolated, monkeypatch):
         first / "_pin_ls_private.py": "class A:\n    DRIVER_INFO = {'id': 'pin_ls_private'}\n",
         first / "pin_ls_full_sim.py": "class A:\n    DRIVER_INFO = {'id': 'pin_ls_sim'}\n",
         first / "pin_ls_full_discovery.py": "class A:\n    DRIVER_INFO = {'id': 'pin_ls_disc'}\n",
-        # across directories the first directory's copy is kept unless the
-        # later file is named for the id (loading keeps the later directory's)
-        second / "pin_ls_other_name.py": "class A:\n    DRIVER_INFO = {'id': 'pin_ls_full'}\n",
+        # a later directory's copy is listed, as it loads, named for the id or not
+        second / "pin_ls_other_name.py": "class A:\n    DRIVER_INFO = {'id': 'pin_ls_dup'}\n",
         second / "pin_ls_kept.py": "class A:\n    DRIVER_INFO = {'id': 'pin_ls_kept', 'name': 'Second'}\n",
     }
     for path, text in files.items():
@@ -542,22 +538,21 @@ def test_listing_python_drivers(tmp_path, isolated, monkeypatch):
     (first / "pin_ls_latin.py").write_bytes(b"class A:\n    DRIVER_INFO = {'id': 'caf\xe9'}\n")
 
     monkeypatch.setattr(
-        "openavc.drivers.driver_loader.is_driver_registered",
-        lambda driver_id: driver_id == "pin_ls_loaded",
+        "openavc.drivers.driver_loader._registered_from",
+        lambda driver_id, _path: driver_id == "pin_ls_loaded",
     )
     sys.modules["openavc_driver_pin_ls_resident"] = types.ModuleType("stand_in")
 
     listed = list_python_drivers([tmp_path / "missing", first, second])
 
     resident = "Imported but not registered: a duplicate driver ID or a failed last reload"
-    # A replacing copy goes to the end of the list as it stands when it is read.
+    # One row per id, the copy that loads, in the order of the files listed.
     assert listed == [
-        _entry("pin_ls_annotated"),
-        _entry("pin_ls_dup", name="Named"),
+        _entry("pin_ls_annotated", id="pin_ls_ann"),
         _entry(
             "pin_ls_full", id="pin_ls_full", manufacturer="Acme", category="utility"
         ),
-        _entry("pin_ls_helper_first"),
+        _entry("pin_ls_helper_first", id="pin_ls_real", name="Real"),
         _entry("pin_ls_latin"),
         _entry("pin_ls_loaded", loaded=True, load_error=None),
         _entry("pin_ls_module_level"),
@@ -565,6 +560,7 @@ def test_listing_python_drivers(tmp_path, isolated, monkeypatch):
         _entry("pin_ls_resident", load_error=resident),
         _entry("pin_ls_syntax"),
         _entry("pin_ls_kept", name="Second"),
+        _entry("pin_ls_other_name", id="pin_ls_dup"),
     ]
 
 
@@ -590,14 +586,14 @@ def _avcdriver(driver_id: str, name: str = "Pinned") -> str:
     return f"id: {driver_id}\nname: {name}\ntransport: tcp\n"
 
 
-def test_the_yaml_listing_keeps_a_directory_s_first_file(tmp_path):
-    """Loading serves the file named for the id; the listing shows the first
-    file of the directory. Pinned as it is."""
+def test_the_yaml_listing_shows_the_file_named_for_the_id(tmp_path):
+    """The listing shows the copy loading serves: in one directory, the file
+    named for the id over a renamed copy."""
     (tmp_path / "pin_a_copy.avcdriver").write_text(_avcdriver("pin_yl", "Copy"), encoding="utf-8")
     (tmp_path / "pin_yl.avcdriver").write_text(_avcdriver("pin_yl", "Named"), encoding="utf-8")
     listed = list_driver_definitions([tmp_path])
     assert [(d["name"], Path(d["_source_file"]).name) for d in listed] == [
-        ("Copy", "pin_a_copy.avcdriver")
+        ("Named", "pin_yl.avcdriver")
     ]
 
 
@@ -690,7 +686,7 @@ def test_delete_skips_what_it_cannot_read_or_must_keep(tmp_path, monkeypatch, ca
         lambda p: Path(p).parent == builtin,
     )
     dirs = [tmp_path / "missing", builtin, user]
-    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+    with caplog.at_level(logging.INFO, logger=LOGGER):
         assert delete_driver_definition("pin_d", dirs, keep=kept) is False
     assert kept.exists()
     assert (builtin / "pin_d.avcdriver").exists()
@@ -743,33 +739,26 @@ def test_reload_whose_second_import_fails_puts_the_old_module_back(
     [
         # a class attribute
         ("class A:\n    DRIVER_INFO = {'id': 'pin_cls'}\n", "pin_cls"),
-        # module level counts here
-        ("DRIVER_INFO = {'id': 'pin_mod'}\n", "pin_mod"),
-        # so does a function's local, and one of several names
-        ("def f():\n    DRIVER_INFO = {'id': 'pin_local'}\n", "pin_local"),
-        ("A = DRIVER_INFO = {'id': 'pin_chain'}\n", "pin_chain"),
-        # an annotated one does not
-        ("class A:\n    DRIVER_INFO: dict = {'id': 'pin_ann'}\n", None),
-        # an empty id reads as no id, and stops the search
-        (
-            "DRIVER_INFO = {'id': ''}\nclass A:\n    DRIVER_INFO = {'id': 'pin_later'}\n",
-            None,
-        ),
-        # a dict with no id is passed over for a later one
-        (
-            "DRIVER_INFO = {'name': 'x'}\nclass A:\n    DRIVER_INFO = {'id': 'pin_next'}\n",
-            "pin_next",
-        ),
-        # a non-text id is passed over for a later key in the same dict
-        ("DRIVER_INFO = {'id': 5, 'id': 'pin_text'}\n", "pin_text"),
+        # only a class's table counts: not module level, a function's local
+        # or a chain of names at module level
+        ("DRIVER_INFO = {'id': 'pin_mod'}\n", None),
+        ("def f():\n    DRIVER_INFO = {'id': 'pin_local'}\n", None),
+        ("A = DRIVER_INFO = {'id': 'pin_chain'}\n", None),
+        # an annotated one does
+        ("class A:\n    DRIVER_INFO: dict = {'id': 'pin_ann'}\n", "pin_ann"),
+        # a class whose id is empty, or that names none, is passed over
+        ("class A:\n    DRIVER_INFO = {'id': ''}\nclass B:\n    DRIVER_INFO = {'id': 'pin_later'}\n", "pin_later"),
+        ("class A:\n    DRIVER_INFO = {'name': 'x'}\nclass B:\n    DRIVER_INFO = {'id': 'pin_next'}\n", "pin_next"),
+        # the last key of a name wins, as it does in Python; a non-text id is no id
+        ("class A:\n    DRIVER_INFO = {'id': 'pin_first', 'id': 'pin_text'}\n", "pin_text"),
+        ("class A:\n    DRIVER_INFO = {'id': 5}\n", None),
         # a computed dict or id is not read
-        ("DRIVER_INFO = dict(id='pin_call')\n", None),
-        ("ID = 'x'\nDRIVER_INFO = {'id': ID}\n", None),
-        # the first by walk order: the module's own statements before a class body
-        (
-            "class A:\n    DRIVER_INFO = {'id': 'pin_inner'}\nDRIVER_INFO = {'id': 'pin_outer'}\n",
-            "pin_outer",
-        ),
+        ("class A:\n    DRIVER_INFO = dict(id='pin_call')\n", None),
+        ("ID = 'x'\nclass A:\n    DRIVER_INFO = {'id': ID}\n", None),
+        # classes by name, as the runtime takes them, not by position
+        ("class B:\n    DRIVER_INFO = {'id': 'pin_b'}\nclass A:\n    DRIVER_INFO = {'id': 'pin_a'}\n", "pin_a"),
+        # a class deriving from another over one deriving from nothing
+        ("class A:\n    DRIVER_INFO = {'id': 'pin_helper'}\nclass B(Base):\n    DRIVER_INFO = {'id': 'pin_driver'}\n", "pin_driver"),
         # no DRIVER_INFO at all
         ("class A:\n    INFO = {'id': 'pin_other'}\n", None),
     ],
@@ -890,12 +879,12 @@ def test_a_same_id_reload_unregisters_nothing(tmp_path, isolated, caplog):
     ]
 
 
-def test_finding_a_definition_by_id_prefers_the_file_named_for_it(tmp_path):
-    from openavc.drivers.driver_loader import find_driver_file_by_id
+def test_the_serving_definition_is_the_file_named_for_the_id(tmp_path):
+    from openavc.drivers.driver_loader import serving_file
 
     (tmp_path / "pin_a_copy.avcdriver").write_text(_avcdriver("pin_nf", "Copy"), encoding="utf-8")
     (tmp_path / "pin_nf.avcdriver").write_text(_avcdriver("pin_nf", "Named"), encoding="utf-8")
     (tmp_path / "pin_z_copy.avcdriver").write_text(_avcdriver("pin_nf", "Later"), encoding="utf-8")
-    assert find_driver_file_by_id([tmp_path], "pin_nf") == tmp_path / "pin_nf.avcdriver"
+    assert serving_file([tmp_path], "pin_nf") == tmp_path / "pin_nf.avcdriver"
     (tmp_path / "pin_nf.avcdriver").unlink()
-    assert find_driver_file_by_id([tmp_path], "pin_nf") == tmp_path / "pin_a_copy.avcdriver"
+    assert serving_file([tmp_path], "pin_nf") == tmp_path / "pin_a_copy.avcdriver"

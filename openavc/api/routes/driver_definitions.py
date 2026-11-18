@@ -204,8 +204,9 @@ def _refuse_rename_onto_another(
     new_id: str, driver_id: str, existing: list[dict[str, Any]], dirs: Any
 ) -> None:
     """A rename may not take an id that is already served: a built-in's is
-    read-only, and any other driver's would be saved over."""
-    from openavc.drivers.driver_loader import is_builtin_driver
+    read-only, and any other driver's, a Python driver's included
+    (``serving_file``), would be saved over or would serve in its place."""
+    from openavc.drivers.driver_loader import is_builtin_driver, serving_file
 
     if new_id == driver_id:
         return
@@ -214,7 +215,7 @@ def _refuse_rename_onto_another(
             status_code=403,
             detail=f"Driver id '{new_id}' belongs to a read-only built-in driver.",
         )
-    if any(d.get("id") == new_id for d in existing):
+    if any(d.get("id") == new_id for d in existing) or serving_file(dirs, new_id):
         raise _id_taken(new_id)
 
 
@@ -281,13 +282,15 @@ def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:
 
 @router.post("/driver-definitions")
 async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
-    """Create a new JSON driver definition."""
-    from openavc.drivers.driver_loader import list_driver_definitions as _list
+    """Create a new JSON driver definition. An id a file already serves,
+    either kind (``serving_file``), is taken: a Python driver's would serve
+    over the new definition again at the next start."""
+    from openavc.drivers.driver_loader import serving_file
 
     dirs = _get_driver_dirs()
     driver_def = _requested_definition(body)
     async with holding(driver_def["id"]):
-        if any(d.get("id") == driver_def["id"] for d in _list(dirs)):
+        if serving_file(dirs, driver_def["id"]) is not None:
             raise _id_taken(driver_def["id"])
 
         saved = await _save_definition(driver_def, dirs)
@@ -400,17 +403,27 @@ async def reload_driver_definition(driver_id: str) -> dict:
     for declarative YAML drivers.
     """
     from openavc.drivers.driver_loader import (
-        find_driver_file_by_id,
         read_library_definition,
+        serving_file,
     )
     from openavc.drivers.configurable import create_configurable_driver_class
 
     async with holding(driver_id):
-        filepath = find_driver_file_by_id(_get_driver_dirs(), driver_id)
+        # The file the loader serves the id from, or the one it would when
+        # none loads (so its reasons are answered).
+        filepath = serving_file(_get_driver_dirs(), driver_id, refused_too=True)
         if filepath is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"No .avcdriver file declaring '{driver_id}' found on disk",
+            )
+        if filepath.suffix != ".avcdriver":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Driver '{driver_id}' runs from the Python file {filepath.name}. "
+                    "Reload it from the Code view."
+                ),
             )
 
         read = read_library_definition(filepath)

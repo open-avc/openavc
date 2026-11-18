@@ -2789,6 +2789,8 @@ class MySwitcherDriver(BaseDriver):
 - `set_state("input", 3)` writes to `device.<device_id>.input` in the state store.
 - **All sent and received data is automatically logged** in the device log. No logging code needed. See "Device Log" below.
 
+**One driver class to a file.** The driver is the class that derives from `BaseDriver` (directly or through another class in the file) and whose `DRIVER_INFO` has an `id`. When a file defines more than one such class, the first by class name is the driver, and a subclass that sets no `DRIVER_INFO` of its own uses its parent's. The server, `python -m openavc.drivers.check`, the catalog and the Code view all read the same class, so keep shared code in a base class with no `id` or in a module-level helper.
+
 ### SSH Drivers (Python)
 
 A device whose control surface is a command line reached over **SSH** (a managed switch, some video bars and headends) uses `"transport": "ssh"` in a Python driver's `DRIVER_INFO`. Like MQTT and SNMP it is Python-only. The platform opens the session with the computer's own OpenSSH client and hands the driver a byte stream: bytes from the device arrive at `on_data_received()`, and `self.transport.send()` writes to the session, the same as a TCP connection. Framing on the device's prompt, paging and any enable step are the driver's job, usually in `_post_connect()`.

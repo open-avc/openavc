@@ -130,7 +130,8 @@ def world(tmp_path, monkeypatch):
 
     monkeypatch.setattr(driver_change, "register_driver", _register)
     monkeypatch.setattr(
-        routes, "unregister_driver", lambda driver_id: events.append(("unregister", driver_id))
+        routes, "restore_driver_registration",
+        lambda driver_id, dirs: events.append(("unregister", driver_id)) or False,
     )
 
     async def _no_hashes(driver_id, force=False):
@@ -580,11 +581,21 @@ async def test_update_finds_nothing_in_an_empty_folder(world):
 
 
 @pytest.mark.asyncio
-async def test_update_passes_over_a_helper_and_an_unreadable_yaml(world):
-    (world.repo / "_acme_widget.avcdriver").write_bytes(_yaml())
+async def test_update_passes_over_an_unreadable_yaml(world):
     (world.repo / "broken.avcdriver").write_bytes(b"key: [unclosed")
     refusal = await _refused(_update("acme_widget.avcdriver"))
     assert refusal.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_replaces_the_definition_the_loader_serves_whatever_its_name(world):
+    """The loader reads every definition, a leading underscore and all, so
+    the update finds the one that serves the id."""
+    (world.repo / "_acme_widget.avcdriver").write_bytes(_yaml())
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")
+    result = await _update("acme_widget.avcdriver")
+    assert result["file"] == "acme_widget.avcdriver"
+    assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml(version="2.0.0")}
 
 
 @pytest.mark.asyncio
@@ -612,10 +623,12 @@ async def test_update_whose_new_companion_fails_keeps_the_old_yaml(world):
 
 
 @pytest.mark.asyncio
-async def test_update_finds_a_python_file_by_its_name_only(world):
-    (world.repo / "renamed.py").write_bytes(_python())
-    refusal = await _refused(_update("acme_widget.py"))
-    assert refusal.status_code == 404
+async def test_update_finds_a_python_file_by_the_id_it_declares_and_removes_the_old_name(world):
+    (world.repo / "renamed.py").write_bytes(_python(mark="old"))
+    world.catalog.pages[CATALOG + "acme_widget.py"] = _python()
+    result = await _update("acme_widget.py")
+    assert result["file"] == "acme_widget.py"
+    assert _tree(world.repo) == {"acme_widget.py": _python()}
 
 
 @pytest.mark.asyncio

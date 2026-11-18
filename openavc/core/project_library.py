@@ -1083,7 +1083,7 @@ def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:
         return []
 
     from openavc.drivers.driver_loader import (
-        _is_driver_file, driver_companions, driver_files_for,
+        _is_driver_file, driver_companions, serving_file,
     )
 
     files: dict[str, Path] = {}
@@ -1091,22 +1091,22 @@ def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:
         if dep.get("source") == "builtin":
             continue
         driver_id = dep.get("driver_id", "")
-        # The file that IS the driver, by its DECLARED id (the way the loader
-        # registers it), the one named for the id first -- the copy that
-        # loads, when a renamed upload sits beside it. A file named for the
-        # id in some other spelling is the fallback for a driver whose id
-        # cannot be read.
-        for ext in (".avcdriver", ".py"):
-            matches = driver_files_for(driver_repo, driver_id, ext) or [
-                f for f in sorted(driver_repo.glob(f"*{ext}"))
-                if _is_driver_file(f)
-                and driver_id in (f.stem, f.stem.replace("-", "_"))
-            ]
-            if matches:
-                f = matches[0]
-                files[f.name] = f
-                for companion in driver_companions(f):
-                    files[companion.name] = companion
+        # The file that serves the driver (``serving_file``: either kind,
+        # the copy that loads, the one named for the id over a renamed copy),
+        # or the one that would when none loads. A file named for the id in
+        # some other spelling is the fallback for a driver whose id cannot
+        # be read.
+        main = serving_file([driver_repo], driver_id, refused_too=True) or next(
+            (
+                f for ext in (".avcdriver", ".py") for f in sorted(driver_repo.glob(f"*{ext}"))
+                if _is_driver_file(f) and driver_id in (f.stem, f.stem.replace("-", "_"))
+            ),
+            None,
+        )
+        if main is not None:
+            files[main.name] = main
+            for companion in driver_companions(main):
+                files[companion.name] = companion
     return list(files.items())
 
 

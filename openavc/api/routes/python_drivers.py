@@ -43,9 +43,10 @@ from openavc.drivers.driver_loader import (
     driver_files_for,
     python_driver_file,
     require_mutable_driver_file,
+    restore_driver_registration,
 )
 from openavc.utils.logger import get_logger
-from openavc.drivers.registry import register_driver, require_mutable_driver, unregister_driver
+from openavc.drivers.registry import register_driver, require_mutable_driver
 
 log = get_logger(__name__)
 
@@ -372,12 +373,18 @@ async def _delete_python_driver(driver_id: str) -> dict:
         removed_companions.extend(remove_python_companions(filepath))
         forget_module(filepath)
 
-    # Unregister from driver registry
-    unregister_driver(driver_id)
+    # Whatever still serves the id (a definition beside it, a built-in)
+    # serves it now; when nothing does, the id is dropped.
+    from openavc.system_config import DRIVER_DEFINITIONS_DIR
+
+    restored = restore_driver_registration(driver_id, [DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR])
 
     log.info(f"Deleted Python driver: {driver_id}")
-    # Discovery stops suggesting it, and stops running its discovery check.
-    await changed(gone=[driver_id])
+    if restored:
+        await changed(driver_id)
+    else:
+        # Discovery stops suggesting it, and stops running its discovery check.
+        await changed(gone=[driver_id])
     return {"status": "deleted", "driver_id": driver_id, "removed_companions": removed_companions}
 
 

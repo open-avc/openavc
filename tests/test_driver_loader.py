@@ -12,7 +12,7 @@ from openavc.utils.regex_safety import _regex_search_exceeds
 from openavc.drivers.driver_loader import (
     DRIVER_EXTENSION,
     delete_driver_definition,
-    find_driver_file_by_id,
+    serving_file,
     is_builtin_driver,
     list_driver_definitions,
     list_python_drivers,
@@ -251,29 +251,29 @@ def test_load_driver_file_invalid_yaml(tmp_path):
     assert result is None
 
 
-def test_find_driver_file_by_id_found(tmp_path):
+def test_serving_file_found(tmp_path):
     filepath = tmp_path / "test.avcdriver"
     _write_avcdriver(filepath, VALID_DEFINITION)
-    found = find_driver_file_by_id([tmp_path], "test_loader_driver")
+    found = serving_file([tmp_path], "test_loader_driver")
     assert found == filepath
 
 
-def test_find_driver_file_by_id_not_found(tmp_path):
+def test_serving_file_not_found(tmp_path):
     _write_avcdriver(tmp_path / "test.avcdriver", VALID_DEFINITION)
-    assert find_driver_file_by_id([tmp_path], "no_such_driver") is None
+    assert serving_file([tmp_path], "no_such_driver") is None
     # A missing directory is skipped, not an error.
-    assert find_driver_file_by_id([tmp_path / "nope"], "test_loader_driver") is None
+    assert serving_file([tmp_path / "nope"], "test_loader_driver") is None
 
 
-def test_find_driver_file_by_id_matches_declared_id_not_stem(tmp_path):
+def test_serving_file_matches_declared_id_not_stem(tmp_path):
     # An upload keeps its original filename, so the stem need not match the id.
     filepath = tmp_path / "renamed-on-upload.avcdriver"
     _write_avcdriver(filepath, VALID_DEFINITION)
-    found = find_driver_file_by_id([tmp_path], "test_loader_driver")
+    found = serving_file([tmp_path], "test_loader_driver")
     assert found == filepath
 
 
-def test_find_driver_file_by_id_later_directory_wins(tmp_path):
+def test_serving_file_later_directory_wins(tmp_path):
     # Later directories take precedence — a user copy in driver_repo
     # overrides a same-id built-in, and callers get the file that
     # actually serves the driver.
@@ -283,7 +283,7 @@ def test_find_driver_file_by_id_later_directory_wins(tmp_path):
     user.mkdir()
     _write_avcdriver(builtin / "d.avcdriver", VALID_DEFINITION)
     _write_avcdriver(user / "d.avcdriver", VALID_DEFINITION)
-    found = find_driver_file_by_id([builtin, user], "test_loader_driver")
+    found = serving_file([builtin, user], "test_loader_driver")
     assert found == user / "d.avcdriver"
 
 
@@ -912,7 +912,7 @@ def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeyp
     module_name = "openavc_driver_ghost_driver"
     sys.modules[module_name] = object()  # stand-in resident module
     monkeypatch.setattr(
-        "openavc.drivers.driver_loader.is_driver_registered", lambda _id: False
+        "openavc.drivers.driver_loader._registered_from", lambda _id, _path: False
     )
     try:
         listed = list_python_drivers([tmp_path])
@@ -933,7 +933,7 @@ def test_list_python_drivers_reports_not_loaded(tmp_path, monkeypatch):
     filepath.write_text(src, encoding="utf-8")
     sys.modules.pop("openavc_driver_absent_driver", None)
     monkeypatch.setattr(
-        "openavc.drivers.driver_loader.is_driver_registered", lambda _id: False
+        "openavc.drivers.driver_loader._registered_from", lambda _id, _path: False
     )
 
     listed = list_python_drivers([tmp_path])
@@ -1012,7 +1012,8 @@ def test_driver_id_from_file_python_does_not_execute_module(tmp_path):
     f = tmp_path / "boom.py"
     f.write_text(
         "raise RuntimeError('importing me explodes')\n"
-        "DRIVER_INFO = {'id': 'safe_id'}\n",
+        "class Boom(BaseDriver):\n"
+        "    DRIVER_INFO = {'id': 'safe_id'}\n",
         encoding="utf-8",
     )
     assert driver_id_from_file(f) == "safe_id"

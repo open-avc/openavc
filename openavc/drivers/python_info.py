@@ -148,7 +148,7 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
     Only a class attribute counts, because that is what the runtime loads: it
     looks for a ``BaseDriver`` subclass and reads ``DRIVER_INFO`` off the
     class, so a module-level dict of that name would leave the driver
-    unregistered.
+    unregistered. Which class is THE rule ``_driver_class_info`` keeps.
 
     An annotated assignment (``DRIVER_INFO: dict[str, Any] = {...}``) counts
     too. The runtime cannot tell the difference — an annotation is not part of
@@ -169,14 +169,70 @@ def _driver_info_node(source: str, filename: str) -> ast.Dict:
         tree = ast.parse(source)
     except SyntaxError as e:
         raise ExtractError(f"{filename} has a syntax error: {e}")
-    for node in ast.walk(tree):
-        found = _class_driver_info(node) if isinstance(node, ast.ClassDef) else None
-        if found is not None:
-            return found
+    found = _driver_class_info(tree)
+    if found is not None:
+        return found
     raise ExtractError(
         f"{filename}: no DRIVER_INFO class attribute found. "
         "Python drivers must define `DRIVER_INFO = {...}` inside a class body."
     )
+
+
+def _driver_class_info(tree: ast.Module) -> ast.Dict | None:
+    """THE class a Python driver's ``DRIVER_INFO`` is read from without
+    running it, chosen as the runtime chooses the class it registers
+    (``python_modules.driver_class_in``): the module's own classes by name,
+    the first whose table may name an id, its own or the one a class it
+    derives from in the same file gives it. A table whose id is empty or
+    missing is no driver's, so the next class is asked; one whose id is built
+    in code may be, so it is taken.
+
+    The driver class derives from ``BaseDriver``, so a class deriving from
+    nothing is asked only when no class in the file derives from anything (a
+    sketch or a fixture, which has no other class to read). When no table
+    names an id, the first table is read all the same, so the checker says
+    what is wrong with it rather than that there is none."""
+    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+    derived = [name for name, node in classes.items() if _derives(node)]
+    first: ast.Dict | None = None
+    for name in sorted(derived or classes):
+        found = _inherited_info(classes[name], classes, set())
+        if found is not None and _may_name_an_id(found):
+            return found
+        first = first or found
+    return first
+
+
+def _derives(node: ast.ClassDef) -> bool:
+    """Whether a class names a base other than ``object``."""
+    return any(not (isinstance(base, ast.Name) and base.id == "object") for base in node.bases)
+
+
+def _inherited_info(
+    node: ast.ClassDef, classes: dict[str, ast.ClassDef], seen: set[str]
+) -> ast.Dict | None:
+    """The table a class has: its own, else the first its bases in the same
+    file give it, read left to right as Python's lookup reads them."""
+    own = _class_driver_info(node)
+    if own is not None:
+        return own
+    seen.add(node.name)
+    for base in node.bases:
+        if isinstance(base, ast.Name) and base.id in classes and base.id not in seen:
+            found = _inherited_info(classes[base.id], classes, seen)
+            if found is not None:
+                return found
+    return None
+
+
+def _may_name_an_id(node: ast.Dict) -> bool:
+    """Whether a table may give the class an id: one written as text that is
+    not empty, or one this reader cannot see (built in code, or merged in from
+    a name)."""
+    value = lenient_ast_value(node, "", [])
+    if "id" not in value:
+        return UNEVALUATED_KEY in value
+    return value["id"] is UNEVALUATED or bool(value["id"])
 
 
 def _class_driver_info(node: ast.ClassDef) -> ast.Dict | None:

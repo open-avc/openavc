@@ -63,7 +63,9 @@ def stub_engine_wiring(monkeypatch):
     for module in ("openavc.api.routes.python_drivers", "openavc.drivers.driver_change"):
         monkeypatch.setattr(f"{module}.register_driver", lambda cls: None)
     for module in ("drivers", "python_drivers"):
-        monkeypatch.setattr(f"openavc.api.routes.{module}.unregister_driver", lambda driver_id: None)
+        monkeypatch.setattr(
+            f"openavc.api.routes.{module}.restore_driver_registration", lambda driver_id, dirs: False
+        )
     monkeypatch.setattr(
         "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),

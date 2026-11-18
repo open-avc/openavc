@@ -335,6 +335,57 @@ async def test_a_rename_onto_a_taken_id_is_refused_before_the_definition_check(e
     assert env.events == []
 
 
+PYTHON_GADGET = (
+    "from openavc.drivers.base import BaseDriver\n"
+    "class AcmeGadget(BaseDriver):\n"
+    "    DRIVER_INFO = {'id': 'acme_gadget', 'name': 'Acme Gadget'}\n"
+)
+
+
+async def test_create_refuses_an_id_a_python_driver_serves(env):
+    """A definition saved over a Python driver's id would serve until the
+    next start and then lose the id to the Python file again."""
+    (env.repo / "gadget_driver.py").write_text(PYTHON_GADGET, encoding="utf-8")
+
+    with pytest.raises(HTTPException) as exc:
+        await ROUTES.create_driver_definition(DriverDefinitionRequest(**GADGET))
+
+    status, _detail, errors = _refusal(exc)
+    assert (status, errors) == (
+        409, ['Another driver named "acme_gadget" already exists. Choose a different ID.'],
+    )
+    assert env.files() == ["gadget_driver.py"] and env.events == []
+
+
+async def test_a_rename_onto_an_id_a_python_driver_serves_is_refused(env):
+    save_driver_definition(dict(WIDGET), env.repo)
+    (env.repo / "gadget_driver.py").write_text(PYTHON_GADGET, encoding="utf-8")
+
+    with pytest.raises(HTTPException) as exc:
+        await ROUTES.update_driver_definition("acme_widget", DriverDefinitionRequest(**GADGET))
+
+    status, _detail, errors = _refusal(exc)
+    assert (status, errors) == (
+        409, ['Another driver named "acme_gadget" already exists. Choose a different ID.'],
+    )
+    assert env.files() == ["acme_widget.avcdriver", "gadget_driver.py"] and env.events == []
+
+
+async def test_reload_of_an_id_a_python_driver_serves_names_the_python_file(env):
+    save_driver_definition(dict(GADGET), env.repo)
+    (env.repo / "gadget_driver.py").write_text(PYTHON_GADGET, encoding="utf-8")
+
+    with pytest.raises(HTTPException) as exc:
+        await ROUTES.reload_driver_definition("acme_gadget")
+
+    assert (exc.value.status_code, exc.value.detail) == (
+        409,
+        "Driver 'acme_gadget' runs from the Python file gadget_driver.py. "
+        "Reload it from the Code view.",
+    )
+    assert env.events == []
+
+
 async def test_replace_refuses_an_invalid_definition_before_its_floor(env):
     save_driver_definition(dict(WIDGET), env.repo)
 
@@ -748,7 +799,7 @@ async def test_reload_of_a_file_that_does_not_load_names_the_file(env, monkeypat
         path.write_text("key: [unclosed", encoding="utf-8")
     else:
         path.write_text(yaml.safe_dump(raw), encoding="utf-8")
-    monkeypatch.setattr(driver_loader, "find_driver_file_by_id", lambda dirs, did: path)
+    monkeypatch.setattr(driver_loader, "serving_file", lambda dirs, did, refused_too=False: path)
     if errors == "validator":
         errors = driver_loader.validate_driver_definition(raw)
         assert errors
@@ -784,7 +835,7 @@ async def test_reload_registers_reconnects_and_announces(env):
 
 async def test_reload_of_a_file_now_declaring_another_id_reconnects_both(env, monkeypatch):
     path = save_driver_definition({**WIDGET, "id": "acme_renamed"}, env.repo)
-    monkeypatch.setattr(driver_loader, "find_driver_file_by_id", lambda dirs, did: path)
+    monkeypatch.setattr(driver_loader, "serving_file", lambda dirs, did, refused_too=False: path)
 
     answer = await ROUTES.reload_driver_definition("acme_widget")
 
@@ -853,16 +904,16 @@ async def test_installed_lists_definitions_then_python_drivers_by_file_name(inst
     ]}
 
 
-async def test_installed_matches_a_python_driver_by_its_name_inside_the_module_name(installed):
-    """The match is text inside text: ``box`` matches a class loaded from
-    ``openavc_driver_acme_box``, and a class without a name keeps the file's."""
+async def test_installed_matches_a_python_driver_by_its_whole_module_name(installed):
+    """A class is a file's only when it was imported from that file:
+    ``box.py`` is not ``openavc_driver_acme_box``'s, so it keeps its own name."""
     (installed.repo / "box.py").write_text("x = 1\n", encoding="utf-8")
     installed.classes.append(("acme_box", _driver_class("openavc_driver_acme_box", {"id": "acme_box"})))
 
     answer = await INSTALL_ROUTES.list_installed_community_drivers()
 
     assert answer == {"drivers": [
-        {"id": "acme_box", "name": "Box", "format": "python", "filename": "box.py", "version": "", "load_error": None, "load_notices": []},
+        {"id": "box", "name": "Box", "format": "python", "filename": "box.py", "version": "", "load_error": None, "load_notices": []},
     ]}
 
 

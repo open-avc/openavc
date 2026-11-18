@@ -73,6 +73,8 @@ from openavc.drivers.driver_loader import (
     driver_companions,
     driver_files_for,
     require_mutable_driver_file,
+    restore_driver_registration,
+    serving_file,
 )
 from openavc.drivers.refused_files import load_error, load_notices
 from openavc.utils.logger import get_logger
@@ -80,7 +82,6 @@ from openavc.drivers.registry import (
     list_registered_drivers,
     registered_driver_classes,
     require_mutable_driver,
-    unregister_driver,
 )
 
 log = get_logger(__name__)
@@ -190,6 +191,13 @@ async def get_driver_help(driver_id: str) -> dict[str, Any]:
 
 
 # --- Community / Installed Drivers ---
+
+
+def _driver_dirs(driver_repo: Path) -> list[Path]:
+    """The library's directories, the built-ins first, as the loader reads them."""
+    from openavc.system_config import DRIVER_DEFINITIONS_DIR
+
+    return [DRIVER_DEFINITIONS_DIR, driver_repo]
 
 
 def _get_driver_repo_dir() -> Path:
@@ -654,16 +662,20 @@ def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
 
 def _installed_python_entry(filepath: Path) -> dict[str, Any]:
     """A Python driver file as Installed lists it: by the id, name and version
-    of the first registered class with an id whose module name contains the
-    file's name, else by the file name made readable, with no version; and
-    why it did not load (``load_error``), as a definition's entry has it."""
-    info: dict[str, Any] = {"id": filepath.stem}
+    of the class registered from it, else by what its source declares
+    (``python_driver_info``), else by its file name made readable, with no
+    version; and why it did not load (``load_error``), as a definition's entry
+    has it."""
+    from openavc.drivers.driver_loader import python_driver_info
+    from openavc.drivers.python_modules import module_name
+
+    info: dict[str, Any] = {"id": filepath.stem, **python_driver_info(filepath)}
     for _registered_id, cls in registered_driver_classes():
-        if cls.DRIVER_INFO.get("id") and filepath.stem in getattr(cls, "__module__", ""):
+        if cls.DRIVER_INFO.get("id") and cls.__module__ == module_name(filepath):
             info = cls.DRIVER_INFO
             break
     return {
-        "id": info["id"],
+        "id": info.get("id") or filepath.stem,
         "name": info.get("name", filepath.stem.replace("_", " ").title()),
         "format": "python",
         "filename": filepath.name,
@@ -675,19 +687,19 @@ def _installed_python_entry(filepath: Path) -> dict[str, Any]:
 
 @router.get("/drivers/installed")
 async def list_installed_community_drivers() -> dict[str, Any]:
-    """List drivers installed in driver_repo/."""
-    from openavc.drivers.driver_loader import _is_driver_file
+    """List drivers installed in driver_repo/: one row per driver, the file
+    that serves it (``serving_file``), or, when none of its files loaded, the
+    one that would, with why. Definitions first, then Python drivers, each by
+    file name. Companions and underscore helpers are never drivers."""
+    from openavc.drivers.driver_loader import serving_files
 
     driver_repo = _get_driver_repo_dir()
     if not driver_repo.exists():
         return {"drivers": []}
 
-    definitions = [_installed_definition_entry(f) for f in sorted(driver_repo.glob("*.avcdriver"))]
-    # A discovery or simulator companion, or an underscore helper, lives
-    # beside its driver but is not one.
-    python = [
-        _installed_python_entry(f) for f in sorted(driver_repo.glob("*.py")) if _is_driver_file(f)
-    ]
+    listed = sorted(serving_files([driver_repo], refused_too=True).values())
+    definitions = [_installed_definition_entry(f) for f in listed if f.suffix == ".avcdriver"]
+    python = [_installed_python_entry(f) for f in listed if f.suffix == ".py"]
     return {"drivers": [entry for entry in definitions if entry is not None] + python}
 
 
@@ -744,8 +756,11 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
 
         for deleted_file in driver_files:
             _remove_installed_file(deleted_file, driver_repo)
-        unregister_driver(driver_id)
-        await changed(gone=[driver_id])
+        # A built-in of the same id serves it again; else the id is dropped.
+        if restore_driver_registration(driver_id, _driver_dirs(driver_repo)):
+            await changed(driver_id)
+        else:
+            await changed(gone=[driver_id])
         return {"status": "uninstalled", "driver_id": driver_id}
 
 
@@ -763,29 +778,10 @@ async def _requested_update_url(request: Request) -> str:
 
 
 def _file_an_update_replaces(driver_repo: Path, driver_id: str) -> Path | None:
-    """The installed file a community update replaces: the first, in folder
-    order, YAML files before Python ones, that is named for the id or is a
-    YAML declaring it. Helpers (a leading ``_``) are passed over, and so is a
-    YAML that cannot be read. A Python file counts by its name only."""
-    for filepath in list(driver_repo.glob("*.avcdriver")) + list(driver_repo.glob("*.py")):
-        if filepath.name.startswith("_"):
-            continue
-        if filepath.stem == driver_id or _yaml_declares(filepath, driver_id):
-            return filepath
-    return None
-
-
-def _yaml_declares(filepath: Path, driver_id: str) -> bool:
-    """Whether a ``.avcdriver`` file declares ``driver_id``; an unreadable one does not."""
-    if filepath.suffix != ".avcdriver":
-        return False
-    import yaml
-
-    try:
-        data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        return False
-    return isinstance(data, dict) and data.get("id") == driver_id
+    """The installed file a community update replaces: the one that serves
+    the id in the driver folder (``serving_file``), or, when none of its files
+    loaded, the one that would."""
+    return serving_file([driver_repo], driver_id, refused_too=True)
 
 
 def _what_an_update_removes(

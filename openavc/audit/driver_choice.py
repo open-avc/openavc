@@ -41,18 +41,21 @@ def _read(path: Path) -> bytes | None:
 
 
 def driver_main_file(driver_id: str) -> Path | None:
-    """The file that defines ``driver_id``, as the loader would serve it."""
-    from openavc.drivers.driver_loader import find_driver_file_by_id
+    """The file that defines ``driver_id``, as the loader serves it
+    (``driver_loader.serving_file``, either kind). A Python class with no
+    library file behind it is its own source file; a class built from a
+    definition whose file is gone has none."""
+    from openavc.drivers.driver_loader import serving_file
     from openavc.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 
     cls = get_driver_class(driver_id)
     if cls is None:
         return None
-    # A YAML driver is a class built from a definition; the file is found by
-    # its declared id, the last directory winning as it does at load time.
-    found = find_driver_file_by_id([DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR], driver_id)
+    found = serving_file([DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR], driver_id)
     if found is not None:
         return found
+    if "_definition" in vars(cls):
+        return None
     try:
         source = inspect.getsourcefile(cls)
     except (TypeError, OSError):

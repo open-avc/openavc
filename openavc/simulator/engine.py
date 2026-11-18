@@ -101,6 +101,17 @@ class SimulatorRefusal(Exception):
         }
 
 
+def _served_definitions(root: Path) -> list[Path]:
+    """The ``.avcdriver`` files under ``root`` that serve their ids, as the
+    server's loader decides it (``driver_loader.serving_files``), reading each
+    folder that holds a definition as one of its directories, ``root`` first."""
+    from openavc.drivers.driver_loader import serving_files
+
+    folders = sorted({path.parent for path in root.rglob("*.avcdriver")})
+    served = serving_files(folders)
+    return [path for path in served.values() if path.suffix == ".avcdriver"]
+
+
 class SimulatorManager:
     """Central coordinator for device simulators."""
 
@@ -158,8 +169,10 @@ class SimulatorManager:
 
     def _scan_directory(self, root: Path) -> None:
         """Scan a directory tree for drivers and simulators."""
-        # Find all .avcdriver files (YAML auto-gen)
-        for avcdriver_path in root.rglob("*.avcdriver"):
+        # The definitions the server serves (YAML auto-gen): one per id, the
+        # copy its loader registers, and none for an id a Python driver serves
+        # (its simulator is its own _sim.py).
+        for avcdriver_path in _served_definitions(root):
             try:
                 self._load_yaml_driver(avcdriver_path)
             except Exception:
