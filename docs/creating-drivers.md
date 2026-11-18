@@ -3439,7 +3439,8 @@ when an edit or a driver update replaces the device, and when the system shuts
 down. Your handler is cancelled (`asyncio.CancelledError` arrives at whatever it
 is awaiting), the wizard says why the setup stopped, and anything the handler
 still tries afterwards (`progress`, `request_config_update`,
-`request_reconnect`) is refused. Let the cancel through: close your own connection in a `finally`,
+`request_reconnect`) is refused. A `request_config_update` that is already
+saving finishes first, so the settings it wrote are kept. Let the cancel through: close your own connection in a `finally`,
 and do not catch `CancelledError` to carry on.
 
 From OpenAVC 0.40.1, a setup action can also declare a `type: "file"`

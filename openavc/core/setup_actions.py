@@ -23,8 +23,11 @@ run generically — it never knows what an action *does*:
     the device manager's retire step (core/device_retire.py: a removal,
     an edit or driver reload that builds a new instance, the system
     stopping) ends the run before the instance goes, through
-    :meth:`SetupActionRunner.end_run`. A handler that ignores the cancel has
-    its later writes and reconnects refused;
+    :meth:`SetupActionRunner.end_run`. A save the run has already begun
+    (inside the change door) is let finish first, so the project, the file
+    and the running device never disagree; one still waiting for the lock is
+    dropped. A handler that ignores the cancel has its later writes and
+    reconnects refused;
   - keep each device's last run result in memory, so a wizard whose
     connection dropped asks how its run ended (:meth:`SetupActionRunner.outcome`).
     A run id names the process that started it: a run of an earlier process
