@@ -283,7 +283,7 @@ Another Programmer, a second browser tab, or the AI assistant can save the same 
 - **Save Mine Over It** saves your edits. Their change is replaced.
 - **Keep Editing** closes the message and leaves your edits in the editor. The next Save asks again.
 
-The Code view's **Save** and **Save & Reload Driver** do the same for a Python driver.
+The Code view's **Save** and **Save & Reload Driver** stop the same way for a Python driver, with the same three choices. The Code view does not open the other copy by itself: choose Reload Theirs to see it.
 
 ### Importing and Exporting Drivers
 

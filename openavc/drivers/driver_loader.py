@@ -1062,11 +1062,13 @@ def _definition_at_revision(filepath: Path) -> tuple[dict[str, Any], str] | None
     from openavc.drivers.driver_change import file_revision
 
     try:
-        revision = file_revision(filepath)
+        revision: str | None = file_revision(filepath)
     except OSError:
+        revision = None
+    driver_def = load_driver_file(filepath)  # logs why a file it cannot take is skipped
+    if driver_def is None or revision is None:
         return None
-    driver_def = load_driver_file(filepath)
-    return None if driver_def is None else (driver_def, revision)
+    return driver_def, revision
 
 
 def _listed_definition(driver_def: dict[str, Any], revision: str, filepath: Path) -> dict[str, Any]:

@@ -377,6 +377,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
           selectedId: originalId,
           draft,
           addedConnectionFields: added,
+          // An import replaces what is saved, so its save names no revision.
+          revision: null,
           dirty: true,
           saving: false,
           error: `This driver needs fixes before it can be saved: ${blockers.join(" ")}`,

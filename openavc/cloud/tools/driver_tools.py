@@ -58,11 +58,14 @@ _PROBE_FIELDS = ("host", "port", "command_string", "delimiter", "timeout")
 
 def _marked(surface: dict[str, Any], format: str, note: str | None = None) -> dict[str, Any]:
     """A driver's surface as get_driver_definition answers it (``READ_MARKS``):
-    editable only when it was read from its definition file (no ``note``)."""
+    editable only when it was read from its definition file (no ``note``).
+    Its ``_revision`` comes first, so a read the cloud cuts short still names
+    the copy it was."""
     marks: dict[str, Any] = {"format": format, "editable": note is None}
     if note:
         marks["note"] = note
-    return {**surface, **marks}
+    first = {"_revision": surface["_revision"]} if "_revision" in surface else {}
+    return {**first, **surface, **marks}
 
 
 def _loaded_surface(driver_id: str) -> dict[str, Any] | None:

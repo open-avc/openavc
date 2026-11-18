@@ -206,3 +206,23 @@ describe("A save refused because another session saved first", () => {
     expect(store().error).toBe('Another driver named "acme_gadget" already exists.');
   });
 });
+
+describe("An import over a saved driver", () => {
+  it("names no revision when it needs fixes first, whichever driver was open", async () => {
+    const gadget = { ...listed("Acme Gadget", "g1"), id: "acme_gadget" } as DriverDefinition;
+    useDriverBuilderStore.setState({ definitions: [listed("Acme Widget", "r1"), gadget] });
+    vi.mocked(api.updateDriverDefinition).mockResolvedValue(
+      { status: "updated", driver_id: "acme_gadget", revision: "g2" },
+    );
+    const needsFixes = { ...gadget, transport: "" } as DriverDefinition;
+
+    await store().importDriver(needsFixes, true);
+    expect(api.updateDriverDefinition).not.toHaveBeenCalled();
+    store().updateDraft({ transport: "tcp", name: "Acme Gadget 2" });
+    await store().save();
+
+    expect(api.updateDriverDefinition).toHaveBeenCalledWith(
+      "acme_gadget", expect.objectContaining({ name: "Acme Gadget 2" }), null,
+    );
+  });
+});

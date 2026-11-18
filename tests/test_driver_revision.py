@@ -1,7 +1,7 @@
 """A driver's revision: every read returns it, every save names it, and a save
 made from an older copy is refused instead of undoing the change made since.
 
-The run this holds closed: the Builder opens acme_widget, another door (the
+The case this holds closed: the Builder opens acme_widget, another door (the
 assistant, a second Programmer) adds a command to it, and the Builder then
 saves the copy it opened with one edit. Before revisions the save answered
 "updated" and the added command was gone from the file and the registry, with
@@ -86,7 +86,7 @@ async def test_a_change_to_the_file_is_a_new_revision(env):
     assert (await ROUTES.get_driver_definition("acme_widget"))["_revision"] != before
 
 
-# --- the review's run: a save from the copy opened before another door's change -----------------
+# --- a save from the copy opened before another door's change -----------------------------------
 
 
 async def test_the_builder_s_save_from_an_older_copy_is_refused_and_keeps_the_change(env):
@@ -216,6 +216,51 @@ async def test_a_patch_naming_the_current_revision_saves_and_answers_the_next(en
 
 
 # --- the assistant ------------------------------------------------------------------------------
+
+
+async def test_the_assistant_s_read_names_its_revision_first(env, monkeypatch):
+    """The cloud cuts a long tool result short; the revision is in the part
+    it keeps."""
+    save_driver_definition(dict(WIDGET), env.repo)
+
+    read = await _assistant(monkeypatch, env)._get_driver_definition({"driver_id": "acme_widget"})
+
+    assert next(iter(read)) == "_revision"
+
+
+async def test_the_assistant_s_get_then_update_over_the_wire_saves(env, monkeypatch):
+    """A get then an update as the cloud sends them: each answer crosses the
+    wire as JSON, and the definition the read answered goes back with one
+    change, its _revision included."""
+    import asyncio
+    import json
+    from unittest.mock import AsyncMock
+
+    from openavc.cloud.protocol import AI_TOOL_CALL, _now_iso
+
+    save_driver_definition(dict(WIDGET), env.repo)
+    tools = _assistant(monkeypatch, env)
+    tools._agent.send_message = AsyncMock()
+
+    async def call(seq: int, tool_name: str, tool_input: dict) -> dict:
+        await tools.handle({
+            "type": AI_TOOL_CALL, "ts": _now_iso(), "seq": seq, "session": "test",
+            "payload": {"request_id": f"req-{seq}", "tool_name": tool_name, "tool_input": tool_input},
+        })
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if tools._agent.send_message.await_count == seq:
+                break
+        _kind, payload = tools._agent.send_message.await_args.args
+        return json.loads(json.dumps(payload))
+
+    read = await call(1, "get_driver_definition", {"driver_id": "acme_widget"})
+    updated = await call(2, "update_driver_definition", {
+        "driver_id": "acme_widget", "definition": {**read["result"], "name": "Acme Widget 2"},
+    })
+
+    assert updated["success"] is True, updated
+    assert _saved(env, "acme_widget.avcdriver") == {**WIDGET, "name": "Acme Widget 2"}
 
 
 async def test_the_assistant_s_update_from_an_older_read_is_refused_and_keeps_the_change(
