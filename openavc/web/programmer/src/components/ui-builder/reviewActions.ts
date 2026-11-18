@@ -113,7 +113,10 @@ export function doActionFindings(el: UIElement): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
   for (const [path, def] of elementActions(el)) {
     const action = typeof def.action === "string" ? def.action : "";
-    if (DISPATCHED_ACTIONS.includes(action)) continue;
+    if (DISPATCHED_ACTIONS.includes(action)) {
+      findings.push(...refusedEmit(el, path, def));
+      continue;
+    }
     findings.push({
       elementId: el.id,
       kind: "binding_not_dispatched",
@@ -124,4 +127,41 @@ export function doActionFindings(el: UIElement): ReviewFinding[] {
     });
   }
   return findings;
+}
+
+
+// The platform's own namespace, and the one a project names its events in.
+// Mirrors check_project_emit in openavc/core/event_bus.py, sentence for
+// sentence; the parity corpus holds the two together.
+const PLATFORM_EVENT_PREFIX = "system.";
+const OWN_EVENT_PREFIX = "custom.";
+
+/** The runtime's refusal of an event a project may not send, or null. */
+function refusedEmitSentence(event: unknown): string | null {
+  if (typeof event !== "string") return null;
+  const name = event.trim();
+  if (!name.toLowerCase().startsWith(PLATFORM_EVENT_PREFIX)) return null;
+  const own = OWN_EVENT_PREFIX + name.slice(PLATFORM_EVENT_PREFIX.length);
+  return (
+    `Event '${event}' is not sent: names starting with '${PLATFORM_EVENT_PREFIX}' are ` +
+    `OpenAVC's own. Name this event '${own}'.`
+  );
+}
+
+/**
+ * An Emit Event naming one of the platform's own events, which the runtime
+ * refuses, in its sentence. Mirrors `_refused_emit` in page_review.py.
+ */
+function refusedEmit(el: UIElement, path: string, def: Record<string, unknown>): ReviewFinding[] {
+  if (def.action !== "event.emit") return [];
+  const refused = refusedEmitSentence(def.event);
+  if (!refused) return [];
+  return [{
+    elementId: el.id,
+    kind: "event_not_sent",
+    message:
+      `${el.id} (${el.type}) has ${path} action 'event.emit', so nothing runs when it ` +
+      `fires. ${refused}`,
+    key: `event_not_sent|${el.id}|${path}`,
+  }];
 }

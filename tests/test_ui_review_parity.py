@@ -508,6 +508,10 @@ CASES["do_actions"] = _project([
                  {"action": "macro", "macro": "power_on", "mode": "toggle",
                   "toggle_key": "device.acme.power",
                   "off_action": {"action": "delay", "seconds": 2}}]}}},
+            # An Emit Event naming the platform's own event, which the runtime
+            # refuses (`emit_ok` below names a project's own, which it sends).
+            {"id": "emit_platform", "type": "button", "label": "Panic",
+             "bindings": {"do": {"press": [{"action": "event.emit", "event": "system.panic"}]}}},
             # An entry that names no action at all -- as silent as a wrong one,
             # and the shape a half-finished hand edit leaves behind.
             {"id": "no_action", "type": "button", "label": "Mute",
@@ -584,6 +588,7 @@ CASES["do_actions"] = _project([
             "script_ok": _pct_box(50, 40, 20, 12),
             "emit_ok": _pct_box(75, 40, 20, 12),
             "state_ok": _pct_box(50, 55, 20, 12),
+            "emit_platform": _pct_box(75, 55, 20, 12),
         })],
     ),
 ])
@@ -1815,6 +1820,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "binding_not_rendered",
         "binding_without_key",
         "binding_not_dispatched",
+        "event_not_sent",
         "property_not_rendered",
         "nothing_to_draw",
         "keypad_never_sends",

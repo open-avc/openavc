@@ -28,6 +28,7 @@ export interface ReviewFinding {
     | "binding_not_rendered"
     | "binding_without_key"
     | "binding_not_dispatched"
+    | "event_not_sent"
     | "property_not_rendered"
     | "nothing_to_draw"
     | "keypad_never_sends"

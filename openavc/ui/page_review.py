@@ -54,6 +54,7 @@ from operator import gt, lt
 from typing import Any
 
 from openavc.core.condition_eval import SURFACE, eval_operator
+from openavc.core.event_bus import check_project_emit
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.control_minimums import (
@@ -2506,6 +2507,7 @@ def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
         action = action_def.get("action")
         action = action if isinstance(action, str) else ""
         if action in DISPATCHED_ACTIONS:
+            findings.extend(_refused_emit(el_id, el_type, path, action_def))
             continue
         findings.append(Finding(
             el_id,
@@ -2515,6 +2517,26 @@ def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
             key=("binding_not_dispatched", el_id, path, action),
         ))
     return findings
+
+
+def _refused_emit(
+    el_id: str, el_type: str, path: str, action_def: Mapping[str, Any],
+) -> list[Finding]:
+    """An Emit Event naming one of the platform's own events, which the
+    runtime refuses (``core/event_bus.check_project_emit``), in its sentence.
+    The Builder's twin is ``refusedEmit``."""
+    if action_def.get("action") != "event.emit":
+        return []
+    refused = check_project_emit(action_def.get("event"))
+    if not refused:
+        return []
+    return [Finding(
+        el_id,
+        "event_not_sent",
+        f"{el_id} ({el_type}) has {path} action 'event.emit', so nothing runs when it "
+        f"fires. {refused}",
+        key=("event_not_sent", el_id, path),
+    )]
 
 
 # --- Range findings and the one auto-fill ----------------------------------
