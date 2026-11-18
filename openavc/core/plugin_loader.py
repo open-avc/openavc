@@ -703,6 +703,9 @@ class PluginLoader:
             save_config_fn=self._save_config_fn,
             log_fn=self._plugin_log,
             failure_reporter=functools.partial(self._count_callback_failure, plugin_id, epoch),
+            # A later instance of the plugin started: a save this one made
+            # that has not reached the file yet is not written.
+            superseded=lambda: self._instance_epoch.get(plugin_id, epoch) != epoch,
             success_reporter=functools.partial(self._reset_callback_failures, plugin_id),
             cloud_agent_provider=self._cloud_agent_provider,
         )
@@ -782,10 +785,6 @@ class PluginLoader:
         self._unregister_dispatch(plugin_id)
         if instance is not None:
             await _bounded_stop(plugin_id, instance, during="stop")
-        if api is not None:
-            # After its stop(), so a save it makes there is written; one still
-            # waiting for the project lock is not.
-            api._retire()
         if registry is not None:
             await registry.cleanup(self._state, self._events)
         if api is not None:

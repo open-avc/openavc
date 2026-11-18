@@ -994,8 +994,8 @@ def keep_waiting_logins(
     login file with the rest of the change, in the change door's take-in.
 
     ``current`` is the config the project holds now. A login it marks that
-    this system has nothing behind (``plugin_secrets.waiting``) was handed to
-    the plugin as ``""`` (``filled_plugin_config``); handed back still empty,
+    this system has nothing behind was handed to the plugin as ``""``
+    (``filled_plugin_config``); handed back still empty,
     it keeps the marker, so saving something else does not turn "needs
     entering here" into "not set"."""
     handed_back_empty = _waiting_and_handed_back_empty(plugin_id, config, current, logins)
@@ -1010,14 +1010,16 @@ def keep_waiting_logins(
 def _waiting_and_handed_back_empty(
     plugin_id: str, config: dict[str, Any], current: dict[str, Any], logins: DeviceLogins,
 ) -> list[tuple[str, str]]:
-    """The places ``current`` marks with nothing saved behind them that
-    ``config`` holds as ``""``."""
-    waiting = plugin_secrets.waiting(
-        current, plugin_secrets.declared_for(plugin_id),
-        lambda item, field: logins.secret(plugin_owner(plugin_id, item), field),
-    )
+    """The places ``current`` marks with nothing saved behind them, a login
+    the plugin makes itself included, that ``config`` holds as ``""``."""
+    marked_unsaved = [
+        (item, field)
+        for item, field, _ in plugin_secrets.places(current, plugin_secrets.declared_for(plugin_id))
+        if plugin_secrets.get_field(plugin_secrets.holder_of(current, item), field) == SAVED_LOGIN
+        and logins.secret(plugin_owner(plugin_id, item), field) is None
+    ]
     return [
-        (item, field) for item, field in waiting
+        (item, field) for item, field in marked_unsaved
         if plugin_secrets.get_field(plugin_secrets.holder_of(config, item), field) == ""
     ]
 

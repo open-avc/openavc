@@ -495,7 +495,7 @@ class TestSaveConfig:
         assert api.config == {"keep": 2}
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("newer", ["handed", "later save", "stopped"])
+    @pytest.mark.parametrize("newer", ["handed", "later save", "replaced"])
     async def test_a_save_overtaken_before_it_lands_is_not_current(self, newer):
         api, _ = _make_api("p", capabilities=[])
         api._config = {"keep": 1}
@@ -513,11 +513,11 @@ class TestSaveConfig:
             await api.save_config({"keep": 3})
             saves[1].taken()
         else:
-            api._retire()
+            api._superseded = lambda: True
         assert not earlier.current()
         earlier.taken()
-        assert api.config == ({"keep": 2} if newer == "stopped" else {"keep": 3})
-        assert api._config == ({"keep": 1} if newer == "stopped" else {"keep": 3})
+        assert api.config == ({"keep": 2} if newer == "replaced" else {"keep": 3})
+        assert api._config == ({"keep": 1} if newer == "replaced" else {"keep": 3})
 
     @pytest.mark.asyncio
     async def test_a_dropped_save_leaves_a_later_one_showing(self):

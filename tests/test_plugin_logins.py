@@ -890,6 +890,48 @@ async def test_a_save_a_plugin_makes_as_it_stops_is_written(engine, data):
     assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.83"
 
 
+async def test_a_save_a_plugin_makes_as_a_change_disables_it_is_written(engine, data):
+    _write(engine.project_path, _project())
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+    instance = engine.plugin_loader._instances[PLUGIN_ID]
+
+    async def stop():
+        config = api.config
+        config["host"] = "192.0.2.85"
+        # Inside the change that disables it, so the save waits for it.
+        await api.save_config(config)
+
+    instance.stop = stop
+    disabled = engine.project.model_copy(deep=True)
+    disabled.plugins[PLUGIN_ID].enabled = False
+    await engine.apply_project(disabled)
+    if engine._bookkeeping_task is not None:
+        await engine._bookkeeping_task
+
+    assert not engine.plugin_loader.is_running(PLUGIN_ID)
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.85"
+
+
+async def test_a_generated_login_handed_back_empty_keeps_the_marker(engine, data, monkeypatch):
+    async def start_without_making_keys(self, api):
+        self.api = api
+
+    monkeypatch.setattr(_AcmeBridge, "start", start_without_making_keys)
+    marked = _config(screens=[{"id": "wall", "screen_key": SAVED_LOGIN}])
+    _write(engine.project_path, _project(marked))
+    await engine.reload_project()
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+
+    config = api.config
+    assert config["screens"][0]["screen_key"] == ""
+    config["host"] = "192.0.2.86"
+    await api.save_config(config)
+
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.86"
+    assert _plugin_on_disk(engine)["screens"][0]["screen_key"] == SAVED_LOGIN
+
+
 async def test_a_login_saved_behind_a_change_is_masked_before_its_file_holds_it(engine, data):
     _write(engine.project_path, _project())
     await engine.reload_project()

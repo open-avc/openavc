@@ -92,6 +92,7 @@ class PluginAPI:
         failure_reporter: Callable | None = None,
         success_reporter: Callable | None = None,
         cloud_agent_provider: Callable[[], Any] | None = None,
+        superseded: Callable[[], bool] | None = None,
     ):
         self._plugin_id = plugin_id
         self._capabilities = set(capabilities)
@@ -102,7 +103,8 @@ class PluginAPI:
         self._handed = 0  # configs the platform handed it since it started
         self._saves = 0  # its own saves, numbered in the order asked
         self._saved = 0  # the number of the last one the file holds
-        self._retired = False  # stopped: nothing more reaches this instance
+        # Whether a later instance of the plugin has started (OwnSave).
+        self._superseded = superseded or (lambda: False)
         self._registry = registry
         self._state = state_store
         self._events = event_bus
@@ -703,11 +705,6 @@ class PluginAPI:
         self._config = dict(new_config)
         self._unsaved = None
         self._handed += 1
-
-    def _retire(self) -> None:
-        """The plugin stopped: a save it made that has not reached the file
-        yet is not written (loader-internal)."""
-        self._retired = True
 
     async def save_config(self, config: dict) -> None:
         """Save updated configuration to the project file.

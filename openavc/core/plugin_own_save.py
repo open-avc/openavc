@@ -10,7 +10,7 @@ may still be written (``OwnSave.current``): none that a newer change reached
 the plugin before.
 
 The state is the ``PluginAPI``'s own attributes (``_config``, ``_unsaved``,
-``_handed``, ``_saves``, ``_saved``, ``_retired``); the engine's side of the
+``_handed``, ``_saves``, ``_saved``, ``_superseded``); the engine's side of the
 save is ``core/project_logins.py`` ``_save_plugin_config``.
 """
 
@@ -25,8 +25,9 @@ if TYPE_CHECKING:
 class OwnSave:
     """One ``api.save_config`` on its way to the project file. It may land
     after a newer change has reached the plugin: a config the platform
-    handed it (a hot apply, a restart, a stop), or a later save of its own
-    that reached the file first. Written then, it would put the older config
+    handed it (a hot apply, or a later instance started after a restart), or
+    a later save of its own that reached the file first. A plugin that only
+    stopped has nothing newer, so a save it made on its way down is written. Written then, it would put the older config
     back, so the engine writes it only while it is ``current``."""
 
     def __init__(self, api: PluginAPI, config: dict) -> None:
@@ -40,7 +41,7 @@ class OwnSave:
         """Whether this save is still the newest thing the plugin has asked
         for or been handed."""
         api = self._api
-        if api._retired or api._handed != self._handed:
+        if api._handed != self._handed or api._superseded():
             return False
         return self._number > api._saved
 
