@@ -209,7 +209,7 @@ async def test_create_script_refuses_a_file_another_script_runs_from(harness):
     answer = await handler._create_script({"id": "hall", "file": "lights.py", "source": "x = 1\n"})
 
     assert answer == {
-        "error": "The file 'lights.py' belongs to script 'lights'. Give the new script a file of its own.",
+        "error": "Script 'lights' already uses the file lights.py. Give the new script a different file name.",
     }
     assert (scripts_dir / "lights.py").read_text(encoding="utf-8") == LIGHTS
     assert [s.id for s in engine.project.scripts] == ["lights"]
@@ -346,6 +346,16 @@ async def test_delete_script_hands_back_what_reaches_into_it(harness):
 
     assert answer == {"status": "deleted", "impact": {"bindings": [{"page": "main"}]}}
     assert asked == [("script", "lights")]
+
+
+async def test_delete_script_keeps_a_file_another_script_runs_from(harness):
+    handler, engine, scripts_dir, _edits = harness
+    engine.project.scripts.append(ScriptConfig(id="twin", file="lights.py"))
+
+    assert await handler._delete_script({"script_id": "lights"}) == {"status": "deleted"}
+
+    assert (scripts_dir / "lights.py").read_text(encoding="utf-8") == LIGHTS
+    assert [s.id for s in engine.project.scripts] == ["twin"]
 
 
 async def test_delete_script_of_an_unknown_script(harness):

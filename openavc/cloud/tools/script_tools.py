@@ -132,13 +132,18 @@ def _append_script(project: Any, new_script: Any) -> None:
     if any(s.id == new_script.id for s in project.scripts):
         raise ToolEditError({"error": f"Script '{new_script.id}' already exists"})
     # The file is written next: it would replace the source that script runs.
-    owner = next((s for s in project.scripts if s.file == new_script.file), None)
+    owner = _runs_from(project, new_script.file)
     if owner is not None:
         raise ToolEditError({
-            "error": f"The file '{new_script.file}' belongs to script '{owner.id}'. "
-                     f"Give the new script a file of its own.",
+            "error": f"Script '{owner.id}' already uses the file {new_script.file}. "
+                     f"Give the new script a different file name.",
         })
     project.scripts.append(new_script)
+
+
+def _runs_from(project: Any, file: str) -> Any:
+    """The script in ``project`` whose file is ``file``, or None."""
+    return next((s for s in project.scripts if s.file == file), None)
 
 
 def _remove_script(project: Any, script_id: str) -> Any:
@@ -295,7 +300,11 @@ class ScriptToolsMixin:
         files = ChangeFiles()
 
         def mutate(project: Any) -> None:
-            files.remove(_script_file(scripts_dir, _remove_script(project, script_id)))
+            removed = _remove_script(project, script_id)
+            path = _script_file(scripts_dir, removed)
+            # A file another script still runs from stays.
+            if _runs_from(project, removed.file) is None:
+                files.remove(path)
 
         # The scripts reconcile unloads just this script; its file goes once
         # the project file no longer names it.

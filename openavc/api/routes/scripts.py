@@ -66,7 +66,10 @@ def _refuse_taken(project, script_id: str, file: str) -> None:
         if s.id == script_id:
             raise HTTPException(status_code=409, detail=f"Script '{script_id}' already exists")
         if s.file == file:
-            raise HTTPException(status_code=409, detail=f"The file '{file}' belongs to script '{s.id}'")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Script '{s.id}' already uses the file {file}. Choose a different script ID or file name.",
+            )
 
 
 @router.get("/scripts/functions")
@@ -253,8 +256,11 @@ async def delete_script(script_id: str) -> dict[str, Any]:
         cfg = next((s for s in project.scripts if s.id == script_id), None)
         if cfg is None:
             raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
-        files.remove(_safe_script_path(_get_scripts_dir(), cfg.file))
+        path = _safe_script_path(_get_scripts_dir(), cfg.file)
         project.scripts = [s for s in project.scripts if s.id != script_id]
+        # A file another script still runs from stays.
+        if not any(s.file == cfg.file for s in project.scripts):
+            files.remove(path)
 
     await engine.apply_project_edit(mutate, files=files)
     return {"status": "deleted"}

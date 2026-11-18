@@ -161,7 +161,9 @@ def test_create_script_refuses_a_file_another_script_uses(client, mock_engine):
     )
 
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "The file 'test_script.py' belongs to script 'test_script'"
+    assert resp.json()["detail"] == (
+        "Script 'test_script' already uses the file test_script.py. Choose a different script ID or file name."
+    )
     scripts_dir = mock_engine.project_path.parent / "scripts"
     assert (scripts_dir / "test_script.py").read_text(encoding="utf-8") == 'print("hello")'
     assert [s.id for s in mock_engine.project.scripts] == ["test_script"]
@@ -206,6 +208,17 @@ def test_delete_script(client, mock_engine):
     # Verify file was deleted
     scripts_dir = mock_engine.project_path.parent / "scripts"
     assert not (scripts_dir / "test_script.py").exists()
+
+
+def test_delete_script_keeps_a_file_another_script_runs_from(client, mock_engine):
+    mock_engine.project.scripts.append(ScriptConfig(id="twin", file="test_script.py"))
+
+    resp = client.delete("/api/scripts/test_script")
+
+    assert resp.status_code == 200
+    scripts_dir = mock_engine.project_path.parent / "scripts"
+    assert (scripts_dir / "test_script.py").read_text(encoding="utf-8") == 'print("hello")'
+    assert [s.id for s in mock_engine.project.scripts] == ["twin"]
 
 
 def test_delete_script_not_found(client):
