@@ -9,6 +9,7 @@ exception), never only that the code ran.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from unittest.mock import AsyncMock, MagicMock
@@ -266,6 +267,40 @@ async def test_a_reload_notice_that_cannot_be_sent_still_reaches_the_event_bus(t
     assert heard == ["system.project.reloaded"]
     assert any(r.exc_info and "the hub is gone" in str(r.exc_info[1])
                for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_an_edit_applied_while_the_engine_stops_tells_open_tabs_but_not_the_bus(tmp_path):
+    eng = _engine(tmp_path)
+    sent = _capture_broadcasts(eng)
+    heard = []
+    eng.events.on("system.project.reloaded", lambda event, _payload: heard.append(event))
+    eng._stopping = True
+
+    outcome = await eng.apply_project(ProjectConfig(**_project_dict(name="Renamed")))
+
+    assert {"type": "project.reloaded", "revision": outcome.revision} in sent
+    assert heard == []
+
+
+@pytest.mark.asyncio
+async def test_an_edit_applied_from_a_reload_handler_is_not_heard_again(tmp_path):
+    """An applied change tells the bus under its lock, so a handler that
+    heard its own edit and edited again would wait on that lock forever."""
+    eng = _engine(tmp_path)
+    _capture_broadcasts(eng)
+    heard = []
+
+    async def edit_on_reload(event, payload):
+        heard.append(event)
+        await eng.apply_project_edit(lambda p: setattr(p.project, "name", f"Edit {len(heard)}"))
+
+    eng.events.on("system.project.reloaded", edit_on_reload)
+    await asyncio.wait_for(eng.persist_bookkeeping_change(lambda p: None), timeout=5)
+
+    assert heard == ["system.project.reloaded"]
+    assert eng._revision_counter == 2
+    assert _disk(eng)["project"]["name"] == "Edit 1"
 
 
 @pytest.mark.asyncio
