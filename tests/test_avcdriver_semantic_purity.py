@@ -103,9 +103,10 @@ def test_python_info_imports_nothing_beyond_itself():
     against are the *same functions* the YAML surface calls, and reaching them
     is the whole point. Budgeting against ``ALLOWED`` rather than a list of its
     own keeps that from becoming a back door — anything ``avcdriver_semantic``
-    may not import, ``python_info`` still may not import through it.
+    may not import, ``python_info`` still may not import through it. Which
+    class it reads (``python_driver_class``) is vendored beside it too.
     """
-    allowed = ALLOWED | {"openavc.drivers.python_info"}
+    allowed = ALLOWED | {"openavc.drivers.python_info", "openavc.drivers.python_driver_class"}
     loaded = _loaded_modules("import openavc.drivers.python_info")
     assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
     # Still not YAML. The reader parses Python source, and the catalog CI job
@@ -117,7 +118,11 @@ def test_simulator_info_imports_nothing_beyond_the_python_reader():
     """The check of a Python simulator's SIMULATOR_INFO is vendored beside the
     Python-driver reader and runs in the same catalog CI job, so it is held to
     the same budget, plus that reader."""
-    allowed = ALLOWED | {"openavc.drivers.python_info", "openavc.drivers.simulator_info"}
+    allowed = ALLOWED | {
+        "openavc.drivers.python_info",
+        "openavc.drivers.python_driver_class",
+        "openavc.drivers.simulator_info",
+    }
     loaded = _loaded_modules("import openavc.drivers.simulator_info")
     assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
     assert "yaml" not in loaded

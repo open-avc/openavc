@@ -1033,25 +1033,32 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
 
     Returns a list of driver definition dicts.
     """
-    loaded: dict[Path, dict[str, Any]] = {}
-    for _dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
-        driver_def = load_driver_file(filepath)
-        if driver_def is not None:
-            loaded[filepath] = driver_def
+    loaded = {
+        filepath: driver_def
+        for _dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}")
+        if (driver_def := load_driver_file(filepath)) is not None
+    }
 
     def loads(path: Path) -> bool:  # each definition was just read
         return path in loaded if path.suffix == DRIVER_EXTENSION else _loads(path)
 
-    definitions: list[dict[str, Any]] = []
-    for driver_id, copies in _library_copies(directories).items():
-        chosen = _chosen(copies, driver_id, loads, refused_too=False)
-        if chosen is None or chosen.suffix != DRIVER_EXTENSION:
-            continue
-        driver_def = loaded[chosen]
-        driver_def["_source_file"] = str(chosen)
-        driver_def["_comment_lines"] = count_comment_lines(chosen)
-        definitions.append(driver_def)
-    return definitions
+    chosen = [
+        _chosen(copies, driver_id, loads, refused_too=False)
+        for driver_id, copies in _library_copies(directories).items()
+    ]
+    return [
+        _listed_definition(loaded[path], path)
+        for path in chosen
+        if path is not None and path.suffix == DRIVER_EXTENSION
+    ]
+
+
+def _listed_definition(driver_def: dict[str, Any], filepath: Path) -> dict[str, Any]:
+    """A definition as the Builder lists it: with the file it was read from
+    (``_source_file``) and how many comment lines that file holds."""
+    driver_def["_source_file"] = str(filepath)
+    driver_def["_comment_lines"] = count_comment_lines(filepath)
+    return driver_def
 
 
 def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any]]:
