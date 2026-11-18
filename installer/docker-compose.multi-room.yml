@@ -37,6 +37,9 @@ services:
       #     TZ: America/Chicago
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
+    # How long a stop gives the server before Docker kills it: its whole
+    # stop fits in half of it.
+    stop_grace_period: 20s
 
   room-102:
     image: ghcr.io/open-avc/openavc:latest
@@ -47,6 +50,7 @@ services:
       - room-102-data:/data
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
+    stop_grace_period: 20s
 
   room-103:
     image: ghcr.io/open-avc/openavc:latest
@@ -57,6 +61,7 @@ services:
       - room-103-data:/data
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
+    stop_grace_period: 20s
 
 volumes:
   room-101-data:

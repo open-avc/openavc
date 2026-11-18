@@ -598,6 +598,9 @@ Restart=always
 RestartSec=5
 # A stop signals the server alone; its own stop ends the device simulator.
 KillMode=mixed
+# The signal the server handles, and the time its stop gets before a kill.
+KillSignal=SIGTERM
+TimeoutStopSec=20
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc

@@ -29,6 +29,12 @@
     <true/>
     <key>ThrottleInterval</key>
     <integer>5</integer>
+    <!-- How long a stop gives the server after launchd's SIGTERM before it
+         kills it (launchd's own default is 5 seconds): the server's whole
+         stop fits in half of it. After an in-app update, the run wrapper
+         adds it to an installed file that has none (openavc-macos-run.sh). -->
+    <key>ExitTimeOut</key>
+    <integer>20</integer>
 
     <key>EnvironmentVariables</key>
     <dict>

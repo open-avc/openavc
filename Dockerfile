@@ -127,6 +127,11 @@ ENV OPENAVC_SERVICE_MANAGED=1
 
 EXPOSE 8080
 
+# The stop signal the server handles (Docker's default, named). How long a
+# stop waits before a kill is the compose file's stop_grace_period; a file
+# that names none gets Docker's 10 seconds, which the server's stop fits.
+STOPSIGNAL SIGTERM
+
 # Hits the plain HTTP port: when TLS is enabled with redirect_http=true (the
 # default), the redirect listener returns 301 to https://, and urllib follows
 # it. The unverified SSL context lets that redirect succeed for the self-signed

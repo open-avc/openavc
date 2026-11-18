@@ -22,23 +22,19 @@ variable now only appears where someone set it on purpose:
 
 The wrapper runs below are the real script under bash against a real plist.
 On a Mac they use the real PlistBuddy; elsewhere a stand-in that reads and
-writes the plist the same way.
+writes the plist the same way (tests/macos_launch_settings.py).
 """
 
 from __future__ import annotations
 
 import json
-import os
 import plistlib
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-from tests import gates
-from tests.test_update_system import _BASH_MISSING, _BASH_PATH, _to_msys2_path
+from tests.macos_launch_settings import INSTALLED, bash_path, sandboxed_mac
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = REPO_ROOT / "installer"
@@ -111,124 +107,9 @@ def test_the_docker_image_keeps_every_address():
 
 # -- the macOS run wrapper, run for real ---------------------------------------
 
-FAKE_PLISTBUDDY = r'''
-import plistlib, sys
-
-sys.stdout.reconfigure(newline="\n")  # what PlistBuddy prints, on Windows too
-
-def main(argv):
-    if len(argv) != 3 or argv[0] != "-c":
-        return 2
-    command, path = argv[1], argv[2]
-    verb, _, keypath = command.partition(" ")
-    keys = keypath.lstrip(":").split(":")
-    try:
-        with open(path, "rb") as handle:
-            root = plistlib.load(handle)
-    except Exception:
-        print(f'Error Reading File: {path}')
-        return 1
-    parent = root
-    for key in keys[:-1]:
-        parent = parent.get(key) if isinstance(parent, dict) else None
-    if not isinstance(parent, dict) or keys[-1] not in parent:
-        print(f'{verb}: Entry, ":{":".join(keys)}", Does Not Exist')
-        return 1
-    if verb == "Print":
-        print(parent[keys[-1]])
-        return 0
-    if verb == "Delete":
-        del parent[keys[-1]]
-        with open(path, "wb") as handle:
-            plistlib.dump(root, handle)
-        return 0
-    return 2
-
-sys.exit(main(sys.argv[1:]))
-'''
-
-REAL_PLISTBUDDY = Path("/usr/libexec/PlistBuddy")
-
-INSTALLED = {
-    "Label": "com.openavc.server",
-    "EnvironmentVariables": {
-        "OPENAVC_DATA_DIR": "/Library/Application Support/OpenAVC",
-        "OPENAVC_ALLOW_ANONYMOUS": "false",
-        "OPENAVC_SERVICE_MANAGED": "1",
-        "HTTPS_PROXY": "http://proxy.campus.example:3128",
-    },
-}
-
-
-def _bash_path(path: Path) -> str:
-    return _to_msys2_path(str(path)) if sys.platform == "win32" else str(path)
-
-
 @pytest.fixture
 def mac(tmp_path):
-    """A sandboxed Mac: an app bundle whose server prints the OPENAVC_BIND it
-    was started with, installed launch settings, and a PlistBuddy."""
-    gates.skip_or_fail(gates.BASH, _BASH_MISSING)
-    app = tmp_path / "OpenAVC.app"
-    server = app / "Contents" / "Resources" / "server" / "openavc-server"
-    server.parent.mkdir(parents=True)
-    server.write_bytes(b'#!/bin/sh\necho "OPENAVC_BIND=${OPENAVC_BIND-<unset>}"\n')
-    server.chmod(0o755)
-    data = tmp_path / "data"
-    data.mkdir()
-    if sys.platform == "darwin" and REAL_PLISTBUDDY.exists():
-        plistbuddy = REAL_PLISTBUDDY
-    else:
-        fake = tmp_path / "fake_plistbuddy.py"
-        fake.write_text(FAKE_PLISTBUDDY, encoding="utf-8")
-        plistbuddy = tmp_path / "PlistBuddy"
-        plistbuddy.write_bytes(
-            f'#!/bin/sh\nexec "{_bash_path(Path(sys.executable))}" "{_bash_path(fake)}" "$@"\n'
-            .encode("utf-8")
-        )
-        plistbuddy.chmod(0o755)
-    plist = tmp_path / "com.openavc.server.plist"
-
-    class Mac:
-        daemon_plist = plist
-
-        def install(self, **environment: str) -> None:
-            daemon = json.loads(json.dumps(INSTALLED))
-            daemon["EnvironmentVariables"].update(environment)
-            with plist.open("wb") as handle:
-                plistlib.dump(daemon, handle)
-
-        def installed(self) -> dict:
-            with plist.open("rb") as handle:
-                return plistlib.load(handle)
-
-        def run(self, *, loaded_bind: str | None = None, name_plist: bool = True,
-                extra: dict | None = None) -> str:
-            """Run the wrapper as launchd would, with ``loaded_bind`` as the
-            OPENAVC_BIND launchd read when it loaded the job; return the one
-            the server got."""
-            environment = {
-                key: value for key, value in os.environ.items()
-                if key not in ("OPENAVC_BIND", "OPENAVC_FIRMWARE_HOST", "OPENAVC_DAEMON_PLIST")
-            }
-            environment.update({
-                "OPENAVC_APP": _bash_path(app),
-                "OPENAVC_DATA_DIR": _bash_path(data),
-                "PLISTBUDDY": _bash_path(plistbuddy),
-                **(extra or {}),
-            })
-            if name_plist:
-                environment["OPENAVC_DAEMON_PLIST"] = _bash_path(plist)
-            if loaded_bind is not None:
-                environment["OPENAVC_BIND"] = loaded_bind
-            done = subprocess.run(
-                [_BASH_PATH, str(MAC_WRAPPER)],
-                capture_output=True, text=True, timeout=60, env=environment,
-            )
-            assert done.returncode == 0, done.stderr
-            return done.stdout.strip().splitlines()[-1]
-
-    return Mac()
+    return sandboxed_mac(tmp_path)
 
 
 def test_an_update_removes_the_bind_earlier_installers_set(mac):
@@ -298,7 +179,7 @@ def test_a_firmware_host_keeps_its_launch_settings(mac, tmp_path):
     host.write_text("{}", encoding="utf-8")
 
     started_with = mac.run(
-        loaded_bind="0.0.0.0", extra={"OPENAVC_FIRMWARE_HOST": _bash_path(host)},
+        loaded_bind="0.0.0.0", extra={"OPENAVC_FIRMWARE_HOST": bash_path(host)},
     )
 
     assert started_with == "OPENAVC_BIND=0.0.0.0"

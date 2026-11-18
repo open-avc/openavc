@@ -103,7 +103,7 @@ A value in the service's environment takes precedence over `system.json` and ove
 - **Linux:** `sudo systemctl edit openavc`, then add the variables under `[Service]` as `Environment=NAME=value` lines. The file this creates is kept across updates. Delete a line there to remove that variable. Apply the change with `sudo systemctl restart openavc`.
 - **Docker:** the `environment:` section of the compose file.
 - **Windows:** in an administrator command prompt, run `"C:\Program Files\OpenAVC\nssm.exe" edit OpenAVC`. On the **Environment** tab, add or delete `NAME=value` lines, then click **Edit service**. Restart the service to apply the change: **Restart Service** in the OpenAVC tray menu, or `Restart-Service OpenAVC` in an administrator PowerShell. From OpenAVC 0.37.0, updates keep the variables you set there.
-- **macOS:** the `EnvironmentVariables` section of `/Library/LaunchDaemons/com.openavc.server.plist`, edited with `sudo`. Stop and start the service (the commands above) to apply a change; `OPENAVC_BIND` is read from the file at each start of the server, so for that one **Service > Restart** in the menu bar is enough. Updates keep the file; running the `.pkg` installer again replaces it.
+- **macOS:** the `EnvironmentVariables` section of `/Library/LaunchDaemons/com.openavc.server.plist`, edited with `sudo`. Stop and start the service (the commands above) to apply a change; `OPENAVC_BIND` is read from the file at each start of the server, so for that one **Service > Restart** in the menu bar is enough. Updates keep what you set in the file; running the `.pkg` installer again replaces it.
 
 ---
 

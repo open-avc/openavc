@@ -47,6 +47,7 @@ from collections.abc import Callable
 from typing import Any
 
 from openavc import runtime_flags
+from openavc.core.stop_stages import DRAIN_SECONDS
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -235,7 +236,9 @@ def hears_the_stop(server: Any, say_stopping: Callable[[], None]) -> Any:
 
     It is the one server that installs the signal handlers (the others are
     ``quiet_server``), so it hears a stop first. uvicorn then drains the open
-    connections before the lifespan reaches ``Engine.stop()``;
+    connections, for ``DRAIN_SECONDS`` at most (``core/stop_stages.py``: an open
+    download or stream held the stop for as long as it lasted), before the
+    lifespan reaches ``Engine.shutdown()``;
     ``runtime_flags.stopping`` is set and ``say_stopping`` called (the
     run-state record says stopping: ``openavc.main``) before any of that, so
     whatever decides something on the way down knows the server is going
@@ -243,6 +246,7 @@ def hears_the_stop(server: Any, say_stopping: Callable[[], None]) -> Any:
     keep uvicorn from hearing the signal: a ``say_stopping`` that raises is
     logged.
     """
+    server.config.timeout_graceful_shutdown = DRAIN_SECONDS
     server.handle_exit = functools.partial(_note_the_stop, server.handle_exit, say_stopping)
     return server
 

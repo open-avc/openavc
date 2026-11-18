@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from openavc import config, main, runtime_flags
+from openavc.core.stop_stages import DRAIN_SECONDS
 from openavc.middleware.startup_splash import STOPPING, RunState
 
 
@@ -554,6 +555,8 @@ def test_plain_http_alone_notes_the_stop_signal(started, served_record):
 
 def _hears_the_stop(server, record) -> None:
     assert server.config.app == "openavc.main:app"
+    # An open request holds the lifespan's stop no longer than this.
+    assert server.config.timeout_graceful_shutdown == DRAIN_SECONDS
     server.handle_exit(15, None)
     assert runtime_flags.stopping is True
     assert record.phase == STOPPING

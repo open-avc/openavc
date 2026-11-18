@@ -52,6 +52,14 @@ REM Configure restart on failure
 REM Exit code 42 = update/rollback in progress, don't restart (installer handles it)
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppExit 42 Exit
 
+REM A stop sends Ctrl+C, which the server handles, and gives its stop 20
+REM seconds before NSSM ends the process: the server's whole stop fits in half
+REM of it (SERVICE_STOP_SECONDS in openavc\core\stop_stages.py). Unset, NSSM
+REM waited 1.5 seconds. Skip 6 leaves out the window and thread messages,
+REM which reach nothing in the server, so the wait is the whole bound.
+"%INSTALL_DIR%\nssm.exe" set OpenAVC AppStopMethodConsole 20000
+"%INSTALL_DIR%\nssm.exe" set OpenAVC AppStopMethodSkip 6
+
 REM Configure logging (NSSM's own stdout/stderr capture)
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppStdout "%DATA_DIR%\logs\service-stdout.log"
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppStderr "%DATA_DIR%\logs\service-stderr.log"

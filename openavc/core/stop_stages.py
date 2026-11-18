@@ -24,7 +24,11 @@ need. A stop with no deadline bounds nothing and still isolates every stage.
 ``STOP_SECONDS`` is the one bound on every stop that ends the process, however
 it was asked: the lifespan's at a service stop and the restart's exit
 (``openavc/restart.py``, whose watchdog fires a little after it). A service
-manager given less time than this cuts the stop short.
+stop first gives the requests still open ``DRAIN_SECONDS``, so from its signal
+the whole of it fits ``SIGNAL_STOP_SECONDS``. THE bound every install's
+service manager is told to give a stop is ``SERVICE_STOP_SECONDS``: each unit
+names it and a signal the server handles (tests/test_service_stop_bound.py
+reads them), since a manager left at its own default cut the stop short.
 
 At the end, every stage that failed, overran or did not start is named in one
 warning (``report``), as a start names its failed parts.
@@ -47,6 +51,20 @@ log = get_logger("openavc.core.engine")
 STOP_SECONDS = 8.0
 # The end of it kept for the stages that let go of the equipment.
 EQUIPMENT_SECONDS = 3.0
+# How long the requests still open at a stop signal (a download, the
+# assistant's stream) get before the lifespan's stop begins: uvicorn's
+# timeout_graceful_shutdown on the main listener (listen_sockets.hears_the_stop).
+DRAIN_SECONDS = 1
+# A stop signal to the end of the stop's last stage: the drain, the stop, and
+# a second for the server's own steps around them. Docker's default wait,
+# 10 s, still holds it, for a compose file that names no stop_grace_period.
+SIGNAL_STOP_SECONDS = DRAIN_SECONDS + STOP_SECONDS + 1.0
+# What every install's service manager gives a stop before it kills the
+# server: systemd's TimeoutStopSec, NSSM's AppStopMethodConsole, Docker's
+# stop_grace_period, launchd's ExitTimeOut. Twice the stop, so a stop is never
+# cut short and a process that cannot exit is still ended
+# (tests/test_service_stop_bound.py reads each unit).
+SERVICE_STOP_SECONDS = 20
 
 
 def stop_deadline() -> float:

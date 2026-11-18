@@ -26,6 +26,11 @@ RestartSec=5
 # (control-group) the signal reached the simulator too, which exited first,
 # and a simulated room was pointed at its real equipment on the way down.
 KillMode=mixed
+# The stop signal the server handles, and how long its stop gets before
+# systemd kills it: the server's whole stop fits in half of it
+# (SERVICE_STOP_SECONDS in openavc/core/stop_stages.py).
+KillSignal=SIGTERM
+TimeoutStopSec=20
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc

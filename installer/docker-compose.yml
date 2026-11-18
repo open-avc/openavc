@@ -28,6 +28,9 @@ services:
       #     TZ: America/Chicago
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
+    # How long a stop (docker compose down, docker stop) gives the server
+    # before Docker kills it: its whole stop fits in half of it.
+    stop_grace_period: 20s
     # For serial/USB device passthrough, uncomment:
     # devices:
     #   - /dev/ttyUSB0:/dev/ttyUSB0

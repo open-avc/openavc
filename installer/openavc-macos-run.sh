@@ -334,12 +334,34 @@ follow_installed_bind() {
     fi
 }
 
+# How long a stop gives the server after launchd's SIGTERM before it kills it.
+# launchd's own default is 5 seconds, which cuts the server's stop short, and
+# every .pkg before this one named none; an in-app update never replaces the
+# installed file, so the bound is added to a file that has none. The wrapper
+# that runs right after an update is the one it replaced, so this first runs at
+# the server's next start, and launchd reads it the next time it loads the job
+# after that (a restart of the Mac, or the .pkg reinstalling it). A value
+# someone set stays.
+STOP_BOUND_SECONDS=20
+
+add_stop_bound() {
+    "$PLISTBUDDY" -c "Print :ExitTimeOut" "$DAEMON_PLIST" >/dev/null 2>&1 && return 0
+    if "$PLISTBUDDY" -c "Add :ExitTimeOut integer $STOP_BOUND_SECONDS" "$DAEMON_PLIST" >/dev/null 2>&1; then
+        chown root:wheel "$DAEMON_PLIST" 2>/dev/null || true
+        chmod 644 "$DAEMON_PLIST" 2>/dev/null || true
+        echo "$LOG_TAG: gave the server's stop $STOP_BOUND_SECONDS seconds in $DAEMON_PLIST, from the next time launchd loads it"
+    else
+        echo "$LOG_TAG: could not add ExitTimeOut to $DAEMON_PLIST"
+    fi
+}
+
 FIRMWARE_HOST="${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}"
 if [ "${OPENAVC_FIRMWARE_HOST+x}" != x ] && [ ! -e "$FIRMWARE_HOST" ] && [ ! -L "$FIRMWARE_HOST" ]; then
     [ -f "$UPDATE_FILE" ] && handle_update
     [ -f "$ROLLBACK_FILE" ] && handle_rollback
     if launch_settings_readable; then
         drop_earlier_installer_bind
+        add_stop_bound
         follow_installed_bind
     fi
 fi

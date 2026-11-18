@@ -31,6 +31,7 @@ import json
 import json as _json
 import signal
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -136,10 +137,12 @@ class _Process:
 
 
 class _MainServer:
-    """uvicorn's server, as far as a stop goes: the one that hears the signal."""
+    """uvicorn's server, as far as a stop goes: the one that hears the signal,
+    with the config its drain is set on."""
 
     def __init__(self):
         self.heard: list[int] = []
+        self.config = SimpleNamespace()
 
     def handle_exit(self, sig, frame):
         self.heard.append(sig)
