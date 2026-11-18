@@ -6,8 +6,12 @@ import { ScriptFileTree } from "../components/scripts/ScriptFileTree";
 import { ScriptEditor, type RuntimeError } from "../components/scripts/ScriptEditor";
 import { ScriptConsole } from "../components/scripts/ScriptConsole";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
-import { ChangedElsewhereDialog } from "../components/shared/ChangedElsewhereDialog";
-import { useSourceRevision } from "../components/scripts/sourceRevision";
+import {
+  SourceConflictDialog,
+  reportSaveFailure,
+  revisionOf,
+  useSourceRevision,
+} from "../components/scripts/sourceRevision";
 import { CreateDriverDialog } from "../components/scripts/CreateDriverDialog";
 import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
@@ -63,16 +67,8 @@ export function ScriptView() {
   const [scriptRuntimeErrors, setScriptRuntimeErrors] = useState<Record<string, api.ScriptRuntimeError>>({});
   const [pythonDrivers, setPythonDrivers] = useState<PythonDriverInfo[]>([]);
   const [driverReloadErrors, setDriverReloadErrors] = useState<RuntimeError[]>([]);
-  // The revision the open Python driver was read at, which its saves name,
-  // and a save refused because another session saved it first.
-  const {
-    readAt: driverReadAt,
-    read: readDriverRevision,
-    refused: driverSaveRefused,
-    conflict: driverConflict,
-    saveMine: saveDriverMine,
-    dismiss: dismissDriverConflict,
-  } = useSourceRevision();
+  // The revision the open Python driver was read at, which its saves name.
+  const driverSource = useSourceRevision();
   const [uiFiles, setUiFiles] = useState<CustomUiFile[]>([]);
   // What the last save of a custom UI file reported. The server is the only
   // thing that can answer it — a control runs in a sandboxed frame in the
@@ -224,8 +220,7 @@ export function ScriptView() {
     setSelectedId(id);
     setSelectedType(type);
     setDriverReloadErrors([]);
-    readDriverRevision(null);
-    dismissDriverConflict();
+    driverSource.opened(null);
     // Last file's warnings belong to last file.
     setUiWarnings([]);
     setLoading(true);
@@ -250,13 +245,11 @@ export function ScriptView() {
         }
         setSource(text);
         setOriginalSource(text);
-      } else if (type === "script") {
-        const result = await api.getScriptSource(id);
-        setSource(result.source);
-        setOriginalSource(result.source);
       } else {
-        const result = await api.getPythonDriverSource(id);
-        readDriverRevision(result.revision);
+        const result = type === "script"
+          ? await api.getScriptSource(id)
+          : await api.getPythonDriverSource(id);
+        driverSource.opened(revisionOf(result));
         setSource(result.source);
         setOriginalSource(result.source);
       }
@@ -267,46 +260,24 @@ export function ScriptView() {
     } finally {
       setLoading(false);
     }
-  }, [readDriverRevision, dismissDriverConflict]);
+  }, [driverSource.opened]);
 
-  const handleSelectScript = useCallback((id: string) => {
+  // Open another file, asking first when the open one has unsaved changes.
+  const selectAsking = useCallback((id: string, type: EditorTarget) => {
     if (isDirty && selectedId) {
       setPendingConfirm({
         title: "Unsaved Changes",
         message: "You have unsaved changes. Switch and discard them?",
         confirmLabel: "Discard & Switch",
-        onConfirm: () => { setPendingConfirm(null); doSelect(id, "script"); },
+        onConfirm: () => { setPendingConfirm(null); doSelect(id, type); },
       });
       return;
     }
-    doSelect(id, "script");
+    doSelect(id, type);
   }, [isDirty, selectedId, doSelect]);
-
-  const handleSelectDriver = useCallback((id: string) => {
-    if (isDirty && selectedId) {
-      setPendingConfirm({
-        title: "Unsaved Changes",
-        message: "You have unsaved changes. Switch and discard them?",
-        confirmLabel: "Discard & Switch",
-        onConfirm: () => { setPendingConfirm(null); doSelect(id, "driver"); },
-      });
-      return;
-    }
-    doSelect(id, "driver");
-  }, [isDirty, selectedId, doSelect]);
-
-  const handleSelectUiFile = useCallback((path: string) => {
-    if (isDirty && selectedId) {
-      setPendingConfirm({
-        title: "Unsaved Changes",
-        message: "You have unsaved changes. Switch and discard them?",
-        confirmLabel: "Discard & Switch",
-        onConfirm: () => { setPendingConfirm(null); doSelect(path, "ui"); },
-      });
-      return;
-    }
-    doSelect(path, "ui");
-  }, [isDirty, selectedId, doSelect]);
+  const handleSelectScript = useCallback((id: string) => selectAsking(id, "script"), [selectAsking]);
+  const handleSelectDriver = useCallback((id: string) => selectAsking(id, "driver"), [selectAsking]);
+  const handleSelectUiFile = useCallback((path: string) => selectAsking(path, "ui"), [selectAsking]);
 
   // Act on a pending focus target (e.g. a console "line N" click). Subscribing to
   // pendingFocus rather than reading once on mount is what makes the links work
@@ -361,10 +332,7 @@ export function ScriptView() {
         // says so when what it kept will not load. The running driver goes on
         // working, so nothing else would tell you until a restart dropped it
         // and took its devices offline.
-        const res = await api.savePythonDriverSource(
-          selectedId, source, false, driverReadAt.current,
-        );
-        readDriverRevision(res.revision);
+        const res = await driverSource.save(selectedId, source, false);
         announceKept(res);
         setDriverReloadErrors(
           res.syntax_error && res.line ? [{ line: res.line, message: res.syntax_error }] : []
@@ -372,14 +340,11 @@ export function ScriptView() {
       }
       setOriginalSource(source);
     } catch (e) {
-      // A save from a copy another session saved over since offers the choice.
-      if (selectedType === "driver" && driverSaveRefused(e, false)) return;
-      console.error(`Failed to save ${selectedType}:`, e);
-      showError(`Save failed: ${parseApiError(e)}`);
+      reportSaveFailure(selectedType, e);
     } finally {
       setSaving(false);
     }
-  }, [selectedId, selectedType, source, loadUiFiles, driverReadAt, readDriverRevision, driverSaveRefused]);
+  }, [selectedId, selectedType, source, loadUiFiles, driverSource]);
 
   // --- Reload handlers ---
 
@@ -461,9 +426,7 @@ export function ScriptView() {
     if (isDirty) {
       setSaving(true);
       try {
-        const res = await api.savePythonDriverSource(
-          selectedId, source, true, driverReadAt.current,
-        );
+        const res = await driverSource.save(selectedId, source, true);
         if (res.status === "error") {
           showError(refusedMessage(res));
           if (res.line) {
@@ -474,10 +437,9 @@ export function ScriptView() {
           setSaving(false);
           return;
         }
-        readDriverRevision(res.revision);
         setOriginalSource(source);
       } catch (e) {
-        if (!driverSaveRefused(e, true)) showError(`Save failed: ${parseApiError(e)}`);
+        reportSaveFailure("driver", e);
         setSaving(false);
         return;
       }
@@ -538,10 +500,7 @@ export function ScriptView() {
     } finally {
       setReloading(false);
     }
-  }, [
-    selectedId, selectedType, source, isDirty, loadPythonDrivers,
-    driverReadAt, readDriverRevision, driverSaveRefused,
-  ]);
+  }, [selectedId, selectedType, source, isDirty, loadPythonDrivers, driverSource]);
 
   // Keyboard shortcut: Ctrl+Shift+R to save & reload
   const handleReloadRef = useRef(selectedType === "driver" ? handleReloadDriver : handleReloadScript);
@@ -1092,14 +1051,12 @@ export function ScriptView() {
         />
       )}
 
-      {driverConflict && (
-        <ChangedElsewhereDialog
-          message={driverConflict.message}
-          onReloadTheirs={() => { if (selectedId) void doSelect(selectedId, "driver"); }}
-          onSaveMine={() => saveDriverMine(driverConflict.reload ? handleReloadDriver : handleSave)}
-          onKeepEditing={dismissDriverConflict}
-        />
-      )}
+      <SourceConflictDialog
+        revision={driverSource}
+        onReopen={(id) => void doSelect(id, "driver")}
+        onSave={handleSave}
+        onSaveAndReload={handleReloadDriver}
+      />
 
       {showCreateDriver && (
         <CreateDriverDialog

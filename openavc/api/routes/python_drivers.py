@@ -206,7 +206,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     body with no ``revision`` is not held. A write answers the revision it
     stored.
     """
-    from openavc.api.routes.drivers import revision_or_answer
+    from openavc.api.routes.driver_definitions import revision_or_answer
 
     async with holding(driver_id):
         require_mutable_driver(driver_id)

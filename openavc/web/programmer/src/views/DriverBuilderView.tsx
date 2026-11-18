@@ -45,10 +45,6 @@ export function DriverPanel() {
     importDriver,
     exportDriver,
     duplicateDriver,
-    changedElsewhere,
-    reloadTheirs,
-    saveMineOverIt,
-    keepEditing,
   } = useDriverBuilderStore();
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -319,15 +315,25 @@ export function DriverPanel() {
         />
       )}
 
-      {changedElsewhere && (
-        <ChangedElsewhereDialog
-          message={changedElsewhere.message}
-          onReloadTheirs={() => { void reloadTheirs(); }}
-          onSaveMine={() => { void saveMineOverIt(); }}
-          onKeepEditing={keepEditing}
-        />
-      )}
+      <BuilderChangedElsewhere />
     </div>
+  );
+}
+
+/** The choice a Builder save refused as made from an older copy offers. */
+function BuilderChangedElsewhere() {
+  const changedElsewhere = useDriverBuilderStore((s) => s.changedElsewhere);
+  const reloadTheirs = useDriverBuilderStore((s) => s.reloadTheirs);
+  const saveMineOverIt = useDriverBuilderStore((s) => s.saveMineOverIt);
+  const keepEditing = useDriverBuilderStore((s) => s.keepEditing);
+  if (!changedElsewhere) return null;
+  return (
+    <ChangedElsewhereDialog
+      message={changedElsewhere.message}
+      onReloadTheirs={() => { void reloadTheirs(); }}
+      onSaveMine={() => { void saveMineOverIt(); }}
+      onKeepEditing={keepEditing}
+    />
   );
 }
 

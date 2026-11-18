@@ -41,14 +41,17 @@ from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, endpoint_policy
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes.drivers import (
-    admit_or_answer,
-    claim_or_answer,
-    definition_invalid,
-    revision_or_answer,
-)
+from openavc.api.routes.drivers import admit_or_answer, claim_or_answer, definition_invalid
 from openavc.core.host_policy import HostCategory
-from openavc.drivers.driver_change import DriverChange, Gates, changed, holding, revision
+from openavc.drivers.driver_change import (
+    DriverChange,
+    DriverChangedElsewhere,
+    Gates,
+    changed,
+    hold_to_revision,
+    holding,
+    revision,
+)
 from openavc.drivers.registry import register_driver
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -87,6 +90,21 @@ def _id_taken(driver_id: str) -> StructuredApiError:
         [f'Another driver named "{driver_id}" already exists. Choose a different ID.'],
         status_code=409,
     )
+
+
+def revision_or_answer(sent: Any, current: str) -> None:
+    """``driver_change.hold_to_revision`` as this API answers it, at every
+    door that saves over a driver file (replace and patch here, the Code
+    view's save): a save naming a revision the stored file no longer has is
+    the 409 that says so, with ``code`` ``driver_changed`` and the stored
+    file's ``revision`` beside it, which the IDE turns into its reload
+    theirs, save mine over it, keep editing choice."""
+    try:
+        hold_to_revision(sent, current)
+    except DriverChangedElsewhere as e:
+        raise StructuredApiError(
+            e.status_code, e.detail, code="driver_changed", revision=e.current
+        ) from e
 
 
 def _get_driver_dirs() -> list[Path]:

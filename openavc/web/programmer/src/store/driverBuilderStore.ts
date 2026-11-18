@@ -8,6 +8,7 @@ import {
   reconcileAfterSave,
   makeLatestWins,
   importBlockers,
+  changedRevision,
   cloneDraft,
   definitionRevision,
   driverFileDefinition,
@@ -201,10 +202,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
   // editor added), and its own answer says which revision it stored.
   const followSavedCopy = (definitions: DriverDefinition[]) => {
     const { selectedId, revision, dirty, saving } = get();
-    if (selectedId === null || dirty || saving) return;
-    const listed = definitions.find((d) => d.id === selectedId);
-    const now = listed ? definitionRevision(listed) : null;
-    if (now !== null && now !== revision) applySelection(selectedId);
+    if (dirty || saving) return;
+    if (changedRevision(definitions, selectedId, revision) !== null) applySelection(selectedId);
   };
 
   return {

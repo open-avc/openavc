@@ -75,6 +75,18 @@ export function definitionRevision(definition: DriverDefinition): string | null 
   return typeof revision === "string" ? revision : null;
 }
 
+/** The revision `definitions` list for the driver open at `revision` when it
+ *  is another (a save since changed it), else null. */
+export function changedRevision(
+  definitions: DriverDefinition[],
+  selectedId: string | null,
+  revision: string | null,
+): string | null {
+  const listed = definitions.find((d) => d.id === selectedId);
+  const now = listed ? definitionRevision(listed) : null;
+  return now === revision ? null : now;
+}
+
 export function serializeDriverDefinition(definition: DriverDefinition): string {
   return yaml.dump(driverFileDefinition(definition), DRIVER_YAML_DUMP_OPTIONS);
 }
