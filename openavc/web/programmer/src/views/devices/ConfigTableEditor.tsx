@@ -123,18 +123,19 @@ export function buildTableValue(
   return { rows: out };
 }
 
-export function ConfigTableEditor({
-  deviceId,
-  fieldKey,
-  fieldSchema,
-  onSaved,
-}: {
+interface ConfigTableProps {
   deviceId: string;
   fieldKey: string;
   fieldSchema: Record<string, unknown>;
   connected: boolean;
   onSaved: () => void;
-}) {
+}
+
+export function ConfigTableEditor(props: ConfigTableProps) {
+  return <ConfigTableField key={JSON.stringify([props.deviceId, props.fieldKey])} {...props} />;
+}
+
+function ConfigTableField({ deviceId, fieldKey, fieldSchema, onSaved }: ConfigTableProps) {
   const devices = useProjectStore((s) => s.project?.devices);
   const deviceConfig = devices?.find((d) => d.id === deviceId);
   const savedConfig = useMemo(
@@ -148,20 +149,25 @@ export function ConfigTableEditor({
   const help = fieldSchema.help ? String(fieldSchema.help) : "";
   const rowLabel = String(fieldSchema.row_label || "row");
 
-  const [rows, setRows] = useState<Row[]>(() =>
-    existingRows(savedConfig[fieldKey], colKeys),
-  );
-  const [dirty, setDirty] = useState(false);
+  // Clean tables always render the store's current value. A draft keeps the
+  // value it started from so a setup import cannot be overwritten by old rows.
+  const storedRows = existingRows(savedConfig[fieldKey], colKeys);
+  const baseline = JSON.stringify(storedRows);
+  const [draft, setDraft] = useState<{ baseline: string; rows: Row[] } | null>(null);
+  const rows = draft?.rows ?? storedRows;
+  const dirty = draft !== null;
+  const conflict = dirty && draft.baseline !== baseline;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const apply = (next: Row[]) => {
-    setRows(next);
-    setDirty(true);
+    setDraft((previous) => ({ baseline: previous?.baseline ?? baseline, rows: next }));
     setSaved(false);
   };
+  const saveDisabled = !dirty || saving || conflict;
   const handleSave = async () => {
+    if (saveDisabled) return;
     const result = buildTableValue(rows, columns, rowLabel);
     if ("error" in result) {
       setError(result.error);
@@ -178,7 +184,7 @@ export function ConfigTableEditor({
       // The endpoint persisted + bumped the revision — re-sync the store
       // (fresh ETag when clean, mirror when unsaved edits are in flight).
       await syncDeviceConfig(deviceId, newConfig);
-      setDirty(false);
+      setDraft(null);
       setSaved(true);
       onSaved();
       setTimeout(() => setSaved(false), 2500);
@@ -224,14 +230,14 @@ export function ConfigTableEditor({
           <button
             type="button"
             onClick={handleSave}
-            disabled={!dirty || saving}
+            disabled={saveDisabled}
             style={{
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: dirty ? "var(--accent)" : "var(--bg-hover)",
-              color: dirty ? "var(--accent-contrast, #fff)" : "var(--text-muted)",
+              background: saveDisabled ? "var(--bg-hover)" : "var(--accent)",
+              color: saveDisabled ? "var(--text-muted)" : "var(--accent-contrast, #fff)",
               fontSize: "var(--font-size-sm)",
-              cursor: dirty && !saving ? "pointer" : "default",
+              cursor: saveDisabled ? "default" : "pointer",
             }}
           >
             {saving ? "Saving…" : "Save"}
@@ -257,7 +263,27 @@ export function ConfigTableEditor({
         </div>
       )}
 
-      <TableRowsEditor columns={columns} rowLabel={rowLabel} rows={rows} onChange={apply} />
+      {conflict && !saving && (
+        <TableUpdateNotice onDiscard={() => { setDraft(null); setError(null); }} />
+      )}
+      <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <TableRowsEditor columns={columns} rowLabel={rowLabel} rows={rows} onChange={apply} />
+      </fieldset>
+    </div>
+  );
+}
+
+function TableUpdateNotice({ onDiscard }: { onDiscard: () => void }) {
+  return (
+    <div role="alert" style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-sm)" }}>
+      <p>The saved table has changed. Your unsaved edits are still shown below.
+        Copy any edits you want to keep, then load the updated rows before saving.</p>
+      <button type="button" onClick={onDiscard} style={{
+        color: "var(--accent)", background: "var(--bg-hover)", padding: "6px 12px",
+        border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", marginTop: 6,
+      }}>
+        Discard my edits and load updated rows
+      </button>
     </div>
   );
 }
@@ -340,51 +366,10 @@ export function TableRowsEditor({
                 marginBottom: "var(--space-xs)",
               }}
             >
-              {colKeys.map((k) => {
-                const col = columns[k];
-                const type = String(col.type || "string");
-                if (type === "enum") {
-                  return (
-                    <select
-                      key={k}
-                      value={row[k] ?? ""}
-                      onChange={(e) => setCell(i, k, e.target.value)}
-                      style={{ ...cellStyle, fontFamily: "inherit" }}
-                    >
-                      <option value="">—</option>
-                      {(col.values ?? []).map((v) => {
-                        const val = optionValue(v);
-                        return (
-                          <option key={val} value={val}>
-                            {optionLabel(v)}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  );
-                }
-                if (type === "boolean") {
-                  return (
-                    <input
-                      key={k}
-                      type="checkbox"
-                      checked={row[k] === "true"}
-                      onChange={(e) => setCell(i, k, e.target.checked ? "true" : "false")}
-                      style={{ justifySelf: "start" }}
-                    />
-                  );
-                }
-                return (
-                  <input
-                    key={k}
-                    type={NUMERIC.has(type) ? "number" : "text"}
-                    value={row[k] ?? ""}
-                    onChange={(e) => setCell(i, k, e.target.value)}
-                    placeholder={col.default != null ? String(col.default) : ""}
-                    style={cellStyle}
-                  />
-                );
-              })}
+              {colKeys.map((k) => (
+                <TableCell key={k} column={columns[k]} name={`${rowLabel} ${i + 1} ${columns[k].label || k}`}
+                  value={row[k] ?? ""} style={cellStyle} onChange={(value) => setCell(i, k, value)} />
+              ))}
               <button
                 type="button"
                 onClick={() => removeRow(i)}
@@ -421,4 +406,34 @@ export function TableRowsEditor({
       </button>
     </>
   );
+}
+
+/** One accessible typed cell shared by every row in the grid. */
+function TableCell({ column, name, value, style, onChange }: {
+  column: ColumnDef;
+  name: string;
+  value: string;
+  style: React.CSSProperties;
+  onChange: (value: string) => void;
+}) {
+  const type = String(column.type || "string");
+  if (type === "enum") {
+    return (
+      <select aria-label={name} value={value} onChange={(e) => onChange(e.target.value)}
+        style={{ ...style, fontFamily: "inherit" }}>
+        <option value="">—</option>
+        {(column.values ?? []).map((v) => (
+          <option key={optionValue(v)} value={optionValue(v)}>{optionLabel(v)}</option>
+        ))}
+      </select>
+    );
+  }
+  if (type === "boolean") {
+    return <input type="checkbox" aria-label={name} checked={value === "true"}
+      onChange={(e) => onChange(e.target.checked ? "true" : "false")}
+      style={{ justifySelf: "start" }} />;
+  }
+  return <input type={NUMERIC.has(type) ? "number" : "text"} aria-label={name}
+    value={value} onChange={(e) => onChange(e.target.value)}
+    placeholder={column.default != null ? String(column.default) : ""} style={style} />;
 }
