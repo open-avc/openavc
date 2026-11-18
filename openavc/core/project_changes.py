@@ -19,9 +19,9 @@ take-in. What a replace keeps of the project it replaces (the cloud push's
 rollback copy, a backup) is taken under the lock before anything changes,
 never before the lock, so an edit saved while the replace waited is in it.
 A change built elsewhere on a read of the project (the cloud's template
-merge) reads it with ``read_saved_project``, the file and the revision it
-holds together under the lock, and is sent back with that revision as its
-expected one, so a save made in between refuses it.
+merge) reads it with ``read_saved_project`` (``core/project_revision.py``)
+and is sent back with that revision as its expected one, so a save made in
+between refuses it.
 A file beside the project that a change writes or removes with it (a
 script's ``.py``) is the door's too (``core/change_files.py``): written
 inside the change and put back when it is not applied, removed only once
@@ -54,10 +54,10 @@ lock (a plugin hook or an event handler it awaits), which is why it can be
 queued (``schedule_bookkeeping_change``); THE span that queues a plugin's
 own save is ``_running_hooks``, and outside it the save waits its turn.
 
-Both run under ``_reload_lock``, both mint the next revision here, and both
-make the next timed backup due once the file holds them. A revision is an
-opaque token, compared for equality and nothing else; see
-``_init_project_changes``. Every reader and writer of the bookkeeping queue
+Both run under ``_reload_lock``, both mint the next revision, and both
+make the next timed backup due once the file holds them. THE revision token
+and the read that carries it are ``core/project_revision.py``'s: a change
+mints the next one there and puts the one before back here. Every reader and writer of the bookkeeping queue
 and its flush task is in this module, the wait a stop makes for it included.
 
 THE announcement of a saved change is ``_announce_saved``, the same from
@@ -75,8 +75,6 @@ Mixed into Engine (core/engine.py). Logs under the engine's name.
 from __future__ import annotations
 
 import asyncio
-import json
-import secrets
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -97,16 +95,16 @@ from openavc.core.project_loader import (
     save_project_async,
 )
 from openavc.core.project_reconcile import FailedPart, ReconcileRun
+from openavc.core.project_revision import (  # noqa: F401 -- ProjectRevisionConflictError is imported from here
+    ProjectRevisionConflictError,
+    ProjectRevisionMixin,
+)
 from openavc.core.project_update import MigrationNotes
 from openavc.core.saved_values import refuse_new_words
 from openavc.core.typed_fields import trim_device_settings
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.engine")
-
-
-class ProjectRevisionConflictError(Exception):
-    """A revision-checked save found a newer project revision on the server."""
 
 
 class ProjectInvalidError(ValueError):
@@ -153,16 +151,6 @@ class ApplyOutcome:
 
     revision: str
     failed: tuple[FailedPart, ...] = ()
-
-
-@dataclass(frozen=True)
-class SavedRead:
-    """The project file as JSON and the revision it holds, read together
-    (:meth:`ProjectChangesMixin.read_saved_project`): a change built on the read
-    elsewhere is sent back with ``revision`` as its expected revision."""
-
-    project_json: Any
-    revision: str
 
 
 @dataclass(frozen=True)
@@ -288,23 +276,11 @@ async def _call_logged(callback, failure: str) -> None:
         log.exception(failure)
 
 
-class ProjectChangesMixin:
+class ProjectChangesMixin(ProjectRevisionMixin):
     """The project's change doors, its revision and its bookkeeping saves."""
 
     def _init_project_changes(self) -> None:
-        # The project's revision, as an OPAQUE token — compared for equality
-        # and nothing else. It was a counter from 0, which meant every run
-        # handed out the same values: a Builder tab left open across a restart
-        # held an `If-Match` the new process agreed with, and its first autosave
-        # saved over everything anyone had done since, with no 409 and nothing
-        # in the log, because as far as the server could tell it WAS a valid
-        # save. The random half makes a token from an earlier run unmatchable;
-        # the counter half keeps a log line readable ("the 12th save this run").
-        # Never parse it, order it, or persist it — a token restored from a
-        # backup would be one this run has already handed out.
-        self._boot_id: str = secrets.token_hex(4)
-        self._revision_counter: int = 0  # saves committed this run
-        self._project_revision: str = f"{self._boot_id}-0"
+        self._init_project_revision()
         # The last save that came with an operation id: one slot, in memory,
         # so the same save sent again after its answer was lost is recognised
         # while it is still the current revision (_resent_outcome).
@@ -448,44 +424,6 @@ class ProjectChangesMixin:
             outcome = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
             self.keep_update_notes(update_notes, replace=True)
             return outcome
-
-    async def read_saved_project(self) -> SavedRead:
-        """THE read a change built elsewhere starts from (the cloud reads the
-        project, merges a template into it and pushes the result back): the
-        project file and the revision it holds, read together under
-        ``_reload_lock``. A change takes its revision before its file is
-        written (:meth:`_swap_in`), so a read made beside the lock could pair
-        the file as it was with the new revision, and a change built on it
-        would pass the revision check and replace that change. Raises what
-        the read raises (``FileNotFoundError``, a ``ValueError`` for a file
-        that is not JSON)."""
-        async with self._reload_lock:
-            text = await asyncio.to_thread(self.project_path.read_text, encoding="utf-8")
-            return SavedRead(json.loads(text), self._project_revision)
-
-    def _check_revision(self, expected_revision: str | None) -> None:
-        """Refuse a save made against a revision this run has moved past;
-        ``None`` skips the check. Caller holds ``_reload_lock``."""
-        if expected_revision is None or expected_revision == self._project_revision:
-            return
-        if self._revision_counter == 0:
-            # Nothing has been saved since this process started, so no
-            # other writer can have invalidated the caller's token — it
-            # is from an earlier run. "Another session" would send them
-            # looking for a colleague who was never there.
-            raise ProjectRevisionConflictError(
-                "The system restarted since this page loaded the project. "
-                "Reload to see the latest changes."
-            )
-        raise ProjectRevisionConflictError(
-            "Project was modified by another session. "
-            "Reload to see the latest changes."
-        )
-
-    def _new_revision(self) -> str:
-        """Mint the next revision token: this run's id plus a save count."""
-        self._revision_counter += 1
-        return f"{self._boot_id}-{self._revision_counter}"
 
     async def apply_project_edit(self, mutate, *, files: ChangeFiles | None = None) -> ApplyOutcome:
         """Apply an edit built from the current project, atomically.

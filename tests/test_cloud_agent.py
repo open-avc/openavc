@@ -2663,7 +2663,7 @@ class TestMessageSizeLimits:
             async def send_message(self, msg_type, payload):
                 sent.append((msg_type, payload))
 
-        from openavc.core.project_changes import SavedRead
+        from openavc.core.project_revision import SavedRead
 
         big_project = {
             "openavc_version": "0.7.0",
