@@ -15,6 +15,15 @@ process for a retry through ``exit_to_retry``: the same stop, a different exit
 code (``RETRY_EXIT_CODE``), and nothing said on the run-state record, whose
 failed phase stands for the tray until the next start writes its own.
 
+An applied update or rollback ends the process through the same door
+(``exit_for_update``, the updater's ``_end_process``): the same stop, the
+exit code the install's service manager reads, and a last step of its own
+after the stop (the rollback's device logins put back). It is never refused:
+the update is applied by then. An exit or a stop already under way takes it
+on (``_Ending``), so whatever ends the process first ends it the way the
+update needs; a door not armed yet ends nothing, and the update takes effect
+at the next start.
+
 An accepted request ends this process. Whatever manages it (NSSM, systemd,
 launchd, Docker's restart policy, appliance hardware's device supervisor)
 starts the next one; a dev session (``python -m openavc.main``) has none, so
@@ -47,7 +56,7 @@ import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from openavc import system_config
 from openavc.core.event_bus import detach_emit_chain
@@ -59,10 +68,17 @@ log = get_logger("openavc.main")
 
 # How long after the stop's deadline the watchdog ends the process anyway.
 WATCHDOG_MARGIN_SECONDS = 2.0
-# The longest a process ending for a restart can keep its port after it has
-# spawned its replacement: the stop's deadline, then the watchdog. The
-# replacement retries its port for longer than this (openavc.main).
-LONGEST_EXIT_SECONDS = STOP_SECONDS + WATCHDOG_MARGIN_SECONDS
+# From the start of the stop to the watchdog.
+WATCHDOG_SECONDS = STOP_SECONDS + WATCHDOG_MARGIN_SECONDS
+# How long the watchdog gives an exit's last step (``exit_for_update``)
+# before it ends the process without it.
+LAST_STEP_SECONDS = 1.0
+# The longest a process can take to end once its stop begins, and so keep its
+# port after it has spawned its replacement: the stop's deadline, the
+# watchdog, the last step's bound. The replacement retries its port for
+# longer than this (openavc.main), and the Windows installer an update
+# schedules starts after it (updater/rollback.py ``INSTALLER_LEAD_SECONDS``).
+LONGEST_EXIT_SECONDS = WATCHDOG_SECONDS + LAST_STEP_SECONDS
 
 # The ways a restart can be asked for, and how long each waits before the stop
 # begins: "graceful" waits so the request's own answer and log line get out
@@ -98,6 +114,63 @@ _run_state: Any = None
 _exiting: set[asyncio.Task] = set()
 
 
+class _Ending:
+    """How this process ends, whatever ends it: the exit code, and a last
+    step to run before it. An update or rollback that ends the process
+    (``exit_for_update``) sets both, and an exit or a stop already under way
+    ends the process with them, so its service manager reads the update's
+    code and the rollback's logins are put back."""
+
+    def __init__(self) -> None:
+        self.code = 0
+        self.last: Callable[[Callable[[], None]], None] | None = None
+        # An update or rollback has set the two.
+        self.taken_on = False
+        # Who runs the last step: the stop's end or the watchdog, once.
+        self._once = threading.Lock()
+        self._last_ran = False
+
+    def take_on(self, code: int, last) -> None:
+        self.code = code
+        self.last = last
+        self.taken_on = True
+
+    def ends_with(self, code: int) -> None:
+        """The code an exit of the door's own ends with (the failed start's
+        retry), unless an update has set its own."""
+        if not self.taken_on:
+            self.code = code
+
+    def end(self) -> None:
+        os._exit(self.code)
+
+    def finish(self) -> None:
+        """Run the last step, then end. The last step is handed the end and
+        may call it itself (the rollback's, holding the project save lock);
+        a last step that raises is logged, and the process ends anyway."""
+        with self._once:
+            if self.last is not None and not self._last_ran:
+                self._last_ran = True
+                try:
+                    self.last(self.end)
+                except Exception:
+                    log.exception("The last step before the exit failed")
+        self.end()
+
+    def finish_from_watchdog(self) -> None:
+        """The watchdog's end: the last step gets ``LAST_STEP_SECONDS`` on a
+        thread of its own (the event loop may be what hangs), and the process
+        ends whether it is done or not, so the exit never waits on it."""
+        if self.last is not None:
+            helper = threading.Thread(target=self.finish, daemon=True)
+            helper.start()
+            helper.join(LAST_STEP_SECONDS)
+        self.end()
+
+
+_ending = _Ending()
+
+
 @dataclass(frozen=True)
 class ExitAnswer:
     """What ``request_exit`` decided, for the asker to answer with.
@@ -126,10 +199,11 @@ def accept_restarts(engine, run_state=None) -> None:
 
 def reset() -> None:
     """Disarm the door and forget any exit in flight (tests)."""
-    global _engine, _run_state
+    global _engine, _run_state, _ending
     _engine = None
     _run_state = None
     _exiting.clear()
+    _ending = _Ending()
 
 
 def request_exit(mode: Any, source: str) -> ExitAnswer:
@@ -165,12 +239,58 @@ def request_exit(mode: Any, source: str) -> ExitAnswer:
         "Restart requested (source=%s, mode=%s); stopping %s",
         source, mode, f"in {wait} s" if wait else "now",
     )
+    _start_exit(wait, engine)
+    return ExitAnswer(accepted=True, mode=mode, wait_seconds=wait)
+
+
+def exit_for_update(source: str, code: int, last=None) -> bool:
+    """End the process for an update or rollback just applied (``source``
+    names it in the log): the stop a graceful restart runs, after its wait so
+    the answer to whoever asked gets out, then ``last`` (called with the
+    process's end, which it may call itself), then the exit with ``code``.
+
+    Never refused, since the update is applied already: an exit or a stop
+    already under way takes on ``code`` and ``last`` and ends the process
+    with them (a service stop through ``stop_for_service``). False, and
+    nothing done, only when the door is not armed yet (the server's start is
+    still running); the update then takes effect at the next start."""
+    engine = _engine
+    if engine is None:
+        log.warning(
+            "Not restarting for the %s: the server has not finished starting", source,
+        )
+        return False
+    _ending.take_on(code, last)
+    if _exiting or engine.stopping:
+        log.warning(
+            "The %s ends the process with the stop already under way (exit %d)", source, code,
+        )
+        return True
+    wait = WAIT_SECONDS[DEFAULT_MODE]
+    log.warning(
+        "Restart for the %s (exit %d); stopping in %d s", source, code, wait,
+    )
+    _start_exit(wait, engine)
+    return True
+
+
+async def stop_for_service(engine) -> None:
+    """The lifespan's stop, at a service stop: the engine's shutdown within
+    the one deadline. An update or rollback that reached ``exit_for_update``
+    while it ran then ends the process here, with its last step and its
+    code; otherwise the lifespan ends as it does."""
+    await engine.shutdown(stop_deadline())
+    log.info("OpenAVC stopped")
+    if _ending.taken_on:
+        _ending.finish()
+
+
+def _start_exit(wait: int, engine) -> None:
     if _run_state is not None:
         _run_state.stopping()
     exiting = asyncio.create_task(_exit_after(wait, engine))
     _exiting.add(exiting)
     exiting.add_done_callback(_exiting.discard)
-    return ExitAnswer(accepted=True, mode=mode, wait_seconds=wait)
 
 
 def _refuse(source: str, mode: Any, refusal: str, sentence: str) -> ExitAnswer:
@@ -194,7 +314,8 @@ def exit_to_retry() -> bool:
     if _exiting or engine.stopping:
         return False
     log.warning("Startup failed; stopping so the service manager starts it again")
-    exiting = asyncio.create_task(_stop_and_exit(engine, RETRY_EXIT_CODE))
+    _ending.ends_with(RETRY_EXIT_CODE)
+    exiting = asyncio.create_task(_stop_and_exit(engine))
     _exiting.add(exiting)
     exiting.add_done_callback(_exiting.discard)
     return True
@@ -205,12 +326,13 @@ async def _exit_after(wait: int, engine) -> None:
     await _stop_and_exit(engine)
 
 
-async def _stop_and_exit(engine, exit_code: int = 0) -> None:
+async def _stop_and_exit(engine) -> None:
     # A root of its own: the shutdown's events run at the depth a service
     # stop's do, not one level under the request's emit.
     detach_emit_chain()
     deadline = stop_deadline()
-    threading.Timer(LONGEST_EXIT_SECONDS, lambda: os._exit(exit_code)).start()
+    # Read when it fires: an update may take the exit on during the stop.
+    threading.Timer(WATCHDOG_SECONDS, lambda: _ending.finish_from_watchdog()).start()
 
     if not is_service_managed():
         spawn_replacement()
@@ -219,7 +341,7 @@ async def _stop_and_exit(engine, exit_code: int = 0) -> None:
         await engine.shutdown(deadline)
     except Exception:
         log.exception("Error during graceful shutdown before restart")
-    os._exit(exit_code)
+    _ending.finish()
 
 
 def is_service_managed() -> bool:

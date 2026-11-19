@@ -181,7 +181,7 @@ async def test_all_manager_entry_points_refuse_before_generic_update_work(
     manager._download_artifact = AsyncMock(
         side_effect=AssertionError("Must not download")
     )
-    manager._restart_process = Mock(side_effect=AssertionError("Must not restart"))
+    manager._end_process = Mock(side_effect=AssertionError("Must not restart"))
     with (
         patch(
             "openavc.updater.backup.create_backup",

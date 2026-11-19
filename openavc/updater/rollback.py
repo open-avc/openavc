@@ -70,6 +70,13 @@ def clear_stale_rollback_marker(data_dir: Path) -> bool:
 #: Every task the updater registers is named with this, then the version.
 UPDATE_TASK_PREFIX = "OpenAVCUpdate-"
 
+#: How long after it is scheduled the installer task is set to start (to the
+#: second). The restart door's wait and its longest exit fit inside it
+#: (openavc/restart.py), so the server has normally ended by then; an
+#: installer that finds it running stops the service itself
+#: (installer/setup.iss, PrepareToInstall).
+INSTALLER_LEAD_SECONDS = 15
+
 #: How long the leftover-task cleanup may take before startup goes on without it.
 LEFTOVER_TASKS_TIMEOUT_SECONDS = 30
 
@@ -143,7 +150,7 @@ def remove_leftover_update_tasks() -> list[str]:
 
 
 def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
-    """Schedule a one-time Windows task to run the installer ~15s from now.
+    """Schedule a one-time Windows task to run the installer INSTALLER_LEAD_SECONDS from now.
 
     Launching the installer as a direct child via subprocess.Popen does not
     work under NSSM: NSSM walks the service's process tree on exit and kills
@@ -169,7 +176,7 @@ def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
     install. A task this action did not get to delete is removed by
     ``remove_leftover_update_tasks`` at the next start.
     """
-    run_at = (datetime.now() + timedelta(seconds=15)).strftime("%Y-%m-%dT%H:%M:%S")
+    run_at = (datetime.now() + timedelta(seconds=INSTALLER_LEAD_SECONDS)).strftime("%Y-%m-%dT%H:%M:%S")
     task_name = f"{UPDATE_TASK_PREFIX}{label}"
     delete_task = xml_escape(f'/delete /f /tn "{task_name}"')
 

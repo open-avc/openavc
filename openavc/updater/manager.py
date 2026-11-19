@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from openavc import restart
 from openavc.updater.checker import ReleaseInfo, UpdateChecker
 from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
@@ -32,6 +33,19 @@ from openavc.utils.outbound import internet_client, internet_failure
 
 log = logging.getLogger(__name__)
 
+# What ends the process once an update or rollback is applied, by install
+# type: the exit code its service manager reads, and who starts the version
+# it applied. Windows' 42 tells NSSM to leave the service stopped, for the
+# installer to start (installer/install-service.bat); every other manager
+# starts the server again on any exit, its helper applying the update first.
+_EXIT_CODES = {DeploymentType.WINDOWS_INSTALLER: 42}
+_WHO_STARTS_IT = {
+    DeploymentType.WINDOWS_INSTALLER: "the installer starts the new version",
+    DeploymentType.LINUX_PACKAGE: "systemd applies it and starts the server again",
+    DeploymentType.MACOS_APP: "launchd's wrapper applies it and starts the server again",
+    DeploymentType.ANDROID_APPLIANCE: "the appliance supervisor applies it and starts the server again",
+}
+
 
 class UpdateManager:
     """Orchestrates the update lifecycle for an OpenAVC instance.
@@ -43,6 +57,8 @@ class UpdateManager:
     #: The version the last update installed, while an older one is running
     #: ("" otherwise); set once at startup (updater/history.py).
     _older_than_last_update = ""
+    #: An applied update or rollback is ending the process (``_end_process``).
+    _ending = False
 
     @property
     def _firmware_host(self):
@@ -118,8 +134,9 @@ class UpdateManager:
 
     @property
     def update_in_progress(self) -> bool:
-        """True from the start of an update until it fails or the server restarts."""
-        return self._update_in_progress
+        """True from the start of an update until it fails, and from the end
+        of an applied update or rollback until the process ends."""
+        return self._update_in_progress or self._ending
 
     def _set_state(self, key: str, value: Any) -> None:
         """Set a state key if state store is available."""
@@ -560,7 +577,7 @@ class UpdateManager:
         """
         if self._firmware_host:
             return self._firmware_host.refusal()
-        if self._update_in_progress:
+        if self.update_in_progress:
             return {"success": False, "error": "Update already in progress"}
 
         # Prefer a cloud-staged update if one is pending — covers the
@@ -630,8 +647,7 @@ class UpdateManager:
 
             self._set_state("system.update_status", "restarting")
             log.info("Update to v%s applied, restarting...", release.version)
-
-            asyncio.get_running_loop().call_later(1.0, self._restart_process)
+            self._end_process("update")
 
             return {"success": True, "message": f"Update to v{release.version} started"}
 
@@ -659,7 +675,7 @@ class UpdateManager:
         """
         if self._firmware_host:
             return self._firmware_host.refusal()
-        if self._update_in_progress:
+        if self.update_in_progress:
             return {"success": False, "error": "Update already in progress"}
 
         if not updates_itself(self._deployment_type):
@@ -747,8 +763,7 @@ class UpdateManager:
 
             self._set_state("system.update_status", "restarting")
             log.info("Update to v%s applied (cloud URL), restarting...", target_version)
-
-            asyncio.get_running_loop().call_later(1.0, self._restart_process)
+            self._end_process("cloud update")
 
             return {"success": True, "message": f"Update to v{target_version} started"}
 
@@ -938,12 +953,13 @@ class UpdateManager:
         and a root-run helper swaps it in before the server relaunches:
         - Linux: update-helper.sh (systemd ExecStartPre=-+, bypasses
           ProtectSystem=strict) backs up /opt/openavc, extracts, rebuilds venv.
-        - macOS: openavc-macos-apply.sh (the LaunchDaemon's wrapper, runs as
+        - macOS: openavc-macos-run.sh (the LaunchDaemon's wrapper, runs as
           root) snapshots OpenAVC.app -> OpenAVC.app.previous and swaps in the
           new app tree.
         Both read this same apply-update.json. After this method returns, the
-        caller exits the process so the service manager relaunches and the
-        helper applies the staged update.
+        caller ends the process through the restart door (``_end_process``),
+        so the service manager relaunches and the helper applies the staged
+        update.
         """
         instruction = {
             "artifact": str(artifact_path),
@@ -985,39 +1001,40 @@ class UpdateManager:
         self._set_state("system.update_error", error_msg)
         self._add_history_entry(__version__, to_version, "failed", error_msg)
 
-    def _restart_process(self) -> None:
-        """Exit the process so the external update mechanism can apply changes.
+    def _end_process(self, source: str, last=None) -> None:
+        """End the process for the update or rollback just applied, through
+        the restart door (``restart.exit_for_update``): the stop every
+        restart runs, then this install's exit code (``_EXIT_CODES``), its
+        service manager starting the version applied. The door waits a
+        moment first, so the answer to whoever asked gets out. ``last`` (the
+        rollback's) runs after the stop and ends the process itself.
 
-        Windows: exit code 42 tells NSSM not to restart (installer handles it).
-        Linux: exit code 0 triggers systemd restart; ExecStartPre applies the update.
-        macOS: exit code 0 lets launchd (KeepAlive) relaunch; the daemon's root
-            wrapper applies the staged update before re-exec'ing the server.
-        """
-        import os
-        if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
-            log.info("Exiting for update — installer handles restart (exit 42)")
-            os._exit(42)
-        elif self._deployment_type == DeploymentType.LINUX_PACKAGE:
-            log.info("Exiting for update — systemd will apply and restart (exit 0)")
-            os._exit(0)
-        elif self._deployment_type == DeploymentType.MACOS_APP:
-            log.info("Exiting for update — launchd wrapper will apply and restart (exit 0)")
-            os._exit(0)
-        elif self._deployment_type == DeploymentType.ANDROID_APPLIANCE:
-            log.info("Exiting for update — appliance supervisor will apply and restart (exit 0)")
-            os._exit(0)
+        From here until the process ends, another update or a rollback is
+        refused as one in progress. A door that is not armed yet (the
+        server's start is still running) ends nothing, and the version
+        applied starts with the server's next start."""
+        code = _EXIT_CODES.get(self._deployment_type, 0)
+        self._ending = True
+        log.info(
+            "Ending the process for the %s (exit %d): %s", source, code,
+            _WHO_STARTS_IT.get(self._deployment_type, "its service manager starts it again"),
+        )
+        if not restart.exit_for_update(source, code, last):
+            self._ending = False
+            log.warning(
+                "The %s is applied and takes effect when the server next starts", source,
+            )
 
-    def _exit_for_rollback(self) -> None:
-        """Put each saved device login back into the project files, then exit.
-
-        The earlier version reads every login from the project
-        (``core.device_logins.put_back_for_rollback``). Done at the last
-        moment, and the exit happens holding the project save lock, so no save
-        lands after the logins are back and writes the markers over them.
-        """
+    def _put_logins_back(self, end) -> None:
+        """The rollback's last step, after the stop: each saved device login
+        is put back into the project files, since the earlier version reads
+        every login from the project (``core.device_logins.put_back_for_rollback``).
+        After the stop, whose saves write the running project with its
+        markers, and ``end`` (the process exit) is called holding the project
+        save lock, so no save lands after the logins are back."""
         from openavc.core.device_logins import put_back_for_rollback
 
-        put_back_for_rollback(self._data_dir, self._project_path, then=self._restart_process)
+        put_back_for_rollback(self._data_dir, self._project_path, then=end)
 
     async def rollback(self) -> dict[str, Any]:
         """Rollback to the previous version."""
@@ -1028,7 +1045,7 @@ class UpdateManager:
         )
         from openavc.system_config import APP_DIR
 
-        if self._update_in_progress:
+        if self.update_in_progress:
             return {"success": False, "error": "Cannot rollback while an update is in progress"}
 
         refusal = rollback_refusal(self._deployment_type, can_rollback(APP_DIR))
@@ -1074,10 +1091,10 @@ class UpdateManager:
                 __version__, target_version, "success", rollback=True,
             )
             self._set_state("system.update_status", "restarting")
-            # Schedule process exit so the API response can be sent first.
-            # On Windows, the installer (launched by perform_rollback) handles restart.
-            # On Linux, systemd restarts the service and ExecStartPre applies the rollback.
-            asyncio.get_running_loop().call_later(1.0, self._exit_for_rollback)
+            # On Windows the installer perform_rollback scheduled starts the
+            # earlier version; elsewhere the helper applies the rollback as
+            # the service manager starts the server again.
+            self._end_process("rollback", last=self._put_logins_back)
             return {"success": True, "message": "Rollback initiated, server will restart"}
         else:
             self._set_state("system.update_status", "error")

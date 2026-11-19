@@ -552,42 +552,31 @@ class TestConfirmStartup:
 
 
 # ===========================================================================
-# PART 3: _restart_process() exit codes
+# PART 3: the exit code an applied update ends the process with
 #
 # Production:
 # - Windows: NSSM has "AppExit 42 Exit" — exit code 42 means stop service,
 #   don't restart. This prevents NSSM from racing with the installer.
 # - Linux: Exit 0 with Restart=always — systemd restarts the service,
 #   ExecStartPre runs the helper script before ExecStart.
+# The exit itself goes through the restart door (tests/test_update_exit.py).
 # ===========================================================================
 
 
-class TestRestartProcessExitCodes:
+class TestEndProcessExitCodes:
 
-    def test_windows_installer_exits_42(self, tmp_path):
-        """NSSM configuration: AppExit 42 Exit. Code 42 = don't restart."""
+    @pytest.mark.parametrize("deployment, code", [
+        (DeploymentType.WINDOWS_INSTALLER, 42),
+        (DeploymentType.LINUX_PACKAGE, 0),
+        (DeploymentType.MACOS_APP, 0),
+        (DeploymentType.ANDROID_APPLIANCE, 0),
+    ])
+    def test_the_door_is_asked_for_the_install_s_exit_code(self, tmp_path, deployment, code):
         mgr = UpdateManager(state_store=None, data_dir=tmp_path)
-        mgr._deployment_type = DeploymentType.WINDOWS_INSTALLER
-        with patch("os._exit") as mock_exit:
-            mgr._restart_process()
-            mock_exit.assert_called_once_with(42)
-
-    def test_linux_package_exits_0(self, tmp_path):
-        """systemd: Restart=always restarts on any exit. 0 is clean exit."""
-        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
-        mgr._deployment_type = DeploymentType.LINUX_PACKAGE
-        with patch("os._exit") as mock_exit:
-            mgr._restart_process()
-            mock_exit.assert_called_once_with(0)
-
-    def test_does_not_exit_for_docker(self, tmp_path):
-        """Docker can't self-update. _restart_process should be a no-op."""
-        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
-        mgr._deployment_type = DeploymentType.DOCKER
-        with patch("os._exit") as mock_exit:
-            mgr._restart_process()
-            mock_exit.assert_not_called()
-
+        mgr._deployment_type = deployment
+        with patch("openavc.restart.exit_for_update", return_value=True) as door:
+            mgr._end_process("update")
+        door.assert_called_once_with("update", code, None)
 
 # ===========================================================================
 # PART 4: main.py rollback-on-startup exit (UP-1 fix)
@@ -656,17 +645,18 @@ class TestStartupRollbackExitsProcess:
 
 
 # ===========================================================================
-# PART 5: rollback() API method schedules restart
+# PART 5: rollback() API method ends the process
 #
 # Production: POST /api/system/updates/rollback calls manager.rollback().
-# After perform_rollback returns True, the API response is sent, then
-# _restart_process runs after a 1-second delay (call_later).
+# After perform_rollback returns True, the process ends through the restart
+# door, which waits so the API response is sent first, stops the engine, and
+# then runs the rollback's last step: each saved device login put back.
 # ===========================================================================
 
 
-class TestRollbackAPISchedulesRestart:
+class TestRollbackAPIEndsTheProcess:
 
-    async def test_schedules_restart_after_rollback(self, tmp_path):
+    async def test_ends_the_process_with_the_logins_put_back_last(self, tmp_path):
         mock_state = MagicMock()
         mock_state.set = MagicMock()
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
@@ -674,22 +664,15 @@ class TestRollbackAPISchedulesRestart:
 
         with patch("openavc.updater.rollback.can_rollback", return_value=True), \
              patch("openavc.updater.rollback.perform_rollback", return_value=True), \
-             patch("openavc.updater.manager.asyncio") as mock_asyncio:
-            mock_loop = MagicMock()
-            mock_asyncio.get_running_loop.return_value = mock_loop
-
+             patch("openavc.restart.exit_for_update", return_value=True) as door:
             result = await mgr.rollback()
 
         assert result["success"] is True
-        # The exit is scheduled 1s out, through the step that puts each saved
-        # device login back into the project files for the earlier version.
-        mock_loop.call_later.assert_called_once()
-        delay, callback = mock_loop.call_later.call_args[0]
-        assert delay == 1.0
-        assert callback == mgr._exit_for_rollback
+        door.assert_called_once_with("rollback", 0, mgr._put_logins_back)
+        end = MagicMock()
         with patch("openavc.core.device_logins.put_back_for_rollback") as put_back:
-            callback()
-        put_back.assert_called_once_with(mgr._data_dir, mgr._project_path, then=mgr._restart_process)
+            mgr._put_logins_back(end)
+        put_back.assert_called_once_with(mgr._data_dir, mgr._project_path, then=end)
 
 
 # ===========================================================================

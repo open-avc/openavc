@@ -981,9 +981,69 @@ def test_the_apps_rollback_puts_the_logins_back_then_exits(data, tmp_path, monke
     manager._data_dir = data
     manager._project_path = active
     seen = []
-    monkeypatch.setattr(
-        manager, "_restart_process",
+    # The rollback's last step, after the stop: it is handed the process's
+    # end and calls it once the logins are back.
+    manager._put_logins_back(
         lambda: seen.append(_on_disk(active)["connections"]["proj1"]["password"]),
     )
-    manager._exit_for_rollback()
     assert seen == ["Running-Pass"]
+
+
+async def test_a_rollback_ends_with_the_logins_on_disk_after_the_stop_saved_its_markers(
+    data, tmp_path, monkeypatch, under_its_service,
+):
+    """Through the restart door, with the real put-back: the stop saves the
+    running project, markers and all, and the logins are back in it when
+    the process ends."""
+    import asyncio
+    import os
+    from types import SimpleNamespace
+
+    from openavc import restart
+    from openavc.updater.manager import UpdateManager
+    from openavc.updater.platform import DeploymentType
+
+    DeviceLogins(data).save("proj1", DRIVER, {"password": "Running-Pass"})
+    active = tmp_path / "active.avc"
+    _write(active, _document(SAVED_LOGIN))
+
+    async def shutdown(_deadline):
+        # A save in the stop (a plugin's, the bookkeeping drain) writes the
+        # running project as it is held: with the marker.
+        _write(active, _document(SAVED_LOGIN))
+
+    class _Ended(BaseException):
+        pass
+
+    on_disk_at_the_end = []
+
+    def end(_code):
+        on_disk_at_the_end.append(_on_disk(active)["connections"]["proj1"]["password"])
+        raise _Ended
+
+    class Timer:
+        def __init__(self, *_args):
+            pass
+
+        def start(self):
+            pass
+
+    async def no_wait(_seconds):
+        pass
+
+    monkeypatch.setattr("threading.Timer", Timer)
+    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    monkeypatch.setattr(os, "_exit", end)
+    restart.accept_restarts(SimpleNamespace(stopping=False, shutdown=shutdown))
+
+    manager = UpdateManager(state_store=None, data_dir=data, project_path=active)
+    manager._deployment_type = DeploymentType.LINUX_PACKAGE
+    with patch("openavc.updater.rollback.can_rollback", return_value=True), \
+            patch("openavc.updater.rollback.perform_rollback", return_value=True), \
+            patch("openavc.updater.backup.create_backup"), \
+            patch("openavc.updater.backup.cleanup_old_backups"):
+        assert (await manager.rollback())["success"] is True
+        with pytest.raises(_Ended):
+            await asyncio.gather(*restart._exiting)
+
+    assert on_disk_at_the_end == ["Running-Pass"]

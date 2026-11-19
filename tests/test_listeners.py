@@ -461,9 +461,9 @@ def test_a_restart_retries_the_bind_and_then_forgets_it_is_one(started, monkeypa
 
     monkeypatch.setenv("OPENAVC_RESTARTING", "1")
     main.main()
-    assert started.binds == [(8080, {"retries": 24})]
+    assert started.binds == [(8080, {"retries": 26})]
     # Longer than the process it replaces may keep the port.
-    assert 24 * listen_sockets.BIND_RETRY_SECONDS > restart.LONGEST_EXIT_SECONDS
+    assert 26 * listen_sockets.BIND_RETRY_SECONDS > restart.LONGEST_EXIT_SECONDS
     assert "OPENAVC_RESTARTING" not in os.environ
 
 

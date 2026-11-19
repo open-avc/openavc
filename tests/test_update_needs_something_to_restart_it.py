@@ -38,7 +38,7 @@ def _manager(tmp_path, deployment=DeploymentType.LINUX_PACKAGE):
     mgr._download_update = AsyncMock()
     mgr._download_artifact = AsyncMock()
     mgr._apply_linux = MagicMock()
-    mgr._restart_process = MagicMock()
+    mgr._end_process = MagicMock()
     return mgr
 
 
@@ -102,7 +102,7 @@ async def test_a_rollback_is_refused_before_it_exits(tmp_path, started_by_hand):
     with patch("openavc.updater.rollback.can_rollback", return_value=True), \
          patch("openavc.updater.rollback.perform_rollback") as rollback, \
          patch("openavc.updater.backup.create_backup") as backup, \
-         patch.object(mgr, "_exit_for_rollback") as exit_:
+         patch.object(mgr, "_end_process") as exit_:
         answer = await mgr.rollback()
 
     assert answer == {"success": False, "error": STARTED_BY_HAND}

@@ -120,7 +120,7 @@ async def test_apply_cloud_update_full_flow(tmp_path):
          patch("openavc.updater.backup.cleanup_old_backups"), \
          patch("openavc.updater.rollback.write_pending_marker"), \
          patch.object(mgr, "_apply_windows"), \
-         patch.object(mgr, "_restart_process"), \
+         patch.object(mgr, "_end_process"), \
          patch.object(mgr, "_save_history"):
 
         result = await mgr.apply_cloud_update(
@@ -230,7 +230,7 @@ async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
          patch("openavc.updater.rollback.write_pending_marker") as write_marker, \
          patch.object(mgr, "_apply_windows") as apply_win, \
          patch.object(mgr, "_apply_linux") as apply_linux, \
-         patch.object(mgr, "_restart_process") as restart, \
+         patch.object(mgr, "_end_process") as restart, \
          patch.object(mgr, "_save_history"):
 
         result = await mgr.apply_cloud_update(

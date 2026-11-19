@@ -89,7 +89,6 @@ from openavc.api.routes import setup as setup_routes
 from openavc.audit.session import AuditManager
 from openavc.core.engine import Engine
 from openavc.core.start_stages import StartRun
-from openavc.core.stop_stages import stop_deadline
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.redirects import build_http_listener_app, build_redirect_app, certified_host_for
 from openavc.drivers.registry import list_registered_drivers
@@ -419,10 +418,9 @@ async def lifespan(app: FastAPI):
         # Said already when a stop signal or a restart began it; said here
         # when neither did.
         app.state.run_state.stopping()
-        # The same stop a restart runs (openavc/restart.py), within the same
-        # deadline: core/engine_lifecycle.py has the stages and their order.
-        await engine.shutdown(stop_deadline())
-        log.info("OpenAVC stopped")
+        # The same stop a restart runs, within the same deadline
+        # (openavc/restart.py; core/engine_lifecycle.py has the stages).
+        await restart.stop_for_service(engine)
 
 
 # Create FastAPI app

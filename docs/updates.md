@@ -25,6 +25,8 @@ From the Updates view, click **Install vX.Y.Z**. A progress dialog walks through
 4. **Applying** the update to your system
 5. **Restarting** the server
 
+The restart stops the system the way any other restart does: **System Stopping** triggers run, persisted variables are saved, plugins stop and every device is disconnected before the new version starts. A rollback stops the same way. This holds for an update or rollback from a version later than v0.40.0.
+
 Verification is mandatory. If a download cannot be checked against a published SHA256 checksum, the update is refused and nothing is applied, leaving your current version untouched.
 
 On Linux, the Raspberry Pi appliance, and macOS, updates are also **cryptographically signed**. Each release artifact carries a detached signature, and a privileged pre-start step verifies that signature against a trusted key shipped with your installation before extracting anything. A tampered or unsigned artifact is refused, so a compromised download or release asset cannot be applied. This is what makes the automatic-update path safe to run unattended.

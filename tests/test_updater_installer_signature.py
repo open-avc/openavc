@@ -317,7 +317,7 @@ async def _run_door(mgr, door, report):
          patch("openavc.updater.rollback._launch_installer_via_scheduler",
                return_value=True) as scheduler, \
          patch.object(sig, "read_signature", return_value=report) as reader, \
-         patch.object(mgr, "_restart_process") as restart, \
+         patch.object(mgr, "_end_process") as restart, \
          patch.object(mgr, "_save_history"):
         result = await DOORS[door](mgr)
     return result, scheduler, reader, restart

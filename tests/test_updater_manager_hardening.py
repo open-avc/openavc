@@ -203,7 +203,7 @@ async def test_rollback_clears_staged_update(tmp_path):
          patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
          patch("openavc.updater.backup.cleanup_old_backups", cleanup), \
          patch("openavc.system_config.APP_DIR", tmp_path), \
-         patch.object(mgr, "_restart_process"), \
+         patch.object(mgr, "_end_process"), \
          patch.object(mgr, "_save_history"):
         result = await mgr.rollback()
 
@@ -466,7 +466,7 @@ async def test_rollback_history_records_target_and_flag(tmp_path):
          patch("openavc.updater.backup.cleanup_old_backups", MagicMock()), \
          patch("openavc.system_config.APP_DIR", tmp_path), \
          patch("openavc.updater.manager.__version__", "0.13.0"), \
-         patch.object(mgr, "_restart_process"), \
+         patch.object(mgr, "_end_process"), \
          patch.object(mgr, "_save_history"):
         result = await mgr.rollback()
 
