@@ -8,8 +8,12 @@
 #   setup screen (/setup) with live IP address, access URLs, and first-run
 #   instructions.
 #
-# If the server never comes up, a minimal local fallback page is shown that
-# keeps probing /api/health and forwards to the real page once it passes.
+# The page opens as soon as the server answers /api/startup-status, which it
+# does from the moment it is listening. Until the server is ready, every page
+# it serves is its own startup screen: it waits, reloads when the server is
+# ready, and shows the reason when a start fails. If the server never answers,
+# a minimal local fallback page is shown that keeps asking the same question
+# and forwards to the real page once the server answers.
 #
 # Touch input (USB HID) is handled by the Linux kernel automatically.
 # No special drivers needed for HDMI + USB touch displays.
@@ -72,19 +76,18 @@ else
     echo "Kiosk mode disabled. Showing setup screen."
 fi
 
-# --- Wait for the OpenAVC server to be ready ---
+# --- Wait for the OpenAVC server to answer ---
 #
 # When TLS is on, the server's cert is self-signed by default — curl's -k skips
-# verification during the boot health-check wait loop. The flag is a no-op for
-# plain http://.
+# verification during the boot wait loop. The flag is a no-op for plain http://.
 
 echo "Waiting for OpenAVC server..."
 ATTEMPTS=0
 MAX_ATTEMPTS=60
 
 while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-    if curl -sf -k ${PROTO}://localhost:${EFFECTIVE_PORT}/api/health > /dev/null 2>&1; then
-        echo "Server is ready."
+    if curl -sf -k ${PROTO}://localhost:${EFFECTIVE_PORT}/api/startup-status > /dev/null 2>&1; then
+        echo "Server is answering."
         break
     fi
     ATTEMPTS=$((ATTEMPTS + 1))
@@ -92,8 +95,9 @@ while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
 done
 
 if [ $ATTEMPTS -eq $MAX_ATTEMPTS ]; then
-    # Server didn't come up. Show a local fallback page that keeps probing
-    # the health endpoint and forwards to the real page once it passes.
+    # Server didn't answer. Show a local fallback page that keeps asking and
+    # forwards to the real page once the server answers (a file:// page can
+    # not read the answer, only that there was one).
     echo "WARNING: Server did not respond after ${MAX_ATTEMPTS} attempts. Showing fallback page."
 
     HOSTNAME=$(hostname)
@@ -128,7 +132,7 @@ if [ $ATTEMPTS -eq $MAX_ATTEMPTS ]; then
 (function () {
   'use strict';
   setInterval(function () {
-    fetch('${PROTO}://localhost:${EFFECTIVE_PORT}/api/health', { mode: 'no-cors', cache: 'no-store' })
+    fetch('${PROTO}://localhost:${EFFECTIVE_PORT}/api/startup-status', { mode: 'no-cors', cache: 'no-store' })
       .then(function () { window.location.replace('${NEXT_URL}'); })
       .catch(function () {});
   }, 3000);
