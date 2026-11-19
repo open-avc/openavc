@@ -335,6 +335,18 @@ async def test_a_roster_setting_saved_while_offline_is_left_to_the_next_connect(
     assert driver.config["zones"] == "A,B,C"
 
 
+async def test_a_login_saved_while_the_device_runs_is_masked_in_its_log(zoned_engine):
+    """A setup action that saves a new password: the device's traffic
+    log masks it from then on, as it masks the one it was set up with."""
+    from openavc.utils.log_redaction import get_secret_registry
+
+    driver = zoned_engine.devices.get_driver("z1")
+    context = SetupActionContext(zoned_engine, SetupLease("z1", driver))
+    await context.apply_config_update({"password": "fresh-secret-42"})
+    masked = get_secret_registry().redact_for("z1", "AUTH fresh-secret-42")
+    assert "fresh-secret-42" not in masked
+
+
 # ── what the driver re-derives, and what it leaves ──
 
 

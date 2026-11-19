@@ -217,7 +217,7 @@ class ConfigurableDriver(
         the derived config is worked out again, then the reply tables are
         compiled again when a changed setting, or a derived value that moved,
         fills a rule's ``match`` or ``address``, then the rest is
-        ``BaseDriver``'s (a roster rebuilt). A table
+        ``BaseDriver``'s (the logins masked, a roster rebuilt). A table
         nothing changed reaches is kept, so its throttle windows run on.
 
         What the inline merge built is not taken again: the device's own

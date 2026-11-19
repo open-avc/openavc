@@ -583,14 +583,15 @@ class BaseDriver(
         (``DeviceManager.merge_live_config`` calls it): what it built from
         its config when it was set up is worked out again, as a re-add would.
 
-        Here: a declared roster built from one of the settings
-        (``instances`` ``count_from`` or ``ids_from``), rebuilt as Refresh
-        from Device does.
+        Here: the logins masked in the device's log, and a declared roster
+        built from one of the settings (``instances`` ``count_from`` or
+        ``ids_from``), rebuilt as Refresh from Device does.
         ``ConfigurableDriver`` adds what a YAML driver builds. Called under
         the project lock, so nothing here waits on the device. Not called
         for the simulation's redirect or a USB adapter's new port: those
         rewrite where the next dial goes, not a setting the project holds.
         """
+        self._register_config_secrets()
         if changed & roster_config_fields(self.DRIVER_INFO.get("child_entity_types")):
             self._rebuild_rosters_from_config()
 
