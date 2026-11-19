@@ -36,6 +36,7 @@ import ssl
 import threading
 import time
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -46,11 +47,26 @@ DEFAULT_PORT = 8080
 POLL_INTERVAL = 5  # seconds
 SERVICE_LABEL = "com.openavc.server"
 DATA_DIR = Path("/Library/Application Support/OpenAVC")
-# Where the server records, at every start, where it listens (openavc/status_folder.py).
-# The menu bar runs as the signed-in user and the server as root, so this is
-# the one file in the data folder the menu bar can read: the server writes it
-# readable by everyone, and system.json readable by root only.
-SERVER_ADDRESS_FILE = DATA_DIR / "status" / "server.json"
+# Where the server records where it listens, where it is in its life, and why
+# its start failed (openavc/status_folder.py). The menu bar runs as the
+# signed-in user and the server as root, so these are the files in the data
+# folder the menu bar can read: the server writes them readable by everyone,
+# and system.json readable by root only.
+STATUS_DIR = DATA_DIR / "status"
+SERVER_ADDRESS_FILE = STATUS_DIR / "server.json"
+RUN_STATE_FILE = STATUS_DIR / "run-state.json"
+STARTUP_ERROR_FILE = STATUS_DIR / "startup-error.json"
+# Where the server is in its life, in the run-state record's words (PHASES in
+# openavc/middleware/startup_splash.py), and the menu bar's own for no server.
+STARTING, READY, FAILED, STOPPING = "starting", "ready", "failed", "stopping"
+STOPPED = "stopped"
+# What the status line says for each phase short of running.
+STATUS_LABELS = {
+    STARTING: "Starting",
+    STOPPING: "Stopping",
+    READY: "Not responding",
+    STOPPED: "Stopped",
+}
 DAEMON_PLIST = "/Library/LaunchDaemons/com.openavc.server.plist"
 # A file by this name in the data folder makes the server clear the Programmer
 # login at its next start (RESET_REQUEST_NAMES in openavc/api/auth.py). The
@@ -121,6 +137,78 @@ def _get_listen_problem() -> str:
     except (json.JSONDecodeError, OSError, AttributeError, TypeError, ValueError):
         return ""
     return problem if isinstance(problem, str) else ""
+
+
+def _process_running(pid: int) -> bool:
+    """Whether a process with this id is running. The server runs as root and
+    the menu bar as the signed-in user, so the question may be refused, and a
+    refusal means it is there. (macOS only: on Windows ``os.kill`` ends the
+    process.)"""
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _computer_started_at() -> float:
+    """When this Mac last started, in seconds since the epoch: macOS's
+    monotonic clock counts from the start, sleep included."""
+    return time.time() - time.clock_gettime(time.CLOCK_MONOTONIC)
+
+
+def _startup_error() -> str:
+    """Why the server's last start failed, as it recorded it, or ""."""
+    try:
+        message = json.loads(STARTUP_ERROR_FILE.read_text(encoding="utf-8")).get("message")
+    except (json.JSONDecodeError, OSError, AttributeError):
+        return ""
+    return message if isinstance(message, str) else ""
+
+
+def _run_state() -> dict:
+    """Where the server is in its life, as it recorded it in the status folder
+    (write_run_state in openavc/status_folder.py): ``phase``, ``version``,
+    ``error`` (a failed start's reason, else "") and ``running``, whether the
+    process that recorded it still runs.
+
+    A file the process left behind when it ended or was killed reads as
+    STOPPED: its process is gone, or it was written before this Mac last
+    started (an ended process's id goes to another in time). A failed start
+    stands either way, since its process can end by itself, and its reason is
+    in startup-error.json. No file, or one that cannot be read, reads as
+    STOPPED.
+    """
+    stopped = {"phase": STOPPED, "version": "", "error": "", "running": False}
+    try:
+        recorded = json.loads(RUN_STATE_FILE.read_text(encoding="utf-8"))
+        phase, pid = recorded["phase"], int(recorded["pid"])
+        written = datetime.fromisoformat(recorded["timestamp"]).timestamp()
+        version = str(recorded.get("version") or "")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return stopped
+    running = written >= _computer_started_at() and _process_running(pid)
+    if phase == FAILED:
+        return {"phase": FAILED, "version": version, "error": _startup_error(), "running": running}
+    if phase not in (STARTING, READY, STOPPING) or not running:
+        return dict(stopped, version=version)
+    return {"phase": phase, "version": version, "error": "", "running": True}
+
+
+def _status_line(run: dict) -> str:
+    """The status line while /api/health does not answer that the server is
+    running: the phase, and a failed start's reason on one line (its first
+    paragraph)."""
+    if run["phase"] == STOPPED:
+        return STATUS_LABELS[STOPPED]
+    if run["phase"] == FAILED:
+        reason = " ".join(run["error"].split("\n\n", 1)[0].split())
+        label = f"Could not start: {reason}" if reason else "Could not start"
+    else:
+        label = STATUS_LABELS[run["phase"]]
+    return f"v{run['version']} - {label}" if run["version"] else label
 
 
 def _base_url(cfg: dict) -> str:
@@ -249,7 +337,7 @@ class OpenAVCMenuBar(rumps.App):
             self._status_item.title = label
         else:
             self.title = "OpenAVC"
-            self._status_item.title = "Stopped"
+            self._status_item.title = _status_line(_run_state())
 
     def _open_programmer(self, _) -> None:
         webbrowser.open(f"{self._base}/programmer")
@@ -270,12 +358,14 @@ class OpenAVCMenuBar(rumps.App):
         Stop followed by a separate quit, and the person who reached for Quit
         first has no reason to think there is anything left to do."""
         _service_command("stop")
-        # Confirm it actually stopped before quitting. Cancelling the password
+        # Confirm it is stopping before quitting. Cancelling the password
         # prompt is silent, and quitting anyway would leave someone certain the
-        # server was off while it kept serving. Poll the same health endpoint
-        # the status line uses; a stop takes a moment to release the socket.
+        # server was off while it kept serving. The server says stopping the
+        # moment the stop reaches it; a failed start held on its startup
+        # screen still runs, though /api/health does not answer it is running.
         for _ in range(10):
-            if _api_get("/api/health", self._cfg, timeout=1) is None:
+            run = _run_state()
+            if run["phase"] == STOPPING or not run["running"]:
                 rumps.quit_application()
                 return
             time.sleep(0.5)

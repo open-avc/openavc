@@ -5,13 +5,13 @@ On Windows the installer restricts the data folder to the service and
 administrators (installer/secure-data-dir.bat), and the tray app runs as the
 signed-in user, so the one thing the tray can read is status/. On macOS the
 server runs as root and the menu bar app as the signed-in user, so the server
-writes server.json readable by everyone. The server writes three files there:
+writes its files readable by everyone. The server writes three files there:
 where it listens, at every start; where it is in its life (starting, ready,
 failed to start, stopping), at each change; and why it failed to start, when
-it does. The tray reads where it listens and why it failed; the menu bar reads
-where it listens. Nothing ties the ends together but these tests: tray.py and
-menubar.py are standalone scripts that import nothing from the server, so each
-end names the folder and files itself.
+it does. The tray and the menu bar read all three. Nothing ties the ends
+together but these tests: tray.py and menubar.py are standalone scripts that
+import nothing from the server, so each end names the folder, the files and
+the phases itself.
 
 The folder is readable by every local account, so these tests also hold it to
 carrying exactly those three files and those fields.
@@ -21,9 +21,12 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
 import sys
+import time
 import types
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -31,6 +34,9 @@ import pytest
 import openavc.main as main
 from openavc import status_folder
 from openavc import config
+from openavc.core.start_stages import StartRun
+from openavc.middleware import startup_splash
+from openavc.middleware.startup_splash import FAILED, PHASES, READY, STARTING, STOPPING
 
 INSTALLER = Path(__file__).resolve().parents[1] / "installer"
 TRAY_PATH = INSTALLER / "tray.py"
@@ -81,19 +87,25 @@ def data_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAVC_DATA_DIR", str(tmp_path))
     status = tmp_path / tray_mod.STATUS_DIR.name
     monkeypatch.setattr(tray_mod, "STATUS_DIR", status)
-    monkeypatch.setattr(tray_mod, "STARTUP_ERROR_FILE", status / tray_mod.STARTUP_ERROR_FILE.name)
-    monkeypatch.setattr(tray_mod, "SERVER_ADDRESS_FILE", status / tray_mod.SERVER_ADDRESS_FILE.name)
-    monkeypatch.setattr(menubar_mod, "SERVER_ADDRESS_FILE", status / menubar_mod.SERVER_ADDRESS_FILE.name)
+    for mod in (tray_mod, menubar_mod):
+        monkeypatch.setattr(mod, "STATUS_DIR", status)
+        for name in ("STARTUP_ERROR_FILE", "SERVER_ADDRESS_FILE", "RUN_STATE_FILE"):
+            monkeypatch.setattr(mod, name, status / getattr(mod, name).name)
     return tmp_path
 
 
 def test_both_ends_name_the_same_folder_and_files():
-    assert tray_mod.STATUS_DIR == tray_mod.DATA_DIR / status_folder.STATUS_DIR_NAME
-    assert tray_mod.STARTUP_ERROR_FILE == tray_mod.STATUS_DIR / status_folder.STARTUP_ERROR_FILE_NAME
-    assert tray_mod.SERVER_ADDRESS_FILE == tray_mod.STATUS_DIR / status_folder.SERVER_ADDRESS_FILE_NAME
-    assert menubar_mod.SERVER_ADDRESS_FILE == (
-        menubar_mod.DATA_DIR / status_folder.STATUS_DIR_NAME / status_folder.SERVER_ADDRESS_FILE_NAME
-    )
+    for mod in (tray_mod, menubar_mod):
+        assert mod.STATUS_DIR == mod.DATA_DIR / status_folder.STATUS_DIR_NAME
+        assert mod.STARTUP_ERROR_FILE == mod.STATUS_DIR / status_folder.STARTUP_ERROR_FILE_NAME
+        assert mod.SERVER_ADDRESS_FILE == mod.STATUS_DIR / status_folder.SERVER_ADDRESS_FILE_NAME
+        assert mod.RUN_STATE_FILE == mod.STATUS_DIR / status_folder.RUN_STATE_FILE_NAME
+
+
+def test_both_ends_know_every_phase_the_record_reaches():
+    for mod in (tray_mod, menubar_mod):
+        assert (mod.STARTING, mod.READY, mod.FAILED, mod.STOPPING) == PHASES
+        assert mod.STOPPED not in PHASES
 
 
 def test_the_menu_bar_reads_the_address_and_problem_the_server_records(data_dir, monkeypatch):
@@ -153,48 +165,13 @@ def test_each_phase_replaces_the_last(data_dir):
     assert not (data_dir / "status" / "startup-error.json").exists()
 
 
-def test_a_failed_start_leaves_its_phase_and_its_reason_for_the_tray(data_dir, monkeypatch):
-    """A stage of the engine's start that stopped it, not only a port or TLS:
-    the tray's dialog says why."""
-    shown = []
-    monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append(message))
-    monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
-
-    status_folder.write_run_state("failed", "1.2.3", "Loading the project failed: project unreadable")
-
-    assert _run_state(data_dir)["phase"] == "failed"
-    error = json.loads((data_dir / "status" / "startup-error.json").read_text(encoding="utf-8"))
-    assert error["error"] == "start_failed"
-    tray_mod.OpenAVCTray()._check_startup_error()
-    assert shown == ["Loading the project failed: project unreadable"]
-
-
 @pytest.mark.skipif(os.name == "nt", reason="the folder's ACL decides on Windows, not the file mode")
 def test_every_account_can_read_where_the_server_is_in_its_life(data_dir):
-    status_folder.write_run_state("starting", "1.2.3")
+    status_folder.write_run_state("failed", "1.2.3", "Loading the project failed: project unreadable")
 
-    mode = stat.S_IMODE((data_dir / "status" / "run-state.json").stat().st_mode)
-    assert mode & 0o044 == 0o044, oct(mode)
-
-
-def test_the_tray_reads_the_startup_error_the_server_records(data_dir, monkeypatch):
-    shown = []
-    monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append(message))
-    monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
-
-    status_folder.write_run_state("failed", "1.2.3", "HTTP port 8090 is already in use.", "port_in_use")
-
-    assert (data_dir / "status" / "startup-error.json").is_file()
-    assert not (data_dir / "startup-error.json").exists()
-    tray = tray_mod.OpenAVCTray()
-    tray._check_startup_error()
-    assert shown == ["HTTP port 8090 is already in use."]
-
-    status_folder.clear_startup_error()
-
-    assert not (data_dir / "status" / "startup-error.json").exists()
-    tray._check_startup_error()
-    assert tray._startup_error == ""
+    for name in ("run-state.json", "startup-error.json"):
+        mode = stat.S_IMODE((data_dir / "status" / name).stat().st_mode)
+        assert mode & 0o044 == 0o044, (name, oct(mode))
 
 
 def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeypatch):
@@ -294,3 +271,335 @@ class _InlineThread:
 
     def start(self):
         self._target(*self._args)
+
+
+# --- Where the server is in its life, as the tray and the menu bar read it ---
+
+# The menu bar runs only on macOS; its process check would end the process it
+# asks about on Windows, so it is never run there.
+READERS = [
+    pytest.param(tray_mod, id="tray"),
+    pytest.param(
+        menubar_mod, id="menubar",
+        marks=pytest.mark.skipif(os.name == "nt", reason="the menu bar runs on macOS only"),
+    ),
+]
+
+
+def _ended_pid() -> int:
+    """The id of a process that has ended."""
+    done = subprocess.run(
+        [sys.executable, "-c", "import os; print(os.getpid())"],
+        capture_output=True, text=True, check=True,
+    )
+    return int(done.stdout)
+
+
+def _recorded_by(data_dir, pid: int) -> None:
+    """The run-state file as a process with ``pid`` wrote it."""
+    path = data_dir / "status" / "run-state.json"
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps(dict(recorded, pid=pid)), encoding="utf-8")
+
+
+def _failed_start() -> str:
+    """What the record says when loading the project stops the start."""
+    run = StartRun()
+    record = startup_splash.RunState()
+    with run.stage("loading the project"):
+        pass
+    record.stopped(run, RuntimeError("project unreadable"))
+    return record.error
+
+
+PORT_IN_USE = (
+    "HTTP port 8090 is already in use.\n"
+    "Another application (or another copy of OpenAVC) is using this port.\n\n"
+    "To fix this, change the port in Settings > Network,\n"
+    "or set the OPENAVC_PORT environment variable."
+)
+
+
+@pytest.mark.parametrize("reader", READERS)
+@pytest.mark.parametrize("phase", [STARTING, READY, STOPPING])
+def test_a_running_server_is_read_in_the_phase_it_recorded(data_dir, reader, phase):
+    status_folder.write_run_state(phase, "1.2.3")
+
+    assert reader._run_state() == {"phase": phase, "version": "1.2.3", "error": "", "running": True}
+
+
+@pytest.mark.parametrize("reader", READERS)
+@pytest.mark.parametrize("phase", [STARTING, READY, STOPPING])
+def test_a_file_its_process_left_behind_reads_stopped(data_dir, reader, phase):
+    """A server killed, or one that crashed, leaves its last phase behind."""
+    status_folder.write_run_state(phase, "1.2.3")
+    _recorded_by(data_dir, _ended_pid())
+
+    assert reader._run_state() == {
+        "phase": reader.STOPPED, "version": "1.2.3", "error": "", "running": False,
+    }
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_a_file_from_before_this_computer_started_reads_stopped(data_dir, reader, monkeypatch):
+    """A shut-down computer leaves stopping behind, and after it starts again
+    the old pid may belong to another process."""
+    status_folder.write_run_state(STOPPING, "1.2.3")
+    monkeypatch.setattr(reader, "_computer_started_at", lambda: time.time() + 60)
+
+    assert reader._run_state()["phase"] == reader.STOPPED
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_this_computer_started_before_now(reader):
+    assert time.time() - 10 * 365 * 86400 < reader._computer_started_at() < time.time()
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_a_failed_start_keeps_its_reason_after_its_process_ends(data_dir, reader):
+    """A port or TLS failure exits at once; the reason still stands."""
+    status_folder.write_run_state(FAILED, "1.2.3", PORT_IN_USE, "port_in_use")
+    _recorded_by(data_dir, _ended_pid())
+
+    assert reader._run_state() == {
+        "phase": FAILED, "version": "1.2.3", "error": PORT_IN_USE, "running": False,
+    }
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_a_stop_after_a_failed_start_leaves_its_old_reason_unread(data_dir, reader):
+    status_folder.write_run_state(FAILED, "1.2.3", "an earlier failure")
+    status_folder.write_run_state(STOPPING, "1.2.3")
+    _recorded_by(data_dir, _ended_pid())
+
+    assert (data_dir / "status" / "startup-error.json").exists()
+    assert reader._run_state()["phase"] == reader.STOPPED
+    assert reader._run_state()["error"] == ""
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_no_file_or_one_that_cannot_be_read_reads_stopped(data_dir, reader):
+    stopped = {"phase": reader.STOPPED, "version": "", "error": "", "running": False}
+    assert reader._run_state() == stopped
+
+    (data_dir / "status").mkdir()
+    (data_dir / "status" / "run-state.json").write_text("{not json", encoding="utf-8")
+    assert reader._run_state() == stopped
+
+    (data_dir / "status" / "run-state.json").write_text('{"phase": "ready"}', encoding="utf-8")
+    assert reader._run_state() == stopped
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_a_process_runs_until_it_ends(reader):
+    assert reader._process_running(os.getpid())
+    assert not reader._process_running(_ended_pid())
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_a_process_another_account_runs_counts_as_running(reader):
+    """The server runs as a service account or root and these as the signed-in
+    user: being refused a look at a process means it is there."""
+    assert reader._process_running(4 if os.name == "nt" else 1)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="os.kill ends the process on Windows")
+@pytest.mark.parametrize("reader", READERS)
+def test_a_refused_look_counts_as_running(reader, monkeypatch):
+    def refused(pid, sig):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(reader.os, "kill", refused)
+    assert reader._process_running(12345)
+
+
+# --- The tray ---
+
+def _polled_tray(monkeypatch, health: dict | None) -> "tray_mod.OpenAVCTray":
+    """A tray after one poll, with /api/health answering ``health`` (None:
+    no healthy answer)."""
+    shown = []
+    monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append((title, message)))
+    monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
+    monkeypatch.setattr(tray_mod, "_api_get", lambda path, cfg, timeout=3.0: health)
+    tray = tray_mod.OpenAVCTray()
+    tray.shown = shown
+    tray._poll_once()
+    return tray
+
+
+def test_the_tray_says_starting_while_the_server_starts(data_dir, monkeypatch):
+    status_folder.write_run_state(STARTING, "1.2.3")
+
+    assert _polled_tray(monkeypatch, None)._build_tooltip() == "OpenAVC v1.2.3 - Starting"
+
+
+def test_the_tray_says_stopping_while_the_server_stops(data_dir, monkeypatch):
+    status_folder.write_run_state(STOPPING, "1.2.3")
+
+    assert _polled_tray(monkeypatch, None)._build_tooltip() == "OpenAVC v1.2.3 - Stopping"
+
+
+def test_the_tray_says_why_a_start_failed_and_shows_it_once(data_dir, monkeypatch):
+    """A stage of the engine's start that stopped it, not only a port or TLS."""
+    status_folder.write_run_state(FAILED, "1.2.3", _failed_start())
+
+    tray = _polled_tray(monkeypatch, None)
+    tray._poll_once()
+
+    assert tray._build_tooltip() == (
+        "OpenAVC v1.2.3 - Could not start: Loading the project failed: project unreadable"
+    )
+    assert tray.shown == [
+        ("OpenAVC could not start", "Loading the project failed: project unreadable"),
+    ]
+
+
+def test_the_tray_tooltip_keeps_the_reason_s_first_paragraph_within_the_limit(data_dir, monkeypatch):
+    status_folder.write_run_state(FAILED, "1.2.3", PORT_IN_USE, "port_in_use")
+
+    tray = _polled_tray(monkeypatch, None)
+    tooltip = tray._build_tooltip()
+
+    assert tooltip.startswith(
+        "OpenAVC v1.2.3 - Could not start: HTTP port 8090 is already in use. Another application"
+    )
+    assert len(tooltip) <= tray_mod.TOOLTIP_LIMIT
+    assert tooltip.endswith("...")
+    # The dialog has the whole reason, the remedy included.
+    assert tray.shown == [("OpenAVC could not start", PORT_IN_USE)]
+
+
+def test_the_tray_shows_the_next_start_s_failure_too(data_dir, monkeypatch):
+    status_folder.write_run_state(FAILED, "1.2.3", "the first failure")
+    tray = _polled_tray(monkeypatch, None)
+    status_folder.write_run_state(STARTING, "1.2.3")
+    tray._poll_once()
+    status_folder.write_run_state(FAILED, "1.2.3", "the second failure")
+    tray._poll_once()
+
+    assert [message for _, message in tray.shown] == ["the first failure", "the second failure"]
+
+
+def test_the_tray_says_stopped_when_no_server_runs(data_dir, monkeypatch):
+    status_folder.write_run_state(READY, "1.2.3")
+    _recorded_by(data_dir, _ended_pid())
+
+    tray = _polled_tray(monkeypatch, None)
+
+    assert tray._build_tooltip() == "OpenAVC v1.2.3 - Stopped"
+    assert tray.shown == []
+
+
+def test_the_tray_says_not_responding_when_a_ready_server_does_not_answer(data_dir, monkeypatch):
+    status_folder.write_run_state(READY, "1.2.3")
+
+    assert _polled_tray(monkeypatch, None)._build_tooltip() == "OpenAVC v1.2.3 - Not responding"
+
+
+def test_the_tray_says_running_from_health(data_dir, monkeypatch):
+    status_folder.write_run_state(READY, "1.2.3")
+    health = {
+        "status": "healthy", "version": "1.2.3",
+        "devices": {"total": 3, "connected": 2}, "update_available": "1.2.4",
+    }
+
+    assert _polled_tray(monkeypatch, health)._build_tooltip() == (
+        "OpenAVC v1.2.3 - Running - 2/3 devices online - Update available: v1.2.4"
+    )
+
+
+# --- The menu bar ---
+
+class _MenuBar(SimpleNamespace):
+    """The parts of the menu bar app its poll and its stop use."""
+
+    def __init__(self):
+        super().__init__(
+            _cfg={"http_port": 8080, "tls_enabled": False, "tls_port": 8443},
+            _base="http://localhost:8080",
+            title="OpenAVC",
+            _status_item=SimpleNamespace(title="Starting..."),
+        )
+
+
+def _menu_line(monkeypatch, health: dict | None) -> str:
+    monkeypatch.setattr(menubar_mod, "_api_get", lambda path, cfg, timeout=3.0: health)
+    app = _MenuBar()
+    menubar_mod.OpenAVCMenuBar._poll(app, None)
+    return app._status_item.title
+
+
+menubar_only = pytest.mark.skipif(os.name == "nt", reason="the menu bar runs on macOS only")
+
+
+@menubar_only
+@pytest.mark.parametrize("phase, line", [
+    (STARTING, "v1.2.3 - Starting"),
+    (STOPPING, "v1.2.3 - Stopping"),
+    (READY, "v1.2.3 - Not responding"),
+])
+def test_the_menu_bar_says_where_the_server_is_in_its_life(data_dir, monkeypatch, phase, line):
+    status_folder.write_run_state(phase, "1.2.3")
+
+    assert _menu_line(monkeypatch, None) == line
+
+
+@menubar_only
+def test_the_menu_bar_says_why_a_start_failed(data_dir, monkeypatch):
+    status_folder.write_run_state(FAILED, "1.2.3", PORT_IN_USE, "port_in_use")
+    _recorded_by(data_dir, _ended_pid())
+
+    assert _menu_line(monkeypatch, None) == (
+        "v1.2.3 - Could not start: HTTP port 8090 is already in use. "
+        "Another application (or another copy of OpenAVC) is using this port."
+    )
+
+
+@menubar_only
+def test_the_menu_bar_says_stopped_when_no_server_runs(data_dir, monkeypatch):
+    assert _menu_line(monkeypatch, None) == "Stopped"
+
+
+@menubar_only
+def test_the_menu_bar_says_running_from_health(data_dir, monkeypatch):
+    health = {"status": "healthy", "version": "1.2.3", "devices": {"total": 3, "connected": 2}}
+
+    assert _menu_line(monkeypatch, health) == "v1.2.3 - Running - 2/3 devices online"
+
+
+def _stop_and_quit(monkeypatch, on_stop) -> list[str]:
+    """Stop Server and Quit, with the stop command doing ``on_stop``; what
+    the app did: "quit" or "alert"."""
+    did: list[str] = []
+    monkeypatch.setattr(menubar_mod, "_service_command", lambda action: on_stop())
+    monkeypatch.setattr(menubar_mod.rumps, "quit_application", lambda: did.append("quit"), raising=False)
+    monkeypatch.setattr(menubar_mod.rumps, "alert", lambda **kw: did.append("alert"), raising=False)
+    monkeypatch.setattr(menubar_mod, "time", SimpleNamespace(
+        sleep=lambda seconds: None, time=time.time,
+        clock_gettime=time.clock_gettime, CLOCK_MONOTONIC=time.CLOCK_MONOTONIC,
+    ))
+    menubar_mod.OpenAVCMenuBar._stop_and_quit(_MenuBar(), None)
+    return did
+
+
+@menubar_only
+def test_stop_and_quit_quits_once_the_server_says_it_is_stopping(data_dir, monkeypatch):
+    status_folder.write_run_state(READY, "1.2.3")
+
+    assert _stop_and_quit(monkeypatch, lambda: status_folder.write_run_state(STOPPING, "1.2.3")) == ["quit"]
+
+
+@menubar_only
+def test_stop_and_quit_stays_while_a_failed_start_still_runs(data_dir, monkeypatch):
+    """A failed start held on its startup screen answers health with 503: the
+    password prompt cancelled leaves it running, and the app says so."""
+    status_folder.write_run_state(FAILED, "1.2.3", "Loading the project failed: project unreadable")
+    monkeypatch.setattr(menubar_mod, "_api_get", lambda path, cfg, timeout=3.0: None)
+
+    assert _stop_and_quit(monkeypatch, lambda: None) == ["alert"]
+
+
+@menubar_only
+def test_stop_and_quit_quits_when_no_server_runs(data_dir, monkeypatch):
+    assert _stop_and_quit(monkeypatch, lambda: None) == ["quit"]

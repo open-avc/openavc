@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -52,11 +53,18 @@ POLL_INTERVAL = 5  # seconds
 DATA_DIR = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC'
 # The installer restricts the data folder to the service and administrators,
 # and the tray runs as the signed-in user, so the tray reads only status\, the
-# one folder every local account can read. The server writes both files there
-# (STATUS_DIR_NAME and the file names in openavc/status_folder.py).
+# one folder every local account can read. The server writes its three files
+# there (STATUS_DIR_NAME and the file names in openavc/status_folder.py).
 STATUS_DIR = DATA_DIR / 'status'
 STARTUP_ERROR_FILE = STATUS_DIR / 'startup-error.json'
 SERVER_ADDRESS_FILE = STATUS_DIR / 'server.json'
+RUN_STATE_FILE = STATUS_DIR / 'run-state.json'
+# Where the server is in its life, in the run-state record's words (PHASES in
+# openavc/middleware/startup_splash.py), and the tray's own for no server.
+STARTING, READY, FAILED, STOPPING = 'starting', 'ready', 'failed', 'stopping'
+STOPPED = 'stopped'
+# Windows shows at most 127 characters of a tray icon's tooltip.
+TOOLTIP_LIMIT = 127
 # A file by this name in the data folder makes the server clear the Programmer
 # login at its next start (RESET_REQUEST_NAMES in openavc/api/auth.py). The
 # folder is administrators-only, so the tray relaunches itself elevated with
@@ -137,6 +145,99 @@ def _get_listen_problem() -> str:
     except (json.JSONDecodeError, OSError, AttributeError, TypeError, ValueError):
         return ''
     return problem if isinstance(problem, str) else ''
+
+
+def _process_running(pid: int) -> bool:
+    """Whether a process with this id is running. The server runs as the
+    service's account and the tray as the signed-in user, so Windows may
+    refuse to open it, and a refusal means it is there. (``os.kill`` is no
+    question on Windows: it ends the process.)"""
+    if os.name != 'nt':
+        try:
+            os.kill(pid, 0)
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    process_query_limited_information, error_access_denied, still_active = 0x1000, 5, 259
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        return ctypes.get_last_error() == error_access_denied
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _computer_started_at() -> float:
+    """When this computer last started, in seconds since the epoch."""
+    if os.name == 'nt':
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32')
+        kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+        return time.time() - kernel32.GetTickCount64() / 1000
+    return time.time() - time.clock_gettime(getattr(time, 'CLOCK_BOOTTIME', time.CLOCK_MONOTONIC))
+
+
+def _startup_error() -> str:
+    """Why the server's last start failed, as it recorded it, or ''."""
+    try:
+        message = json.loads(STARTUP_ERROR_FILE.read_text(encoding='utf-8')).get('message')
+    except (json.JSONDecodeError, OSError, AttributeError):
+        return ''
+    return message if isinstance(message, str) else ''
+
+
+def _run_state() -> dict:
+    """Where the server is in its life, as it recorded it in the status folder
+    (write_run_state in openavc/status_folder.py): ``phase``, ``version``,
+    ``error`` (a failed start's reason, else '') and ``running``, whether the
+    process that recorded it still runs.
+
+    A file the process left behind when it ended or was killed reads as
+    STOPPED: its process is gone, or it was written before this computer last
+    started (Windows soon gives an ended process's id to another). A failed
+    start stands either way, since its process can end by itself, and its
+    reason is in startup-error.json. No file, or one that cannot be read,
+    reads as STOPPED.
+    """
+    stopped = {'phase': STOPPED, 'version': '', 'error': '', 'running': False}
+    try:
+        recorded = json.loads(RUN_STATE_FILE.read_text(encoding='utf-8'))
+        phase, pid = recorded['phase'], int(recorded['pid'])
+        written = datetime.fromisoformat(recorded['timestamp']).timestamp()
+        version = str(recorded.get('version') or '')
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return stopped
+    running = written >= _computer_started_at() and _process_running(pid)
+    if phase == FAILED:
+        return {'phase': FAILED, 'version': version, 'error': _startup_error(), 'running': running}
+    if phase not in (STARTING, READY, STOPPING) or not running:
+        return dict(stopped, version=version)
+    return {'phase': phase, 'version': version, 'error': '', 'running': True}
+
+
+def _reason_summary(message: str) -> str:
+    """A failed start's reason on one line: its first paragraph (the remedy
+    after it is in the dialog)."""
+    return ' '.join(message.split('\n\n', 1)[0].split())
+
+
+def _fit_tooltip(text: str) -> str:
+    if len(text) <= TOOLTIP_LIMIT:
+        return text
+    return text[:TOOLTIP_LIMIT - 3].rstrip() + '...'
 
 
 def _get_port() -> int:
@@ -302,6 +403,15 @@ def _show_error_dialog(title: str, message: str) -> None:
         pass
 
 
+# What the tooltip says for each phase short of running.
+_STATUS_LABELS = {
+    STARTING: 'Starting',
+    STOPPING: 'Stopping',
+    READY: 'Not responding',
+    STOPPED: 'Stopped',
+}
+
+
 class OpenAVCTray:
     """OpenAVC system tray application."""
 
@@ -310,7 +420,10 @@ class OpenAVCTray:
         self._port = self._server_cfg["http_port"]  # back-compat
         self._base_url = _base_url(self._server_cfg)
         self._running = True
-        self._server_status: str = 'unknown'  # 'running', 'stopped', 'unknown'
+        # 'running' (health answered), a phase from the status folder
+        # (STARTING, READY with no answer, FAILED, STOPPING), STOPPED, or
+        # 'unknown' before the first poll.
+        self._server_status: str = 'unknown'
         self._version: str = ''
         self._device_info: str = ''
         self._update_available: str = ''
@@ -318,63 +431,61 @@ class OpenAVCTray:
         self._startup_error: str = ''
         self._error_shown: bool = False
 
-    def _check_startup_error(self) -> None:
-        """Check for a startup error file written by the server."""
-        try:
-            if not STARTUP_ERROR_FILE.exists():
-                self._startup_error = ''
+    def _note_run_state(self, run: dict) -> None:
+        """Take where the server is in its life from the status folder, while
+        /api/health does not answer that it is running. A failed start's
+        reason is shown in a dialog once, until a start gets past it."""
+        self._server_status = run['phase']
+        self._version = run['version'] or self._version
+        if run['phase'] != FAILED:
+            if run['phase'] != STOPPED:
                 self._error_shown = False
-                return
+            self._startup_error = ''
+            return
+        self._startup_error = run['error']
+        if not self._error_shown:
+            self._error_shown = True
+            threading.Thread(
+                target=_show_error_dialog,
+                args=('OpenAVC could not start', run['error'] or 'The reason was not recorded.'),
+                daemon=True,
+            ).start()
 
-            data = json.loads(STARTUP_ERROR_FILE.read_text(encoding='utf-8'))
-            self._startup_error = data.get('message', 'Unknown startup error')
-
-            if not self._error_shown:
-                self._error_shown = True
-                t = threading.Thread(
-                    target=_show_error_dialog,
-                    args=('OpenAVC - Failed to Start', self._startup_error),
-                    daemon=True,
-                )
-                t.start()
-
-        except (json.JSONDecodeError, OSError):
-            pass
+    def _poll_once(self) -> None:
+        # Read where the server listens at every poll, not once: a port
+        # changed in Settings is recorded when the restart applies it.
+        self._server_cfg = _get_server_config()
+        self._port = self._server_cfg["http_port"]
+        self._base_url = _base_url(self._server_cfg)
+        health = _api_get('/api/health', self._server_cfg)
+        if health and health.get('status') == 'healthy':
+            self._server_status = 'running'
+            self._version = health.get('version', self._version)
+            self._startup_error = ''
+            self._error_shown = False
+            devices = health.get('devices', {})
+            total = devices.get('total', 0)
+            connected = devices.get('connected', 0)
+            if total > 0:
+                self._device_info = f'{connected}/{total} devices online'
+            else:
+                self._device_info = ''
+            # Passive update indicator: the server's periodic auto-check
+            # caches the available version and reports it here (empty when
+            # up to date), so the tooltip can surface it without the tray
+            # itself hitting the network.
+            self._update_available = health.get('update_available', '') or ''
+            self._listen_problem = _get_listen_problem()
+        else:
+            self._device_info = ''
+            self._update_available = ''
+            self._listen_problem = ''
+            self._note_run_state(_run_state())
 
     def _poll_status(self):
         """Background thread that polls the server health endpoint."""
         while self._running:
-            # Read where the server listens at every poll, not once: a port
-            # changed in Settings is recorded when the restart applies it.
-            self._server_cfg = _get_server_config()
-            self._port = self._server_cfg["http_port"]
-            self._base_url = _base_url(self._server_cfg)
-            health = _api_get('/api/health', self._server_cfg)
-            if health and health.get('status') == 'healthy':
-                self._server_status = 'running'
-                self._version = health.get('version', self._version)
-                self._startup_error = ''
-                self._error_shown = False
-                devices = health.get('devices', {})
-                total = devices.get('total', 0)
-                connected = devices.get('connected', 0)
-                if total > 0:
-                    self._device_info = f'{connected}/{total} devices online'
-                else:
-                    self._device_info = ''
-                # Passive update indicator: the server's periodic auto-check
-                # caches the available version and reports it here (empty when
-                # up to date), so the tooltip can surface it without the tray
-                # itself hitting the network.
-                self._update_available = health.get('update_available', '') or ''
-                self._listen_problem = _get_listen_problem()
-            else:
-                self._server_status = 'stopped'
-                self._device_info = ''
-                self._update_available = ''
-                self._listen_problem = ''
-                self._check_startup_error()
-
+            self._poll_once()
             time.sleep(POLL_INTERVAL)
 
     def _open_programmer(self, systray):
@@ -468,13 +579,14 @@ class OpenAVCTray:
                 parts.append(self._listen_problem)
             elif self._device_info:
                 parts.append(self._device_info)
-        elif self._startup_error:
-            parts.append('Error - see popup')
+        elif self._server_status == FAILED:
+            reason = _reason_summary(self._startup_error)
+            parts.append(f'Could not start: {reason}' if reason else 'Could not start')
         else:
-            parts.append('Stopped')
+            parts.append(_STATUS_LABELS.get(self._server_status, 'Stopped'))
         if self._update_available:
             parts.append(f'Update available: v{self._update_available}')
-        return ' - '.join(parts)
+        return _fit_tooltip(' - '.join(parts))
 
     def run(self):
         """Start the tray application."""
