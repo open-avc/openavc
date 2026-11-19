@@ -14,6 +14,16 @@ The rules worth knowing before changing anything here:
   going out, and for ``FOLLOW_UP_SETTLE_S`` after its last line, a match
   applies its writes and sends nothing; the replies to the round arrive
   inside that window. A cancelled round leaves no hold behind.
+* **A round is for the children its reply wrote, as each was registered
+  then** (THE child registration rule, drivers/child_registration.py). A line
+  for a child goes out only while that child still holds its registration,
+  judged just before the line goes, so a child a later reply in the same
+  read took off the roster, or one that left mid-round, is not read; the
+  round goes on for the others. A hold holds back only a match for children
+  registered when it was taken: a child that left and came back, or one
+  that was not on the roster then, is read at once. An ``each_child`` entry
+  reads the roster as it stands when the entry's turn comes, as a poll
+  does, and a ``read_back`` is its command's, not a child's.
 * **A round ends only what it still holds.** The drop forgets every hold
   and waiting query at once, but a cancelled task runs its ``finally`` a
   loop turn later, by when a round on the next connection may hold the same
@@ -41,6 +51,7 @@ import re
 import time
 from typing import Any, Callable
 
+from openavc.drivers.child_registration import ChildRegistrations, registered_since
 from openavc.drivers.spec import FOLLOW_UP_SETTLE_S
 from openavc.transport.pacing import sleep_at_least
 from openavc.utils.logger import get_logger
@@ -77,13 +88,14 @@ def _cancel_all(tasks: set[asyncio.Task[None]]) -> None:
     tasks.clear()
 
 
-def _distinct_child_ids(children: list[tuple[str, Any, dict[str, Any]]]) -> list[Any]:
-    """The children a rule wrote, each once, in the order it wrote them."""
-    child_ids: list[Any] = []
-    for _ctype, local_id, _updates in children:
-        if local_id not in child_ids:
-            child_ids.append(local_id)
-    return child_ids
+def _by_local_id(registrations: ChildRegistrations) -> dict[Any, ChildRegistrations]:
+    """The children a round reads, grouped by the id a ``{child_id}`` line
+    names, in the order the rule wrote them: a child written twice, or two
+    types' children of one id, are read once."""
+    grouped: dict[Any, ChildRegistrations] = {}
+    for child, registration in registrations.items():
+        grouped.setdefault(child[1], {})[child] = registration
+    return grouped
 
 
 def _read_back_entries(raw: Any) -> list[str]:
@@ -119,6 +131,9 @@ class Rereads:
     _safe_substitute: Callable[[str, dict[str, Any]], str]
     _is_osc_command: Callable[[dict[str, Any]], bool]
     _is_http_command: Callable[[dict[str, Any]], bool]
+    _child_registrations: Callable[[list[Any]], ChildRegistrations]
+    _holds_registration: Callable[[Any, Any], bool]
+    _registrations_made: Callable[[], int]
 
     def _init_rereads(self) -> None:
         # Response rules' then_query rounds (_follow_up): the tasks sending
@@ -129,6 +144,9 @@ class Rereads:
         # ... and the round going out under each held key, the only one
         # whose end may settle or lift that hold.
         self._follow_up_rounds: dict[tuple[int, str], asyncio.Task[None]] = {}
+        # ... and the registrations the child registry had made when each
+        # held key's round was taken (child_registration.registered_since).
+        self._follow_up_taken_at: dict[tuple[int, str], int] = {}
         # Commands' read_back rounds (_read_back): the tasks sending them,
         # and the queries waiting to go out, each with the round that will
         # send it, so one is not queued twice.
@@ -156,10 +174,13 @@ class Rereads:
         FOLLOW_UP_SETTLE_S of its last line, applies its writes and sends
         nothing. The replies to the round arrive inside that window, so a
         rule they match reads once and stops; a second notice inside it is
-        read by the next poll.
+        read by the next poll. The hold is for the children registered
+        when the round was taken: a match for a child registered since is
+        read at once.
         """
         key = (id(rule), scope)
-        if self._follow_up_until.get(key, 0.0) > time.monotonic():
+        registrations = self._child_registrations(children)
+        if self._follow_up_held(key, registrations):
             log.debug(
                 f"[{self.device_id}] then_query not sent: this rule's queries "
                 f"went out less than {FOLLOW_UP_SETTLE_S:g} s ago"
@@ -168,40 +189,49 @@ class Rereads:
         loop = _running_loop()
         if loop is None:
             return
-        child_ids = _distinct_child_ids(children)
         self._follow_up_until[key] = float("inf")
-        task = loop.create_task(self._send_follow_ups(key, entries, child_ids))
+        self._follow_up_taken_at[key] = self._registrations_made()
+        task = loop.create_task(self._send_follow_ups(key, entries, registrations))
         self._follow_up_rounds[key] = task
         _track(self._follow_up_tasks, task)
 
-    def _follow_up_lines(self, entry: Any, child_ids: list[Any]) -> list[str]:
-        """One ``then_query`` entry as the lines it sends: expanded as a poll
-        entry is (``each_child``, ``when``, ``when_state``, ``page_size``),
-        then, outside ``each_child``, ``{child_id}`` filled with each child the
-        rule wrote. With none written (an id the roster does not hold), such
-        a line is not sent."""
+    def _follow_up_held(self, key: tuple[int, str], registrations: ChildRegistrations) -> bool:
+        """Whether a round under ``key`` holds this match back: one is going
+        out or settling, and no child the match wrote registered since it
+        was taken."""
+        if self._follow_up_until.get(key, 0.0) <= time.monotonic():
+            return False
+        return not registered_since(registrations, self._follow_up_taken_at.get(key))
+
+    def _follow_up_lines(self, entry: Any, child_ids: list[Any]) -> list[tuple[str, Any]]:
+        """One ``then_query`` entry as the lines it sends, each with the id
+        of the child it reads (None for a line that names none): expanded as
+        a poll entry is (``each_child``, ``when``, ``when_state``,
+        ``page_size``), then, outside ``each_child``, ``{child_id}`` filled
+        with each child the rule wrote. With none written (an id the roster
+        does not hold), such a line is not sent."""
         lines = self._expand_query(entry)
         if isinstance(entry, dict) and "each_child" in entry:
-            return lines
-        out: list[str] = []
+            return [(line, None) for line in lines]
+        out: list[tuple[str, Any]] = []
         for line in lines:
             if _CHILD_ID_TOKEN.search(line):
                 out.extend(
-                    self._safe_substitute(line, {"child_id": local_id})
+                    (self._safe_substitute(line, {"child_id": local_id}), local_id)
                     for local_id in child_ids
                 )
             else:
-                out.append(line)
+                out.append((line, None))
         return out
 
     async def _send_follow_ups(
-        self, key: tuple[int, str], entries: list[Any], child_ids: list[Any],
+        self, key: tuple[int, str], entries: list[Any], registrations: ChildRegistrations,
     ) -> None:
         """Send one round of follow-up queries the way a poll sends its
         lines, then hold the rule for FOLLOW_UP_SETTLE_S (_follow_up)."""
         cancelled = False
         try:
-            await self._follow_up_round(entries, child_ids)
+            await self._follow_up_round(entries, registrations)
         except asyncio.CancelledError:
             cancelled = True
             raise
@@ -223,30 +253,56 @@ class Rereads:
         del self._follow_up_rounds[key]
         if cancelled:
             self._follow_up_until.pop(key, None)
+            self._follow_up_taken_at.pop(key, None)
         else:
             self._follow_up_until[key] = time.monotonic() + FOLLOW_UP_SETTLE_S
 
-    async def _follow_up_round(self, entries: list[Any], child_ids: list[Any]) -> None:
+    async def _follow_up_round(self, entries: list[Any], registrations: ChildRegistrations) -> None:
         """The round's lines, in order, until one ends it."""
         polling = self._definition.get("polling") or {}
+        by_id = _by_local_id(registrations)
         for entry in entries:
-            for line in self._follow_up_lines(entry, child_ids):
-                if await self._send_follow_up_line(polling, entry, line):
+            for line, local_id in self._follow_up_lines(entry, list(by_id)):
+                reads = by_id.get(local_id, {})
+                if await self._send_follow_up_line(polling, entry, line, reads):
                     return
 
-    async def _send_follow_up_line(self, polling: dict[str, Any], entry: Any, line: str) -> bool:
+    async def _send_follow_up_line(
+        self,
+        polling: dict[str, Any],
+        entry: Any,
+        line: str,
+        reads: ChildRegistrations | None = None,
+    ) -> bool:
         """One follow-up line, paced and judged against the gates; True when
         the round ends here: the link is down, or ``polling.when_state``
         holds the poll (a notice from a unit in standby must not wake it). A
-        line whose own gate has shut is skipped."""
+        line whose own gate has shut is skipped, and so is one whose child
+        has left the roster since the round was taken (``reads``, judged
+        after the wait, which is when a reply may have taken it off)."""
         if not self._link_open():
             return True
         await self._pace_line()
         gate = await self._line_gate_shut(polling, entry, quiet=True)
         if gate == "poll":
             return True
-        if not gate:
+        if not gate and self._still_reads(reads, line):
             await self._dispatch_query(line)
+        return False
+
+    def _still_reads(self, reads: ChildRegistrations | None, line: str) -> bool:
+        """Whether a follow-up line still has a child to read: always for a
+        line that names none, else while one of the children it reads still
+        holds the registration the round was taken for."""
+        if not reads or any(
+            self._holds_registration(child, registration)
+            for child, registration in reads.items()
+        ):
+            return True
+        log.debug(
+            f"[{self.device_id}] then_query line {line!r} not sent: its "
+            f"child has left the roster"
+        )
         return False
 
     def _drop_follow_ups(self) -> None:
@@ -256,6 +312,7 @@ class Rereads:
         _cancel_all(self._follow_up_tasks)
         self._follow_up_until.clear()
         self._follow_up_rounds.clear()
+        self._follow_up_taken_at.clear()
 
     # --- a command's read_back ---
 

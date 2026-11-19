@@ -27,6 +27,10 @@ The rules worth knowing before changing anything here:
   ``initial_state`` and the three ``set_child_state*``) writes through
   ``_write_children`` and on to the host's ``_write_state``, which reports a
   value not of its declared type, the same for a batch as for one value.
+* Each registration is a fresh epoch, so a child removed and registered
+  again is a new one. Work deferred for a child ends with its registration
+  (THE child registration rule, drivers/child_registration.py, a mixin this
+  one inherits); ``_forget_child`` ends a departing child's part at once.
 
 ``ChildEntities`` is a mixin that ``BaseDriver`` inherits, so every name stays on
 the driver object: drivers read ``self._project_child_entities`` directly, and
@@ -51,6 +55,7 @@ from openavc.core.connection_fault import (
     normalize_child_fault_claim,
 )
 from openavc.core.state_store import StateStore
+from openavc.drivers.child_registration import ChildRegistration
 from openavc.drivers.contract_events import CHILD_UNREGISTERED
 from openavc.drivers.spec import (
     CHILD_DRIVER_FAULT_CODES,
@@ -203,7 +208,7 @@ async def _fetch_in_batches(
     return collected
 
 
-class ChildEntities:
+class ChildEntities(ChildRegistration):
     """The child-entity half of ``BaseDriver``: the registry, the state keys
     and the presence rules (see the module docstring)."""
 
@@ -749,6 +754,7 @@ class ChildEntities:
         if not bucket:
             del self._children[child_type]
         self._child_schemas.pop((child_type, local_id), None)
+        self._end_child_work((child_type, local_id))
 
     def list_children(self, child_type: str) -> list[int | str]:
         """Local IDs of currently-registered children of ``child_type``,
@@ -1026,10 +1032,9 @@ class ChildEntities:
         """The poll results for children still registered under the epoch
         they had when the poll started (drops ghosts, removed and
         re-registered children)."""
-        live = self._children.get(child_type, {})
         updates: list[tuple[str, Any, dict[str, Any]]] = []
         for lid, props in collected:
             expected = epochs.get(lid)
-            if expected is not None and live.get(lid) == expected:
+            if expected is not None and self._holds_registration((child_type, lid), expected):
                 updates.append((child_type, lid, props))
         return updates

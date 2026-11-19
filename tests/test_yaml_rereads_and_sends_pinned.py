@@ -288,11 +288,15 @@ def test_each_child_lines_are_left_as_the_poll_expands_them() -> None:
     drv = _driver(LINE_UNIT, Capture())
     expanded = drv._expand_query
     drv._expand_query = lambda entry: ["GO{child_id}\r"]
-    assert drv._follow_up_lines({"each_child": "output", "send": "x"}, [1, 2]) == ["GO{child_id}\r"]
+    # Each line comes with the id of the child it reads, None for one that
+    # names none (an each_child line reads the roster as it stands).
+    assert drv._follow_up_lines({"each_child": "output", "send": "x"}, [1, 2]) == [
+        ("GO{child_id}\r", None),
+    ]
     drv._expand_query = expanded
-    assert drv._follow_up_lines("GO{child_id}\r", [1, 2]) == ["GO1\r", "GO2\r"]
+    assert drv._follow_up_lines("GO{child_id}\r", [1, 2]) == [("GO1\r", 1), ("GO2\r", 2)]
     assert drv._follow_up_lines("GO{child_id}\r", []) == []
-    assert drv._follow_up_lines("GL\r", []) == ["GL\r"]
+    assert drv._follow_up_lines("GL\r", []) == [("GL\r", None)]
 
 
 # ── read-backs ──

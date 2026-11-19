@@ -213,6 +213,13 @@ class ConfigurableDriver(
         self._drop_read_backs()
         await super()._close_session()
 
+    def _end_child_work(self, child: Any) -> None:
+        """A child left the roster: its held throttled writes go with it (THE
+        child registration rule, drivers/child_registration.py). A follow-up
+        round reads it no further, judged at each line (rereads)."""
+        self._end_child_holds(child)
+        super()._end_child_work(child)
+
     def _compute_derived_config(self) -> None:
         """Populate self.config with values derived from other config fields.
 
