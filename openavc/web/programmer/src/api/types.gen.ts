@@ -1927,7 +1927,9 @@ export interface DriverDefinition {
   web_ui?: boolean | string;
   /**
    * Minimum OpenAVC version required. Blocks install on older platforms
-   * missing a needed feature. Semantic version.
+   * missing a needed feature. A release (0.40.0), or a pre-release of one
+   * (0.40.0-rc1), which is older than its release: a 0.40.0-rc1 system does
+   * not meet a 0.40.0 floor.
    */
   min_platform_version?: string | null;
   /** Search/browse tags. Lowercase, hyphen-separated, alphanumeric. */

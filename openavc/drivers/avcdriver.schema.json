@@ -226,8 +226,8 @@
         "string",
         "null"
       ],
-      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[\\-+][\\w.\\-]+)?$",
-      "description": "Minimum OpenAVC version required. Blocks install on older platforms missing a needed feature. Semantic version."
+      "pattern": "^[0-9]{1,9}\\.[0-9]{1,9}\\.[0-9]{1,9}(?:-(?:alpha|beta|rc|dev)\\.?[0-9]{1,9})?$",
+      "description": "Minimum OpenAVC version required. Blocks install on older platforms missing a needed feature. A release (0.40.0), or a pre-release of one (0.40.0-rc1), which is older than its release: a 0.40.0-rc1 system does not meet a 0.40.0 floor."
     },
     "tags": {
       "type": [

@@ -44,7 +44,8 @@ other request ever sees a file half admitted:
 
 1. **Check.** Every file's protected identity, and the platform floor the
    driver file declares, read from its bytes for both kinds of driver and never
-   by running it (``declared_floor``, ``floor_refusal``).
+   by running it (``declared_floor``), against this release by the version
+   rule (``floor_refusal``).
 2. **Write beside.** Every file into a staging folder inside the driver folder,
    under the name it will have. The folder goes when ``admit`` returns,
    whatever happened, and one left by a crash goes at the next change.
@@ -116,6 +117,7 @@ from openavc.drivers.driver_loader import (
 from openavc.drivers.python_modules import module_name, trial_driver_import
 from openavc.drivers.registry import register_driver
 from openavc.utils.logger import get_logger
+from openavc.utils.version_rule import compare_versions
 
 log = get_logger("openavc.api.routes.drivers")
 
@@ -330,34 +332,17 @@ def hold_to_revision(sent: Any, current: str) -> None:
 # --- the platform floor ---------------------------------------------------------
 
 
-def parse_version(v: str) -> tuple[int, int, int]:
-    """Parse "X.Y.Z" into a comparable 3-tuple.
-
-    Always three parts, so "0.22" compares equal to "0.22.0" instead of
-    less-than, and a part with a pre-release/build suffix keeps its numeric
-    prefix ("22-rc1" -> 22) instead of vanishing from the tuple.
-    """
-    parts: list[int] = []
-    for piece in v.strip().split(".")[:3]:
-        match = re.match(r"\d+", piece)
-        parts.append(int(match.group()) if match else 0)
-    while len(parts) < 3:
-        parts.append(0)
-    return (parts[0], parts[1], parts[2])
-
-
 def floor_refusal(required: str) -> str | None:
     """The sentence refusing a driver that needs OpenAVC ``required`` or later
-    when this one is older; None when it is not, or a version cannot be read."""
+    when this release is older, by the version rule
+    (``utils/version_rule.py``): a release candidate is older than its
+    release, so a 0.40.0-rc1 system is held back from a 0.40.0 floor until it
+    updates. None when this release meets the floor, or when either version is
+    not one the rule reads (the Programmer IDE's gate never blocks on one
+    either)."""
     from openavc.version import __version__
 
-    try:
-        current = parse_version(__version__)
-        needed = parse_version(required)
-    except Exception:
-        log.debug("Version parse failed; allowing install", exc_info=True)
-        return None
-    if current >= needed:
+    if (compare_versions(__version__, required) or 0) >= 0:
         return None
     return (
         f"This driver requires OpenAVC {required} or later. "

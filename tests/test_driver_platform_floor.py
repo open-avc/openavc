@@ -151,11 +151,15 @@ def test_a_sufficient_declaration_passes():
     assert platform_version_errors(_d(min_platform_version="1.2.0", web_ui=True)) == []
 
 
-def test_a_pre_release_declaration_counts_as_its_release():
-    assert (
-        platform_version_errors(_d(min_platform_version="0.24.0-rc1", web_ui=True))
-        == []
-    )
+def test_a_pre_release_declaration_is_older_than_its_release():
+    """The version rule's order: a release candidate is older than its
+    release, so declaring one undershoots a field that release grew, as the
+    install gate reads that declaration."""
+    for declared in ("0.24.0-rc1", "0.24.0rc1"):
+        errors = platform_version_errors(_d(min_platform_version=declared, web_ui=True))
+        assert len(errors) == 1, declared
+        assert 'Raise it to "0.24.0"' in errors[0]
+    assert platform_version_errors(_d(min_platform_version="0.25.0-rc1", web_ui=True)) == []
 
 
 def test_a_missing_declaration_is_only_a_publishing_error():
@@ -352,3 +356,24 @@ def test_no_shipped_driver_under_declares_its_floor(driver_path: Path) -> None:
     assert isinstance(definition, dict), f"{driver_path.name} is not a mapping"
     errors = platform_version_errors(definition, require_declaration=True)
     assert not errors, f"{driver_path.name}: {errors[0]}"
+
+
+def test_the_published_floor_pattern_takes_only_versions_the_rule_reads():
+    """The install gate reads a declared floor by the version rule and lets a
+    floor it cannot read through, so the catalog's schema takes only a floor
+    the rule reads: ``0.41.0+build7`` would otherwise publish as a floor no
+    release ever enforces."""
+    import json
+    import re
+
+    from openavc.utils.version_rule import read_version
+
+    pattern = re.compile(spec.FIELDS["min_platform_version"]["pattern"])
+    corpus = json.loads(
+        (Path(__file__).parent / "fixtures" / "version_rule_cases.json").read_text(encoding="utf-8")
+    )
+    taken = [v for v in corpus["unreadable"] if isinstance(v, str) and pattern.match(v)]
+    assert not taken, taken
+    for floor in ("0.40.0", "12.0.3", "0.40.0-rc1", "0.40.0-rc.2", "0.40.0-beta.1", "0.40.0-dev1"):
+        assert pattern.match(floor), floor
+        assert read_version(floor) is not None, floor

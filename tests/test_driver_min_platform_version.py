@@ -42,7 +42,6 @@ from openavc.api.routes.drivers import (
     upload_driver_bundle,
 )
 from openavc.drivers.driver_change import declared_floor as _declared_min_platform_version
-from openavc.drivers.driver_change import parse_version as _parse_semver
 from openavc.drivers.driver_loader import save_driver_definition
 
 
@@ -84,24 +83,33 @@ def test_enforce_swallows_unparseable(monkeypatch):
     _enforce_min_platform_version("not-a-version")
 
 
-def test_parse_semver_pads_short_versions():
-    # "0.22" must equal "0.22.0" — a short tuple compares less-than and
-    # used to falsely block installs at the gate.
-    assert _parse_semver("0.22") == (0, 22, 0)
-    assert _parse_semver("0.22") == _parse_semver("0.22.0")
-    assert _parse_semver("1") == (1, 0, 0)
+def test_a_release_candidate_does_not_meet_its_release_floor(monkeypatch):
+    # A release candidate is older than its release, in the tag's spelling
+    # and the frozen build's alike: an rc system is held back from a driver
+    # that needs the final release until it updates.
+    import openavc.version
+    for running in ("0.25.0-rc1", "0.25.0rc1"):
+        monkeypatch.setattr(openavc.version, "__version__", running)
+        with pytest.raises(HTTPException) as excinfo:
+            _enforce_min_platform_version("0.25.0")
+        assert excinfo.value.status_code == 422
+        assert "0.25.0" in str(excinfo.value.detail)
 
 
-def test_parse_semver_keeps_numeric_prefix_of_suffixed_parts():
-    # A pre-release/build suffix used to make the whole part vanish from
-    # the tuple ("0.22.0-rc1" -> (0, 22)), shortening the comparison.
-    assert _parse_semver("0.22.0-rc1") == (0, 22, 0)
-    assert _parse_semver("1.2.3+build7") == (1, 2, 3)
+def test_a_release_candidate_meets_a_floor_it_reaches(monkeypatch):
+    import openavc.version
+    monkeypatch.setattr(openavc.version, "__version__", "0.25.0rc2")
+    _enforce_min_platform_version("0.25.0-rc1")
+    _enforce_min_platform_version("0.25.0-rc2")
+    _enforce_min_platform_version("0.24.0")
 
 
-def test_parse_semver_plain_three_part():
-    assert _parse_semver("1.2.3") == (1, 2, 3)
-    assert _parse_semver("1.2.3") < _parse_semver("1.2.10")
+def test_a_running_version_that_is_not_one_never_blocks(monkeypatch):
+    # The Programmer IDE's gate says the same (CommunityBrowser's
+    # blockedByPlatform): a version nobody can read never blocks.
+    import openavc.version
+    monkeypatch.setattr(openavc.version, "__version__", "0.40.0+local")
+    _enforce_min_platform_version("0.41.0")
 
 
 def test_enforce_two_part_running_version_not_blocked(monkeypatch):
@@ -370,3 +378,37 @@ async def test_patch_can_lower_a_floor_that_blocks_the_save(driver_dirs, running
     assert result["status"] == "updated"
     saved = yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())
     assert saved["min_platform_version"] == "0.22.0"
+
+
+# --- the gate follows the version rule's corpus -------------------------------
+
+
+def test_the_floor_gate_answers_every_pair_of_the_version_rule_corpus(monkeypatch):
+    """The floor is the version rule's question ("is this system older than
+    that floor?"), so the gate is held to the rule's own corpus, the one the
+    Programmer IDE's gate (``blockedByPlatform``) is held to in vitest:
+    refused exactly when the running version is older than the floor, and
+    never on a version the rule cannot read."""
+    import itertools
+    import json
+    from pathlib import Path
+
+    import openavc.version
+    from openavc.drivers.driver_change import floor_refusal
+
+    corpus = json.loads(
+        (Path(__file__).parent / "fixtures" / "version_rule_cases.json").read_text(encoding="utf-8")
+    )
+    rows = [(rank, text) for rank, c in enumerate(corpus["ascending"]) for text in c["versions"]]
+    for (running_rank, running), (floor_rank, floor) in itertools.product(rows, repeat=2):
+        monkeypatch.setattr(openavc.version, "__version__", running)
+        refused = floor_refusal(floor) is not None
+        assert refused is (running_rank < floor_rank), (running, floor)
+    for value in corpus["unreadable"]:
+        if not isinstance(value, str):
+            continue
+        for _, text in rows[::7]:
+            monkeypatch.setattr(openavc.version, "__version__", value)
+            assert floor_refusal(text) is None, (value, text)
+            monkeypatch.setattr(openavc.version, "__version__", text)
+            assert floor_refusal(value) is None, (text, value)

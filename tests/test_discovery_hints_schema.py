@@ -655,6 +655,31 @@ class TestRequiresGate:
         with pytest.raises(DiscoveryHintError, match="requires"):
             parse_driver_discovery(_drv("widget", requires=23))
 
+    def test_a_release_candidate_skips_a_block_its_release_gates(self, monkeypatch):
+        # A release candidate is older than its release (the version rule).
+        for running in ("0.23.0-rc1", "0.23.0rc1"):
+            monkeypatch.setattr(
+                "openavc.discovery.hints._platform_version", lambda running=running: running,
+            )
+            assert parse_driver_discovery(
+                _drv("widget", requires="0.23.0", oui=["00:0a:45"])
+            ) is None, running
+
+    def test_a_frozen_build_reads_a_block_an_older_release_gates(self, monkeypatch):
+        # A frozen build reports its release candidate in Python's spelling.
+        monkeypatch.setattr(
+            "openavc.discovery.hints._platform_version", lambda: "0.24.0rc2",
+        )
+        h = parse_driver_discovery(_drv("widget", requires="0.23.0", oui=["00:0a:45"]))
+        assert h is not None
+
+    def test_a_block_gated_on_a_release_candidate_reads_from_it(self, monkeypatch):
+        monkeypatch.setattr(
+            "openavc.discovery.hints._platform_version", lambda: "0.23.0rc1",
+        )
+        h = parse_driver_discovery(_drv("widget", requires="0.23.0-rc1", oui=["00:0a:45"]))
+        assert h is not None
+
     def test_two_part_requires_compares_correctly(self, monkeypatch):
         monkeypatch.setattr(
             "openavc.discovery.hints._platform_version", lambda: "0.23.0",

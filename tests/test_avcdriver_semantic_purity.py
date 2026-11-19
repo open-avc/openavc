@@ -11,7 +11,8 @@ check modules it imports (``action_checks``, ``command_checks``, ``condition_che
 ``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
-standard library and each other: no runtime, no transports, no discovery, no
+standard library, each other and the two leaf rules they ask from ``utils/``
+(``regex_safety``, ``version_rule``): no runtime, no transports, no discovery, no
 YAML. This test imports them in a clean subprocess and fails if anything
 outside the allowed closure gets pulled in.
 """
@@ -63,6 +64,7 @@ ALLOWED = {
     "openavc.drivers.transport_choice",
     "openavc.utils",
     "openavc.utils.regex_safety",
+    "openavc.utils.version_rule",
 }
 
 

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { blockedByPlatform } from "../shared/catalogUpdates";
 
 // The catalog has always carried min_platform_version and the server has always
@@ -61,5 +63,35 @@ describe("blockedByPlatform", () => {
     // wrong, and it is reachable: 0.9.x boxes exist.
     expect(blockedByPlatform("0.9.0", "0.25.0")).toBe("0.25.0");
     expect(blockedByPlatform("0.25.0", "0.9.0")).toBe("");
+  });
+});
+
+// The server's floor gate (`driver_change.floor_refusal`) is held to the same
+// corpus in `tests/test_driver_min_platform_version.py`, so Browse greys out
+// exactly the drivers the install door refuses.
+describe("blockedByPlatform over the version rule corpus", () => {
+  type Corpus = { ascending: { versions: string[] }[]; unreadable: unknown[] };
+  const corpus: Corpus = JSON.parse(
+    readFileSync(resolve(process.cwd(), "../../../tests/fixtures/version_rule_cases.json"), "utf-8"),
+  );
+  const rows = corpus.ascending.flatMap((cls, rank) => cls.versions.map((text) => ({ rank, text })));
+
+  it("blocks exactly when the running version is older than the floor", () => {
+    for (const running of rows) {
+      for (const floor of rows) {
+        const blocked = blockedByPlatform(running.text, floor.text) !== "";
+        expect(blocked, `${running.text} against ${floor.text}`).toBe(running.rank < floor.rank);
+      }
+    }
+  });
+
+  it("never blocks on a version the rule cannot read", () => {
+    for (const value of corpus.unreadable) {
+      if (typeof value !== "string") continue;
+      for (const row of rows) {
+        expect(blockedByPlatform(value, row.text)).toBe("");
+        expect(blockedByPlatform(row.text, value)).toBe("");
+      }
+    }
   });
 });

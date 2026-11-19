@@ -52,6 +52,11 @@ CONFIDENCE_LEVELS: tuple[str, ...] = ("full", "partial", "untested")
 DRIVER_ID_CHARS = "a-z0-9_"
 DRIVER_ID_PATTERN = rf"^[{DRIVER_ID_CHARS}]+$"
 SEMVER_PATTERN = r"^\d+\.\d+\.\d+(?:[\-+][\w.\-]+)?$"
+# A declared platform floor (min_platform_version): a release, or one of its
+# pre-releases, in a spelling the version rule (utils/version_rule.py) reads,
+# as the install gate reads the floor by that rule and lets through one it
+# cannot read.
+PLATFORM_VERSION_PATTERN = r"^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}(?:-(?:alpha|beta|rc|dev)\.?[0-9]{1,9})?$"
 TAG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 URL_PATTERN = r"^[Hh][Tt][Tt][Pp][Ss]?://"
 
@@ -998,8 +1003,8 @@ FIELDS = {
     },
     'min_platform_version': {
         'type': ['string', 'null'],
-        'pattern': SEMVER_PATTERN,
-        'doc': 'Minimum OpenAVC version required. Blocks install on older platforms missing a needed feature. Semantic version.',
+        'pattern': PLATFORM_VERSION_PATTERN,
+        'doc': 'Minimum OpenAVC version required. Blocks install on older platforms missing a needed feature. A release (0.40.0), or a pre-release of one (0.40.0-rc1), which is older than its release: a 0.40.0-rc1 system does not meet a 0.40.0 floor.',
     },
     'tags': {
         'type': 'array',
@@ -3682,8 +3687,11 @@ def node_doc(node: dict, values: object = None, tier: str = "yaml") -> str | Non
 def parse_version(value: object) -> tuple[int, ...] | None:
     """Parse ``X.Y.Z`` into a comparable tuple; None if it isn't one.
 
-    A pre-release or build suffix is dropped — a driver declaring
-    ``0.23.0-rc1`` is asking for the 0.23.0 contract.
+    For the contract's own release numbers (a field's ``since``), which are
+    plain releases. A running version, a driver's declared
+    ``min_platform_version`` and a discovery block's ``requires:`` are read by
+    the version rule (``utils/version_rule.py``), where a pre-release is
+    older than its release; this module stays import-free.
     """
     if not isinstance(value, str):
         return None

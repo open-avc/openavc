@@ -35,9 +35,9 @@ it is not read (``skipped``); one whose ``requires:`` is no version at all is
 reported and not read either. With no ``platform_version`` (the catalog, which
 judges with the newest parser) every block is read.
 
-Standard library, the contract's own ``spec`` and the transport rule
-(``transport_choice``) only: the catalog runs this in a job with no
-``openavc`` package installed.
+Standard library, the contract's own ``spec``, the transport rule
+(``transport_choice``) and the version rule (``utils/version_rule.py``) only:
+the catalog runs this in a job with no ``openavc`` package installed.
 """
 
 from __future__ import annotations
@@ -61,9 +61,9 @@ from openavc.drivers.discovery_hint import (
 from openavc.drivers.spec import (
     DISALLOWED_OPEN_PORTS as _DISALLOWED_OPEN_PORTS,
     GENERIC_ID_PREFIXES,
-    parse_version,
 )
 from openavc.drivers.transport_choice import declared_transport
+from openavc.utils.version_rule import read_version
 
 # Ports too generic to use as a hint: every web / admin / SSH device on the
 # network would match. AV-specific ports (1710, 4352, ...) are fine. The list
@@ -867,12 +867,15 @@ def _not_read_here(r: _Reader, requires: Any, platform_version: str | None) -> b
 
     A block that gates a future feature reads as "needs a newer platform", not
     as a structural error about the feature's (unknown) key, so this is asked
-    before anything else in it.
+    before anything else in it. Both versions are read by the version rule
+    (``utils/version_rule.py``), so a release candidate is older than its
+    release and its frozen build's spelling (``0.40.0rc2``) is read; a running
+    version the rule cannot read reads no gated block.
     """
     required = r.part(_required_version, r, requires)
     if required is None or platform_version is None:
         return False
-    running = parse_version(platform_version)
+    running = read_version(platform_version)
     return required is _NO_VERSION or running is None or required > running
 
 
@@ -883,7 +886,7 @@ def _required_version(r: _Reader, requires: Any) -> Any:
         return None
     if not isinstance(requires, str) or not requires.strip():
         raise r.fail("discovery.requires must be a version string")
-    required = parse_version(requires)
+    required = read_version(requires)
     if required is None:
         r.authored(f'discovery.requires must be a version string like "0.23.0", got {requires!r}')
         return _NO_VERSION

@@ -7,15 +7,20 @@ driver needs is computed, and ``platform_version_errors`` says when its
 (``avcdriver_semantic.check_driver_definition``, which re-exports this);
 publishing additionally requires the declaration.
 
-Purity contract: standard library plus ``spec``; vendored into
-openavc-drivers and openavc-sdk with the definition walk.
+A declared floor is read by the version rule (``utils/version_rule.py``), as
+the install gate reads it, so a release candidate is older than its release:
+a driver declaring ``0.40.0-rc1`` does not cover a field 0.40.0 grew.
+
+Purity contract: standard library plus ``spec`` and the version rule;
+vendored into openavc-drivers and openavc-sdk with the definition walk.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from openavc.drivers.spec import parse_version, platform_requirements
+from openavc.drivers.spec import platform_requirements
+from openavc.utils.version_rule import read_version
 
 
 # How many offending fields a min_platform_version message names before it
@@ -79,13 +84,13 @@ def platform_version_errors(
             f'min_platform_version: "{floor}".'
         ]
 
-    parsed = parse_version(declared)
+    parsed = read_version(declared)
     if parsed is None:
         return [
             f"min_platform_version must be a version number like "
             f'"{floor}" (got {declared!r})'
         ]
-    if parsed >= parse_version(floor):
+    if parsed >= read_version(floor):
         return []
     return [
         f'min_platform_version is "{declared}", but this driver uses {named}, '
