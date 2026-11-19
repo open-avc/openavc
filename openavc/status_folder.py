@@ -1,11 +1,13 @@
-"""What the server writes for the Windows tray app and the macOS menu bar.
+"""THE status folder: what the server writes for the Windows tray app, the
+macOS menu bar and the container's health check.
 
-The data folder's status/ subfolder holds what they read. Both run as the
-signed-in user. On Windows the installer leaves this one folder readable (and
-only readable) by every local account, while the rest of the data folder
-belongs to the service and administrators (installer/secure-data-dir.bat); on
-macOS the server runs as root, so every file here is written readable by
-everyone (STATUS_FILE_MODE). Nothing secret may be written here.
+The data folder's status/ subfolder holds what they read. The tray and the
+menu bar run as the signed-in user. On Windows the installer leaves this one
+folder readable (and only readable) by every local account, while the rest
+of the data folder belongs to the service and administrators
+(installer/secure-data-dir.bat); on macOS the server runs as root, so every
+file here is written readable by everyone (STATUS_FILE_MODE). Nothing secret
+may be written here.
 installer/tray.py and installer/menubar.py are standalone scripts that name
 the same folder and files and read all three, the phase through their shared
 installer/status_reader.py, which names the phases; tests/test_status_folder.py
