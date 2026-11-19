@@ -377,8 +377,7 @@ def test_every_context_tag_has_a_section_case():
         r"^\s*(?:errors|warnings)\.at_each\(\s*(\w+)\(", source, re.MULTILINE
     ))
     assert handed_back == {
-        "unsaid", "value_conversion_issues", "substitution_issues",
-        "osc_value_issues", "authored_substitution_issues",
+        "unsaid", "value_conversion_issues", "substitution_issues", "authored_send_issues",
     }, (
         f"a check hands back its own places: {sorted(handed_back)} — pin where they land"
     )

@@ -52,6 +52,7 @@ from openavc.drivers.send_shape import (
     START_UP_MESSAGE,
     Send,
     Template,
+    osc_value_issues,
     send_templates,
     sends,
 )
@@ -120,6 +121,14 @@ def authored_substitution_issues(driver_def: dict[str, Any]) -> list[tuple[str, 
     return _issues(driver_def, every_door=False)
 
 
+def authored_send_issues(driver_def: dict[str, Any]) -> list[tuple[str, str]]:
+    """What a send carries that only the author's doors refuse, each with its
+    place: an OSC argument whose written value its type cannot take
+    (``send_shape.osc_value_issues``), then each placeholder in a template
+    no door judged before (``authored_substitution_issues``)."""
+    return osc_value_issues(driver_def) + authored_substitution_issues(driver_def)
+
+
 def _issues(driver_def: dict[str, Any], *, every_door: bool) -> list[tuple[str, str]]:
     return [
         (position.where, message)
@@ -173,19 +182,32 @@ def _send_positions(
     (``_commands_with_params``), and its read-back queries and ``udp:``
     block follow its own fields. An OSC start-up message's address is a
     query line, read with the query lists."""
-    if send.origin == COMMAND and send.name not in judged:
+    fills = _send_fills(send, config_names, judged)
+    if fills is None:
         return
-    params = judged.get(send.name, {}) if send.origin == COMMAND else {}
-    fills = _Fills(_fill_names(send.origin, config_names, params), _SOURCES[send.origin])
     for template in send_templates(send):
-        if send.origin == START_UP_MESSAGE and template.field == "address":
-            continue
-        yield _Position(template.place, template.text, fills, _every_door(send, template))
+        if not (send.origin == START_UP_MESSAGE and template.field == "address"):
+            yield _Position(template.place, template.text, fills, _every_door(send, template))
     if send.origin == COMMAND:
-        for where, text in _read_back_templates(send.place, send.block.get("read_back"), commands):
-            yield _Position(where, text, fills)
-        for where, text in _udp_templates(send.place, send.block.get("udp")):
-            yield _Position(where, text, fills)
+        yield from _command_positions(send, fills, commands)
+
+
+def _send_fills(send: Send, config_names: set[str], judged: dict[Any, dict[Any, Any]]) -> _Fills | None:
+    """What one send's templates may fill from; None for a command whose
+    placeholders are not judged."""
+    if send.origin != COMMAND:
+        return _Fills(_fill_names(send.origin, config_names, {}), _SOURCES[send.origin])
+    if send.name not in judged:
+        return None
+    return _Fills(_fill_names(COMMAND, config_names, judged[send.name]), _CMD_SOURCES)
+
+
+def _command_positions(send: Send, fills: _Fills, commands: Any) -> Iterator[_Position]:
+    """A command's read-back queries, then its ``udp:`` block's templates."""
+    for where, text in _read_back_templates(send.place, send.block.get("read_back"), commands):
+        yield _Position(where, text, fills)
+    for where, text in _udp_templates(send.place, send.block.get("udp")):
+        yield _Position(where, text, fills)
 
 
 def _fill_names(origin: str, config_names: set[str], params: dict[Any, Any]) -> set[str]:

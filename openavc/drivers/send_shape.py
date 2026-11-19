@@ -60,9 +60,15 @@ START_UP_MESSAGE = "start_up_message"
 # The type an OSC argument takes when it names none.
 DEFAULT_OSC_TAG = "f"
 
-# Tags whose value is read as a number, and how; an "i" value is read as a
+
+
+def _cut_to_whole(value: str) -> int:
+    return int(float(value))
+
+
+# Tags whose value is read as a number, and how: an "i" value is read as a
 # number and cut to a whole one.
-_NUMERIC_TAGS: dict[str, Any] = {"f": float, "h": int, "d": float}
+_NUMERIC_TAGS: dict[str, Any] = {"f": float, "h": int, "d": float, "i": _cut_to_whole}
 # Tags that carry no value of their own.
 _CONSTANT_TAGS: dict[str, Any] = {"T": True, "F": False, "N": None}
 # What a numeric tag needs, in the checker's words.
@@ -93,18 +99,33 @@ def sends(driver_def: dict[str, Any]) -> Iterator[Send]:
     """Every send the definition makes, in the order the checks report them:
     the commands, the setting writes, the probe, then the OSC start-up
     messages. A block that is not a mapping sends nothing."""
-    commands = driver_def.get("commands")
-    for name, cmd in (commands.items() if isinstance(commands, dict) else ()):
-        if isinstance(cmd, dict):
-            yield Send(COMMAND, f"commands.{name}", cmd, name)
-    settings = driver_def.get("device_settings")
-    for name, setting in (settings.items() if isinstance(settings, dict) else ()):
-        write = setting.get("write") if isinstance(setting, dict) else None
-        if isinstance(write, dict):
-            yield Send(SETTING_WRITE, f"device_settings.{name}.write", write, name)
+    yield from _commands(driver_def.get("commands"))
+    yield from _setting_writes(driver_def.get("device_settings"))
     probe = driver_def.get("liveness")
     if isinstance(probe, dict):
         yield Send(LIVENESS, "liveness", probe)
+    yield from _start_up_messages(driver_def)
+
+
+def _mapping_items(value: Any) -> Any:
+    return value.items() if isinstance(value, dict) else ()
+
+
+def _commands(commands: Any) -> Iterator[Send]:
+    for name, cmd in _mapping_items(commands):
+        if isinstance(cmd, dict):
+            yield Send(COMMAND, f"commands.{name}", cmd, name)
+
+
+def _setting_writes(settings: Any) -> Iterator[Send]:
+    for name, setting in _mapping_items(settings):
+        write = setting.get("write") if isinstance(setting, dict) else None
+        if isinstance(write, dict):
+            yield Send(SETTING_WRITE, f"device_settings.{name}.write", write, name)
+
+
+def _start_up_messages(driver_def: dict[str, Any]) -> Iterator[Send]:
+    """The OSC start-up messages, as the driver model reads them."""
     for line in read_driver(driver_def).wire.queries:
         if line.origin == START_UP and line.entry.form == OSC_MESSAGE:
             yield Send(START_UP_MESSAGE, line.place, line.written)
@@ -115,21 +136,40 @@ def send_templates(send: Send) -> Iterator[Template]:
     block's fields are declared. A field the block leaves out carries none;
     an HTTP method is sent as written."""
     for field in SEND_SHAPES[send.origin]:
-        if field in send.block:
-            for place, text in _field_templates(f"{send.place}.{field}", SEND_FIELDS[field][1], send.block[field]):
+        read = _TEMPLATES_BY_KIND.get(SEND_FIELDS[field][1])
+        if read and field in send.block:
+            for place, text in read(f"{send.place}.{field}", send.block[field]):
                 yield Template(field, place, text)
 
 
-def _field_templates(place: str, kind: str, value: Any) -> Iterator[tuple[str, Any]]:
-    if kind == SEND_TEXT:
-        yield place, value
-    elif kind == SEND_TEXT_VALUES and isinstance(value, dict):
-        for key, text in value.items():
-            yield f"{place}.{key}", text
-    elif kind == SEND_OSC_ARGS and isinstance(value, list):
-        for j, arg in enumerate(value):
-            if isinstance(arg, dict) and "value" in arg:
-                yield f"{place}[{j}].value", arg["value"]
+def _text(place: str, value: Any) -> Iterator[tuple[str, Any]]:
+    yield place, value
+
+
+def _text_values(place: str, value: Any) -> Iterator[tuple[str, Any]]:
+    for key, text in _mapping_items(value):
+        yield f"{place}.{key}", text
+
+
+def _arg_values(place: str, value: Any) -> Iterator[tuple[str, Any]]:
+    for j, arg in _args(value):
+        if "value" in arg:
+            yield f"{place}[{j}].value", arg["value"]
+
+
+def _args(value: Any) -> list[tuple[int, dict[str, Any]]]:
+    """Each argument of an ``args`` list that is a mapping, with its index."""
+    listed = value if isinstance(value, list) else ()
+    return [(j, arg) for j, arg in enumerate(listed) if isinstance(arg, dict)]
+
+
+# How each kind of send field carries its templates (spec.SEND_FIELDS); a
+# word is sent as written.
+_TEMPLATES_BY_KIND = {
+    SEND_TEXT: _text,
+    SEND_TEXT_VALUES: _text_values,
+    SEND_OSC_ARGS: _arg_values,
+}
 
 
 def osc_arg_tag(arg: dict[str, Any]) -> Any:
@@ -155,10 +195,6 @@ def osc_num(tag: str, value: str, converter: Any) -> Any:
         ) from e
 
 
-def _cut_to_whole(value: str) -> int:
-    return int(float(value))
-
-
 def osc_arg(tag: Any, text: str) -> tuple[str, Any] | None:
     """One ``(tag, value)`` argument read from ``text``, or None for a tag
     OSC here does not send (a list or map written by hand among them).
@@ -167,8 +203,6 @@ def osc_arg(tag: Any, text: str) -> tuple[str, Any] | None:
         return None
     if tag in _NUMERIC_TAGS:
         return (tag, osc_num(tag, text, _NUMERIC_TAGS[tag]))
-    if tag == "i":
-        return ("i", osc_num("i", text, _cut_to_whole))
     if tag == "s":
         return ("s", text)
     if tag in _CONSTANT_TAGS:
@@ -205,24 +239,20 @@ def osc_value_issues(driver_def: dict[str, Any]) -> list[tuple[str, str]]:
     value holding a placeholder is not judged, nor an argument that is not a
     mapping or names a type the encoder does not know (``osc_args_errors``
     and the shape walk say those)."""
-    issues: list[tuple[str, str]] = []
+    issues = []
     for send in sends(driver_def):
-        args = send.block.get("args") if "args" in SEND_SHAPES[send.origin] else None
-        for j, arg in enumerate(args if isinstance(args, list) else ()):
+        for j, arg in _args(send.block.get("args")):
             problem = _value_problem(arg)
             if problem:
-                place = f"{send.place}.args[{j}]"
-                issues.append((place, f"{place}: {problem}"))
+                issues.append((f"{send.place}.args[{j}]", f"{send.place}.args[{j}]: {problem}"))
     return issues
 
 
-def _value_problem(arg: Any) -> str | None:
+def _value_problem(arg: dict[str, Any]) -> str | None:
     """Why the encoder would refuse an argument's written value, or None."""
-    if not isinstance(arg, dict):
-        return None
     tag = osc_arg_tag(arg)
     text = osc_arg_text(arg)
-    if tag not in _NEEDS or placeholder_names(text):
+    if not isinstance(tag, str) or tag not in _NEEDS or placeholder_names(text):
         return None
     try:
         osc_arg(tag, text)

@@ -126,9 +126,8 @@ from openavc.drivers.state_variable_checks import (
     DEVICE_VARIABLE,
     state_variable_errors,
 )
-from openavc.drivers.send_shape import osc_value_issues
 from openavc.drivers.substitution_checks import (
-    authored_substitution_issues,
+    authored_send_issues,
     substitution_issues,
     validate_substitutions as validate_substitutions,
 )
@@ -459,7 +458,6 @@ class _DefinitionWalk:
             (self.line_settings, "default_config"),
             (self.discovery_authored, "discovery"),
             (self.model_problems, ""),
-            (self.sends, ""),
         ]
 
     def rule_names(self) -> None:
@@ -478,21 +476,13 @@ class _DefinitionWalk:
             errors.ctx = f"responses[{i}]"
             errors.extend(child_fault_code_errors(i, rule))
 
-    def sends(self) -> None:
-        """What each send carries that only the author's doors refuse
-        (``send_shape``): an OSC argument whose written value its type cannot
-        take, then a placeholder naming nothing in a template no door judged
-        before (``substitution_checks.authored_substitution_issues``)."""
-        errors = self.authored
-        errors.at_each(osc_value_issues(self.driver_def))
-        errors.at_each(authored_substitution_issues(self.driver_def))
-
     def model_problems(self) -> None:
-        """What the driver model reads but the author's doors refuse
-        (``driver_model``), each said at its place."""
+        """What the driver model reads and what a send carries that only the
+        author's doors refuse (``driver_model``, ``authored_send_issues``)."""
         errors = self.authored
         for problem in self.model.problems:
             errors.at(problem.place, f"{problem.place}: {problem.words}")
+        errors.at_each(authored_send_issues(self.driver_def))
 
     def line_settings(self) -> None:
         """Each serial line setting default_config holds, read by the

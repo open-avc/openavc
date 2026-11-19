@@ -18,8 +18,8 @@ import {
 } from "./deviceSettingsHelpers";
 import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEditor";
 import { BooleanOptions } from "../shared/BooleanOptions";
-import { oscArgsAsText, valuesAsText } from "./fieldText";
-import { KeyValueList } from "./KeyValueList";
+import { oscArgsAsText } from "./fieldText";
+import { HttpWriteFields } from "./SettingHttpWriteFields";
 
 interface DeviceSettingsEditorProps {
   draft: DriverDefinition;
@@ -471,71 +471,10 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                       </div>
                     </div>
                   ) : isHttp ? (
-                    <div>
-                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-sm)" }}>
-                        <select
-                          value={setting.write?.method ?? "POST"}
-                          onChange={(e) => setWrite(key, { method: e.target.value })}
-                          style={{ width: 90 }}
-                        >
-                          <option value="POST">POST</option>
-                          <option value="PUT">PUT</option>
-                          <option value="GET">GET</option>
-                        </select>
-                        <input
-                          value={setting.write?.path ?? ""}
-                          onChange={(e) => setWrite(key, { path: e.target.value })}
-                          placeholder="/api/settings"
-                          style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
-                        />
-                      </div>
-                      <label style={{ ...labelStyle, marginTop: "var(--space-sm)" }}>
-                        Request body (optional)
-                      </label>
-                      <textarea
-                        value={setting.write?.body ?? ""}
-                        onChange={(e) => setWrite(key, { body: e.target.value || undefined })}
-                        placeholder={'JSON, e.g. {"name": "{value}"}'}
-                        rows={2}
-                        style={{
-                          width: "100%",
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "var(--font-size-sm)",
-                          resize: "vertical",
-                        }}
-                      />
-                      <label style={{ ...labelStyle, marginTop: "var(--space-sm)" }}>
-                        Headers (optional)
-                      </label>
-                      <HttpHeadersEditor
-                        headers={valuesAsText(setting.write?.headers)}
-                        onChange={(headers) =>
-                          setWrite(key, {
-                            headers: Object.keys(headers).length ? headers : undefined,
-                          })
-                        }
-                      />
-                      <label style={{ ...labelStyle, marginTop: "var(--space-sm)" }}>
-                        Query parameters (optional)
-                      </label>
-                      <KeyValueList
-                        values={valuesAsText(setting.write?.query_params)}
-                        onChange={(map) =>
-                          setWrite(key, {
-                            query_params: Object.keys(map).length ? map : undefined,
-                          })
-                        }
-                        keyPlaceholder="key"
-                        valuePlaceholder="e.g. {value}"
-                        monoValue
-                      />
-                      <div style={helpStyle}>
-                        Body, headers and query parameters support {"{value}"} and
-                        config placeholders. Query parameters are added to the
-                        address as ?key=value. Set Content-Type here for non-JSON
-                        bodies.
-                      </div>
-                    </div>
+                    <HttpWriteFields
+                      write={setting.write}
+                      onWrite={(partial) => setWrite(key, partial)}
+                    />
                   ) : (
                     <>
                       <input
@@ -732,80 +671,3 @@ function OscArgsEditor({
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// HTTP headers sub-editor — key/value pairs sent with the HTTP write.
-// ──────────────────────────────────────────────────────────────────────────
-function HttpHeadersEditor({
-  headers,
-  onChange,
-}: {
-  headers: Record<string, string>;
-  onChange: (headers: Record<string, string>) => void;
-}) {
-  const rows = Object.entries(headers);
-
-  const setRow = (index: number, name: string, value: string) => {
-    const next: Record<string, string> = {};
-    rows.forEach(([k, v], i) => {
-      if (i === index) {
-        if (name) next[name] = value;
-      } else {
-        next[k] = v;
-      }
-    });
-    onChange(next);
-  };
-  const removeRow = (index: number) =>
-    onChange(Object.fromEntries(rows.filter((_, i) => i !== index)));
-  const add = () => onChange({ ...headers, "": "" });
-
-  return (
-    <div style={{ marginTop: "var(--space-xs)" }}>
-      {rows.map(([name, value], i) => (
-        <div
-          key={i}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr auto",
-            gap: "var(--space-xs)",
-            alignItems: "center",
-            marginBottom: "var(--space-xs)",
-          }}
-        >
-          <input
-            value={name}
-            onChange={(e) => setRow(i, e.target.value, value)}
-            placeholder="Header"
-            style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
-          />
-          <input
-            value={value}
-            onChange={(e) => setRow(i, name, e.target.value)}
-            placeholder="Value"
-            style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
-          />
-          <button
-            type="button"
-            onClick={() => removeRow(i)}
-            style={{ padding: "2px", color: "var(--text-muted)" }}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={add}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-xs)",
-          fontSize: "11px",
-          color: "var(--accent)",
-        }}
-      >
-        <Plus size={12} /> Add header
-      </button>
-    </div>
-  );
-}
