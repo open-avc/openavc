@@ -21,6 +21,7 @@ Invented device (``acme_widget``) and synthetic payloads throughout.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
 import subprocess
@@ -159,40 +160,71 @@ class Capture:
         self.sent.append(data)
 
 
-async def test_a_probe_the_runtime_cannot_build_switches_the_watchdog_off_once(
+async def test_a_probe_the_runtime_cannot_build_is_skipped_with_one_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     definition, _ = _with_args("liveness", [{"type": "f", "value": "abc"}])
     link = Capture()
     drv = _driver(definition, link)
-    assert drv._health_enabled()
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         await drv._liveness_probe()
         await drv._liveness_probe()
     assert link.sent == []
-    assert not drv._health_enabled()
-    said = [r.getMessage() for r in caplog.records if "watchdog" in r.getMessage()]
+    said = [r.getMessage() for r in caplog.records if "liveness probe" in r.getMessage()]
     assert len(said) == 1, said
     assert "OSC arg of type 'f' requires a numeric value, got 'abc'" in said[0]
 
 
-async def test_a_probe_with_a_plain_value_among_its_args_switches_the_watchdog_off() -> None:
+async def test_a_probe_with_a_plain_value_among_its_args_is_skipped() -> None:
     definition, _ = _with_args("liveness", [1, "a"])
-    drv = _driver(definition, Capture())
+    link = Capture()
+    drv = _driver(definition, link)
     await drv._liveness_probe()
-    assert not drv._health_enabled()
+    assert link.sent == []
+
+
+async def test_a_skipped_probe_goes_out_once_the_config_fills_its_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    definition, _ = _with_args("liveness", [{"type": "i", "value": "{zone}"}])
+    definition["default_config"]["zone"] = ""
+    link = Capture()
+    drv = _driver(definition, link)
+    await drv._liveness_probe()
+    assert link.sent == []
+    drv.config["zone"] = 3
+    probe = asyncio.create_task(drv._liveness_probe())
+    await asyncio.sleep(0)
+    assert len(link.sent) == 1
+    drv._liveness_note_data(b"/pong")
+    await probe
+    caplog.clear()
+    drv.config["zone"] = ""
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        await drv._liveness_probe()
+    assert len(link.sent) == 1
+    assert sum("liveness probe" in r.getMessage() for r in caplog.records) == 1
+
+
+async def test_a_line_probe_goes_out_as_before() -> None:
+    link = Capture()
+    drv = _driver({**TCP, "liveness": {"send": "PING\\r"}}, link)
+    probe = asyncio.create_task(drv._liveness_probe())
+    await asyncio.sleep(0)
+    assert link.sent == [b"PING\r"]
+    drv._liveness_note_data(b"PONG")
+    await probe
 
 
 async def test_a_probe_the_runtime_can_build_still_waits_for_its_answer() -> None:
     definition, _ = _with_args("liveness", [{"type": "i", "value": "{zone}"}])
     link = Capture()
     drv = _driver(definition, link)
-    probe = __import__("asyncio").create_task(drv._liveness_probe())
-    await __import__("asyncio").sleep(0)
+    probe = asyncio.create_task(drv._liveness_probe())
+    await asyncio.sleep(0)
     assert len(link.sent) == 1
     drv._liveness_note_data(b"/pong")
     await probe
-    assert drv._health_enabled()
 
 
 TCP: dict[str, Any] = {

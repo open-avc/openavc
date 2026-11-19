@@ -2951,6 +2951,49 @@
   },
   "transport": "tcp"
  },
+ "command_arg_needs_a_whole_number": {
+  "commands": {
+   "beep": {
+    "address": "/beep",
+    "args": [
+     {
+      "type": "h",
+      "value": 1.5
+     }
+    ]
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
+ "command_arg_with_no_value": {
+  "commands": {
+   "beep": {
+    "address": "/beep",
+    "args": [
+     {
+      "type": "i"
+     }
+    ]
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
  "command_confirm_bad_type": {
   "commands": {
    "chk": {
@@ -3235,6 +3278,30 @@
    }
   },
   "transport": "tcp"
+ },
+ "command_query_param_placeholder_names_nothing": {
+  "commands": {
+   "set": {
+    "params": {
+     "level": {
+      "type": "integer"
+     }
+    },
+    "path": "/z",
+    "query_params": {
+     "z": "{lvl}"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
  },
  "command_returns_file_not_bool": {
   "commands": {
@@ -5358,6 +5425,31 @@
   },
   "transport": "http"
  },
+ "liveness_arg_value_its_type_cannot_take": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "liveness": {
+   "args": [
+    {
+     "type": "f",
+     "value": "abc"
+    }
+   ],
+   "send": "/ping"
+  },
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
  "liveness_args_not_list": {
   "commands": {
    "noop": {
@@ -5448,6 +5540,28 @@
   "liveness": {
    "interval": 0.5,
    "send": "PING\r"
+  },
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "liveness_line_placeholder_names_nothing": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "zone": 1
+  },
+  "id": "acme_widget",
+  "liveness": {
+   "send": "PING {zne}\r"
   },
   "name": "Acme Widget",
   "state_variables": {
@@ -9872,6 +9986,30 @@
   },
   "transport": "tcp"
  },
+ "setting_write_placeholder_names_nothing": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "device_settings": {
+   "level": {
+    "type": "integer",
+    "write": {
+     "send": "LVL {vlaue}\r"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "level": {
+    "label": "Level",
+    "type": "integer"
+   }
+  },
+  "transport": "tcp"
+ },
  "simulator_control_in_a_group": {
   "commands": {
    "noop": {
@@ -9979,6 +10117,33 @@
    }
   },
   "transport": "tcp"
+ },
+ "start_up_message_arg_null_value": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "on_connect": [
+   {
+    "address": "/subscribe",
+    "args": [
+     {
+      "type": "d",
+      "value": null
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
  },
  "state_variable_bad_cloud_priority": {
   "commands": {

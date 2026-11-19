@@ -842,6 +842,30 @@ CASES: dict[str, Any] = {
     "liveness_max_failures_zero": _d(liveness={"send": "PING\r", "max_failures": 0}),
     "liveness_args_on_tcp": _d(liveness={"send": "PING\r", "args": []}),
     "liveness_args_not_list": _d(transport="osc", liveness={"send": "/ping", "args": "f"}),
+    "liveness_arg_value_its_type_cannot_take": _d(
+        transport="osc", liveness={"send": "/ping", "args": [{"type": "f", "value": "abc"}]},
+    ),
+    "liveness_line_placeholder_names_nothing": _d(
+        default_config={"zone": 1}, liveness={"send": "PING {zne}\r"},
+    ),
+    # --- what a send carries, at every origin ---
+    "command_arg_needs_a_whole_number": _d(
+        transport="osc", commands={"beep": {"address": "/beep", "args": [{"type": "h", "value": 1.5}]}},
+    ),
+    "command_arg_with_no_value": _d(
+        transport="osc", commands={"beep": {"address": "/beep", "args": [{"type": "i"}]}},
+    ),
+    "command_query_param_placeholder_names_nothing": _d(
+        transport="http",
+        commands={"set": {"path": "/z", "query_params": {"z": "{lvl}"}, "params": {"level": {"type": "integer"}}}},
+    ),
+    "setting_write_placeholder_names_nothing": _d(
+        state_variables={"level": {"type": "integer", "label": "Level"}},
+        device_settings={"level": {"type": "integer", "write": {"send": "LVL {vlaue}\r"}}},
+    ),
+    "start_up_message_arg_null_value": _d(
+        transport="osc", on_connect=[{"address": "/subscribe", "args": [{"type": "d", "value": None}]}],
+    ),
     # --- actions / quick_actions ---
     "quick_actions_not_list": _d(quick_actions="noop"),
     "quick_action_entry_empty": _d(quick_actions=[""]),

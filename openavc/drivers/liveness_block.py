@@ -15,10 +15,12 @@ The rules worth knowing before changing anything here:
   its class.
 * **A bad block is off, with one warning.** An ``expect`` that is not a regex,
   or a number that is not one, turns the watchdog off and keeps whichever
-  numbers were read before the bad one; so does a probe that cannot be built
-  (an OSC argument its type cannot take), at the first probe. The checker
-  refuses each where a driver is written and names it where one loads; this
-  stays defensive, so a file with one still leaves the driver running.
+  numbers were read before the bad one. An OSC probe whose args cannot be
+  built (a value its type cannot take) is skipped, with one warning, and
+  built again at the next probe, so a value the config fills later arms it.
+  The checker refuses each where a driver is written and names it where one
+  loads; this stays defensive, so a file with one still leaves the driver
+  running.
 * **The probe** follows ``polling.queries``' conventions: on OSC an address,
   ``{config}`` filled, with its ``args``; on any other link a raw line,
   ``{config}`` filled, escape-decoded and inside the ``send_frame`` header,
@@ -76,6 +78,7 @@ class LivenessBlock:
         self._liveness_def: dict[str, Any] | None = None
         self._liveness_expect: re.Pattern[str] | None = None
         self._liveness_waiter: asyncio.Future[None] | None = None
+        self._liveness_unbuildable = False
         block = self._definition.get("liveness")
         if _declares_probe(block):
             self._read_liveness_block(block)
@@ -130,19 +133,26 @@ class LivenessBlock:
         return self._line_probe(block)
 
     def _buildable_probe(self, block: dict[str, Any]) -> bytes | None:
-        """The probe's bytes; or, when they cannot be built, None with the
-        watchdog off and one warning. Every probe would fail the same way, so
-        the watchdog would drop a device that answers everything else."""
+        """The probe's bytes; or None, with one warning, when an OSC probe's
+        args cannot be built (a value its type cannot take). That probe is
+        skipped rather than counted as missed, since every probe would fail
+        the same way and the watchdog would drop a device that answers
+        everything else. The next one is built again, so a value the config
+        fills later arms it."""
+        if self._effective_transport() != "osc":
+            return self._line_probe(block)
         try:
-            return self._probe_bytes(block)
+            probe = self._osc_probe(block)
         except (ValueError, TypeError, AttributeError) as e:
-            log.warning(
-                f"[{self.device_id}] The liveness probe cannot be sent, so the "
-                f"connection watchdog is off: {e}"
-            )
-            self._liveness_def = None
-            self._liveness_expect = None
+            if not self._liveness_unbuildable:
+                log.warning(
+                    f"[{self.device_id}] The liveness probe cannot be sent, so "
+                    f"it is skipped until it can be: {e}"
+                )
+            self._liveness_unbuildable = True
             return None
+        self._liveness_unbuildable = False
+        return probe
 
     def _osc_probe(self, block: dict[str, Any]) -> bytes:
         from openavc.transport.osc_codec import osc_encode_message

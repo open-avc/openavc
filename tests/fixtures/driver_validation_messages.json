@@ -257,6 +257,12 @@
  "child_type_name_with_glob": [
   "child_entity_types: type name 'zone*' must not contain glob metacharacters (*); they break state-change dispatch"
  ],
+ "command_arg_needs_a_whole_number": [
+  "commands.beep.args[0]: an OSC 'h' argument needs a whole number, so 1.5 cannot be sent"
+ ],
+ "command_arg_with_no_value": [
+  "commands.beep.args[0]: an OSC 'i' argument needs a number, so an argument with no value cannot be sent"
+ ],
  "command_confirm_bad_type": [
   "Command 'chk': 'confirm' must be a boolean or a message string"
  ],
@@ -299,6 +305,9 @@
  ],
  "command_query_for_undeclared_var": [
   "Command 'chk': query_for 'ghost' is not a declared state variable"
+ ],
+ "command_query_param_placeholder_names_nothing": [
+  "commands.set.query_params.z: '{lvl}' resolves to nothing (did you mean 'level'?). It names no parameter of this command and no config field, so it would be sent to the device as written"
  ],
  "command_returns_file_not_bool": [
   "Command 'dump': 'returns_file' must be true or false"
@@ -560,6 +569,9 @@
  "json_set_contains_not_scalar": [
   "Response 0: set.power: contains must be a scalar to look for (a flag name, a number, true/false), not list"
  ],
+ "liveness_arg_value_its_type_cannot_take": [
+  "liveness.args[0]: an OSC 'f' argument needs a number, so 'abc' cannot be sent"
+ ],
  "liveness_args_not_list": [
   "liveness: 'args' must be a list"
  ],
@@ -574,6 +586,9 @@
  ],
  "liveness_interval_too_small": [
   "liveness: 'interval' must be a number >= 1.0"
+ ],
+ "liveness_line_placeholder_names_nothing": [
+  "liveness.send: '{zne}' resolves to nothing (did you mean 'zone'?). It names no config field (only config values substitute here), so it would be sent to the device as written"
  ],
  "liveness_max_failures_zero": [
   "liveness: 'max_failures' must be an integer >= 1"
@@ -1042,6 +1057,9 @@
  "send_frame_unknown_type": [
   "send_frame: unknown type 'delimiter' (expected 'length_prefix')"
  ],
+ "setting_write_placeholder_names_nothing": [
+  "device_settings.level.write.send: '{vlaue}' resolves to nothing (did you mean 'value'?). It names no config field and is not {value}, so it would be sent to the device as written"
+ ],
  "simulator_control_in_a_group": [
   "simulator.controls[0].controls[0].type: must be 'power', 'select', 'slider', 'toggle', 'matrix', 'meters', 'presets', 'group' or 'indicator', not 'dial'"
  ],
@@ -1053,6 +1071,9 @@
  ],
  "simulator_control_unknown_type": [
   "simulator.controls[0].type: must be 'power', 'select', 'slider', 'toggle', 'matrix', 'meters', 'presets', 'group' or 'indicator', not 'meter'"
+ ],
+ "start_up_message_arg_null_value": [
+  "on_connect[0].args[0]: an OSC 'd' argument needs a number, so a null value cannot be sent"
  ],
  "state_variable_bad_cloud_priority": [
   "State variable 'power': cloud_priority must be 'low' or 'high' (got 'urgent'); omit it for the default cadence"
