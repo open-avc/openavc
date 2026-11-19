@@ -3,7 +3,8 @@
 Every entry the driver sends to read a value -- a poll query, a start-up
 entry, a response rule's ``then_query``, a command's ``read_back`` -- reaches
 at most one of four kinds of handler, decided by its keys alone
-(``query_kind``):
+(``query_kind``, over the one reading of an entry,
+``drivers/query_entry.read_query_entry``):
 
 * a bare string, or an entry with no ``each_child`` whose ``query_for`` is
   not dotted: a **flat** read of one variable (``QueryHandler``);
@@ -43,6 +44,7 @@ from typing import Any
 
 from openavc.drivers.child_ids import page_starts
 from openavc.drivers.compiled_protocol import safe_substitute
+from openavc.drivers.query_entry import EACH_CHILD, OSC_MESSAGE, QueryEntry, read_query_entry
 from openavc.simulator.command_names import infer_state_var
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
@@ -127,18 +129,16 @@ class ListQueryHandler:
 def query_kind(entry: Any) -> str | None:
     """Which of the four reads an entry is (FLAT, LIST, PAGE, CHILD), or None
     for none of them, by its keys alone."""
-    if not isinstance(entry, dict):
-        return FLAT
-    if "each_child" not in entry:
-        return LIST if _dotted(entry) else FLAT
-    if entry["each_child"] is None:
-        return LIST if _dotted(entry) else None
-    return PAGE if "page_size" in entry else CHILD
+    read = read_query_entry(entry)
+    if read.form != EACH_CHILD:
+        return LIST if _dotted(read) else FLAT
+    if read.each_child is None:
+        return LIST if _dotted(read) else None
+    return PAGE if read.page_size is not None else CHILD
 
 
-def _dotted(entry: dict) -> bool:
-    query_for = entry.get("query_for")
-    return isinstance(query_for, str) and "." in query_for
+def _dotted(read: QueryEntry) -> bool:
+    return isinstance(read.query_for, str) and "." in read.query_for
 
 
 def _filled(value: Any) -> bool:
@@ -191,8 +191,8 @@ def _flat_read(query: Any) -> tuple[Any, str | None]:
     declares none)."""
     if not isinstance(query, dict):
         return str(query), None
-    query_for = query.get("query_for")
-    return query.get("send", ""), query_for if _filled(query_for) else None
+    read = read_query_entry(query)
+    return read.send, read.query_for if _filled(read.query_for) else None
 
 
 def _command_target(text: Any, commands: dict, state_vars: set[str]) -> str | None:
@@ -212,11 +212,12 @@ def _command_target(text: Any, commands: dict, state_vars: set[str]) -> str | No
 def _start_up_handler(entry: Any, wire_line: WireLine) -> QueryHandler | None:
     """A start-up entry's read when it is a flat one that declares
     ``query_for`` (an OSC bring-up message is not one)."""
-    if not isinstance(entry, dict) or "address" in entry:
+    read = read_query_entry(entry, osc_form=True)
+    if not isinstance(entry, dict) or read.form == OSC_MESSAGE:
         return None
     if query_kind(entry) != FLAT:
         return None
-    query_for, send = entry.get("query_for"), entry.get("send", "")
+    query_for, send = read.query_for, read.send
     if not (_filled(query_for) and _filled(send)):
         return None
     return QueryHandler(_line_pattern(wire_line(send)), query_for)
@@ -254,10 +255,11 @@ def _no_reads(*_args: Any) -> Iterator[ListQueryHandler]:
 def _list_read(
     entry: dict, roster: dict[str, list[str]], list_answers: dict, wire_line: WireLine,
 ) -> Iterator[ListQueryHandler]:
-    template = entry.get("send")
+    read = read_query_entry(entry)
+    template = read.send
     if not _filled(template):
         return
-    ctype, _, var = entry["query_for"].partition(".")
+    ctype, _, var = read.query_for.partition(".")
     if not var or (ctype, var) not in list_answers:
         return
     wire = wire_line(template)
@@ -268,10 +270,11 @@ def _list_read(
 def _page_reads(
     entry: dict, roster: dict[str, list[str]], list_answers: dict, wire_line: WireLine,
 ) -> Iterator[ListQueryHandler]:
-    template, query_for = entry.get("send"), entry.get("query_for")
+    read = read_query_entry(entry)
+    template, query_for = read.send, read.query_for
     if not (_filled(template) and isinstance(query_for, str)):
         return
-    ctype, page = entry["each_child"], entry.get("page_size")
+    ctype, page = read.each_child, read.page_size
     if not _pages(page) or (ctype, query_for) not in list_answers:
         return
     ids = [int(c) if c.isdigit() else c for c in roster.get(ctype, [])]
@@ -289,7 +292,8 @@ def _pages(page: Any) -> bool:
 def _each_child_reads(
     entry: dict, roster: dict[str, list[str]], wire_line: WireLine,
 ) -> Iterator[ChildQueryHandler]:
-    ctype, template, query_for = entry["each_child"], entry.get("send"), entry.get("query_for")
+    read = read_query_entry(entry)
+    ctype, template, query_for = read.each_child, read.send, read.query_for
     if not isinstance(ctype, str):
         return
     if not (_filled(template) and _filled(query_for)):

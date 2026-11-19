@@ -105,6 +105,9 @@ CASES: dict[str, tuple[Any, str | None, list[str], str | None]] = {
     "each child, paged": (
         {"each_child": "zone", "send": "Z{child_id}?", "page_size": 2}, EACH_CHILD, ["Z1?"], PAGE,
     ),
+    "each child, page_size null": (
+        {"each_child": "zone", "send": "Z{child_id}?", "page_size": None}, EACH_CHILD, ["Z1?", "Z2?"], CHILD,
+    ),
     "each child with no send": ({"each_child": "zone"}, EACH_CHILD, [], CHILD),
     "send that is empty": ({"send": "", "when": "meters"}, None, [], FLAT),
     "send that is not text": ({"send": 5, "when": "meters"}, None, [], FLAT),

@@ -384,11 +384,22 @@ def _routes(poll: list, **changes) -> tuple:
     )
 
 
-def test_a_page_size_that_is_there_but_empty_still_reads_nothing():
+def test_a_page_size_too_small_to_page_reads_nothing():
     assert _routes([
         {"send": "A{child_id}?", "each_child": "output", "query_for": "name", "page_size": 0},
-        {"send": "B{child_id}?", "each_child": "output", "query_for": "input", "page_size": None},
     ]) == ([], [])
+
+
+def test_a_page_size_written_null_reads_each_child_as_the_driver_sends_it():
+    # Null reads as absent, as it does where the driver sends the line: one
+    # query per child.
+    assert _routes([
+        {"send": "B{child_id}?", "each_child": "output", "query_for": "input", "page_size": None},
+    ]) == ([], [
+        ("ChildQueryHandler", "^B1\\?$", None),
+        ("ChildQueryHandler", "^B2\\?$", None),
+        ("ChildQueryHandler", "^B3\\?$", None),
+    ])
 
 
 def test_a_query_for_dotted_twice_reads_nothing_and_a_listed_each_child_raises_nothing():
