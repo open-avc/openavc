@@ -20,8 +20,6 @@ error, kept until the device starts and listed beside the running devices
 
 from __future__ import annotations
 
-import importlib.util
-import inspect
 import logging
 import socket
 from pathlib import Path
@@ -31,13 +29,7 @@ import yaml
 from openavc.core.connection_fault import SimulatorCause, simulator_error_text
 from openavc.drivers.spec import without_null_sections, without_null_settings
 from openavc.simulator.base import BaseSimulator
-from openavc.simulator.tcp_simulator import TCPSimulator
-from openavc.simulator.http_simulator import HTTPSimulator
-from openavc.simulator.udp_simulator import UDPSimulator
-from openavc.simulator.osc_simulator import OSCSimulator
-from openavc.simulator.mqtt_simulator import MQTTSimulator
-from openavc.simulator.snmp_simulator import SNMPSimulator
-from openavc.simulator.websocket_simulator import WebSocketSimulator
+from openavc.simulator.simulator_file import load_simulator_folder
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from openavc.simulator.network_conditions import NetworkConditionLayer
 
@@ -178,12 +170,15 @@ class SimulatorManager:
             except Exception:
                 logger.exception("Failed to load YAML driver: %s", avcdriver_path)
 
-        # Find all *_sim.py files (Python simulators)
-        for sim_path in root.rglob("*_sim.py"):
-            try:
-                self._load_python_simulator(sim_path)
-            except Exception:
-                logger.exception("Failed to load Python simulator: %s", sim_path)
+        # The Python simulators (*_sim.py): one class per driver id in the
+        # folder. A driver id none of them serves (its file failed to import,
+        # or two classes name it) keeps why, for the device's card. A later
+        # folder's simulator for an id replaces an earlier folder's, as its
+        # driver does.
+        found = load_simulator_folder(sorted(root.rglob("*_sim.py")))
+        self._load_errors.update(found.refused)
+        for driver_id, simulator_class in found.classes.items():
+            self._register_python_simulator(driver_id, simulator_class)
 
     def _load_yaml_driver(self, path: Path) -> None:
         """Load a YAML driver and register it for auto-generation."""
@@ -212,44 +207,21 @@ class SimulatorManager:
         )
         logger.debug("Discovered YAML driver: %s (%s)", driver_id, source)
 
-    def _load_python_simulator(self, path: Path) -> None:
-        """Load a Python simulator class from a _sim.py file."""
-        module_name = f"sim_{path.stem}_{id(path)}"
-        spec = importlib.util.spec_from_file_location(module_name, path)
-        if not spec or not spec.loader:
-            return
-
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)
-        except Exception as e:
-            logger.exception("Failed to import simulator: %s", path)
-            # Named by the file, as a companion simulator is (<driver id>_sim.py):
-            # the class that would have said its driver id never loaded.
-            self._load_errors[path.stem.removesuffix("_sim")] = simulator_error_text(e)
-            return
-
-        # Find BaseSimulator subclasses in the module
-        for _name, obj in inspect.getmembers(module, inspect.isclass):
-            if (
-                issubclass(obj, BaseSimulator)
-                and obj not in (BaseSimulator, TCPSimulator, HTTPSimulator, UDPSimulator, OSCSimulator, MQTTSimulator, WebSocketSimulator, SNMPSimulator)
-                and hasattr(obj, "SIMULATOR_INFO")
-                and obj.SIMULATOR_INFO.get("driver_id")
-            ):
-                driver_id = obj.SIMULATOR_INFO["driver_id"]
-                # A key written as a null reads as absent, as the device reads it.
-                info = without_null_settings(obj.SIMULATOR_INFO)
-                self._available[driver_id] = SimulatorInfo(
-                    driver_id=driver_id,
-                    name=info.get("name", driver_id),
-                    category=info.get("category", "generic"),
-                    transport=info.get("transport", "tcp"),
-                    default_port=info.get("default_port", 0),
-                    source="python",
-                    simulator_class=obj,
-                )
-                logger.debug("Discovered Python simulator: %s from %s", driver_id, path)
+    def _register_python_simulator(
+        self, driver_id: str, simulator_class: type[BaseSimulator],
+    ) -> None:
+        # A key written as a null reads as absent, as the device reads it.
+        info = without_null_settings(simulator_class.SIMULATOR_INFO)
+        self._available[driver_id] = SimulatorInfo(
+            driver_id=driver_id,
+            name=info.get("name", driver_id),
+            category=info.get("category", "generic"),
+            transport=info.get("transport", "tcp"),
+            default_port=info.get("default_port", 0),
+            source="python",
+            simulator_class=simulator_class,
+        )
+        logger.debug("Discovered Python simulator: %s (%s)", driver_id, simulator_class.__module__)
 
     # ── Instance Management ──
 

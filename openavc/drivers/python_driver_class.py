@@ -8,6 +8,11 @@ before a write, the loader's id and the listings) asks ``driver_class_info``
 for that class's table, through ``python_info.driver_info_ast``, so they read
 the class that runs.
 
+``inherited_table`` is THE rule for which table a class in the file has, read
+as Python's lookup reads it: its own, else the first a class it derives from
+in the same file gives it. The driver's ``DRIVER_INFO`` and a simulator's
+``SIMULATOR_INFO`` (``simulator_info.simulator_claims``) are both read by it.
+
 Purity contract, same as ``python_info``: standard library only. The
 community catalog vendors this file beside it.
 """
@@ -29,33 +34,46 @@ def driver_class_info(tree: ast.Module) -> ast.Dict | None:
     sketch or a fixture). When no table names an id, the first table is read
     all the same, so the checker says what is wrong with it rather than that
     there is none."""
-    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
-    derived = [name for name, node in classes.items() if _derives(node)]
+    classes = file_classes(tree)
+    derived = [name for name, node in classes.items() if derives(node)]
     first: ast.Dict | None = None
     for name in sorted(derived or classes):
-        found = _inherited_info(classes[name], classes, set())
+        found = inherited_table(classes[name], classes, _DRIVER_INFO)
         if found is not None and _may_name_an_id(found):
             return found
         first = first or found
     return first
 
 
-def _derives(node: ast.ClassDef) -> bool:
+def derives(node: ast.ClassDef) -> bool:
     """Whether a class names a base other than ``object``."""
     return any(not (isinstance(base, ast.Name) and base.id == "object") for base in node.bases)
 
 
-def _inherited_info(
-    node: ast.ClassDef, classes: dict[str, ast.ClassDef], seen: set[str]
+def file_classes(tree: ast.Module) -> dict[str, ast.ClassDef]:
+    """The classes a file defines at its top level, by name (a later
+    definition of a name replacing the earlier, as it does when the file runs)."""
+    return {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+
+
+def inherited_table(
+    node: ast.ClassDef, classes: dict[str, ast.ClassDef], table: str
 ) -> ast.Dict | None:
-    """The table a class has: its own, else the first its bases in the same
-    file give it, read left to right as Python's lookup reads them."""
-    own = class_driver_info(node)
+    """The ``table`` dict a class has: its own, else the first its bases in
+    the same file (``classes``, ``file_classes``) give it, read left to right
+    as Python's lookup reads them."""
+    return _inherited_table(node, classes, table, set())
+
+
+def _inherited_table(
+    node: ast.ClassDef, classes: dict[str, ast.ClassDef], table: str, seen: set[str]
+) -> ast.Dict | None:
+    own = class_table(node, table)
     if own is not None:
         return own
     seen.add(node.name)
     for base in _bases_in_file(node, classes, seen):
-        found = _inherited_info(base, classes, seen)
+        found = _inherited_table(base, classes, table, seen)
         if found is not None:
             return found
     return None
@@ -84,19 +102,22 @@ def _may_name_an_id(node: ast.Dict) -> bool:
     return not isinstance(last, ast.Constant) or bool(last.value)
 
 
-def class_driver_info(node: ast.ClassDef) -> ast.Dict | None:
-    """The dict a class body assigns ``DRIVER_INFO``, plainly or annotated."""
+_DRIVER_INFO = "DRIVER_INFO"
+
+
+def class_table(node: ast.ClassDef, table: str) -> ast.Dict | None:
+    """The dict a class body assigns ``table``, plainly or annotated."""
     for item in node.body:
-        if _assigns_driver_info(item) and isinstance(item.value, ast.Dict):
+        if _assigns(item, table) and isinstance(item.value, ast.Dict):
             return item.value
     return None
 
 
-def _assigns_driver_info(item: ast.stmt) -> bool:
+def _assigns(item: ast.stmt, table: str) -> bool:
     if isinstance(item, ast.Assign):
         targets = item.targets
     elif isinstance(item, ast.AnnAssign):
         targets = [item.target]
     else:
         return False
-    return len(targets) == 1 and isinstance(targets[0], ast.Name) and targets[0].id == "DRIVER_INFO"
+    return len(targets) == 1 and isinstance(targets[0], ast.Name) and targets[0].id == table

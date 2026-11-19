@@ -19,6 +19,15 @@ What a driver and its simulator must agree on (the ids, the transports, the
 state the simulator seeds, the controls the Simulator UI can draw) is the
 simulator validator's (``openavc/simulator/python_parity.py``).
 
+Which driver ids a simulator file serves is the simulator's loader's rule
+(``openavc/simulator/simulator_file.py``): each class the file defines whose
+``SIMULATOR_INFO`` names a driver id, one class per id. ``simulator_claims``
+reads the same classes from the source, for a reader that cannot import the
+file (the community catalog works out each driver's "simulated" from it), and
+``claim_conflicts`` is THE sentence for two classes naming one id, which the
+loader, this check (``check_simulator_file``) and the catalog's check across
+its files all give.
+
 Where it is asked: ``python -m openavc.drivers.check`` and the community
 catalog's CI check a driver's companion simulator (``companion_simulator``)
 with the driver, and ``drivers.check`` checks a ``_sim.py`` named on its own;
@@ -32,13 +41,15 @@ Purity contract: standard library plus the contract modules, like
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from openavc.drivers.avcdriver_semantic import UNEVALUATED_KEY
 from openavc.drivers.declared_names import did_you_mean
-from openavc.drivers.python_info import _Coverage, lenient_ast_value
+from openavc.drivers.python_driver_class import derives, file_classes, inherited_table
+from openavc.drivers.python_info import UNEVALUATED, _Coverage, lenient_ast_value
 from openavc.drivers.python_source import SourceDecodeError, python_source
 from openavc.drivers.shape_checks import ShapeWalk
 from openavc.drivers.spec import SIMULATOR_INFO_FIELDS, without_null_settings
@@ -137,14 +148,98 @@ def check_simulator_info(info: dict[str, Any]) -> SimulatorInfoVerdict:
 
 def check_simulator_file(sim_path: Path) -> SimulatorInfoVerdict:
     """The verdict on a simulator file's ``SIMULATOR_INFO``; one it cannot
-    read is an error, never a pass."""
+    read is an error, never a pass, and so are two classes naming one driver
+    id (``claim_conflicts``)."""
     try:
-        info = _simulator_info_in(python_source(sim_path))
+        source = python_source(sim_path)
     except SourceDecodeError as e:
         return SimulatorInfoVerdict(errors=[f"the file {e.without_name}"])
+    info = _simulator_info_in(source)
     if info is None:
         return SimulatorInfoVerdict(errors=[
             f"no {_PLACE} could be read: the file does not parse, or no class in it "
             f"assigns {_PLACE} a mapping"
         ])
-    return check_simulator_info(info)
+    verdict = check_simulator_info(info)
+    claims = _claims_in(source)
+    verdict.errors.extend(claim_conflicts((c.class_name, c.driver_id) for c in claims).values())
+    return verdict
+
+
+@dataclass(frozen=True)
+class SimulatorClaim:
+    """A class in a simulator file whose ``SIMULATOR_INFO`` names a driver
+    id: the class's name and the id, or None for an id written in code (or
+    merged in from another mapping), which a reader of the source cannot see."""
+
+    class_name: str
+    driver_id: str | None
+
+
+def simulator_claims(sim_path: Path) -> list[SimulatorClaim]:
+    """THE classes a simulator file offers, read from its source as the
+    simulator's loader takes them from the imported file: each class the file
+    defines at its top level, deriving from another, whose ``SIMULATOR_INFO``
+    (its own, or the one a class in the file it derives from gives it) names
+    a driver id. A table naming none (missing or empty) is no driver's
+    simulator. A file that does not parse claims nothing; one the import
+    cannot decode raises ``SourceDecodeError``."""
+    return _claims_in(python_source(sim_path))
+
+
+def _claims_in(source: str) -> list[SimulatorClaim]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    classes = file_classes(tree)
+    claims = []
+    for name, node in classes.items():
+        table = inherited_table(node, classes, _PLACE) if derives(node) else None
+        claim = _claim(name, table)
+        if claim is not None:
+            claims.append(claim)
+    return claims
+
+
+def _claim(class_name: str, table: ast.Dict | None) -> SimulatorClaim | None:
+    """What a class's table says about its driver id, or None when it names
+    none: an id it cannot read (written in code, or merged in from another
+    mapping that may hold one) is a claim of an unknown id."""
+    if table is None:
+        return None
+    info = lenient_ast_value(table, _PLACE, [])
+    if not isinstance(info, dict):
+        return None
+    driver_id = info.get("driver_id")
+    if driver_id is UNEVALUATED or (driver_id is None and UNEVALUATED_KEY in info):
+        return SimulatorClaim(class_name, None)
+    if isinstance(driver_id, str) and driver_id:
+        return SimulatorClaim(class_name, driver_id)
+    return None
+
+
+def claim_conflicts(claims: Iterable[tuple[str, str | None]]) -> dict[str, str]:
+    """Each driver id two or more different names claim (a name is a class,
+    or a class and where it is), with THE sentence saying none of them is
+    used. A claim of an unknown id (None) is never a conflict."""
+    by_id: dict[str, list[str]] = {}
+    for name, driver_id in claims:
+        if driver_id is not None and name not in by_id.setdefault(driver_id, []):
+            by_id[driver_id].append(name)
+    return {
+        driver_id: _two_simulators_sentence(driver_id, names)
+        for driver_id, names in by_id.items()
+        if len(names) > 1
+    }
+
+
+def _two_simulators_sentence(driver_id: str, names: list[str]) -> str:
+    """Names in sorted order, so every door words one conflict alike."""
+    names = sorted(names)
+    listed = ", ".join(names[:-1]) + f" and {names[-1]}"
+    return (
+        f"{listed} each name driver id '{driver_id}' in {_PLACE}, and a driver "
+        "has one simulator, so none of them is used. Keep the id on one class; "
+        "a class another builds on can leave driver_id out."
+    )
