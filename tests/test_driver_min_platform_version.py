@@ -2,9 +2,11 @@
 
 Two layers, and the second is the one that took a while to arrive:
 
-* **The rule itself** — the semver comparison, the floor a file declares (read
-  from its bytes, YAML and Python alike, never by running it), and what an
-  unparseable version does. Its home is ``drivers/driver_change.py``, so
+* **The rule itself** — the floor a file declares (read from its bytes, YAML
+  and Python alike, never by running it), compared with the running version by
+  the version rule (``utils/version_rule.py``, whose corpus the gate is held to
+  below), and what an unreadable version does. Its home is
+  ``drivers/driver_change.py``, so
   ``/api/discovery/install-and-match`` and any other caller that doesn't carry
   the field on the request still gets the check read out of the file.
 * **The doors** — the catalog install honoured the floor while *hand import*
