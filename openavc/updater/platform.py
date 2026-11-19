@@ -135,14 +135,39 @@ def detect_deployment_type(app_dir: Path | None = None) -> DeploymentType:
     return DeploymentType.UNKNOWN
 
 
+#: The release file each install type that updates itself installs an update
+#: from: the Windows installer, run over the install, or an archive the
+#: updater unpacks over it. An install type not listed does not update itself.
+_ARTIFACT_KINDS = {
+    DeploymentType.WINDOWS_INSTALLER: "installer",
+    DeploymentType.LINUX_PACKAGE: "package",
+    DeploymentType.MACOS_APP: "package",
+    DeploymentType.ANDROID_APPLIANCE: "package",
+}
+NO_ARTIFACT = "none"
+
+
 def can_self_update(deployment_type: DeploymentType) -> bool:
     """Whether this deployment type supports in-app self-update."""
-    return deployment_type in (
-        DeploymentType.WINDOWS_INSTALLER,
-        DeploymentType.LINUX_PACKAGE,
-        DeploymentType.MACOS_APP,
-        DeploymentType.ANDROID_APPLIANCE,
-    )
+    return deployment_type in _ARTIFACT_KINDS
+
+
+def artifact_kind(deployment_type: DeploymentType) -> str:
+    """THE kind of release file this install type updates from: "installer",
+    "package", or "none" for one that does not update itself. The updater
+    names the file it downloads from it, and the hello reports it so the
+    cloud sends the same file."""
+    return _ARTIFACT_KINDS.get(deployment_type, NO_ARTIFACT)
+
+
+def installs_updates(deployment_type: DeploymentType) -> bool:
+    """Whether an update sent to this system is installed, as its hello
+    reports it to the cloud: it updates itself (``updates_itself``) and no
+    product firmware owns its updates (host.py). Each is what the updater
+    checks before it installs one."""
+    from openavc.updater.host import get_firmware_host
+
+    return get_firmware_host() is None and updates_itself(deployment_type)
 
 
 @dataclass(frozen=True)

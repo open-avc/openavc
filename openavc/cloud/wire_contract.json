@@ -210,6 +210,22 @@
             ],
             "description": "How OpenAVC was installed.",
             "x-since": "0.5.14"
+          },
+          "updates_itself": {
+            "type": "boolean",
+            "description": "Whether an update sent to this system is installed: it updates itself, runs as a service, and no product firmware owns its updates.",
+            "x-since": "0.41.0"
+          },
+          "artifact_kind": {
+            "type": "string",
+            "x-vocabulary": "artifact_kinds",
+            "enum": [
+              "installer",
+              "package",
+              "none"
+            ],
+            "description": "The kind of release file it installs an update from. An agent that reports none takes the kind its deployment mode is flagged with.",
+            "x-since": "0.41.0"
           }
         },
         "required": [
@@ -220,7 +236,9 @@
           "capabilities",
           "os",
           "hardware",
-          "deployment_mode"
+          "deployment_mode",
+          "updates_itself",
+          "artifact_kind"
         ],
         "additionalProperties": true
       },
@@ -241,7 +259,9 @@
           ],
           "os": "Linux 6.8.0",
           "hardware": "x86_64",
-          "deployment_mode": "linux_package"
+          "deployment_mode": "linux_package",
+          "updates_itself": true,
+          "artifact_kind": "package"
         }
       }
     },
@@ -3468,22 +3488,34 @@
       {
         "value": "windows_installer",
         "since": "0.5.14",
-        "description": "The Windows installer."
+        "description": "The Windows installer.",
+        "flags": [
+          "installer"
+        ]
       },
       {
         "value": "linux_package",
         "since": "0.5.14",
-        "description": "A Linux package or image."
+        "description": "A Linux package or image.",
+        "flags": [
+          "package"
+        ]
       },
       {
         "value": "macos_app",
         "since": "0.19.0",
-        "description": "The macOS app."
+        "description": "The macOS app.",
+        "flags": [
+          "package"
+        ]
       },
       {
         "value": "android_appliance",
         "since": "0.16.0",
-        "description": "Appliance hardware."
+        "description": "Appliance hardware.",
+        "flags": [
+          "package"
+        ]
       },
       {
         "value": "docker",
@@ -3499,6 +3531,23 @@
         "value": "unknown",
         "since": "0.5.14",
         "description": "None of the above could be told."
+      }
+    ],
+    "artifact_kinds": [
+      {
+        "value": "installer",
+        "since": "0.41.0",
+        "description": "The Windows installer, run over the install."
+      },
+      {
+        "value": "package",
+        "since": "0.41.0",
+        "description": "An archive the updater unpacks over the install."
+      },
+      {
+        "value": "none",
+        "since": "0.41.0",
+        "description": "No release file: this install is updated another way."
       }
     ],
     "refusal_reasons": [

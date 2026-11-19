@@ -204,6 +204,14 @@ MESSAGES: tuple[Message, ...] = (
         Field("hardware", "string", "x86_64", "The host's processor architecture."),
         Field("deployment_mode", "string", "linux_package", "How OpenAVC was installed.",
               vocabulary="deployment_modes"),
+        Field("updates_itself", "boolean", True,
+              "Whether an update sent to this system is installed: it updates itself, runs as "
+              "a service, and no product firmware owns its updates.",
+              since=FIRST_CONTRACT_RELEASE),
+        Field("artifact_kind", "string", "package",
+              "The kind of release file it installs an update from. An agent that reports "
+              "none takes the kind its deployment mode is flagged with.",
+              vocabulary="artifact_kinds", since=FIRST_CONTRACT_RELEASE),
     )),
     Message("authenticate", "up", "handshake", "Answers the challenge with proof of the system key.", (
         Field("system_id", "string", "6f1c9e2a-4b7d-4e0a-9a33-2c8d5e7f1b90", "This system's id."),
@@ -714,14 +722,24 @@ VOCABULARIES: dict[str, tuple[Entry, ...]] = {
         Entry("panel_software_update",
               "This release can stage a panel software update (panel_software_update).", since=FIRST_CONTRACT_RELEASE),
     ),
+    # A mode that updates itself is flagged with the artifact kind it takes.
     "deployment_modes": (
-        Entry("windows_installer", "The Windows installer."),
-        Entry("linux_package", "A Linux package or image."),
-        Entry("macos_app", "The macOS app.", since="0.19.0"),
-        Entry("android_appliance", "Appliance hardware.", since="0.16.0"),
+        Entry("windows_installer", "The Windows installer.", flags=frozenset({"installer"})),
+        Entry("linux_package", "A Linux package or image.", flags=frozenset({"package"})),
+        Entry("macos_app", "The macOS app.", since="0.19.0", flags=frozenset({"package"})),
+        Entry("android_appliance", "Appliance hardware.", since="0.16.0",
+              flags=frozenset({"package"})),
         Entry("docker", "A Docker container."),
         Entry("git_dev", "A development checkout."),
         Entry("unknown", "None of the above could be told."),
+    ),
+    "artifact_kinds": (
+        Entry("installer", "The Windows installer, run over the install.",
+              since=FIRST_CONTRACT_RELEASE),
+        Entry("package", "An archive the updater unpacks over the install.",
+              since=FIRST_CONTRACT_RELEASE),
+        Entry("none", "No release file: this install is updated another way.",
+              since=FIRST_CONTRACT_RELEASE),
     ),
     "refusal_reasons": (
         Entry("unexpected_message", "A handshake step arrived out of order."),

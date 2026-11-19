@@ -63,6 +63,24 @@ class HandshakeError(Exception):
         self.detail_versions = detail_versions
 
 
+def _what_this_install_takes() -> dict[str, Any]:
+    """How this system was installed, and what the cloud may send it: whether
+    an update sent to it is installed, and the release file it installs one
+    from, each the updater's own answer (updater/platform.py)."""
+    try:
+        from openavc.updater.platform import (
+            artifact_kind, detect_deployment_type, installs_updates,
+        )
+        deployment = detect_deployment_type()
+        return {
+            "deployment_mode": deployment.value,
+            "updates_itself": installs_updates(deployment),
+            "artifact_kind": artifact_kind(deployment),
+        }
+    except Exception:
+        return {"deployment_mode": "unknown", "updates_itself": False, "artifact_kind": "none"}
+
+
 class Handshake:
     """
     Manages the cloud agent connection handshake.
@@ -127,20 +145,13 @@ class Handshake:
         os_info = f"{platform.system()} {platform.release()} {platform.machine()}"
         hardware = platform.node()
 
-        # Detect deployment type for cloud-managed updates
-        try:
-            from openavc.updater.platform import detect_deployment_type
-            deployment_type = detect_deployment_type().value
-        except Exception:
-            deployment_type = "unknown"
-
         hello_msg = build_hello(
             system_id=self.system_id,
             version=self.version,
             capabilities=self.capabilities,
             os_info=os_info,
             hardware=hardware,
-            deployment_mode=deployment_type,
+            **_what_this_install_takes(),
         )
         log.debug("Handshake: sending hello")
         await send(hello_msg)

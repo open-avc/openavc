@@ -22,6 +22,7 @@ from openavc.updater.checker import ReleaseInfo, UpdateChecker
 from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
     DeploymentType,
+    artifact_kind,
     detect_deployment_type,
     offline_update_instructions,
     rollback_refusal,
@@ -260,7 +261,7 @@ class UpdateManager:
 
     def _get_artifact_name(self, release: ReleaseInfo) -> str:
         """Determine the platform-specific artifact name for this release."""
-        if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
+        if artifact_kind(self._deployment_type) == "installer":
             return f"OpenAVC-Setup-{release.version}.exe"
         import platform
         machine = platform.machine().lower()

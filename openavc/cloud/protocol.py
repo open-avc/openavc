@@ -300,12 +300,16 @@ def build_hello(
     os_info: str,
     hardware: str,
     deployment_mode: str,
+    updates_itself: bool,
+    artifact_kind: str,
 ) -> dict[str, Any]:
     """Build a hello handshake message.
 
     Carries exactly what the cloud persists on the System record (version,
-    os, hardware, deployment_mode, capabilities) plus the identity and
-    protocol version the handshake needs — nothing speculative.
+    os, hardware, deployment_mode, capabilities, and what the cloud may send
+    it: whether it installs an update and from which kind of release file)
+    plus the identity and protocol version the handshake needs — nothing
+    speculative.
     """
     return {
         "type": HELLO,
@@ -319,6 +323,8 @@ def build_hello(
             "os": os_info,
             "hardware": hardware,
             "deployment_mode": deployment_mode,
+            "updates_itself": updates_itself,
+            "artifact_kind": artifact_kind,
         },
     }
 

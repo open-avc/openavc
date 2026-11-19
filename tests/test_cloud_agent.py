@@ -233,6 +233,7 @@ class TestProtocol:
         msg = build_hello(
             system_id="sys-1", version="1.0", capabilities=["monitoring"],
             os_info="Linux", hardware="Pi", deployment_mode="appliance",
+            updates_itself=True, artifact_kind="package",
         )
         assert msg["type"] == HELLO
         assert "ts" in msg
@@ -245,6 +246,7 @@ class TestProtocol:
         assert set(msg["payload"]) == {
             "protocol_version", "supported_versions", "system_id", "version",
             "capabilities", "os", "hardware", "deployment_mode",
+            "updates_itself", "artifact_kind",
         }
         # Handshake messages should NOT have seq/session/sig
         assert "seq" not in msg
@@ -260,6 +262,7 @@ class TestProtocol:
         msg = build_hello(
             system_id="sys-1", version="1.0", capabilities=[],
             os_info="Linux", hardware="Pi", deployment_mode="appliance",
+            updates_itself=True, artifact_kind="package",
         )
         assert msg["payload"]["supported_versions"] == SUPPORTED_PROTOCOL_VERSIONS
         assert msg["payload"]["protocol_version"] in SUPPORTED_PROTOCOL_VERSIONS
