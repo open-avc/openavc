@@ -5,6 +5,7 @@ Shared test fixtures for OpenAVC tests.
 
 import importlib.util
 import os
+import sys
 import tempfile
 
 # Pin an isolated, empty data dir BEFORE anything imports `openavc.config`.
@@ -273,6 +274,15 @@ def _reset_global_state():
     # already under way.
     from openavc import restart
     restart.reset()
+    # The run-state record a lifespan a test ran (`with TestClient(app)`)
+    # left on openavc.main's app and engine. It ends saying stopping, so the
+    # next test that reaches that app without a lifespan of its own would be
+    # turned away as not ready (the WebSocket's close, the splash's 503).
+    main = sys.modules.get("openavc.main")
+    if main is not None:
+        if hasattr(main.app.state, "run_state"):
+            del main.app.state.run_state
+        main.engine.run_state = None
     # Device logins saved in the session's data folder, and the per-folder
     # stores holding them: an engine built on that folder would otherwise
     # start the next test with the last one's logins, and a project it loads
