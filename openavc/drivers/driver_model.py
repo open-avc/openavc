@@ -1,11 +1,14 @@
 """The driver model: THE reading of what each part of a driver file means.
 
-``read_driver(definition)`` reads a driver file once into a ``DriverModel``
-that every reader of the file asks instead of reading the file for itself:
-the runtime, the auto-simulator, the simulator validator, the checker, the
-Device Audit, and the Driver Builder through the server. Each rule larger
-than a few lines lives in a leaf module of its own beside this one, and the
-model composes them; a reader that wants one rule imports its leaf.
+``read_driver(definition)`` reads a driver file once into a ``DriverModel``,
+a reading of the whole file that a reader asks instead of reading the file
+for itself. Each rule larger than a few lines lives in a leaf module of its
+own beside this one, and the model composes them; a reader that wants one
+rule imports its leaf.
+
+Who asks it: the checker, for what the author's doors refuse
+(``avcdriver_semantic``, ``model_problems``). The runtime and the simulator
+read one query entry at a time through the leaf, ``query_entry``.
 
 What it holds so far:
 
