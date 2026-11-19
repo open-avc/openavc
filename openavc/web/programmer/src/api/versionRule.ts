@@ -7,7 +7,8 @@
 // version, older than `0.40.0`; `0.41.0.dev1` is between 0.40.0 and 0.41.0;
 // `0.22` is `0.22.0`; `rc10` follows `rc9`. Anything else (a `+build` suffix,
 // a post-release, any other pre-release word) is not a version and reads as
-// null; each caller decides what that means for it.
+// null; each caller decides what that means for it. The cloud service's
+// pages run this file as it stands, against the same corpus.
 
 export interface Version {
   release: number[];

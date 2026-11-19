@@ -32,7 +32,9 @@ version means for it (the newest-release check skips the tag, Discovery sorts
 the copy lowest), so this module never turns one into ``0.0.0``.
 
 Pure stdlib and imports nothing from the package, so it can be copied as it
-stands to wherever the same question is asked.
+stands to wherever the same question is asked. The cloud service does: it
+takes this module, the IDE's mirror and the corpus byte for byte and runs the
+corpus on each, so a change here reaches it when it copies them again.
 """
 
 from __future__ import annotations

@@ -61,6 +61,31 @@ describe("semverLt", () => {
   it("claims no ordering for non-numeric parts", () => {
     expect(semverLt("0.25.0", "abc")).toBe(false);
   });
+
+  it("reads a release tag's v prefix", () => {
+    expect(semverLt("v0.40.0", "0.41.0")).toBe(true);
+    expect(semverLt("0.40.0", "v0.41.0")).toBe(true);
+  });
+
+  it("puts a release candidate below its release", () => {
+    expect(semverLt("0.40.0-rc2", "0.40.0")).toBe(true);
+    expect(semverLt("0.40.0rc2", "0.40.0")).toBe(true);
+    expect(semverLt("0.40.0-rc2", "0.40.0-rc10")).toBe(true);
+    expect(semverLt("0.40.0", "0.40.0-rc2")).toBe(false);
+  });
+});
+
+describe("a release candidate's direction", () => {
+  it("reads a move from a release to its release candidate as a rollback", () => {
+    expect(healthProbeOutcome("0.40.0", "0.40.0-rc2", null)).toBe("rolled_back");
+    expect(updateCompletionOutcome("0.40.0", "restarting", "0.40.0-rc2", "idle", null)).toBe(
+      "rolled_back",
+    );
+  });
+
+  it("reads a move from a release candidate to its release as an update", () => {
+    expect(healthProbeOutcome("0.40.0-rc2", "0.40.0", null)).toBe("updated");
+  });
 });
 
 // A row whose update was applied and then reverted used to go on saying

@@ -2,19 +2,13 @@
 // logic (toast direction, completion detection, history labels) is
 // unit-testable outside React.
 
-/** Numeric semver comparison: true when a < b. Non-numeric parts compare
- *  false (no ordering claimed). Missing parts count as 0. */
+import { compareVersions } from "../api/versionRule";
+
+/** True when version `a` is older than `b`, by the version rule: a release
+ *  candidate is older than its release, and a `v` prefix reads as nothing.
+ *  False when either is not a version (no ordering claimed). */
 export function semverLt(a: string, b: string): boolean {
-  const parse = (v: string) => v.split(/[.+-]/).map((n) => parseInt(n, 10));
-  const pa = parse(a);
-  const pb = parse(b);
-  for (let i = 0; i < 3; i++) {
-    const x = pa[i] ?? 0;
-    const y = pb[i] ?? 0;
-    if (Number.isNaN(x) || Number.isNaN(y)) return false;
-    if (x !== y) return x < y;
-  }
-  return false;
+  return compareVersions(a, b) === -1;
 }
 
 export type CompletionOutcome = "updated" | "rolled_back" | "same_version_restart" | null;

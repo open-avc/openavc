@@ -1,18 +1,24 @@
 "use strict";
-// Loads the real Updates view helpers (updatesHelpers.ts, transpiled on the
-// fly with the esbuild already in openavc/web/programmer/node_modules) and runs
+// Loads the real Updates view helpers (updatesHelpers.ts, bundled with what it
+// imports by the esbuild already in openavc/web/programmer/node_modules) and runs
 // pure-logic checks for the completion-outcome / toast-direction / history
 // label decisions, printing JSON results to stdout. Mirrors
 // ui_builder_helpers_harness.cjs; the Python wrapper skips when the Node
 // toolchain is absent rather than failing the Python-only CI gate.
-const fs = require("fs");
 const path = require("path");
 
 const helpersPath = process.argv[2];
-const src = fs.readFileSync(helpersPath, "utf8");
 
 const esbuild = require("esbuild");
-const { code } = esbuild.transformSync(src, { loader: "ts", format: "cjs" });
+const built = esbuild.buildSync({
+  entryPoints: [helpersPath],
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  write: false,
+  logLevel: "silent",
+});
+const code = built.outputFiles[0].text;
 const moduleObj = { exports: {} };
 const fn = new Function("exports", "require", "module", "__filename", "__dirname", code);
 fn(moduleObj.exports, require, moduleObj, helpersPath, path.dirname(helpersPath));
@@ -30,6 +36,9 @@ const results = {};
     ["0.15", "0.15.1", true],
     ["1.0.0", "0.99.99", false],
     ["abc", "0.1.0", false],
+    ["v0.40.0", "0.41.0", true],
+    ["0.40.0-rc2", "0.40.0", true],
+    ["0.40.0", "0.40.0-rc2", false],
   ];
   const failures = cases.filter(([a, b, want]) => H.semverLt(a, b) !== want);
   results.semver_lt = { pass: failures.length === 0, detail: failures };
