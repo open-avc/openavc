@@ -17,8 +17,8 @@ The rules worth knowing before changing anything here:
   connected; inside the ``send_frame`` header on every link, UDP included,
   as a command's ``send`` is: ``send_framing`` says where each origin's
   framing differs). An HTTP write is built by a command's own request builder
-  (``http_commands._http_request``) and posts when it names no method; the
-  contract does not let a write declare ``query_params``.
+  (``http_commands._http_request``), ``query_params`` included, and posts
+  when it names no method.
   A block with none of them is refused before anything is sent.
 * **What each returns.** True for an OSC message or a line, the HTTP answer
   for a request. A body that parses as JSON goes as JSON and its answer is

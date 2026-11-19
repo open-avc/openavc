@@ -69,11 +69,19 @@ def _newer_than_the_floor():
     return found
 
 
+# A YAML driver's setting write field no product carries: a product's write
+# runs one of its own commands (equipment.py reads the write's body as that
+# command and its params), so an HTTP write's query parameters are never a
+# product's, and equipment_floor_problems names one a model carries.
+_YAML_WRITE_ONLY = {"device_settings.*.write.query_params"}
+
+
 def test_nothing_in_the_surface_is_newer_than_its_floor_but_the_file_forms():
     """A field the floor release does not read would be dropped by every
     release before it, so it joins the surface with a new protocol. A file
-    parameter is the one exception: equipment refuses it at connect."""
-    newer = _newer_than_the_floor()
+    parameter is the one exception: equipment refuses it at connect. A YAML
+    write's own HTTP field is not one a product writes."""
+    newer = _newer_than_the_floor() - _YAML_WRITE_ONLY
     assert newer, "the walk reached nothing"
     assert all(".params.*." in place for place in newer), sorted(newer)
     assert {place.rsplit(".", 1)[-1] for place in newer} == {"accept", "max_bytes", "type=file"}

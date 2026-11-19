@@ -7,10 +7,12 @@ pattern (``fnmatch``: ``/ch/*/mix/fader``), first match wins, and its
 mappings read positional args. The rules worth knowing before changing
 anything here:
 
-* An arg's type tag is one of ``f i s h d T F N``. A numeric tag whose value
-  will not read as a number raises one clear error naming the tag rather
-  than a bare ValueError. An unsupported tag is dropped with a warning: the
-  loader rejects it, and a message one arg short is worse than a missing one.
+* An arg's type tag is one of ``f i s h d T F N``, and what each takes is
+  ``send_shape.osc_arg``, which the checker asks too. A numeric tag whose
+  value will not read as a number raises one clear error naming the tag
+  rather than a bare ValueError. An unsupported tag is dropped with a
+  warning: the loader rejects it, and a message one arg short is worse than
+  a missing one.
 * An OSC command never goes out on a socket that is not OSC: a command
   declared with an ``address`` on another transport is refused and logged.
 * A command's address and args fill from the device's config, the platform's
@@ -47,50 +49,15 @@ from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.contract_events import UNMATCHED_RESPONSE
 from openavc.drivers.json_replies import JSON_PATH_MISSING, extract_json_path
 from openavc.drivers.reply_guard import OSC
+from openavc.drivers.send_shape import osc_arg, osc_arg_tag, osc_arg_text
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
 # the IDE's log view shows as their source.
 log = get_logger("openavc.drivers.configurable")
 
-# Numeric tags: what the value is read as.
-_NUMERIC_TAGS: dict[str, Any] = {"f": float, "h": int, "d": float}
-# Tags that carry no value of their own.
-_CONSTANT_TAGS: dict[str, Any] = {"T": True, "F": False, "N": None}
-
 # An arg a mapping names that the message does not carry.
 _NO_ARG = JSON_PATH_MISSING
-
-
-def osc_num(tag: str, value: str, converter: Any) -> Any:
-    """Coerce an OSC arg value to a number, raising a clear error.
-
-    A missing/unresolved value (e.g. ``float("")`` or an unmatched
-    ``{placeholder}``) would otherwise surface as a bare ValueError with no
-    context. Turn it into an actionable message naming the OSC type tag.
-    """
-    try:
-        return converter(value)
-    except (ValueError, TypeError) as e:
-        raise ValueError(
-            f"OSC arg of type '{tag}' requires a numeric value, got {value!r}"
-        ) from e
-
-
-def _typed_arg(tag: str, resolved: str) -> tuple[str, Any] | None:
-    """One ``(tag, value)`` arg, or None for a tag OSC here does not send
-    (a list or map written by hand among them)."""
-    if not isinstance(tag, str):
-        return None
-    if tag in _NUMERIC_TAGS:
-        return (tag, osc_num(tag, resolved, _NUMERIC_TAGS[tag]))
-    if tag == "i":
-        return ("i", int(osc_num("i", resolved, float)))
-    if tag == "s":
-        return ("s", resolved)
-    if tag in _CONSTANT_TAGS:
-        return (tag, _CONSTANT_TAGS[tag])
-    return None
 
 
 def build_osc_args(
@@ -99,13 +66,13 @@ def build_osc_args(
     """Build a list of typed OSC args from definition, substituting params."""
     args: list[tuple[str, Any]] = []
     for arg_def in arg_defs:
-        tag = arg_def.get("type", "f")
-        raw_value = str(arg_def.get("value", ""))
+        tag = osc_arg_tag(arg_def)
+        raw_value = osc_arg_text(arg_def)
         resolved = (
             compiled_protocol.safe_substitute(raw_value, params)
             if "{" in raw_value else raw_value
         )
-        arg = _typed_arg(tag, resolved)
+        arg = osc_arg(tag, resolved)
         if arg is None:
             log.warning(
                 "OSC arg type %r is not supported (expected one of "
@@ -170,7 +137,6 @@ class OscWire:
     _convert_osc_value: Callable[[Any, str], Any]
     _effective_transport: Callable[[], str]
 
-    _osc_num = staticmethod(osc_num)
     _build_osc_args = staticmethod(build_osc_args)
 
     def _is_osc_command(self, cmd_def: dict[str, Any]) -> bool:

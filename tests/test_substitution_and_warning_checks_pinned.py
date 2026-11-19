@@ -719,13 +719,13 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                                'parameter of this command and no config field, so it would be sent '
                                'to the device as written'),
                               ('error',
-                               'commands.set.address',
-                               "commands.set.address: '{a}' resolves to nothing. It names no "
+                               'commands.set.headers.H',
+                               "commands.set.headers.H: '{h}' resolves to nothing. It names no "
                                'parameter of this command and no config field, so it would be sent '
                                'to the device as written'),
                               ('error',
-                               'commands.set.headers.H',
-                               "commands.set.headers.H: '{h}' resolves to nothing. It names no "
+                               'commands.set.address',
+                               "commands.set.address: '{a}' resolves to nothing. It names no "
                                'parameter of this command and no config field, so it would be sent '
                                'to the device as written'),
                               ('error',
@@ -1623,13 +1623,13 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_every_place_in_or
                                'parameter of this command and no config field, so it would be sent '
                                'to the device as written'),
                               ('error',
-                               'commands.set.address',
-                               "commands.set.address: '{a}' resolves to nothing. It names no "
+                               'commands.set.headers.H',
+                               "commands.set.headers.H: '{h}' resolves to nothing. It names no "
                                'parameter of this command and no config field, so it would be sent '
                                'to the device as written'),
                               ('error',
-                               'commands.set.headers.H',
-                               "commands.set.headers.H: '{h}' resolves to nothing. It names no "
+                               'commands.set.address',
+                               "commands.set.address: '{a}' resolves to nothing. It names no "
                                'parameter of this command and no config field, so it would be sent '
                                'to the device as written'),
                               ('error',

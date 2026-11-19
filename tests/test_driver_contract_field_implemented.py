@@ -221,6 +221,12 @@ RUNTIME_OPT_OUT = {
 # that proves it. Keep them near-empty: a growing list means the scoping rule
 # needs rethinking, not more entries.
 RUNTIME_BLIND_SPOTS = {
+    "commandEntry.query_params":
+        "Read by drivers/http_commands.py _http_request "
+        "(`req_def.get(\"query_params\")`), the one request builder a "
+        "command and a device setting's HTTP write share since the setting "
+        "write declares the field too. That file names none of commandEntry's "
+        "distinctive fields (available_offline, raw, read_back, ...).",
     "deviceSettingEntry.regex":
         "Read by base.py's _coerce_device_setting_value "
         "(`sdef.get(\"regex\") or sdef.get(\"pattern\")`). deviceSettingEntry "

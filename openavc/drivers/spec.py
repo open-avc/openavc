@@ -16,6 +16,7 @@ it).
 """
 from __future__ import annotations
 
+import copy
 import ipaddress
 import re
 
@@ -459,6 +460,66 @@ PLATFORM_STATE_PROPS: frozenset[str] = frozenset({"connected"})
 # at load instead. Ordered (float, int, string, the wider 64-bit forms, then
 # the argument-less tags) — this is the order pickers and the schema list them.
 OSC_ARG_TYPES: tuple[str, ...] = ("f", "i", "s", "h", "d", "T", "F", "N")
+
+# --- what each send carries ----------------------------------------------------
+
+# A command, a device setting's write, a liveness: probe and an OSC on_connect
+# message go out through the same builders: a line of the device's protocol,
+# an HTTP request, an OSC message. So each field those forms carry is declared
+# once here, with how the runtime fills it: a template (TEXT), a mapping whose
+# text values are templates (TEXT_VALUES), OSC args whose values are templates
+# (OSC_ARGS), or a word sent as written (WORD). The four blocks take their
+# send fields from SEND_SHAPES (send_fields below), and the checks read every
+# template a send carries off the same table (drivers/send_shape.py). A
+# command's udp: and ir: forms are blocks of their own (udpSendEntry, the IR
+# code set), sent beside the device's connection.
+SEND_TEXT = "text"
+SEND_TEXT_VALUES = "text_values"
+SEND_OSC_ARGS = "osc_args"
+SEND_WORD = "word"
+
+SEND_FIELDS: dict[str, tuple[dict, str]] = {
+    "send": ({"type": "string"}, SEND_TEXT),
+    "method": ({"type": "string"}, SEND_WORD),
+    "path": ({"type": "string"}, SEND_TEXT),
+    "body": ({"type": "string"}, SEND_TEXT),
+    "query_params": ({"type": "object"}, SEND_TEXT_VALUES),
+    "headers": ({"type": "object"}, SEND_TEXT_VALUES),
+    "address": ({"type": "string"}, SEND_TEXT),
+    "args": ({"type": "array", "items": {"ref": "oscArg"}}, SEND_OSC_ARGS),
+}
+
+# Each origin of a send: the fields its block takes, in the order the
+# contract lists them. A probe's send is its line, or its OSC address on osc.
+SEND_SHAPES: dict[str, tuple[str, ...]] = {
+    "command": ("send", "method", "path", "body", "query_params", "headers", "address", "args"),
+    "setting_write": ("send", "method", "path", "body", "query_params", "headers", "address", "args"),
+    "liveness": ("send", "args"),
+    "start_up_message": ("address", "args"),
+}
+
+# What fills each origin's templates: the device's config, the values the
+# platform supplies (``PLATFORM_SUBSTITUTIONS`` in declared_names: a push
+# callback URL, a session, a listener port, a child id), the command's own
+# parameters, a setting's new {value}. A probe and a start-up message are
+# filled from the config alone, long after any command's parameters are gone.
+SEND_FILLS: dict[str, tuple[str, ...]] = {
+    "command": ("config", "platform", "params"),
+    "setting_write": ("config", "platform", "value"),
+    "liveness": ("config",),
+    "start_up_message": ("config",),
+}
+
+
+def send_fields(origin: str, docs: dict[str, dict] | None = None) -> dict[str, dict]:
+    """One origin's send fields as the contract declares them: each field's
+    shape from SEND_FIELDS, in SEND_SHAPES' order, with the words (and any
+    other key) ``docs`` gives that origin's field."""
+    docs = docs or {}
+    return {
+        name: {**copy.deepcopy(SEND_FIELDS[name][0]), **docs.get(name, {})}
+        for name in SEND_SHAPES[origin]
+    }
 
 # --- command params ----------------------------------------------------------
 
@@ -1055,15 +1116,7 @@ FIELDS = {
                 {
                     'type': 'object',
                     'fields': {
-                        'address': {
-                            'type': 'string',
-                        },
-                        'args': {
-                            'type': 'array',
-                            'items': {
-                                'ref': 'oscArg',
-                            },
-                        },
+                        **send_fields('start_up_message'),
                         'when': {
                             'type': 'string',
                             'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config.',
@@ -1919,45 +1972,20 @@ DEFS = {
             'help': {
                 'type': 'string',
             },
-            'send': {
-                'type': 'string',
-                'doc': 'Raw bytes to send (TCP/serial/UDP). {param} and {config} placeholders substituted at runtime.',
-            },
+            **send_fields('command', {
+                'send': {'doc': 'Raw bytes to send (TCP/serial/UDP). {param} and {config} placeholders substituted at runtime.'},
+                'method': {'doc': 'HTTP method (GET/POST/PUT/DELETE). Default GET.'},
+                'path': {'doc': 'HTTP URL path.'},
+                'body': {'doc': 'HTTP request body. Parsed as JSON when valid, otherwise sent raw.'},
+                'query_params': {'doc': 'HTTP query parameters with {param} substitution.'},
+                'headers': {'doc': 'Per-request HTTP headers with {param} substitution.'},
+                'address': {'doc': 'OSC address pattern.'},
+                'args': {'doc': 'OSC typed arguments.'},
+            }),
             'raw': {
                 'type': 'boolean',
                 'doc': "Send this command's send string exactly as written, skipping the driver's command_prefix / command_suffix framing. Use it for the odd command that doesn't share the common frame.",
                 'since': '0.23.0',
-            },
-            'method': {
-                'type': 'string',
-                'doc': 'HTTP method (GET/POST/PUT/DELETE). Default GET.',
-            },
-            'path': {
-                'type': 'string',
-                'doc': 'HTTP URL path.',
-            },
-            'body': {
-                'type': 'string',
-                'doc': 'HTTP request body. Parsed as JSON when valid, otherwise sent raw.',
-            },
-            'query_params': {
-                'type': 'object',
-                'doc': 'HTTP query parameters with {param} substitution.',
-            },
-            'headers': {
-                'type': 'object',
-                'doc': 'Per-request HTTP headers with {param} substitution.',
-            },
-            'address': {
-                'type': 'string',
-                'doc': 'OSC address pattern.',
-            },
-            'args': {
-                'type': 'array',
-                'doc': 'OSC typed arguments.',
-                'items': {
-                    'ref': 'oscArg',
-                },
             },
             'params': {
                 'type': 'object',
@@ -2500,11 +2528,13 @@ DEFS = {
         'doc': 'Dead-link watchdog: send a probe every `interval` seconds and await a reply; after `max_failures` consecutive silent probes the platform drops the connection with a typed no_response fault and reconnects. Only valid on tcp/serial/udp/osc transports (rejected at load time on http, where polling already awaits every response, and on bridge, which owns no transport). Any inbound data during the wait window counts as alive unless `expect` narrows it. Needed for connectionless transports (UDP/OSC, where fire-and-forget polls never notice silence) and push-mostly TCP (no FIN when the device vanishes).',
         'since': '0.22.0',
         'fields': {
-            'send': {
-                'type': 'string',
-                'min_len': 1,
-                'doc': 'Probe payload. Same conventions as polling queries: a raw protocol string with escape processing and {config} substitution (terminator included) for tcp/serial/udp, or an OSC address on osc. Ask something the device answers however it is set up (a status, version or keep-alive query), never an address the integrator configured (a zone, preset, object or first table row): a wrong setting would then drop a working device on every probe, and reconnecting never fixes a setting.',
-            },
+            **send_fields('liveness', {
+                'send': {
+                    'min_len': 1,
+                    'doc': 'Probe payload. Same conventions as polling queries: a raw protocol string with escape processing and {config} substitution (terminator included) for tcp/serial/udp, or an OSC address on osc. Ask something the device answers however it is set up (a status, version or keep-alive query), never an address the integrator configured (a zone, preset, object or first table row): a wrong setting would then drop a working device on every probe, and reconnecting never fixes a setting.',
+                },
+                'args': {'doc': 'OSC only: arguments sent with the probe address (same shape as command args).'},
+            }),
             'expect': {
                 'type': 'string',
                 'min_len': 1,
@@ -2524,13 +2554,6 @@ DEFS = {
                 'type': 'integer',
                 'min': 1,
                 'doc': 'Consecutive misses before the connection is dropped. Default 2.',
-            },
-            'args': {
-                'type': 'array',
-                'doc': 'OSC only: arguments sent with the probe address (same shape as command args).',
-                'items': {
-                    'ref': 'oscArg',
-                },
             },
         },
         'required': ('send',),
@@ -2823,35 +2846,15 @@ DEFS = {
     },
     'deviceSettingWrite': {
         'type': 'object',
-        'fields': {
-            'send': {
-                'type': 'string',
-                'doc': 'TCP/serial write string. {value} and config placeholders substituted.',
+        'fields': send_fields('setting_write', {
+            'send': {'doc': 'TCP/serial write string. {value} and config placeholders substituted.'},
+            'method': {'doc': 'HTTP method. Default POST.'},
+            'query_params': {
+                'doc': 'HTTP query parameters, {value} and config placeholders substituted. Each value is encoded for the web address, so a name like "Room #2" arrives as written.',
+                'since': '0.41.0',
             },
-            'method': {
-                'type': 'string',
-                'doc': 'HTTP method. Default POST.',
-            },
-            'path': {
-                'type': 'string',
-            },
-            'body': {
-                'type': 'string',
-            },
-            'headers': {
-                'type': 'object',
-            },
-            'address': {
-                'type': 'string',
-                'doc': 'OSC address.',
-            },
-            'args': {
-                'type': 'array',
-                'items': {
-                    'ref': 'oscArg',
-                },
-            },
-        },
+            'address': {'doc': 'OSC address.'},
+        }),
         'extra': False,
     },
     'simulatorControl': {

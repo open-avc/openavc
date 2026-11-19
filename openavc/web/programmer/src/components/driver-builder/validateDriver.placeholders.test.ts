@@ -31,10 +31,7 @@ describe("the Builder's own placeholder check", () => {
     ).toEqual([]);
   });
 
-  it("still warns where the server does not look", () => {
-    expect(
-      placeholderWarnings(draft({ set_level: { send: "LVL {param1}\r" } })),
-    ).toHaveLength(1);
+  it("leaves its query parameters and OSC arguments to the server too", () => {
     expect(
       placeholderWarnings(
         draft({
@@ -44,7 +41,23 @@ describe("the Builder's own placeholder check", () => {
             query_params: { v: "{param1}" },
             params: { lvl: { type: "integer" } },
           },
+          set_gain: {
+            address: "/gain",
+            args: [{ type: "f", value: "{param1}" }],
+            params: { lvl: { type: "integer" } },
+          },
         }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("still warns about a command with no parameters, which the server does not judge", () => {
+    expect(
+      placeholderWarnings(draft({ set_level: { send: "LVL {param1}\r" } })),
+    ).toHaveLength(1);
+    expect(
+      placeholderWarnings(
+        draft({ set_level: { method: "GET", path: "/level", query_params: { v: "{param1}" } } }),
       ),
     ).toHaveLength(1);
   });

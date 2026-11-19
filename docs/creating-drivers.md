@@ -63,7 +63,7 @@ What's flagged:
 - **Driver ID**: missing, illegal characters, or duplicates of another saved driver.
 - **Driver name**: missing.
 - **Publish quality** (warnings): missing `description`, `version`, `author`, or `help.overview`.
-- **Commands**: any `{placeholder}` in the wire string (send/path/body/headers/query_params/address/args) that doesn't resolve to a declared parameter or config field. Catches typos that would otherwise leave a literal `{level}` on the wire.
+- **Commands, setting writes and the connection watchdog**: any `{placeholder}` in what they send (a command's send/path/body/headers/query_params/address/args, a setting write's, the `liveness` probe and its args, an `on_connect` OSC message's args) that names nothing they fill from: a command fills from its parameters and the config, a setting write from `{value}` and the config, the probe and the `on_connect` messages from the config alone. Catches typos that would otherwise leave a literal `{level}` on the wire. An OSC argument whose value its type cannot send (`type: f, value: abc`) is flagged too.
 - **Parameter names**: illegal characters surface as an inline error instead of being silently stripped.
 - **Responses**: a state variable a rule writes, or a bare `only_when:` key, that the driver does not declare under State Variables; and a child's `offline_reason` written as anything but `not_fitted`, `not_responding`, `service_fault` or `""` (see [Saying what is wrong with a sub-unit](#saying-what-is-wrong-with-a-sub-unit)).
 - **Polling** (warnings): a poll that takes longer than its interval, and a device that could stop answering with nothing to notice (see [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)).
@@ -718,6 +718,16 @@ write:
 ```
 
 A `body` that is valid JSON is sent as JSON; anything else (XML, form text) is sent as written. Either way the device's answer goes through your response rules, so a device that answers a write with the new value shows it on the device page at once.
+
+A write can carry `headers` and `query_params` as a command does. Put the value in `query_params` rather than in the `path` when the device reads it from the address: each query value is encoded for the address, so a name like `Lobby & Café` or `Room #2` arrives as written, where the same text written into `path` would break the request (platform 0.41.0):
+
+```yaml
+write:
+  method: GET
+  path: /api/name
+  query_params:
+    set: "{value}"
+```
 
 For TCP/serial drivers, use a `send` string:
 
@@ -2526,6 +2536,8 @@ commands:
 ```
 
 Argument types: `f` (float32), `i` (int32), `s` (string), `h` (int64), `d` (float64), `T` (true), `F` (false), `N` (nil).
+
+A `value` written without a placeholder has to be one its type can send: `f` and `d` take a number (`"1.0"` or `1.0`), `i` a number (cut to a whole one), `h` a whole number, and `s` any text; `T`, `F` and `N` carry no value of their own. A numeric argument with no value, or one like `type: f, value: abc`, is refused when the driver is saved or checked, and named on the driver's Installed entry if one is already installed. That holds for an OSC command, a setting's OSC `write`, a `liveness` probe's `args` and an `on_connect` message. A `liveness` probe whose arguments cannot be sent switches the watchdog off with one warning in the log, so the device stays connected without it.
 
 Argument `value` strings support `{param}` substitution from the command's params and device config, including format specs — `value: "{level}"` sends the param as-is, `value: "{level:.2f}"` formats it first. Address paths substitute the same way.
 

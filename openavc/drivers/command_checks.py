@@ -2,7 +2,8 @@
 
 A YAML command is checked in this order: how it sends (exactly one of
 ``send``, ``path``/``method``, ``address``, ``udp``, ``ir``), an OSC command's
-``args``, a ``udp:`` block, its parameters' form aids (``param_aid_checks``),
+``args`` (``send_shape.osc_args_errors``, which a setting's OSC write asks
+too), a ``udp:`` block, its parameters' form aids (``param_aid_checks``),
 what ``sets:`` and ``query_for:`` name, then then the four checks every command
 gets: ``confirm``, ``sleeps_device``, ``read_back`` and the file rules.
 ``validate_driver_definition`` asks ``CommandSection`` about each command and
@@ -47,10 +48,10 @@ from openavc.drivers.declared_names import (
     substitution_names,
 )
 from openavc.drivers.param_aid_checks import param_aid_errors
+from openavc.drivers.send_shape import osc_args_errors
 from openavc.drivers.spec import (
     FILE_PARAM_EXCLUDED_KEYS,
     FILE_PARAM_MAX_BYTES,
-    OSC_ARG_TYPES,
     PLACEHOLDER,
 )
 
@@ -228,28 +229,6 @@ def _form_errors(where: str, forms: list[str]) -> list[str]:
             f"way. Keep one of {_ONE_FORM}"
         ]
     return []
-
-
-def osc_args_errors(where: str, arg_defs: Any) -> list[str]:
-    """An OSC message's ``args``: each a mapping whose ``type`` tag the
-    encoder knows, so a typo fails at load rather than being dropped when the
-    message is built. A device setting's OSC ``write:`` asks this too."""
-    if arg_defs is None:
-        return []
-    if not isinstance(arg_defs, list):
-        return [f"{where}: args must be a list"]
-    errors: list[str] = []
-    for j, arg in enumerate(arg_defs):
-        if not isinstance(arg, dict):
-            errors.append(f"{where}: args[{j}] must be a mapping")
-            continue
-        arg_type = arg.get("type", "f")
-        if arg_type not in OSC_ARG_TYPES:
-            errors.append(
-                f"{where}: args[{j}] unknown OSC type '{arg_type}' "
-                f"(expected one of f/i/s/h/d/T/F/N)"
-            )
-    return errors
 
 
 def udp_block_errors(where: str, udp_def: Any, config_names: set[str]) -> list[str]:

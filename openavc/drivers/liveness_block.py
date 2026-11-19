@@ -15,9 +15,10 @@ The rules worth knowing before changing anything here:
   its class.
 * **A bad block is off, with one warning.** An ``expect`` that is not a regex,
   or a number that is not one, turns the watchdog off and keeps whichever
-  numbers were read before the bad one. The loader validates the block; this
-  stays defensive about those two mistakes, so a hand-installed file with one
-  still leaves the driver running.
+  numbers were read before the bad one; so does a probe that cannot be built
+  (an OSC argument its type cannot take), at the first probe. The checker
+  refuses each where a driver is written and names it where one loads; this
+  stays defensive, so a file with one still leaves the driver running.
 * **The probe** follows ``polling.queries``' conventions: on OSC an address,
   ``{config}`` filled, with its ``args``; on any other link a raw line,
   ``{config}`` filled, escape-decoded and inside the ``send_frame`` header,
@@ -107,10 +108,13 @@ class LivenessBlock:
         block = self._liveness_def
         if block is None or self.transport is None:
             return
+        probe = self._buildable_probe(block)
+        if probe is None:
+            return
         waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._liveness_waiter = waiter
         try:
-            await self._send_liveness_probe(block)
+            await self.transport.send(probe)
             await waiter
         finally:
             if self._liveness_waiter is waiter:
@@ -118,10 +122,27 @@ class LivenessBlock:
 
     async def _send_liveness_probe(self, block: dict[str, Any]) -> None:
         """Send the probe in the form this driver's transport takes."""
+        await self.transport.send(self._probe_bytes(block))
+
+    def _probe_bytes(self, block: dict[str, Any]) -> bytes:
         if self._effective_transport() == "osc":
-            await self.transport.send(self._osc_probe(block))
-        else:
-            await self.transport.send(self._line_probe(block))
+            return self._osc_probe(block)
+        return self._line_probe(block)
+
+    def _buildable_probe(self, block: dict[str, Any]) -> bytes | None:
+        """The probe's bytes; or, when they cannot be built, None with the
+        watchdog off and one warning. Every probe would fail the same way, so
+        the watchdog would drop a device that answers everything else."""
+        try:
+            return self._probe_bytes(block)
+        except (ValueError, TypeError, AttributeError) as e:
+            log.warning(
+                f"[{self.device_id}] The liveness probe cannot be sent, so the "
+                f"connection watchdog is off: {e}"
+            )
+            self._liveness_def = None
+            self._liveness_expect = None
+            return None
 
     def _osc_probe(self, block: dict[str, Any]) -> bytes:
         from openavc.transport.osc_codec import osc_encode_message

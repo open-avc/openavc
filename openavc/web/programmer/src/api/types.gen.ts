@@ -155,7 +155,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   sendFrame: new Set(["after_length", "header", "length_endian", "length_size", "type"]),
   configSchemaEntry: new Set(["advanced", "columns", "default", "description", "help", "label", "learned_from", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
   deviceSettingEntry: new Set(["default", "help", "label", "map", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
-  deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
+  deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "query_params", "send"]),
   simulatorSection: new Set(["capacity", "command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "single_client", "state_machines"]),
   routingBlock: new Set(["command", "destination_child_type", "destination_param", "params", "planes", "source_child_type", "source_param"]),
   routingPlane: new Set(["command", "destination_child_type", "destination_param", "label", "params", "route_property", "source_child_type", "source_param"]),
@@ -490,12 +490,6 @@ export interface DriverCommandDef {
    * substituted at runtime.
    */
   send?: string;
-  /**
-   * Send this command's send string exactly as written, skipping the driver's
-   * command_prefix / command_suffix framing. Use it for the odd command that
-   * doesn't share the common frame. Requires platform 0.23.0.
-   */
-  raw?: boolean;
   /** HTTP method (GET/POST/PUT/DELETE). Default GET. */
   method?: string;
   /** HTTP URL path. */
@@ -510,6 +504,12 @@ export interface DriverCommandDef {
   address?: string;
   /** OSC typed arguments. */
   args?: DriverOscArg[];
+  /**
+   * Send this command's send string exactly as written, skipping the driver's
+   * command_prefix / command_suffix framing. Use it for the odd command that
+   * doesn't share the common frame. Requires platform 0.23.0.
+   */
+  raw?: boolean;
   /** Parameter definitions, keyed by {placeholder} name. */
   params?: Record<string, DriverParamDef>;
   /**
@@ -1106,6 +1106,12 @@ export interface DriverDeviceSettingWrite {
   method?: string;
   path?: string;
   body?: string;
+  /**
+   * HTTP query parameters, {value} and config placeholders substituted. Each
+   * value is encoded for the web address, so a name like "Room #2" arrives as
+   * written. Requires platform 0.41.0.
+   */
+  query_params?: Record<string, unknown>;
   headers?: Record<string, unknown>;
   /** OSC address. */
   address?: string;
@@ -1654,6 +1660,11 @@ export interface DriverLivenessDef {
    */
   send?: string;
   /**
+   * OSC only: arguments sent with the probe address (same shape as command
+   * args).
+   */
+  args?: unknown[];
+  /**
    * Optional regex; only inbound data matching it satisfies the probe. Without
    * it, any inbound data counts. Any answer proves the link is up, so match
    * the device's error reply to the probe as well as the good one, with the
@@ -1667,11 +1678,6 @@ export interface DriverLivenessDef {
   timeout?: number;
   /** Consecutive misses before the connection is dropped. Default 2. */
   max_failures?: number;
-  /**
-   * OSC only: arguments sent with the probe address (same shape as command
-   * args).
-   */
-  args?: unknown[];
 }
 
 /**

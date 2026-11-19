@@ -12,7 +12,9 @@ device that is away until the device reports the value. A config field with
 ``device_setting_errors`` is what one YAML entry is held to, each part one
 function in the order its messages have always come: the type, the
 ``state_key``, ``min`` against ``max``, the ``write`` block (and an OSC
-write's args, through the command encoder's own check), the ``map``. The
+write's args, through the check a command's args get, ``send_shape``), the
+``map``. What a write's templates fill from and what each OSC argument
+takes are ``send_shape``'s, judged at the author's doors. The
 ``state_key`` and ``learned_from`` rules are shared with a Python driver's
 ``DRIVER_INFO`` (``python_info``), which words its own shape messages and
 judges nothing else of a setting; a state-variable block built at runtime
@@ -21,7 +23,7 @@ setting is refused a ``map`` (``python_setting_map_errors``, beside the YAML
 rule for one), since only the YAML write applies it.
 
 Purity contract, as for ``avcdriver_semantic``: standard library and the
-sibling contract modules (``spec``, ``declared_names``, ``command_checks``).
+sibling contract modules (``spec``, ``declared_names``, ``send_shape``).
 The module is vendored with the rest of the driver contract (openavc-drivers'
 catalog CI, openavc-sdk).
 """
@@ -30,8 +32,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from openavc.drivers.command_checks import osc_args_errors
 from openavc.drivers.declared_names import UNEVALUATED_KEY, declared_enum_values
+from openavc.drivers.send_shape import osc_args_errors
 from openavc.drivers.spec import CONNECTION_FIELDS, VALUE_TYPES, is_secret_setting
 
 # A set, so a type that is not hashable raises at the lookup, as it always has.

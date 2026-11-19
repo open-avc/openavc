@@ -52,6 +52,7 @@ ALLOWED = {
     "openavc.drivers.reply_name_checks",
     "openavc.drivers.response_rule_checks",
     "openavc.drivers.routing_checks",
+    "openavc.drivers.send_shape",
     "openavc.drivers.serial_line",
     "openavc.drivers.setting_checks",
     "openavc.drivers.shape_checks",
