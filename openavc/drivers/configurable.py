@@ -38,10 +38,12 @@ command's ``read_back:`` (``rereads``). Writing a device setting:
 ``setting_writes``.
 
 What stays here: the order the parts are set up in and the drop of a
-session, the derived config, the connect and its initial sync, which form a
-command goes out in and its parameters' wire values, filling a template's
-placeholders (the platform's push values among them), the reply counts the
-poll loop judges, the frame parser, and where an incoming frame goes.
+session, the derived config, what a setting changed while the device runs
+works out again (``_config_changed``), the connect and its initial sync,
+which form a command goes out in and its parameters' wire values, filling a
+template's placeholders (the platform's push values among them), the reply
+counts the poll loop judges, the frame parser, and where an incoming frame
+goes.
 """
 
 from __future__ import annotations
@@ -194,11 +196,14 @@ class ConfigurableDriver(
         # Each reply rule runs under its own guard (reply_guard).
         self._init_reply_guard()
 
-        # Pre-compile the receive side (regex / OSC-address / JSON-body rule
-        # tables, incl. throttle state and compiled child_set routing): the
-        # shared compile in compiled_protocol, run per instance so the tables
-        # embed this instance's config substitutions, after the derived
-        # config is computed.
+        # Pre-compile the receive side, after the derived config is computed.
+        self._compile_replies()
+
+    def _compile_replies(self) -> None:
+        """The receive side's tables (regex / OSC-address / JSON-body rules,
+        incl. throttle state and compiled child_set routing): the shared
+        compile in compiled_protocol, run per instance so the tables embed
+        this instance's config substitutions."""
         compiled = compiled_protocol.compile_driver(
             self._definition, self.config, device_id=self.device_id
         )
@@ -206,6 +211,50 @@ class ConfigurableDriver(
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
         self._after_json_responses = compiled.after_json_responses
+
+    def _config_changed(self, changed: set[str]) -> None:
+        """Settings changed while the device runs (``BaseDriver``'s hook):
+        the derived config is worked out again, then the reply tables are
+        compiled again when a changed setting, or a derived value that moved,
+        fills a rule's ``match`` or ``address``, then the rest is
+        ``BaseDriver``'s (a roster rebuilt). A table
+        nothing changed reaches is kept, so its throttle windows run on.
+
+        What the inline merge built is not taken again: the device's own
+        commands, replies and state variables and the framing they were
+        merged with. Merging again would seed every state variable on a
+        running device. A YAML driver's settings change in place only as
+        values the device fills in (setup actions are Python drivers'); one
+        the merge reads takes effect when the device is next added.
+        """
+        derived = self._definition.get("config_derived")
+        names = list(derived) if isinstance(derived, dict) else []
+        before = {name: self.config.get(name) for name in names}
+        self._compute_derived_config()
+        changed = changed | {name for name in names if self.config.get(name) != before[name]}
+        if changed & self._reply_template_fields():
+            self._write_all_held()
+            self._forget_settled_follow_ups()
+            self._compile_replies()
+        super()._config_changed(changed)
+
+    def _reply_template_fields(self) -> set[str]:
+        """The config names the reply rules' ``match`` and ``address``
+        templates are filled from."""
+        fields: set[str] = set()
+        for resp in self._definition.get("responses") or []:
+            if not isinstance(resp, dict):
+                continue
+            for key in ("match", "address"):
+                template = resp.get(key)
+                if isinstance(template, str):
+                    fields.update(placeholder_names(template))
+        return fields
+
+    def _rebuild_rosters_from_config(self) -> None:
+        """The declared rosters, from the config just changed: built here
+        and at once, from config alone, as at set-up."""
+        self._build_declared_roster()
 
     async def _close_session(self) -> None:
         self._drop_all_held()

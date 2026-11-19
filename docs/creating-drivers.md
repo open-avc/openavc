@@ -628,6 +628,11 @@ config_schema:
   `ids_from`) rebuilds that roster as soon as it is saved, the way **Refresh
   from Device** does. A count roster that already follows the device through
   `count_from_state` needs nothing more.
+- In releases after OpenAVC 0.40.0, a field a reply's `match` or OSC
+  `address` names, or a `config_derived` template reads, takes effect as soon
+  as it is saved too: the next reply is read with the new value, and the
+  derived values are worked out again. Before that, replies were read with
+  the value the device was added with until it was added again.
 - Your driver keeps reading the state variable first while it is connected.
   The field is what it has when the device has not reported yet: before the
   first connection, and in simulation.
@@ -3433,6 +3438,10 @@ async def run_setup_action(self, action_id, params, progress) -> dict:
 step log; `pct` is an optional 0–100. Inside a run — and only inside one — you
 can also `await self.request_config_update({...})` to persist new connection
 settings and `await self.request_reconnect()` to bring the device up on them.
+In releases after OpenAVC 0.40.0, a roster your `child_entity_types` declares
+with `instances` `count_from` or `ids_from` naming one of the saved settings is
+rebuilt through your `refresh_children()`, as **Refresh from Device** does,
+when the device is connected.
 
 In releases after OpenAVC 0.40.0, a run is stopped when its device is removed,
 when an edit or a driver update replaces the device, and when the system shuts

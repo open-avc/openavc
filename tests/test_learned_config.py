@@ -24,9 +24,10 @@ import pytest
 
 from openavc.core.device_config import apply_config_delta
 from openavc.core.engine import Engine
-from openavc.core.learned_config import accepted_value, learned_fields, roster_fields
+from openavc.core.learned_config import accepted_value, learned_fields
 from openavc.core.project_loader import DeviceConfig, load_project
 from openavc.drivers.base import BaseDriver
+from openavc.drivers.child_ids import roster_config_fields
 from openavc.drivers.registry import register_driver, unregister_driver
 from tests.helpers import wait_for_condition
 
@@ -530,9 +531,9 @@ async def test_a_saved_roster_setting_refreshes_the_roster(tmp_path):
         unregister_driver(_ZONED_ID)
 
 
-def test_roster_fields():
-    assert roster_fields(_AcmeZoned) == {"zones"}
-    assert roster_fields(_AcmeWidget) == set()
+def test_roster_config_fields():
+    assert roster_config_fields(_AcmeZoned.DRIVER_INFO["child_entity_types"]) == {"zones"}
+    assert roster_config_fields(_AcmeWidget.DRIVER_INFO.get("child_entity_types")) == set()
 
 
 def load_project_dict(data: dict):

@@ -41,10 +41,12 @@ save is not queued again by a later report. The project split (connection
 fields to the connections table, the rest to the device's config) is
 ``device_config.apply_config_delta``, the same one a setup action uses.
 
-A saved field that a declared child roster is built from (``instances``
-``count_from`` or ``ids_from``) re-derives that roster at once, as the IDE's
-Refresh from Device does, so the children match the setting without waiting
-for the next connection.
+What the driver built from a saved field follows it once the running device
+takes it: a declared child roster built from it (``instances`` ``count_from``
+or ``ids_from``) is rebuilt, as the IDE's Refresh from Device does, and a YAML
+driver's reply patterns and derived values are worked out again. That is the
+driver's own answer to the change (``BaseDriver._config_changed``, through
+``DeviceManager.merge_live_config``), the same for a setup action's settings.
 """
 
 from __future__ import annotations
@@ -137,21 +139,6 @@ def learned_fields(driver: Any) -> dict[str, str]:
     return fields
 
 
-def roster_fields(driver: Any) -> set[str]:
-    """The config fields a driver's declared child rosters are built from."""
-    info = getattr(driver, "DRIVER_INFO", {}) or {}
-    fields: set[str] = set()
-    for tdef in (info.get("child_entity_types") or {}).values():
-        inst = tdef.get("instances") if isinstance(tdef, dict) else None
-        if not isinstance(inst, dict):
-            continue
-        for key in ("count_from", "ids_from"):
-            name = inst.get(key)
-            if isinstance(name, str) and name:
-                fields.add(name)
-    return fields
-
-
 class LearnedConfig:
     """Saves the values devices report into the config fields that ask for it."""
 
@@ -163,7 +150,6 @@ class LearnedConfig:
         self._watched: dict[str, str] = {}
         # (device, field, value) already logged as not accepted.
         self._refused: set[tuple[str, str, str]] = set()
-        self._tasks: set[asyncio.Task] = set()
         self._retry_handles: dict[str, asyncio.TimerHandle] = {}
         self._retry_delays: dict[str, float] = {}
         # What the simulator reported, by state key: what is left in state
@@ -186,9 +172,6 @@ class LearnedConfig:
 
     def stop(self) -> None:
         self._active = False
-        for task in self._tasks:
-            task.cancel()
-        self._tasks.clear()
         for handle in self._retry_handles.values():
             handle.cancel()
         self._retry_handles.clear()
@@ -335,37 +318,13 @@ class LearnedConfig:
         self._retry_delays.pop(report.device_id, None)
 
     def _saved(self, report: "_Report") -> None:
-        """A report the file now holds: its retry is over, and a roster built
-        from it is derived again."""
+        """A report the file now holds: its retry is over."""
         if not self._active:
             return
         handle = self._retry_handles.pop(report.device_id, None)
         if handle:
             handle.cancel()
         self._retry_delays.pop(report.device_id, None)
-        if roster_fields(report.driver) & set(report.delta):
-            self._refresh_rosters(report.device_id, report.driver)
-
-    def _refresh_rosters(self, device_id: str, driver: Any) -> None:
-        """Re-derive the declared rosters from the config just saved."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-
-        async def refresh() -> None:
-            if not self._active or self._engine.devices.get_driver(device_id) is not driver:
-                return
-            try:
-                await driver.refresh_children()
-            except NotImplementedError:
-                return
-            except Exception:
-                log.exception("[%s] Could not refresh children after a filled-in setting", device_id)
-
-        task = loop.create_task(refresh())
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
 
 
 class _Report:

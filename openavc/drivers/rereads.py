@@ -195,6 +195,16 @@ class Rereads:
         self._follow_up_rounds[key] = task
         _track(self._follow_up_tasks, task)
 
+    def _forget_settled_follow_ups(self) -> None:
+        """Forget the holds no round in flight owns: the reply rules they
+        were taken for are about to be compiled again (a setting a rule reads
+        changed while the device runs), and a hold is keyed by its rule. A
+        round still going out ends as it would."""
+        for key in list(self._follow_up_until):
+            if key not in self._follow_up_rounds:
+                self._follow_up_until.pop(key, None)
+                self._follow_up_taken_at.pop(key, None)
+
     def _follow_up_held(self, key: tuple[int, str], registrations: ChildRegistrations) -> bool:
         """Whether a round under ``key`` holds this match back: one is going
         out or settling, and no child the match wrote registered since it

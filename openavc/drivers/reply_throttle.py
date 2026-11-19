@@ -19,6 +19,10 @@ here:
   newer one.
 * **No loop, no timer.** A hold taken outside a running event loop (a
   synchronous caller) has nothing to flush on and is dropped.
+* **A table compiled again writes its holds first.** A setting a reply
+  rule reads, changed while the device runs, compiles the tables again
+  (``ConfigurableDriver._config_changed``); every held write is written
+  then (``_write_all_held``), and the new tables start with no window.
 * **A window holds the children registered when it opened** (THE child
   registration rule, drivers/child_registration.py). A reply for a child
   registered since (one that left and came back, one not on the roster when
@@ -199,6 +203,18 @@ class ReplyThrottle:
         been removed."""
         for tstate in self._throttle_states():
             self._drop_scopes(tstate)
+
+    def _write_all_held(self) -> None:
+        """Write every held throttled write now, its timer cancelled: the
+        tables the holds wait in are about to be compiled again (a setting a
+        reply rule reads changed while the device runs), and a hold on a
+        table the driver no longer reads is out of the close's reach."""
+        for tstate in list(self._throttle_states()):
+            for scope in list(tstate.get("pending", {})):
+                timer = tstate.get("timers", {}).pop(scope, None)
+                if timer is not None:
+                    timer.cancel()
+                self._flush_held(tstate, scope)
 
     def _end_child_holds(self, child: Any) -> None:
         """``child`` left the roster (``_end_child_work``): every hold drops

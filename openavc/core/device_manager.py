@@ -14,7 +14,8 @@ config, because the copy kept here is what the project reconcile compares
 against, and a live driver writes into its own. A caller that changes a running
 device's connection or protocol config, and writes it into the project, moves
 both copies (``merge_live_config``), or the next reconcile reads the skew as an
-edit and re-adds the device.
+edit and re-adds the device; the driver is then told which settings changed,
+and follows them itself (``BaseDriver._config_changed``).
 
 Its other jobs live in their own modules, mixed in so every name stays on the
 manager: sending a command (device_commands.py), retrying a dropped device
@@ -557,13 +558,36 @@ class DeviceManager(
         reads the skew as an edit and tears the device down for a change that
         is already live. (A setup action does exactly that mid-wizard, which
         would invalidate the running handler's ``self``.)
+
+        Then the driver is told which settings changed value
+        (``BaseDriver._config_changed``), so what it built from its config
+        when it was set up follows them. A driver that cannot follow is
+        logged: the change is saved and taken either way.
         """
         driver = self._devices.get(device_id)
+        changed: set[str] = set()
         if driver is not None and driver.config is not None:
+            changed = {
+                key for key, value in delta.items()
+                if key not in driver.config or driver.config[key] != value
+            }
             driver.config.update(delta)
         stored = self._device_configs.get(device_id)
         if stored is not None:
             stored.setdefault("config", {}).update(delta)
+        if changed:
+            self._driver_follows(device_id, driver, changed)
+
+    @staticmethod
+    def _driver_follows(device_id: str, driver: BaseDriver, changed: set[str]) -> None:
+        try:
+            driver._config_changed(changed)
+        except Exception:  # Catch-all: driver code; the change is saved and live either way
+            log.exception(
+                f"[{device_id}] The driver could not follow the changed "
+                f"settings {sorted(changed)}; they take full effect when the "
+                f"device is next added"
+            )
 
 
     def _live_driver(self, device_id: str) -> BaseDriver:

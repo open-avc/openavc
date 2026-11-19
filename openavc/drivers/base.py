@@ -48,6 +48,7 @@ from openavc.core.device_traffic import record_traffic
 from openavc.core.event_bus import EventBus
 from openavc.drivers.bridge_ports import BridgePorts
 from openavc.drivers.child_entities import ChildEntities
+from openavc.drivers.child_ids import roster_config_fields
 # A command that changed the device and stopped partway is one of the command
 # outcomes (drivers/command_outcome.py); drivers import it from here.
 from openavc.drivers.command_outcome import CommandPartialError  # noqa: F401
@@ -573,6 +574,46 @@ class BaseDriver(
         null its references (the health loop keeps running until
         _link_alive() goes false). Default: no-op.
         """
+
+    def _config_changed(self, changed: set[str]) -> None:
+        """The settings named in ``changed`` were changed while the device
+        runs, and ``self.config`` already holds their new values: a setting
+        the device filled in, or a setup action's ``request_config_update``.
+        THE place a running driver follows such a change
+        (``DeviceManager.merge_live_config`` calls it): what it built from
+        its config when it was set up is worked out again, as a re-add would.
+
+        Here: a declared roster built from one of the settings
+        (``instances`` ``count_from`` or ``ids_from``), rebuilt as Refresh
+        from Device does.
+        ``ConfigurableDriver`` adds what a YAML driver builds. Called under
+        the project lock, so nothing here waits on the device. Not called
+        for the simulation's redirect or a USB adapter's new port: those
+        rewrite where the next dial goes, not a setting the project holds.
+        """
+        if changed & roster_config_fields(self.DRIVER_INFO.get("child_entity_types")):
+            self._rebuild_rosters_from_config()
+
+    def _rebuild_rosters_from_config(self) -> None:
+        """Rebuild the declared rosters from the config just changed, as
+        Refresh from Device does: a driver's ``refresh_children`` may read
+        the device, so it runs as a task of this connection, and only while
+        the device is connected, as that button asks (the next connect builds
+        them otherwise)."""
+        if self.get_state("connected"):
+            self.spawn_task(self._refresh_children_after_config_change())
+
+    async def _refresh_children_after_config_change(self) -> None:
+        try:
+            await self.refresh_children()
+        except NotImplementedError:
+            return
+        except Exception:
+            log.warning(
+                f"[{self.device_id}] Could not rebuild the children from the "
+                f"changed settings",
+                exc_info=True,
+            )
 
     def login_missing(self) -> bool:
         """True when a setting still holds the "saved on this system" marker:

@@ -36,7 +36,7 @@ async def test_failed_report_save_does_not_publish_a_new_roster(tmp_path, monkey
         driver.set_state('zones_reported', 'A,B,C,D')
         await asyncio.wait_for(entered.wait(), 5)
         # Drain already scheduled roster work while the write is held open.
-        await asyncio.gather(*tuple(engine.learned_config._tasks))
+        await asyncio.gather(*tuple(driver._session_tasks))
         fail_now.set()
         await asyncio.wait_for(engine._bookkeeping_task, 5)
         assert engine.project_path.read_bytes() == before
