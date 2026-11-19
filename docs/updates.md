@@ -235,6 +235,8 @@ If your system is connected to OpenAVC Cloud, your integrator may manage updates
 - The portal counts an update as done once the system comes back on the new version. If it restarts on the version it left, or has not come back within half an hour, the portal says so, with the reason from this system's update history
 - They can set an update policy for your organization: manual, notify-only, or auto-update during a maintenance window
 
+The cloud sends an update only to a system that can install it by itself. A Docker container or a development checkout is skipped, and the portal says how it updates instead. In releases after OpenAVC 0.40.0, so is a copy started by hand rather than as its service, and a system whose product firmware carries its updates.
+
 Even with cloud management, you can always check for and install updates locally from the Programmer IDE.
 
 A single system can opt out of the automatic half: turn on **Notify only** in
