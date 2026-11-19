@@ -151,7 +151,7 @@ class Handshake:
             capabilities=self.capabilities,
             os_info=os_info,
             hardware=hardware,
-            **_what_this_install_takes(),
+            install=_what_this_install_takes(),
         )
         log.debug("Handshake: sending hello")
         await send(hello_msg)

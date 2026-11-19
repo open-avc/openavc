@@ -232,8 +232,9 @@ class TestProtocol:
     def test_build_hello(self):
         msg = build_hello(
             system_id="sys-1", version="1.0", capabilities=["monitoring"],
-            os_info="Linux", hardware="Pi", deployment_mode="appliance",
-            updates_itself=True, artifact_kind="package",
+            os_info="Linux", hardware="Pi", install={
+                "deployment_mode": "appliance", "updates_itself": True, "artifact_kind": "package",
+            },
         )
         assert msg["type"] == HELLO
         assert "ts" in msg
@@ -261,8 +262,9 @@ class TestProtocol:
         """
         msg = build_hello(
             system_id="sys-1", version="1.0", capabilities=[],
-            os_info="Linux", hardware="Pi", deployment_mode="appliance",
-            updates_itself=True, artifact_kind="package",
+            os_info="Linux", hardware="Pi", install={
+                "deployment_mode": "appliance", "updates_itself": True, "artifact_kind": "package",
+            },
         )
         assert msg["payload"]["supported_versions"] == SUPPORTED_PROTOCOL_VERSIONS
         assert msg["payload"]["protocol_version"] in SUPPORTED_PROTOCOL_VERSIONS

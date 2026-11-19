@@ -66,6 +66,9 @@ def test_every_example_is_a_valid_message(m):
 # fields they write.
 _ARGUMENT_FIELDS = {"os_info": "os", "body_b64": "body", "data_b64": "data", "ws_id": "id"}
 
+# An argument that carries several fields at once, as a mapping of them.
+_GROUPED_FIELDS = {"install": ("deployment_mode", "updates_itself", "artifact_kind")}
+
 
 def _call_with_examples(builder, m: Message) -> dict:
     examples = {f.name: f.example for f in m.fields if f.example is not contract_gen.ABSENT}
@@ -73,6 +76,9 @@ def _call_with_examples(builder, m: Message) -> dict:
         examples["request_id"] = examples.get("id")
     kwargs = {}
     for name in inspect.signature(builder).parameters:
+        if name in _GROUPED_FIELDS:
+            kwargs[name] = {f: examples[f] for f in _GROUPED_FIELDS[name] if f in examples}
+            continue
         field = _ARGUMENT_FIELDS.get(name, name)
         if field in examples:
             kwargs[name] = examples[field]
