@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -273,6 +274,13 @@ def test_the_watchdog_ends_the_process_when_the_last_step_hangs(monkeypatch):
 
     assert ended == [42]
     stuck.set()
+    # The released last step goes on to its own end. It must reach it while
+    # the stand-in exit is still in place: run after the test returned, it
+    # would end the real process the tests run in.
+    deadline = time.monotonic() + 5
+    while len(ended) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert ended == [42, 42]
 
 
 def test_the_watchdog_runs_the_last_step_the_stop_never_reached(monkeypatch):
