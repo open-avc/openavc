@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.drivers.driver_model import POLL, query_lines, read_driver
 from openavc.drivers.param_validation import missing_required_params
 from openavc.drivers.spec import file_param_names
 
@@ -98,17 +99,19 @@ def _suggested(name: str, restarts: int, own_confirm: str, actions: _PageActions
 
 def _polled_command_names(driver: Any) -> set[str]:
     """The commands a YAML driver's polling runs by name (its status queries)."""
-    sent = _polled_sends(driver)
     commands = (getattr(driver, "DRIVER_INFO", {}) or {}).get("commands") or {}
-    return {text for text in sent if isinstance(text, str) and text in commands}
+    return {text for text in _polled_sends(driver) if text in commands}
 
 
-def _polled_sends(driver: Any) -> list[Any]:
-    """What each of a YAML driver's poll queries sends: a command's name, or
-    the text itself."""
+def _polled_sends(driver: Any) -> list[str]:
+    """What a YAML driver's poll sends, each line once: a command's name, or
+    the text itself (the driver model's ``query_lines``, the poll's only).
+    A start-up line need not be a status query, and a follow-up or a
+    read-back is a command's own; an entry's ``when`` gate is not read, since
+    a line the poll may send is a status query whether or not this device's
+    config sends it now."""
     definition = getattr(driver, "_definition", None) or {}
-    queries = (definition.get("polling") or {}).get("queries") or []
-    return [query.get("send") if isinstance(query, dict) else query for query in queries]
+    return [sent.text for sent in query_lines(read_driver(definition), (POLL,))]
 
 
 def _page_actions(driver: Any) -> _PageActions:

@@ -87,6 +87,23 @@ def _driver(info=INFO, fmt=lambda ctype, local: f"{int(local):02d}"):
 # -- the command list -----------------------------------------------------------
 
 
+def test_a_command_is_polled_when_the_poll_runs_it_by_name_whatever_its_gate():
+    """The poll's lines only: a start-up line need not be a status query and
+    a follow-up or a read-back is another command's; a gated poll entry is
+    a status query whether or not this device's config sends it now."""
+    definition = {
+        "polling": {"queries": [{"send": "polled", "when": "enable_temp"}]},
+        "on_connect": ["raw_poll"],
+        "responses": [{"match": "X", "then_query": ["guarded"]}],
+        "commands": {"power_on": {"send": "ON", "read_back": "reboot"}},
+    }
+    driver = NS(DRIVER_INFO=INFO, config={"enable_temp": False}, _definition=definition)
+    catalog = {entry["name"]: entry for entry in command_catalog(driver)}
+    assert [name for name, entry in catalog.items() if entry["polled"]] == ["polled"]
+    # A driver with no definition (a Python one) has no poll to read.
+    assert not any(entry["polled"] for entry in command_catalog(NS(DRIVER_INFO=INFO, config={})))
+
+
 def test_the_command_list_reads_each_declaration():
     catalog = {entry["name"]: entry for entry in command_catalog(_driver())}
     # Polled by name, a dict query or a plain one: a status query.
