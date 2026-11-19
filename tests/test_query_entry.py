@@ -27,9 +27,11 @@ from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_model import (
     POLL,
     PYTHON,
+    READ_BACK,
     START_UP,
     THEN_QUERY,
     ModelProblem,
+    query_lines,
     read_driver,
 )
 from openavc.drivers.query_entry import (
@@ -223,6 +225,56 @@ def test_the_model_reads_each_query_line_where_it_sits_in_report_order() -> None
     assert model.problems == (
         ModelProblem("on_connect[1]", LONG_LINE, read_query_entry({"send": "\r"}).problem.words),
     )
+
+
+def test_the_model_reads_each_commands_read_back_after_the_follow_ups() -> None:
+    definition = {
+        **copy.deepcopy(BASE),
+        "responses": [{"match": "CHG", "then_query": ["PWR?"]}],
+        "commands": {
+            "power_on": {"send": "PWR1\r", "read_back": "PWR?"},
+            "volume": {"send": "VOL{level}\r", "read_back": ["VOL?", True, "power_on", 5]},
+            "mute": {"send": "MUTE\r", "read_back": True},
+            "odd": "MUTE?",
+        },
+    }
+    model = read_driver(definition)
+    assert [(line.origin, line.place, line.written, line.source) for line in model.wire.queries] == [
+        (THEN_QUERY, "responses[0].then_query[0]", "PWR?", 0),
+        (READ_BACK, "commands.power_on.read_back", "PWR?", "power_on"),
+        (READ_BACK, "commands.volume.read_back[0]", "VOL?", "volume"),
+        (READ_BACK, "commands.volume.read_back[2]", "power_on", "volume"),
+    ]
+    assert model.problems == ()
+
+
+def test_query_lines_are_each_line_once_with_every_entry_that_sends_it() -> None:
+    definition = {
+        **copy.deepcopy(BASE),
+        "polling": {"queries": [{"send": "VOL?", "query_for": "volume"}, "PWR?", {"send": ""}]},
+        "on_connect": [{"address": "/a"}, "VOL?"],
+        "responses": [{"match": "VOL", "then_query": ["VOL?", "MUTE?"]}],
+        "commands": {"mute": {"send": "MUTE\r", "read_back": ["MUTE?", "VOL?"]}},
+    }
+    model = read_driver(definition)
+    lines = query_lines(model)
+    assert [(sent.text, sent.origins) for sent in lines] == [
+        ("VOL?", (POLL, START_UP, THEN_QUERY, READ_BACK)),
+        ("PWR?", (POLL,)),
+        ("/a", (START_UP,)),
+        ("MUTE?", (THEN_QUERY, READ_BACK)),
+    ]
+    volume = lines[0]
+    assert [line.place for line in volume.lines] == [
+        "polling.queries[0]", "on_connect[1]", "responses[0].then_query[0]", "commands.mute.read_back[1]",
+    ]
+    # Each reader states its filter: by where a line is sent from, and by the entry.
+    assert [sent.text for sent in query_lines(model, (THEN_QUERY, READ_BACK))] == ["VOL?", "MUTE?"]
+    no_poll = query_lines(model, where=lambda line: line.origin != POLL)
+    assert [(sent.text, sent.lines[0].place) for sent in no_poll] == [
+        ("/a", "on_connect[0]"), ("VOL?", "on_connect[1]"), ("MUTE?", "responses[0].then_query[1]"),
+    ]
+    assert query_lines(read_driver(definition, kind=PYTHON)) == ()
 
 
 def test_the_model_reads_a_file_it_cannot_make_sense_of_without_raising() -> None:
