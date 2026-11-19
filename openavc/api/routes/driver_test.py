@@ -562,6 +562,7 @@ def _describe_outgoing(
     template.
     """
     from openavc.drivers.configurable import ConfigurableDriver
+    from openavc.drivers.send_shape import osc_arg_tag, osc_arg_text
 
     transport = effective_transport(config, definition)
     all_params = {**config, **params}
@@ -571,14 +572,16 @@ def _describe_outgoing(
             cmd_def.get("address", ""), all_params
         )
         args = cmd_def.get("args") or []
-        # Substitute arg values the same way _build_osc_args does, so the
-        # summary shows what went on the wire, not the raw template.
+        # Each arg's type and value read as the encoder reads them
+        # (send_shape), so the summary shows what went on the wire, not the
+        # raw template.
         arg_summary = ", ".join(
             "{}={}".format(
-                a.get("type", "s"),
-                ConfigurableDriver._safe_substitute(str(a.get("value", "")), all_params),
+                osc_arg_tag(a),
+                ConfigurableDriver._safe_substitute(osc_arg_text(a), all_params),
             )
             for a in args
+            if isinstance(a, dict)
         )
         return f"OSC {addr}" + (f" [{arg_summary}]" if arg_summary else "")
 

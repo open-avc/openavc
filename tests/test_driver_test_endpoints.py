@@ -228,3 +228,12 @@ def test_describe_outgoing_substitutes_osc_arg_values():
     }
     summary = _describe_outgoing(definition, cmd_def, {}, {"channel": 3, "level": 0.5})
     assert summary == "OSC /ch/3/level [f=0.5]"
+
+
+def test_describe_outgoing_names_an_untyped_osc_arg_as_the_encoder_sends_it():
+    """An arg that names no type goes out as a float, so the summary says f."""
+    from openavc.api.routes.driver_test import _describe_outgoing
+
+    cmd_def = {"address": "/gain", "args": [{"value": "{level}"}]}
+    summary = _describe_outgoing({"transport": "osc"}, cmd_def, {}, {"level": 2})
+    assert summary == "OSC /gain [f=2]"
