@@ -88,7 +88,7 @@ from openavc.api.routes import root as root_routes
 from openavc.api.routes import setup as setup_routes
 from openavc.audit.session import AuditManager
 from openavc.core.engine import Engine
-from openavc.core.start_stages import StartRun
+from openavc.core.start_stages import GoOn, StartRun
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.redirects import build_http_listener_app, build_redirect_app, certified_host_for
 from openavc.drivers.registry import list_registered_drivers
@@ -133,15 +133,15 @@ discovery_engine = DiscoveryEngine()
 audit_manager = AuditManager(engine.devices, discovery_engine)
 
 
-def _resolve_listen_plan():
-    """Who can connect: main() resolved it before binding, and a server
-    started some other way resolves it here. It feeds a warning and the
-    banner, so a failure is logged and never blocks startup (None)."""
-    try:
-        return config.listen_plan()
-    except Exception:
-        log.exception("Could not resolve who can connect")
-        return None
+def _who_can_connect():
+    """Who can connect, warned about when it is the network with no password:
+    main() resolved it before binding, and a server started some other way
+    resolves it here. It feeds the warning and the banner alone, so a start
+    whose plan cannot be worked out goes on without both
+    (``_WHO_CAN_CONNECT``)."""
+    plan = config.listen_plan()
+    _warn_if_open_without_password(plan)
+    return plan
 
 
 def _open_without_password(plan) -> bool:
@@ -335,12 +335,32 @@ def _log_lan_urls(plan, local_ip: str, scheme: str, port: int) -> None:
         )
 
 
+# The server's stages its start goes on past (the rule: core/engine_lifecycle.py).
+_WHO_CAN_CONNECT = GoOn(
+    "who_can_connect", "working out who can connect",
+    "Who can connect could not be worked out, so the server log lists no "
+    "network addresses to open and gives no warning about a missing password. "
+    "Check the server log for the reason.",
+)
+_DISCOVERY_DATA = GoOn(
+    "discovery_data", "loading the drivers' discovery data",
+    "Discovery's driver data did not load, so a network scan may not recognize "
+    "some devices. Check the server log for the reason.",
+)
+_ADDRESSES = GoOn(
+    "addresses", "logging the addresses to open",
+    "The addresses to open the Programmer and the panels were not written to "
+    "the server log. Check the server log for the reason.",
+)
+
+
 async def _initialize_engine(app: FastAPI) -> None:
     """The engine's start, in the background so HTTP serves at once: every
     stage, the engine's own too, through one ``StartRun``
     (core/start_stages.py). The stage that stops it is named in the run-state
     record (middleware/startup_splash.py), logged, never raised; what follows
-    is openavc/start_retry.py's. The last update is checked first."""
+    is openavc/start_retry.py's. The last update is checked first. Every part
+    that failed is named in one warning once the last stage has run."""
     run = StartRun()
     restarts = start_retry.automatic_restarts()
     try:
@@ -352,9 +372,7 @@ async def _initialize_engine(app: FastAPI) -> None:
                 data_dir = get_system_config().data_dir
                 _settle_updates_before_start(data_dir)
 
-        with run.stage("working out who can connect"):
-            plan = _resolve_listen_plan()
-            _warn_if_open_without_password(plan)
+        plan = await run.go_on(_WHO_CAN_CONNECT, _who_can_connect)
 
         await engine.start(run)
 
@@ -369,8 +387,7 @@ async def _initialize_engine(app: FastAPI) -> None:
                 from openavc.updater.rollback import confirm_startup
                 confirm_startup(data_dir)
 
-        with run.stage("loading the drivers' discovery data"):
-            _load_discovery_hints()
+        await run.go_on(_DISCOVERY_DATA, _load_discovery_hints)
 
         # From here a restart request (Settings, the cloud agent, the listen
         # watcher below) ends this process; before it, every one is refused:
@@ -379,8 +396,8 @@ async def _initialize_engine(app: FastAPI) -> None:
             restart.accept_restarts(engine, app.state.run_state)
             engine.listen_watcher = _watch_listen_choice()
 
-        with run.stage("logging the addresses to open"):
-            _log_banner(plan)
+        await run.go_on(_ADDRESSES, lambda: _log_banner(plan))
+        run.report()
         app.state.run_state.started(run)
         status_folder.clear_startup_error()
     except Exception as e:

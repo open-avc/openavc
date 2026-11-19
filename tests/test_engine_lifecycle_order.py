@@ -236,6 +236,9 @@ async def test_start_names_each_part_that_failed_and_keeps_the_whole_stages(
     try:
         with caplog.at_level(logging.INFO, logger=ENGINE_LOG):
             await eng.start(run)
+            # Named by whoever made the run, once its own stages after the
+            # engine's have run (openavc.main's start).
+            run.report()
         # A device says so on its own card; a whole stage the start went on
         # past is kept for the run-state record, in words, by its stage.
         assert eng.state.get("system.startup_errors") is None

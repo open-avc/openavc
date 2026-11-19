@@ -21,20 +21,40 @@ is written at its start, before any stage can hang. ``_reconcile``
 (core/project_reconcile.py) shares these orderings, so a change to one is
 checked against the other.
 
-Each stage of the start runs through one ``StartRun`` (core/start_stages.py).
-Three whole stages the start goes on past when they fail: the driver
-library's load (the devices whose driver did not register wait for it), the
-plugin system and the script engine's load. Each is kept, by its stage and in
-words, in the run-state record (middleware/startup_splash.py) that
-``/api/startup-status`` answers. Any other stage that raises stops the start,
-and the record names that stage. Each device that cannot be worked out or
-added is named on its own (core/device_sync.py) and the others still start. A
-device, a plugin or a script that does not run says so on its own surface
-until it is fixed (the device manager's record, the plugin loader's status,
-the script engine's load error), the same surface a project change's outcome
-reads. Every part that failed is also named in one warning. Each step that
-settles a decision or converts something on disk before the project loads
-(``prepare_host``) is logged and never fatal, but not named.
+Each stage of the start runs through one ``StartRun`` (core/start_stages.py)
+and is one of two kinds. A stage the start goes on past when it fails is a
+service the room's control runs without: the driver library's load (the
+devices whose driver did not register wait for it), the plugins, the
+scripts' load, the backup taken at the start, the settings devices fill in,
+the network services (ISC, the mDNS advertisement, the cloud agent), the
+periodic backup and clean-up, the files earlier commands left, the update
+checks and panel software updates; ``openavc.main`` adds who can connect
+(it feeds a warning and the banner alone), Discovery's driver data and the
+address banner. Each is kept, by its stage and in words, in the run-state
+record (middleware/startup_splash.py) that ``/api/startup-status`` answers.
+Every other stage stops the start when it raises, and the record names it:
+what the room's control needs (live updates to open screens, the system
+settings and status, the project, its variables, macros and devices, the
+script engine, the triggers, the macro updates panels follow,
+``system.started``), since a room running without it does other than its
+project says; and in ``openavc.main``, the update's own checks before and
+after the engine (a stopped start is what rolls a failed update back) and
+the restart door. A stopped start is retried and then held
+on the splash page (openavc/start_retry.py), where a stage the start goes on
+past lets the room run, and confirms an update it came with.
+tests/test_start_stage_failures.py raises in each stage.
+
+Each device that cannot be worked out or added is named on its own
+(core/device_sync.py) and the others still start. A device, a plugin or a
+script that does not run says so on its own surface until it is fixed (the
+device manager's record, the plugin loader's status, the script engine's load
+error), the same surface a project change's outcome reads. Every part that
+failed is also named in one warning. Each step that settles a decision or
+converts something on disk before the project loads (``prepare_host``) is
+logged and never fatal, but not named; so is each network service, the
+update checks and panel software updates when it fails to start on its own
+(core/runtime_services.py), and a backup taken at the start that keeps its
+logins (``_seal_the_start_backup``).
 
 A stage of the stop that raises or overruns is named in one warning too, and
 the stages after it still run (core/stop_stages.py runs each on its own,
@@ -273,6 +293,41 @@ _SCRIPTS = GoOn(
     "The scripts did not finish loading, so some may not be running. "
     "Check the server log for the reason.",
 )
+_START_BACKUP = GoOn(
+    "start_backup", "saving the start-up backup",
+    "The project backup taken at this start was not finished. "
+    "Check the server log for the reason.",
+)
+_FILLED_IN_SETTINGS = GoOn(
+    "filled_in_settings", "starting the settings devices report",
+    "Settings that devices fill in, such as a model or a MAC address, are not "
+    "being saved from the equipment. Check the server log for the reason.",
+)
+_NETWORK_SERVICES = GoOn(
+    "network_services", "starting the network services",
+    "The network services did not finish starting, so the cloud connection, "
+    "the announcement panels find this server by, or Inter-System "
+    "Communication may not be running. Check the server log for the reason.",
+)
+_PERIODIC_TASKS = GoOn(
+    "periodic_tasks", "starting the periodic backup and clean-up",
+    "The half-hourly project backup and the clean-up of unanswered panel "
+    "requests did not start. Check the server log for the reason.",
+)
+_STAGED_FILES = GoOn(
+    "staged_files", "clearing files left by earlier commands",
+    "Files left by commands from an earlier run were not cleared. "
+    "Check the server log for the reason.",
+)
+_UPDATE_CHECKS = GoOn(
+    "update_checks", "starting the update checks",
+    "The update checks did not start, so this server does not look for "
+    "updates. Check the server log for the reason.",
+)
+_PANEL_SOFTWARE = GoOn(
+    "panel_software", "starting panel software updates",
+    "Panel software updates did not start. Check the server log for the reason.",
+)
 
 
 class EngineLifecycleMixin:
@@ -313,16 +368,14 @@ class EngineLifecycleMixin:
     async def start(self, run: StartRun | None = None) -> None:
         """
         Start the engine, one stage at a time through ``run``
-        (core/start_stages.py; ``openavc.main`` passes the server's, so the
-        run-state record names the stage that stopped a start and keeps the
-        ones it went on past):
-        1. Start state batch push (first, before any state is written)
-        2. Load project.avc
-        3. Initialize user variables
-        4. Connect all devices
-        5. Load macros
-        6. Register UI bindings
-        7. Emit system.started
+        (core/start_stages.py): the stages are the list below, in order, each
+        either one the start goes on past (``go_on``, a ``GoOn`` above) or
+        one that stops it (``run``); the module docstring says which and why.
+        ``openavc.main`` passes the server's run, so the run-state record
+        names the stage that stopped a start and keeps the ones it went on
+        past, and names every failed part in one warning once its own stages
+        after this have run; a start given no run makes its own and names
+        them here.
 
         This is a deliberately separate inline sequence from
         :meth:`_reconcile` — it also builds one-time infrastructure (state
@@ -333,6 +386,7 @@ class EngineLifecycleMixin:
         devices. A change to the reconcile ordering must be checked against
         this sequence too, and vice versa.
         """
+        owns_run = run is None
         run = run or StartRun()
         log.info("Engine starting...")
         self._stopping = False
@@ -350,28 +404,29 @@ class EngineLifecycleMixin:
         )
         await run.run("adding the devices", lambda: self._add_devices_at_start(run))
         await run.go_on(_PLUGINS, self._start_plugins_at_start)
-        await run.run("saving the start-up backup", self._seal_the_start_backup)
+        await run.go_on(_START_BACKUP, self._seal_the_start_backup)
         await run.run("starting the script engine", self._make_script_engine)
         await run.go_on(_SCRIPTS, self._load_scripts_at_start)
         await run.run("loading the triggers", self._load_triggers)
         await run.run("starting live macro and plugin updates", self._bridge_events_to_ws)
         # Save a value a device reports into a config field that asks for it
-        await run.run("starting the settings devices report", self.learned_config.start)
-        await run.run("starting the network services", self._start_network_services)
-        await run.run("starting the periodic backup and clean-up", self._start_background_tasks)
+        await run.go_on(_FILLED_IN_SETTINGS, self.learned_config.start)
+        await run.go_on(_NETWORK_SERVICES, self._start_network_services)
+        await run.go_on(_PERIODIC_TASKS, self._start_background_tasks)
         # Files staged for a command by an earlier run are gone with it.
-        await run.run("clearing files left by earlier commands", self.file_staging.start)
+        await run.go_on(_STAGED_FILES, self.file_staging.start)
         self._running = True
         # Pre-warm the network-info cache off the event loop so the first
         # status/health poll never blocks on socket / gethostname syscalls.
         _in_background(asyncio.to_thread(self._detect_network_info))
-        run.report()
         await run.run("marking the system started", self._announce_started)
         # Start trigger engine after system.started (so startup triggers work)
         await run.run("starting the triggers", self.triggers.start)
-        await run.run("starting the update checks", self._start_update_manager)
+        await run.go_on(_UPDATE_CHECKS, self._start_update_manager)
         # Panel software updates on appliance hardware, through the update manager
-        await run.run("starting panel software updates", self._start_panel_software)
+        await run.go_on(_PANEL_SOFTWARE, self._start_panel_software)
+        if owns_run:
+            run.report()
         log.info(
             f'Engine started — project "{self.project.project.name}" '
             f"({len(self.project.devices)} devices, "

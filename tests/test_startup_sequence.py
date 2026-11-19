@@ -370,12 +370,15 @@ async def test_the_last_update_is_checked_before_anything_else_can_stop_the_star
         boot, monkeypatch):
     """An update whose next start fails at any later stage is rolled back by
     the start after it."""
-    monkeypatch.setattr(main, "_resolve_listen_plan", Mock(side_effect=RuntimeError("no adapters")))
+    async def start(run):
+        await run.run("loading the project", Mock(side_effect=RuntimeError("project unreadable")))
+
+    boot.engine.start.side_effect = start
 
     await boot.run()
 
     assert boot.order == ["check_rollback_needed", "clear_stale_rollback_marker"]
-    assert boot.app.state.run_state.error == "Working out who can connect failed: no adapters"
+    assert boot.app.state.run_state.error == "Loading the project failed: project unreadable"
 
 
 async def test_a_failed_start_s_reason_stays_until_a_start_finishes(boot, monkeypatch):
@@ -383,19 +386,20 @@ async def test_a_failed_start_s_reason_stays_until_a_start_finishes(boot, monkey
 
     reason = boot.data_dir / "status" / status_folder.STARTUP_ERROR_FILE_NAME
     status_folder.write_run_state(FAILED, __version__, "an earlier failure")
-    monkeypatch.setattr(main, "_load_discovery_hints", Mock(side_effect=RuntimeError("no index")))
+    watch = main._watch_listen_choice
+    monkeypatch.setattr(main, "_watch_listen_choice", Mock(side_effect=RuntimeError("no watcher")))
     await boot.run()
     # A start that fails clears nothing (this boot's record reports nowhere).
     assert "an earlier failure" in reason.read_text(encoding="utf-8")
 
     restart_door.reset()
-    monkeypatch.setattr(main, "_load_discovery_hints", Mock())
+    monkeypatch.setattr(main, "_watch_listen_choice", watch)
     await boot.run()
     assert not reason.exists()
 
 
 async def test_a_stage_of_the_servers_own_that_stops_the_start_is_named(boot, monkeypatch):
-    monkeypatch.setattr(main, "_load_discovery_hints", Mock(side_effect=RuntimeError("no index")))
+    monkeypatch.setattr(main, "_watch_listen_choice", Mock(side_effect=RuntimeError("no watcher")))
 
     await boot.run()
 
@@ -403,11 +407,24 @@ async def test_a_stage_of_the_servers_own_that_stops_the_start_is_named(boot, mo
         "phase": FAILED,
         "ready": False,
         "version": __version__,
-        "error": "Loading the drivers' discovery data failed: no index",
+        "error": "Setting up restarts failed: no watcher",
         "problems": [],
         "held": True,
         "retry_in": None,
     }
+
+
+async def test_a_stage_of_the_servers_own_that_goes_on_is_kept(boot, monkeypatch):
+    monkeypatch.setattr(main, "_load_discovery_hints", Mock(side_effect=RuntimeError("no index")))
+
+    await boot.run()
+
+    answer = boot.app.state.run_state.answer()
+    assert (answer["phase"], answer["error"]) == (READY, None)
+    assert answer["problems"] == [{"stage": "discovery_data", "detail": main._DISCOVERY_DATA.detail}]
+    assert "no index" not in answer["problems"][0]["detail"]
+    # What follows it still ran: the restart door is armed.
+    assert restart_door._engine is boot.engine
 
 
 async def test_a_start_that_went_on_past_a_stage_is_ready_and_keeps_it(boot):
@@ -611,9 +628,10 @@ async def test_a_plan_that_cannot_be_resolved_is_logged_and_the_boot_goes_on(
         await boot.run()
 
     lines = _messages(caplog)
-    assert "Could not resolve who can connect" in lines
+    assert "Working out who can connect failed" in lines
     assert not any("LAN access" in m or "NO authentication" in m for m in lines)
     assert boot.app.state.run_state.ready is True
+    assert [p.stage for p in boot.app.state.run_state.problems] == ["who_can_connect"]
 
 
 def _banner(caplog) -> list[str]:

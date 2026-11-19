@@ -255,6 +255,7 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
             return_value=SimpleNamespace(data_dir=data),
         ) as system_config,
         patch("openavc.listen.ListenWatcher") as watcher,
+        patch("openavc.config.listen_plan", return_value=None),
         patch("openavc.listen_safety_net.tick", new_callable=AsyncMock) as safety_tick,
         patch.object(main.engine, "start", new=AsyncMock()) as start,
         patch.object(main.discovery_engine, "load_driver_hints_from_registry"),

@@ -12,16 +12,17 @@ Two kinds of stage:
   without. One that raises stops the start; the raise goes on up, and
   ``stopped_by`` words it with the stage it came from ("Loading the project
   failed: ...").
-- ``go_on``: a stage the start goes on past (a ``GoOn``: the driver library's
-  load, the plugin system, the script engine). One that raises is logged with
-  its traceback and kept in ``problems`` as a ``StartProblem``: its stage and
-  the sentence any reader may be told, never the exception's text.
+- ``go_on``: a stage the start goes on past (a ``GoOn``; which stages are,
+  and why, is core/engine_lifecycle.py's docstring). One that raises is
+  logged with its traceback and kept in ``problems`` as a ``StartProblem``:
+  its stage and the sentence any reader may be told, never the exception's
+  text.
 
 ``openavc.main`` hands both to the run-state record
 (middleware/startup_splash.py), which ``/api/startup-status`` answers. Every
 part of the start that failed, a device that could not be added included,
-is also named in one warning (``report``), as a stop names its stages
-(core/stop_stages.py).
+is also named in one warning (``report``), by whoever made the run once its
+last stage has run, as a stop names its stages (core/stop_stages.py).
 """
 
 from __future__ import annotations
@@ -89,18 +90,20 @@ class StartRun:
             result = await result
         return result
 
-    async def go_on(self, stage: GoOn, step: Callable[[], Any]) -> None:
-        """Run ``step`` as ``stage``; a raise is logged and kept, and the
-        start goes on."""
+    async def go_on(self, stage: GoOn, step: Callable[[], Any]) -> Any:
+        """Run ``step`` as ``stage`` and return what it returns; a raise is
+        logged and kept, the start goes on, and the stage returns None."""
         self.at = stage.doing
         try:
             result = step()
             if inspect.isawaitable(result):
-                await result
+                result = await result
+            return result
         except Exception as exc:  # Catch-all: a whole stage the start goes on past
             log.exception("%s failed", _sentence(stage.doing))
             self.problems.append(StartProblem(stage.stage, stage.detail))
-            self.name(f"{stage.stage.capitalize()}: {exc}")
+            self.name(f"{_sentence(stage.stage.replace('_', ' '))}: {exc}")
+            return None
 
     def name(self, failure: str) -> None:
         """A part of the start that failed, for the warning alone: a device
