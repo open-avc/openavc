@@ -21,10 +21,6 @@ import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DRIVER_CATEGORIES = (
-    "projectors", "displays", "switchers", "audio", "cameras",
-    "video", "lighting", "power", "streaming", "utility",
-)
 
 
 def platform_modules() -> list[str]:
@@ -42,21 +38,32 @@ def platform_modules() -> list[str]:
     return failures
 
 
+def library_python_files(library: Path) -> list[Path]:
+    """Every Python file in the library's category folders: drivers, simulators,
+    discovery companions. Which files those are is the library's own rule, its
+    scripts/catalog_files.py (standard library only), loaded by its path."""
+    spec = importlib.util.spec_from_file_location(
+        "_library_catalog_files", library / "scripts" / "catalog_files.py"
+    )
+    catalog_files = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(catalog_files)
+    return [path for path in catalog_files.category_files(library) if path.suffix == ".py"]
+
+
 def driver_files(library: Path) -> tuple[int, list[str]]:
     failures = []
-    count = 0
-    for category in DRIVER_CATEGORIES:
-        for path in sorted((library / category).glob("*.py")):
-            count += 1
-            name = f"_driver_{category}_{path.stem}"
-            spec = importlib.util.spec_from_file_location(name, path)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[name] = module
-            try:
-                spec.loader.exec_module(module)
-            except Exception:
-                failures.append(f"{category}/{path.name}\n{traceback.format_exc(limit=3)}")
-    return count, failures
+    paths = library_python_files(library)
+    for path in paths:
+        category = path.parent.name
+        name = f"_driver_{category}_{path.stem}"
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            failures.append(f"{category}/{path.name}\n{traceback.format_exc(limit=3)}")
+    return len(paths), failures
 
 
 def main() -> int:

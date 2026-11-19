@@ -28,7 +28,6 @@ parser: a change to ``CallableFrameParser`` is what would break it.
 from __future__ import annotations
 
 import importlib.util
-import os
 import random
 import sys
 from pathlib import Path
@@ -40,15 +39,7 @@ from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver
 from openavc.transport.frame_parsers import CallableFrameParser
 from tests import gates
-
-# The community driver library normally sits beside this repo in the
-# workspace. OPENAVC_DRIVERS_ROOT points somewhere else -- an automated run
-# clones it into a subdirectory of the checkout, because that is the only
-# place a checkout step is allowed to write.
-DRIVERS_ROOT = Path(
-    os.environ.get("OPENAVC_DRIVERS_ROOT")
-    or Path(__file__).resolve().parent.parent.parent / "openavc-drivers"
-)
+from tests.driver_library import DRIVERS_ROOT, python_driver_files
 
 # A parse function that neither parses nor consumes would loop forever. The
 # parser guards against that; this cap turns a regression in the guard into a
@@ -58,19 +49,10 @@ MAX_PARSE_CALLS = 50_000
 
 def _discover_callable_parser_drivers() -> list[Path]:
     """Every Python driver in the corpus that frames with a parse function."""
-    if not DRIVERS_ROOT.exists():
-        return []
-    found = []
-    for path in sorted(DRIVERS_ROOT.rglob("*.py")):
-        parts = set(path.parts)
-        if parts & {"tests", "scripts", ".venv", "__pycache__"}:
-            continue
-        # Simulators and discovery companions are not drivers.
-        if path.name.endswith(("_sim.py", "_discovery.py")):
-            continue
-        if "CallableFrameParser" in path.read_text(encoding="utf-8"):
-            found.append(path)
-    return found
+    return [
+        path for path in python_driver_files()
+        if "CallableFrameParser" in path.read_text(encoding="utf-8")
+    ]
 
 
 DRIVER_FILES = _discover_callable_parser_drivers()

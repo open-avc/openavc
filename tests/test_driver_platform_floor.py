@@ -16,7 +16,6 @@ currently under-declared.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -34,6 +33,7 @@ from openavc.drivers.spec import (
     required_platform_version,
 )
 from tests import gates
+from tests.driver_library import DRIVERS_ROOT, yaml_driver_files
 
 
 def _d(**over):
@@ -337,13 +337,7 @@ def test_no_value_has_a_floor_for_every_driver_and_one_for_yaml_only():
 # wrong one, and this says so in the same commit rather than in the community
 # repo's CI a day later. Names no product and reads no per-driver fixture.
 
-DRIVERS_ROOT = Path(
-    os.environ.get("OPENAVC_DRIVERS_ROOT")
-    or Path(__file__).resolve().parent.parent.parent / "openavc-drivers"
-)
-CORPUS = (
-    sorted(DRIVERS_ROOT.rglob("*.avcdriver")) if DRIVERS_ROOT.exists() else []
-)
+CORPUS = yaml_driver_files()
 
 
 @gates.skipif_missing(

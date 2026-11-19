@@ -20,7 +20,6 @@ diff would catch it.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -28,22 +27,11 @@ import yaml
 
 from openavc.api.models import DriverDefinitionRequest
 from tests import gates
-
-# The community driver library normally sits beside this repo in the
-# workspace. OPENAVC_DRIVERS_ROOT points somewhere else -- an automated run
-# clones it into a subdirectory of the checkout, because that is the only
-# place a checkout step is allowed to write.
-DRIVERS_ROOT = Path(
-    os.environ.get("OPENAVC_DRIVERS_ROOT")
-    or Path(__file__).resolve().parent.parent.parent / "openavc-drivers"
-)
-
+from tests.driver_library import DRIVERS_ROOT, yaml_driver_files
 
 def _discover_driver_files() -> list[Path]:
-    """Walk the community driver repo and return every .avcdriver file."""
-    if not DRIVERS_ROOT.exists():
-        return []
-    return sorted(DRIVERS_ROOT.rglob("*.avcdriver"))
+    """Every .avcdriver file in the community driver library."""
+    return yaml_driver_files()
 
 
 DRIVER_FILES = _discover_driver_files()

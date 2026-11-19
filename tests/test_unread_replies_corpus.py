@@ -19,7 +19,6 @@ openavc-drivers, whose CI carries no ``openavc`` package.
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 from typing import Any
 
@@ -32,15 +31,8 @@ from openavc.drivers.base import RULE_FAILED
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from tests import gates
+from tests.driver_library import DRIVERS_ROOT, yaml_driver_files
 
-DRIVERS_ROOT = Path(
-    os.environ.get("OPENAVC_DRIVERS_ROOT")
-    or Path(__file__).resolve().parent.parent.parent / "openavc-drivers"
-)
-_CATEGORIES = (
-    "projectors", "displays", "switchers", "audio", "cameras", "video",
-    "lighting", "power", "streaming", "utility",
-)
 # The transports whose connections keep the counts the check reads.
 _WATCHED = ("tcp", "udp", "osc")
 _JUDGED_CYCLES = 2
@@ -48,20 +40,17 @@ _INTERVAL = 0.2
 
 
 def _polling_definitions() -> list[Path]:
-    if not DRIVERS_ROOT.exists():
-        return []
     found = []
-    for category in _CATEGORIES:
-        for path in sorted((DRIVERS_ROOT / category).glob("*.avcdriver")):
-            definition = yaml.safe_load(path.read_text(encoding="utf-8"))
-            if definition.get("transport") not in _WATCHED:
-                continue
-            polling = definition.get("polling") or {}
-            if not polling.get("queries"):
-                continue
-            if not (definition.get("responses") or definition.get("osc_responses")):
-                continue
-            found.append(path)
+    for path in yaml_driver_files():
+        definition = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if definition.get("transport") not in _WATCHED:
+            continue
+        polling = definition.get("polling") or {}
+        if not polling.get("queries"):
+            continue
+        if not (definition.get("responses") or definition.get("osc_responses")):
+            continue
+        found.append(path)
     return found
 
 

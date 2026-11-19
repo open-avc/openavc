@@ -16,7 +16,6 @@ empty sweep.
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -28,14 +27,10 @@ from openavc.api.models import TestCommandRequest
 from openavc.api.routes.driver_test import _dry_run_command
 from openavc.drivers import compiled_protocol
 from tests import gates
+from tests.driver_library import DRIVERS_ROOT, yaml_driver_files
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 BUILTIN_DEFINITIONS = OPENAVC_ROOT / "openavc" / "drivers" / "definitions"
-
-DRIVERS_ROOT = Path(
-    os.environ.get("OPENAVC_DRIVERS_ROOT")
-    or OPENAVC_ROOT.parent / "openavc-drivers"
-)
 
 # {name} or {name:spec} — the substituter's own placeholder grammar.
 PLACEHOLDER = re.compile(r"\{(\w+)(?::([^{}]*))?\}")
@@ -50,10 +45,7 @@ SAMPLE_MAC = "02:00:5e:00:53:01"
 
 def _discover_driver_files() -> list[Path]:
     """Every shipped .avcdriver: the built-in generics plus the library."""
-    files = sorted(BUILTIN_DEFINITIONS.rglob("*.avcdriver"))
-    if DRIVERS_ROOT.exists():
-        files += sorted(DRIVERS_ROOT.rglob("*.avcdriver"))
-    return files
+    return sorted(BUILTIN_DEFINITIONS.rglob("*.avcdriver")) + yaml_driver_files()
 
 
 DRIVER_FILES = _discover_driver_files()

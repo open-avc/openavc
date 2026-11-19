@@ -52,13 +52,10 @@ import yaml
 
 from openavc.drivers.driver_loader import validate_driver_issues
 from tests import gates
+from tests.driver_library import DRIVERS_ROOT, yaml_driver_files
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 BUILTIN_DEFINITIONS = OPENAVC_ROOT / "openavc" / "drivers" / "definitions"
-
-DRIVERS_ROOT = Path(
-    os.environ.get("OPENAVC_DRIVERS_ROOT") or OPENAVC_ROOT.parent / "openavc-drivers"
-)
 
 HARNESS = (
     OPENAVC_ROOT / "tests" / "fixtures" / "driver_builder_reverse_corpus_harness.cjs"
@@ -77,10 +74,7 @@ ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 def _discover_driver_files() -> list[Path]:
     """Every shipped .avcdriver: the built-in generics plus the library."""
-    files = sorted(BUILTIN_DEFINITIONS.rglob("*.avcdriver"))
-    if DRIVERS_ROOT.exists():
-        files += sorted(DRIVERS_ROOT.rglob("*.avcdriver"))
-    return files
+    return sorted(BUILTIN_DEFINITIONS.rglob("*.avcdriver")) + yaml_driver_files()
 
 
 DRIVER_FILES = _discover_driver_files()
