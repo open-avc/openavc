@@ -100,11 +100,12 @@ export function waitOrigins(targetOrigin: string, alsoTry: string[], cutOff: boo
  * How to ask the status at one origin: a read the page can see at any
  * origin, since the server lets a page on its own network read its status
  * from another address (another port, scheme or address of this computer).
- * A refused or unreachable address rejects. No credential: the status is
- * open.
+ * A refused or unreachable address rejects. The page's own sign-in goes to
+ * its own origin only: the cloud's remote access authorizes each request
+ * with it, and the status needs none.
  */
 export function probeInit(): RequestInit {
-  return { cache: "no-store", credentials: "omit", mode: "cors" };
+  return { cache: "no-store", credentials: "same-origin", mode: "cors" };
 }
 
 // A browser that a change of who can connect cuts off keeps trying the new

@@ -337,3 +337,23 @@ def test_a_page_at_this_computers_own_name_may_read_it(monkeypatch):
         assert reply.headers.get("access-control-allow-origin") == origin, origin
     reply = _status_from(record, "http://other-box.local:8080", "127.0.0.1:8080")
     assert "access-control-allow-origin" not in reply.headers
+
+
+def test_a_status_read_from_another_address_never_offers_credentials():
+    """The app's own CORS layer adds Allow-Credentials to every answer; beside
+    a reflected origin a security scan reports the pair, and the status is
+    open, so this answer drops it."""
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app = FastAPI()
+    app.state.run_state = _record(ready=True)
+    app.include_router(system.open_router, prefix="/api")
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["http://localhost:8080"], allow_credentials=True,
+    )
+    app.add_middleware(StartupSplashMiddleware)
+    reply = TestClient(app).get(
+        "/api/startup-status", headers={"Origin": "http://192.168.1.50:8080", "Host": "192.168.1.20:8080"},
+    )
+    assert reply.headers.get("access-control-allow-origin") == "http://192.168.1.50:8080"
+    assert "access-control-allow-credentials" not in reply.headers

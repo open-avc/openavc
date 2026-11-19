@@ -31,7 +31,9 @@ describe("withHost", () => {
 describe("asking the status", () => {
   it("reads every address, its own and any other, never an opaque answer", () => {
     expect(probeInit().mode).toBe("cors");
-    expect(probeInit().credentials).toBe("omit");
+    // The page's own sign-in reaches its own origin (the cloud's remote
+    // access authorizes each request with it), and no other.
+    expect(probeInit().credentials).toBe("same-origin");
   });
 
   it("asks at the server root, and through the page's own prefix at the page's own origin", () => {

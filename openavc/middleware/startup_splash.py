@@ -245,12 +245,15 @@ def _own_names() -> set[str]:
 
 def _open_to_this_network(request: Request, response):
     """``response`` (the status) readable by the page that asked, when
-    ``readable_from`` says it may."""
+    ``readable_from`` says it may, with no credentials offered: the status is
+    open, and the app's CORS layer adds Allow-Credentials to every answer."""
     origin = request.headers.get("origin")
     if origin and readable_from(origin, request.headers.get("host", "")):
         response.headers["Access-Control-Allow-Origin"] = origin
         if "origin" not in response.headers.get("vary", "").lower():
             response.headers.add_vary_header("Origin")
+        if "access-control-allow-credentials" in response.headers:
+            del response.headers["access-control-allow-credentials"]
     return response
 
 
