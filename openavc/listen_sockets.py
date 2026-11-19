@@ -251,6 +251,20 @@ def hears_the_stop(server: Any, say_stopping: Callable[[], None]) -> Any:
     return server
 
 
+def serve_until_its_stop(serve: Callable[[list], None], sockets: list) -> None:
+    """Run ``serve(sockets)``, and end cleanly once the stop the main server
+    heard has run. uvicorn raises the signal it caught again after its stop,
+    and for Ctrl+C, which the Windows service and a terminal stop the server
+    with, that is a KeyboardInterrupt with nothing left to stop: it ended
+    every Windows service stop in a traceback and exit code 1. A Ctrl+C
+    before the server heard a stop, while it starts, still interrupts it."""
+    try:
+        serve(sockets)
+    except KeyboardInterrupt:
+        if not runtime_flags.stopping:
+            raise
+
+
 def _note_the_stop(
     uvicorn_handles: Any, say_stopping: Callable[[], None], sig: int, frame: Any,
 ) -> None:

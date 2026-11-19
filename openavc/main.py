@@ -973,7 +973,7 @@ def main():
         status_folder.clear_startup_error()
         status_folder.write_server_address()
         listen_sockets.push_listeners.enable(config.HTTP_PORT)
-        _serve(sockets)
+        listen_sockets.serve_until_its_stop(_serve, sockets)
     finally:
         listen_sockets.close_all(sockets)
 
