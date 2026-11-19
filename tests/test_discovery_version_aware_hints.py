@@ -13,7 +13,9 @@ collision logic, not any specific device.
 from __future__ import annotations
 
 from openavc.discovery.engine import DiscoveryEngine
-from openavc.discovery.known_drivers import driver_version_tuple as _driver_version_tuple
+import pytest
+
+from openavc.discovery.known_drivers import driver_copies
 
 
 def _entry(version: str, *, with_probe: bool) -> dict:
@@ -81,13 +83,35 @@ def test_catalog_only_driver_contributes():
     assert hints[0].tcp_probe is not None
 
 
-def test_driver_version_tuple():
-    assert _driver_version_tuple("1.2.0") == (1, 2, 0)
-    assert _driver_version_tuple("2.0") == (2, 0, 0)
-    assert _driver_version_tuple("1") == (1, 0, 0)
-    assert _driver_version_tuple(None) == (0, 0, 0)
-    assert _driver_version_tuple("") == (0, 0, 0)
-    assert _driver_version_tuple("1.2.3-beta") == (1, 2, 3)
-    assert _driver_version_tuple("garbage") == (0, 0, 0)
-    assert _driver_version_tuple("1.10.0") > _driver_version_tuple("1.9.0")
-    assert _driver_version_tuple("1.2.0") > _driver_version_tuple("1.1.9")
+def _which_copy(installed_version, catalog_version) -> str:
+    """Which copy of one driver Discovery reads: "installed" or "catalog"."""
+    installed = [{"id": "acme_widget", "version": installed_version}]
+    catalog = [{"id": "acme_widget", "version": catalog_version}]
+    kept, read = driver_copies(installed, catalog)
+    assert len(kept) + len(read) == 1
+    return "catalog" if read else "installed"
+
+
+@pytest.mark.parametrize("installed,catalog,expected", [
+    ("1.2.0", "1.3.0", "catalog"),
+    ("1.9.0", "1.10.0", "catalog"),
+    ("1.1.9", "1.2.0", "catalog"),
+    ("1.3.0", "1.2.0", "installed"),
+    ("1.2.0", "1.2.0", "installed"),
+    # A short version is its padded spelling, so this is a tie.
+    ("2.0", "2.0.0", "installed"),
+    # A pre-release is older than its release, whichever way it is spelled.
+    ("1.2.3-beta", "1.2.3", "catalog"),
+    ("1.2.3rc1", "1.2.3", "catalog"),
+    ("1.2.3", "1.2.3-rc1", "installed"),
+    # An unreadable or missing version sorts lowest.
+    (None, "1.0.0", "catalog"),
+    ("", "1.0.0", "catalog"),
+    ("garbage", "1.0.0", "catalog"),
+    ("1.0.0", "garbage", "installed"),
+    ("1.0.0", None, "installed"),
+    ("garbage", "garbage", "installed"),
+    (None, None, "installed"),
+])
+def test_the_newer_copy_is_read_by_the_version_rule(installed, catalog, expected):
+    assert _which_copy(installed, catalog) == expected

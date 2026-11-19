@@ -90,12 +90,28 @@ class TestIsNewer:
     def test_v_prefix_handled(self):
         assert is_newer("v1.1.0", "v1.0.0") is True
 
-    def test_alphanumeric_prerelease_outranks_numeric(self):
-        # Semver rule 11.4.3: a numeric identifier has LOWER precedence than an
-        # alphanumeric one at the same position. Raw string compare got this wrong
-        # ('-' < '9' in ASCII, so it reported the alphanumeric as older).
-        assert is_newer("1.0.0--a", "1.0.0-9") is True
-        assert is_newer("1.0.0-9", "1.0.0--a") is False
+    def test_a_release_candidate_in_pythons_spelling_is_read(self):
+        # A build that reports its version the way Python writes it
+        # ("0.40.0rc2") is the same release candidate as the tag "v0.40.0-rc2":
+        # offered its release, never an older one.
+        assert is_newer("0.40.0", "0.40.0rc2") is True
+        assert is_newer("0.39.0", "0.40.0rc2") is False
+        assert is_newer("v0.40.0-rc2", "0.40.0rc2") is False
+
+    def test_a_development_build_is_not_offered_an_older_release(self):
+        assert is_newer("0.40.0", "0.41.0.dev1") is False
+        assert is_newer("0.41.0", "0.41.0.dev1") is True
+
+    def test_a_two_digit_release_candidate_follows_a_one_digit_one(self):
+        assert is_newer("0.40.0-rc10", "0.40.0-rc9") is True
+        assert is_newer("0.40.0-rc9", "0.40.0-rc10") is False
+
+    def test_a_version_the_rule_cannot_read_is_never_newer(self):
+        assert is_newer("1.0.0-foo", "0.1.0") is False
+        assert is_newer("garbage", "0.1.0") is False
+
+    def test_any_readable_release_is_newer_than_an_unreadable_running_version(self):
+        assert is_newer("0.1.0", "garbage") is True
 
     def test_numeric_prerelease_identifiers_compare_numerically(self):
         # beta.10 > beta.9 even though "10" < "9" lexically.
@@ -202,11 +218,11 @@ class TestUpdateChecker:
         assert len(result.assets) == 1
 
     async def test_check_warns_on_unparseable_tag(self, checker, caplog):
-        # An unparseable tag (v0.13, missing patch) must not silently hide the
-        # valid newer release, and must be surfaced at WARNING.
+        # A tag that is not a version must not silently hide the valid newer
+        # release, and must be surfaced at WARNING.
         releases = [
             {
-                "tag_name": "v0.13",
+                "tag_name": "release-0.13",
                 "prerelease": False,
                 "draft": False,
                 "body": "Mistyped tag",
@@ -230,7 +246,7 @@ class TestUpdateChecker:
 
         assert result is not None
         assert result.version == "0.2.0"
-        assert any("v0.13" in r.message and r.levelno == logging.WARNING for r in caplog.records)
+        assert any("release-0.13" in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
     async def test_check_skips_prerelease_on_stable(self, checker):
         releases = [

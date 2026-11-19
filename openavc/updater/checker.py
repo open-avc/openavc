@@ -2,7 +2,8 @@
 Update version checker.
 
 Queries the GitHub Releases API to determine if a newer version is available.
-Supports stable and beta channels. Uses semver comparison.
+Supports stable and beta channels. Which release is newer is the version
+rule's (``openavc/utils/version_rule.py``).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import httpx
 
 from openavc.version import __version__
 from openavc.utils.outbound import internet_client, internet_failure
+from openavc.utils.version_rule import read_version
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +36,8 @@ class ReleaseInfo:
     assets: list[dict[str, str]] = field(default_factory=list)
 
 
+# The three-part reading below is what rollback.py's installer and cache
+# sorting compares; which release is newer is the version rule's.
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$")
 
 
@@ -61,62 +65,20 @@ def parse_semver(version_str: str) -> tuple[int, int, int, str]:
     return (major, minor, patch, prerelease)
 
 
-def _is_numeric_identifier(ident: str) -> bool:
-    """A semver prerelease identifier is numeric only if it is all ASCII digits."""
-    return ident.isascii() and ident.isdigit()
-
-
-def _compare_prerelease(a_parts: list[str], b_parts: list[str]) -> int:
-    """Compare two dot-separated prerelease identifier lists per semver rule 11.4.
-
-    Returns 1 if `a` has higher precedence, -1 if lower, 0 if equal.
-    Numeric identifiers compare numerically; two alphanumerics compare by ASCII;
-    a numeric identifier always has LOWER precedence than an alphanumeric one; and
-    when all shared identifiers are equal, the longer list has higher precedence.
-    """
-    for a, b in zip(a_parts, b_parts):
-        a_num, b_num = _is_numeric_identifier(a), _is_numeric_identifier(b)
-        if a_num and b_num:
-            ai, bi = int(a), int(b)
-            if ai != bi:
-                return 1 if ai > bi else -1
-        elif a_num != b_num:
-            # Numeric identifiers have lower precedence than alphanumeric ones.
-            return -1 if a_num else 1
-        elif a != b:
-            return 1 if a > b else -1
-    if len(a_parts) != len(b_parts):
-        return 1 if len(a_parts) > len(b_parts) else -1
-    return 0
-
-
 def is_newer(candidate: str, current: str) -> bool:
-    """Return True if candidate version is newer than current.
+    """Whether ``candidate`` is a newer release than ``current``, by the
+    version rule (a release candidate is older than its release, and
+    ``0.40.0-rc2`` and ``0.40.0rc2`` are one version).
 
-    Stable releases (no prerelease suffix) are considered newer than
-    prereleases of the same version number.
+    A candidate that is not a version is never newer; any version is newer
+    than a running version that cannot be read, so such a system is still
+    offered the newest release.
     """
-    c_maj, c_min, c_pat, c_pre = parse_semver(candidate)
-    r_maj, r_min, r_pat, r_pre = parse_semver(current)
-
-    c_tuple = (c_maj, c_min, c_pat)
-    r_tuple = (r_maj, r_min, r_pat)
-
-    if c_tuple > r_tuple:
-        return True
-    if c_tuple < r_tuple:
+    offered = read_version(candidate)
+    if offered is None:
         return False
-
-    # Same version number: stable > prerelease
-    if c_pre and not r_pre:
-        return False
-    if not c_pre and r_pre:
-        return True
-    # Both have prerelease: compare identifier-by-identifier per semver rule 11.4.
-    if c_pre and r_pre:
-        return _compare_prerelease(c_pre.split("."), r_pre.split(".")) > 0
-    # Both stable and same version number.
-    return False
+    running = read_version(current)
+    return running is None or offered > running
 
 
 class UpdateChecker:
@@ -193,13 +155,12 @@ class UpdateChecker:
             tag = release.get("tag_name", "")
             if not tag:
                 continue
-            if not is_valid_semver(tag):
-                # parse_semver would silently treat this as 0.0.0 and skip it, hiding
-                # a release a human might consider valid. Surface it so a mistyped or
+            if read_version(tag) is None:
+                # Surface a tag that is not a version, so a mistyped or
                 # non-standard tag is visible instead of a bare "No updates available".
                 log.warning(
-                    "Ignoring release with unparseable version tag %r "
-                    "(expected MAJOR.MINOR.PATCH); it will not be offered as an update",
+                    "Ignoring release with unparseable version tag %r (expected a "
+                    "version such as v1.2.3 or v1.2.3-rc1); it will not be offered",
                     tag,
                 )
                 continue

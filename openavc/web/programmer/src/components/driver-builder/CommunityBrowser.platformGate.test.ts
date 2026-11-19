@@ -50,6 +50,12 @@ describe("blockedByPlatform", () => {
     expect(blockedByPlatform("0.25.0-rc1", "0.25.0")).toBe("0.25.0");
   });
 
+  it("reads a release candidate in Python's spelling as one", () => {
+    // A build reporting "0.25.0rc1" is the 0.25.0-rc1 release candidate.
+    expect(blockedByPlatform("0.25.0rc1", "0.25.0")).toBe("0.25.0");
+    expect(blockedByPlatform("0.25.0rc1", "0.25.0-rc1")).toBe("");
+  });
+
   it("compares numerically, not as strings", () => {
     // "0.9.0" > "0.25.0" lexically. This is the case a string compare gets
     // wrong, and it is reachable: 0.9.x boxes exist.

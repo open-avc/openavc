@@ -8,8 +8,10 @@ The rules worth knowing before changing anything here:
   unless the catalog's version is newer. A tie keeps the installed copy,
   which may carry local corrections; a stale install never masks a newer
   catalog's fingerprints.
-* An unparseable or missing version sorts lowest (``driver_version_tuple``),
-  so a real catalog version supersedes a driver that declares none.
+* Which version is newer is the version rule's (``utils/version_rule.py``:
+  a pre-release is older than its release); an unparseable or missing
+  version sorts lowest, so a real catalog version supersedes a driver that
+  declares none.
 * A catalog index the signal-index builder rejects falls back to the
   installed drivers' hints alone, then to an empty index; the scan never
   stops for it (``signal_index_from``).
@@ -25,29 +27,21 @@ from typing import Any
 
 from openavc.discovery.hints import DiscoveryHint, build_signal_index
 from openavc.discovery.tier_matcher import DriverProfile, SignalIndex
+from openavc.utils.version_rule import read_version
 
 # The discovery engine's own log, which the IDE's log view files these lines under.
 log = logging.getLogger("discovery")
 
 
-def driver_version_tuple(version: object) -> tuple[int, int, int]:
-    """Comparable (major, minor, patch) from a driver version string like
-    ``'1.2.0'``. Unparseable or missing versions sort lowest, so a real catalog
-    version supersedes a driver that declares no usable version. Stdlib-only
-    (no regex) and never raises.
-    """
-    nums: list[int] = []
-    for part in str(version or "").split(".")[:3]:
-        digits = ""
-        for ch in part.strip():
-            if ch.isdigit():
-                digits += ch
-            else:
-                break
-        nums.append(int(digits) if digits else 0)
-    while len(nums) < 3:
-        nums.append(0)
-    return (nums[0], nums[1], nums[2])
+def _catalog_is_newer(catalog_version: object, installed_version: object) -> bool:
+    """Whether the catalog's version of a driver is newer than the installed
+    one's, by the version rule. A version that cannot be read sorts lowest, so
+    a real catalog version supersedes an install that declares none."""
+    catalog = read_version(catalog_version)
+    if catalog is None:
+        return False
+    installed = read_version(installed_version)
+    return installed is None or catalog > installed
 
 
 def _catalog_copy_is_read(entry: Any, installed_by_id: dict[str, dict[str, Any]]) -> bool:
@@ -58,9 +52,9 @@ def _catalog_copy_is_read(entry: Any, installed_by_id: dict[str, dict[str, Any]]
     if not isinstance(entry, dict) or not entry.get("id"):
         return False
     installed = installed_by_id.get(str(entry["id"]))
-    return installed is None or driver_version_tuple(
-        entry.get("version")
-    ) > driver_version_tuple(installed.get("version"))
+    return installed is None or _catalog_is_newer(
+        entry.get("version"), installed.get("version"),
+    )
 
 
 def driver_copies(
