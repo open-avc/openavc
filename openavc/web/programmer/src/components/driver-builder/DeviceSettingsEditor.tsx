@@ -19,6 +19,7 @@ import {
 import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEditor";
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { oscArgsAsText, valuesAsText } from "./fieldText";
+import { KeyValueList } from "./KeyValueList";
 
 interface DeviceSettingsEditorProps {
   draft: DriverDefinition;
@@ -514,9 +515,25 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                           })
                         }
                       />
+                      <label style={{ ...labelStyle, marginTop: "var(--space-sm)" }}>
+                        Query parameters (optional)
+                      </label>
+                      <KeyValueList
+                        values={valuesAsText(setting.write?.query_params)}
+                        onChange={(map) =>
+                          setWrite(key, {
+                            query_params: Object.keys(map).length ? map : undefined,
+                          })
+                        }
+                        keyPlaceholder="key"
+                        valuePlaceholder="e.g. {value}"
+                        monoValue
+                      />
                       <div style={helpStyle}>
-                        Body and headers support {"{value}"} and config
-                        placeholders. Set Content-Type here for non-JSON bodies.
+                        Body, headers and query parameters support {"{value}"} and
+                        config placeholders. Query parameters are added to the
+                        address as ?key=value. Set Content-Type here for non-JSON
+                        bodies.
                       </div>
                     </div>
                   ) : (

@@ -48,7 +48,7 @@ export function nextSettingKey(existing: string[]): string {
 // `address` from a previous transport shadows an HTTP/TCP write and mis-routes.
 const WRITE_KEYS_BY_TRANSPORT: Record<string, (keyof WriteDef)[]> = {
   osc: ["address", "args"],
-  http: ["method", "path", "body", "headers"],
+  http: ["method", "path", "body", "headers", "query_params"],
 };
 const TCP_WRITE_KEYS: (keyof WriteDef)[] = ["send"];
 

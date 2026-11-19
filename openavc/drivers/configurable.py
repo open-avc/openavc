@@ -98,6 +98,18 @@ def _param_wire_value(name: str, value: Any, pdef: dict[str, Any]) -> dict[str, 
     return {}
 
 
+
+def _unfilled_fix(where: str) -> str:
+    """What a placeholder nothing filled names, and the fix, by where it sits:
+    a setting's write fills from {value} and the config, a command's send
+    from what the call passed and the config."""
+    if where.startswith("device_settings."):
+        return "it names no config field and is not {value}. Declare it as a config field."
+    return (
+        "it names no parameter passed to this call and no config field. "
+        "Declare it, or pass it when calling the command."
+    )
+
 class ConfigurableDriver(
     StartUpAndPoll,
     Rereads,
@@ -517,9 +529,8 @@ class ConfigurableDriver(
             self._warned_unresolved.add((where, name))
             log.warning(
                 "[%s] %s: '{%s}' was not substituted and goes to the device "
-                "literally — it names no parameter passed to this call and no "
-                "config field. Declare it, or pass it when calling the command.",
-                self.device_id, where, name,
+                "literally — %s",
+                self.device_id, where, name, _unfilled_fix(where),
             )
         return out
 

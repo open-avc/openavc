@@ -365,3 +365,27 @@ async def test_a_placeholder_nothing_fills_is_warned_about_as_a_commands_is(
     assert (
         f"[dev1] device_settings.gain.write.{where}: '{{zonee}}' was not substituted"
     ) in caplog.text
+
+
+async def test_the_warning_for_a_write_names_its_value_and_the_config(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    transport = LineTransport()
+    write = {"send": "GAIN {zonee} {value}\r"}
+    driver = _driver(_definition("tcp", {"gain": {"write": write}}), transport)
+    with caplog.at_level("WARNING", logger="openavc.drivers.configurable"):
+        await driver.set_device_setting("gain", 2)
+    assert (
+        "it names no config field and is not {value}. Declare it as a config field."
+    ) in caplog.text
+    assert "when calling the command" not in caplog.text
+
+
+async def test_an_http_write_sends_its_query_params_filled() -> None:
+    transport = FakeHttp()
+    write = {"path": "/gain", "query_params": {"zone": "{zone}", "v": "{value}", "n": 3}}
+    driver = _driver(_definition("http", {"gain": {"write": write}}), transport)
+    await driver.set_device_setting("gain", 2)
+    ((method, path), kwargs), = transport.requests
+    assert (method, path) == ("POST", "/gain")
+    assert kwargs["params"] == {"zone": "Z1", "v": "20", "n": 3}
