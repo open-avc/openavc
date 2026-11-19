@@ -78,10 +78,15 @@ def _run_startup(tmp_path: Path):
     """
     import openavc.main as main
 
-    from openavc.middleware.startup_splash import RunState
+    from openavc.middleware.startup_splash import READY, RunState
+    from tests.listen_helpers import use_plan
 
     app = SimpleNamespace(state=SimpleNamespace(run_state=RunState()))
     cfg = SimpleNamespace(data_dir=tmp_path)
+    # Who can connect, decided as main() decides it before the start: the
+    # stand-in config holds only the data folder, so the start would
+    # otherwise fail working it out, after the confirmation these tests read.
+    use_plan("this_computer")
 
     with patch("openavc.system_config.get_system_config", return_value=cfg), \
             patch.object(main.engine, "start", new=AsyncMock()), \
@@ -91,6 +96,9 @@ def _run_startup(tmp_path: Path):
         rollback.return_value = True
         import asyncio
         asyncio.run(main._initialize_engine(app))
+    # A start that failed somewhere else would pass these tests for the wrong
+    # reason, and a failed start now waits before it ends.
+    assert app.state.run_state.phase == READY, app.state.run_state.error
     return rollback
 
 

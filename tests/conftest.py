@@ -213,6 +213,20 @@ def _isolated_system_config(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _no_service_manager():
+    """Run the session as a process nothing starts again
+    (restart.is_service_managed reads False), whatever started the test run.
+    A CI runner is itself a systemd unit, so the runner's INVOCATION_ID would
+    otherwise make every test's server look installed: a failed start would
+    wait its minute before ending, and the updater would offer to update.
+    Tests that need a service manager set it themselves (``under_its_service``)."""
+    with pytest.MonkeyPatch.context() as patch:
+        for name in ("OPENAVC_SERVICE_MANAGED", "INVOCATION_ID"):
+            patch.delenv(name, raising=False)
+        yield
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _isolated_launch_file_sweep(tmp_path_factory):
     """Point the start's sweep of leftover simulator launch files at an empty
     folder for the session. The real one is the machine's temp folder, where a
