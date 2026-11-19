@@ -45,8 +45,8 @@ describe("version rule corpus", () => {
     }
   });
 
-  it.each(corpus.unreadable.map((value) => ({ value })))(
-    "reads $value as no version",
+  it.each(corpus.unreadable.map((value) => ({ value: value, shown: String(value).slice(0, 40) })))(
+    "reads $shown as no version",
     ({ value }) => {
       expect(readVersion(value)).toBeNull();
       for (const row of rows) {

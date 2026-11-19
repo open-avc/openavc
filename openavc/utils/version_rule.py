@@ -10,7 +10,8 @@ through the ``packaging`` library on every row it reads.
 What it reads, case-insensitively and with surrounding whitespace ignored:
 
 * an optional ``v`` (a release tag, ``v0.40.0``);
-* a release of one or more numbers (``0.22`` reads the same as ``0.22.0``);
+* a release of one or more numbers of up to nine digits (``0.22`` reads the
+  same as ``0.22.0``);
 * then at most one of:
 
   - a pre-release: ``a`` / ``alpha``, ``b`` / ``beta``, or ``rc`` (also ``c``,
@@ -40,13 +41,15 @@ import re
 from dataclasses import dataclass
 from functools import total_ordering
 
+# Each number is at most nine digits, so a long run of digits is no version
+# rather than an error (int() refuses a few thousand digits).
 _VERSION_RE = re.compile(
     r"v?"
-    r"(?P<release>[0-9]+(?:\.[0-9]+)*)"
+    r"(?P<release>[0-9]{1,9}(?:\.[0-9]{1,9})*)"
     r"(?:"
-    r"[-_.]?(?P<pre_kind>alpha|a|beta|b|preview|pre|rc|c)[-_.]?(?P<pre_n>[0-9]+)?"
+    r"[-_.]?(?P<pre_kind>alpha|a|beta|b|preview|pre|rc|c)[-_.]?(?P<pre_n>[0-9]{1,9})?"
     r"|"
-    r"[-_.]?(?P<dev>dev)[-_.]?(?P<dev_n>[0-9]+)?"
+    r"[-_.]?(?P<dev>dev)[-_.]?(?P<dev_n>[0-9]{1,9})?"
     r")?",
     re.IGNORECASE | re.ASCII,
 )

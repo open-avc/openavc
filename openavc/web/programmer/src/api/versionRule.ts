@@ -17,13 +17,15 @@ export interface Version {
   dev: number | null;
 }
 
+// Each number is at most nine digits, as on the server, where a longer run
+// would not fit an integer exactly.
 const VERSION_RE = new RegExp(
   "^v?" +
-    "([0-9]+(?:\\.[0-9]+)*)" +
+    "([0-9]{1,9}(?:\\.[0-9]{1,9})*)" +
     "(?:" +
-    "[-_.]?(alpha|a|beta|b|preview|pre|rc|c)[-_.]?([0-9]+)?" +
+    "[-_.]?(alpha|a|beta|b|preview|pre|rc|c)[-_.]?([0-9]{1,9})?" +
     "|" +
-    "[-_.]?(dev)[-_.]?([0-9]+)?" +
+    "[-_.]?(dev)[-_.]?([0-9]{1,9})?" +
     ")?$",
   "i",
 );

@@ -54,7 +54,7 @@ def test_equal_versions_hash_alike():
         assert len({read_version(text) for text in cls["versions"]}) == 1, cls
 
 
-@pytest.mark.parametrize("value", UNREADABLE, ids=[repr(v) for v in UNREADABLE])
+@pytest.mark.parametrize("value", UNREADABLE, ids=[repr(v)[:40] for v in UNREADABLE])
 def test_unreadable_reads_as_none_and_compares_with_nothing(value):
     assert read_version(value) is None
     for _, text in ROWS:
