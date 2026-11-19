@@ -12,6 +12,10 @@ Detects how OpenAVC was installed to determine update behavior:
 - docker: Notification only (containers are immutable)
 - git_dev: Notification only (developer manages source)
 - unknown: Notification only
+
+Also THE exit code an applied update or rollback ends the process with, by
+install type and never by operating system (``update_exit``), which the
+updater's exit and the automatic rollback at start both ask.
 """
 
 from __future__ import annotations
