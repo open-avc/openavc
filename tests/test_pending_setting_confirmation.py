@@ -382,6 +382,9 @@ async def test_a_send_that_outlives_its_instance_leaves_the_new_watcher_alone(dm
     stands."""
     held.closing = None
     held.send_gate, held.sending = asyncio.Event(), asyncio.Event()
+    # A window longer than the test, so the replacement's watcher is still
+    # waiting when it is looked at; the stop at the end cancels it.
+    dm._confirm_window = lambda _driver: 30.0
     adding = asyncio.create_task(dm.add_device(_held_config()))
     await asyncio.wait_for(held.sending.wait(), timeout=2.0)
 
