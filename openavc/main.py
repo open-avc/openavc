@@ -74,7 +74,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
-from openavc import config, restart, runtime_flags, status_folder
+from openavc import config, restart, runtime_flags, start_retry, status_folder
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from openavc.api import simulator_proxy
 from openavc.api.host_policy import (
@@ -337,21 +337,14 @@ def _log_lan_urls(plan, local_ip: str, scheme: str, port: int) -> None:
 
 
 async def _initialize_engine(app: FastAPI) -> None:
-    """Run engine initialization in the background so HTTP serves immediately.
-
-    Every stage runs inside the one ``try`` through one ``StartRun``
-    (core/start_stages.py), the engine's own stages among them. Whatever
-    stops the start is named by its stage in the run-state record
-    (``app.state.run_state``, middleware/startup_splash.py) for the splash
-    page, and logged, never raised; the record keeps what the start went on
-    past either way.
-    """
+    """The engine's start, in the background so HTTP serves at once: every
+    stage, the engine's own too, through one ``StartRun``
+    (core/start_stages.py). The stage that stops it is named in the run-state
+    record (middleware/startup_splash.py), logged, never raised; what follows
+    is openavc/start_retry.py's. The last update is checked first."""
     run = StartRun()
+    restarts = start_retry.automatic_restarts()
     try:
-        with run.stage("working out who can connect"):
-            plan = _resolve_listen_plan()
-            _warn_if_open_without_password(plan)
-
         with run.stage("checking the last update"):
             from openavc.system_config import get_system_config
             from openavc.updater.host import get_firmware_host
@@ -359,6 +352,10 @@ async def _initialize_engine(app: FastAPI) -> None:
             if not firmware_host:
                 data_dir = get_system_config().data_dir
                 _settle_updates_before_start(data_dir)
+
+        with run.stage("working out who can connect"):
+            plan = _resolve_listen_plan()
+            _warn_if_open_without_password(plan)
 
         await engine.start(run)
 
@@ -386,9 +383,11 @@ async def _initialize_engine(app: FastAPI) -> None:
         with run.stage("logging the addresses to open"):
             _log_banner(plan)
         app.state.run_state.started(run)
+        status_folder.clear_startup_error()
     except Exception as e:
         app.state.run_state.stopped(run, e)
         log.exception("Engine startup failed: %s", app.state.run_state.error)
+        await start_retry.after_failure(engine, app.state.run_state, restarts)
 
 
 @asynccontextmanager
@@ -970,7 +969,6 @@ def main():
     sockets, plan = _bind_primary_port(plan)
     try:
         _settle_listening(plan)
-        status_folder.clear_startup_error()
         status_folder.write_server_address()
         listen_sockets.push_listeners.enable(config.HTTP_PORT)
         listen_sockets.serve_until_its_stop(_serve, sockets)

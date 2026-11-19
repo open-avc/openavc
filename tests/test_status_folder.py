@@ -143,8 +143,10 @@ def test_every_account_can_read_where_the_server_is_in_its_life(data_dir):
         assert mode & 0o044 == 0o044, (name, oct(mode))
 
 
-def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeypatch):
-    """main() writes where it listens once its sockets are bound, before serving."""
+def test_a_start_records_the_address_and_keeps_the_last_error(data_dir, monkeypatch):
+    """main() writes where it listens once its sockets are bound, before
+    serving. A failed start's reason stays until a start finishes
+    (tests/test_startup_sequence.py), through every bind before then."""
     from openavc import listen, listen_sockets
     from tests.listen_helpers import ETHERNET, plan_for
 
@@ -170,7 +172,7 @@ def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeyp
     assert bound == [8090]
     assert served == [[listener]]
     listener.close.assert_called_once_with()
-    assert not (data_dir / "status" / "startup-error.json").exists()
+    assert "an earlier failure" in (data_dir / "status" / "startup-error.json").read_text(encoding="utf-8")
     recorded = json.loads((data_dir / "status" / "server.json").read_text(encoding="utf-8"))
     assert recorded["http_port"] == 8090
     # Where it really listens: the bind refused the adapter's address, so
@@ -428,6 +430,23 @@ def test_the_tray_tooltip_keeps_the_reason_s_first_paragraph_within_the_limit(da
     assert tray.shown == [("OpenAVC could not start", PORT_IN_USE)]
 
 
+def test_the_tray_shows_a_failure_once_through_the_service_s_retries(data_dir, monkeypatch):
+    """The service manager starts a failed start again; the same reason each
+    time is not shown again until the server has run."""
+    status_folder.write_run_state(FAILED, "1.2.3", "the failure")
+    tray = _polled_tray(monkeypatch, None)
+    for phase in (STARTING, FAILED, STARTING, FAILED):
+        status_folder.write_run_state(phase, "1.2.3", "the failure" if phase == FAILED else None)
+        tray._poll_once()
+    assert [message for _, message in tray.shown] == ["the failure"]
+
+    monkeypatch.setattr(tray_mod, "_api_get", lambda path, cfg, timeout=3.0: {"status": "healthy"})
+    tray._poll_once()
+    monkeypatch.setattr(tray_mod, "_api_get", lambda path, cfg, timeout=3.0: None)
+    tray._poll_once()
+    assert [message for _, message in tray.shown] == ["the failure", "the failure"]
+
+
 def test_the_tray_shows_the_next_start_s_failure_too(data_dir, monkeypatch):
     status_folder.write_run_state(FAILED, "1.2.3", "the first failure")
     tray = _polled_tray(monkeypatch, None)
@@ -478,14 +497,33 @@ class _MenuBar(SimpleNamespace):
             _base="http://localhost:8080",
             title="OpenAVC",
             _status_item=SimpleNamespace(title="Starting..."),
+            _failure_notice=menubar_mod.status_reader.FailureNotice(),
         )
 
 
 def _menu_line(monkeypatch, health: dict | None) -> str:
     monkeypatch.setattr(menubar_mod, "_api_get", lambda path, cfg, timeout=3.0: health)
+    monkeypatch.setattr(menubar_mod.rumps, "alert", lambda **kw: None, raising=False)
     app = _MenuBar()
     menubar_mod.OpenAVCMenuBar._poll(app, None)
     return app._status_item.title
+
+
+def test_the_menu_bar_shows_a_failure_once_through_the_service_s_retries(data_dir, monkeypatch):
+    shown = []
+    monkeypatch.setattr(menubar_mod, "_api_get", lambda path, cfg, timeout=3.0: None)
+    monkeypatch.setattr(menubar_mod.rumps, "alert", lambda **kw: shown.append(kw), raising=False)
+    app = _MenuBar()
+    for phase in (FAILED, STARTING, FAILED):
+        status_folder.write_run_state(phase, "1.2.3", "the failure" if phase == FAILED else None)
+        menubar_mod.OpenAVCMenuBar._poll(app, None)
+    status_folder.write_run_state(FAILED, "1.2.3", "another failure")
+    menubar_mod.OpenAVCMenuBar._poll(app, None)
+
+    assert shown == [
+        {"title": "OpenAVC could not start", "message": "the failure"},
+        {"title": "OpenAVC could not start", "message": "another failure"},
+    ]
 
 
 @pytest.mark.parametrize("phase, line", [

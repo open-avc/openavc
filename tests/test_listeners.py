@@ -419,7 +419,9 @@ def test_plain_http_serves_alone_on_the_bound_sockets(started):
 
     assert started.binds == [(8080, {"retries": 1})]
     assert started.calls == [
-        ("set_current", started.plan), ("noted", "any"), ("cleared",), ("address",),
+        # The last failed start's reason is not cleared here: it stays until a
+        # start finishes (tests/test_startup_sequence.py).
+        ("set_current", started.plan), ("noted", "any"), ("address",),
         ("push", 8080), ("close", ["sock"]),
     ]
     (cfg,) = started.configs

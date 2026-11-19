@@ -346,22 +346,17 @@ class OpenAVCTray:
         self._update_available: str = ''
         self._listen_problem: str = ''
         self._startup_error: str = ''
-        self._error_shown: bool = False
+        self._failure_notice = status_reader.FailureNotice()
 
     def _note_run_state(self, run: dict) -> None:
         """Take where the server is in its life from the status folder, while
         /api/health does not answer that it is running. A failed start's
-        reason is shown in a dialog once, until a start gets past it."""
+        reason is shown in a dialog once for each reason, through the
+        service manager's retries, until the server runs again."""
         self._server_status = run['phase']
         self._version = run['version'] or self._version
-        if run['phase'] != FAILED:
-            if run['phase'] != STOPPED:
-                self._error_shown = False
-            self._startup_error = ''
-            return
-        self._startup_error = run['error']
-        if not self._error_shown:
-            self._error_shown = True
+        self._startup_error = run['error'] if run['phase'] == FAILED else ''
+        if self._failure_notice.due(run):
             threading.Thread(
                 target=_show_error_dialog,
                 args=('OpenAVC could not start', run['error'] or 'The reason was not recorded.'),
@@ -379,7 +374,7 @@ class OpenAVCTray:
             self._server_status = 'running'
             self._version = health.get('version', self._version)
             self._startup_error = ''
-            self._error_shown = False
+            self._failure_notice.running()
             devices = health.get('devices', {})
             total = devices.get('total', 0)
             connected = devices.get('connected', 0)

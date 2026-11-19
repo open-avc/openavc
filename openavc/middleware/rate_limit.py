@@ -125,6 +125,19 @@ _OPEN_EXACT = {
 }
 _OPEN_PREFIXES = ()
 
+# Strict tier POSTs named whole (the classifier's strict block has the rest).
+_STRICT_POST_EXACT = {
+    "/api/auth/session",
+    # A panel lock PIN is six digits and the door is open by necessity, so it
+    # is only a lock while guessing costs something.
+    "/api/panel/unlock",
+    # The admin password typed on a waiting panel. A wrong one is a 401, which
+    # feeds the brute-force counter like every other sign-in.
+    "/api/panel/access/claim",
+    # Start again on a failed start's page: open, and each one a restart.
+    "/api/start-again",
+}
+
 # Control-tier request families, matched on whole leading path SEGMENTS.
 #
 # Two things this buys over the substring list it replaces. First, a tier can
@@ -247,15 +260,7 @@ def _classify(method: str, path: str) -> str:
 
     # Strict tier: security-sensitive operations
     if method == "POST":
-        if path == "/api/auth/session":
-            return "strict"
-        # A panel lock PIN is six digits and the door is open by necessity, so
-        # it is only a lock while guessing costs something.
-        if path == "/api/panel/unlock":
-            return "strict"
-        # The admin password typed on a waiting panel. A wrong one is a 401,
-        # which feeds the brute-force counter like every other sign-in.
-        if path == "/api/panel/access/claim":
+        if path in _STRICT_POST_EXACT:
             return "strict"
         if path.startswith("/api/cloud/"):
             return "strict"

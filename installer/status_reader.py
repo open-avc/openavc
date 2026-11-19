@@ -104,6 +104,28 @@ def read_run_state(run_state_file: Path, error_file: Path) -> dict:
     return {'phase': phase, 'version': version, 'error': '', 'running': True}
 
 
+class FailureNotice:
+    """When to put a failed start's reason in front of the person: once for
+    each reason, until the server runs again. A service manager starts a
+    failed start again a few times (openavc/start_retry.py), and the same
+    failure each time is not news; a different reason is."""
+
+    def __init__(self) -> None:
+        self._shown: str | None = None
+
+    def due(self, run: dict) -> bool:
+        """Whether to show ``run``'s reason now (``read_run_state``'s
+        answer); True once for each reason while it fails."""
+        if run['phase'] != FAILED or run['error'] == self._shown:
+            return False
+        self._shown = run['error']
+        return True
+
+    def running(self) -> None:
+        """The server answers that it is running: the next failure is news."""
+        self._shown = None
+
+
 def reason_summary(message: str) -> str:
     """A failed start's reason on one line: its first paragraph (the remedy
     after it is for a dialog)."""

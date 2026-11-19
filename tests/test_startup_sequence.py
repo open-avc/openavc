@@ -1,12 +1,15 @@
 """What the server does in the background between its HTTP listener coming up
 and the engine being ready (``openavc.main._initialize_engine``).
 
-In order: who can connect (and the warning when that is the network with no
-password), the update work before the engine starts (a failed update rolled
-back, stale update records swept), the engine start and what a failure leaves
+In order: the update work before the engine starts (a failed update rolled
+back, stale update records swept), who can connect (and the warning when that
+is the network with no password), the engine start and what a failure leaves
 for the splash page, the update confirmation, discovery's driver hints, the
 restart wiring, the listen watcher and the banner. Each test drives the real
 function with the engine stubbed; nothing here starts a device or a listener.
+The boot has no service manager unless a test gives it one, so a failed start
+waits on the splash page at once (what follows a failed start under one is
+tests/test_start_retry.py's).
 """
 
 from __future__ import annotations
@@ -49,6 +52,17 @@ def _plan(**overrides):
     return SimpleNamespace(**plan)
 
 
+def _no_service_manager(monkeypatch, tmp_path) -> None:
+    """Nothing starts this process again (tests/test_start_retry.py gives the
+    boot one where it matters)."""
+    from openavc.updater import platform
+
+    monkeypatch.delenv("OPENAVC_SERVICE_MANAGED", raising=False)
+    monkeypatch.delenv("INVOCATION_ID", raising=False)
+    monkeypatch.setattr(platform, "_is_docker", lambda: False)
+    monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", tmp_path / "no-marker")
+
+
 @pytest.fixture
 def boot(monkeypatch, tmp_path):
     """_initialize_engine against a stub engine, with every updater call it
@@ -69,6 +83,7 @@ def boot(monkeypatch, tmp_path):
         stopping=False,
         events=SimpleNamespace(on=Mock(), emit=AsyncMock()),
         get_status=Mock(return_value={"local_ip": ""}),
+        start_failed=Mock(),
     )
     monkeypatch.setattr(main, "engine", engine)
     monkeypatch.setattr(
@@ -82,6 +97,8 @@ def boot(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "list_registered_drivers", lambda: ["acme_widget"])
     system = SimpleNamespace(data_dir=tmp_path)
     monkeypatch.setattr("openavc.system_config.get_system_config", lambda: system)
+    monkeypatch.setattr("openavc.system_config.get_data_dir", lambda: tmp_path)
+    _no_service_manager(monkeypatch, tmp_path)
     monkeypatch.setattr("openavc.updater.host.get_firmware_host", lambda: None)
     monkeypatch.setattr(
         "openavc.updater.rollback.check_rollback_needed",
@@ -146,6 +163,7 @@ async def test_a_good_boot_checks_sweeps_starts_then_confirms(boot):
     assert boot.calls["confirm_startup"] == [((boot.data_dir,), {})]
     assert boot.app.state.run_state.answer() == {
         "phase": READY, "ready": True, "version": __version__, "error": None, "problems": [],
+        "held": False, "retry_in": None,
     }
 
 
@@ -336,6 +354,8 @@ async def test_an_engine_that_fails_to_start_leaves_its_stage_and_error_for_the_
         "version": __version__,
         "error": "Loading the project failed: project unreadable",
         "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
+        "held": True,
+        "retry_in": None,
     }
     assert "confirm_startup" not in boot.order
     assert (
@@ -343,6 +363,38 @@ async def test_an_engine_that_fails_to_start_leaves_its_stage_and_error_for_the_
         in [r.getMessage() for r in caplog.records]
     )
     assert not hasattr(boot.engine, "listen_watcher")
+    # system.started reads False, whichever stage stopped the start.
+    boot.engine.start_failed.assert_called_once_with()
+    # The door is armed: Start again and a restart from the cloud are taken.
+    assert restart_door._engine is boot.engine
+
+
+async def test_the_last_update_is_checked_before_anything_else_can_stop_the_start(
+        boot, monkeypatch):
+    """An update whose next start fails at any later stage is rolled back by
+    the start after it."""
+    monkeypatch.setattr(main, "_resolve_listen_plan", Mock(side_effect=RuntimeError("no adapters")))
+
+    await boot.run()
+
+    assert boot.order == ["check_rollback_needed", "clear_stale_rollback_marker"]
+    assert boot.app.state.run_state.error == "Working out who can connect failed: no adapters"
+
+
+async def test_a_failed_start_s_reason_stays_until_a_start_finishes(boot, monkeypatch):
+    from openavc import status_folder
+
+    reason = boot.data_dir / "status" / status_folder.STARTUP_ERROR_FILE_NAME
+    status_folder.write_run_state(FAILED, __version__, "an earlier failure")
+    monkeypatch.setattr(main, "_load_discovery_hints", Mock(side_effect=RuntimeError("no index")))
+    await boot.run()
+    # A start that fails clears nothing (this boot's record reports nowhere).
+    assert "an earlier failure" in reason.read_text(encoding="utf-8")
+
+    restart_door.reset()
+    monkeypatch.setattr(main, "_load_discovery_hints", Mock())
+    await boot.run()
+    assert not reason.exists()
 
 
 async def test_a_stage_of_the_servers_own_that_stops_the_start_is_named(boot, monkeypatch):
@@ -356,6 +408,8 @@ async def test_a_stage_of_the_servers_own_that_stops_the_start_is_named(boot, mo
         "version": __version__,
         "error": "Loading the drivers' discovery data failed: no index",
         "problems": [],
+        "held": True,
+        "retry_in": None,
     }
 
 
@@ -373,6 +427,8 @@ async def test_a_start_that_went_on_past_a_stage_is_ready_and_keeps_it(boot):
         "version": __version__,
         "error": None,
         "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
+        "held": False,
+        "retry_in": None,
     }
 
 

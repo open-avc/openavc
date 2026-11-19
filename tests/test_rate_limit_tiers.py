@@ -50,6 +50,8 @@ EXPECTED_STRICT = {
     ("POST", "/api/project/export"),
     ("POST", "/api/library/{project_id}/export"),
     ("POST", "/api/library/{project_id}/logins"),
+    # Start again on a failed start's page: open, and each one a restart.
+    ("POST", "/api/start-again"),
 }
 
 # Commissioning operations. Every non-GET route under the control roots lands

@@ -64,6 +64,12 @@ from openavc.main import app
 # /simulator/api/ -- is authenticated, and the simulator process it proxies is
 # bound to loopback. GET and HEAD only (HEAD is filtered out below, like
 # every other route's); nothing here changes state.
+#
+# Start again is open because it is pressed on the page a failed start shows,
+# the room's panel included, where nobody is signed in: the same reach as the
+# power switch. It answers only a failed start (a server that is starting,
+# running or stopping refuses it), only from OpenAVC's own page (a header a
+# page on another site cannot send), and sits on the strict rate tier.
 EXPECTED_OPEN = {
     ("DELETE", "/api/auth/session"),
     ("GET", "/"),
@@ -100,6 +106,7 @@ EXPECTED_OPEN = {
     ("POST", "/api/panel/unlock"),
     ("POST", "/api/push/{device_id}"),
     ("POST", "/api/push/{device_id}/{label}"),
+    ("POST", "/api/start-again"),
     ("POST", "/api/system/network/hostname"),
     ("POST", "/api/system/network/ipv4"),
     ("POST", "/api/system/network/wifi/connect"),

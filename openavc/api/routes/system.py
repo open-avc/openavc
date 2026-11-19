@@ -13,7 +13,7 @@ from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerR
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBasicCredentials
 
-from openavc import restart
+from openavc import restart, start_retry
 from openavc.api._engine import _get_engine
 from openavc.core.device_records import DISABLED, ORPHANED
 from openavc.core.host_policy import HostCategory
@@ -52,6 +52,24 @@ async def startup_status(request: Request) -> dict[str, Any]:
     (middleware/startup_splash.py), which answers this route itself until
     then."""
     return startup_splash.startup_status(request.app)
+
+
+@open_router.post("/start-again", status_code=202)
+@endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
+async def start_again(request: Request) -> dict[str, Any]:
+    """Start again, on the splash page of a start that failed: this process
+    ends and the next start makes a whole new attempt (openavc/start_retry.py).
+    The page sends ``startup_splash.START_AGAIN_HEADER``, which a page on
+    another site cannot, so a request without it is refused (403). Refused
+    with 409 unless the start failed, or while a restart is already under
+    way. The splash lets this one route through before the start has
+    finished."""
+    if request.headers.get(startup_splash.START_AGAIN_HEADER) != "1":
+        raise HTTPException(403, "Press Start again on OpenAVC's own page.")
+    answer = start_retry.start_again(getattr(request.app.state, "run_state", None))
+    if not answer.accepted:
+        raise HTTPException(409, answer.sentence)
+    return {"status": "starting_again", "wait_seconds": answer.wait_seconds}
 
 
 @open_router.get("/status")

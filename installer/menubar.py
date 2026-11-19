@@ -157,6 +157,16 @@ def _status_line(run: dict) -> str:
     return f"v{run['version']} - {label}" if run["version"] else label
 
 
+def _alert_failure_once(notice, run: dict) -> None:
+    """A failed start's reason in an alert, once for each reason through the
+    service's retries, until the server runs again (status_reader.FailureNotice)."""
+    if notice.due(run):
+        rumps.alert(
+            title="OpenAVC could not start",
+            message=run["error"] or "The reason was not recorded.",
+        )
+
+
 def _base_url(cfg: dict) -> str:
     if cfg.get("tls_enabled"):
         return f"https://localhost:{cfg['tls_port']}"
@@ -221,6 +231,7 @@ class OpenAVCMenuBar(rumps.App):
         self._base = _base_url(self._cfg)
         self._status_item = rumps.MenuItem("Starting...")
         self._status_item.set_callback(None)  # non-clickable status line
+        self._failure_notice = status_reader.FailureNotice()
         self.menu = [
             self._status_item,
             None,
@@ -281,9 +292,12 @@ class OpenAVCMenuBar(rumps.App):
             elif total:
                 label += f" - {connected}/{total} devices online"
             self._status_item.title = label
+            self._failure_notice.running()
         else:
             self.title = "OpenAVC"
-            self._status_item.title = _status_line(_run_state())
+            run = _run_state()
+            self._status_item.title = _status_line(run)
+            _alert_failure_once(self._failure_notice, run)
 
     def _open_programmer(self, _) -> None:
         webbrowser.open(f"{self._base}/programmer")

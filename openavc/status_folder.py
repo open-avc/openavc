@@ -14,10 +14,13 @@ installer/status_reader.py, which names the phases; tests/test_status_folder.py
 holds the two ends together. The container's health check reads where the
 server listens through ``read_server_address`` (openavc/health_probe.py).
 
-Three files: where the server listens (server.json, at every start once bound),
+Four files: where the server listens (server.json, at every start once bound),
 where it is in its life (run-state.json, at each phase the run-state record
-reaches, and at a port's or TLS's failure, which comes before any record), and
-why its start failed (startup-error.json, written only with that phase).
+reaches, and at a port's or TLS's failure, which comes before any record), why
+its start failed (startup-error.json, written only with that phase, and kept
+until a start finishes: ``clear_startup_error``), and how many times in a row a
+failed start has ended for its service manager to start it again
+(start-retries.json, openavc/start_retry.py's record, taken by the next start).
 run-state.json's ``pid`` and ``timestamp`` (with its UTC offset) tell a reader
 a file the process left behind when it ended or was killed: its process is
 gone, or it was written before the computer last started.
@@ -35,6 +38,7 @@ STATUS_DIR_NAME = "status"
 STARTUP_ERROR_FILE_NAME = "startup-error.json"
 SERVER_ADDRESS_FILE_NAME = "server.json"
 RUN_STATE_FILE_NAME = "run-state.json"
+START_RETRY_FILE_NAME = "start-retries.json"
 STATUS_FILE_MODE = 0o644
 # What a start that a stage of its own stopped is filed under (a port or TLS
 # failure names its own).
@@ -89,13 +93,49 @@ def _write_startup_error(error_type: str, message: str) -> None:
 
 
 def clear_startup_error() -> None:
-    """Remove the startup error file on successful start."""
+    """Remove a failed start's reason, once a start has finished: it stays
+    through every start before then, a retry's included."""
     try:
         error_file = _status_dir() / STARTUP_ERROR_FILE_NAME
         if error_file.exists():
             error_file.unlink()
     except OSError:
         pass
+
+
+def write_start_retry(record: dict) -> None:
+    """Record that a failed start is ending for its service manager to start
+    it again (openavc/start_retry.py writes and reads what is in it). Never
+    raises."""
+    from openavc.utils.fileio import atomic_write_text
+    try:
+        status_dir = _status_dir()
+        status_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            status_dir / START_RETRY_FILE_NAME, json.dumps(record), mode=STATUS_FILE_MODE,
+        )
+    except OSError:
+        pass
+
+
+def take_start_retry() -> dict | None:
+    """The record a failed start left as it ended for a retry, removed so no
+    later start reads it again; None when there is none or it cannot be
+    read."""
+    path = _status_dir() / START_RETRY_FILE_NAME
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    try:
+        record = json.loads(text)
+    except ValueError:
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def write_server_address() -> None:

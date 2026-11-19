@@ -164,7 +164,7 @@ If an update causes problems, you can roll back to the previous version.
 
 ### Automatic Rollback
 
-If the server crashes immediately after an update (fails to start twice in a row), it automatically restores the previous version and your backed-up project data. Projects in the normal `projects/` folder keep the replaced files in `projects.pre-rollback`. Projects stored elsewhere, including on appliance hardware, restore their backed-up files in place. Existing project-folder links (symbolic links, or junctions on Windows) are preserved. No action needed.
+If the new version fails to start twice in a row, the server automatically restores the previous version and your backed-up project data. On every install type this needs no one: a failed start shows its reason for about a minute, then the server starts again by itself, and that second failure is what rolls the update back. Projects in the normal `projects/` folder keep the replaced files in `projects.pre-rollback`. Projects stored elsewhere, including on appliance hardware, restore their backed-up files in place. Existing project-folder links (symbolic links, or junctions on Windows) are preserved. No action needed.
 
 An update counts as good the moment the new version finishes starting up, so restarting or power-cycling the system after an update never undoes it. Only a version that cannot get itself running is rolled back.
 

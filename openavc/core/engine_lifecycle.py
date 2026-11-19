@@ -658,6 +658,13 @@ class EngineLifecycleMixin:
     def _mark_stopped(self) -> None:
         self.state.set("system.started", False, source="system")
 
+    def start_failed(self) -> None:
+        """A start that stopped short reads as not started: ``system.started``
+        is said True before the start's last stages (``start``) and the
+        server's own (``openavc.main``), so a stage after it that stops the
+        start would otherwise leave it True."""
+        self._mark_stopped()
+
     def _flush_persister(self) -> None:
         if self.persister:
             self.persister.flush()

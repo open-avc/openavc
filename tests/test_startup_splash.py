@@ -66,7 +66,7 @@ def test_while_starting_the_status_route_reports_not_ready():
     assert reply.status_code == 200
     assert reply.json() == {
         "phase": STARTING, "ready": False, "version": __version__,
-        "error": None, "problems": [],
+        "error": None, "problems": [], "held": False, "retry_in": None,
     }
 
 
@@ -78,6 +78,8 @@ def test_a_failed_start_reports_its_stage_and_error_to_the_splash():
         "version": __version__,
         "error": "Loading the project failed: project unreadable",
         "problems": [],
+        "held": False,
+        "retry_in": None,
     }
 
 
@@ -93,7 +95,7 @@ def test_while_starting_a_page_is_the_splash():
     assert reply.headers["content-type"].startswith("text/html")
     assert "<title>OpenAVC</title>" in reply.text
     assert "Starting up..." in reply.text
-    assert "fetch('/api/startup-status')" in reply.text
+    assert "fetch('/api/startup-status'" in reply.text
 
 
 def test_a_path_merely_starting_with_api_is_not_the_api():
@@ -117,6 +119,8 @@ def test_once_ready_the_status_route_answers_what_the_start_went_on_past():
         "version": __version__,
         "error": None,
         "problems": [{"stage": "plugins", "detail": "The plugins did not start."}],
+        "held": False,
+        "retry_in": None,
     }
 
 
@@ -126,7 +130,7 @@ def test_an_app_that_never_ran_the_lifespan_passes_through():
     assert client.get("/api/health").json() == {"status": "healthy"}
     assert client.get("/api/startup-status").json() == {
         "phase": READY, "ready": True, "version": __version__,
-        "error": None, "problems": [],
+        "error": None, "problems": [], "held": False, "retry_in": None,
     }
 
 

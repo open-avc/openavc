@@ -17,7 +17,10 @@ its own surface instead.
 ``/api/startup-status`` answers it (``startup_status``): from here while the
 start runs, from the route once it has finished, with the same fields.
 ``ready`` is the phase being ready, for the IDE's wait and the splash page's
-poll. ``/api/health`` answers 503 with the phase whenever the phase is not
+poll. After a failed start, ``held`` says it stays on the splash page until
+someone presses Start again, and ``retry_in`` how many seconds until the
+process ends for its service manager to start it again (openavc/start_retry.py
+decides which; appliance hardware's device supervisor reads both). ``/api/health`` answers 503 with the phase whenever the phase is not
 ready (``health_answer``), so a monitor, a container's health check and the
 tray hear of a start, a failed start and a stop alike.
 
@@ -26,13 +29,19 @@ engine in the background so a browser gets an answer at once). Until the
 start has finished, the rest of the API answers 503 (the engine has no
 project yet), and every other path gets the splash page itself, which polls
 ``/api/startup-status`` and reloads once the engine is ready or shows the
-error that stopped it. Once it has finished, the API is served on through the
-stop: a save made in a restart's wait still reaches its route. An app whose
-lifespan made no record passes everything through.
+error that stopped it, then keeps asking, so a start the service manager makes
+afterwards reaches a screen already showing the failure. Its Start again
+button posts to ``START_AGAIN_PATH``, the one route let through before the
+start has finished (it answers only a failed start). Once it has finished, the
+API is served on through the stop: a save made in a restart's wait still
+reaches its route. An app whose lifespan made no record passes everything
+through.
 """
 
 from __future__ import annotations
 
+import math
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -52,6 +61,12 @@ READY = "ready"
 FAILED = "failed"
 STOPPING = "stopping"
 PHASES: tuple[str, ...] = (STARTING, READY, FAILED, STOPPING)
+
+# Start again on the splash page of a failed start (api/routes/system.py),
+# and the header the page sends with it: a page on another site cannot send
+# one, so only OpenAVC's own page can press it.
+START_AGAIN_PATH = "/api/start-again"
+START_AGAIN_HEADER = "X-OpenAVC-Start-Again"
 
 # What the record tells at each phase it reaches: the phase, the version that
 # started, and the start's error with a failed start (None otherwise).
@@ -78,6 +93,10 @@ class RunState:
         # The start has finished: the API is served from here, on through the
         # stop. Not the phase, which a stop moves on from ready.
         self._finished = False
+        # After a failed start: whether it stays on the splash page, and when
+        # (time.monotonic()) the process ends to be started again.
+        self._held = False
+        self._retry_at: float | None = None
         self._report = report
         self._tell()
 
@@ -107,6 +126,20 @@ class RunState:
         """The server is on its way down; said once, whoever says it first."""
         self._reach(STOPPING)
 
+    def hold(self) -> None:
+        """The failed start stays on the splash page until Start again."""
+        self._held, self._retry_at = True, None
+
+    def retrying(self, seconds: float) -> None:
+        """The process ends in ``seconds`` for its service manager to start
+        it again."""
+        self._held, self._retry_at = False, time.monotonic() + seconds
+
+    def _retry_in(self) -> int | None:
+        if self._retry_at is None or self.phase != FAILED:
+            return None
+        return max(0, math.ceil(self._retry_at - time.monotonic()))
+
     def _reach(self, phase: str) -> None:
         if self.phase in (phase, STOPPING):
             return
@@ -128,6 +161,8 @@ class RunState:
             "version": self.version,
             "error": self.error,
             "problems": [problem.answer() for problem in self.problems],
+            "held": self._held and self.phase == FAILED,
+            "retry_in": self._retry_in(),
         }
 
     def health_answer(self) -> dict[str, Any]:
@@ -153,7 +188,7 @@ def startup_status(app) -> dict[str, Any]:
     if record is None:
         return {
             "phase": READY, "ready": True, "version": __version__,
-            "error": None, "problems": [],
+            "error": None, "problems": [], "held": False, "retry_in": None,
         }
     return record.answer()
 
@@ -187,40 +222,113 @@ _STARTUP_PAGE = """\
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .message { font-size: 1rem; opacity: 0.6; }
+  .failed .message { opacity: 1; font-weight: 600; }
   .error {
-    color: #F44336; opacity: 1; margin-top: 1rem;
-    max-width: 500px; word-break: break-word;
+    color: #F44336; margin-top: 1rem;
+    max-width: 500px; word-break: break-word; white-space: pre-line;
   }
+  .next { margin-top: 1rem; opacity: 0.6; }
+  button {
+    margin-top: 1.5rem; padding: 0.75rem 1.75rem;
+    font: inherit; font-weight: 600; color: #1a1a2e;
+    background: #8AB493; border: 0; border-radius: 6px; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="container">
+<div class="container" id="container">
   <div class="logo">Open<span>AVC</span></div>
   <div class="spinner" id="spinner"></div>
   <div class="message" id="message">Starting up...</div>
+  <div class="error" id="error" hidden></div>
+  <div class="next" id="next" hidden></div>
+  <button type="button" id="again" hidden>Start again</button>
 </div>
 <script>
 (function() {
+  var box = document.getElementById('container');
   var msg = document.getElementById('message');
   var spinner = document.getElementById('spinner');
+  var error = document.getElementById('error');
+  var next = document.getElementById('next');
+  var again = document.getElementById('again');
+  var failedBefore = false;
+
+  function starting(text) {
+    box.className = 'container';
+    spinner.hidden = false;
+    msg.textContent = text;
+    error.hidden = true;
+    next.hidden = true;
+    again.hidden = true;
+  }
+
+  function failed(d) {
+    failedBefore = true;
+    box.className = 'container failed';
+    spinner.hidden = true;
+    msg.textContent = 'OpenAVC could not start';
+    error.textContent = d.error;
+    error.hidden = false;
+    if (d.held) {
+      next.textContent = 'Fix the problem above, then press Start again.';
+      next.hidden = false;
+      again.hidden = false;
+    } else if (d.retry_in !== null && d.retry_in !== undefined) {
+      next.textContent = 'Trying again in ' + d.retry_in + ' seconds.';
+      next.hidden = false;
+      again.hidden = true;
+    } else {
+      next.hidden = true;
+      again.hidden = true;
+    }
+  }
+
+  // Keeps asking after a failure too: the next start reaches this screen.
   function check() {
-    fetch('/api/startup-status').then(function(r) { return r.json(); }).then(function(d) {
+    fetch('/api/startup-status', { cache: 'no-store' }).then(function(r) {
+      return r.json();
+    }).then(function(d) {
       if (d.ready) {
         location.reload();
-      } else if (d.error) {
-        spinner.style.display = 'none';
-        msg.textContent = 'Startup failed';
-        var err = document.createElement('div');
-        err.className = 'error';
-        err.textContent = d.error;
-        msg.parentNode.appendChild(err);
-      } else {
-        setTimeout(check, 500);
+        return;
       }
+      if (d.phase === 'failed' && d.error) {
+        failed(d);
+      } else {
+        starting(failedBefore ? 'Starting again...' : 'Starting up...');
+      }
+      setTimeout(check, 1000);
     }).catch(function() {
+      if (failedBefore) {
+        starting('Starting again...');
+      }
       setTimeout(check, 1000);
     });
   }
+
+  again.addEventListener('click', function() {
+    again.disabled = true;
+    fetch('/api/start-again', {
+      method: 'POST', cache: 'no-store', headers: { 'X-OpenAVC-Start-Again': '1' }
+    }).then(function(r) {
+      return r.json().then(function(d) {
+        if (r.ok) {
+          starting('Starting again...');
+        } else {
+          next.textContent = d.detail || 'Start again did not work. Restart the OpenAVC service.';
+          next.hidden = false;
+        }
+      });
+    }).catch(function() {
+      starting('Starting again...');
+    }).then(function() {
+      again.disabled = false;
+    });
+  });
+
   setTimeout(check, 500);
 })();
 </script>
@@ -238,22 +346,25 @@ class StartupSplashMiddleware(BaseHTTPMiddleware):
         if record is None:
             return await call_next(request)
 
-        path = request.url.path
-        if path == "/api/health" and not record.ready:
+        if request.url.path == "/api/health" and not record.ready:
             return JSONResponse(record.health_answer(), status_code=503)
         if record.serving:
             return await call_next(request)
+        return await _before_the_start_finishes(request, record, call_next)
 
-        # Startup status endpoint — always available
-        if path == "/api/startup-status":
-            return JSONResponse(record.answer())
 
-        # Block API routes during startup (engine.project is None, etc.)
-        if path.startswith("/api/"):
-            return JSONResponse(
-                {"detail": "Server is starting up"},
-                status_code=503,
-            )
-
-        # Serve splash page for all UI routes
-        return HTMLResponse(_STARTUP_PAGE, status_code=503)
+async def _before_the_start_finishes(request: Request, record: RunState, call_next):
+    """The answer to anything asked before the start has finished."""
+    path = request.url.path
+    # Startup status endpoint — always available
+    if path == "/api/startup-status":
+        return JSONResponse(record.answer())
+    # Start again, the one route reached before the start has finished: it
+    # answers only a failed start.
+    if path == START_AGAIN_PATH and request.method == "POST":
+        return await call_next(request)
+    # Block API routes during startup (engine.project is None, etc.)
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "Server is starting up"}, status_code=503)
+    # Serve splash page for all UI routes
+    return HTMLResponse(_STARTUP_PAGE, status_code=503)

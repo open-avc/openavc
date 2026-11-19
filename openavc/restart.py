@@ -9,6 +9,11 @@ arms the door with ``accept_restarts`` once the engine is up), and whether a
 restart or a stop is already under way. Each asker answers from what it
 decided (``ExitAnswer``): the REST route's status and delay, the cloud's
 result. A request is refused only here, and the same way at every door.
+After a start that failed, openavc/start_retry.py arms the door too (Start
+again on the splash page and a restart from the cloud take it), and ends the
+process for a retry through ``exit_to_retry``: the same stop, a different exit
+code (``RETRY_EXIT_CODE``), and nothing said on the run-state record, whose
+failed phase stands for the tray until the next start writes its own.
 
 An accepted request ends this process. Whatever manages it (NSSM, systemd,
 launchd, Docker's restart policy, appliance hardware's device supervisor)
@@ -69,6 +74,12 @@ MODES: tuple[str, ...] = tuple(WAIT_SECONDS)
 # What a request that names no mode gets.
 DEFAULT_MODE = "graceful"
 
+# What a process ends with when a failed start is tried again
+# (``exit_to_retry``): not 0, so a service manager records a failure, and not
+# 42, which tells NSSM to leave the service stopped (installer/install-service.bat).
+# EX_TEMPFAIL: a failure that may pass, so try again.
+RETRY_EXIT_CODE = 75
+
 # Why a request was refused, for the asker's door to answer with: the REST
 # route turns each into its HTTP status.
 UNKNOWN_MODE = "unknown_mode"
@@ -107,7 +118,7 @@ def accept_restarts(engine, run_state=None) -> None:
     """Arm the door: from now on an accepted request stops ``engine`` and
     says stopping on ``run_state``, the server's run-state record (none on a
     server that keeps none). ``openavc.main`` calls it once the engine is
-    up."""
+    up, and openavc/start_retry.py after a start that failed."""
     global _engine, _run_state
     _engine = engine
     _run_state = run_state
@@ -169,17 +180,37 @@ def _refuse(source: str, mode: Any, refusal: str, sentence: str) -> ExitAnswer:
     )
 
 
+def exit_to_retry() -> bool:
+    """End the process after a start that failed, for its service manager to
+    start it again (openavc/start_retry.py decides when): the stop an accepted
+    restart runs, exiting with ``RETRY_EXIT_CODE``. Nothing is said on the
+    run-state record, so its failed phase stands for the tray and the menu
+    bar until the next start writes its own. False, and nothing done, when the
+    door is not armed or an exit or a stop is already under way (Start again
+    pressed during the wait, a service stop)."""
+    engine = _engine
+    if engine is None:
+        return False
+    if _exiting or engine.stopping:
+        return False
+    log.warning("Startup failed; stopping so the service manager starts it again")
+    exiting = asyncio.create_task(_stop_and_exit(engine, RETRY_EXIT_CODE))
+    _exiting.add(exiting)
+    exiting.add_done_callback(_exiting.discard)
+    return True
+
+
 async def _exit_after(wait: int, engine) -> None:
     await asyncio.sleep(wait)
     await _stop_and_exit(engine)
 
 
-async def _stop_and_exit(engine) -> None:
+async def _stop_and_exit(engine, exit_code: int = 0) -> None:
     # A root of its own: the shutdown's events run at the depth a service
     # stop's do, not one level under the request's emit.
     detach_emit_chain()
     deadline = stop_deadline()
-    threading.Timer(LONGEST_EXIT_SECONDS, lambda: os._exit(0)).start()
+    threading.Timer(LONGEST_EXIT_SECONDS, lambda: os._exit(exit_code)).start()
 
     if not is_service_managed():
         spawn_replacement()
@@ -188,7 +219,7 @@ async def _stop_and_exit(engine) -> None:
         await engine.shutdown(deadline)
     except Exception:
         log.exception("Error during graceful shutdown before restart")
-    os._exit(0)
+    os._exit(exit_code)
 
 
 def is_service_managed() -> bool:
