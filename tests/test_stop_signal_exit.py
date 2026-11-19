@@ -118,11 +118,14 @@ def test_ctrl_c_ends_the_server_cleanly_once_its_stop_has_run(tmp_path):
 def test_an_interrupt_before_the_server_heard_a_stop_still_ends_the_start(monkeypatch):
     """Ctrl+C while the server is still starting is not a finished stop: it
     goes on to end the process, as it always did."""
-    from openavc import listen
+    from openavc import listen, listen_sockets, open_files
 
     def interrupted(_sockets):
         raise KeyboardInterrupt
 
+    # main() as it runs, with nothing switched on in this shared process
+    monkeypatch.setattr(open_files, "raise_open_file_limit", lambda: None)
+    monkeypatch.setattr(listen_sockets.push_listeners, "enable", lambda port: None)
     monkeypatch.setattr(runtime_flags, "stopping", False)
     monkeypatch.setattr(listen, "start", lambda: None)
     monkeypatch.setattr(main, "_bind_primary_port", lambda plan: ([], plan))
