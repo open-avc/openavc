@@ -1320,7 +1320,7 @@ function PublishingSection({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 120px 120px",
+          gridTemplateColumns: "1fr 120px",
           gap: "var(--space-md)",
           alignItems: "end",
         }}
@@ -1338,24 +1338,6 @@ function PublishingSection({
             engine. Comma-separated.
           </div>
         </div>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: "var(--font-size-sm)",
-            paddingBottom: 6,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={!!draft.simulated}
-            onChange={(e) =>
-              onUpdate({ simulated: e.target.checked || undefined })
-            }
-          />
-          Simulated
-        </label>
         <div
           title="Server-controlled: set by the community catalog after testing"
           style={{
@@ -1377,10 +1359,8 @@ function PublishingSection({
         </div>
       </div>
       <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
-        <strong>Simulated:</strong> set when this driver has a simulator
-        section so users can test without hardware. <strong>Verified:</strong>{" "}
-        read-only. The community catalog flips this once a driver is
-        validated against real hardware.
+        <strong>Verified:</strong> read-only. The community catalog flips
+        this once a driver is validated against real hardware.
       </div>
     </div>
   );

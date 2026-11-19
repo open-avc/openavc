@@ -1910,8 +1910,9 @@ export interface DriverDefinition {
    */
   protocols?: string[];
   /**
-   * True if the driver ships with simulator support (auto-gen or an explicit
-   * simulator: section).
+   * Set by the community catalog from the driver's files: true for every YAML
+   * driver, and for a Python driver whose <driver>_sim.py beside it simulates
+   * its id. A value written in the driver file is not used.
    */
   simulated?: boolean;
   /** True once the driver has been validated against real hardware. */
