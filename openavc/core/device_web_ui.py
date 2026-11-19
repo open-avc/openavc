@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from functools import partial
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.device_reconnect import _log_task_exception
@@ -104,8 +105,15 @@ class DeviceWebUiMixin:
             return
         task = asyncio.create_task(self._run_web_ui_probe(device_id, host))
         self._web_ui_probe_tasks[device_id] = task
-        task.add_done_callback(lambda t, d=device_id: self._web_ui_probe_tasks.pop(d, None))
+        task.add_done_callback(partial(self._web_ui_probe_ended, device_id))
         task.add_done_callback(_log_task_exception)
+
+    def _web_ui_probe_ended(self, device_id: str, task: asyncio.Task) -> None:
+        """Drop a finished probe's entry, only while it is still this
+        device's: an edit cancels the old instance's probe and can start the
+        new one's before the old one has finished cancelling."""
+        if self._web_ui_probe_tasks.get(device_id) is task:
+            del self._web_ui_probe_tasks[device_id]
 
     def _web_ui_probe_host(self, device_id: str) -> str | None:
         """The host to probe for this device's page now, or None when it is

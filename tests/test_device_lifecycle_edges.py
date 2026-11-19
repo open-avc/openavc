@@ -9,6 +9,7 @@ connect fail or end.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -362,6 +363,34 @@ async def test_a_device_re_added_while_paused_is_prepared_but_not_dialed(dm, mon
     assert dm.state.get("device.dev.connected") is False
     assert dm.is_paused("dev")
     dm._cancel_pause_expiry("dev")
+
+
+async def test_editing_a_paused_device_keeps_the_new_instance_s_page_probe(dm, monkeypatch):
+    # The edit cancels the old instance's probe and starts the new one's before
+    # the old one has finished cancelling. Its ending must leave the new one's
+    # entry, which is what a later removal stops and what keeps a connect from
+    # starting a second probe.
+    hold = asyncio.Event()
+
+    async def slow_probe(host):
+        await hold.wait()
+        return None
+
+    monkeypatch.setattr("openavc.core.web_ui_probe.probe_web_ui", slow_probe)
+    await dm.add_device(_cfg("dev"))
+    old = dm._web_ui_probe_tasks["dev"]
+    await dm.pause_device("dev", ttl=30)
+
+    await dm.update_device("dev", _cfg("dev"))
+    new = dm._web_ui_probe_tasks["dev"]
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    assert old.cancelled()
+    assert dm._web_ui_probe_tasks.get("dev") is new
+    await dm.remove_device("dev")
+    await asyncio.sleep(0)
+    assert new.cancelled()
 
 
 # --- the connect and drop handlers ------------------------------------------
