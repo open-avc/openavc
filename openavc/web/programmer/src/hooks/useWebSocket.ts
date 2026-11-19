@@ -15,7 +15,9 @@ import { invalidatePluginMacroActions } from "../components/macros/pluginMacroAc
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
+import { BASE } from "../api/base";
 import { waitForServerReady } from "../api/serverReady";
+import { askStartupStatus } from "../api/startupStatus";
 import { startFailureNotice } from "./startFailureNotice";
 
 // How long the "just fired" highlight stays lit on a trigger card after a
@@ -62,11 +64,12 @@ export function useWebSocket() {
       // Re-subscribe to log stream
       ws.send({ type: "log.subscribe" });
       useLogStore.getState().setLogSubscribed(true);
-      // A reconnect can land while the server is restarting: the socket is
-      // admitted before loadFromServer's REST calls are answered, so they wait
-      // for it (api/serverReady.ts), or for its start's failure, which this
-      // tab then shows. The first connect follows a page the server only
-      // serves once it is up.
+      // A reconnect waits for the server to answer REST before loading
+      // (api/serverReady.ts): this server serves the socket only once it is
+      // ready, so the wait ends at its first answer, but an earlier release
+      // (after a rollback) admits it while still starting. A failed start
+      // the wait ends on is shown. The first connect follows a page the
+      // server only serves once it is up.
       const reconnect = connectedBefore;
       connectedBefore = true;
       if (!reconnect) {
@@ -118,10 +121,17 @@ export function useWebSocket() {
     });
 
     const unsubDisconnect = ws.onDisconnect(() => {
-      connection++;
+      const thisDrop = ++connection;
       setConnected(false);
       useLogStore.getState().setLogSubscribed(false);
       useLogStore.getState().clearMacroRuns();
+      // Why the socket is down, from the server's run-state record: a start
+      // that failed keeps the socket out (and, with a password, a restart
+      // ends this tab's session first), so its reason is asked for here. A
+      // server that is not answering says nothing; the reconnect asks again.
+      void askStartupStatus(`${BASE}/startup-status`, { cache: "no-store" }).then(({ status }) => {
+        if (status && thisDrop === connection) startFailure.heard(status);
+      });
     });
 
     // Debounce project reloads to avoid rapid-fire refetches. The last

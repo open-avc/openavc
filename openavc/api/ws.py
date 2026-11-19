@@ -35,6 +35,7 @@ from openavc.core.panel_devices import (
     CLOSE_REASON_NOT_APPROVED,
 )
 from openavc.core.state_store import check_state_write, is_flat_primitive
+from openavc.middleware.startup_splash import turn_away_until_ready
 from openavc.utils.log_buffer import get_log_buffer, LogEntry
 from openavc.utils.logger import get_logger
 
@@ -134,22 +135,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     # Panel clients cannot escalate to programmer even if they have auth
     client_type = "programmer" if requested_type == "programmer" and is_authenticated else "panel"
 
-    # The panel gate (openavc/api/panel_access.py): a credential, the box's
-    # own screen, a cloud tunnel, an approved panel cookie, or the open mode. A
-    # refusal is accepted THEN closed with 4010: a close before accept reaches
-    # a browser as 1006, which the page cannot tell from a dropped network,
-    # and the page acts on 4010 by showing the waiting screen. The client's
-    # subprotocol is echoed on that accept for the same reason the admitted
-    # path echoes it: a browser that offered one and got none back fails the
-    # handshake before any close code arrives.
-    admission = Admission(True, "programmer")
-    if client_type == "panel":
-        admission = admit_panel(ws, authenticated=is_authenticated)
-        if not admission.admitted:
-            await ws.accept(subprotocol=get_ws_auth_subprotocol(headers))
-            await ws.close(code=CLOSE_CODE_NOT_APPROVED, reason=CLOSE_REASON_NOT_APPROVED)
-            return
-
+    admission = await _let_in(ws, get_ws_auth_subprotocol(headers), client_type, is_authenticated)
+    if admission is None:
+        return
     if client_type == "panel" and not is_authenticated:
         bind_request_authority(ws, lambda: admit_panel(ws, authenticated=False) == admission)
 
@@ -167,6 +155,32 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         await _run_ws_connection(ws, query_params, headers, client_type, admission)
     finally:
         _ws_connection_count -= 1
+
+
+async def _let_in(
+    ws: WebSocket, subprotocol: str | None, client_type: str, is_authenticated: bool,
+) -> Admission | None:
+    """How the socket is let in, or None once it has been turned away. First
+    the run-state record: until the server is ready (still starting, failed to
+    start, stopping) the client is told the phase and tries again
+    (middleware/startup_splash.py). Then the panel gate
+    (openavc/api/panel_access.py): a credential, the box's own screen, a cloud
+    tunnel, an approved panel cookie, or the open mode. Each refusal is
+    accepted THEN closed (4503, 4010): a close before accept reaches a browser
+    as 1006, which the page cannot tell from a dropped network. The client's
+    subprotocol is echoed on that accept for the same reason the admitted path
+    echoes it: a browser that offered one and got none back fails the
+    handshake before any close code arrives."""
+    if await turn_away_until_ready(ws, subprotocol):
+        return None
+    if client_type != "panel":
+        return Admission(True, "programmer")
+    admission = admit_panel(ws, authenticated=is_authenticated)
+    if not admission.admitted:
+        await ws.accept(subprotocol=subprotocol)
+        await ws.close(code=CLOSE_CODE_NOT_APPROVED, reason=CLOSE_REASON_NOT_APPROVED)
+        return None
+    return admission
 
 
 async def _run_ws_connection(

@@ -36,10 +36,11 @@ from types import SimpleNamespace
 import pytest
 
 import openavc.core.simulation as simulation
-from openavc import listen_sockets, runtime_flags
+from openavc import listen_sockets
 from openavc.core.engine import Engine
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.middleware.startup_splash import RunState
 
 
 class _DialRecorder(BaseDriver):
@@ -246,8 +247,17 @@ def rig(tmp_path, monkeypatch):
         _DialRecorder.attempts = []
 
 
-async def _boot(rig, devices=(1, 2), password: str | None = None) -> Engine:
+async def _boot(
+    rig, devices=(1, 2), password: str | None = None, *, stopping: bool = False,
+) -> Engine:
+    """An engine started as the server starts it: its run-state record
+    attached first (``openavc.main``), saying stopping already when a stop
+    was heard before the start."""
     rig.engine = Engine(rig.write_project(list(devices), password))
+    rig.run_state = RunState()
+    if stopping:
+        rig.run_state.stopping()
+    rig.engine.attach_server(run_state=rig.run_state)
     await asyncio.wait_for(rig.engine.start(), timeout=20)
     return rig.engine
 
@@ -297,7 +307,7 @@ async def test_a_shutdown_keeps_it_on_and_never_dials_the_real_equipment(rig, mo
     Either way that exit is the stop's: no device is pointed back at its real
     address on the way down, nothing says the simulator stopped, and
     simulation comes back with the server."""
-    monkeypatch.setattr(runtime_flags, "stopping", False)
+    monkeypatch.setattr(listen_sockets, "_stop_heard", False)
     rig.leave_simulation_on()
     eng = await _boot(rig)
     simulator = rig.processes[0]
@@ -310,7 +320,7 @@ async def test_a_shutdown_keeps_it_on_and_never_dials_the_real_equipment(rig, mo
 
         monkeypatch.setattr(eng.devices, "disconnect_all", the_simulator_exits_first)
     else:
-        server = _the_main_server_hears(signal.SIGTERM)
+        server = _the_main_server_hears(signal.SIGTERM, rig)
         assert server.heard == [signal.SIGTERM]
         if how == _TOGETHER:
             await _the_simulator_exits(eng, simulator)
@@ -325,7 +335,7 @@ async def test_a_shutdown_keeps_it_on_and_never_dials_the_real_equipment(rig, mo
     assert simulator.returncode == (0 if how == _SERVER_ALONE else -signal.SIGTERM)
     # ...and the next start brings simulation back.
     assert rig.record.exists()
-    monkeypatch.setattr(runtime_flags, "stopping", False)  # a new process
+    # A new process, with a record of its own.
     _DialRecorder.attempts = []
     eng = await _boot(rig)
     try:
@@ -439,8 +449,7 @@ async def test_a_comeback_that_fails_as_the_server_stops_dials_nothing_real(rig,
     sent to their real equipment."""
     rig.leave_simulation_on()
     rig.fail_launch = True
-    monkeypatch.setattr(runtime_flags, "stopping", True)
-    eng = await _boot(rig)
+    eng = await _boot(rig, stopping=True)
     try:
         assert _DialRecorder.attempts == []
         assert rig.record.exists()
@@ -489,11 +498,11 @@ async def test_the_simulator_runs_in_a_session_of_its_own_on_posix(rig, monkeypa
         await eng.stop()
 
 
-def _the_main_server_hears(sig: int) -> _MainServer:
+def _the_main_server_hears(sig: int, rig) -> _MainServer:
     """A stop signal, through the hook the main server is started with
-    (``python -m openavc.main``), the moment it arrives."""
-    # No run-state record here: the engine reads the signal itself.
-    server = listen_sockets.hears_the_stop(_MainServer(), lambda: None)
+    (``python -m openavc.main``), the moment it arrives: it says stopping on
+    the run-state record the engine reads."""
+    server = listen_sockets.hears_the_stop(_MainServer(), rig.run_state.stopping)
     server.handle_exit(sig, None)
     return server
 

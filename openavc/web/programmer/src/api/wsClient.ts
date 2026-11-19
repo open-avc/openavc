@@ -10,13 +10,30 @@ import { BASE } from "./base";
 type MessageHandler = (msg: Record<string, unknown>) => void;
 type LifecycleHandler = () => void;
 
+/** How a socket closed, as the browser reports it. */
+export interface SocketClose {
+  code: number;
+  reason: string;
+}
+type DisconnectHandler = (close: SocketClose) => void;
+
+/** The server's close for a socket it is not ready to serve: still
+ *  starting, failed to start, or stopping. The reason is that phase, as
+ *  /api/startup-status names it (middleware/startup_splash.py). */
+export const NOT_READY_CLOSE = 4503;
+/** How often a socket the server turned away while starting tries again: a
+ *  start takes seconds, so not the growing wait a dropped network gets. */
+const STARTING_RETRY_DELAY = 1000;
+
 let socket: WebSocket | null = null;
+/** The server has served `socket` (its first message arrived). */
+let served = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 2000;
 const MAX_RECONNECT_DELAY = 15000;
 let handlers: MessageHandler[] = [];
 let connectHandlers: LifecycleHandler[] = [];
-let disconnectHandlers: LifecycleHandler[] = [];
+let disconnectHandlers: DisconnectHandler[] = [];
 /** True once any WS attempt has reached the OPEN state. Used to distinguish
  *  "server rejected us" (probably auth) from "connection dropped mid-session". */
 let everConnected = false;
@@ -79,6 +96,42 @@ function probeSession(): void {
   });
 }
 
+/** A socket the server turned away because it is not ready for it yet, and
+ *  said why: no session question, and a start is retried on a short steady
+ *  wait rather than the growing one a dropped network gets. */
+function retryWhenReady(close: SocketClose): void {
+  const starting = close.reason === "starting";
+  const wait = starting ? STARTING_RETRY_DELAY : reconnectDelay;
+  if (!starting) reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
+  console.log(`[WS] The server is ${close.reason || "not ready"}; trying again in ${wait / 1000}s...`);
+  reconnectTimer = setTimeout(connect, wait);
+}
+
+/** A close the server meant, handled here; false for one that is handled as
+ *  a drop.
+ *
+ *  NOT_READY_CLOSE: the server is not ready for us yet, and said why.
+ *
+ *  4001, auth rejection. The server closes an unauthenticated programmer
+ *  socket with 4001 BEFORE accepting the upgrade (ws.py), so a browser never
+ *  sees that code: it reports 1006 (abnormal close, no message), the same as
+ *  a proxy that refuses the upgrade with 401. An explicit 4001 arrives only
+ *  from a server that accepts first; it is unambiguous, so bounce to login
+ *  immediately. The panel's own refusal, 4010, is accepted then closed so
+ *  panel.js can read it; it never reaches this client, which connects as the
+ *  programmer. */
+function handledClose(close: SocketClose): boolean {
+  if (close.code === NOT_READY_CLOSE) {
+    retryWhenReady(close);
+    return true;
+  }
+  if (close.code === 4001) {
+    requestLogin(close.code);
+    return true;
+  }
+  return false;
+}
+
 export function connect(): void {
   // A Remote Access session that ended does not come back on a retry: the
   // reconnect scheduled before the probe answered stops here.
@@ -93,7 +146,13 @@ export function connect(): void {
     ? new WebSocket(getWsUrl(), protocols)
     : new WebSocket(getWsUrl());
 
-  socket.onopen = () => {
+  // Connected once the server serves the socket, which it does with its
+  // first message (the state snapshot), not when the handshake completes: a
+  // socket the server is not ready for is accepted and closed at once
+  // (NOT_READY_CLOSE), and must not read as connected in between.
+  served = false;
+  const serve = () => {
+    served = true;
     console.log("[WS] Connected");
     everConnected = true;
     preOpenFailures = 0;
@@ -117,6 +176,7 @@ export function connect(): void {
   };
 
   socket.onmessage = (event) => {
+    if (!served) serve();
     try {
       const msg = JSON.parse(event.data);
       // Respond to server heartbeat
@@ -135,24 +195,17 @@ export function connect(): void {
   socket.onclose = (ev) => {
     if (ev.code === 4013) { window.location.reload(); return; }
     socket = null;
+    served = false;
+    const close: SocketClose = { code: ev.code, reason: ev.reason ?? "" };
     for (const handler of disconnectHandlers) {
-      handler();
+      handler(close);
     }
-    // Auth rejection. The server closes an unauthenticated programmer socket
-    // with 4001 BEFORE accepting the upgrade (ws.py), so a browser never sees
-    // that code: it reports 1006 (abnormal close, no message), the same as a
-    // proxy that refuses the upgrade with 401. An explicit 4001 arrives only
-    // from a server that accepts first; it is unambiguous, so bounce to login
-    // immediately. A pre-open 1006 is NOT: it's equally the symptom of a server
-    // still starting up or a transient blip, so retry with backoff and only
-    // treat persistent pre-open 1006s as an auth failure (otherwise a
-    // slow-starting server wipes valid credentials). The panel's own refusal,
-    // 4010, is accepted then closed so panel.js can read it; it never reaches
-    // this client, which connects as the programmer.
-    if (ev.code === 4001) {
-      requestLogin(ev.code);
-      return;
-    }
+    if (handledClose(close)) return;
+    // A pre-open 1006 is ambiguous: it is equally the symptom of a refused
+    // credential (see handledClose), a server still starting up or a
+    // transient blip, so retry with backoff and only treat persistent
+    // pre-open 1006s as an auth failure (otherwise a slow-starting server
+    // wipes valid credentials).
     if (ev.code === 1006 && everConnected === false) {
       preOpenFailures += 1;
       if (preOpenFailures >= MAX_PREOPEN_RETRIES) {
@@ -184,8 +237,9 @@ export function onConnect(handler: LifecycleHandler): () => void {
   };
 }
 
-/** Register a handler called each time the WebSocket closes. */
-export function onDisconnect(handler: LifecycleHandler): () => void {
+/** Register a handler called each time the WebSocket closes, with how it
+ *  closed. */
+export function onDisconnect(handler: DisconnectHandler): () => void {
   disconnectHandlers.push(handler);
   return () => {
     disconnectHandlers = disconnectHandlers.filter((h) => h !== handler);
@@ -208,6 +262,7 @@ export function disconnect(): void {
     socket.close();
     socket = null;
   }
+  served = false;
   // Reset per-session state so a later connect() starts fresh: a genuine auth
   // failure on the next first-open is detectable again (everConnected /
   // preOpenFailures), backoff is restored, and stale queued commands from this
@@ -231,7 +286,7 @@ const QUEUEABLE_TYPES = new Set([
 ]);
 
 export function send(msg: Record<string, unknown>): void {
-  if (socket && socket.readyState === WebSocket.OPEN) {
+  if (served && socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(msg));
   } else if (typeof msg.type === "string" && QUEUEABLE_TYPES.has(msg.type)) {
     // Queue command-type messages for retry on reconnect

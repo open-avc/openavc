@@ -74,7 +74,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
-from openavc import config, restart, runtime_flags, start_retry, status_folder
+from openavc import config, listen_sockets, restart, runtime_flags, start_retry, status_folder
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from openavc.api import simulator_proxy
 from openavc.api.host_policy import (
@@ -396,7 +396,7 @@ async def lifespan(app: FastAPI):
     app.state.host_policy_started = True
     # Where the process is in its life, from now on in the status folder the
     # tray and the menu bar read too (middleware/startup_splash.py).
-    app.state.run_state = RunState(report=status_folder.write_run_state)
+    app.state.run_state = RunState(status_folder.write_run_state, stopping=listen_sockets.stop_heard())
 
     # Keep plugin tokens presented via the _plugin_token query param out of
     # uvicorn's access log. Done here (not at import) so uvicorn has already
@@ -410,7 +410,7 @@ async def lifespan(app: FastAPI):
 
     # Run engine initialization in background so HTTP is available immediately
     init_task = asyncio.create_task(_initialize_engine(app))
-    engine.attach_server(start=init_task, audit=audit_manager)
+    engine.attach_server(start=init_task, audit=audit_manager, run_state=app.state.run_state)
 
     try:
         yield

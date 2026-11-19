@@ -672,6 +672,11 @@ function dropSocket(app, code) {
 
 /** A dropped socket leaves the shared document offline; the scenarios after
  *  this one expect it as the document started. */
+/** The server serves the panel's socket: its first message, the snapshot. */
+function served(app) {
+    app.ws.onmessage({ data: JSON.stringify({ type: 'state.snapshot', state: {} }) });
+}
+
 function resetAfterDrop(app) {
     app.access.hide();
     clearAccessOverlay();
@@ -5019,7 +5024,7 @@ const tests = {
     },
 
     // A dropped socket reconnects a little later each time, up to 30 s, and
-    // says which attempt it is on; an opened socket and a refusal (4010) each
+    // says which attempt it is on; a served socket and a refusal (4010) each
     // start the count again.
     async reconnect_backs_off_counts_its_attempts_and_starts_over() {
         clearAccessOverlay();
@@ -5049,10 +5054,10 @@ const tests = {
             assert(info.textContent === 'Reconnecting (attempt 12)...', `got "${info.textContent}"`);
             assert(rig.sockets === 13, `each retry opens a socket, got ${rig.sockets}`);
 
-            app.ws.onopen();
-            assert(info.textContent === '', 'an opened socket clears the attempt line');
+            served(app);
+            assert(info.textContent === '', 'a served socket clears the attempt line');
             assert(JSON.stringify(drop(1006)) === '[1000]' && info.textContent === 'Reconnecting (attempt 1)...',
-                `an opened socket starts the count again, got "${info.textContent}"`);
+                `a served socket starts the count again, got "${info.textContent}"`);
 
             drop(1006); drop(1006);
             assert(JSON.stringify(drop(4010)) === '[]', 'a refusal schedules no retry');
@@ -5063,6 +5068,49 @@ const tests = {
         } finally {
             window.setTimeout = realSetTimeout;
             info.remove();
+            resetAfterDrop(app);
+            rig.restore();
+        }
+    },
+
+    // A server not ready for the socket (still starting, failed to start,
+    // stopping) accepts it and closes it at once with 4503, the phase as the
+    // reason. The panel stays down through the handshake (no flash of the
+    // room between the two), asks a start again every second, and backs off
+    // from a failed start as from any drop; the server's first message is
+    // what brings it up.
+    async reconnect_a_server_not_ready_keeps_the_panel_down() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(200, '{"access":"open"}', true));
+        const realSetTimeout = window.setTimeout;
+        const scheduled = [];
+        window.setTimeout = (fn, ms) => { scheduled.push({ fn, ms }); return 0; };
+        const app = mkApp();
+        const turnedAway = (reason) => {
+            scheduled.length = 0;
+            if (app.ws.onopen) app.ws.onopen();
+            assert(app._offline, `a socket the server has not served is not a connection (${reason})`);
+            app.ws.onclose({ code: 4503, reason });
+            const delays = scheduled.map((t) => t.ms);
+            scheduled[0].fn();
+            return delays;
+        };
+        try {
+            app.setConnectionStatus(false);
+            app.connect();
+            const starting = [turnedAway('starting'), turnedAway('starting'), turnedAway('starting')].flat();
+            assert(JSON.stringify(starting) === '[1000,1000,1000]',
+                `a start is asked again every second, got ${JSON.stringify(starting)}`);
+            const failed = [turnedAway('failed'), turnedAway('failed'), turnedAway('failed')].flat();
+            assert(JSON.stringify(failed) === '[1000,1500,2250]',
+                `a failed start backs off, got ${JSON.stringify(failed)}`);
+            assert(rig.fetched.length === 0, 'the server said why: no question about the session');
+            assert(rig.sockets === 7, `each retry opens a socket, got ${rig.sockets}`);
+
+            served(app);
+            assert(!app._offline, 'the first message brings the panel up');
+        } finally {
+            window.setTimeout = realSetTimeout;
             resetAfterDrop(app);
             rig.restore();
         }

@@ -230,11 +230,12 @@ class _RecordingClient:
 
 
 async def test_client_connected_during_startup_converges_on_live_state(sim):
-    """/ws admits a client as soon as the engine exists, so a Programmer tab or
-    a panel that reconnects into a restart is snapshotted before the project
-    and its devices are up. Its snapshot plus every push after it must add up
-    to what a client connecting afterwards gets, the device's first connect
-    included."""
+    """A client registered with the hub before the engine starts is
+    snapshotted before the project and its devices are up. Its snapshot plus
+    every push after it must add up to what a client connecting afterwards
+    gets, the device's first connect included. (The server's /ws registers a
+    client only once the start has finished; the hub owes it the same either
+    way.)"""
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".avc", delete=False, dir=tempfile.gettempdir()
     ) as f:

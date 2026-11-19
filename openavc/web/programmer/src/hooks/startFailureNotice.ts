@@ -1,9 +1,10 @@
-/** What a Programmer tab shows when its connection comes back to a start
- *  that failed (useWebSocket.ts, from api/serverReady.ts): the server's
+/** What a Programmer tab shows when its connection is kept out by a start
+ *  that failed (useWebSocket.ts asks /api/startup-status each time the
+ *  socket closes, and api/serverReady.ts at a reconnect): the server's
  *  reason and what happens next, until it is dismissed or a start succeeds.
  *  Said once for a run of failed starts with the same reason and next step,
- *  since each retry reconnects the tab; a different reason, or a run that
- *  has stopped retrying and waits for Start again, replaces it. */
+ *  since each retry asks again; a different reason, or a run that has
+ *  stopped retrying and waits for Start again, replaces it. */
 import { useToastStore } from "../store/toastStore";
 import type { StartupStatus } from "../api/startupStatus";
 

@@ -37,7 +37,7 @@ class FakeSocket {
 
   onopen: (() => void) | null = null;
   onmessage: ((ev: MessageEvent) => void) | null = null;
-  onclose: ((ev: { code: number }) => void) | null = null;
+  onclose: ((ev: { code: number; reason: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   readyState = FakeSocket.CONNECTING;
 
@@ -48,23 +48,35 @@ class FakeSocket {
     FakeSocket.last = this;
   }
 
-  send(): void {}
+  readonly sent: unknown[] = [];
+
+  send(data: string): void {
+    this.sent.push(JSON.parse(data));
+  }
   close(): void {
     this.readyState = FakeSocket.CLOSED;
   }
 }
 
-/** The most recent socket, opened. */
-function open(): FakeSocket {
+/** The most recent socket's handshake done, nothing from the server yet. */
+function handshake(): FakeSocket {
   const socket = FakeSocket.last!;
   socket.readyState = FakeSocket.OPEN;
-  socket.onopen!();
+  socket.onopen?.();
+  return socket;
+}
+
+/** The most recent socket, open and served: the server's first message (its
+ *  state snapshot) arrived. */
+function open(): FakeSocket {
+  const socket = handshake();
+  socket.onmessage!({ data: JSON.stringify({ type: "state.snapshot", state: {} }) } as MessageEvent);
   return socket;
 }
 
 /** Close the most recent socket the way the browser does. */
-function close(code: number): void {
-  FakeSocket.last!.onclose!({ code });
+function close(code: number, reason = ""): void {
+  FakeSocket.last!.onclose!({ code, reason });
 }
 
 let served: Response;
@@ -184,5 +196,82 @@ describe("wsClient reconnect", () => {
 
     expect(authRequired).toHaveBeenCalledTimes(1);
     window.removeEventListener(AUTH_REQUIRED_EVENT, authRequired);
+  });
+});
+
+/**
+ * A server still starting, one whose start failed, or one on its way down
+ * accepts the socket and closes it at once with NOT_READY_CLOSE, the phase as
+ * the reason (middleware/startup_splash.py). The tab must not read as
+ * connected in between, and a start, which takes seconds, is tried again
+ * soon rather than after a growing wait.
+ */
+describe("wsClient and a server that is not ready", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("never reads as connected when turned away, and retries a start on a steady wait", () => {
+    vi.useFakeTimers();
+    const connected = vi.fn();
+    const closes: ws.SocketClose[] = [];
+    const offConnect = ws.onConnect(connected);
+    const offDisconnect = ws.onDisconnect((c) => closes.push(c));
+    try {
+      ws.connect();
+      const first = handshake();
+      close(ws.NOT_READY_CLOSE, "starting");
+      expect(connected).not.toHaveBeenCalled();
+      expect(closes).toEqual([{ code: ws.NOT_READY_CLOSE, reason: "starting" }]);
+
+      vi.advanceTimersByTime(999);
+      expect(FakeSocket.last).toBe(first);
+      vi.advanceTimersByTime(1);
+      const second = FakeSocket.last;
+      expect(second).not.toBe(first);
+
+      handshake();
+      close(ws.NOT_READY_CLOSE, "starting");
+      vi.advanceTimersByTime(1000);
+      expect(FakeSocket.last).not.toBe(second);
+
+      open();
+      expect(connected).toHaveBeenCalledTimes(1);
+    } finally {
+      offConnect();
+      offDisconnect();
+    }
+    // The server said why: nothing to ask about the session.
+    expect(fetches).toEqual([]);
+  });
+
+  it("backs a failed start off as it would a dropped network", () => {
+    vi.useFakeTimers();
+    ws.connect();
+    const first = handshake();
+    close(ws.NOT_READY_CLOSE, "failed");
+
+    vi.advanceTimersByTime(1999);
+    expect(FakeSocket.last).toBe(first);
+    vi.advanceTimersByTime(1);
+    const second = FakeSocket.last;
+    expect(second).not.toBe(first);
+
+    handshake();
+    close(ws.NOT_READY_CLOSE, "failed");
+    vi.advanceTimersByTime(2999);
+    expect(FakeSocket.last).toBe(second);
+    vi.advanceTimersByTime(1);
+    expect(FakeSocket.last).not.toBe(second);
+  });
+
+  it("holds a command until the socket is served", () => {
+    ws.connect();
+    const socket = handshake();
+    ws.send({ type: "macro.execute", macro_id: "system_on" });
+    expect(socket.sent).toEqual([]);
+
+    open();
+    expect(socket.sent).toEqual([{ type: "macro.execute", macro_id: "system_on" }]);
   });
 });

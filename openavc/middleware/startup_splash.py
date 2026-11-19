@@ -34,11 +34,21 @@ project yet), and every other path gets the splash page itself, which polls
 ``/api/startup-status`` and reloads once the engine is ready or shows the
 error that stopped it, then keeps asking, so a start the service manager makes
 afterwards reaches a screen already showing the failure. Its Start again
-button posts to ``START_AGAIN_PATH``, the one route let through before the
-start has finished (it answers only a failed start). Once it has finished, the
+button posts to ``START_AGAIN_PATH``, let through before the start has
+finished (it answers only a failed start), as a device's push is (below). Once it has finished, the
 API is served on through the stop: a save made in a restart's wait still
 reaches its route. An app whose lifespan made no record passes everything
 through.
+
+Every other way in asks the same record. A device's push
+(``http_listener.PUSH_PREFIX``) is answered by the push registry in every
+phase, as the push-only and redirect listeners answer it: a device subscribes
+while the start is still running, and its first event is not refused. A
+WebSocket (a client's ``/ws``, an ISC peer's ``/isc/ws``) is accepted and
+then closed with ``NOT_READY_CLOSE`` and the phase until the server is ready
+(``turn_away_until_ready``): this middleware sees HTTP only. The engine's
+``stopping`` is the record's (``Engine.attach_server``), so the restart door
+refuses a restart once a stop has begun, however it began.
 """
 
 from __future__ import annotations
@@ -56,6 +66,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
 from openavc.core.start_stages import StartProblem, StartRun
+from openavc.transport.http_listener import PUSH_PREFIX
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
 
@@ -76,6 +87,12 @@ STATUS_PATH = "/api/startup-status"
 START_AGAIN_PATH = "/api/start-again"
 START_AGAIN_HEADER = "X-OpenAVC-Start-Again"
 
+# What a WebSocket (a client's, an ISC peer's) is closed with, once accepted,
+# while the server is not ready for it: the socket's own 503. The close's
+# reason is the phase, so a client can tell a start, which ends in seconds,
+# from a failed start or a stop.
+NOT_READY_CLOSE = 4503
+
 # What the record tells at each phase it reaches: the phase, the version that
 # started, and the start's error with a failed start (None otherwise).
 Report = Callable[[str, str, "str | None"], None]
@@ -91,9 +108,10 @@ class RunState:
     ``report`` is told each phase as it is reached, this first one included
     (``openavc.main`` passes the status folder's writer); a report that
     raises is logged, never raised, since the stop signal's handler is one
-    of the callers."""
+    of the callers. ``stopping``: a stop was heard before the record was
+    made (uvicorn listens for one before the lifespan runs), said at once."""
 
-    def __init__(self, report: Report | None = None) -> None:
+    def __init__(self, report: Report | None = None, *, stopping: bool = False) -> None:
         self.phase = STARTING
         self.error: str | None = None
         self.problems: tuple[StartProblem, ...] = ()
@@ -107,10 +125,17 @@ class RunState:
         self._retry_at: float | None = None
         self._report = report
         self._tell()
+        if stopping:
+            self.stopping()
 
     @property
     def ready(self) -> bool:
         return self.phase == READY
+
+    @property
+    def is_stopping(self) -> bool:
+        """The server is on its way down (``stopping`` says it)."""
+        return self.phase == STOPPING
 
     @property
     def serving(self) -> bool:
@@ -187,6 +212,30 @@ def say_stopping(app) -> None:
     record = _record(app)
     if record is not None:
         record.stopping()
+
+
+def not_ready_phase(app) -> str | None:
+    """The phase a new connection to ``app`` is turned away for (starting,
+    failed or stopping), or None: ready, or an app whose lifespan made no
+    record."""
+    record = _record(app)
+    if record is None or record.ready:
+        return None
+    return record.phase
+
+
+async def turn_away_until_ready(ws, subprotocol: str | None = None) -> bool:
+    """When ``ws``'s app is not ready for it, accept it (with ``subprotocol``,
+    the one the client offered for its credential) and close it with
+    ``NOT_READY_CLOSE`` and the phase; True when it did. Accepted first, so a
+    browser reads the code: a close before the handshake reaches it as 1006,
+    which it cannot tell from a dropped network."""
+    phase = not_ready_phase(ws.app)
+    if phase is None:
+        return False
+    await ws.accept(subprotocol=subprotocol)
+    await ws.close(code=NOT_READY_CLOSE, reason=phase)
+    return True
 
 
 def startup_status(app) -> dict[str, Any]:
@@ -426,9 +475,12 @@ class StartupSplashMiddleware(BaseHTTPMiddleware):
 async def _before_the_start_finishes(request: Request, call_next):
     """The answer to anything else asked before the start has finished."""
     path = request.url.path
-    # Start again, the one route reached before the start has finished: it
-    # answers only a failed start.
+    # Start again, reached before the start has finished: it answers only a
+    # failed start.
     if path == START_AGAIN_PATH and request.method == "POST":
+        return await call_next(request)
+    # A device's push, answered by the push registry whatever the phase.
+    if path.startswith(PUSH_PREFIX):
         return await call_next(request)
     # Block API routes during startup (engine.project is None, etc.)
     if path.startswith("/api/"):

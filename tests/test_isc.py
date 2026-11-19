@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -228,6 +229,10 @@ def test_clear_isc_state(isc, state):
 
 class FakeWebSocket:
     """Minimal mock of a FastAPI WebSocket for testing accept_inbound."""
+
+    # The app it arrived at: one whose lifespan made no run-state record, so
+    # the endpoint takes it as ready (middleware/startup_splash.py).
+    app = SimpleNamespace(state=SimpleNamespace())
 
     def __init__(self, auth_key: str = ""):
         self.sent: list[str] = []

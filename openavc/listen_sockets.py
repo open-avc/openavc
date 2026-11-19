@@ -46,7 +46,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from openavc import runtime_flags
 from openavc.core.stop_stages import DRAIN_SECONDS
 from openavc.utils.logger import get_logger
 
@@ -231,6 +230,13 @@ def quiet_server(server: Any) -> Any:
     return server
 
 
+# The main server heard a stop signal (``hears_the_stop``). Read by this
+# process's two moments with no run-state record to ask: the record's birth,
+# when the signal came first (``stop_heard``), and the main thread's end
+# (``serve_until_its_stop``). Everything else asks the record.
+_stop_heard = False
+
+
 def hears_the_stop(server: Any, say_stopping: Callable[[], None]) -> Any:
     """The main server notes a stop the moment it hears the signal.
 
@@ -238,17 +244,23 @@ def hears_the_stop(server: Any, say_stopping: Callable[[], None]) -> Any:
     ``quiet_server``), so it hears a stop first. uvicorn then drains the open
     connections, for ``DRAIN_SECONDS`` at most (``core/stop_stages.py``: an open
     download or stream held the stop for as long as it lasted), before the
-    lifespan reaches ``Engine.shutdown()``;
-    ``runtime_flags.stopping`` is set and ``say_stopping`` called (the
+    lifespan reaches ``Engine.shutdown()``; ``say_stopping`` is called (the
     run-state record says stopping: ``openavc.main``) before any of that, so
     whatever decides something on the way down knows the server is going
-    (``Engine.stopping``, ``/api/health``, the status folder). Neither can
-    keep uvicorn from hearing the signal: a ``say_stopping`` that raises is
-    logged.
+    (``Engine.stopping``, ``/api/health``, the status folder, every way in).
+    uvicorn installs its handlers before the lifespan makes the record, so a
+    signal can come first: the lifespan asks ``stop_heard`` as it makes it.
+    Neither can keep uvicorn from hearing the signal: a ``say_stopping`` that
+    raises is logged.
     """
     server.config.timeout_graceful_shutdown = DRAIN_SECONDS
     server.handle_exit = functools.partial(_note_the_stop, server.handle_exit, say_stopping)
     return server
+
+
+def stop_heard() -> bool:
+    """Whether the main server has heard a stop signal."""
+    return _stop_heard
 
 
 def serve_until_its_stop(serve: Callable[[list], None], sockets: list) -> None:
@@ -261,14 +273,15 @@ def serve_until_its_stop(serve: Callable[[list], None], sockets: list) -> None:
     try:
         serve(sockets)
     except KeyboardInterrupt:
-        if not runtime_flags.stopping:
+        if not _stop_heard:
             raise
 
 
 def _note_the_stop(
     uvicorn_handles: Any, say_stopping: Callable[[], None], sig: int, frame: Any,
 ) -> None:
-    runtime_flags.stopping = True
+    global _stop_heard
+    _stop_heard = True
     try:
         say_stopping()
     except Exception:

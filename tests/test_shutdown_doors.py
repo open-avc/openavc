@@ -123,6 +123,30 @@ async def test_the_status_folder_hears_the_start_and_says_stopping_before_the_sh
 
 
 @pytest.mark.asyncio
+async def test_a_stop_signal_heard_before_the_lifespan_is_said_on_its_record_at_once(
+    doors, monkeypatch,
+):
+    """uvicorn listens for a stop before the lifespan makes the record: the
+    record says stopping from its first moment, so the start it begins reads
+    the engine as stopping (a device is not brought up on the way down)."""
+    from openavc import listen_sockets
+    from openavc.middleware.startup_splash import STOPPING
+
+    engine, _stages = doors
+    monkeypatch.setattr(listen_sockets, "_stop_heard", True)
+    seen = []
+
+    async def initialize(app):
+        seen.append((app.state.run_state.phase, engine.stopping))
+
+    monkeypatch.setattr(main, "_initialize_engine", initialize)
+    async with main.lifespan(FastAPI(openapi_url=None, docs_url=None, redoc_url=None)):
+        await asyncio.sleep(0)
+
+    assert seen == [(STOPPING, True)]
+
+
+@pytest.mark.asyncio
 async def test_a_restart_the_listen_watcher_asks_for_finishes_its_stop(doors, monkeypatch):
     """The restart request comes from inside the watcher that asked, and the
     shutdown ends that watcher: the stop and the exit still finish."""

@@ -26,6 +26,10 @@ subscription's callback.
   certificate. When Settings > Network > Accept connections from leaves out
   the address a device reaches us on, ``subscribe`` has
   ``listen_sockets.push_listeners`` listen on that address for pushes only.
+  Every one of these answers a push from this registry whatever the server
+  is doing, its start included (middleware/startup_splash.py lets
+  ``PUSH_PREFIX`` through): a device subscribes as it connects, before the
+  start has finished, and its first event is delivered, not refused.
 
 ``callback_url()`` builds the URL a driver registers with its device: the
 server address **as seen from that device** (honoring the
@@ -43,6 +47,9 @@ from openavc.core.device_traffic import RX, body_part, header_pairs, record_traf
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+# Where every push callback path starts, on every listener that serves one.
+PUSH_PREFIX = "/api/push/"
 
 
 @dataclass
@@ -78,7 +85,7 @@ class HTTPListenerSubscription:
     @property
     def path(self) -> str:
         """URL path (no scheme/host) the device must deliver to."""
-        base = f"/api/push/{self.device_id}"
+        base = f"{PUSH_PREFIX}{self.device_id}"
         return f"{base}/{self.label}" if self.label else base
 
     def matches_source(self, src_ip: str) -> bool:
@@ -320,8 +327,8 @@ def push_routes() -> list[Any]:
     from starlette.routing import Route
 
     return [
-        Route("/api/push/{device_id}", _push_endpoint, methods=["POST", "NOTIFY"]),
-        Route("/api/push/{device_id}/{label}", _push_endpoint, methods=["POST", "NOTIFY"]),
+        Route(PUSH_PREFIX + "{device_id}", _push_endpoint, methods=["POST", "NOTIFY"]),
+        Route(PUSH_PREFIX + "{device_id}/{label}", _push_endpoint, methods=["POST", "NOTIFY"]),
     ]
 
 

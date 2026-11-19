@@ -28,7 +28,6 @@ from pathlib import Path
 import pytest
 
 import openavc.main as main
-from openavc import runtime_flags
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -126,7 +125,7 @@ def test_an_interrupt_before_the_server_heard_a_stop_still_ends_the_start(monkey
     # main() as it runs, with nothing switched on in this shared process
     monkeypatch.setattr(open_files, "raise_open_file_limit", lambda: None)
     monkeypatch.setattr(listen_sockets.push_listeners, "enable", lambda port: None)
-    monkeypatch.setattr(runtime_flags, "stopping", False)
+    monkeypatch.setattr(listen_sockets, "_stop_heard", False)
     monkeypatch.setattr(listen, "start", lambda: None)
     monkeypatch.setattr(main, "_bind_primary_port", lambda plan: ([], plan))
     monkeypatch.setattr(main, "_settle_listening", lambda plan: None)

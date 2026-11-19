@@ -95,6 +95,13 @@ const FRAMES = new Map([
 /** How the page on screen goes when no page replaces it: at once, with no transition. */
 const LEAVE_AT_ONCE = { transition: 'none', duration: 0 };
 
+/** The server's close for a socket it is not ready to serve: still starting,
+ *  failed to start, or stopping, the phase as the reason
+ *  (middleware/startup_splash.py). */
+const NOT_READY_CLOSE = 4503;
+/** How often a socket turned away while the server starts tries again. */
+const STARTING_RETRY_MS = 1000;
+
 /**
  * A Container's caption at its `label_position`: against the top or the
  * bottom edge, and at the left, the middle or the right.
@@ -507,14 +514,12 @@ class PanelApp {
             : null;
         this.ws = authProto ? new WebSocket(url, [authProto]) : new WebSocket(url);
 
-        this.ws.onopen = () => {
-            this.reconnectDelay = 1000;
-            this.reconnectAttempts = 0;
-            this.setConnectionStatus(true);
-            // Clear reconnection info on successful connect
-            const retryEl = document.getElementById('reconnect-info');
-            if (retryEl) retryEl.textContent = '';
-        };
+        // Connected once the server serves the socket, which it does with its
+        // first message (the state snapshot), not when the handshake
+        // completes: a server not ready for it (still starting, failed to
+        // start, stopping) accepts it and closes it at once with
+        // NOT_READY_CLOSE, and the panel must not come up in between.
+        let served = false;
 
         this.ws.onclose = (event) => this._socketClosed(event);
 
@@ -523,6 +528,10 @@ class PanelApp {
         };
 
         this.ws.onmessage = (event) => {
+            if (!served) {
+                served = true;
+                this._socketServed();
+            }
             try {
                 const msg = JSON.parse(event.data);
                 this.handleMessage(msg);
@@ -532,9 +541,20 @@ class PanelApp {
         };
     }
 
+    /** The server is serving this socket: the panel is connected. */
+    _socketServed() {
+        this.reconnectDelay = 1000;
+        this.reconnectAttempts = 0;
+        this.setConnectionStatus(true);
+        // Clear reconnection info on successful connect
+        const retryEl = document.getElementById('reconnect-info');
+        if (retryEl) retryEl.textContent = '';
+    }
+
     /** What a closed socket means: a refusal with a reason says so in place
-     *  of the panel; a device not approved asks again before connecting; and
-     *  anything else reconnects, a little later each time. */
+     *  of the panel; a device not approved asks again before connecting; a
+     *  server still starting is asked again soon; and anything else
+     *  reconnects, a little later each time. */
     _socketClosed(event) {
         if (this.access.ended) return;
         const code = event.code;
@@ -552,13 +572,19 @@ class PanelApp {
             this.access.waitForAccess({ afterRefusal: true }).then(() => this.connect());
             return;
         }
-        this.access.checkSessionAfterDrop();
+        // A server that said it is not ready answered: no session question.
+        if (code !== NOT_READY_CLOSE) this.access.checkSessionAfterDrop();
         this.reconnectAttempts++;
         const retryEl = document.getElementById('reconnect-info');
         if (retryEl) {
             retryEl.textContent = `Reconnecting (attempt ${this.reconnectAttempts})...`;
         }
-        // Always retry with exponential backoff (capped at maxReconnectDelay)
+        // A start takes seconds, so it is asked again on a short steady wait;
+        // anything else backs off (capped at maxReconnectDelay).
+        if (code === NOT_READY_CLOSE && event.reason === 'starting') {
+            setTimeout(() => this.connect(), STARTING_RETRY_MS);
+            return;
+        }
         setTimeout(() => this.connect(), this.reconnectDelay);
         this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
     }

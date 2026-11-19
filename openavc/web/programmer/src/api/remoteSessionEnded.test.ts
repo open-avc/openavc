@@ -128,7 +128,8 @@ describe("the tab's live connection", () => {
     ws.connect();
     const first = FakeSocket.last!;
     first.readyState = FakeSocket.OPEN;
-    first.onopen!();
+    // Served: the server's first message (its state snapshot) arrived.
+    first.onmessage!({ data: JSON.stringify({ type: "state.snapshot", state: {} }) } as MessageEvent);
     first.onclose!({ code: 1006 });
 
     // No session token: the cloud vouches for a Remote Access tab, and the

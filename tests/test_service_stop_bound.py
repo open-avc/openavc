@@ -75,9 +75,9 @@ async def test_an_open_request_cannot_hold_the_engine_stop(monkeypatch):
     """A download or a stream still open at the stop signal gets
     DRAIN_SECONDS, then the lifespan's stop begins: the main listener as
     main.py makes it, a request that would outlast the stop."""
-    from openavc import listen_sockets, main, runtime_flags
+    from openavc import listen_sockets, main
 
-    monkeypatch.setattr(runtime_flags, "stopping", False)
+    monkeypatch.setattr(listen_sockets, "_stop_heard", False)
 
     answering = asyncio.Event()
     stop_began: list[float] = []

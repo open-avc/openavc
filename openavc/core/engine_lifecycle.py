@@ -50,7 +50,6 @@ import asyncio
 import time
 from pathlib import Path
 
-from openavc import runtime_flags
 from openavc.core.device_sync import add_devices, work_out_each
 from openavc.core.script_engine import ScriptEngine
 from openavc.core.start_stages import GoOn, StartRun
@@ -294,16 +293,22 @@ class EngineLifecycleMixin:
     server_start: asyncio.Task | None = None
     audit = None
     listen_watcher: asyncio.Task | None = None
+    # The server's run-state record (middleware/startup_splash.py), which says
+    # where the process is in its life; None for an engine with no server.
+    run_state = None
 
     @property
     def stopping(self) -> bool:
-        """True once the server is on its way down: a stop signal heard
-        (``runtime_flags.stopping``, set the moment it arrives, while uvicorn
-        still drains connections) or this engine's stop begun. Something that
-        would reach real equipment, or decide what happens to it, on the way
-        down asks this; ``_running`` is no help, as it also reads False until
-        a start has finished."""
-        return runtime_flags.stopping or self._stopping
+        """True once the server is on its way down: its run-state record says
+        stopping (said the moment a stop signal arrives, while uvicorn still
+        drains connections, or a restart is accepted) or this engine's own
+        stop has begun (a failed start's retry ends the process without
+        saying it on the record, and an engine with no server has only its
+        own). Something that would reach real equipment, or decide what
+        happens to it, on the way down asks this; ``_running`` is no help, as
+        it also reads False until a start has finished."""
+        record = self.run_state
+        return (record is not None and record.is_stopping) or self._stopping
 
     async def start(self, run: StartRun | None = None) -> None:
         """
@@ -311,7 +316,7 @@ class EngineLifecycleMixin:
         (core/start_stages.py; ``openavc.main`` passes the server's, so the
         run-state record names the stage that stopped a start and keeps the
         ones it went on past):
-        1. Start state batch push (first: clients can already be connected)
+        1. Start state batch push (first, before any state is written)
         2. Load project.avc
         3. Initialize user variables
         4. Connect all devices
@@ -379,13 +384,13 @@ class EngineLifecycleMixin:
 
     def _push_state_to_clients(self) -> None:
         # The WebSocket hub listens to the state store and pushes from here
-        # on, before the first state write. /ws admits a client as soon as the
-        # engine exists, not when start() returns: a Programmer tab or a panel
-        # reconnecting into a restart is registered and snapshotted while the
-        # project loads and devices come up, and is owed every change after
-        # its snapshot (ws_hub.add_client). A write made before the hub
-        # listens (the simulation resuming, a device's first connect) never
-        # reaches a client that was already connected.
+        # on, before the first state write, so a client registered at any
+        # point of the start is owed every change after its snapshot
+        # (ws_hub.add_client). The server's /ws registers one only once the
+        # start has finished (the run-state record turns it away until then:
+        # middleware/startup_splash.py), but a write made before the hub
+        # listens (the simulation resuming, a device's first connect) would
+        # never reach a client already registered, whoever registered it.
         self._state_sub_ids.append(
             self.state.subscribe("*", self.ws.on_state_change)
         )
@@ -518,14 +523,18 @@ class EngineLifecycleMixin:
             ensure_programs_loop(self._retry_client_missing_devices)
         )
 
-    def attach_server(self, *, start: asyncio.Task | None = None, audit=None) -> None:
-        """What the server around the engine runs that a shutdown also ends:
-        the task starting the engine in the background (``start``), and the
-        device audit (``audit``). Set once by ``openavc.main`` as its lifespan
-        begins; the listen watcher is set there (``listen_watcher``) once the
-        engine is up."""
+    def attach_server(
+        self, *, start: asyncio.Task | None = None, audit=None, run_state=None,
+    ) -> None:
+        """The server around the engine: what it runs that a shutdown also
+        ends, the task starting the engine in the background (``start``) and
+        the device audit (``audit``), and its run-state record
+        (``run_state``), whose stopping ``stopping`` reads. Set once by
+        ``openavc.main`` as its lifespan begins; the listen watcher is set
+        there (``listen_watcher``) once the engine is up."""
         self.server_start = start
         self.audit = audit
+        self.run_state = run_state
 
     async def shutdown(self, deadline: float) -> list[str]:
         """End everything this process runs, for a process exit, within one

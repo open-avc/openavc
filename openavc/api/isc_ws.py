@@ -14,6 +14,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from openavc.api.host_policy import EndpointPolicy, endpoint_policy
 from openavc.core.host_policy import HostCategory
+from openavc.middleware.startup_splash import turn_away_until_ready
 from openavc.utils.logger import get_logger
 
 router = APIRouter()
@@ -50,14 +51,26 @@ def set_isc_manager(manager) -> None:
     _isc_manager = manager
 
 
+async def _turned_away(ws: WebSocket) -> bool:
+    """Whether the peer was refused before its hello, accepted first either
+    way so it reads the close code: still starting, failed to start or
+    stopping, the peer is told the phase (middleware/startup_splash.py) and
+    tries again on its own schedule; "not enabled" is said only by a server
+    that is up without ISC."""
+    if await turn_away_until_ready(ws):
+        return True
+    await ws.accept()
+    if _isc_manager is None:
+        await ws.close(code=4000, reason="ISC not enabled")
+        return True
+    return False
+
+
 @router.websocket("/isc/ws")
 @endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
 async def isc_websocket_endpoint(ws: WebSocket) -> None:
     """Accept a peer ISC WebSocket connection."""
-    await ws.accept()
-
-    if _isc_manager is None:
-        await ws.close(code=4000, reason="ISC not enabled")
+    if await _turned_away(ws):
         return
 
     # --- Read hello message ---

@@ -7,13 +7,16 @@ const POLL_INTERVAL_MS = 500;
  * Wait until the server is answering requests, for a tab whose socket came
  * back during a restart.
  *
- * The server admits a WebSocket while it is still starting, but until it has
- * finished, every other /api/ call answers 503 "Server is starting up". A
- * reconnect's REST loads made in that window fail, and the tab keeps the
- * project it had: the revision from the previous run, so its next save is
- * refused as a conflict. /api/startup-status is the one route answered
- * throughout (api/startupStatus.ts reads it), so this asks it until it says
- * ready, once per connection. It is not a periodic refresh.
+ * Until the server's start has finished, every /api/ call but a few answers
+ * 503 "Server is starting up". This server serves a socket only once it is
+ * ready (it closes one with NOT_READY_CLOSE until then, api/wsClient.ts), so
+ * the wait ends at its first answer; an earlier release, reached after a
+ * rollback, admits the socket while still starting. A reconnect's REST loads
+ * made in that window would fail, and the tab would keep the project it had:
+ * the revision from the previous run, so its next save is refused as a
+ * conflict. /api/startup-status is the one route answered throughout
+ * (api/startupStatus.ts reads it), so this asks it until it says ready, once
+ * per connection. It is not a periodic refresh.
  *
  * Resolves with the status that ended the wait: ready, with the version
  * that started, or failed, with the start's reason, which nothing short of

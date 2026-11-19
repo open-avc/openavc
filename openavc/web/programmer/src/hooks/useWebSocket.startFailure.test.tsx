@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 
-// A tab whose connection comes back to a start that failed says so, with the
-// server's reason, instead of waiting with nothing loaded; once a start
-// succeeds the notice goes and the tab loads.
+// A tab whose connection is kept out by, or comes back to, a start that
+// failed says so, with the server's reason, instead of waiting with nothing
+// loaded; once a start succeeds the notice goes and the tab loads.
+
+type Close = { code: number; reason: string };
 
 const lifecycle = vi.hoisted(() => ({
   connect: [] as Array<() => void>,
-  disconnect: [] as Array<() => void>,
+  disconnect: [] as Array<(close: Close) => void>,
 }));
 
 vi.mock("../api/wsClient", () => ({
@@ -19,16 +21,20 @@ vi.mock("../api/wsClient", () => ({
     lifecycle.connect.push(h);
     return () => {};
   }),
-  onDisconnect: vi.fn((h: () => void) => {
+  onDisconnect: vi.fn((h: (close: Close) => void) => {
     lifecycle.disconnect.push(h);
     return () => {};
   }),
 }));
 
 vi.mock("../api/serverReady", () => ({ waitForServerReady: vi.fn() }));
+vi.mock("../api/startupStatus", () => ({
+  askStartupStatus: vi.fn(async () => ({ answered: false, status: null })),
+}));
 
 import { useWebSocket } from "./useWebSocket";
 import { waitForServerReady } from "../api/serverReady";
+import { askStartupStatus } from "../api/startupStatus";
 import { useToastStore } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
 import { usePluginStore } from "../store/pluginStore";
@@ -52,9 +58,11 @@ beforeEach(() => {
   usePanelDevicesStore.setState({ load: vi.fn(async () => {}) } as never);
 });
 
+const DROPPED: Close = { code: 1006, reason: "" };
+
 async function reconnect() {
   await act(async () => {
-    lifecycle.disconnect.forEach((h) => h());
+    lifecycle.disconnect.forEach((h) => h(DROPPED));
     lifecycle.connect.forEach((h) => h());
   });
 }
@@ -74,6 +82,24 @@ describe("useWebSocket after a restart", () => {
 
     vi.mocked(waitForServerReady).mockResolvedValueOnce(READY);
     await reconnect();
+    expect(useToastStore.getState().toasts).toHaveLength(0);
+    expect(projectLoad).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a failed start's reason while the server keeps the socket out", async () => {
+    renderHook(() => useWebSocket());
+    await act(async () => lifecycle.connect.forEach((h) => h()));
+
+    // This server turns the socket away until it is ready, so the tab hears
+    // of the failure when the socket closes, not from a reconnect.
+    vi.mocked(askStartupStatus).mockResolvedValueOnce({ answered: true, status: FAILED });
+    await act(async () => lifecycle.disconnect.forEach((h) => h({ code: 4503, reason: "failed" })));
+    const toasts = useToastStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain("Loading the project failed: bad JSON");
+
+    vi.mocked(waitForServerReady).mockResolvedValueOnce(READY);
+    await act(async () => lifecycle.connect.forEach((h) => h()));
     expect(useToastStore.getState().toasts).toHaveLength(0);
     expect(projectLoad).toHaveBeenCalledTimes(2);
   });
