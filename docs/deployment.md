@@ -665,6 +665,12 @@ It answers `200` only while the server is running. While the server is starting,
 
 `GET /api/startup-status` gives the reason when a start failed.
 
+The Docker image's own health check asks `/api/startup-status` on the port the server is listening on (the HTTPS port when HTTPS is on), so it follows a port changed in Settings or set with `OPENAVC_PORT`. The container reports healthy only while the server is running, and `docker inspect` shows what the server last said, with the reason when a start failed:
+
+```bash
+docker inspect --format '{{json .State.Health}}' openavc
+```
+
 A running server answers:
 
 ```json

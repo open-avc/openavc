@@ -132,13 +132,11 @@ EXPOSE 8080
 # that names none gets Docker's 10 seconds, which the server's stop fits.
 STOPSIGNAL SIGTERM
 
-# Hits the plain HTTP port: when TLS is enabled with redirect_http=true (the
-# default), the redirect listener returns 301 to https://, and urllib follows
-# it. The unverified SSL context lets that redirect succeed for the self-signed
-# cert without affecting the TLS-off path (HTTP ignores the context arg).
-# Caveat: with TLS on AND redirect_http=false, this healthcheck cannot reach
-# the TLS listener at port 8443 — document in deployment.md.
+# Asks the server where it is in its life (openavc/health_probe.py), on the
+# port it recorded once listening, the HTTPS one when HTTPS is on: healthy
+# only while it is ready. docker inspect shows what it said, with the reason
+# when a start failed.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import ssl,urllib.request; urllib.request.urlopen('http://localhost:8080/api/health', context=ssl._create_unverified_context())"
+    CMD python -m openavc.health_probe
 
 ENTRYPOINT ["/usr/local/bin/openavc-start"]

@@ -71,3 +71,12 @@ def test_the_start_script_falls_back_to_plain_python():
     # The image makes it executable itself (the file's own mode bits are not
     # readable on every OS a checkout lives on).
     assert "RUN chmod 755 /usr/local/bin/openavc-start" in _production_stage()
+
+
+def test_the_health_check_asks_the_server_where_it_listens():
+    """A fixed http://localhost:8080 never reported healthy on a container
+    whose port was changed, nor with HTTPS on and its redirect off."""
+    stage = _production_stage()
+    at = next(i for i, line in enumerate(stage) if line.startswith("HEALTHCHECK "))
+    assert stage[at + 1] == "CMD python -m openavc.health_probe"
+    assert "/api/health" not in "\n".join(stage)
