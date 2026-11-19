@@ -135,6 +135,18 @@ async def test_under_a_service_manager_the_reason_shows_a_minute_then_the_proces
     assert record.phase == FAILED
 
 
+@pytest.mark.parametrize("now", [123.456, 0.1, 98765.4321])
+def test_the_countdown_starts_at_the_whole_hold(monkeypatch, now):
+    """Read at once, the countdown says the hold itself: a clock that has not
+    moved since the retry began (Windows reads it to about 16 ms) leaves only
+    the float's rounding, never a second more."""
+    monkeypatch.setattr(startup_splash.time, "monotonic", lambda: now)
+    record = _failed()
+    record.retrying(start_retry.HOLD_SECONDS)
+
+    assert record.answer()["retry_in"] == start_retry.HOLD_SECONDS
+
+
 async def test_the_third_automatic_restart_that_fails_waits_for_start_again(
         folder, managed, exits, hold):
     seen = []

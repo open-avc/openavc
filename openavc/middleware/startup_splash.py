@@ -171,7 +171,9 @@ class RunState:
     def _retry_in(self) -> int | None:
         if self._retry_at is None or self.phase != FAILED:
             return None
-        return max(0, math.ceil(self._retry_at - time.monotonic()))
+        # To the millisecond first: a clock read twice in the same tick
+        # leaves a float's rounding, which would count a whole second more.
+        return max(0, math.ceil(round(self._retry_at - time.monotonic(), 3)))
 
     def _reach(self, phase: str) -> None:
         if self.phase in (phase, STOPPING):
