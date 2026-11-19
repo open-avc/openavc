@@ -11,6 +11,22 @@ export function semverLt(a: string, b: string): boolean {
   return compareVersions(a, b) === -1;
 }
 
+const DEPLOYMENT_LABELS: Record<string, string> = {
+  windows_installer: "Windows Installer",
+  linux_package: "Linux Package",
+  macos_app: "macOS App",
+  android_appliance: "Appliance",
+  docker: "Docker",
+  git_dev: "Development (Git)",
+  unknown: "Unknown",
+};
+
+/** The Updates page's words for how this system was installed; a type it
+ *  does not know is shown as the server sent it. */
+export function deploymentLabel(deploymentType: string): string {
+  return DEPLOYMENT_LABELS[deploymentType] ?? deploymentType;
+}
+
 export type CompletionOutcome = "updated" | "rolled_back" | "same_version_restart" | null;
 
 /**

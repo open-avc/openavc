@@ -7,7 +7,7 @@ import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api/restClient";
-import { updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
+import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
 import { cardStyle, sectionTitle } from "./updatesStyles";
 import { PanelSoftwareSection } from "./PanelSoftwareSection";
 import { UpdateWarnings, hasUpdateWarning } from "./UpdateWarnings";
@@ -270,17 +270,6 @@ export function UpdatesView() {
       showError("Rollback failed: " + parseApiError(e));
     }
   }, []);
-
-  const deploymentLabel = (dt: string) => {
-    const map: Record<string, string> = {
-      windows_installer: "Windows Installer",
-      linux_package: "Linux Package",
-      docker: "Docker",
-      git_dev: "Development (Git)",
-      unknown: "Unknown",
-    };
-    return map[dt] ?? dt;
-  };
 
   const canSelfUpdate = status?.can_self_update ?? false;
   const changelog = checkResult?.changelog ?? "";

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  deploymentLabel,
   healthProbeOutcome,
   historyEntryDisplay,
   panelSoftwareDisplay,
@@ -200,5 +201,26 @@ describe("panelSoftwareDisplay", () => {
       "The update did not install: the installer never reported back",
     );
     expect(last("failed", "")?.text).toBe("The update to 0.3.28 did not install.");
+  });
+});
+
+// The Updates page's "Deployment" line names every install type the server
+// reports (openavc/updater/platform.py's DeploymentType) in words, never its
+// code name.
+describe("deploymentLabel", () => {
+  it.each([
+    ["windows_installer", "Windows Installer"],
+    ["linux_package", "Linux Package"],
+    ["macos_app", "macOS App"],
+    ["android_appliance", "Appliance"],
+    ["docker", "Docker"],
+    ["git_dev", "Development (Git)"],
+    ["unknown", "Unknown"],
+  ])("names %s as %s", (type, label) => {
+    expect(deploymentLabel(type)).toBe(label);
+  });
+
+  it("shows a type it does not know as the server sent it", () => {
+    expect(deploymentLabel("something_new")).toBe("something_new");
   });
 });
