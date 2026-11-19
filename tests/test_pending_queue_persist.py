@@ -21,7 +21,7 @@ import pytest
 from openavc.core import project_changes
 from openavc.core.engine import Engine
 from openavc.core.project_changes import ProjectNotAppliedError
-from openavc.core.project_loader import ProjectSaveError, load_project
+from openavc.core.project_loader import DeviceConfig, ProjectSaveError, load_project
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
 from tests.helpers import wait_for_condition
@@ -276,5 +276,62 @@ async def test_a_queue_that_comes_in_for_an_away_device_waits_for_its_connect(tm
         assert eng.devices.get_driver("w1") is driver
         assert widget.written == []
         assert _queues(eng) == ({"level": 55},) * 3
+    finally:
+        await eng.devices.disconnect_all()
+
+
+async def _edit_while_a_clear_waits(eng: Engine, mutate) -> None:
+    """Send ``w1``'s queue while an edit already waits for the change lock,
+    so the edit lands first, on a project still holding the entry sent, and
+    the clear of that entry is saved after it."""
+    async with eng._reload_lock:
+        edit = asyncio.create_task(eng.apply_project_edit(mutate))
+        await asyncio.sleep(0)  # the edit is first in line for the lock
+        await eng.devices.bring_up()
+        assert eng._bookkeeping_queue, "the clear should be waiting behind the edit"
+    await edit
+    await eng.wait_for_device_bringup()
+    await _settled(eng)
+
+
+@pytest.mark.asyncio
+async def test_an_edit_saved_while_a_clear_waits_does_not_bring_the_entry_back(tmp_path, widget):
+    """The edit carries the queue as the file holds it, and the running
+    device takes it in place; the clear saved after it removes the entry
+    from the file and the running system alike. When the running queue was
+    cleared before its save, an edit in that window put the entry back on
+    the device while the file no longer held it."""
+    eng = await _engine(tmp_path, {"input": "hdmi1"})
+
+    def add_a_second_widget(project) -> None:
+        project.devices.append(DeviceConfig(id="w2", driver=DRIVER, name="Widget 2"))
+        project.connections["w2"] = {"host": "10.0.0.10"}
+
+    try:
+        await _edit_while_a_clear_waits(eng, add_a_second_widget)
+
+        assert _queues(eng) == ({},) * 3
+        assert widget.written == [("input", "hdmi1")]
+        assert [d.id for d in eng.project.devices] == ["w1", "w2"]
+    finally:
+        await eng.devices.disconnect_all()
+
+
+@pytest.mark.asyncio
+async def test_an_edit_that_replaces_the_device_while_a_clear_waits_agrees_after(tmp_path, widget):
+    """The same edit order, for an edit that adds the device again (its
+    name changed): the replacement starts from the queue the edit carried,
+    and once both clears are saved the file and the running system agree
+    that nothing is queued."""
+    eng = await _engine(tmp_path, {"input": "hdmi1"})
+
+    def rename(project) -> None:
+        next(d for d in project.devices if d.id == "w1").name = "Lobby widget"
+
+    try:
+        await _edit_while_a_clear_waits(eng, rename)
+
+        assert _queues(eng) == ({},) * 3
+        assert next(d for d in eng.project.devices if d.id == "w1").name == "Lobby widget"
     finally:
         await eng.devices.disconnect_all()
