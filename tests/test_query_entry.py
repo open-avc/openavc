@@ -132,15 +132,13 @@ def test_the_simulator_answers_what_the_form_says(entry: Any, kind: str | None) 
 
 def test_an_osc_message_is_a_form_where_the_list_takes_one() -> None:
     read = read_query_entry({"address": "/ch/1/mix", "args": [{"type": "f", "value": 0.5}]}, osc_form=True)
-    assert (read.form, read.address, read.args) == (
-        OSC_MESSAGE, "/ch/1/mix", [{"type": "f", "value": 0.5}],
-    )
+    assert (read.form, read.address) == (OSC_MESSAGE, "/ch/1/mix")
 
 
 def test_a_key_left_out_or_written_null_reads_as_absent() -> None:
     for entry in ({"send": "PWR?", "when": "meters"}, {"send": "PWR?", "when": "meters", "query_for": None}):
         read = read_query_entry(entry)
-        assert (read.when_state, read.query_for, read.page_size, read.args) == (None, None, None, None)
+        assert (read.when_state, read.query_for, read.page_size) == (None, None, None)
 
 
 def test_each_child_decides_the_form_by_being_there() -> None:

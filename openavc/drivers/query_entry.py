@@ -10,7 +10,8 @@ keys, the first that applies:
 * a mapping with ``each_child``: ``EACH_CHILD``, its ``send`` once per
   registered child of that type, or once per page of ``page_size`` children;
 * a mapping with ``address``, in a list that takes the OSC message
-  (``on_connect``): ``OSC_MESSAGE``, ``{address, args}``;
+  (``on_connect``): ``OSC_MESSAGE``, ``{address, args}`` (its ``args`` are
+  the OSC start-up's to read);
 * a mapping whose ``send`` is text that is not empty: ``SEND``, a line written
   as a mapping so it can carry a reason a string cannot
   (``spec.QUERY_ENTRY_REASONS``: ``when``, ``query_for``, ``when_state``);
@@ -23,7 +24,7 @@ reads as ``SEND`` with a problem (``LONG_LINE``) that says what to change.
 
 Defaults: a key left out, or written null, reads as absent: no ``when`` or
 ``when_state`` gate, no ``query_for`` variable, no ``page_size`` (one line
-per child), no ``args``. Which form an entry takes is read from the keys it
+per child). Which form an entry takes is read from the keys it
 has, as the published schema reads it: an ``each_child`` written null is
 still a per-child entry naming no type, and a reason written null is still a
 reason (the checker refuses the null).
@@ -70,8 +71,7 @@ class QueryEntry:
     the checker refuses stays as it was, for the checker to name).
 
     ``send`` is the line a ``LINE`` or ``SEND`` entry sends and the template
-    an ``EACH_CHILD`` entry fills; ``address`` and ``args`` are an
-    ``OSC_MESSAGE``'s."""
+    an ``EACH_CHILD`` entry fills; ``address`` is an ``OSC_MESSAGE``'s."""
 
     form: str | None
     send: Any = None
@@ -81,7 +81,6 @@ class QueryEntry:
     when_state: Any = None
     query_for: Any = None
     address: Any = None
-    args: Any = None
     problem: QueryProblem | None = None
 
 
@@ -103,9 +102,7 @@ def read_query_entry(entry: Any, *, osc_form: bool = False) -> QueryEntry:
     if "each_child" in entry:
         return QueryEntry(EACH_CHILD, each_child=entry["each_child"], **carried)
     if osc_form and "address" in entry:
-        return QueryEntry(
-            OSC_MESSAGE, address=entry["address"], args=entry.get("args"), **carried,
-        )
+        return QueryEntry(OSC_MESSAGE, address=entry["address"], **carried)
     send = carried["send"]
     if not isinstance(send, str) or not send:
         return QueryEntry(None, **carried)

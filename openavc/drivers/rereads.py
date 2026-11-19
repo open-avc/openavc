@@ -52,6 +52,7 @@ import time
 from typing import Any, Callable
 
 from openavc.drivers.child_registration import ChildRegistrations, registered_since
+from openavc.drivers.query_entry import EACH_CHILD, read_query_entry
 from openavc.drivers.spec import FOLLOW_UP_SETTLE_S
 from openavc.transport.pacing import sleep_at_least
 from openavc.utils.logger import get_logger
@@ -221,7 +222,7 @@ class Rereads:
         with each child the rule wrote. With none written (an id the roster
         does not hold), such a line is not sent."""
         lines = self._expand_query(entry)
-        if isinstance(entry, dict) and "each_child" in entry:
+        if read_query_entry(entry).form == EACH_CHILD:
             return [(line, None) for line in lines]
         out: list[tuple[str, Any]] = []
         for line in lines:

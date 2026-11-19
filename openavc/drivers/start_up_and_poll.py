@@ -53,6 +53,7 @@ from typing import Any, Callable
 
 from openavc.core.device_errors import device_error_text
 from openavc.drivers.base import ConnectionFaultError
+from openavc.drivers.query_entry import EACH_CHILD, LINE, read_query_entry
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.transport.pacing import pacing_clock, sleep_at_least
 from openavc.utils.logger import get_logger
@@ -231,7 +232,7 @@ class StartUpAndPoll:
         """One OSC start-up entry: a bare address (a string, or ``send``), an
         ``{address, args}`` message, or an ``each_child`` expansion."""
         try:
-            if isinstance(item, dict) and "each_child" in item:
+            if read_query_entry(item, osc_form=True).form == EACH_CHILD:
                 for expanded in self._expand_query(item):
                     await self.transport.send(_osc_message(self._osc_address(expanded)))
                     self._start_up_lines.add(expanded)
@@ -250,13 +251,14 @@ class StartUpAndPoll:
         """An OSC start-up entry's message, and the line it notes (none for a
         message with args: that writes a value rather than reading one).
         None for an entry that is not sent."""
-        if isinstance(item, str):
+        entry = read_query_entry(item, osc_form=True)
+        if entry.form == LINE:
             return _osc_message(self._osc_address(item)), item
         if not isinstance(item, dict) or not self._query_enabled(item):
             return None
         # Keyed "address" (the {address, args} form) or "send" (a plain
         # gated entry), so a gated subscription is never an empty address.
-        address = item.get("address") or item.get("send") or ""
+        address = entry.address or entry.send or ""
         line = None if item.get("args") else address
         address = self._osc_address(address)
         args = self._build_osc_args(item.get("args", []), self.config)

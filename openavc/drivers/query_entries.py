@@ -3,7 +3,8 @@ response rule's ``then_query`` sends, and whether it may go now.
 
 The rules worth knowing before changing anything here:
 
-* **An entry is a string or a dict.** A string goes as written. ``{send}`` is
+* **An entry is a string or a dict**, its form read by
+  ``query_entry.read_query_entry``. A string goes as written. ``{send}`` is
   a plain line in dict form so it can carry a gate; ``{each_child: <type>,
   send}`` is one line per registered child of that type, ``{child_id}``
   filled with its unpadded local id (``{child_id:02d}`` pads), or one per page
@@ -20,10 +21,10 @@ The rules worth knowing before changing anything here:
   (``_line_gate_shut``), once any write under way has finished, so the reply
   to the line before it is read first.
   An OSC start-up ``each_child`` line is not judged again.
-* **OSC start-up reads entries of its own too**
+* **OSC start-up sends entries of its own too**
   (``start_up_and_poll._osc_start_up_message``: a string, ``{send}``, and the
-  ``{address, args}`` message only start-up takes), so a new entry form is
-  added there as well as here.
+  ``{address, args}`` message only start-up takes), so a new entry form,
+  read in ``query_entry``, is sent there as well as here.
 * **A variable not reported yet holds nothing back**, so a first connect
   still asks for the state a gate reads. Values compare in the variable's
   declared type, and a gate that is not a mapping opens, as a malformed
@@ -47,6 +48,7 @@ from typing import Any, Callable
 from openavc.core.condition_eval import reads_as_on
 from openavc.drivers import compiled_protocol
 from openavc.drivers.child_ids import page_starts
+from openavc.drivers.query_entry import EACH_CHILD, LINE, SEND, QueryEntry, read_query_entry
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -103,9 +105,10 @@ class QueryEntries:
         state allows (_state_gate_open): a unit that any command wakes from
         standby is left in standby. An entry with neither always runs.
         """
-        if not self._state_gate_open(query.get("when_state")):
+        entry = read_query_entry(query)
+        if not self._state_gate_open(entry.when_state):
             return False
-        field = query.get("when")
+        field = entry.when
         if field is None:
             return True
         if not isinstance(field, str) or not field:
@@ -119,33 +122,33 @@ class QueryEntries:
     def _expand_query(self, query: Any) -> list[str]:
         """One entry as the lines it sends now (the module docstring has the
         forms): none while its ``when:`` or ``when_state:`` holds it."""
-        if isinstance(query, str):
-            return [query]
+        entry = read_query_entry(query)
+        if entry.form == LINE:
+            return [entry.send]
         if isinstance(query, dict):
             if not self._query_enabled(query):
                 return []
-            if "each_child" in query:
-                return self._each_child_lines(query)
-            send = query.get("send")
-            if isinstance(send, str) and send:
-                return [send]
+            if entry.form == EACH_CHILD:
+                return self._each_child_lines(entry)
+            if entry.form == SEND:
+                return [entry.send]
         log.warning(
             f"[{self.device_id}] Unrecognized query entry {query!r}; skipping"
         )
         return []
 
-    def _each_child_lines(self, query: dict[str, Any]) -> list[str]:
+    def _each_child_lines(self, entry: QueryEntry) -> list[str]:
         """An ``each_child`` entry: its ``send`` once per registered child of
         the type (or once per page of ``page_size`` children)."""
-        ctype = query.get("each_child")
-        template = query.get("send")
+        ctype = entry.each_child
+        template = entry.send
         if not isinstance(ctype, str) or not _nonblank(template):
             log.warning(
                 f"[{self.device_id}] each_child query needs 'each_child' "
                 f"+ 'send'; skipping"
             )
             return []
-        children = page_starts(self.list_children(ctype), query.get("page_size"))
+        children = page_starts(self.list_children(ctype), entry.page_size)
         return [
             self._safe_substitute(template, {"child_id": local_id})
             for local_id in children
@@ -234,7 +237,7 @@ class QueryEntries:
         a reply that has already arrived counts.
         """
         poll_gate = gates.get("when_state") if gates is not None else None
-        entry_gate = entry.get("when_state") if isinstance(entry, dict) else None
+        entry_gate = read_query_entry(entry).when_state
         if not poll_gate and not entry_gate:
             return None
         await self._wait_for_write()
