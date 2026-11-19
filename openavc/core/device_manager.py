@@ -472,9 +472,6 @@ class DeviceManager(
         # Drop the detected web UI URL so a re-add under the same id re-detects
         # (config may have changed the host/scheme), and cancel any in-flight probe.
         self._forget_web_ui(device_id)
-        # Nothing left to confirm a queued write against — the driver, its
-        # state keys and the queue itself all go with the device.
-        self._cancel_pending_confirm(device_id)
 
         # Clear all state keys for this device
         device_keys = self.state.get_namespace(f"device.{device_id}.")
@@ -673,9 +670,11 @@ class DeviceManager(
         self._cancel_all_pause_expiries()
         # Cancel any in-flight web-UI probes so they don't outlive shutdown.
         self._cancel_web_ui_probes()
-        # Same for read-back watchers: a setting still unconfirmed at shutdown
-        # stays queued and is re-sent on the next start, which is the answer
-        # this whole mechanism exists to give.
+        # Same for read-back watchers: the retire step ended each device's,
+        # and this ends one a connect already under way started since. A
+        # setting still unconfirmed at shutdown stays queued and is re-sent on
+        # the next start, which is the answer this whole mechanism exists to
+        # give.
         self._cancel_all_pending_confirms()
 
         # Mark every device as an intentional disconnect BEFORE closing it.

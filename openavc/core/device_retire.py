@@ -8,10 +8,13 @@ new instance replaces it (an edit, a driver reload, a re-add:
 
 The rule worth knowing before changing it: work that holds an instance is
 ended here, by instance, before anything about the instance changes. Today
-that work is a setup run (core/setup_actions.py), which holds the instance it
-started on: its settings, its reconnect and its hand-back go to that
-instance only, and the runner says the reason to the wizard whose run it
-ends.
+that work is two things. A queued setting's read-back watcher
+(core/pending_settings.py) watches the instance its setting was sent to, and
+is ended first, at once, so it can never judge an instance being closed: the
+setting stays queued for the instance that runs the device next. A setup run
+(core/setup_actions.py) holds the instance it started on: its settings, its
+reconnect and its hand-back go to that instance only, and the runner says the
+reason to the wizard whose run it ends.
 
 Mixed into DeviceManager (core/device_manager.py).
 """
@@ -34,7 +37,8 @@ class DeviceRetireMixin:
     """THE retire step, for DeviceManager (see the module docstring).
 
     Its state is set up by ``_init_retire``. From its host it reads
-    ``_devices``.
+    ``_devices`` and asks ``_cancel_pending_confirm``
+    (core/pending_settings.py).
     """
 
     _devices: dict[str, BaseDriver]
@@ -46,9 +50,14 @@ class DeviceRetireMixin:
         self.end_setup_run: Callable[[str, Any, str], Awaitable[None]] | None = None
 
     async def _retire(self, device_id: str, why: str) -> None:
-        """End the work holding the device's live instance, before it goes."""
+        """End the work holding the device's live instance, before it goes:
+        its read-back watcher before anything here waits, then its setup
+        run, waited for."""
         driver = self._devices.get(device_id)
-        if driver is not None and self.end_setup_run is not None:
+        if driver is None:
+            return
+        self._cancel_pending_confirm(device_id)
+        if self.end_setup_run is not None:
             await self.end_setup_run(device_id, driver, why)
 
     async def _retire_all(self, why: str) -> None:

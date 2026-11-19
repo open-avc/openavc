@@ -468,7 +468,7 @@ class PendingSettingsMixin:
                 device_id, run.applied, run.queued, refused=run.refused,
             )
         if run.awaiting:
-            self._schedule_pending_confirm(device_id, run.awaiting, run.queued)
+            self._schedule_pending_confirm(device_id, driver, run.awaiting, run.queued)
 
     async def _send_pending(self, run: _PendingPass, key: str, value: Any) -> None:
         """Send one queued setting, and note whether it clears now or waits
@@ -612,15 +612,22 @@ class PendingSettingsMixin:
     def _schedule_pending_confirm(
         self,
         device_id: str,
+        driver: BaseDriver,
         awaiting: dict[str, tuple[str, Any]],
         queued_values: dict[str, Any],
     ) -> None:
-        """Start (or replace) the read-back watcher for a device."""
+        """Start (or replace) the read-back watcher for ``driver``, the
+        instance the pass sent to. None when that instance no longer runs
+        the device (removed, or replaced while the pass was sending): its
+        settings stay queued, and a watcher the replacement started is left
+        alone."""
+        if self._devices.get(device_id) is not driver:
+            return
         prior = self._pending_confirm_tasks.pop(device_id, None)
         if prior is not None:
             prior.cancel()
         task = asyncio.create_task(
-            self._confirm_pending_settings(device_id, awaiting, queued_values)
+            self._confirm_pending_settings(device_id, driver, awaiting, queued_values)
         )
         self._pending_confirm_tasks[device_id] = task
 
@@ -634,10 +641,12 @@ class PendingSettingsMixin:
     async def _confirm_pending_settings(
         self,
         device_id: str,
+        driver: BaseDriver,
         awaiting: dict[str, tuple[str, Any]],
         queued_values: dict[str, Any],
     ) -> None:
-        """Wait for each written setting to read back, then clear or keep it.
+        """Wait for each written setting to read back on ``driver``, the
+        instance it was sent to, then clear or keep it.
 
         Three outcomes per key, at the end of the window:
 
@@ -655,10 +664,12 @@ class PendingSettingsMixin:
           agreement, and that is the shape the write vanished in.
 
         A device that drops mid-window leaves everything queued: the reconnect
-        applies it again, and the disconnect is already on the card.
+        applies it again, and the disconnect is already on the card. So does
+        one whose instance goes (removed, or replaced): the retire step ends
+        the watcher first (core/device_retire.py), and one that wakes to find
+        its instance gone judges nothing.
         """
-        driver = self._devices.get(device_id)
-        if driver is None:
+        if self._devices.get(device_id) is not driver:
             return
         watch = _ReadbackWatch(
             driver, driver.DRIVER_INFO.get("device_settings", {}), dict(awaiting),
@@ -675,14 +686,16 @@ class PendingSettingsMixin:
         self, device_id: str, watch: _ReadbackWatch, deadline: float,
     ) -> None:
         """Re-read until every setting reads back or the window closes. A
-        device that goes or drops first leaves the rest queued, unjudged."""
+        device that goes or drops first leaves the rest queued, unjudged:
+        asked before anything is read, so a watcher that wakes past its
+        deadline to find its instance gone says nothing about it."""
         while True:
-            watch.take_confirmed()
-            if not watch.outstanding or time.monotonic() >= deadline:
-                return
             if self._device_lost(device_id, watch.driver):
                 # Gone or dropped — leave the rest queued for the reconnect.
                 watch.outstanding.clear()
+                return
+            watch.take_confirmed()
+            if not watch.outstanding or time.monotonic() >= deadline:
                 return
             await asyncio.sleep(_CONFIRM_POLL_STEP)
 

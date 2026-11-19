@@ -273,6 +273,148 @@ async def test_removing_the_device_cancels_the_watcher(dm):
     assert "dev" not in dm._pending_confirm_tasks
 
 
+# ── The instance a watcher holds ────────────────────────────────────────────
+
+
+HELD = "acme_readback_held"
+
+
+class _HeldDriver(_ReadBackDriver):
+    """Built by the manager (registered): it echoes nothing and has reported
+    ``brightness`` as 55 since its connect. Its first close waits for
+    ``release`` once ``closing`` is set, and the first instance's sends wait
+    for ``send_gate`` when one is set, so a test can act inside either."""
+
+    DRIVER_INFO = {**_ReadBackDriver.DRIVER_INFO, "id": HELD}
+    closing: asyncio.Event | None = None
+    release: asyncio.Event | None = None
+    send_gate: asyncio.Event | None = None
+    sending: asyncio.Event | None = None
+    instances: list = []
+
+    def __init__(self, device_id, config, state, events):
+        super().__init__(device_id, config, state, events)
+        self.echo = False
+        type(self).instances.append(self)
+
+    async def connect(self):
+        await super().connect()
+        self.set_state("brightness", 55)
+
+    async def disconnect(self):
+        cls = type(self)
+        if cls.closing is not None and not cls.closing.is_set():
+            cls.closing.set()
+            await cls.release.wait()
+        await super().disconnect()
+
+    async def set_device_setting(self, key, value):
+        cls = type(self)
+        if cls.send_gate is not None and self is cls.instances[0]:
+            cls.sending.set()
+            await cls.send_gate.wait()
+        return await super().set_device_setting(key, value)
+
+
+@pytest.fixture
+def held(monkeypatch):
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    _HeldDriver.closing, _HeldDriver.release = asyncio.Event(), asyncio.Event()
+    _HeldDriver.send_gate = _HeldDriver.sending = None
+    _HeldDriver.instances = []
+    # A step longer than the window: a watcher still running when its
+    # device's close begins wakes past its deadline before it can see the
+    # device go, so the test meets the judging it must not do.
+    monkeypatch.setattr(pending_settings, "_CONFIRM_POLL_STEP", 0.2)
+    _DRIVER_REGISTRY[HELD] = _HeldDriver
+    yield _HeldDriver
+    _DRIVER_REGISTRY.pop(HELD, None)
+
+
+def _held_config() -> dict[str, Any]:
+    return {
+        "id": "dev", "driver": HELD, "name": "Dev", "config": {},
+        "pending_settings": {"brightness": 70},
+    }
+
+
+async def _said_while_closing(dm: DeviceManager, retire) -> tuple[bool, list, list]:
+    """Add ``dev`` with a queued brightness its watcher waits on, then run
+    ``retire`` (a remove or an edit) and wait past the confirm window inside
+    the old instance's close. Whether the watcher was still running when the
+    close began, and the errors and clears said for ``dev`` by the window's
+    end."""
+    errors, applied = _errors(dm), _applied(dm)
+    await dm.add_device(_held_config())
+    watcher = dm._pending_confirm_tasks["dev"]
+    await asyncio.sleep(0)  # its first step: the device is there and talking
+    retiring = asyncio.create_task(retire())
+    await asyncio.wait_for(_HeldDriver.closing.wait(), timeout=2.0)
+    running_at_close = not (watcher.done() or watcher.cancelling())
+    await asyncio.sleep(0.4)
+    said = (running_at_close, list(errors), list(applied))
+    _HeldDriver.release.set()
+    await retiring
+    await dm.disconnect_all()
+    return said
+
+
+async def test_a_removed_device_s_watcher_is_ended_before_its_close(dm, held):
+    """The watcher used to be cancelled after the close was awaited, so in
+    that close it could judge a device being removed: an error saying the
+    setting stays queued, for a device that no longer exists."""
+    assert await _said_while_closing(dm, lambda: dm.remove_device("dev")) == (False, [], [])
+
+
+async def test_an_edited_device_s_watcher_is_ended_before_its_close(dm, held):
+    """An edit retires the old instance the same way; the new one sends the
+    queue again and watches it itself."""
+    said = await _said_while_closing(dm, lambda: dm.update_device("dev", _held_config()))
+
+    assert said == (False, [], [])
+
+
+async def test_a_send_that_outlives_its_instance_leaves_the_new_watcher_alone(dm, held):
+    """A connect's pass was still sending when the device was edited. Its
+    instance has gone by the time it would start a watcher, so it starts
+    none: the replacement's own watcher, on the replacement, is the one that
+    stands."""
+    held.closing = None
+    held.send_gate, held.sending = asyncio.Event(), asyncio.Event()
+    adding = asyncio.create_task(dm.add_device(_held_config()))
+    await asyncio.wait_for(held.sending.wait(), timeout=2.0)
+
+    await dm.update_device("dev", _held_config())
+    replacement = dm._pending_confirm_tasks["dev"]
+    held.send_gate.set()
+    await adding
+
+    assert dm._pending_confirm_tasks.get("dev") is replacement
+    assert not (replacement.done() or replacement.cancelling())
+    await dm.disconnect_all()
+
+
+async def test_a_watcher_whose_device_went_judges_nothing_at_its_deadline(dm, held):
+    """A watcher wakes past its deadline to find its device gone (removed,
+    or replaced since): it leaves the setting queued, unjudged, as a device
+    that drops mid-window does."""
+    driver = await _device(dm)
+    driver.echo = False
+    driver.set_state("brightness", 55)
+    errors, applied = _errors(dm), _applied(dm)
+    await dm.store_pending_settings("dev", {"brightness": 70})
+    await dm._apply_pending_settings("dev")
+    watcher = dm._pending_confirm_tasks["dev"]
+    await asyncio.sleep(0)
+
+    dm._devices.pop("dev")
+    await watcher
+
+    assert (errors, applied) == ([], [])
+    assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
+
+
 # ── The window, and what counts as agreement ────────────────────────────────
 
 
@@ -397,11 +539,14 @@ async def test_a_failure_that_cannot_be_reported_does_not_stop_the_rest(dm):
 
 
 async def test_a_watch_whose_device_is_already_gone_settles_nothing(dm):
+    gone = _ReadBackDriver("dev", {}, dm.state, dm.events)
+    await gone.connect()
+    gone.set_state("brightness", 70)  # it even reads back; it is not the device now
     dm._device_configs["dev"] = {"pending_settings": {"brightness": 70}}
     applied = _applied(dm)
 
     await dm._confirm_pending_settings(
-        "dev", {"brightness": ("brightness", 70)}, {"brightness": 70},
+        "dev", gone, {"brightness": ("brightness", 70)}, {"brightness": 70},
     )
 
     assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
