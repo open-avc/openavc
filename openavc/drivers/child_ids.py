@@ -16,9 +16,8 @@ rule is identical wherever it happens:
 Coercion says nothing about whether the id *exists* — that belongs to the
 driver's child registry, and ``_format_child_id`` is the validating inverse of
 this (a typed id back to its padded string form). It does now answer whether
-an id is in the declared RANGE: see ``child_id_range_error``, which ids the
-type declares at all: see ``declared_child_ids``, and which config fields a
-declared roster is built from: see ``roster_config_fields``.
+an id is in the declared RANGE: see ``child_id_range_error``, and which ids the
+type declares at all: see ``declared_child_ids``.
 
 Callers own the failure. Every function here returns ``None`` rather than
 raising, because the same bad input is a 404 to a REST route, a rejected
@@ -132,25 +131,6 @@ def declared_child_ids(
         return [part.strip() for part in raw.split(",") if part.strip()]
 
     return None
-
-
-def roster_config_fields(child_types: Any) -> set[str]:
-    """The config fields the declared rosters in ``child_types`` (a
-    driver's ``child_entity_types``) are built from: each ``instances``
-    block's ``count_from`` or ``ids_from``. A change to one of them while
-    the device runs rebuilds the roster (``BaseDriver._config_changed``)."""
-    fields: set[str] = set()
-    if not isinstance(child_types, dict):
-        return fields
-    for type_def in child_types.values():
-        instances = type_def.get("instances") if isinstance(type_def, dict) else None
-        if not isinstance(instances, dict):
-            continue
-        for source in ("count_from", "ids_from"):
-            name = instances.get(source)
-            if isinstance(name, str) and name:
-                fields.add(name)
-    return fields
 
 
 def page_starts(ids: list[Any], page_size: Any) -> list[Any]:

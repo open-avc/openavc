@@ -241,15 +241,9 @@ class ConfigurableDriver(
     def _reply_template_fields(self) -> set[str]:
         """The config names the reply rules' ``match`` and ``address``
         templates are filled from."""
-        fields: set[str] = set()
-        for resp in self._definition.get("responses") or []:
-            if not isinstance(resp, dict):
-                continue
-            for key in ("match", "address"):
-                template = resp.get(key)
-                if isinstance(template, str):
-                    fields.update(placeholder_names(template))
-        return fields
+        rules = [r for r in self._definition.get("responses") or [] if isinstance(r, dict)]
+        templates = [rule.get(key) for rule in rules for key in ("match", "address")]
+        return {name for t in templates if isinstance(t, str) for name in placeholder_names(t)}
 
     def _rebuild_rosters_from_config(self) -> None:
         """The declared rosters, from the config just changed: built here

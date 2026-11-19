@@ -48,7 +48,6 @@ from openavc.core.device_traffic import record_traffic
 from openavc.core.event_bus import EventBus
 from openavc.drivers.bridge_ports import BridgePorts
 from openavc.drivers.child_entities import ChildEntities
-from openavc.drivers.child_ids import roster_config_fields
 # A command that changed the device and stopped partway is one of the command
 # outcomes (drivers/command_outcome.py); drivers import it from here.
 from openavc.drivers.command_outcome import CommandPartialError  # noqa: F401
@@ -136,6 +135,16 @@ __all__ = [
 ]
 
 log = get_logger(__name__)
+
+
+def roster_config_fields(child_types: Any) -> set[str]:
+    """The config fields the declared rosters in ``child_types`` (a
+    driver's ``child_entity_types``) are built from: each ``instances``
+    block's ``count_from`` or ``ids_from``."""
+    type_defs = child_types.values() if isinstance(child_types, dict) else ()
+    blocks = [t.get("instances") for t in type_defs if isinstance(t, dict)]
+    names = [b.get(key) for b in blocks if isinstance(b, dict) for key in ("count_from", "ids_from")]
+    return {name for name in names if isinstance(name, str) and name}
 
 # The transports that dial a network address of their own (``config["host"]``).
 _ADDRESSED_TRANSPORTS = frozenset({"tcp", "udp", "osc", "http", "ssh", "mqtt", "snmp"})
@@ -575,12 +584,33 @@ class BaseDriver(
         _link_alive() goes false). Default: no-op.
         """
 
+    def _take_config_change(self, delta: dict[str, Any]) -> None:
+        """Take ``delta`` into this driver's config while the device runs
+        (``DeviceManager.merge_live_config``), then follow the settings whose
+        value changed (``_config_changed``). A driver that cannot follow is
+        logged: the change is saved and taken either way."""
+        changed = {
+            key for key, value in delta.items()
+            if key not in self.config or self.config[key] != value
+        }
+        self.config.update(delta)
+        if not changed:
+            return
+        try:
+            self._config_changed(changed)
+        except Exception:  # Catch-all: driver code; the change is saved and live either way
+            log.exception(
+                f"[{self.device_id}] The driver could not follow the changed "
+                f"settings {sorted(changed)}; they take full effect when the "
+                f"device is next added"
+            )
+
     def _config_changed(self, changed: set[str]) -> None:
         """The settings named in ``changed`` were changed while the device
         runs, and ``self.config`` already holds their new values: a setting
         the device filled in, or a setup action's ``request_config_update``.
         THE place a running driver follows such a change
-        (``DeviceManager.merge_live_config`` calls it): what it built from
+        (``_take_config_change`` calls it): what it built from
         its config when it was set up is worked out again, as a re-add would.
 
         Here: the logins masked in the device's log, and a declared roster

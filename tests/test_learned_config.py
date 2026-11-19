@@ -26,8 +26,7 @@ from openavc.core.device_config import apply_config_delta
 from openavc.core.engine import Engine
 from openavc.core.learned_config import accepted_value, learned_fields
 from openavc.core.project_loader import DeviceConfig, load_project
-from openavc.drivers.base import BaseDriver
-from openavc.drivers.child_ids import roster_config_fields
+from openavc.drivers.base import BaseDriver, roster_config_fields
 from openavc.drivers.registry import register_driver, unregister_driver
 from tests.helpers import wait_for_condition
 
