@@ -186,3 +186,27 @@ def test_a_file_that_fails_to_import_leaves_another_files_simulator_serving(tmp_
     manager = _discover(tmp_path)
     assert manager._available["acme_widget"].simulator_class.__name__ == "AcmeWidgetSimulator"
     assert manager._load_errors == {}
+
+
+# ── What a scan reads ───────────────────────────────────────────────────────
+
+
+def test_a_simulator_left_in_a_staging_folder_is_not_a_second_claim(tmp_path):
+    _sim_file(tmp_path, "acme_widget", _simulator("AcmeWidgetSimulator"))
+    (tmp_path / ".staging-abc").mkdir()
+    _sim_file(tmp_path / ".staging-abc", "acme_widget", _simulator("StagedSimulator"))
+    manager = _discover(tmp_path)
+    assert manager._load_errors == {}
+    assert manager._available["acme_widget"].simulator_class.__name__ == "AcmeWidgetSimulator"
+
+
+def test_a_definition_left_in_a_staging_folder_does_not_serve_the_id(tmp_path):
+    for folder, name in ((tmp_path, "Acme Widget"), (tmp_path / ".staging-abc", "Staged Widget")):
+        folder.mkdir(exist_ok=True)
+        (folder / "acme_widget.avcdriver").write_text(
+            f"id: acme_widget\nname: {name}\nmanufacturer: Acme\ncategory: utility\n"
+            "transport: tcp\ndefault_config:\n  port: 4001\n",
+            encoding="utf-8",
+        )
+    manager = _discover(tmp_path)
+    assert manager._available["acme_widget"].name == "Acme Widget Simulator"

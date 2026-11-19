@@ -93,13 +93,23 @@ class SimulatorRefusal(Exception):
         }
 
 
+def _files_under(root: Path, pattern: str) -> list[Path]:
+    """The files under ``root`` matching ``pattern``, by path, leaving out any
+    under a hidden folder: a ``.staging-*`` folder a driver change writes in,
+    and a crash can leave, holds copies of files already installed."""
+    return sorted(
+        path for path in root.rglob(pattern)
+        if not any(part.startswith(".") for part in path.relative_to(root).parts[:-1])
+    )
+
+
 def _served_definitions(root: Path) -> list[Path]:
     """The ``.avcdriver`` files under ``root`` that serve their ids, as the
     server's loader decides it (``driver_loader.serving_files``), reading each
     folder that holds a definition as one of its directories, ``root`` first."""
     from openavc.drivers.driver_loader import serving_files
 
-    folders = sorted({path.parent for path in root.rglob("*.avcdriver")})
+    folders = sorted({path.parent for path in _files_under(root, "*.avcdriver")})
     served = serving_files(folders)
     return [path for path in served.values() if path.suffix == ".avcdriver"]
 
@@ -175,7 +185,7 @@ class SimulatorManager:
         # or two classes name it) keeps why, for the device's card. A later
         # folder's simulator for an id replaces an earlier folder's, as its
         # driver does.
-        found = load_simulator_folder(sorted(root.rglob("*_sim.py")))
+        found = load_simulator_folder(_files_under(root, "*_sim.py"))
         self._load_errors.update(found.refused)
         for driver_id, simulator_class in found.classes.items():
             self._register_python_simulator(driver_id, simulator_class)
