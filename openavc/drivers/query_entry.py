@@ -55,6 +55,9 @@ SEND = "send"
 # The problem code of a SEND entry that carries no reason.
 LONG_LINE = "long_line"
 
+# The keys every mapping form carries, read with null as absent.
+_CARRIED = ("send", "page_size", "when", "when_state", "query_for")
+
 
 @dataclass(frozen=True)
 class QueryProblem:
@@ -92,13 +95,11 @@ def read_query_entry(entry: Any, *, osc_form: bool = False) -> QueryEntry:
         return QueryEntry(LINE, send=entry)
     if not isinstance(entry, dict):
         return QueryEntry(None)
-    carried = {
-        "send": entry.get("send"),
-        "page_size": entry.get("page_size"),
-        "when": entry.get("when"),
-        "when_state": entry.get("when_state"),
-        "query_for": entry.get("query_for"),
-    }
+    return _read_mapping(entry, osc_form)
+
+
+def _read_mapping(entry: dict[str, Any], osc_form: bool) -> QueryEntry:
+    carried = {key: entry.get(key) for key in _CARRIED}
     if "each_child" in entry:
         return QueryEntry(EACH_CHILD, each_child=entry["each_child"], **carried)
     if osc_form and "address" in entry:
@@ -106,9 +107,15 @@ def read_query_entry(entry: Any, *, osc_form: bool = False) -> QueryEntry:
     send = carried["send"]
     if not isinstance(send, str) or not send:
         return QueryEntry(None, **carried)
+    return QueryEntry(SEND, problem=_reason_missing(entry), **carried)
+
+
+def _reason_missing(entry: dict[str, Any]) -> QueryProblem | None:
+    """A ``{send}`` entry's problem: none when it carries a reason to be a
+    mapping, else ``LONG_LINE``."""
     if any(key in entry for key in QUERY_ENTRY_REASONS):
-        return QueryEntry(SEND, **carried)
-    return QueryEntry(SEND, problem=_long_line(), **carried)
+        return None
+    return _long_line()
 
 
 def _long_line() -> QueryProblem:
