@@ -1,17 +1,38 @@
-// Poll-decision helpers for RestartProgressDialog, split out so the cert-error
-// heuristic is unit-testable without React.
+// Poll-decision helpers for RestartProgressDialog, split out so the
+// addresses it waits at and the cert-error heuristic are unit-testable
+// without React. The wait itself is restartWait.ts.
 
 /**
- * The health-probe URL for a given server origin.
- *
- * The health endpoint is at the server root, `/api/health` — NOT under the
- * `/programmer` SPA mount (probing `/programmer/api/health` gets a 404 on every
- * deployment, so the poll would never see a 2xx and would always time out).
- * Resolving an absolute `/api/health` against `origin` keeps its scheme/host/
- * port and sets the correct path.
+ * The health-probe URL for a given server origin: `/api/health` at the
+ * server root. The Updates page's wait reads it; the restart dialog asks the
+ * server's status instead (`statusProbeUrl`).
  */
 export function healthProbeUrl(origin: string): string {
   return new URL("/api/health", origin).toString();
+}
+
+/** Where the page is: its origin, and the path prefix its own requests go
+ *  through there (the cloud's remote access, `api/base.ts`; "" direct). */
+export interface PageAt {
+  origin: string;
+  prefix: string;
+}
+
+/** `path` at `origin`: through the page's own prefix at the page's own
+ *  origin, where the page's own requests go through it; any other origin is
+ *  a direct address of the server. */
+function at(path: string, origin: string, page: PageAt): string {
+  return new URL(`${origin === page.origin ? page.prefix : ""}${path}`, origin).toString();
+}
+
+/** Where the restart dialog asks the server's status at `origin`. */
+export function statusProbeUrl(origin: string, page: PageAt): string {
+  return at("/api/startup-status", origin, page);
+}
+
+/** The page to open at `origin` once the server is back there. */
+export function landingUrl(path: string, origin: string, page: PageAt): string {
+  return at(path, origin, page);
 }
 
 /** Select one expected origin; an unrelated healthy listener is not a fallback. */
@@ -76,23 +97,14 @@ export function waitOrigins(targetOrigin: string, alsoTry: string[], cutOff: boo
 }
 
 /**
- * How to probe one origin. The page's own origin is fetched normally, so its
- * status can be read. Any other origin (a new port, or another address of this
- * computer) refuses a CORS read, so it is fetched `no-cors`: the response is
- * opaque, but that it arrived at all says the server is answering there, and
- * a refused or unreachable address still rejects.
+ * How to ask the status at one origin: a read the page can see at any
+ * origin, since the server lets a page on its own network read its status
+ * from another address (another port, scheme or address of this computer).
+ * A refused or unreachable address rejects. No credential: the status is
+ * open.
  */
-export function probeInit(origin: string, currentOrigin: string): RequestInit {
-  return {
-    cache: "no-store",
-    credentials: "omit",
-    mode: origin === currentOrigin ? "cors" : "no-cors",
-  };
-}
-
-/** Whether a probe response means the server is back at that origin. */
-export function probeReached(res: { ok: boolean; type: string }): boolean {
-  return res.ok || res.type === "opaque";
+export function probeInit(): RequestInit {
+  return { cache: "no-store", credentials: "omit", mode: "cors" };
 }
 
 // A browser that a change of who can connect cuts off keeps trying the new

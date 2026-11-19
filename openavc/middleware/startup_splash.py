@@ -22,7 +22,10 @@ someone presses Start again, and ``retry_in`` how many seconds until the
 process ends for its service manager to start it again (openavc/start_retry.py
 decides which; appliance hardware's device supervisor reads both). ``/api/health`` answers 503 with the phase whenever the phase is not
 ready (``health_answer``), so a monitor, a container's health check and the
-tray hear of a start, a failed start and a stop alike.
+tray hear of a start, a failed start and a stop alike. A page on this
+server's own network may read ``/api/startup-status`` from another address
+(``readable_from``): the Programmer's restart dialog waits on it at the port
+or address a restart moves it to. A page from the internet may not.
 
 The HTTP listener comes up before the engine (``openavc.main`` starts the
 engine in the background so a browser gets an answer at once). Until the
@@ -40,10 +43,13 @@ through.
 
 from __future__ import annotations
 
+import ipaddress
 import math
+import socket
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -61,6 +67,8 @@ READY = "ready"
 FAILED = "failed"
 STOPPING = "stopping"
 PHASES: tuple[str, ...] = (STARTING, READY, FAILED, STOPPING)
+
+STATUS_PATH = "/api/startup-status"
 
 # Start again on the splash page of a failed start (api/routes/system.py),
 # and the header the page sends with it: a page on another site cannot send
@@ -191,6 +199,60 @@ def startup_status(app) -> dict[str, Any]:
             "error": None, "problems": [], "held": False, "retry_in": None,
         }
     return record.answer()
+
+
+def readable_from(origin: str, host: str) -> bool:
+    """Whether a page at ``origin`` may read the status from another address,
+    for a request sent to ``host`` (its Host header): a page on this server's
+    own network, which can reach the server itself anyway. That is the name
+    the request was sent to (another port or scheme of it), this computer's
+    own name, or an address that is not on the internet (loopback, private,
+    link-local, shared). A page from the internet may not."""
+    name = _page_host(origin)
+    if name is None:
+        return False
+    if name == _host_name(host) or name in _own_names():
+        return True
+    try:
+        return not ipaddress.ip_address(name).is_global
+    except ValueError:
+        return False
+
+
+def _page_host(origin: str) -> str | None:
+    try:
+        url = urlsplit(origin)
+        name = url.hostname
+    except ValueError:
+        return None
+    if url.scheme not in ("http", "https") or not name:
+        return None
+    return name.lower()
+
+
+def _host_name(host: str) -> str:
+    try:
+        return (urlsplit(f"//{host}").hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _own_names() -> set[str]:
+    name = socket.gethostname().lower()
+    short = name.split(".")[0]
+    return {"localhost", name, short, f"{short}.local"} - {"", ".local"}
+
+
+def _open_to_this_network(request: Request, response):
+    """``response`` (the status) readable by the page that asked, when
+    ``readable_from`` says it may."""
+    origin = request.headers.get("origin")
+    if origin and readable_from(origin, request.headers.get("host", "")):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        if "origin" not in response.headers.get("vary", "").lower():
+            response.headers.add_vary_header("Origin")
+    return response
+
 
 _STARTUP_PAGE = """\
 <!DOCTYPE html>
@@ -346,19 +408,21 @@ class StartupSplashMiddleware(BaseHTTPMiddleware):
         if record is None:
             return await call_next(request)
 
-        if request.url.path == "/api/health" and not record.ready:
+        path = request.url.path
+        if path == "/api/health" and not record.ready:
             return JSONResponse(record.health_answer(), status_code=503)
+        if path == STATUS_PATH:
+            # From here until the start has finished, then from its route.
+            answer = await call_next(request) if record.serving else JSONResponse(record.answer())
+            return _open_to_this_network(request, answer)
         if record.serving:
             return await call_next(request)
-        return await _before_the_start_finishes(request, record, call_next)
+        return await _before_the_start_finishes(request, call_next)
 
 
-async def _before_the_start_finishes(request: Request, record: RunState, call_next):
-    """The answer to anything asked before the start has finished."""
+async def _before_the_start_finishes(request: Request, call_next):
+    """The answer to anything else asked before the start has finished."""
     path = request.url.path
-    # Startup status endpoint — always available
-    if path == "/api/startup-status":
-        return JSONResponse(record.answer())
     # Start again, the one route reached before the start has finished: it
     # answers only a failed start.
     if path == START_AGAIN_PATH and request.method == "POST":

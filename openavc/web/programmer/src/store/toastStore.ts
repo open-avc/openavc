@@ -9,7 +9,8 @@ export interface Toast {
 
 interface ToastState {
   toasts: Toast[];
-  addToast: (message: string, severity?: Toast["severity"], duration?: number) => void;
+  /** Shows a toast and returns its id, for `removeToast`. */
+  addToast: (message: string, severity?: Toast["severity"], duration?: number) => string;
   removeToast: (id: string) => void;
 }
 
@@ -25,6 +26,7 @@ export const useToastStore = create<ToastState>((set) => ({
         set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
       }, duration);
     }
+    return id;
   },
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

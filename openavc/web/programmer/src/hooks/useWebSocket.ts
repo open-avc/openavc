@@ -16,6 +16,7 @@ import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
 import { waitForServerReady } from "../api/serverReady";
+import { startFailureNotice } from "./startFailureNotice";
 
 // How long the "just fired" highlight stays lit on a trigger card after a
 // trigger.fired message.
@@ -49,6 +50,8 @@ export function useWebSocket() {
     // after a newer connection already has.
     let connection = 0;
     let connectedBefore = false;
+    // A reconnect that lands on a start that failed says so, with the reason.
+    const startFailure = startFailureNotice();
 
     // Helper: sync state + subscribe logs (used on initial connect AND reconnects)
     const syncOnConnect = () => {
@@ -61,8 +64,9 @@ export function useWebSocket() {
       useLogStore.getState().setLogSubscribed(true);
       // A reconnect can land while the server is restarting: the socket is
       // admitted before loadFromServer's REST calls are answered, so they wait
-      // for it (api/serverReady.ts). The first connect follows a page the
-      // server only serves once it is up.
+      // for it (api/serverReady.ts), or for its start's failure, which this
+      // tab then shows. The first connect follows a page the server only
+      // serves once it is up.
       const reconnect = connectedBefore;
       connectedBefore = true;
       if (!reconnect) {
@@ -70,8 +74,8 @@ export function useWebSocket() {
         return;
       }
       const thisConnection = ++connection;
-      void waitForServerReady(() => thisConnection === connection).then((ready) => {
-        if (ready) loadFromServer();
+      void waitForServerReady(() => thisConnection === connection).then((status) => {
+        if (startFailure.heard(status)) loadFromServer();
       });
     };
 

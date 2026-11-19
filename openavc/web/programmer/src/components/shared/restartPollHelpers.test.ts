@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { probeInit, probeReached, waitOrigins, withHost } from "./restartPollHelpers";
+import { landingUrl, probeInit, statusProbeUrl, waitOrigins, withHost } from "./restartPollHelpers";
 
 const HERE = "http://192.168.1.40:8080";
 
@@ -28,14 +28,19 @@ describe("withHost", () => {
   });
 });
 
-describe("probing another address", () => {
-  it("reads the page's own origin and fetches any other one no-cors", () => {
-    expect(probeInit(HERE, HERE).mode).toBe("cors");
-    // Another address cannot be read across origins, but an opaque answer
-    // still says the server is up there.
-    expect(probeInit("http://10.20.30.5:8080", HERE).mode).toBe("no-cors");
-    expect(probeReached({ ok: false, type: "opaque" })).toBe(true);
-    expect(probeReached({ ok: true, type: "basic" })).toBe(true);
-    expect(probeReached({ ok: false, type: "basic" })).toBe(false);
+describe("asking the status", () => {
+  it("reads every address, its own and any other, never an opaque answer", () => {
+    expect(probeInit().mode).toBe("cors");
+    expect(probeInit().credentials).toBe("omit");
+  });
+
+  it("asks at the server root, and through the page's own prefix at the page's own origin", () => {
+    expect(statusProbeUrl(HERE, { origin: HERE, prefix: "" })).toBe("http://192.168.1.40:8080/api/startup-status");
+    expect(statusProbeUrl("http://127.0.0.1:8080", { origin: HERE, prefix: "/tunnel/abc" }))
+      .toBe("http://127.0.0.1:8080/api/startup-status");
+    const cloud = { origin: "https://cloud.example.com", prefix: "/tunnel/abc" };
+    expect(statusProbeUrl(cloud.origin, cloud)).toBe("https://cloud.example.com/tunnel/abc/api/startup-status");
+    expect(landingUrl("/programmer", cloud.origin, cloud)).toBe("https://cloud.example.com/tunnel/abc/programmer");
+    expect(landingUrl("/programmer", "https://127.0.0.1:8443", cloud)).toBe("https://127.0.0.1:8443/programmer");
   });
 });

@@ -1,4 +1,5 @@
 import { BASE } from "./base";
+import { askStartupStatus, type StartupStatus } from "./startupStatus";
 
 const POLL_INTERVAL_MS = 500;
 
@@ -11,30 +12,26 @@ const POLL_INTERVAL_MS = 500;
  * reconnect's REST loads made in that window fail, and the tab keeps the
  * project it had: the revision from the previous run, so its next save is
  * refused as a conflict. /api/startup-status is the one route answered
- * throughout (the server's own splash page polls it), so this asks it until
- * it says ready, once per connection. It is not a periodic refresh.
+ * throughout (api/startupStatus.ts reads it), so this asks it until it says
+ * ready, once per connection. It is not a periodic refresh.
  *
- * Resolves true when the server is ready. Resolves false when `stillWanted`
- * turns false first (the socket dropped or connected again, and that
- * connection runs its own wait) or the server reports that it failed to
- * start, which nothing short of another restart changes.
+ * Resolves with the status that ended the wait: ready, with the version
+ * that started, or failed, with the start's reason, which nothing short of
+ * another start changes (each one reconnects the socket, and that connection
+ * runs its own wait). Resolves null when `stillWanted` turns false first: the
+ * socket dropped or connected again.
  */
 export async function waitForServerReady(
   stillWanted: () => boolean,
   intervalMs = POLL_INTERVAL_MS,
-): Promise<boolean> {
+): Promise<StartupStatus | null> {
   while (stillWanted()) {
-    try {
-      const res = await fetch(`${BASE}/startup-status`);
-      if (res.ok) {
-        const status = (await res.json()) as { ready?: boolean; error?: string | null };
-        if (status.ready) return true;
-        if (status.error) return false;
-      }
-    } catch {
-      /* not answering at all: the socket's own reconnect starts a new wait */
+    // Not answering at all: the socket's own reconnect starts a new wait.
+    const { status } = await askStartupStatus(`${BASE}/startup-status`, { cache: "no-store" });
+    if (status?.phase === "ready" || status?.phase === "failed") {
+      return stillWanted() ? status : null;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return false;
+  return null;
 }

@@ -4,16 +4,27 @@ import { Dialog } from "./Dialog";
 import { saveCaCertificate } from "../system/caCertificate";
 import {
   HANDOFF_ATTEMPTS,
-  healthProbeUrl,
+  landingUrl,
   probeInit,
-  probeReached,
-  shouldEnterCertError,
+  statusProbeUrl,
   waitOrigins,
 } from "./restartPollHelpers";
+import { waitForRestart, type RestartWaitView } from "./restartWait";
+import { askStartupStatus, type StartupStatus } from "../../api/startupStatus";
+import { getTunnelPrefix } from "../../api/base";
 import * as api from "../../api/restClient";
-import { parseApiError } from "../../api/errors";
+import { ApiError, parseApiError } from "../../api/errors";
 
-type Phase = "starting" | "waiting" | "polling" | "cert-error" | "success" | "timeout" | "error" | "handoff";
+type Phase =
+  | "asking" | "waiting" | "starting" | "failed"
+  | "cert-error" | "success" | "timeout" | "error" | "handoff";
+
+/** A failed start the dialog shows: its reason, and where to open the
+ *  server's page to press Start again. */
+interface Failure {
+  status: StartupStatus;
+  page: string;
+}
 
 interface RestartProgressDialogProps {
   /** Full URL the page should land on once the server is back. */
@@ -35,10 +46,15 @@ interface RestartProgressDialogProps {
 }
 
 const POLL_INTERVAL_MS = 1000;
+// Rounds without hearing the new start before the dialog says the server did
+// not come back: about a minute.
 const MAX_POLL_ATTEMPTS = 60;
-// Time the server's graceful-exit delay (2s) plus a small margin so the
-// listener has actually released the port before polling begins.
-const INITIAL_WAIT_MS = 3000;
+
+/** What a refused restart leaves to wait for: a restart or a stop already
+ *  under way (409) ends this server like the one asked for. */
+function refusalToShow(e: unknown): string | null {
+  return e instanceof ApiError && e.status !== 409 ? parseApiError(e) : null;
+}
 
 export function RestartProgressDialog({
   targetUrl,
@@ -52,102 +68,83 @@ export function RestartProgressDialog({
   // of a parent that builds a fresh array.
   const alsoTryKey = alsoTry.join(" ");
   const cutOff = !!handoff;
-  const [phase, setPhase] = useState<Phase>("starting");
+  const [phase, setPhase] = useState<Phase>("asking");
   const [errorDetail, setErrorDetail] = useState<string>("");
+  const [startingAgain, setStartingAgain] = useState(false);
+  const [failure, setFailure] = useState<Failure | null>(null);
 
   useEffect(() => {
     // Local to THIS effect run — a superseded run (targetUrl/expectsNewCert
     // changed) keeps its own `cancelled=true` and can't be un-cancelled by the
     // next run, so a stale run can't re-POST restart or navigate to a stale URL.
     let cancelled = false;
+    const here = { origin: window.location.origin, prefix: getTunnelPrefix() };
+    const targetPath = new URL(targetUrl).pathname; // "/programmer"
+
+    const show = (view: RestartWaitView) => {
+      if (view.kind === "failed") {
+        setFailure({ status: view.status, page: landingUrl(targetPath, view.origin, here) });
+        setPhase("failed");
+        return;
+      }
+      setStartingAgain(view.kind === "starting" && view.again);
+      setPhase(view.kind);
+    };
 
     const run = async () => {
-      // Step 1: trigger the restart. A throw here is ambiguous — the server
-      // may have already started exiting and dropped the connection before
-      // sending a response. Either way, polling is the source of truth, so
-      // log and fall through rather than aborting on a transient fetch error.
+      // Step 1: ask for the restart. A refusal says why and ends here. An
+      // answer that never arrived is ambiguous (the server may have dropped
+      // the connection on its way down), so the wait decides.
+      let answerLost = false;
       try {
         await api.restartSystem("graceful");
       } catch (e) {
         if (cancelled) return;
-        // Keep the detail around in case polling never succeeds — we'll
-        // surface it then. Don't switch phase yet.
-        setErrorDetail(parseApiError(e));
+        const refusal = refusalToShow(e);
+        if (refusal !== null) {
+          setErrorDetail(refusal);
+          setPhase("error");
+          return;
+        }
+        answerLost = !(e instanceof ApiError);
       }
       if (cancelled) return;
 
-      // Step 2: wait for the server to actually exit and its replacement to
-      // bind. The server delays exit ~2s to flush logs; a 3s wait covers that
-      // plus a small margin for port release.
+      // Step 2: wait where the server comes back: the expected public
+      // address, and the other addresses a change of who can connect makes
+      // reachable. Never the page's own as a fallback: a second listener
+      // there might be another server. Cut off, the page waits only at the
+      // new choice's own addresses (alsoTry); targetUrl is then just the
+      // address the messages name.
       setPhase("waiting");
-      await new Promise((r) => setTimeout(r, INITIAL_WAIT_MS));
-      if (cancelled) return;
-
-      // Step 3: poll only the expected public address, and the other
-      // addresses a change of who can connect makes reachable. A second
-      // healthy listener on the configured internal port might be another
-      // server.
-      setPhase("polling");
-      const targetPath = new URL(targetUrl).pathname; // "/programmer"
       const more = alsoTryKey ? alsoTryKey.split(" ").map((u) => new URL(u).origin) : [];
-      // Cut off, the page waits only at the new choice's own addresses
-      // (alsoTry); targetUrl is then just the address the messages name.
       const origins = waitOrigins(new URL(targetUrl).origin, more, cutOff);
       // A browser cut off by the change tries the new choice's own addresses
       // for a while (a computer on both networks reaches them), then says
       // where to open the Programmer. With none to try, it says so now.
-      const attempts = cutOff ? (origins.length ? HANDOFF_ATTEMPTS : 0) : MAX_POLL_ATTEMPTS;
-      let consecutiveFailures = 0;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        if (cancelled) return;
-        // `sawResponse` distinguishes "server reachable but not ready" (any
-        // HTTP response, even non-2xx) from "no candidate answered" (every
-        // probe threw) — only the latter counts toward the cert-error window.
-        let sawResponse = false;
-        let reachedOrigin: string | null = null;
-        for (const origin of origins) {
-          if (cancelled) return;
-          try {
-            // `cache: "no-store"` keeps stale 502/0 responses from the previous
-            // boot out of the way.
-            const res = await fetch(
-              healthProbeUrl(origin),
-              probeInit(origin, window.location.origin),
-            );
-            sawResponse = true;
-            if (probeReached(res)) {
-              reachedOrigin = origin;
-              break;
-            }
-          } catch {
-            // This candidate threw (still rebinding, or an untrusted new cert).
-          }
-        }
-        if (reachedOrigin) {
-          setPhase("success");
-          const landing = new URL(targetPath, reachedOrigin).toString();
-          // Small grace period so the user reads the "Reconnected" state
-          // before the browser navigates.
-          setTimeout(() => {
-            if (!cancelled) window.location.assign(landing);
-          }, 400);
-          return;
-        }
-        if (sawResponse) {
-          consecutiveFailures = 0; // server is up but returning non-2xx; not a network error
-        } else {
-          consecutiveFailures += 1;
-          // Only blame the cert once failures persist past the window a normal
-          // restart needs to rebind — a slow-but-healthy restart shouldn't
-          // misdirect the user to install a CA cert (see restartPollHelpers).
-          if (shouldEnterCertError(expectsNewCert, consecutiveFailures, attempt)) {
-            setPhase("cert-error");
-            return;
-          }
-        }
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      const end = await waitForRestart({
+        origins,
+        attempts: cutOff ? (origins.length ? HANDOFF_ATTEMPTS : 0) : MAX_POLL_ATTEMPTS,
+        expectsNewCert,
+        askedMayStillAnswer: answerLost,
+        probe: (origin) => askStartupStatus(statusProbeUrl(origin, here), probeInit()),
+        pause: () => new Promise((r) => setTimeout(r, POLL_INTERVAL_MS)),
+        cancelled: () => cancelled,
+        show,
+      });
+      if (cancelled || end.kind === "cancelled") return;
+      if (end.kind === "back") {
+        setPhase("success");
+        const landing = landingUrl(targetPath, end.origin, here);
+        // Small grace period so the user reads the "Reconnected" state
+        // before the browser navigates.
+        setTimeout(() => {
+          if (!cancelled) window.location.assign(landing);
+        }, 400);
+        return;
       }
-      if (!cancelled) setPhase(cutOff ? "handoff" : "timeout");
+      if (end.kind === "cert-error") setPhase("cert-error");
+      else setPhase(cutOff ? "handoff" : "timeout");
     };
 
     void run();
@@ -174,7 +171,7 @@ export function RestartProgressDialog({
   return (
     <Dialog title="Restarting OpenAVC" onClose={onClose}>
       <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.5 }}>
-        {isProtocolSwitch && phase === "starting" && (
+        {isProtocolSwitch && phase === "asking" && (
           <div style={{ marginBottom: "var(--space-md)", color: "var(--text-secondary)" }}>
             After restart, this page will be at <code>{targetUrl}</code>.
             {expectsNewCert && (
@@ -187,23 +184,27 @@ export function RestartProgressDialog({
           </div>
         )}
 
-        {handoff && (phase === "starting" || phase === "waiting" || phase === "polling") && (
+        {handoff && isWaiting(phase) && (
           <div data-testid="restart-handoff-lines" style={{ marginBottom: "var(--space-md)" }}>
             {handoff.lines}
           </div>
         )}
 
-        {(phase === "starting" || phase === "waiting" || phase === "polling") && (
+        {isWaiting(phase) && (
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <RefreshCw size={20} style={{ animation: "spin 1s linear infinite" }} />
-            <span>
-              {phase === "starting" && "Asking the server to restart..."}
-              {phase === "waiting" && (cutOff ? "Server is restarting..." : "Server is restarting. Reconnecting...")}
-              {phase === "polling" && (cutOff
+            <span data-testid="restart-wait-line">
+              {phase === "asking" && "Asking the server to restart..."}
+              {phase === "waiting" && (cutOff
                 ? "Checking whether this browser can reach the new address..."
                 : "Waiting for the server to come back...")}
+              {phase === "starting" && (startingAgain ? "Starting again..." : "OpenAVC is starting...")}
             </span>
           </div>
+        )}
+
+        {phase === "failed" && failure && (
+          <FailedStart failure={failure} onClose={onClose} />
         )}
 
         {phase === "success" && (
@@ -296,6 +297,50 @@ export function RestartProgressDialog({
         )}
       </div>
     </Dialog>
+  );
+}
+
+function isWaiting(phase: Phase): boolean {
+  return phase === "asking" || phase === "waiting" || phase === "starting";
+}
+
+/** What a failed start leaves to do, as the server's own page says it. */
+function nextStep(status: StartupStatus): string | null {
+  if (status.held) return "Fix the problem, then open the server's page and press Start again.";
+  if (status.retryIn !== null) return `Trying again in ${status.retryIn} seconds.`;
+  return null;
+}
+
+/** A start that failed: the server's reason and what happens next. The
+ *  wait goes on behind it, so a start that follows still reconnects. */
+function FailedStart({ failure, onClose }: { failure: Failure; onClose: () => void }) {
+  const next = nextStep(failure.status);
+  return (
+    <div data-testid="restart-start-failed">
+      <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
+        <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <div style={{ fontWeight: 600 }}>OpenAVC could not start</div>
+          {failure.status.error && (
+            <div data-testid="restart-start-error" style={{ marginTop: "var(--space-xs)", whiteSpace: "pre-line" }}>
+              {failure.status.error}
+            </div>
+          )}
+          {next && (
+            <div style={{ marginTop: "var(--space-sm)", color: "var(--text-secondary)" }}>{next}</div>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        <button onClick={() => window.location.assign(failure.page)} style={btnSecondary}>
+          <ExternalLink size={14} />
+          <span>Open the server's page</span>
+        </button>
+        <button onClick={onClose} style={btnSecondary}>
+          Close
+        </button>
+      </div>
+    </div>
   );
 }
 

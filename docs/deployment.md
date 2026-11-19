@@ -667,7 +667,7 @@ It answers `200` only while the server is running. While the server is starting,
 
 ### When a start fails
 
-A start that fails shows its reason on every OpenAVC page (the Programmer, the panel and the screen on the system itself), and on the Windows tray icon and the Mac menu bar, once. What happens next:
+A start that fails shows its reason on every OpenAVC page (the Programmer, the panel and the screen on the system itself), and on the Windows tray icon and the Mac menu bar, once. After **Restart now** in Settings, the restart dialog shows the reason and what happens next, and reconnects once a start succeeds; a Programmer tab already open shows the reason until then. What happens next:
 
 - **Installed as a service** (Windows, Linux, the Raspberry Pi image, macOS, Docker, appliance hardware): the page shows the reason and counts down for about a minute, then OpenAVC starts again by itself, up to three times in a row. If those fail too, it stays on the page with the reason and a **Start again** button.
 - **Run by hand** (`python -m openavc.main`): it stays on the page with the reason and **Start again** at once.

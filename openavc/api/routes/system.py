@@ -930,7 +930,7 @@ async def restart_system(request: Request) -> dict[str, Any]:
 
     The answer comes before the stop: the service manager (NSSM, systemd,
     Docker) brings the server back, and a manual run starts its own
-    replacement. Poll ``/api/health`` for the new process.
+    replacement. ``/api/startup-status`` says when the new start is ready.
     """
     answer = restart.request_exit(await _asked_restart_mode(request), "api")
     if not answer.accepted:

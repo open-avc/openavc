@@ -243,3 +243,97 @@ def test_a_report_that_raises_never_reaches_the_one_saying_it():
     record = RunState(report=broken)
     record.stopping()
     assert record.phase == STOPPING
+
+
+# ===========================================================================
+# Who may read the status from another address
+# ===========================================================================
+#
+# A restart can move the Programmer to another port or address of the same
+# server (Settings: the HTTP or HTTPS port, who can connect). The restart
+# dialog waits on the status there, so a page on this server's own network
+# may read it from another address. A page from the internet may not.
+
+
+def _phases() -> dict[str, RunState]:
+    stopping = _record(ready=True)
+    stopping.stopping()
+    return {
+        STARTING: _record(),
+        FAILED: _record(error="project unreadable"),
+        READY: _record(ready=True),
+        STOPPING: stopping,
+    }
+
+
+def _status_from(record: RunState, origin: str, host: str = "192.168.1.20:9090"):
+    return _client(record).get(
+        "/api/startup-status", headers={"Origin": origin, "Host": host},
+    )
+
+
+def test_a_page_at_another_address_of_this_network_reads_the_status_in_every_phase():
+    for phase, record in _phases().items():
+        reply = _status_from(record, "http://192.168.1.20:8080")
+        assert reply.headers.get("access-control-allow-origin") == "http://192.168.1.20:8080", phase
+        assert "origin" in reply.headers.get("vary", "").lower(), phase
+        assert reply.json()["phase"] == phase
+
+
+def test_the_pages_a_restart_moves_from_may_read_it():
+    record = _record()
+    allowed = [
+        # Another port or scheme of the name the request was sent to.
+        ("http://avc-room1.example.org:8080", "avc-room1.example.org:8443"),
+        ("http://AVC-Room1.example.org", "avc-room1.example.org:9090"),
+        # This computer's own screen, at a second loopback address.
+        ("http://127.0.0.2:8080", "127.0.0.1:8080"),
+        ("http://localhost:8080", "127.0.0.1:8080"),
+        ("http://[::1]:8080", "127.0.0.1:8080"),
+        # Another address of this computer on the local network.
+        ("http://10.20.30.5:8080", "192.168.1.20:8080"),
+        ("http://172.16.4.9:8080", "127.0.0.1:8080"),
+        ("http://169.254.10.2:8080", "127.0.0.1:8080"),
+        ("http://100.101.102.103:8080", "127.0.0.1:8080"),
+        ("http://[fd00::5]:8080", "127.0.0.1:8080"),
+    ]
+    for origin, host in allowed:
+        reply = _status_from(record, origin, host)
+        assert reply.headers.get("access-control-allow-origin") == origin, (origin, host)
+
+
+def test_a_page_from_the_internet_may_not_read_it():
+    record = _record(error="project unreadable")
+    refused = [
+        "https://example.com",
+        "http://8.8.8.8:8080",
+        "http://[2001:4860:4860::8888]",
+        "null",
+        "not a url",
+        "ftp://192.168.1.20",
+        "http://",
+    ]
+    for origin in refused:
+        reply = _status_from(record, origin)
+        assert "access-control-allow-origin" not in reply.headers, origin
+        # The page itself still gets its answer, same-origin.
+        assert reply.status_code == 200
+
+
+def test_no_other_route_is_opened_to_another_address():
+    client = _client(_record(ready=True))
+    for path in ("/api/health", "/api/devices", "/panel"):
+        reply = client.get(path, headers={"Origin": "http://192.168.1.20:8080"})
+        assert "access-control-allow-origin" not in reply.headers, path
+
+
+def test_a_page_at_this_computers_own_name_may_read_it(monkeypatch):
+    from openavc.middleware import startup_splash
+
+    monkeypatch.setattr(startup_splash.socket, "gethostname", lambda: "AVC-Room1.lan")
+    record = _record()
+    for origin in ("http://avc-room1.local:8080", "http://avc-room1:8080", "http://avc-room1.lan"):
+        reply = _status_from(record, origin, "127.0.0.1:8080")
+        assert reply.headers.get("access-control-allow-origin") == origin, origin
+    reply = _status_from(record, "http://other-box.local:8080", "127.0.0.1:8080")
+    assert "access-control-allow-origin" not in reply.headers
