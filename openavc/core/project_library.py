@@ -16,14 +16,15 @@ import re
 import shutil
 import tempfile
 import zipfile
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from openavc import config
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
-from openavc.core import login_bundle, project_update
+from openavc.core import login_bundle, project_drivers, project_update
 from openavc.core.device_logins import (
     FoundView,
     StoreView,
@@ -52,7 +53,7 @@ from openavc.utils.fileio import atomic_write_text as _atomic_write_text
 from openavc.utils.fileio import private_dir
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import files_below, plain_file_in, safe_path_within
-from openavc.drivers.registry import is_driver_registered, register_driver
+from openavc.drivers.registry import is_driver_registered
 
 log = get_logger(__name__)
 
@@ -525,68 +526,6 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
 
 
 
-def _drop_superseded_bundled_drivers(old_bundle: Path) -> list[str]:
-    """Remove driver_repo copies that came from the bundle being replaced.
-
-    `_install_bundled_drivers` deliberately never overwrites an existing file,
-    so a driver unpacked from a stale bundle would otherwise survive in
-    driver_repo forever and keep losing to the fresh one.
-
-    Byte-identity against the OLD bundle is the proof that we put the file
-    there and nobody has edited it since, so removing it cannot lose user work.
-    A driver the user has modified differs and is left strictly alone — which
-    is the same promise the no-overwrite rule makes.
-
-    Returns the file names removed, so the caller can put the current copy of
-    each straight back: the live project that was opened from this starter is
-    still using them, and a box must not boot with its devices orphaned.
-    """
-    removed: list[str] = []
-    try:
-        with zipfile.ZipFile(old_bundle, "r") as zf:
-            for name in zf.namelist():
-                if not name.startswith("drivers/"):
-                    continue
-                fname = Path(name).name
-                if not fname or fname.startswith("_"):
-                    continue
-                existing = plain_file_in(_DRIVER_REPO_DIR, fname)
-                if existing is None:
-                    log.warning("Skipping bundled driver with an unsafe file name: %r", name)
-                    continue
-                if existing.is_file() and existing.read_bytes() == zf.read(name):
-                    existing.unlink()
-                    removed.append(fname)
-                    log.info("Removed superseded bundled driver: %s", fname)
-    except Exception as e:  # noqa: BLE001 - never let cleanup block startup
-        log.warning("Could not clean up superseded bundled drivers: %s", e)
-    return removed
-
-
-def _reinstall_bundled_drivers(new_bundle: Path, names: list[str]) -> None:
-    """Write the current copy of each driver just removed, from the new bundle.
-
-    Only the files that were removed, and only the bytes: the driver loader
-    that runs right after seeding registers whatever is in driver_repo, and a
-    file the user has since added under the same name is never touched.
-    """
-    if not names:
-        return
-    try:
-        with zipfile.ZipFile(new_bundle, "r") as zf:
-            members = {Path(n).name: n for n in zf.namelist() if n.startswith("drivers/")}
-            for fname in names:
-                member = members.get(fname)
-                dest = plain_file_in(_DRIVER_REPO_DIR, fname)
-                if member is None or dest is None or dest.exists():
-                    continue
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(zf.read(member))
-                log.info("Installed the current bundled driver: %s", fname)
-    except Exception as e:  # noqa: BLE001 - never let this block startup
-        log.warning("Could not reinstall bundled drivers: %s", e)
-
-
 def _refresh_starter_bundles(lib: Path) -> None:
     """Re-copy a seeded starter's bundle.zip when the shipped one has changed.
 
@@ -612,9 +551,9 @@ def _refresh_starter_bundles(lib: Path) -> None:
         try:
             if dest.read_bytes() == zip_file.read_bytes():
                 continue
-            removed = _drop_superseded_bundled_drivers(dest)
+            if not project_drivers.refresh_starter(dest, zip_file, _DRIVER_REPO_DIR):
+                continue  # the old bundle stays, so the next start tries again
             shutil.copy2(zip_file, dest)
-            _reinstall_bundled_drivers(dest, removed)
             log.info("Refreshed bundled drivers for starter project: %s", project_id)
         except OSError as e:
             log.warning("Could not refresh starter bundle %s: %s", project_id, e)
@@ -981,15 +920,16 @@ def open_from_library(
     new_project_id: str,
     new_project_name: str,
     *,
-    update_notes: MigrationNotes | None = None,
+    opened: Opened | None = None,
 ) -> ProjectConfig:
     """Load a saved project as the active project.
 
     Backs up the existing project, clears scripts, copies library scripts.
-    If the project has a bundle.zip with drivers/plugins, installs them.
-    Returns the new ProjectConfig (caller should reload the engine).
-    ``update_notes`` gets what its import into the library and this open's
-    migration changed in it, for the running project's notice.
+    If the project has a bundle.zip with drivers/plugins, installs them; the
+    caller holds the drivers' ids (``bundled_driver_ids``). Returns the new
+    ProjectConfig (caller should reload the engine). ``opened`` gets what
+    its import into the library and this open's migration changed in it,
+    and what each of its bundle's drivers and plugins came to.
     """
     data, scripts = get_project(project_id)
 
@@ -998,18 +938,20 @@ def open_from_library(
     # opens cleanly instead of leaning on the current validators happening to
     # accept old shapes (parity with the _import_avc door).
     from openavc.core.project_migration import migrate_project
-    opened = MigrationNotes()
-    data, _ = migrate_project(data, opened)
+    migrated = MigrationNotes()
+    data, _ = migrate_project(data, migrated)
 
     from openavc.core.installed_equipment import InstalledEquipment
     policy = InstalledEquipment.from_environment()
     policy.compose(ProjectConfig(**data), for_load=True)
-    if update_notes is not None:
-        update_notes.notes += project_update.take(_lib_dir() / sanitize_id(project_id)).notes
-        update_notes.notes += opened.notes
+    if opened is not None:
+        opened.update_notes.notes += project_update.take(_lib_dir() / sanitize_id(project_id)).notes
+        opened.update_notes.notes += migrated.notes
 
     # Install bundled drivers/plugins from the original zip if present
-    _install_bundled_from_library(project_id)
+    _install_bundled_from_library(
+        project_id, opened.installs if opened is not None else None, data.get("devices", [])
+    )
 
     now = datetime.now().isoformat()
     data["project"]["id"] = new_project_id
@@ -1037,31 +979,42 @@ def open_from_library(
     return project
 
 
-def _install_bundled_from_library(project_id: str) -> None:
-    """Install drivers and plugins from a project's bundle.zip if it exists."""
-    sid = sanitize_id(project_id)
-    bundle_path = _lib_dir() / sid / "bundle.zip"
-    if not bundle_path.exists():
-        return
+def _install_bundled_from_library(
+    project_id: str, installs: BundleInstalls | None = None, devices: Sequence[dict] = ()
+) -> BundleInstalls:
+    """Install drivers and plugins from a project's bundle.zip if it exists:
+    what each came to, added to ``installs``, a driver left out named with
+    the ``devices`` that use it."""
+    installs = installs if installs is not None else BundleInstalls()
+    bundle_path = library_bundle(project_id)
+    if bundle_path is None:
+        return installs
 
     from openavc.core.installed_equipment import InstalledEquipmentError
 
     try:
         with zipfile.ZipFile(bundle_path, "r") as zf:
             _check_zip_safety(zf)
-            installed_drivers = _install_bundled_drivers(zf)
-            installed_plugins, _unloadable = _install_bundled_plugins(zf)
-            if installed_drivers:
-                log.info("Installed bundled drivers for '%s': %s",
-                         project_id, ", ".join(installed_drivers))
-            if installed_plugins:
-                log.info("Installed bundled plugins for '%s': %s",
-                         project_id, ", ".join(installed_plugins))
+            installs.add_drivers(_install_bundled_drivers(zf), devices)
+            installs.add_plugins(*_install_bundled_plugins(zf))
     except InstalledEquipmentError:
         raise
     except Exception as e:
         log.warning("Failed to install bundled drivers/plugins for '%s': %s",
                     project_id, e)
+        installs.warnings.append(
+            f"The drivers and plugins saved with this project could not be installed: {e}"
+        )
+    return installs
+
+
+def _unloadable_plugin_warning(plugin_id: str) -> str:
+    """What a door says of a plugin a project brought that would not load:
+    it is on disk, so telling the user to install it would be wrong."""
+    return (
+        f"Plugin '{plugin_id}' came with this project but did not load on "
+        f"this system. Check the Plugins page."
+    )
 
 
 def replace_scripts(scripts_dir: Path, scripts: dict[str, str]) -> None:
@@ -1260,16 +1213,30 @@ def _check_missing_drivers(data: dict) -> list[dict[str, Any]]:
     return missing
 
 
-def _missing_driver_warnings(missing: list[dict[str, Any]]) -> list[str]:
+def _missing_driver_warnings(
+    missing: list[dict[str, Any]], refused: dict[str, str] | None = None
+) -> list[str]:
     """An import's warning for each driver its devices need that did not
-    register: why (``missing_driver_reason``: not installed, or installed but
-    did not load), and the devices that use it."""
+    register: why (the bundle's refusal of it, from ``refused``; or
+    ``missing_driver_reason``: not installed, or installed but did not
+    load), and the devices that use it; then each driver the bundle refused
+    that no device uses."""
     from openavc.core.installed_equipment import missing_driver_reason
 
-    return [
-        f"{missing_driver_reason(m['driver_id'])} (used by: {', '.join(m['affected_devices'])})"
+    unused = dict(refused or {})
+    used = [
+        _with_devices(
+            unused.pop(m["driver_id"], None) or missing_driver_reason(m["driver_id"]),
+            m["affected_devices"],
+        )
         for m in missing
     ]
+    return used + list(unused.values())
+
+
+def _with_devices(sentence: str, device_ids: list[str]) -> str:
+    """A warning about a driver, with the devices that use it after it."""
+    return f"{sentence} (used by: {', '.join(device_ids)})" if device_ids else sentence
 
 
 def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
@@ -1337,85 +1304,80 @@ def _check_bundled_driver_identity(zf: zipfile.ZipFile) -> None:
             require_mutable_driver_file(name, zf.read(member))
 
 
-def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
-    """Install driver files bundled in a zip's drivers/ directory.
+# --- A project's own drivers (core/project_drivers.py) ---
 
-    Returns list of installed driver IDs.
-    """
-    # A driver's discovery probe and simulator sit beside it in driver_repo/
-    # under COMPANION_SUFFIXES. They belong in the bundle — an install fetches
-    # them too — but neither is a driver, so trying to register one would only
-    # log a warning.
-    from openavc.drivers.driver_loader import (
-        COMPANION_SUFFIXES,
-        read_library_definition,
-        read_library_python_driver,
-    )
 
+@dataclass
+class BundleInstalls:
+    """What a library copy's saved bundle installed as it opened, for the
+    open's answer."""
+
+    installed_drivers: list[str] = field(default_factory=list)
+    installed_plugins: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def add_drivers(self, drivers: project_drivers.BundledDrivers, devices: Sequence[dict]) -> None:
+        """The bundle's drivers: those installed, and why each left out was,
+        with the ``devices`` that use it."""
+        self.installed_drivers += drivers.installed
+        self.warnings += [
+            _with_devices(why, [d.get("id", "") for d in devices if d.get("driver") == driver_id])
+            for driver_id, why in drivers.refused.items()
+        ]
+
+    def add_plugins(self, installed: list[str], unloadable: dict[str, str]) -> None:
+        """The bundle's plugins: those installed, and each that did not load."""
+        self.installed_plugins += installed
+        self.warnings += [_unloadable_plugin_warning(p) for p in installed if p in unloadable]
+
+
+@dataclass
+class Opened:
+    """What opening a library copy tells beyond the project itself: what its
+    import into the library and this open's migration changed in it
+    (``update_notes``, for the running project's notice), and what its saved
+    bundle installed (``installs``, for the open's answer)."""
+
+    update_notes: MigrationNotes = field(default_factory=MigrationNotes)
+    installs: BundleInstalls = field(default_factory=BundleInstalls)
+
+
+def bundled_driver_ids(bundle: Path | bytes | None) -> list[str]:
+    """The ids the drivers in a project bundle declare: what a door holds
+    (``driver_change.holding``) while it installs them. None for no bundle,
+    or one this library would not open, which the install then refuses in
+    its own words."""
+    if bundle is None:
+        return []
+    try:
+        with zipfile.ZipFile(_readable(bundle), "r") as zf:
+            _check_zip_safety(zf)
+            return project_drivers.declared_ids(zf)
+    except Exception:  # noqa: BLE001 - the install that follows says what is wrong
+        return []
+
+
+def _readable(bundle: Path | bytes) -> Path | io.BytesIO:
+    """A bundle as ``zipfile`` reads it; one sent larger than an import takes
+    is refused."""
+    if isinstance(bundle, Path):
+        return bundle
+    if len(bundle) > _MAX_IMPORT_SIZE:
+        raise ValueError("File too large (max 10 MB)")
+    return io.BytesIO(bundle)
+
+
+def library_bundle(project_id: str) -> Path | None:
+    """The bundle a library copy was saved with (a starter's), or None."""
+    path = _lib_dir() / sanitize_id(project_id) / "bundle.zip"
+    return path if path.is_file() else None
+
+
+def _install_bundled_drivers(zf: zipfile.ZipFile) -> project_drivers.BundledDrivers:
+    """Install the drivers a project bundle carries (``project_drivers.install``):
+    a protected file anywhere in it refuses all of it first."""
     _check_bundled_driver_identity(zf)
-    driver_repo = _DRIVER_REPO_DIR
-    driver_repo.mkdir(exist_ok=True)
-    installed: list[str] = []
-
-    # YAML loading checks that its declared discovery companion already
-    # exists. Install companions first, regardless of archive member order.
-    names = sorted(zf.namelist(), key=lambda name: not name.endswith(COMPANION_SUFFIXES))
-    for name in names:
-        if not name.startswith("drivers/"):
-            continue
-        fname = Path(name).name
-        if not fname or fname.startswith("_"):
-            continue
-
-        dest = plain_file_in(driver_repo, fname)
-        if dest is None:
-            log.warning("Skipping bundled driver with an unsafe file name: %r", name)
-            continue
-        if dest.exists():
-            continue  # Don't overwrite existing drivers
-
-        content = zf.read(name)
-        dest.write_bytes(content)
-
-        if fname.endswith(COMPANION_SUFFIXES):
-            log.info(f"Installed bundled driver companion: {fname}")
-            continue
-
-        log.info(f"Installed bundled driver: {fname}")
-
-        # Register the driver immediately
-        try:
-            driver_class = None
-            driver_id = None
-            if fname.endswith(".avcdriver"):
-                driver_def = read_library_definition(dest).definition
-                if driver_def:
-                    from openavc.drivers.configurable import create_configurable_driver_class
-                    driver_class = create_configurable_driver_class(driver_def)
-                    driver_id = driver_def.get("id", fname)
-            elif fname.endswith(".py"):
-                driver_class = read_library_python_driver(dest).driver_class
-                if driver_class:
-                    driver_id = driver_class.DRIVER_INFO.get("id", fname)
-
-            # Dedup on driver_id, not just filename: a bundle file under a new
-            # name but a colliding id must not overwrite an existing registered
-            # driver in the process-global registry (register_driver is an
-            # unconditional overwrite).
-            if driver_class and driver_id:
-                if is_driver_registered(driver_id):
-                    log.warning(
-                        "Bundled driver id '%s' (%s) already registered; "
-                        "keeping the existing driver", driver_id, fname,
-                    )
-                    dest.unlink(missing_ok=True)
-                else:
-                    register_driver(driver_class)
-                    installed.append(driver_id)
-        except Exception as e:  # Catch-all: driver loading can execute arbitrary Python
-            log.warning(f"Could not register bundled driver {fname}: {e}")
-
-    return installed
+    return project_drivers.install(zf, _DRIVER_REPO_DIR)
 
 
 def _install_bundled_plugins(zf: zipfile.ZipFile) -> tuple[list[str], dict[str, str]]:
@@ -1585,9 +1547,9 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         project_update.record(project_dir, notes)
 
         # Project committed — now install bundled drivers/plugins (shared,
-        # idempotent). A failure here leaves the project intact with the
-        # affected drivers simply reported as missing below.
-        installed_drivers = _install_bundled_drivers(zf)
+        # idempotent). A driver refused here leaves the project intact, and
+        # is reported below with why, beside the devices that use it.
+        drivers = _install_bundled_drivers(zf)
         installed_plugins, unloadable_plugins = _install_bundled_plugins(zf)
 
         sealed_logins, sealed_problem = _held_sealed_logins(zf, pid)
@@ -1597,7 +1559,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
     # Check for still-missing drivers after installing bundled ones
     missing = _check_missing_drivers(data)
-    warnings = _missing_driver_warnings(missing)
+    warnings = _missing_driver_warnings(missing, drivers.refused)
 
     # Check for missing plugins — the ones the bundle did not carry.
     missing_plugins = _check_missing_plugins(data, installed_plugins)
@@ -1610,12 +1572,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
     # A plugin that arrived in the bundle but would not load is a different
     # sentence: it is on disk, so telling the user to install it is wrong.
-    for plugin_id in installed_plugins:
-        if plugin_id in unloadable_plugins:
-            warnings.append(
-                f"Plugin '{plugin_id}' came with this project but did not load on "
-                f"this system. Check the Plugins page."
-            )
+    warnings += [_unloadable_plugin_warning(p) for p in installed_plugins if p in unloadable_plugins]
 
     if sealed_problem:
         warnings.append(sealed_problem)
@@ -1623,7 +1580,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
     log.info(f"Imported project '{pid}' from .zip bundle")
     result: dict[str, Any] = {
         "id": pid,
-        "installed_drivers": installed_drivers,
+        "installed_drivers": drivers.installed,
         "installed_plugins": installed_plugins,
         "missing_drivers": missing,
         "missing_plugins": missing_plugins,

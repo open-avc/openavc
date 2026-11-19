@@ -806,25 +806,23 @@ class TestBundledDriverIdDedup:
         repo = tmp_path / "driver_repo"
         repo.mkdir()
         monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", repo)
+        monkeypatch.setitem(sys.modules, "openavc_driver_renamed", None)  # put back after
 
         existing = type("ExistingDriver", (), {"DRIVER_INFO": {"id": "dup_id"}})
         monkeypatch.setitem(_DRIVER_REGISTRY, "dup_id", existing)
 
         # A bundle file under a NEW name but declaring the already-registered id.
-        new_class = type("NewDriver", (), {"DRIVER_INFO": {"id": "dup_id"}})
-        from openavc.drivers.python_modules import PythonRead
-
-        monkeypatch.setattr(
-            "openavc.drivers.driver_loader.read_library_python_driver",
-            lambda path: PythonRead(new_class),
+        renamed = (
+            "from openavc.drivers.base import BaseDriver\n\n\n"
+            "class NewDriver(BaseDriver):\n"
+            "    DRIVER_INFO = {'id': 'dup_id', 'name': 'New', 'transport': 'tcp'}\n"
         )
-
-        with zipfile.ZipFile(io.BytesIO(_zip_bytes({"drivers/renamed.py": "# x"}))) as zf:
-            installed = _install_bundled_drivers(zf)
+        with zipfile.ZipFile(io.BytesIO(_zip_bytes({"drivers/renamed.py": renamed}))) as zf:
+            outcome = _install_bundled_drivers(zf)
 
         assert _DRIVER_REGISTRY["dup_id"] is existing  # not overwritten
-        assert "dup_id" not in installed
-        assert not (repo / "renamed.py").exists()  # the colliding file was removed
+        assert outcome.installed == [] and outcome.refused == {}
+        assert not (repo / "renamed.py").exists()  # the colliding file never landed
 
 
 class TestFindDriverFilesById:
@@ -1054,8 +1052,9 @@ class TestNestedAssetsSurviveEveryPath:
 class TestAnArchiveBringsInOnlyWhatTheProjectCouldHold:
     """An import, a starter seed and a starter's bundled-driver refresh read a
     file name and a file type from an archive. Each takes the same name rule
-    (``plain_file_in``) and the same asset types as the doors a person uses.
-    A colon is refused on every platform, so these fail on any OS without it.
+    as the doors a person uses (``plain_file_in`` for a script, the driver
+    file name rule for a driver) and the same asset types. A colon is refused
+    on every platform, so these fail on any OS without it.
     """
 
     def test_bundle_import_leaves_out_an_asset_the_upload_would_refuse(self, tmp_lib):
@@ -1100,25 +1099,39 @@ class TestAnArchiveBringsInOnlyWhatTheProjectCouldHold:
         (repo / "D:x.py").write_bytes(b"X = 1")
         old_bundle = tmp_path / "old.zip"
         old_bundle.write_bytes(_zip_bytes({"drivers/D:x.py": "X = 1"}))
+        new_bundle = tmp_path / "new.zip"
+        new_bundle.write_bytes(_zip_bytes({"project.avc": "{}"}))
 
-        assert plib._drop_superseded_bundled_drivers(old_bundle) == []
+        from openavc.core import project_drivers
+
+        project_drivers.refresh_starter(old_bundle, new_bundle, repo)
+
         assert (repo / "D:x.py").read_bytes() == b"X = 1"
 
-    def test_a_starter_driver_named_for_another_drive_is_not_reinstalled(
+    def test_a_starter_driver_named_for_another_drive_is_not_installed(
         self, tmp_path, monkeypatch,
     ):
+        from openavc.drivers import registry
+
         repo = tmp_path / "driver_repo"
         repo.mkdir()
         monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", repo)
-        new_bundle = tmp_path / "new.zip"
-        new_bundle.write_bytes(_zip_bytes({
+        monkeypatch.setattr(registry, "_DRIVER_REGISTRY", {k: v for k, v in registry._DRIVER_REGISTRY.items() if not k.startswith("acme")})
+        monkeypatch.setitem(sys.modules, "openavc_driver_acme_widget", None)  # put back after
+        bundle = _zip_bytes({
             "drivers/D:x.py": "X = 1",
-            "drivers/acme_widget.py": "OK = 1",
-        }))
+            "drivers/acme_widget.py": (
+                "from openavc.drivers.base import BaseDriver\n\n\n"
+                "class AcmeWidget(BaseDriver):\n"
+                "    DRIVER_INFO = {'id': 'acme_widget', 'name': 'Acme', 'transport': 'tcp'}\n"
+            ),
+        })
 
-        plib._reinstall_bundled_drivers(new_bundle, ["D:x.py", "acme_widget.py"])
+        with zipfile.ZipFile(io.BytesIO(bundle)) as zf:
+            outcome = _install_bundled_drivers(zf)
 
-        assert sorted(p.name for p in repo.iterdir()) == ["acme_widget.py"]
+        assert outcome.installed == ["acme_widget"]
+        assert sorted(p.name for p in repo.iterdir() if p.name != "__pycache__") == ["acme_widget.py"]
 
 
 class TestReplaceInLibrary:

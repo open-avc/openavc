@@ -31,6 +31,7 @@ from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
 from openavc.drivers.child_ids import child_display_name
+from openavc.drivers.driver_change import holding
 from openavc.ui.matrix_inference import propose_matrices
 from openavc.ui.matrix_model import resolve_matrix_config
 from openavc.utils.log_buffer import get_log_buffer
@@ -757,9 +758,12 @@ async def skip_imported_logins(project_id: str) -> dict[str, Any]:
 
 @router.post("/library/import")
 async def import_library_project(request: Request) -> dict[str, Any]:
-    """Upload a .avc or .zip file to the project library."""
-    from openavc.core.project_library import ProjectExistsError, import_project
-    from openavc.core.installed_equipment import InstalledEquipmentError
+    """Upload a .avc or .zip file to the project library.
+
+    A .zip's drivers come in through the driver-change module, the ids they
+    declare held (``driver_change.holding``) from the install to the
+    announcement, as at every other door that brings a driver in."""
+    from openavc.core.project_library import bundled_driver_ids
 
     form = await request.form()
     upload = form.get("file")
@@ -773,27 +777,11 @@ async def import_library_project(request: Request) -> dict[str, Any]:
     content = await upload.read()
     override_id = form.get("id")
 
-    try:
-        result = import_project(content, filename, override_id)
-    except InstalledEquipmentError:
-        raise
-    except ProjectExistsError as e:
-        raise _api_error(
-            409,
-            f"The project library already has '{e.project_id}'. Delete that one from the "
-            f"Project Library first, then import again.",
-            e,
-        )
-    except ValidationError as e:
-        # Pydantic's ValidationError IS a ValueError, so this branch has to sit
-        # above the one below or the field list is swallowed with it.
-        raise validation_failed(422, f"Invalid project file '{filename}'", e)
-    except ValueError as e:
-        raise _api_error(422, f"Invalid project file '{filename}'", e)
-
-    if result.get("installed_drivers"):
-        from openavc.api.routes.drivers import announce_drivers_changed
-        await announce_drivers_changed()
+    async with holding(*bundled_driver_ids(content)):
+        result = _import_into_library(content, filename, override_id)
+        if result.get("installed_drivers"):
+            from openavc.api.routes.drivers import announce_drivers_changed
+            await announce_drivers_changed()
 
     return {
         "status": "imported",
@@ -807,12 +795,67 @@ async def import_library_project(request: Request) -> dict[str, Any]:
     }
 
 
+def _import_into_library(content: bytes, filename: str, override_id: Any) -> dict[str, Any]:
+    """``project_library.import_project``, its refusals as this API answers them."""
+    from openavc.core.project_library import import_project
+
+    try:
+        return import_project(content, filename, override_id)
+    except ValueError as e:
+        raise _import_refusal(filename, e)
+
+
+def _import_refusal(filename: str, e: ValueError) -> Exception:
+    """An import's refusal as this API answers it. Each kind here is a
+    ``ValueError``, so the order is the rule: a protected driver as it was
+    raised, a project the library has already as a 409, a file that does not
+    validate with the fields at fault, and any other as a bad file."""
+    from openavc.core.installed_equipment import InstalledEquipmentError
+    from openavc.core.project_library import ProjectExistsError
+
+    if isinstance(e, InstalledEquipmentError):
+        return e
+    if isinstance(e, ProjectExistsError):
+        return _api_error(
+            409,
+            f"The project library already has '{e.project_id}'. Delete that one from the "
+            f"Project Library first, then import again.",
+            e,
+        )
+    if isinstance(e, ValidationError):
+        return validation_failed(422, f"Invalid project file '{filename}'", e)
+    return _api_error(422, f"Invalid project file '{filename}'", e)
+
+
 # --- Project Creation ---
 
 
 @router.post("/project/open-from-library")
 async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
-    """Replace the current project with a saved project from the library."""
+    """Replace the current project with a saved project from the library.
+
+    A copy saved with a bundle (a starter) installs the drivers it carries as
+    it opens, the ids they declare held (``driver_change.holding``) from the
+    first step to the announcement; the answer names the drivers and plugins
+    it installed, and why each it left out was refused (``warnings``)."""
+    from openavc.core.project_library import Opened, bundled_driver_ids, library_bundle
+
+    opened = Opened()
+    async with holding(*bundled_driver_ids(library_bundle(data.library_id))):
+        engine = await _open_library_copy(data, opened)
+    return {
+        "status": "created",
+        "project_name": data.project_name,
+        "needs_login": engine.logins_needed(),
+        "plugins_need_login": engine.plugin_logins_needed(),
+        "installed_drivers": opened.installs.installed_drivers,
+        "installed_plugins": opened.installs.installed_plugins,
+        "warnings": opened.installs.warnings,
+    }
+
+
+async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
+    """The open, from the backup to the announcement; the engine it reloaded."""
     from openavc.core.project_library import open_from_library as _open, sanitize_id
     from openavc.core.backup_manager import create_backup
 
@@ -825,11 +868,9 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
     import asyncio
     await asyncio.to_thread(create_backup, engine.project_path, f"Before opening '{data.project_name}'")
 
-    from openavc.core.project_update import MigrationNotes
-    update_notes = MigrationNotes()
     try:
         _open(data.library_id, engine.project_path, scripts_dir,
-              project_id, data.project_name, update_notes=update_notes)
+              project_id, data.project_name, opened=opened)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{data.library_id}' not found in library")
     except ValidationError as e:
@@ -842,7 +883,7 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
             e,
         )
 
-    engine.keep_update_notes(update_notes, replace=True)
+    engine.keep_update_notes(opened.update_notes, replace=True)
     await engine.broadcast_ws({
         "type": "project.replaced",
         "project_name": data.project_name,
@@ -852,13 +893,7 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
     # A saved project installs the drivers it carries as it opens.
     from openavc.api.routes.drivers import announce_drivers_changed
     await announce_drivers_changed()
-
-    return {
-        "status": "created",
-        "project_name": data.project_name,
-        "needs_login": engine.logins_needed(),
-        "plugins_need_login": engine.plugin_logins_needed(),
-    }
+    return engine
 
 
 @router.post("/project/create-blank")

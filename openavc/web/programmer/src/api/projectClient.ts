@@ -398,7 +398,15 @@ export async function openFromLibrary(
   libraryId: string,
   projectName: string,
   projectId?: string
-): Promise<{ status: string; project_name: string; needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[] }> {
+): Promise<{
+  status: string; project_name: string;
+  needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[];
+  /** What a copy saved with its own drivers and plugins (a starter) installed
+   *  as it opened, and why each it left out was refused. */
+  installed_drivers?: string[];
+  installed_plugins?: string[];
+  warnings?: string[];
+}> {
   return request("/project/open-from-library", {
     method: "POST",
     body: JSON.stringify({

@@ -136,6 +136,21 @@ def driver_companions(main_path: Path) -> list[Path]:
     return [path for path in candidates if path.is_file()]
 
 
+def companion_names(main_name: str, content: bytes) -> list[str]:
+    """The names a driver file's companions have beside it, read from the
+    driver file's bytes before it is anywhere (a project bundle's): a Python
+    driver's conventional ``<stem>_discovery.py`` and ``<stem>_sim.py``, a
+    YAML driver's discovery file when it names one beside itself
+    (``_companion_name``). ``driver_companions`` is the same rule over a
+    driver file in the folder, keeping the ones that are there."""
+    if main_name.endswith(DRIVER_EXTENSION):
+        relpath = companion_relpath_from_yaml(content)
+        name = _companion_name(relpath) if relpath else None
+        return [name] if name else []
+    stem = Path(main_name).stem
+    return [f"{stem}{suffix}" for suffix in COMPANION_SUFFIXES]
+
+
 def _declared_companion(main_path: Path) -> list[Path]:
     """The discovery companion a YAML driver names, when it names a file
     beside itself; nothing when it names none, or a path elsewhere."""

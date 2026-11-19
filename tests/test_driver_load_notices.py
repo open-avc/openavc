@@ -254,7 +254,7 @@ async def test_a_project_bundle_s_driver_loads_with_its_notices_on_the_installed
     with zipfile.ZipFile(buf, "w") as archive:
         archive.writestr("drivers/acme_widget.avcdriver", _yaml(on_connect="P?\r"))
     with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as archive:
-        assert project_library._install_bundled_drivers(archive) == [DRIVER_ID]
+        assert project_library._install_bundled_drivers(archive).installed == [DRIVER_ID]
     assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [ON_CONNECT]
 
 

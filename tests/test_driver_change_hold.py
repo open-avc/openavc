@@ -23,7 +23,7 @@ import sys
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -35,12 +35,15 @@ from openavc.api import driver_catalog
 from openavc.api.models import (
     CommunityDriverInstallRequest,
     DriverDefinitionRequest,
+    LibraryOpenRequest,
     PythonDriverCreateRequest,
 )
 from openavc.api.routes import driver_definitions as BUILDER
 from openavc.api.routes import drivers as LIBRARY
+from openavc.api.routes import project as PROJECT
 from openavc.api.routes import python_drivers as CODE_VIEW
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core import project_library
 from openavc.drivers import driver_change, refused_files, registry
 from openavc.drivers.driver_change import DriverChange, DriverRefused
 from openavc.drivers.registry import get_driver_class, is_driver_registered
@@ -177,6 +180,21 @@ def world(tmp_path: Path, monkeypatch):
         return None
 
     monkeypatch.setattr("openavc.api.discovery.refresh_all_device_matches", _refresh)
+
+    # The project library's doors: its saved copies, the running project an
+    # open replaces, and the backup it takes first.
+    lib = tmp_path / "saved_projects"
+    lib.mkdir()
+    (tmp_path / "active").mkdir()
+    monkeypatch.setattr(project_library, "_lib_dir", lambda: lib)
+    monkeypatch.setattr(project_library, "_DRIVER_REPO_DIR", repo)
+    running = MagicMock(project_path=tmp_path / "active" / "project.avc")
+    running.broadcast_ws = AsyncMock()
+    running.reload_project = AsyncMock()
+    running.logins_needed = MagicMock(return_value=[])
+    running.plugin_logins_needed = MagicMock(return_value=[])
+    monkeypatch.setattr(PROJECT, "_get_engine", lambda: running)
+    monkeypatch.setattr("openavc.core.backup_manager.create_backup", lambda *a, **k: None)
 
     catalog = _Catalog()
     monkeypatch.setattr("httpx.AsyncClient", catalog)
@@ -398,6 +416,32 @@ def _bundle(name: str) -> bytes:
     return buffer.getvalue()
 
 
+def _project_bundle(name: str) -> bytes:
+    """A project export carrying the driver its one device uses."""
+    import json
+
+    project = project_library.create_blank_project("acme_room", "Acme Room").model_dump(mode="json")
+    project["devices"] = [{"id": "d1", "name": "Widget", "driver": DRIVER_ID, "config": {}}]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("project.avc", json.dumps(project))
+        archive.writestr(f"drivers/{DRIVER_ID}.avcdriver", _yaml_file(name))
+    return buffer.getvalue()
+
+
+async def _open_library_copy(name: str) -> dict:
+    """Open a library copy whose saved bundle carries the driver."""
+    content = _project_bundle(name)
+    saved = project_library._lib_dir() / "acme_room"
+    saved.mkdir()
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        (saved / "project.avc").write_bytes(archive.read("project.avc"))
+    (saved / "bundle.zip").write_bytes(content)
+    return await PROJECT.open_from_library(
+        LibraryOpenRequest(library_id="acme_room", project_name="Acme Room")
+    )
+
+
 def _python_source(driver_id: str, *, computed: bool = False) -> str:
     written = f"'acme_' + {driver_id[len('acme_'):]!r}" if computed else repr(driver_id)
     return (
@@ -425,7 +469,8 @@ def _assistant() -> AIToolHandler:
 # called. A door here without the hold fails the test below; the next test
 # holds this list to every route on the three driver routers that is not a
 # GET, so a new route there is listed or named as no driver change. The
-# assistant's tools are listed by hand.
+# assistant's tools, and the project library's import and open (which install
+# the drivers a project carries), are listed by hand.
 _DOORS = {
     "community install": lambda: LIBRARY.install_community_driver(
         CommunityDriverInstallRequest(driver_id=DRIVER_ID, file_url=_INSTALL_URL)
@@ -470,6 +515,10 @@ _DOORS = {
     "assistant install": lambda: _assistant()._install_community_driver(
         {"driver_id": DRIVER_ID, "file_url": _INSTALL_URL}
     ),
+    "project import": lambda: PROJECT.import_library_project(
+        _Request(upload=_Upload("acme_room.zip", _project_bundle("Imported with a project")))
+    ),
+    "library open": lambda: _open_library_copy("Opened with a project"),
 }
 
 

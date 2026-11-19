@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Program > Export used to write the store to a Blob client-side, which meant
@@ -31,10 +31,12 @@ vi.mock("../store/projectStore", () => ({
 const showError = vi.fn();
 const showInfo = vi.fn();
 const showSuccess = vi.fn();
+const showLastingWarning = vi.fn();
 vi.mock("../store/toastStore", () => ({
   showError: (m: string) => showError(m),
   showInfo: (m: string) => showInfo(m),
   showSuccess: (m: string) => showSuccess(m),
+  showLastingWarning: (m: string) => showLastingWarning(m),
 }));
 
 // The two heavy children fetch on mount and have nothing to do with transfer.
@@ -51,9 +53,11 @@ const importToLibrary = vi.fn(async (_f: File) => ({
   project_id: "test_room",
   installed_drivers: ["acme_matrix"],
   installed_plugins: ["acme_widget"],
-  warnings: [],
+  warnings: [] as string[],
 }));
-const openFromLibrary = vi.fn(async (_id: string, _mode: string, _name?: string) => ({ status: "created", project_name: "Test Room" }));
+const openFromLibrary = vi.fn(async (_id: string, _mode: string, _name?: string): Promise<{
+  status: string; project_name: string; warnings?: string[];
+}> => ({ status: "created", project_name: "Test Room" }));
 const listLibrary = vi.fn(async () => [
   { id: "test_room", name: "Test Room", description: "", modified: "" },
 ]);
@@ -77,6 +81,12 @@ vi.mock("../api/restClient", () => ({
 }));
 
 import { ProjectView } from "./ProjectView";
+
+// The capture below spies on document.createElement; a second spy over the
+// first would call itself.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** Grab the hidden <input type=file> the handler makes, and hand it a file. */
 function fileInputCapture() {
@@ -143,5 +153,62 @@ describe("Program > Export / Import", () => {
     expect(storeState.forceReload).toHaveBeenCalled();
     // What arrived with it gets said out loud, including the plugins.
     expect(showSuccess.mock.calls[0][0]).toMatch(/acme_widget/);
+    expect(showLastingWarning).not.toHaveBeenCalled();
+  });
+
+  it("says which driver a bundle left out, and why, until it is dismissed", async () => {
+    const refused =
+      "Driver 'acme_matrix' came with this project but was not installed: This driver requires " +
+      "OpenAVC 99.0.0 or later. You are running 0.1.0. Please update OpenAVC first. (used by: d1)";
+    importToLibrary.mockResolvedValueOnce({
+      status: "imported", project_id: "test_room", installed_drivers: [], installed_plugins: [],
+      warnings: [refused],
+    });
+    const capture = fileInputCapture();
+    render(<ProjectView />);
+    await userEvent.click(screen.getByRole("button", { name: /^import$/i }));
+    await capture.choose(new File([new Uint8Array([0x50, 0x4b])], "test_room.zip", { type: "application/zip" }));
+
+    await waitFor(() => expect(showLastingWarning).toHaveBeenCalledWith(refused));
+    expect(showSuccess.mock.calls[0][0]).not.toContain("acme_matrix");
+  });
+});
+
+describe("Opening a library copy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeState.dirty = false;
+  });
+
+  it("says which driver it carried was left out, and why, until it is dismissed", async () => {
+    const refused =
+      "Driver 'acme_matrix' came with this project but was not installed: Its file did not load.";
+    listLibrary.mockResolvedValueOnce([
+      { id: "starter_room", name: "Starter Room", description: "", modified: "" },
+    ]);
+    openFromLibrary.mockResolvedValueOnce({
+      status: "created", project_name: "Starter Room", warnings: [refused],
+    });
+    render(<ProjectView />);
+    await userEvent.click(await screen.findByText("Starter Room"));
+    const dialog = await screen.findByRole("dialog", { name: "Open Project" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^open$/i }));
+
+    await waitFor(() => expect(openFromLibrary).toHaveBeenCalledWith("starter_room", "Starter Room", undefined));
+    await waitFor(() => expect(showLastingWarning).toHaveBeenCalledWith(refused));
+  });
+
+  it("says nothing more when everything it carried came in", async () => {
+    listLibrary.mockResolvedValueOnce([
+      { id: "starter_room", name: "Starter Room", description: "", modified: "" },
+    ]);
+    openFromLibrary.mockResolvedValueOnce({ status: "created", project_name: "Starter Room", warnings: [] });
+    render(<ProjectView />);
+    await userEvent.click(await screen.findByText("Starter Room"));
+    const dialog = await screen.findByRole("dialog", { name: "Open Project" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^open$/i }));
+
+    await waitFor(() => expect(storeState.forceReload).toHaveBeenCalled());
+    expect(showLastingWarning).not.toHaveBeenCalled();
   });
 });

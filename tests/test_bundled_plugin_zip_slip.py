@@ -14,9 +14,10 @@ legitimate plugin still installs.
 The flat siblings, an import's bundled drivers and scripts, take the last
 part of each member's path as the file name. That alone does not keep a file
 in its folder on Windows: the last part of ``drivers/D:x.py`` is ``D:x.py``,
-a path on drive D:. Both ask ``utils.paths.plain_file_in``, which refuses a
-name with a colon on every platform, so the tests below fail on any OS
-without it.
+a path on drive D:. The scripts ask ``utils.paths.plain_file_in`` and the
+drivers the driver file name rule (``drivers/driver_file_name.py``), and
+both refuse a name with a colon on every platform, so the tests below fail
+on any OS without them.
 """
 
 from __future__ import annotations
@@ -95,20 +96,36 @@ def test_plain_file_in_keeps_a_plain_name_in_its_folder(tmp_path, name):
     assert plain_file_in(tmp_path, name) == (tmp_path / name).resolve()
 
 
+_ACME_DRIVER = (
+    b"from openavc.drivers.base import BaseDriver\n\n\n"
+    b"class AcmeWidget(BaseDriver):\n"
+    b"    DRIVER_INFO = {'id': 'acme_widget', 'name': 'Acme Widget', 'transport': 'tcp'}\n"
+)
+
+
 def test_install_bundled_drivers_skips_a_member_named_for_another_drive(
     tmp_path, monkeypatch, caplog
 ):
+    import sys
+
+    from openavc.drivers import registry
+
     driver_repo = tmp_path / "driver_repo"
     monkeypatch.setattr(project_library, "_DRIVER_REPO_DIR", driver_repo)
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", {k: v for k, v in registry._DRIVER_REGISTRY.items() if not k.startswith("acme")})
+    monkeypatch.setitem(sys.modules, "openavc_driver_acme_widget", None)  # put back after
     members = {f"drivers/{name}": b"ESCAPE = 1" for name in OFF_THE_DRIVE}
-    members["drivers/acme_widget_sim.py"] = b"OK = 1"  # a companion: written, never imported
+    members["drivers/acme_widget.py"] = _ACME_DRIVER
+    members["drivers/acme_widget_sim.py"] = b"OK = 1"  # its companion: written, never imported
     zf = _make_zip(members)
 
     with caplog.at_level(logging.WARNING, logger=project_library.log.name):
         project_library._install_bundled_drivers(zf)
 
     assert (driver_repo / "acme_widget_sim.py").read_bytes() == b"OK = 1"
-    assert sorted(p.name for p in driver_repo.iterdir()) == ["acme_widget_sim.py"]
+    assert sorted(p.name for p in driver_repo.iterdir() if p.name != "__pycache__") == [
+        "acme_widget.py", "acme_widget_sim.py",
+    ]
     for name in OFF_THE_DRIVE:
         assert repr(f"drivers/{name}") in caplog.text
 

@@ -390,6 +390,8 @@ If the driver isn't in the community catalog, the banner says so and offers **Br
 
 When the driver's file is installed but did not load, the banner reads **Driver Did Not Load** and says why, and its install button reads **Install Again from Community**. A project import names such a driver the same way in its warnings: installed but did not load, with the reason, rather than not installed.
 
+A driver that came inside a project `.zip`, or with a starter project, is checked before it is installed: it must load on this system, and it must not need a newer OpenAVC than this one. One that fails is left out. The import or open then says which driver it was and why, and names the devices that use it. A driver this system already has keeps its installed copy and is not replaced by the project's.
+
 A driver can load and still fail to set up one device, for example when it cannot read part of its own definition or one of the device's settings. That device stays in the project and in the device counts, and its **Offline** banner names the driver and the error. It does not retry on its own. Saving a fixed version of the driver (or updating it from Browse Community) sets the device up again, and so do editing the device and pressing **Reconnect**. Its `device.<id>.offline_reason` is `driver_failed`.
 
 ## Device Discovery

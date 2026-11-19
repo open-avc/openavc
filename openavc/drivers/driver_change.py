@@ -18,8 +18,9 @@ save it lets through.
 registers or reloads a driver (the community install, update and uninstall,
 the single-file and bundle imports, the Driver Builder's create, save, patch,
 delete and reload, the Code view's create, save, delete and reload, the
-assistant's create and update) runs inside ``holding`` the ids it names, from
-its first check to its announcement. A door awaits between its own steps (a
+assistant's create and update, a project import and a library open, which
+install the drivers a project carries) runs inside ``holding`` the ids it
+names, from its first check to its announcement. A door awaits between its own steps (a
 catalog download, the devices on the driver coming down and being built
 again), and a second door on the same driver waits for the first to answer
 before it checks anything, so each answer describes the end state it left and
@@ -33,7 +34,8 @@ registers.
 
 Every door that writes a driver file (the community install and update, the
 single-file and bundle imports, the Driver Builder's saves, which the AI's
-create and update are too) hands ``admit``
+create and update are too, and the project library's: a project's own drivers
+as it is imported or opened, and a starter's at startup) hands ``admit``
 the whole change, every file it brings and every file it removes, and gets
 back the registered class, or a refusal that left the driver folder, the
 registry and ``sys.modules`` exactly as they were. A person who imports a

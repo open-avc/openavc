@@ -1,8 +1,9 @@
 """A driver file that is in the driver folder but did not load says so, with
 why, wherever someone looks for the driver: the page of a device that needs it,
 the Installed list, the Code view's list, a project import, the AI's tools and
-the Builder's reload. A change refused before it reaches the folder answers
-with the same reasons and records nothing. A reason names no folder, and a
+the Builder's reload. A change refused before it reaches the folder (a
+project's own driver among them) answers with the same reasons and records
+nothing. A reason names no folder, and a
 record ends when its file changes or goes.
 """
 
@@ -270,15 +271,22 @@ def test_a_project_import_says_installed_but_did_not_load(repo):
     ]
 
 
-def test_a_project_bundle_s_driver_that_does_not_load_is_recorded(repo, monkeypatch):
+def test_a_project_bundle_s_driver_that_does_not_load_is_left_out_with_why(repo, monkeypatch):
+    """Refused before it reaches the folder, like every other door's: the
+    project's answer says why, and nothing is recorded as installed."""
     monkeypatch.setattr(project_library, "_DRIVER_REPO_DIR", repo)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as archive:
         archive.writestr("drivers/acme_widget.avcdriver", _yaml(**BOGUS))
     with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as archive:
-        assert project_library._install_bundled_drivers(archive) == []
-    assert (repo / "acme_widget.avcdriver").is_file()
-    assert missing_driver_reason(DRIVER_ID) == _sentence(_bogus_reasons())
+        outcome = project_library._install_bundled_drivers(archive)
+    assert outcome.installed == []
+    assert outcome.refused == {
+        DRIVER_ID: f"Driver '{DRIVER_ID}' came with this project but was not installed: "
+        "Its file did not load: " + "; ".join(_bogus_reasons())
+    }
+    assert not (repo / "acme_widget.avcdriver").exists()
+    assert missing_driver_reason(DRIVER_ID) == f"Driver '{DRIVER_ID}' is not installed"
 
 
 class _Tools(DriverToolsMixin):

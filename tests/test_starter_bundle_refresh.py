@@ -13,7 +13,8 @@ Two properties matter and they pull against each other:
     `_install_bundled_drivers`' no-overwrite rule already makes.
 
 Byte-identity against the OLD bundle is what reconciles them: it proves we wrote
-the file and nobody has changed it.
+the file and nobody has changed it. The fresh copy then comes in the way every
+driver does, through the driver-change module, over the one it replaces.
 """
 
 from __future__ import annotations
@@ -33,12 +34,22 @@ def _bundle(path: Path, driver_src: str, project: str = '{"project": {}}') -> No
 
 
 OLD = "from server.drivers.base import BaseDriver\n"
-NEW = "from openavc.drivers.base import BaseDriver\n"
+NEW = (
+    "from openavc.drivers.base import BaseDriver\n\n\n"
+    "class AcmeWidget(BaseDriver):\n"
+    "    DRIVER_INFO = {'id': 'acme_widget', 'name': 'Acme Widget', 'transport': 'tcp'}\n"
+)
 
 
 @pytest.fixture
 def wired(tmp_path, monkeypatch):
     """A seeded library + a shipped template dir + a driver_repo, all isolated."""
+    import sys
+
+    from openavc.drivers import registry
+
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", {k: v for k, v in registry._DRIVER_REGISTRY.items() if not k.startswith("acme")})
+    monkeypatch.setitem(sys.modules, "openavc_driver_acme_widget", None)  # put back after
     seed = tmp_path / "templates"
     lib = tmp_path / "saved_projects"
     repo = tmp_path / "driver_repo"

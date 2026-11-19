@@ -35,6 +35,13 @@ function announceNeedsLogin(
   if (sentence) showLastingWarning(sentence);
 }
 
+/** What a project that came in could not bring with it (a driver it carried
+ *  that was not installed, one its devices need that is not here), until
+ *  somebody dismisses it: its devices wait until that is put right. */
+function announceWarnings(warnings: string[] | undefined): void {
+  if (warnings?.length) showLastingWarning(warnings.join(" "));
+}
+
 /** The id the server will file a project under.
  *
  *  Mirrors `sanitize_id` in core/project_library.py, so the Save to Library
@@ -232,8 +239,8 @@ export function ProjectView() {
       if (result.installed_plugins?.length) {
         msgs.push(`Installed ${result.installed_plugins.length} plugin(s): ${result.installed_plugins.join(", ")}`);
       }
-      if (result.warnings?.length) msgs.push(...result.warnings);
       showSuccess(["Project imported.", ...msgs].join(" "));
+      announceWarnings([...(result.warnings ?? []), ...(opened.warnings ?? [])]);
       announceNeedsLogin(opened.needs_login, opened.plugins_need_login);
     } catch (e) {
       showError(parseApiError(e));
@@ -319,6 +326,7 @@ export function ProjectView() {
       const opened = await api.openFromLibrary(showOpen, openName.trim(), openId.trim() || undefined);
       setShowOpen(null);
       await forceReloadProject();
+      announceWarnings(opened.warnings);
       announceNeedsLogin(opened.needs_login, opened.plugins_need_login);
     } catch (e) {
       showError(parseApiError(e));
@@ -388,12 +396,12 @@ export function ProjectView() {
         if (result.installed_plugins && result.installed_plugins.length > 0) {
           msgs.push(`Installed ${result.installed_plugins.length} bundled plugin(s): ${result.installed_plugins.join(", ")}`);
         }
-        if (result.warnings && result.warnings.length > 0) {
-          msgs.push("", "Warnings:", ...result.warnings,
-            "", "Devices using missing drivers will appear as orphaned. Install drivers from Community Drivers to activate them.");
-        }
         if (msgs.length > 0) {
           showInfo("Project imported. " + msgs.join(" "));
+        }
+        if (result.warnings?.length) {
+          announceWarnings([...result.warnings,
+            "Devices using missing drivers will appear as orphaned. Install drivers from Community Drivers to activate them."]);
         }
       } catch (e) {
         showError(parseApiError(e));
