@@ -67,6 +67,7 @@ from openavc.drivers.conversion_checks import (
 )
 from openavc.drivers.discovery_block import DiscoveryRead, read_discovery_block
 from openavc.drivers.driver_id import id_refusals
+from openavc.drivers.driver_model import read_driver
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY as UNEVALUATED_KEY,
     DeclaredSections,
@@ -318,7 +319,8 @@ def check_driver_definition(
     the definition walk (``_DefinitionWalk``, every part's own rules). Where
     a part's own message is tagged with a place, or with one inside it or
     holding it, the shape walk's sentence for that place is left out: the
-    part already said it, in words that name the fix.
+    part already said it, in words that name the fix. So it is where an
+    author's-door message (``_DefinitionWalk.authored``) names that very place.
 
     Two kinds of refusal come out. The definition walk's refuse at every
     door, as they always have. The author's-door refusals (the shape walk's,
@@ -345,7 +347,7 @@ def check_driver_definition(
     for part, section in walk.authors_parts():
         _guarded(walk.authored, part, section)
     shapes = _TaggedErrors()
-    _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors), "")
+    _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors, walk.authored), "")
     if not strict:
         return DefinitionVerdict(walk.errors, _joined(shapes, walk.authored))
     undeclared = _TaggedErrors()
@@ -365,12 +367,18 @@ def _joined(*parts: _TaggedErrors) -> _TaggedErrors:
     return joined
 
 
-def _shape_gaps(errors: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors) -> None:
+def _shape_gaps(
+    errors: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors, authored: _TaggedErrors,
+) -> None:
     """The shape walk's refusals the definition walk left unsaid, each
     tagged with its own place. A part that could not be checked said nothing
-    about the value, so its message names no place here."""
+    about the value, so its message names no place here. An author's-door
+    message at the very place the shape walk refuses says it in words of its
+    own (a query entry the driver model reads, ``model_problems``)."""
     places = [tag for message, tag in zip(said, said.tags) if _UNCHECKED not in message]
-    errors.at_each(unsaid(shape_refusals(driver_def), [p for p in places if p]))
+    own_words = {tag for tag in authored.tags if tag}
+    refusals = [refusal for refusal in shape_refusals(driver_def) if refusal[0] not in own_words]
+    errors.at_each(unsaid(refusals, [p for p in places if p]))
 
 
 def _undeclared(errors: _TaggedErrors, driver_def: dict[str, Any]) -> None:
@@ -447,6 +455,7 @@ class _DefinitionWalk:
             (self.child_fault_codes, "responses"),
             (self.line_settings, "default_config"),
             (self.discovery_authored, "discovery"),
+            (self.model_problems, ""),
         ]
 
     def rule_names(self) -> None:
@@ -464,6 +473,13 @@ class _DefinitionWalk:
         for i, rule in enumerate(self.declared.responses):
             errors.ctx = f"responses[{i}]"
             errors.extend(child_fault_code_errors(i, rule))
+
+    def model_problems(self) -> None:
+        """What the driver model reads but the author's doors refuse
+        (``driver_model``), each said at its place."""
+        errors = self.authored
+        for problem in read_driver(self.driver_def).problems:
+            errors.at(problem.place, f"{problem.place}: {problem.words}")
 
     def line_settings(self) -> None:
         """Each serial line setting default_config holds, read by the

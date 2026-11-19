@@ -253,6 +253,11 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "on_connect[0]",
     ),
     (
+        "a query line the driver model reads but the author's doors refuse",
+        _d(on_connect=["INIT", {"send": "Q\r"}]),
+        "on_connect[1]",
+    ),
+    (
         "responses[i] (then_query on a json rule)",
         _d(responses=[{"json": True, "set": {"power": "p"}, "then_query": ["Q\r"]}]),
         "responses[0]",
@@ -386,7 +391,9 @@ def test_every_context_tag_has_a_section_case():
             # command_prefix / command_suffix. `section` is the guard's: each
             # walk's parts() lists them as literals, and
             # tests/test_driver_checks_report_not_raise.py raises in each.
-            assert expr in {"loc", "name", "frame_key", "section"}, (
+            # `problem.place` is a driver model problem's, a query entry's
+            # place: covered by the long query line case.
+            assert expr in {"loc", "name", "frame_key", "section", "problem.place"}, (
                 f"new computed context tag {expr!r} — add a case for what it produces"
             )
             continue

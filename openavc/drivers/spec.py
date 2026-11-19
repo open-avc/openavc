@@ -779,6 +779,12 @@ def _control_form(name: str, declared: dict) -> dict:
     }
 
 
+# Why a query line is written as a mapping rather than a string: a ``{send}``
+# entry carries at least one of these (``queryEntry``'s any_of is built from
+# it). The one reading of an entry's form is drivers/query_entry.py.
+QUERY_ENTRY_REASONS = ('when', 'query_for', 'when_state')
+
+
 FIELDS = {
     'id': {
         'req': 'platform',
@@ -1701,17 +1707,7 @@ DEFS = {
             },
         },
         'required': ('send',),
-        'any_of': (
-            {
-                'required': ('when',),
-            },
-            {
-                'required': ('query_for',),
-            },
-            {
-                'required': ('when_state',),
-            },
-        ),
+        'any_of': tuple({'required': (reason,)} for reason in QUERY_ENTRY_REASONS),
         'extra': False,
     },
     'paramEntry': {

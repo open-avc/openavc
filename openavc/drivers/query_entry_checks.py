@@ -4,7 +4,10 @@ A query entry is one line of ``polling.queries``, of ``on_connect`` or of a
 text rule's ``then_query``: a bare string, ``{send}`` with an optional
 ``when:`` / ``when_state:`` gate and ``query_for:``, a per-child
 ``{each_child, send}`` with an optional ``page_size:``, or, on ``on_connect``
-only, an OSC ``{address, args}``. ``validate_driver_definition`` walks each
+only, an OSC ``{address, args}``. Which of those an entry is, is
+``query_entry.read_query_entry``'s to say; a ``{send}`` written with no
+reason to be a mapping is said at the author's doors through the driver
+model's problems (``driver_model``). ``validate_driver_definition`` walks each
 list and tags what comes back with the entry's place; the order the lists are
 reported in is the walk's.
 
@@ -42,6 +45,7 @@ from openavc.drivers.declared_names import (
     config_field_names,
     declared_enum_values,
 )
+from openavc.drivers.query_entry import EACH_CHILD, QueryEntry, read_query_entry
 
 # A {child_id} / {child_id:spec} token in a query template.
 _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
@@ -377,21 +381,19 @@ class QueryEntries:
     def _shape_errors(
         self, where: str, entry: dict[str, Any], osc_form: bool,
     ) -> list[str]:
-        if "each_child" in entry:
-            return self._per_child_errors(where, entry)
-        if osc_form and "address" in entry:
-            return []
-        send = entry.get("send")
-        if isinstance(send, str) and send:
+        read = read_query_entry(entry, osc_form=osc_form)
+        if read.form == EACH_CHILD:
+            return self._per_child_errors(where, read)
+        if read.form is not None:
             return []
         return [
             f"{where}: mapping entries must be {_ENTRY_SHAPES}"
             + (" or {address, args}" if osc_form else "")
         ]
 
-    def _per_child_errors(self, where: str, entry: dict[str, Any]) -> list[str]:
+    def _per_child_errors(self, where: str, entry: QueryEntry) -> list[str]:
         errors: list[str] = []
-        child_type = entry.get("each_child")
+        child_type = entry.each_child
         type_def = self._child_types.get(child_type) if isinstance(child_type, str) else None
         if not isinstance(child_type, str) or child_type not in self._child_types:
             errors.append(
@@ -405,7 +407,7 @@ class QueryEntries:
                 f"{where}: each_child type '{child_type}' declares no instances: "
                 f"block, so nothing would ever be polled"
             )
-        send = entry.get("send")
+        send = entry.send
         if not isinstance(send, str) or not send:
             errors.append(f"{where}: missing 'send' template")
         elif not _CHILD_ID_TOKEN.search(send):

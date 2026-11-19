@@ -224,7 +224,11 @@ def test_the_built_in_drivers_are_the_shape_they_declare() -> None:
             "simulator.controls[0].type: must be 'power', 'select', 'slider', 'toggle', 'matrix', "
             "'meters', 'presets', 'group' or 'indicator', not 'meter'",
         ),
-        ({"on_connect": [{"send": "\r"}]}, "on_connect[0]: is not in any of the forms it can take"),
+        (
+            {"on_connect": [{"send": "\r"}]},
+            "on_connect[0]: a mapping with only 'send' is a plain query written the long way: "
+            "write it as a string, or add 'when', 'query_for' or 'when_state'",
+        ),
     ],
 )
 def test_an_author_door_refuses_a_wrong_shape_and_a_load_door_names_it(
