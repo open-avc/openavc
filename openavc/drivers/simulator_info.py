@@ -212,11 +212,19 @@ def _claim(class_name: str, table: ast.Dict | None) -> SimulatorClaim | None:
     if not isinstance(info, dict):
         return None
     driver_id = info.get("driver_id")
-    if driver_id is UNEVALUATED or (driver_id is None and UNEVALUATED_KEY in info):
+    if _id_unseen(info, driver_id):
         return SimulatorClaim(class_name, None)
     if isinstance(driver_id, str) and driver_id:
         return SimulatorClaim(class_name, driver_id)
     return None
+
+
+def _id_unseen(info: dict, driver_id: Any) -> bool:
+    """Whether the id is written in code, or may be merged in from another
+    mapping the table spreads into itself."""
+    if driver_id is UNEVALUATED:
+        return True
+    return driver_id is None and UNEVALUATED_KEY in info
 
 
 def claim_conflicts(claims: Iterable[tuple[str, str | None]]) -> dict[str, str]:
