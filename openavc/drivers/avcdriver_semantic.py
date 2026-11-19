@@ -67,7 +67,7 @@ from openavc.drivers.conversion_checks import (
 )
 from openavc.drivers.discovery_block import DiscoveryRead, read_discovery_block
 from openavc.drivers.driver_id import id_refusals
-from openavc.drivers.driver_model import read_driver
+from openavc.drivers.driver_model import POLL, START_UP, THEN_QUERY, QueryLine, read_driver
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY as UNEVALUATED_KEY,
     DeclaredSections,
@@ -445,6 +445,7 @@ class _DefinitionWalk:
         self.errors = _TaggedErrors()
         self.authored = _TaggedErrors()
         self.declared = DeclaredSections(driver_def)
+        self.model = read_driver(driver_def)
         self._discovery = DiscoveryRead()
 
     def authors_parts(self) -> list[tuple[Callable[[], None], str]]:
@@ -478,7 +479,7 @@ class _DefinitionWalk:
         """What the driver model reads but the author's doors refuse
         (``driver_model``), each said at its place."""
         errors = self.authored
-        for problem in read_driver(self.driver_def).problems:
+        for problem in self.model.problems:
             errors.at(problem.place, f"{problem.place}: {problem.words}")
 
     def line_settings(self) -> None:
@@ -705,13 +706,11 @@ class _DefinitionWalk:
     def query_entries(self) -> None:
         """The poll's entries, the start-up's and each text rule's then_query,
         checked in query_entry_checks against what the definition declares,
-        read once for all three."""
+        read once for all three. Where each entry sits is the driver model's
+        reading (``wire.queries``), the one substitution_checks reads too."""
         queries = QueryEntries(self.driver_def, self.declared)
         self._poll(queries)
-        self._each(
-            "on_connect", self.driver_def.get("on_connect"),
-            partial(queries.entry_errors, osc_form=True),
-        )
+        self._each_line(self._lines(START_UP), partial(queries.entry_errors, osc_form=True))
         for i, rule in enumerate(self.declared.responses):
             self._follow_ups(i, rule, queries)
 
@@ -730,7 +729,7 @@ class _DefinitionWalk:
                 "polling.interval is not read by the runtime. Remove the "
                 "interval: key and set default_config.poll_interval instead"
             )
-        self._each("polling.queries", polling.get("queries"), queries.entry_errors)
+        self._each_line(self._lines(POLL), queries.entry_errors)
         if "when_state" in polling:
             errors.ctx = "polling"
             errors.extend(queries.when_state_errors("polling", polling.get("when_state")))
@@ -749,9 +748,9 @@ class _DefinitionWalk:
         if refused:
             return
         follow = FollowUp(rule)
-        listed = f"responses[{index}].then_query"
-        self._each(listed, rule["then_query"], follow.reread_errors)
-        self._each(listed, rule["then_query"], partial(queries.entry_errors, follow_up=follow))
+        listed = self._lines(THEN_QUERY, index)
+        self._each_line(listed, follow.reread_errors)
+        self._each_line(listed, partial(queries.entry_errors, follow_up=follow))
 
     def routing(self) -> None:
         """The ``routing:`` block (where this driver's routing lives, so a
@@ -770,17 +769,21 @@ class _DefinitionWalk:
         errors = self.errors
         errors.at_each(substitution_issues(self.driver_def))
 
-    def _each(self, name: str, entries: Any, check: Callable[[str, Any], list[str]]) -> None:
-        """Ask ``check`` about each entry of a list, tagging what it says with
-        the entry's place (``name[i]``). A list that is not a list has no
-        entries."""
+    def _lines(self, origin: str, source: int | None = None) -> list[QueryLine]:
+        """The model's query entries from ``origin`` (of one rule, for a
+        follow-up), in order."""
+        return [
+            line for line in self.model.wire.queries
+            if line.origin == origin and line.source == source
+        ]
+
+    def _each_line(self, lines: list[QueryLine], check: Callable[[str, Any], list[str]]) -> None:
+        """Ask ``check`` about each entry as written, tagging what it says
+        with the entry's place (``polling.queries[0]``)."""
         errors = self.errors
-        errors.ctx = name
-        if not isinstance(entries, list):
-            return
-        for i, entry in enumerate(entries):
-            errors.ctx = f"{name}[{i}]"
-            errors.extend(check(f"{name}[{i}]", entry))
+        for line in lines:
+            errors.ctx = line.place
+            errors.extend(check(line.place, line.written))
 
 
 def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:

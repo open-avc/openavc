@@ -38,6 +38,7 @@ from openavc.drivers.declared_names import (
     closest_name,
     substitution_names,
 )
+from openavc.drivers.driver_model import READ_BACK, read_driver
 from openavc.drivers.spec import placeholder_names
 
 # What each position is allowed to interpolate, phrased for the message.
@@ -199,30 +200,14 @@ def _response_patterns(responses: Any) -> Iterator[tuple[str, Any]]:
 
 
 def _query_templates(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any]]:
-    """What each entry of each query list sends."""
-    for where, entries in _query_lists(driver_def):
-        if not isinstance(entries, list):
-            continue
-        for i, entry in enumerate(entries):
-            yield f"{where}[{i}]", _entry_template(entry)
-
-
-def _query_lists(driver_def: dict[str, Any]) -> list[tuple[str, Any]]:
-    """The query lists, in the order they report: the poll's, the
-    start-up's, then each response rule's ``then_query``."""
-    polling = driver_def.get("polling")
-    lists: list[tuple[str, Any]] = [
-        ("polling.queries", polling.get("queries") if isinstance(polling, dict) else None),
-        ("on_connect", driver_def.get("on_connect")),
-    ]
-    responses = driver_def.get("responses")
-    if isinstance(responses, list):
-        lists += [
-            (f"responses[{i}].then_query", response.get("then_query"))
-            for i, response in enumerate(responses)
-            if isinstance(response, dict)
-        ]
-    return lists
+    """What each query entry sends, where it sits, in the order they report:
+    the poll's, the start-up's, then each response rule's ``then_query``
+    (the driver model's ``wire.queries``, every entry, as written). A
+    command's read-back is that command's template, filled from its
+    parameters too (``_command_templates``)."""
+    for line in read_driver(driver_def).wire.queries:
+        if line.origin != READ_BACK:
+            yield line.place, _entry_template(line.written)
 
 
 def _entry_template(entry: Any) -> Any:
