@@ -126,9 +126,10 @@ async def test_under_a_service_manager_the_reason_shows_a_minute_then_the_proces
     (during,) = hold.answers
     assert (during["phase"], during["held"], during["retry_in"]) == (FAILED, False, 60)
     # The stop every restart runs, then an exit a service manager reads as a
-    # failure and starts again: not 0, and not the 42 that leaves NSSM stopped.
+    # failure and starts again: not 0, and not the code that leaves NSSM stopped.
     engine.shutdown.assert_awaited_once()
-    assert exits == [restart.RETRY_EXIT_CODE] and restart.RETRY_EXIT_CODE not in (0, 42)
+    assert exits == [restart.RETRY_EXIT_CODE]
+    assert restart.RETRY_EXIT_CODE not in (0, restart.LEAVE_STOPPED_EXIT_CODE)
     assert _recorded(folder)["restarts"] == 1
     # The failed phase stands for the tray until the next start writes its own.
     assert record.phase == FAILED

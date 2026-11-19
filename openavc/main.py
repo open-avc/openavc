@@ -205,11 +205,11 @@ def _roll_back_a_failed_update(data_dir) -> None:
     from openavc.core.device_logins import put_back_for_rollback
     put_back_for_rollback(data_dir, Path(config.PROJECT_PATH))
     if perform_rollback(data_dir, automatic=True):
-        # Windows: exit 42 tells NSSM not to restart (installer handles it)
-        # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback
-        exit_code = 42 if sys.platform == "win32" else 0
-        log.warning("Rollback initiated, exiting process (code %d)", exit_code)
-        os._exit(exit_code)
+        # The door is not armed yet, so this exit is direct, with the updater's code.
+        from openavc.updater.platform import detect_deployment_type, update_exit
+        ending = update_exit(detect_deployment_type())
+        log.warning("Rollback initiated, exiting (code %d): %s", ending.code, ending.who_starts_it)
+        os._exit(ending.code)
 
 
 def _sweep_stale_update_records(data_dir) -> None:

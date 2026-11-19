@@ -27,6 +27,7 @@ from openavc import config, main, restart as restart_door, runtime_flags
 from openavc.core.start_stages import GoOn
 from openavc.core.stop_stages import STOP_SECONDS
 from openavc.middleware.startup_splash import FAILED, READY, RunState
+from openavc.updater.platform import DeploymentType
 from openavc.version import __version__
 from openavc.restart import WATCHDOG_MARGIN_SECONDS
 
@@ -61,6 +62,12 @@ def _no_service_manager(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("INVOCATION_ID", raising=False)
     monkeypatch.setattr(platform, "_is_docker", lambda: False)
     monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", tmp_path / "no-marker")
+
+
+def _deployed_as(monkeypatch, deployment) -> None:
+    from openavc.updater import platform
+
+    monkeypatch.setattr(platform, "detect_deployment_type", lambda app_dir=None: deployment)
 
 
 @pytest.fixture
@@ -171,6 +178,7 @@ async def test_a_failed_update_is_rolled_back_before_the_engine_starts(boot, mon
     monkeypatch.setattr(
         "openavc.updater.rollback.check_rollback_needed", lambda data_dir: True,
     )
+    _deployed_as(monkeypatch, DeploymentType.LINUX_PACKAGE)
 
     with pytest.raises(_Exited) as exited:
         await boot.run()
@@ -180,36 +188,25 @@ async def test_a_failed_update_is_rolled_back_before_the_engine_starts(boot, mon
     assert boot.calls["restore_pre_update_data"] == [((boot.data_dir,), {"project_path": project})]
     assert boot.calls["put_back_for_rollback"] == [((boot.data_dir, project), {})]
     assert boot.calls["perform_rollback"] == [((boot.data_dir,), {"automatic": True})]
-    assert exited.value.code == (42 if sys.platform == "win32" else 0)
+    assert exited.value.code == 0
     boot.engine.start.assert_not_awaited()
 
 
-async def test_the_rollback_exit_code_tells_windows_service_manager_not_to_restart(
+async def test_an_installed_windows_server_s_rollback_leaves_nssm_to_the_installer(
     boot, monkeypatch
 ):
-    """Windows exits 42 (NSSM leaves it to the installer); the check reads
-    sys.platform at that moment, so it is switched only for that read."""
+    """The install type decides the code, not the operating system: NSSM
+    leaves the service stopped on it, for the installer the rollback
+    scheduled (tests/test_update_exit_code.py has every install type)."""
     monkeypatch.setattr(
         "openavc.updater.rollback.check_rollback_needed", lambda data_dir: True,
     )
-    real_platform = sys.platform
+    _deployed_as(monkeypatch, DeploymentType.WINDOWS_INSTALLER)
 
-    def rolled_back(data_dir, automatic):
-        sys.platform = "win32"
-        return True
+    with pytest.raises(_Exited) as exited:
+        await boot.run()
 
-    def exit_restoring_platform(code):
-        sys.platform = real_platform
-        raise _Exited(code)
-
-    monkeypatch.setattr("openavc.updater.rollback.perform_rollback", rolled_back)
-    monkeypatch.setattr(main.os, "_exit", exit_restoring_platform)
-    try:
-        with pytest.raises(_Exited) as exited:
-            await boot.run()
-    finally:
-        sys.platform = real_platform
-    assert exited.value.code == 42
+    assert exited.value.code == restart_door.LEAVE_STOPPED_EXIT_CODE == 42
 
 
 async def test_a_rollback_that_could_not_start_carries_on_booting(boot, monkeypatch, caplog):

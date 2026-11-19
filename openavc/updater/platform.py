@@ -17,6 +17,7 @@ Detects how OpenAVC was installed to determine update behavior:
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -138,6 +139,46 @@ def can_self_update(deployment_type: DeploymentType) -> bool:
         DeploymentType.MACOS_APP,
         DeploymentType.ANDROID_APPLIANCE,
     )
+
+
+@dataclass(frozen=True)
+class UpdateExit:
+    """How the process ends once an update or rollback is applied: the exit
+    code the install's service manager reads, and who starts the version
+    applied (for the log line)."""
+
+    code: int
+    who_starts_it: str
+
+
+_UPDATE_EXITS = {
+    DeploymentType.WINDOWS_INSTALLER: UpdateExit(
+        restart.LEAVE_STOPPED_EXIT_CODE, "the installer it scheduled starts the version applied",
+    ),
+    DeploymentType.LINUX_PACKAGE: UpdateExit(
+        0, "systemd applies it and starts the server again",
+    ),
+    DeploymentType.MACOS_APP: UpdateExit(
+        0, "launchd's wrapper applies it and starts the server again",
+    ),
+    DeploymentType.ANDROID_APPLIANCE: UpdateExit(
+        0, "the appliance supervisor applies it and starts the server again",
+    ),
+}
+_ANY_OTHER_EXIT = UpdateExit(0, "its service manager starts it again")
+
+
+def update_exit(deployment_type: DeploymentType) -> UpdateExit:
+    """THE exit an applied update or rollback ends the process with, by
+    install type, never by operating system: asked by the updater's exit
+    (``manager._end_process``) and by the automatic rollback at start
+    (``main._roll_back_a_failed_update``). An installed Windows server ends
+    with ``restart.LEAVE_STOPPED_EXIT_CODE``, so NSSM leaves the service to
+    the installer the update or rollback scheduled; every other install ends
+    with 0, which its service manager answers by starting the server again,
+    its helper applying the update first (tests/test_update_exit_code.py
+    reads each manager's settings)."""
+    return _UPDATE_EXITS.get(deployment_type, _ANY_OTHER_EXIT)
 
 
 # Where the full per-deployment procedures live. Both instruction helpers below

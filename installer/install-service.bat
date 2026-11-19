@@ -49,7 +49,11 @@ REM Configure restart on failure
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppExit Default Restart
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppRestartDelay 5000
 
-REM Exit code 42 = update/rollback in progress, don't restart (installer handles it)
+REM Exit code 42: an update or rollback is applied and the installer it
+REM scheduled starts the version applied, so the service stays stopped
+REM (LEAVE_STOPPED_EXIT_CODE in openavc\restart.py, which the server exits
+REM with here). Every other code is started again, a failed start's retry
+REM included.
 "%INSTALL_DIR%\nssm.exe" set OpenAVC AppExit 42 Exit
 
 REM A stop sends Ctrl+C, which the server handles, and gives its stop 20

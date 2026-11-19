@@ -26,26 +26,13 @@ from openavc.updater.platform import (
     offline_update_instructions,
     rollback_refusal,
     self_update_refusal,
+    update_exit,
     updates_itself,
 )
 from openavc.version import __version__
 from openavc.utils.outbound import internet_client, internet_failure
 
 log = logging.getLogger(__name__)
-
-# What ends the process once an update or rollback is applied, by install
-# type: the exit code its service manager reads, and who starts the version
-# it applied. Windows' 42 tells NSSM to leave the service stopped, for the
-# installer to start (installer/install-service.bat); every other manager
-# starts the server again on any exit, its helper applying the update first.
-_EXIT_CODES = {DeploymentType.WINDOWS_INSTALLER: 42}
-_WHO_STARTS_IT = {
-    DeploymentType.WINDOWS_INSTALLER: "the installer starts the new version",
-    DeploymentType.LINUX_PACKAGE: "systemd applies it and starts the server again",
-    DeploymentType.MACOS_APP: "launchd's wrapper applies it and starts the server again",
-    DeploymentType.ANDROID_APPLIANCE: "the appliance supervisor applies it and starts the server again",
-}
-
 
 class UpdateManager:
     """Orchestrates the update lifecycle for an OpenAVC instance.
@@ -1004,8 +991,8 @@ class UpdateManager:
     def _end_process(self, source: str, last=None) -> None:
         """End the process for the update or rollback just applied, through
         the restart door (``restart.exit_for_update``): the stop every
-        restart runs, then this install's exit code (``_EXIT_CODES``), its
-        service manager starting the version applied. The door waits a
+        restart runs, then this install's exit code (``platform.update_exit``),
+        its service manager or installer starting the version applied. The door waits a
         moment first, so the answer to whoever asked gets out. ``last`` (the
         rollback's) runs after the stop and ends the process itself.
 
@@ -1013,13 +1000,13 @@ class UpdateManager:
         refused as one in progress. A door that is not armed yet (the
         server's start is still running) ends nothing, and the version
         applied starts with the server's next start."""
-        code = _EXIT_CODES.get(self._deployment_type, 0)
+        ending = update_exit(self._deployment_type)
         self._ending = True
         log.info(
-            "Ending the process for the %s (exit %d): %s", source, code,
-            _WHO_STARTS_IT.get(self._deployment_type, "its service manager starts it again"),
+            "Ending the process for the %s (exit %d): %s",
+            source, ending.code, ending.who_starts_it,
         )
-        if not restart.exit_for_update(source, code, last):
+        if not restart.exit_for_update(source, ending.code, last):
             self._ending = False
             log.warning(
                 "The %s is applied and takes effect when the server next starts", source,

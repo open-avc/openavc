@@ -90,9 +90,17 @@ MODES: tuple[str, ...] = tuple(WAIT_SECONDS)
 # What a request that names no mode gets.
 DEFAULT_MODE = "graceful"
 
+# What an applied update or rollback ends with where an installer, not the
+# service manager, starts the version it applied: NSSM leaves the service
+# stopped on it (installer/install-service.bat, "AppExit 42 Exit") and starts
+# it again on any other code. Which install ends with it is the updater's
+# rule (updater/platform.py ``update_exit``); tests/test_update_exit_code.py
+# reads install-service.bat against it.
+LEAVE_STOPPED_EXIT_CODE = 42
+
 # What a process ends with when a failed start is tried again
 # (``exit_to_retry``): not 0, so a service manager records a failure, and not
-# 42, which tells NSSM to leave the service stopped (installer/install-service.bat).
+# LEAVE_STOPPED_EXIT_CODE, which NSSM would read as leave the service stopped.
 # EX_TEMPFAIL: a failure that may pass, so try again.
 RETRY_EXIT_CODE = 75
 
