@@ -44,6 +44,7 @@ from typing import Any
 
 from openavc.drivers.child_ids import page_starts
 from openavc.drivers.compiled_protocol import safe_substitute
+from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.drivers.query_entry import EACH_CHILD, OSC_MESSAGE, QueryEntry, read_query_entry
 from openavc.simulator.command_names import infer_state_var
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
@@ -155,9 +156,11 @@ def _line_pattern(wire: str) -> re.Pattern:
 def flat_handlers(definition: dict, wire_line: WireLine) -> list[QueryHandler]:
     """The flat reads: each poll query, follow-up and read-back that names its
     variable or sends a command's text, then each start-up entry that names
-    its variable."""
-    polling = definition.get("polling", {})
-    queries = list(polling.get("queries", []))
+    its variable. The poll's and the start-up's entries are the driver
+    model's (``drivers/driver_model``); the follow-ups and read-backs are
+    those no earlier entry already sends (``reread_queries``)."""
+    written = read_driver(definition).wire.queries
+    queries = [line.written for line in written if line.origin == POLL]
     queries += follow_up_queries(definition)
     queries += read_back_queries(definition)
     state_vars = set(definition.get("state_variables", {}).keys())
@@ -168,8 +171,8 @@ def flat_handlers(definition: dict, wire_line: WireLine) -> list[QueryHandler]:
         if (handler := _flat_handler(query, commands, state_vars, wire_line))
     ]
     handlers += [
-        handler for entry in definition.get("on_connect", []) or []
-        if (handler := _start_up_handler(entry, wire_line))
+        handler for line in written if line.origin == START_UP
+        if (handler := _start_up_handler(line.written, wire_line))
     ]
     return handlers
 

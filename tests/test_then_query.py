@@ -315,6 +315,56 @@ def test_a_follow_up_the_poll_already_sends_is_listed_once() -> None:
     assert {"each_child": "output", "send": "NAME? {child_id}\r", "query_for": "name"} in entries
 
 
+def _volume_read_twice(poll_entry: Any, follow_up: Any) -> dict[str, Any]:
+    """The acme matrix whose poll sends ``poll_entry`` and whose volume
+    notice reads the volume again with ``follow_up``: the same line twice."""
+    definition = _acme(polling={"queries": [poll_entry]})
+    definition["responses"] = [
+        rule for rule in definition["responses"] if "VOL" not in rule["match"]
+    ]
+    definition["responses"].append(
+        {"match": r"^VOL (\d+)$", "set": {"volume": "$1"}, "then_query": [follow_up]}
+    )
+    return definition
+
+
+def test_a_follow_up_the_poll_sends_in_another_shape_is_listed_once() -> None:
+    """The line, not the way it is written, says what is sent: a poll entry
+    that names its variable and a follow-up that sends the same line bare
+    are one query, answered from the poll's entry."""
+    definition = _volume_read_twice({"send": "VOL?\r", "query_for": "volume"}, "VOL?\r")
+    assert validate_driver_definition(definition) == []
+    assert follow_up_queries(definition) == [
+        {"each_child": "output", "send": "IN? {child_id}\r", "query_for": "input"},
+        {"each_child": "output", "send": "NAME? {child_id}\r", "query_for": "name"},
+    ]
+
+
+def test_the_validator_finds_the_poll_answering_a_follow_up_it_repeats(tmp_path) -> None:
+    import yaml
+
+    from openavc.simulator.validate import validate_yaml_driver
+
+    definition = _volume_read_twice({"send": "VOL?\r", "query_for": "volume"}, "VOL?\r")
+    path = tmp_path / "acme_widget.avcdriver"
+    path.write_text(yaml.safe_dump(definition, sort_keys=False), encoding="utf-8")
+    coverage = [i.message for i in validate_yaml_driver(path).issues if i.check == "poll_coverage"]
+    assert coverage == []
+
+
+def test_a_follow_up_that_names_what_the_poll_does_not_is_still_answered() -> None:
+    """A follow-up that names the variable its line reads, sent bare by a
+    poll that names none, is the entry the simulator answers that line from."""
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    follow_up = {"send": "VOL?\r", "query_for": "volume"}
+    definition = _volume_read_twice("VOL?\r", follow_up)
+    assert follow_up in follow_up_queries(definition)
+    sim = YAMLAutoSimulator("sim1", {}, driver_def=copy.deepcopy(definition))
+    sim.set_state("volume", 12)
+    assert sim.handle_command(b"VOL?\r") == b"VOL 12\r"
+
+
 def test_the_simulator_answers_the_follow_up_queries() -> None:
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 

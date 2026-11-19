@@ -124,11 +124,14 @@ def test_the_json_value_spec_stays_a_leaf():
 
 def test_the_reread_queries_stay_within_the_protocol_closure():
     # The validator imports the then_query / read_back query lists; they read
-    # a rule through compiled_protocol and a query line through
-    # send_templates, and nothing more: no other openavc module, and nothing
-    # outside the standard library (yaml included).
+    # the lines a driver sends through the driver model (pure, the checker's
+    # closure) and a query line's placeholders through send_templates, and
+    # nothing more: no other openavc module, and nothing outside the standard
+    # library (yaml included).
     loaded = _openavc_modules_loaded("openavc.simulator.reread_queries")
     allowed = ALLOWED | {
+        "openavc.drivers.driver_model",
+        "openavc.drivers.query_entry",
         "openavc.simulator",
         "openavc.simulator.send_templates",
         "openavc.simulator.reread_queries",

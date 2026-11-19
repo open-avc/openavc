@@ -5,15 +5,18 @@ of their own. The runtime sends them (``openavc.drivers.rereads``); the
 auto-generated simulator (``yaml_auto``) needs a reply handler for each, and
 the validator (``validate``) checks that it has one. ``follow_up_queries`` and
 ``read_back_queries`` list them in the shapes a poll entry takes, leaving out
-what the poll, the start-up or an earlier entry already sends, so each reply
-gets one handler.
+a line the poll, the start-up or an earlier entry already sends, so each reply
+gets one handler. Which lines those are, and every entry that sends each, is
+the driver model's reading (``openavc.drivers.driver_model.query_lines``),
+compared by the line sent however each entry is written.
 ``every_query_entry`` puts the poll and the start-up in front of them, the
 list the simulator's per-child and list reads are answered from.
 
-A rule's ``then_query`` is read through the compile's own reader
-(``rule_follow_ups`` in ``openavc.drivers.compiled_protocol``), and a query
-line's placeholders through ``send_templates``, the token the command
-templates are read with.
+The filter these state over the model's lines: a ``then_query`` on a rule
+that is not a text rule is never sent (the runtime runs it on a text rule
+only), and an OSC bring-up message is not a line the simulator answers here.
+A query line's placeholders are read through ``send_templates``, the token
+the command templates are read with.
 """
 
 from __future__ import annotations
@@ -21,34 +24,66 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
-from openavc.drivers.compiled_protocol import rule_follow_ups
+from openavc.drivers.driver_model import (
+    POLL,
+    READ_BACK,
+    START_UP,
+    THEN_QUERY,
+    DriverModel,
+    QueryLine,
+    SentLine,
+    query_lines,
+    read_driver,
+)
+from openavc.drivers.query_entry import OSC_MESSAGE
 from openavc.simulator.send_templates import declared_placeholders, rename_placeholder
 
 
 _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 
-def _poll_and_start_up(definition: dict[str, Any]) -> list[Any]:
-    """The entries a driver's poll and its start-up send, as authored: what
-    ``follow_up_queries`` and ``read_back_queries`` leave out, so the
-    simulator builds one handler per reply rather than one per sender."""
-    polling = definition.get("polling")
-    sent: list[Any] = []
-    if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
-        sent += polling["queries"]
-    if isinstance(definition.get("on_connect"), list):
-        sent += definition["on_connect"]
-    return sent
+def _poll_and_start_up(model: DriverModel) -> list[Any]:
+    """The entries a driver's poll and its start-up send, as authored."""
+    return [line.written for line in model.wire.queries if line.origin in (POLL, START_UP)]
 
 
-def _first_of_each(items: Iterable[Any], exclude: list[Any] | tuple[()] = ()) -> list[Any]:
-    """Each item once, in the order first seen, leaving out any in ``exclude``
-    (compared whole, as ``==`` compares them)."""
+def _rules(definition: dict[str, Any]) -> list[Any]:
+    responses = definition.get("responses")
+    return responses if isinstance(responses, list) else []
+
+
+def _answers_a_line(rules: list[Any], line: QueryLine) -> bool:
+    """A line the simulator answers here: not an OSC bring-up message, and a
+    follow-up only on a text rule (the only rule the runtime sends one for)."""
+    if line.entry.form == OSC_MESSAGE:
+        return False
+    return line.origin != THEN_QUERY or _is_text_rule(rules[line.source])
+
+
+def _sent_before_the_read_backs(definition: dict[str, Any], model: DriverModel) -> tuple[SentLine, ...]:
+    """Each line the poll, the start-up and the follow-ups send, once."""
+    return query_lines(model, (POLL, START_UP, THEN_QUERY), where=partial(_answers_a_line, _rules(definition)))
+
+
+def _names_its_variable(line: QueryLine) -> bool:
+    return isinstance(line.entry.query_for, str) and bool(line.entry.query_for)
+
+
+def _answered_from(sent: SentLine) -> QueryLine:
+    """The entry the simulator answers a line from, of all that send it: the
+    first that names the variable it reads, else the first."""
+    return next((line for line in sent.lines if _names_its_variable(line)), sent.lines[0])
+
+
+def _first_of_each(items: Iterable[Any]) -> list[Any]:
+    """Each item once, in the order first seen (compared whole, as ``==``
+    compares them)."""
     kept: list[Any] = []
     for item in items:
-        if item not in kept and item not in exclude:
+        if item not in kept:
             kept.append(item)
     return kept
 
@@ -89,15 +124,17 @@ def _routed_follow_up(entry: Any, child_type: str | None) -> Any:
     return routed
 
 
-def _rules_follow_ups(definition: dict[str, Any]) -> Iterator[Any]:
-    """Every regex rule's follow-ups, routed, in rule order."""
-    for resp in definition.get("responses") or []:
-        if not _is_text_rule(resp):
-            continue
-        follow = rule_follow_ups(resp) or []
-        child_type = _single_child_type(resp) if follow else None
-        for entry in follow:
-            yield _routed_follow_up(entry, child_type)
+def _rules_follow_ups(definition: dict[str, Any], model: DriverModel) -> Iterator[Any]:
+    """Each follow-up a line is answered from, routed, in rule order."""
+    rules = _rules(definition)
+    answering = {
+        line.place
+        for sent in _sent_before_the_read_backs(definition, model)
+        if (line := _answered_from(sent)).origin == THEN_QUERY
+    }
+    for line in model.wire.queries:
+        if line.place in answering:
+            yield _routed_follow_up(line.written, _single_child_type(rules[line.source]))
 
 
 def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
@@ -111,11 +148,14 @@ def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
     child of the type. An entry whose rule names no single child type is
     left as written (the validator refuses it).
 
-    An entry the poll, the start-up or an earlier rule already sends is left
-    out, compared whole: a driver that reads again what its poll reads (every
-    tie, on a front panel notice) would otherwise get each reply's handler
-    twice."""
-    return _first_of_each(_rules_follow_ups(definition), exclude=_poll_and_start_up(definition))
+    A line the poll, the start-up or an earlier rule already sends is left
+    out, compared by the line sent (``{send: VOL?, query_for: volume}`` and
+    ``VOL?`` are one line): a driver that reads again what its poll reads
+    (every tie, on a front panel notice) would otherwise get each reply's
+    handler twice. A follow-up is kept for a line already sent only when it
+    is the entry that line is answered from: it names the variable the line
+    reads and no earlier entry does."""
+    return list(_rules_follow_ups(definition, read_driver(definition)))
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
@@ -141,17 +181,6 @@ class _ReadBackCommand:
     params: dict[str, Any]
     #: The variables the command ``sets``, in order.
     set_vars: list[Any]
-
-
-def _sent_texts(definition: dict[str, Any]) -> set[str]:
-    """The text of every query the poll, the start-up and the rules'
-    follow-ups send."""
-    texts: set[str] = set()
-    for entry in _poll_and_start_up(definition) + follow_up_queries(definition):
-        text = entry.get("send") if isinstance(entry, dict) else entry
-        if isinstance(text, str):
-            texts.add(text)
-    return texts
 
 
 def _read_back_lines(cmd_def: dict[str, Any]) -> list[Any]:
@@ -231,24 +260,22 @@ def _read_back_entry(line: str, command: _ReadBackCommand, scope: _ReadBackScope
     return _plain_read_back(line, command, scope)
 
 
-def _command_read_backs(cmd_def: dict[str, Any], scope: _ReadBackScope) -> Iterator[Any]:
-    """One command's read-back queries that are not left out, in order."""
+def _read_back_command(cmd_def: dict[str, Any]) -> _ReadBackCommand:
     sets = cmd_def.get("sets")
-    command = _ReadBackCommand(
+    return _ReadBackCommand(
         params=_dict_or_empty(cmd_def.get("params")),
         set_vars=list(sets) if isinstance(sets, dict) else [],
     )
-    for line in read_back_query_lines(cmd_def, scope.commands):
-        entry = _read_back_entry(line, command, scope)
-        if entry is not None:
-            yield entry
 
 
-def _driver_read_backs(scope: _ReadBackScope) -> Iterator[Any]:
-    """Every command's read-back queries that are not left out, in order."""
-    for cmd_def in scope.commands.values():
-        if isinstance(cmd_def, dict):
-            yield from _command_read_backs(cmd_def, scope)
+def _driver_read_backs(scope: _ReadBackScope, model: DriverModel) -> Iterator[Any]:
+    """Every command's read-back queries that are not left out, in order:
+    the model's read-back lines that are queries of their own."""
+    for line in model.wire.queries:
+        if line.origin == READ_BACK and _is_query_line(line.written, scope.commands):
+            entry = _read_back_entry(line.written, _read_back_command(scope.commands[line.source]), scope)
+            if entry is not None:
+                yield entry
 
 
 def read_back_queries(definition: dict[str, Any]) -> list[Any]:
@@ -267,18 +294,21 @@ def read_back_queries(definition: dict[str, Any]) -> list[Any]:
     own address or path, already.
 
     A query the poll, the start-up or a response rule's follow-ups already
-    send is left out, compared by its text (``follow_up_queries`` compares
-    whole entries)."""
+    send is left out, compared by the line sent, as ``follow_up_queries``
+    compares (after a child parameter's placeholder is written as
+    ``{child_id}``). Unlike a follow-up, it is left out even when it names
+    the variable and the entry already sending the line does not."""
     commands = definition.get("commands")
     if not isinstance(commands, dict):
         return []
+    model = read_driver(definition)
     scope = _ReadBackScope(
         commands=commands,
-        sent_texts=_sent_texts(definition),
+        sent_texts={sent.text for sent in _sent_before_the_read_backs(definition, model)},
         child_types=_dict_or_empty(definition.get("child_entity_types")),
         declared=_dict_or_empty(definition.get("state_variables")),
     )
-    return _first_of_each(_driver_read_backs(scope))
+    return _first_of_each(_driver_read_backs(scope, model))
 
 
 def every_query_entry(definition: dict[str, Any]) -> list[Any]:
@@ -286,7 +316,7 @@ def every_query_entry(definition: dict[str, Any]) -> list[Any]:
     its start-up, the response rules' follow-up queries and the commands'
     read-back queries, in that order."""
     return (
-        _poll_and_start_up(definition)
+        _poll_and_start_up(read_driver(definition))
         + follow_up_queries(definition)
         + read_back_queries(definition)
     )

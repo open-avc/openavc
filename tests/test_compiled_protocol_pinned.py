@@ -834,26 +834,26 @@ def test_follow_up_queries_every_shape():
             {"match": "N", "child_set": "zone", "then_query": ["N{child_id}?"]},
         ],
     }
+    # Compared by the line sent: "P?" is the poll's, "INIT" the start-up's,
+    # the second "PLAIN?" and "Z{child_id}?" an earlier rule's. An entry that
+    # sends no text ({query_for: x}, 7) is no line.
     assert follow_up_queries(definition) == [
         {"send": "Z{child_id}?", "each_child": "zone"},
         {"send": "Z{child_id:02d} L?", "delay_ms": 5, "each_child": "zone"},
         {"each_child": "other", "send": "X{child_id}"},
         "PLAIN?",
-        {"query_for": "x"},
-        7,
-        "Z{child_id}?",
         "M{child_id}?",
         "N{child_id}?",
     ]
 
 
-def test_follow_up_queries_compare_whole_entries_with_the_poll():
+def test_follow_up_queries_compare_the_line_sent_with_the_poll():
     definition = {
         "polling": {"queries": [{"send": "A?", "delay_ms": 1}], "when_state": "x"},
         "on_connect": "not a list",
         "responses": [{"match": "A", "then_query": ["A?", {"send": "A?", "delay_ms": 1}]}],
     }
-    assert follow_up_queries(definition) == ["A?"]
+    assert follow_up_queries(definition) == []
     assert follow_up_queries({"polling": "x", "responses": None}) == []
 
 

@@ -14,7 +14,10 @@ side below: poll coverage (``polled_queries``), the query-answer list the
 response check leans on (``asked_queries``) and the framing probes
 (``probed_lines``). Each says which sources it reads and which it leaves
 out, so for a text driver a new kind of query is a decision for each of the
-three, made here; an OSC driver's checks each read their own source.
+three, made here; an OSC driver's checks each read their own source. Where
+each entry sits is the driver model's reading (``drivers/driver_model``),
+and the follow-ups and read-backs are those no earlier entry already sends
+(``reread_queries``).
 
 An OSC driver's addresses are read by ``osc_coverage``, which takes its
 samples and config from here; its child-id sample is its own (the
@@ -28,6 +31,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.compiled_protocol import derive_config, safe_substitute
+from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
 
@@ -167,13 +171,13 @@ def asked_queries(driver_def: dict) -> list:
     writes, and a write's acknowledgement is not something a response rule
     should match. The commands' ``read_back`` queries are not among them.
     """
-    polling = driver_def.get("polling") or {}
-    entries = list(polling.get("queries") or [])
+    written = read_driver(driver_def).wire.queries
+    entries = [line.written for line in written if line.origin == POLL]
     entries += follow_up_queries(driver_def)
     entries += [
-        entry
-        for entry in (driver_def.get("on_connect") or [])
-        if isinstance(entry, dict) and entry.get("query_for")
+        line.written
+        for line in written
+        if line.origin == START_UP and isinstance(line.written, dict) and line.entry.query_for
     ]
     return entries
 
