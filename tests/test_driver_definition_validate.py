@@ -387,13 +387,14 @@ def test_every_context_tag_has_a_section_case():
             # Bound to a value the enclosing walk computes. Each is covered
             # through the section that supplies it: `loc` by the unknown-key
             # cases and the name that is not text (each lands on the block it
-            # was found in), `name` by polling.queries / on_connect, `frame_key` by
+            # was found in), `line.place` (a query entry's place in the driver
+            # model) by polling.queries / on_connect, `frame_key` by
             # command_prefix / command_suffix. `section` is the guard's: each
             # walk's parts() lists them as literals, and
             # tests/test_driver_checks_report_not_raise.py raises in each.
             # `problem.place` is a driver model problem's, a query entry's
             # place: covered by the long query line case.
-            assert expr in {"loc", "name", "frame_key", "section", "problem.place"}, (
+            assert expr in {"loc", "line.place", "frame_key", "section", "problem.place"}, (
                 f"new computed context tag {expr!r} — add a case for what it produces"
             )
             continue
