@@ -562,6 +562,7 @@ async def test_a_simulated_device_tests_the_simulator_and_says_so(drivers, liste
         "This device is simulated, so the test reached the simulator, "
         "not the equipment at 10.255.255.1:9."
     )
+    await asyncio.wait_for(listener.accepted_event.wait(), timeout=5)
     assert listener.accepted == [1]
 
 
