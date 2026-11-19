@@ -27,10 +27,12 @@ import sys
 import threading
 import time
 import webbrowser
-from datetime import datetime
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+import status_reader
+from status_reader import FAILED, READY, STARTING, STOPPED, STOPPING
 
 # Windows-only flag; 0 elsewhere, so the module imports (and is tested) anywhere.
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -59,10 +61,6 @@ STATUS_DIR = DATA_DIR / 'status'
 STARTUP_ERROR_FILE = STATUS_DIR / 'startup-error.json'
 SERVER_ADDRESS_FILE = STATUS_DIR / 'server.json'
 RUN_STATE_FILE = STATUS_DIR / 'run-state.json'
-# Where the server is in its life, in the run-state record's words (PHASES in
-# openavc/middleware/startup_splash.py), and the tray's own for no server.
-STARTING, READY, FAILED, STOPPING = 'starting', 'ready', 'failed', 'stopping'
-STOPPED = 'stopped'
 # Windows shows at most 127 characters of a tray icon's tooltip.
 TOOLTIP_LIMIT = 127
 # A file by this name in the data folder makes the server clear the Programmer
@@ -147,91 +145,10 @@ def _get_listen_problem() -> str:
     return problem if isinstance(problem, str) else ''
 
 
-def _process_running(pid: int) -> bool:
-    """Whether a process with this id is running. The server runs as the
-    service's account and the tray as the signed-in user, so Windows may
-    refuse to open it, and a refusal means it is there. (``os.kill`` is no
-    question on Windows: it ends the process.)"""
-    if os.name != 'nt':
-        try:
-            os.kill(pid, 0)
-        except PermissionError:
-            return True
-        except OSError:
-            return False
-        return True
-    import ctypes
-    from ctypes import wintypes
-    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-    process_query_limited_information, error_access_denied, still_active = 0x1000, 5, 259
-    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
-    if not handle:
-        return ctypes.get_last_error() == error_access_denied
-    try:
-        code = wintypes.DWORD()
-        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-            return True
-        return code.value == still_active
-    finally:
-        kernel32.CloseHandle(handle)
-
-
-def _computer_started_at() -> float:
-    """When this computer last started, in seconds since the epoch."""
-    if os.name == 'nt':
-        import ctypes
-        kernel32 = ctypes.WinDLL('kernel32')
-        kernel32.GetTickCount64.restype = ctypes.c_ulonglong
-        return time.time() - kernel32.GetTickCount64() / 1000
-    return time.time() - time.clock_gettime(getattr(time, 'CLOCK_BOOTTIME', time.CLOCK_MONOTONIC))
-
-
-def _startup_error() -> str:
-    """Why the server's last start failed, as it recorded it, or ''."""
-    try:
-        message = json.loads(STARTUP_ERROR_FILE.read_text(encoding='utf-8')).get('message')
-    except (json.JSONDecodeError, OSError, AttributeError):
-        return ''
-    return message if isinstance(message, str) else ''
-
-
 def _run_state() -> dict:
-    """Where the server is in its life, as it recorded it in the status folder
-    (write_run_state in openavc/status_folder.py): ``phase``, ``version``,
-    ``error`` (a failed start's reason, else '') and ``running``, whether the
-    process that recorded it still runs.
-
-    A file the process left behind when it ended or was killed reads as
-    STOPPED: its process is gone, or it was written before this computer last
-    started (Windows soon gives an ended process's id to another). A failed
-    start stands either way, since its process can end by itself, and its
-    reason is in startup-error.json. No file, or one that cannot be read,
-    reads as STOPPED.
-    """
-    stopped = {'phase': STOPPED, 'version': '', 'error': '', 'running': False}
-    try:
-        recorded = json.loads(RUN_STATE_FILE.read_text(encoding='utf-8'))
-        phase, pid = recorded['phase'], int(recorded['pid'])
-        written = datetime.fromisoformat(recorded['timestamp']).timestamp()
-        version = str(recorded.get('version') or '')
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
-        return stopped
-    running = written >= _computer_started_at() and _process_running(pid)
-    if phase == FAILED:
-        return {'phase': FAILED, 'version': version, 'error': _startup_error(), 'running': running}
-    if phase not in (STARTING, READY, STOPPING) or not running:
-        return dict(stopped, version=version)
-    return {'phase': phase, 'version': version, 'error': '', 'running': True}
-
-
-def _reason_summary(message: str) -> str:
-    """A failed start's reason on one line: its first paragraph (the remedy
-    after it is in the dialog)."""
-    return ' '.join(message.split('\n\n', 1)[0].split())
+    """Where the server is in its life, as it recorded it in the status
+    folder (status_reader.read_run_state)."""
+    return status_reader.read_run_state(RUN_STATE_FILE, STARTUP_ERROR_FILE)
 
 
 def _fit_tooltip(text: str) -> str:
@@ -580,7 +497,7 @@ class OpenAVCTray:
             elif self._device_info:
                 parts.append(self._device_info)
         elif self._server_status == FAILED:
-            reason = _reason_summary(self._startup_error)
+            reason = status_reader.reason_summary(self._startup_error)
             parts.append(f'Could not start: {reason}' if reason else 'Could not start')
         else:
             parts.append(_STATUS_LABELS.get(self._server_status, 'Stopped'))

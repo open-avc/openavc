@@ -7,7 +7,8 @@ belongs to the service and administrators (installer/secure-data-dir.bat); on
 macOS the server runs as root, so every file here is written readable by
 everyone (STATUS_FILE_MODE). Nothing secret may be written here.
 installer/tray.py and installer/menubar.py are standalone scripts that name
-the same folder, files and phases and read all three; tests/test_status_folder.py
+the same folder and files and read all three, the phase through their shared
+installer/status_reader.py, which names the phases; tests/test_status_folder.py
 holds the two ends together. The container's health check reads where the
 server listens through ``read_server_address`` (openavc/health_probe.py).
 

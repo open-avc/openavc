@@ -18,23 +18,16 @@ the non-GUI behaviors that have silently broken before:
   so in the server's own sentence, read from the status folder at every poll.
 """
 
-import importlib.util
 import json
+import os
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-TRAY_PATH = Path(__file__).resolve().parents[1] / "installer" / "tray.py"
+from tests.installer_scripts import INSTALLER, load_tray
 
-
-def _load_tray():
-    spec = importlib.util.spec_from_file_location("openavc_tray_under_test", TRAY_PATH)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-tray_mod = _load_tray()
+tray_mod = load_tray("openavc_tray_under_test")
 OpenAVCTray = tray_mod.OpenAVCTray
 
 
@@ -102,6 +95,7 @@ def status_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(tray_mod, "STATUS_DIR", status)
     monkeypatch.setattr(tray_mod, "STARTUP_ERROR_FILE", status / "startup-error.json")
     monkeypatch.setattr(tray_mod, "SERVER_ADDRESS_FILE", status / "server.json")
+    monkeypatch.setattr(tray_mod, "RUN_STATE_FILE", status / "run-state.json")
     return status
 
 
@@ -171,17 +165,22 @@ class _InlineThread:
         self._target(*self._args)
 
 
-def test_startup_error_is_read_from_the_status_folder(status_dir, monkeypatch):
+def test_a_failed_start_is_read_from_the_status_folder(status_dir, monkeypatch):
     shown = []
     monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append(message))
     monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
+    monkeypatch.setattr(tray_mod, "_api_get", lambda *a, **k: None)
+    (status_dir / "run-state.json").write_text(json.dumps({
+        "phase": "failed", "version": "0.37.0", "pid": os.getpid(),
+        "timestamp": datetime.now().astimezone().isoformat(),
+    }), encoding="utf-8")
     (status_dir / "startup-error.json").write_text(
         json.dumps({"error": "port_in_use", "message": "HTTP port 8080 is already in use."}),
         encoding="utf-8",
     )
     tray = OpenAVCTray()
 
-    tray._check_startup_error()
+    _run_one_poll(tray, monkeypatch)
 
     assert tray._startup_error == "HTTP port 8080 is already in use."
     assert shown == ["HTTP port 8080 is already in use."]
@@ -361,7 +360,7 @@ def test_a_second_tray_does_not_start(monkeypatch):
 
 
 def test_every_tray_shortcut_has_a_plain_link_for_installs_without_the_tray():
-    iss = (TRAY_PATH.parent / "setup.iss").read_text(encoding="utf-8")
+    iss = (INSTALLER / "setup.iss").read_text(encoding="utf-8")
     icons = iss.split("[Icons]", 1)[1].split("\n[", 1)[0]
     for name, page in (
         (r"{autodesktop}\OpenAVC Programmer", "programmer"),

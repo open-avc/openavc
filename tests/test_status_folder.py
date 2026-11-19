@@ -10,22 +10,19 @@ where it listens, at every start; where it is in its life (starting, ready,
 failed to start, stopping), at each change; and why it failed to start, when
 it does. The tray and the menu bar read all three. Nothing ties the ends
 together but these tests: tray.py and menubar.py are standalone scripts that
-import nothing from the server, so each end names the folder, the files and
-the phases itself.
+import nothing from the server, so each end names the folder and the files
+itself, and the apps' shared reader (installer/status_reader.py) the phases.
 
 The folder is readable by every local account, so these tests also hold it to
 carrying exactly those three files and those fields.
 """
 
-import importlib.util
 import json
 import os
 import stat
 import subprocess
 import sys
 import time
-import types
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -37,41 +34,11 @@ from openavc import config
 from openavc.core.start_stages import StartRun
 from openavc.middleware import startup_splash
 from openavc.middleware.startup_splash import FAILED, PHASES, READY, STARTING, STOPPING
+from tests.installer_scripts import load_menubar, load_status_reader, load_tray
 
-INSTALLER = Path(__file__).resolve().parents[1] / "installer"
-TRAY_PATH = INSTALLER / "tray.py"
-MENUBAR_PATH = INSTALLER / "menubar.py"
-
-
-def _load_tray():
-    spec = importlib.util.spec_from_file_location("openavc_tray_status_test", TRAY_PATH)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _load_menubar():
-    """menubar.py with a stand-in for rumps, which exists only on macOS: the
-    functions under test never touch it, only the class body names it."""
-    rumps = types.ModuleType("rumps")
-    rumps.App = type("App", (), {})
-    rumps.MenuItem = rumps.Timer = object
-    saved = sys.modules.get("rumps")
-    sys.modules["rumps"] = rumps
-    try:
-        spec = importlib.util.spec_from_file_location("openavc_menubar_status_test", MENUBAR_PATH)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-    finally:
-        if saved is None:
-            del sys.modules["rumps"]
-        else:
-            sys.modules["rumps"] = saved
-    return mod
-
-
-tray_mod = _load_tray()
-menubar_mod = _load_menubar()
+tray_mod = load_tray("openavc_tray_status_test")
+menubar_mod = load_menubar("openavc_menubar_status_test")
+status_reader = load_status_reader()
 
 
 @pytest.fixture
@@ -103,9 +70,11 @@ def test_both_ends_name_the_same_folder_and_files():
 
 
 def test_both_ends_know_every_phase_the_record_reaches():
+    reader = status_reader
+    assert (reader.STARTING, reader.READY, reader.FAILED, reader.STOPPING) == PHASES
+    assert reader.STOPPED not in PHASES
     for mod in (tray_mod, menubar_mod):
-        assert (mod.STARTING, mod.READY, mod.FAILED, mod.STOPPING) == PHASES
-        assert mod.STOPPED not in PHASES
+        assert mod.status_reader is status_reader
 
 
 def test_the_menu_bar_reads_the_address_and_problem_the_server_records(data_dir, monkeypatch):
@@ -275,15 +244,8 @@ class _InlineThread:
 
 # --- Where the server is in its life, as the tray and the menu bar read it ---
 
-# The menu bar runs only on macOS; its process check would end the process it
-# asks about on Windows, so it is never run there.
-READERS = [
-    pytest.param(tray_mod, id="tray"),
-    pytest.param(
-        menubar_mod, id="menubar",
-        marks=pytest.mark.skipif(os.name == "nt", reason="the menu bar runs on macOS only"),
-    ),
-]
+# Each app reads its own install's files through the reader they share.
+READERS = [pytest.param(tray_mod, id="tray"), pytest.param(menubar_mod, id="menubar")]
 
 
 def _ended_pid() -> int:
@@ -345,14 +307,13 @@ def test_a_file_from_before_this_computer_started_reads_stopped(data_dir, reader
     """A shut-down computer leaves stopping behind, and after it starts again
     the old pid may belong to another process."""
     status_folder.write_run_state(STOPPING, "1.2.3")
-    monkeypatch.setattr(reader, "_computer_started_at", lambda: time.time() + 60)
+    monkeypatch.setattr(status_reader, "computer_started_at", lambda: time.time() + 60)
 
     assert reader._run_state()["phase"] == reader.STOPPED
 
 
-@pytest.mark.parametrize("reader", READERS)
-def test_this_computer_started_before_now(reader):
-    assert time.time() - 10 * 365 * 86400 < reader._computer_started_at() < time.time()
+def test_this_computer_started_before_now():
+    assert time.time() - 10 * 365 * 86400 < status_reader.computer_started_at() < time.time()
 
 
 @pytest.mark.parametrize("reader", READERS)
@@ -390,27 +351,24 @@ def test_no_file_or_one_that_cannot_be_read_reads_stopped(data_dir, reader):
     assert reader._run_state() == stopped
 
 
-@pytest.mark.parametrize("reader", READERS)
-def test_a_process_runs_until_it_ends(reader):
-    assert reader._process_running(os.getpid())
-    assert not reader._process_running(_ended_pid())
+def test_a_process_runs_until_it_ends():
+    assert status_reader.process_running(os.getpid())
+    assert not status_reader.process_running(_ended_pid())
 
 
-@pytest.mark.parametrize("reader", READERS)
-def test_a_process_another_account_runs_counts_as_running(reader):
-    """The server runs as a service account or root and these as the signed-in
-    user: being refused a look at a process means it is there."""
-    assert reader._process_running(4 if os.name == "nt" else 1)
+def test_a_process_another_account_runs_counts_as_running():
+    """The server runs as a service account or root and the apps as the
+    signed-in user: being refused a look at a process means it is there."""
+    assert status_reader.process_running(4 if os.name == "nt" else 1)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="os.kill ends the process on Windows")
-@pytest.mark.parametrize("reader", READERS)
-def test_a_refused_look_counts_as_running(reader, monkeypatch):
+def test_a_refused_look_counts_as_running(monkeypatch):
     def refused(pid, sig):
         raise PermissionError(1, "Operation not permitted")
 
-    monkeypatch.setattr(reader.os, "kill", refused)
-    assert reader._process_running(12345)
+    monkeypatch.setattr(status_reader.os, "kill", refused)
+    assert status_reader.process_running(12345)
 
 
 # --- The tray ---
@@ -530,10 +488,6 @@ def _menu_line(monkeypatch, health: dict | None) -> str:
     return app._status_item.title
 
 
-menubar_only = pytest.mark.skipif(os.name == "nt", reason="the menu bar runs on macOS only")
-
-
-@menubar_only
 @pytest.mark.parametrize("phase, line", [
     (STARTING, "v1.2.3 - Starting"),
     (STOPPING, "v1.2.3 - Stopping"),
@@ -545,7 +499,6 @@ def test_the_menu_bar_says_where_the_server_is_in_its_life(data_dir, monkeypatch
     assert _menu_line(monkeypatch, None) == line
 
 
-@menubar_only
 def test_the_menu_bar_says_why_a_start_failed(data_dir, monkeypatch):
     status_folder.write_run_state(FAILED, "1.2.3", PORT_IN_USE, "port_in_use")
     _recorded_by(data_dir, _ended_pid())
@@ -556,12 +509,10 @@ def test_the_menu_bar_says_why_a_start_failed(data_dir, monkeypatch):
     )
 
 
-@menubar_only
 def test_the_menu_bar_says_stopped_when_no_server_runs(data_dir, monkeypatch):
     assert _menu_line(monkeypatch, None) == "Stopped"
 
 
-@menubar_only
 def test_the_menu_bar_says_running_from_health(data_dir, monkeypatch):
     health = {"status": "healthy", "version": "1.2.3", "devices": {"total": 3, "connected": 2}}
 
@@ -575,22 +526,17 @@ def _stop_and_quit(monkeypatch, on_stop) -> list[str]:
     monkeypatch.setattr(menubar_mod, "_service_command", lambda action: on_stop())
     monkeypatch.setattr(menubar_mod.rumps, "quit_application", lambda: did.append("quit"), raising=False)
     monkeypatch.setattr(menubar_mod.rumps, "alert", lambda **kw: did.append("alert"), raising=False)
-    monkeypatch.setattr(menubar_mod, "time", SimpleNamespace(
-        sleep=lambda seconds: None, time=time.time,
-        clock_gettime=time.clock_gettime, CLOCK_MONOTONIC=time.CLOCK_MONOTONIC,
-    ))
+    monkeypatch.setattr(menubar_mod, "time", SimpleNamespace(sleep=lambda seconds: None))
     menubar_mod.OpenAVCMenuBar._stop_and_quit(_MenuBar(), None)
     return did
 
 
-@menubar_only
 def test_stop_and_quit_quits_once_the_server_says_it_is_stopping(data_dir, monkeypatch):
     status_folder.write_run_state(READY, "1.2.3")
 
     assert _stop_and_quit(monkeypatch, lambda: status_folder.write_run_state(STOPPING, "1.2.3")) == ["quit"]
 
 
-@menubar_only
 def test_stop_and_quit_stays_while_a_failed_start_still_runs(data_dir, monkeypatch):
     """A failed start held on its startup screen answers health with 503: the
     password prompt cancelled leaves it running, and the app says so."""
@@ -600,6 +546,5 @@ def test_stop_and_quit_stays_while_a_failed_start_still_runs(data_dir, monkeypat
     assert _stop_and_quit(monkeypatch, lambda: None) == ["alert"]
 
 
-@menubar_only
 def test_stop_and_quit_quits_when_no_server_runs(data_dir, monkeypatch):
     assert _stop_and_quit(monkeypatch, lambda: None) == ["quit"]

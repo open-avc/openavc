@@ -6,18 +6,17 @@ file on the Pi's boot partition, a command on Linux or Docker). These pin what
 it clears, what it leaves, and when it keeps the file for another try.
 """
 
-import importlib.util
 import json
 import os
 import subprocess
-import sys
-import types
 from pathlib import Path
 
 import pytest
 
 from openavc.api import auth
 from openavc.utils.password_hash import hash_api_key, hash_password
+
+from tests.installer_scripts import load_menubar
 
 
 @pytest.fixture(autouse=True)
@@ -131,23 +130,7 @@ def test_a_failed_save_keeps_the_file_for_the_next_start(_isolate, os_sync, monk
 
 
 def _load_menubar():
-    """menubar.py with a stand-in for rumps, which exists only on macOS."""
-    rumps = types.ModuleType("rumps")
-    rumps.App = type("App", (), {})
-    rumps.MenuItem = rumps.Timer = object
-    saved = sys.modules.get("rumps")
-    sys.modules["rumps"] = rumps
-    try:
-        path = Path(__file__).resolve().parents[1] / "installer" / "menubar.py"
-        spec = importlib.util.spec_from_file_location("openavc_menubar_reset_test", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-    finally:
-        if saved is None:
-            del sys.modules["rumps"]
-        else:
-            sys.modules["rumps"] = saved
-    return mod
+    return load_menubar("openavc_menubar_reset_test")
 
 
 def test_the_menu_bar_writes_a_file_the_server_reads():
