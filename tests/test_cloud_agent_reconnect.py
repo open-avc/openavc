@@ -823,8 +823,15 @@ class TestHandshakeErrorClassification:
         )
 
         def _stops_the_loop(node: ast.If) -> bool:
-            """True if this branch sets self._running = False."""
+            """True if this branch sets self._running = False, or gives up
+            through self._give_up, which does."""
             for sub in ast.walk(node):
+                if (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr == "_give_up"
+                ):
+                    return True
                 if not isinstance(sub, ast.Assign):
                     continue
                 for target in sub.targets:
@@ -1008,6 +1015,28 @@ class TestVersionMismatchStopsTheLoop:
         assert agent.state.values["system.cloud.status"] == "auth_failed"
         assert agent._stop_reason == "auth_failed"
         assert "pair" in agent.state.values["system.cloud.status_detail"].lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("refusal", [
+        HandshakeError("System not found", reason="unknown_system"),
+        HandshakeError("Unsupported protocol version 1", reason="version_mismatch",
+                       detail_versions=[7]),
+    ])
+    async def test_giving_up_clears_the_last_upgrade_notice(self, refusal):
+        """A refused key or protocol leaves no cloud whose upgrade notice still
+        applies, so the Programmer stops showing it beside the stop reason."""
+        agent = self._agent_for_loop()
+        agent._enabled_capabilities = []
+        agent._apply_upgrade_notice({"min_version": "0.5.14", "message": ""})
+
+        async def _refuse():
+            raise refusal
+
+        agent._connect_and_run = _refuse
+        await asyncio.wait_for(agent._connection_loop(), timeout=5)
+
+        assert agent.state.values["system.cloud_upgrade_required"] is False
+        assert agent.state.values["system.cloud_min_version"] == ""
 
     def test_status_reports_why_the_agent_gave_up(self):
         """get_status carries the stop cause so /api/cloud/status can show it."""

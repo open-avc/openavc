@@ -410,6 +410,19 @@ class CloudAgent:
 
     # --- Connection Loop ---
 
+    def _give_up(self, reason: str, detail: str) -> None:
+        """Stop retrying for a refusal no retry can win, and say why on screen.
+
+        No cloud session applies after this, so the last upgrade notice goes
+        with it rather than standing beside the stop reason.
+        """
+        self._running = False
+        self._stop_reason = reason
+        self._stop_detail = detail
+        self.state.set("system.cloud.status", reason, source="cloud")
+        self.state.set("system.cloud.status_detail", detail, source="cloud")
+        self._apply_upgrade_notice(None)
+
     async def _connection_loop(self) -> None:
         """Main connection loop with exponential backoff reconnection."""
         while self._running and not self._stopping:
@@ -420,15 +433,10 @@ class CloudAgent:
                 if e.reason in FATAL_REFUSAL_REASONS:
                     # Fatal — don't retry, key is permanently invalid
                     log.error("Cloud agent: system key is invalid or revoked. Stopping.")
-                    self._running = False
-                    self._stop_reason = "auth_failed"
-                    self._stop_detail = (
+                    self._give_up(
+                        "auth_failed",
                         "This instance's cloud key was revoked or is no longer "
-                        "recognized. Pair it with the cloud again to reconnect."
-                    )
-                    self.state.set("system.cloud.status", "auth_failed", source="cloud")
-                    self.state.set(
-                        "system.cloud.status_detail", self._stop_detail, source="cloud"
+                        "recognized. Pair it with the cloud again to reconnect.",
                     )
                     return
                 if e.reason == "version_mismatch":
@@ -439,21 +447,14 @@ class CloudAgent:
                     # the operator. Stop, and name the fix — updating this
                     # instance is a person's action, not something to wait out.
                     versions = e.detail_versions or []
-                    self._running = False
-                    self._stop_reason = "version_mismatch"
-                    self._stop_detail = (
+                    self._give_up(
+                        "version_mismatch",
                         "This instance speaks cloud protocol "
                         f"{SUPPORTED_PROTOCOL_VERSIONS}, but the cloud requires "
                         f"{versions or 'a newer version'}. Update OpenAVC on this "
-                        "instance to reconnect."
+                        "instance to reconnect.",
                     )
                     log.error(f"Cloud agent: {self._stop_detail} Stopping.")
-                    self.state.set(
-                        "system.cloud.status", "version_mismatch", source="cloud"
-                    )
-                    self.state.set(
-                        "system.cloud.status_detail", self._stop_detail, source="cloud"
-                    )
                     return
             except (ConnectionClosed, OSError, InvalidURI, InvalidHandshake) as e:
                 log.warning(f"Cloud agent: connection error — {e}")
