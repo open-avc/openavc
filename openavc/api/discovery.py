@@ -520,10 +520,22 @@ def _refuse_a_driver_not_installed(driver_id: str) -> None:
     saved: the project would otherwise gain a device that never connects."""
     if get_driver_class(driver_id) is not None:
         return
-    from openavc.core.installed_equipment import missing_driver_reason
+    raise HTTPException(status_code=422, detail=_not_added(driver_id))
 
-    reason = missing_driver_reason(driver_id).rstrip(".")
-    raise HTTPException(status_code=422, detail=f"{reason}. The device was not added.")
+
+def _not_added(driver_id: str) -> str:
+    """Why a scanned device was not added with ``driver_id``, which is not
+    here, and what to do instead."""
+    from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
+    from openavc.drivers.refused_files import refusal_for
+
+    if refusal_for(driver_id) is not None:
+        instead = "Fix its driver file, or choose another driver for this device."
+    elif is_product_hardware_id(driver_id):
+        instead = "Choose another driver for this device."
+    else:
+        instead = "Install it first, or choose another driver for this device."
+    return f"{missing_driver_reason(driver_id).rstrip('.')}. The device was not added. {instead}"
 
 
 @router.post("/add-device")
@@ -721,7 +733,8 @@ async def _install_from_the_index(driver_id: str) -> None:
             status_code=404,
             detail=(
                 f"Driver '{driver_id}' is not installed and is not in the community "
-                "driver library. The device was not added."
+                "driver library. The device was not added. Import the driver's file "
+                "first, or choose another driver for this device."
             ),
         )
     await install_community_driver(install)

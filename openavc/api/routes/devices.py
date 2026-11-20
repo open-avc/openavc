@@ -210,17 +210,19 @@ async def get_ssh_key() -> dict[str, Any]:
 async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[str, Any]:
     """Bulk-install community drivers requested by IDs, then activate orphans.
 
-    Each ID is looked up in this server's copy of the community catalog
-    (``driver_catalog.catalog_install``: the address and floor it lists).
+    Each ID is looked up in this server's copy of the community catalog, read
+    once for the batch (``driver_catalog.catalog_install_in``: the address and
+    floor it lists).
     Failures don't abort the batch; per-driver outcomes are returned so the UI
     can show which succeeded vs. failed.
     """
-    from openavc.api.driver_catalog import catalog_install
+    from openavc.api.driver_catalog import catalog_install_in, entries_by_id, index_cache
     from openavc.api.routes.drivers import install_community_driver
 
     if not body.driver_ids:
         return {"installed": [], "failed": [], "activated_devices": []}
 
+    entries = entries_by_id(await index_cache().get_drivers())
     installed: list[str] = []
     failed: list[dict[str, Any]] = []
     activated: list[str] = []
@@ -231,7 +233,7 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
                 activated.append(device_id)
 
     for driver_id in body.driver_ids:
-        install = await catalog_install(driver_id)
+        install = catalog_install_in(entries, driver_id)
         if install is None:
             failed.append({"driver_id": driver_id, "error": "Not in community catalog"})
             continue

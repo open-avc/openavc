@@ -18,8 +18,10 @@ server's one copy of ``devices.json`` (``devices_cache``).
 
 Which entry an id reads is the first the index lists for it
 (``entries_by_id``), and the address a listed driver is installed from is
-``catalog_file_url``: Install & Add, Install Missing and the missing-driver
-list ask ``catalog_install`` for it rather than take one from the caller.
+``catalog_file_url``, which the missing-driver list and the AI's
+``download_url`` ask. Install & Add and Install Missing ask
+``catalog_install`` (``catalog_install_in`` for a batch read from one copy)
+for the address and the floor rather than take either from the caller.
 
 Each of the three files an install may bring answers a failure in its own
 words (the main file, a YAML driver's declared companion, a Python driver's
@@ -106,13 +108,19 @@ def catalog_file_url(entry: Mapping[str, Any] | None) -> str | None:
 
 
 async def catalog_install(driver_id: str) -> Any:
-    """The install this server's copy of the index gives for ``driver_id``:
-    its file's address and the floor the index declares for it, as a
-    ``CommunityDriverInstallRequest``; None when the index lists no file for
-    the id (or could not be read)."""
+    """The install this server's copy of the index gives for ``driver_id``
+    (``catalog_install_in``), the index read once."""
+    return catalog_install_in(entries_by_id(await index_cache().get_drivers()), driver_id)
+
+
+def catalog_install_in(entries: dict[str, dict[str, Any]], driver_id: str) -> Any:
+    """The install ``entries`` (``entries_by_id`` of the index) give for
+    ``driver_id``: its file's address and the floor the index declares for
+    it, as a ``CommunityDriverInstallRequest``; None when the index lists no
+    file for the id (or could not be read)."""
     from openavc.api.models import CommunityDriverInstallRequest
 
-    entry = entries_by_id(await index_cache().get_drivers()).get(driver_id)
+    entry = entries.get(driver_id)
     file_url = catalog_file_url(entry)
     if entry is None or file_url is None:
         return None

@@ -132,7 +132,8 @@ async def test_a_scanned_device_is_not_added_with_a_driver_that_is_not_installed
         await add_device(AddDeviceRequest(ip="192.0.2.70", driver_id=DRIVER_ID))
     assert caught.value.status_code == 422
     assert caught.value.detail == (
-        f"Driver '{DRIVER_ID}' is not installed. The device was not added."
+        f"Driver '{DRIVER_ID}' is not installed. The device was not added. "
+        "Install it first, or choose another driver for this device."
     )
     assert engine.project.devices == []
     assert engine.project.connections == {}
@@ -151,7 +152,8 @@ async def test_a_driver_installed_but_not_loaded_is_refused_with_why(engine, tmp
     assert caught.value.status_code == 422
     assert caught.value.detail == (
         f"Driver '{DRIVER_ID}' is installed but did not load: "
-        "Its transport is not one this platform knows. The device was not added."
+        "Its transport is not one this platform knows. The device was not added. "
+        "Fix its driver file, or choose another driver for this device."
     )
     assert engine.project.devices == []
 
@@ -195,7 +197,8 @@ async def test_install_and_add_refuses_a_driver_the_index_does_not_list(engine, 
     assert caught.value.status_code == 404
     assert caught.value.detail == (
         f"Driver '{DRIVER_ID}' is not installed and is not in the community driver "
-        "library. The device was not added."
+        "library. The device was not added. Import the driver's file first, or "
+        "choose another driver for this device."
     )
     assert installs == []
     assert engine.project.devices == []
@@ -279,6 +282,24 @@ async def test_the_missing_driver_list_reads_the_server_copy(index, device_page)
     assert answer["missing"][0]["community_match"]["file_url"] == (
         f"{COMMUNITY_REPO_URL}/utility/acme_scanned_widget.avcdriver"
     )
+
+
+async def test_install_missing_reads_the_server_copy_once_a_press(index, device_page, monkeypatch):
+    from openavc.api.models import InstallMissingDriversRequest
+    from openavc.api.routes import drivers as driver_routes
+    from openavc.api.routes.devices import install_missing_drivers
+
+    async def _install(request):
+        return {"status": "installed", "activated_devices": []}
+
+    index.drivers = []
+    monkeypatch.setattr(driver_routes, "install_community_driver", _install)
+    answer = await install_missing_drivers(InstallMissingDriversRequest(
+        driver_ids=[DRIVER_ID, "acme_other", "acme_third"],
+    ))
+
+    assert index.reads == 1
+    assert [f["driver_id"] for f in answer["failed"]] == [DRIVER_ID, "acme_other", "acme_third"]
 
 
 async def test_install_missing_reads_the_server_copy(index, device_page, monkeypatch):

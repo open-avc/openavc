@@ -185,7 +185,7 @@ describe("Install & Add for a driver this Programmer's copy of the library does 
     mocks.library = [];
     mocks.installAndMatch.mockImplementation(async () => {
       throw new Error(
-        "Driver 'acme_vault' is not installed and is not in the community driver library. The device was not added.",
+        "Driver 'acme_vault' is not installed and is not in the community driver library. The device was not added. Import the driver's file first, or choose another driver for this device.",
       );
     });
     render(<DiscoveryPanel />);
