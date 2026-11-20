@@ -8,12 +8,14 @@ each through the same table the runtime builds its parser from
 platform's parser reads back what the simulator sent. A ``send_frame`` header,
 when the driver declares one, still wraps the control link's messages: it
 carries the device's own constant bytes, where a frame parser's writer can
-only put zero bytes.
+only put zero bytes. Every message on the control link is framed the same way,
+a reply or one the device sends unprompted.
 
 An invented device throughout.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -43,6 +45,18 @@ def _def(**overrides: Any) -> dict[str, Any]:
 
 def _sim(**overrides: Any) -> YAMLAutoSimulator:
     return YAMLAutoSimulator("w1", {}, driver_def=_def(**overrides))
+
+
+class _Pushed:
+    """What the simulator sends on its control link unprompted."""
+
+    def __init__(self, sim: YAMLAutoSimulator) -> None:
+        self.sent: list[bytes] = []
+        sim.push = self._push
+        sim._clients = {"c": None}
+
+    async def _push(self, data: bytes) -> None:
+        self.sent.append(data)
 
 
 # --- the device's dial-back ----------------------------------------------------------
@@ -102,6 +116,27 @@ def test_a_send_frame_header_still_wraps_a_reply() -> None:
     reply = sim.handle_command(b"PWR1")
     assert reply == b"AC\x00\x00\x05\x01PWR1\r"
     assert build_frame_parser(FRAME_PARSER).feed(reply) == [b"PWR1\r"]
+
+
+@pytest.mark.asyncio
+async def test_a_value_pushed_unprompted_is_framed_as_a_reply_is() -> None:
+    frame_parser = {"type": "length_prefix", "header_size": 1}
+    sim = _sim(frame_parser=frame_parser, simulator={"push_state": True})
+    pushed = _Pushed(sim)
+    sim.set_state("power", True)
+    await asyncio.sleep(0)
+    assert [build_frame_parser(frame_parser).feed(data) for data in pushed.sent] == [[b"PWR1\r"]]
+
+
+
+@pytest.mark.asyncio
+async def test_a_send_frame_header_wraps_a_value_pushed_unprompted() -> None:
+    sim = _sim(send_frame=SEND_FRAME, frame_parser=FRAME_PARSER,
+               simulator={"push_state": True})
+    pushed = _Pushed(sim)
+    sim.set_state("power", True)
+    await asyncio.sleep(0)
+    assert pushed.sent == [b"AC\x00\x00\x05\x01PWR1\r"]
 
 
 def test_a_line_driver_is_answered_in_lines() -> None:

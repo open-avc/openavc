@@ -509,8 +509,8 @@ class PushChannels:
         return self._peer_heard() if self._is_udp else bool(self._clients)
 
     def _framed_for_link(self, data: bytes) -> bytes:
-        """A reply as it goes out on the control link, framed as the driver
-        reads it: in the
+        """One message as it goes out on the control link, a reply or one the
+        device sends unprompted, framed as the driver reads it: in the
         send_frame header when the driver declares one (it carries the
         device's own constant bytes, where a frame parser's writer has only
         zero bytes to put), else, on a byte stream, in the frame its
@@ -525,7 +525,9 @@ class PushChannels:
     def _send_on_control_link(self, data: bytes) -> None:
         """Send on the control link: the last UDP peer that spoke to the
         device (the peer a real UDP server answers, and the only one it
-        knows), else every connected stream client."""
+        knows), else every connected stream client. Framed as a reply is
+        (``_framed_for_link``), so the driver reads it the same way."""
+        data = self._framed_for_link(data)
         if self._is_udp and not self._is_osc:
             self.push_datagram(data)
         elif self._clients:
