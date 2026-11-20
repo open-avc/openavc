@@ -393,7 +393,7 @@ _STARTUP_PAGE = """\
       next.hidden = false;
       again.hidden = false;
     } else if (d.retry_in !== null && d.retry_in !== undefined) {
-      next.textContent = 'Trying again in ' + d.retry_in + ' seconds.';
+      next.textContent = 'Trying again in ' + d.retry_in + (d.retry_in === 1 ? ' second.' : ' seconds.');
       next.hidden = false;
       again.hidden = true;
     } else {

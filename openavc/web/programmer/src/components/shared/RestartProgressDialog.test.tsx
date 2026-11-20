@@ -163,6 +163,13 @@ describe("RestartProgressDialog waits on what the server says", () => {
     expect(assign).toHaveBeenCalledWith(`${HERE}/programmer`);
   });
 
+  it("counts the last second of a failed start's countdown as one second", async () => {
+    fetchMock.mockImplementation(async () => said("failed", { error: "No project", retry_in: 1 }));
+    open();
+    await runFor(0);
+    expect(screen.getByText("Trying again in 1 second.")).toBeTruthy();
+  });
+
   it("sends a held start to the server's page for Start again, and never gives up on it", async () => {
     fetchMock.mockImplementation(async () => said("failed", { error: "No project", held: true }));
     open();

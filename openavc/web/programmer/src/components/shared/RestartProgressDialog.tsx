@@ -307,7 +307,9 @@ function isWaiting(phase: Phase): boolean {
 /** What a failed start leaves to do, as the server's own page says it. */
 function nextStep(status: StartupStatus): string | null {
   if (status.held) return "Fix the problem, then open the server's page and press Start again.";
-  if (status.retryIn !== null) return `Trying again in ${status.retryIn} seconds.`;
+  if (status.retryIn !== null) {
+    return `Trying again in ${status.retryIn} ${status.retryIn === 1 ? "second" : "seconds"}.`;
+  }
   return null;
 }
 

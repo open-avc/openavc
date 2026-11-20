@@ -388,6 +388,11 @@ def test_the_page_keeps_asking_after_a_failure_and_reaches_the_next_start(tmp_pa
     assert ready["reloads"] == 1
 
 
+def test_the_last_second_of_the_countdown_is_one_second(tmp_path):
+    seen = _page(tmp_path, [_failed_answer(retry_in=1)])
+    assert seen["screens"][0]["next"] == "Trying again in 1 second."
+
+
 def test_a_failed_start_that_waits_offers_start_again_and_presses_it(tmp_path):
     seen = _page(tmp_path, [_failed_answer(held=True), STARTING_ANSWER], press_after=0)
     held, pressed = seen["screens"][:2]
