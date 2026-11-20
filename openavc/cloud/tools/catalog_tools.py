@@ -12,10 +12,15 @@ once more, and the copy it has is answered when that fails too; with no copy
 to answer, the tool says the catalog could not be fetched, which is not the
 same answer as a catalog with nothing in it.
 
-A search answers lean entries (``_lean_driver_entry``), ranked by how a
-free-text query scores each one (``_score_driver_match``: an exact id or
-manufacturer first, then the id, manufacturer, name, compatible models,
-tags and description, each with its own weight). Each entry with a file is
+A search answers lean entries (``_lean_driver_entry``). What a free-text
+query finds is the search rule's (``utils/search_words``, the rule Browse
+Community, the Installed list and the Add Device picker ask through the
+Programmer's copy): every word typed is somewhere in the entry's id, name,
+manufacturer, description, tags or compatible models, each word wherever it
+is. What it found is ranked by how the query scores each one
+(``_score_driver_match``: an exact id or manufacturer first, then the id,
+manufacturer, name, compatible models, tags and description, each with its
+own weight; several words add each word's score to the whole query's). Each entry with a file is
 answered with its ``download_url``, built into the answer and never written
 into the shared copy. Installing goes through the REST install route, so an
 AI install does everything an IDE install does.
@@ -29,10 +34,12 @@ fetched.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.api.driver_catalog import devices_cache, index_cache
 from openavc.discovery.community_index import COMMUNITY_REPO_URL
+from openavc.utils.search_words import finds_every_word, search_words
 
 #: The fields a search filters on, each compared whole, in any case.
 _SEARCH_FILTERS = ("category", "manufacturer", "transport")
@@ -111,28 +118,67 @@ def _compatible_model_names(drv: dict) -> list[str]:
     ]
 
 
+@dataclass(frozen=True)
+class _Searched:
+    """What a search reads of one catalog entry, lowercased: the fields the
+    search rule looks for each word in, and the weights that rank a match."""
+
+    id: str
+    name: str
+    manufacturer: str
+    description: str
+    tags: tuple[str, ...]
+    models: tuple[str, ...]
+
+    @classmethod
+    def of(cls, drv: dict) -> _Searched:
+        return cls(
+            id=_text(drv, "id"),
+            name=_text(drv, "name"),
+            manufacturer=_text(drv, "manufacturer"),
+            description=_text(drv, "description"),
+            tags=tuple(t.lower() for t in _listed(drv, "tags") if isinstance(t, str)),
+            models=tuple(_compatible_model_names(drv)),
+        )
+
+    def fields(self) -> tuple[str, ...]:
+        """Every field the search rule looks in, each one the weights rank."""
+        return (self.id, self.name, self.manufacturer, self.description, *self.tags, *self.models)
+
+    def score(self, text: str) -> int:
+        """How well one piece of text matched, each field with its own weight."""
+        hits = (
+            (100, text in (self.id, self.manufacturer)),
+            (30, text in self.id),
+            (30, text in self.manufacturer),
+            (20, text in self.name),
+            (15, text in self.tags),
+            (5, any(text in t for t in self.tags)),
+            (25, any(text in m for m in self.models)),
+            (3, text in self.description),
+        )
+        return sum(weight for weight, hit in hits if hit)
+
+
 def _score_driver_match(drv: dict, query: str) -> int:
     """Rank a driver against a free-text query. Higher score = better match;
-    0 is no match, and an empty query matches everything at 1."""
-    if not query:
+    0 is no match, and an empty query matches everything at 1.
+
+    Whether it matches is the search rule's (``utils/search_words``): every
+    word typed is somewhere in the entry, each word wherever it is. One word
+    scores by its weights; several score each word's own, plus the whole
+    query's, so the words written together outrank the same words apart, the
+    way Browse Community ranks its cards."""
+    words = search_words(query)
+    if not words:
         return 1
-    drv_id = _text(drv, "id")
-    name = _text(drv, "name")
-    manufacturer = _text(drv, "manufacturer")
-    description = _text(drv, "description")
-    tags = [t.lower() for t in _listed(drv, "tags") if isinstance(t, str)]
-    models = _compatible_model_names(drv)
-    hits = (
-        (100, query in (drv_id, manufacturer)),
-        (30, query in drv_id),
-        (30, query in manufacturer),
-        (20, query in name),
-        (15, query in tags),
-        (5, any(query in t for t in tags)),
-        (25, any(query in m for m in models)),
-        (3, query in description),
-    )
-    return sum(weight for weight, hit in hits if hit)
+    searched = _Searched.of(drv)
+    if not finds_every_word(words, searched.fields()):
+        return 0
+    phrase = searched.score(" ".join(words))
+    if len(words) == 1:
+        return phrase
+    return phrase + sum(searched.score(word) for word in words)
 
 
 def _lean_driver_entry(drv: dict) -> dict:
@@ -169,8 +215,9 @@ class CatalogToolsMixin:
         """Search the community driver catalog with filters and ranking.
 
         Inputs (all optional):
-          query        - free-text matched against id, name, manufacturer,
-                         description, tags, and compatible model names
+          query        - free text; every word must be somewhere in the id,
+                         name, manufacturer, description, tags or compatible
+                         model names, each word wherever it is
           category     - exact category filter (projector, display, switcher,
                          audio, camera, lighting, video, streaming, power,
                          utility)
@@ -181,7 +228,7 @@ class CatalogToolsMixin:
         Returns lean entries (omits help and compatible_models — call
         get_community_driver_detail for those). Results are ranked: exact id
         and manufacturer matches first, then name matches, then description /
-        tag hits.
+        tag hits; for several words, the words written together first.
         """
         drivers = await _community_drivers()
         if drivers is None:

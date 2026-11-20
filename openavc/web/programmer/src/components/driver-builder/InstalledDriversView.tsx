@@ -27,18 +27,18 @@ import type {
   InstalledDriver,
 } from "../../api/types";
 import { booleanWord, valueText } from "../shared/booleanWords";
+import { matchesSearch } from "../shared/searchWords";
 
 
 /** Whether the list shows a driver for what is in the search box: every word
  *  typed appears in its name, manufacturer or category, wherever each one is,
- *  so "brindle switch" finds "Brindle Network Switch". Nothing typed lists all. */
+ *  so "brindle switch" finds "Brindle Network Switch" (the search rule,
+ *  `shared/searchWords`). Nothing typed lists all. */
 export function driverMatchesSearch(
   driver: { name: string; manufacturer: string; category: string },
   query: string,
 ): boolean {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const fields = [driver.name, driver.manufacturer, driver.category].map((f) => f.toLowerCase());
-  return words.every((word) => fields.some((f) => f.includes(word)));
+  return matchesSearch([driver.name, driver.manufacturer, driver.category], query);
 }
 
 const headerBtnStyle: React.CSSProperties = {

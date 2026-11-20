@@ -4,7 +4,8 @@ Each passes on the code as it is, so a restructure that changes an answer, a
 write or a fetch fails here:
 
 - The community catalog: how a free-text query scores an entry (each field's
-  weight), the filters, the ranking, the limit and how a bad one is read, the
+  weight; several words found only when each one is, scored word by word and
+  as a whole), the filters, the ranking, the limit and how a bad one is read, the
   lean entry a search answers with, every entry's download address (built
   into the answer, never written into the server's copy), one driver's full
   entry, and the exact manufacturer and model lookup over ``devices.json``
@@ -145,6 +146,29 @@ def test_how_a_query_scores_an_entry(query, score):
     assert _score_driver_match(DRV, query) == score
 
 
+@pytest.mark.parametrize(("query", "score"), [
+    # Every word found somewhere: each word's own score, plus the whole
+    # query's, so the words written together outrank the same words apart.
+    ("acme pro", 0 + (100 + 30 + 30 + 20) + 20),
+    ("pro acme", 0 + 20 + (100 + 30 + 30 + 20)),
+    ("acme widget", 20 + (100 + 30 + 30 + 20) + (30 + 20 + 15 + 5 + 3)),
+    ("widget wx-100", 0 + (30 + 20 + 15 + 5 + 3) + 25),
+    ("  acme \t pro ", 0 + (100 + 30 + 30 + 20) + 20),
+    # One word in no field: no match at all.
+    ("acme zzz", 0),
+    ("zzz acme", 0),
+])
+def test_how_several_words_score_an_entry(query, score):
+    assert _score_driver_match(DRV, query) == score
+
+
+@pytest.mark.parametrize("word", ["acme_", "widget p", "acm", "the wid", "lan", "wx-1", "contro"])
+def test_a_word_the_search_rule_finds_always_scores(word):
+    """The rule decides what is found; the weights rank it. A field the rule
+    reads and the weights do not would find an entry that then scores 0."""
+    assert _score_driver_match(DRV, word) > 0
+
+
 def test_an_entry_with_no_fields_scores_nothing():
     assert _score_driver_match({}, "acme") == 0
     assert _score_driver_match(
@@ -192,6 +216,27 @@ async def test_search_ranks_by_score_then_id_and_drops_misses(monkeypatch):
     # acme_widget 73; nofile_widget and zeta_widget 30 each (the id only), so
     # by id; acme_gadget never mentions it.
     assert [d["id"] for d in answer["drivers"]] == ["acme_widget", "nofile_widget", "zeta_widget"]
+
+
+@pytest.mark.parametrize(("query", "ids"), [
+    # The words are in the entry, never side by side: "Acme" (the
+    # manufacturer) and "Pro" (the end of the name).
+    ("acme pro", ["acme_widget"]),
+    ("Pro Acme", ["acme_widget"]),
+    # Two fields: the manufacturer, and a model.
+    ("acme wx-100", ["acme_widget"]),
+    # Every word in each entry found, the better match first.
+    ("acme gadget", ["acme_gadget"]),
+    ("widget acme", ["acme_widget"]),
+    ("acme tuner", []),
+])
+async def test_search_finds_every_word_wherever_each_is(monkeypatch, query, ids):
+    _Web(monkeypatch, {"index.json": INDEX})
+
+    answer = await _handler()._search_community_drivers({"query": query})
+
+    assert [d["id"] for d in answer["drivers"]] == ids
+    assert answer["total"] == len(ids)
 
 
 @pytest.mark.parametrize(("sent", "ids"), [

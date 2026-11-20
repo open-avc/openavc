@@ -1,0 +1,201 @@
+{
+  "about": "How a typed search finds a thing: what is typed, the words it reads as, the fields searched, and whether the thing is found. Run by tests/test_search_words.py against openavc/utils/search_words.py and by components/shared/searchWords.test.ts against the Programmer's copy.",
+  "cases": [
+    {
+      "name": "nothing typed finds everything",
+      "query": "",
+      "words": [],
+      "fields": ["Acme Brindle Network Switch", "Acme", "switcher"],
+      "finds": true
+    },
+    {
+      "name": "only spaces typed finds everything",
+      "query": "   ",
+      "words": [],
+      "fields": ["Acme Brindle Network Switch"],
+      "finds": true
+    },
+    {
+      "name": "nothing typed finds a thing with no fields",
+      "query": "",
+      "words": [],
+      "fields": [],
+      "finds": true
+    },
+    {
+      "name": "one word in one field",
+      "query": "brindle",
+      "words": ["brindle"],
+      "fields": ["Acme Brindle Network Switch", "Acme", "switcher"],
+      "finds": true
+    },
+    {
+      "name": "a word inside a longer word",
+      "query": "switch",
+      "words": ["switch"],
+      "fields": ["Acme Widget", "Acme", "switchers"],
+      "finds": true
+    },
+    {
+      "name": "in any case",
+      "query": "ACME",
+      "words": ["acme"],
+      "fields": ["acme widget"],
+      "finds": true
+    },
+    {
+      "name": "a field in capitals",
+      "query": "widget",
+      "words": ["widget"],
+      "fields": ["ACME WIDGET"],
+      "finds": true
+    },
+    {
+      "name": "letters beyond ASCII in any case",
+      "query": "ÉCRAN",
+      "words": ["écran"],
+      "fields": ["Acme Écran Mural"],
+      "finds": true
+    },
+    {
+      "name": "a word that is in no field",
+      "query": "tuner",
+      "words": ["tuner"],
+      "fields": ["Acme Brindle Network Switch", "Acme", "switcher"],
+      "finds": false
+    },
+    {
+      "name": "two words apart in one field",
+      "query": "acme switch",
+      "words": ["acme", "switch"],
+      "fields": ["Acme Brindle Network Switch"],
+      "finds": true
+    },
+    {
+      "name": "two words in the other order",
+      "query": "switch acme",
+      "words": ["switch", "acme"],
+      "fields": ["Acme Brindle Network Switch"],
+      "finds": true
+    },
+    {
+      "name": "two words in two fields",
+      "query": "acme switcher",
+      "words": ["acme", "switcher"],
+      "fields": ["Widget Matrix", "Acme", "switcher"],
+      "finds": true
+    },
+    {
+      "name": "one of two words in no field",
+      "query": "acme tuner",
+      "words": ["acme", "tuner"],
+      "fields": ["Acme Brindle Network Switch", "Acme", "switcher"],
+      "finds": false
+    },
+    {
+      "name": "two words together where the field has them apart",
+      "query": "acme widget",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Pro Widget"],
+      "finds": true
+    },
+    {
+      "name": "a word typed twice",
+      "query": "acme acme",
+      "words": ["acme", "acme"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "spaces around and between the words",
+      "query": "  acme    widget  ",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "a tab between the words",
+      "query": "acme\twidget",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "a line break between the words",
+      "query": "acme\r\nwidget",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "a pasted no-break space between the words",
+      "query": "acme widget",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "a wide space between the words",
+      "query": "acme　widget",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "a byte-order mark between the words",
+      "query": "acme﻿widget",
+      "words": ["acme", "widget"],
+      "fields": ["Acme Widget"],
+      "finds": true
+    },
+    {
+      "name": "a control character is not a space",
+      "query": "acme\u001fwidget",
+      "words": ["acme\u001fwidget"],
+      "fields": ["Acme Widget"],
+      "finds": false
+    },
+    {
+      "name": "a next-line character is not a space",
+      "query": "acme\u0085widget",
+      "words": ["acme\u0085widget"],
+      "fields": ["Acme Widget"],
+      "finds": false
+    },
+    {
+      "name": "punctuation stays in the word",
+      "query": "wx-100",
+      "words": ["wx-100"],
+      "fields": ["Acme Widget", "WX-100"],
+      "finds": true
+    },
+    {
+      "name": "an underscore stays in the word",
+      "query": "acme_widget",
+      "words": ["acme_widget"],
+      "fields": ["Acme Widget", "acme_widget"],
+      "finds": true
+    },
+    {
+      "name": "a missing field is skipped",
+      "query": "acme",
+      "words": ["acme"],
+      "fields": [null, "Acme"],
+      "finds": true
+    },
+    {
+      "name": "a missing field finds no word",
+      "query": "acme",
+      "words": ["acme"],
+      "fields": [null, ""],
+      "finds": false
+    },
+    {
+      "name": "a word typed finds nothing with no fields",
+      "query": "acme",
+      "words": ["acme"],
+      "fields": [],
+      "finds": false
+    }
+  ]
+}

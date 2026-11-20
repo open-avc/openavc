@@ -10,6 +10,7 @@ import { normalizeOptionList } from "../../components/shared/paramOptions";
 import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION_FIELDS, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, withConfigValue, type ConnectionMode } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
+import { matchesSearch } from "../../components/shared/searchWords";
 import { LineSettingSelect } from "../../components/shared/LineSettingSelect";
 import { SERIAL_LINE_SETTINGS, type SerialLineKey } from "../../api/types.gen";
 import { holdsTypedLogin, keepSavedLogins, SAVED_LOGIN, withoutSavedLogins } from "./deviceLogins";
@@ -838,6 +839,13 @@ export function ConnectionModePicker({
 
 const CATEGORY_ORDER = ["projector", "display", "audio", "switcher", "camera", "lighting", "control", "utility", "other"];
 
+/** Whether the driver picker lists a driver for what is typed: every word in
+ *  its name (its id when it has none), manufacturer or category, wherever each
+ *  one is, by the search rule Browse Community and Installed ask. */
+export function driverPickerShows(d: DriverInfo, search: string): boolean {
+  return matchesSearch([d.name || d.id, d.manufacturer, d.category], search);
+}
+
 function DriverSearchSelect({
   id,
   drivers,
@@ -861,16 +869,10 @@ function DriverSearchSelect({
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return drivers.filter(
-      (d) =>
-        !q ||
-        (d.name || d.id).toLowerCase().includes(q) ||
-        (d.manufacturer || "").toLowerCase().includes(q) ||
-        (d.category || "").toLowerCase().includes(q)
-    );
-  }, [drivers, search]);
+  const filtered = useMemo(
+    () => drivers.filter((d) => driverPickerShows(d, search)),
+    [drivers, search],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, DriverInfo[]>();

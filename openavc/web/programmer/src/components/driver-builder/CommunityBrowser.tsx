@@ -7,6 +7,7 @@ import { hasUpdate } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
 import { parseApiError } from "../../api/errors";
 import { blockedByPlatform, DRIVER_CATALOG_BASE_URL } from "../shared/catalogUpdates";
+import { findsEveryWord, searchWords } from "../shared/searchWords";
 
 const CATEGORIES = [
   "All",
@@ -176,39 +177,45 @@ const FIELD_WEIGHTS = {
   description: 10,
 } as const;
 
-/** How well one card's best field matched one lowercased piece of text. */
-function bestFieldScore(card: DisplayCard, q: string): number {
+type WeightedField = readonly [weight: number, text: string | undefined];
+
+/** Every field a card is searched by, with what a match in it is worth: the
+ *  one list both the search rule and the ranking read. */
+function cardFields(card: DisplayCard): WeightedField[] {
   const d = card.driver;
-  return Math.max(
-    FIELD_WEIGHTS.brand * matchQuality(card.brand, q),
-    FIELD_WEIGHTS.name * matchQuality(d.name, q),
-    FIELD_WEIGHTS.id * matchQuality(d.id, q),
-    FIELD_WEIGHTS.description * matchQuality(d.description, q),
-    ...card.brandModels.map((m) => FIELD_WEIGHTS.model * matchQuality(m, q)),
-    ...(d.tags ?? []).map((t) => FIELD_WEIGHTS.tag * matchQuality(t, q)),
-  );
+  return [
+    [FIELD_WEIGHTS.brand, card.brand],
+    [FIELD_WEIGHTS.name, d.name],
+    [FIELD_WEIGHTS.id, d.id],
+    [FIELD_WEIGHTS.description, d.description],
+    ...card.brandModels.map((m): WeightedField => [FIELD_WEIGHTS.model, m]),
+    ...(d.tags ?? []).map((t): WeightedField => [FIELD_WEIGHTS.tag, t]),
+  ];
 }
 
-/** Relevance of one card to one already-lowercased query. 0 = no match, which
- *  is also what filters the card out, so what MATCHES and what RANKS can never
- *  drift apart into two lists of fields.
+/** How well a card's best field matched one lowercased piece of text. */
+function bestFieldScore(fields: readonly WeightedField[], q: string): number {
+  return Math.max(0, ...fields.map(([weight, text]) => weight * matchQuality(text, q)));
+}
+
+/** Relevance of one card to a query. 0 = no match, which is also what filters
+ *  the card out.
  *
- *  A query of several words matches a card that has every word somewhere
- *  ("brindle switch" finds "Brindle Network Switch"), scored as the sum of each
- *  word's best field, plus the whole query's own score, so the words written
- *  together outrank the same words apart. One word scores as it always has.
+ *  Whether it matches is the search rule's (`shared/searchWords`, the one the
+ *  AI's catalog search asks on the server): every word is somewhere in the
+ *  card's fields ("brindle switch" finds "Brindle Network Switch"). What it
+ *  scores is the sum of each word's best field, plus the whole query's own
+ *  score, so the words written together outrank the same words apart. One word
+ *  scores as it always has. The rule and the score read one list of fields
+ *  (`cardFields`), so what MATCHES and what RANKS can never drift apart.
  */
 export function scoreCard(card: DisplayCard, q: string): number {
-  const words = q.split(/\s+/).filter(Boolean);
-  const phrase = bestFieldScore(card, words.join(" "));
+  const words = searchWords(q);
+  const fields = cardFields(card);
+  if (!findsEveryWord(words, fields.map(([, text]) => text))) return 0;
+  const phrase = bestFieldScore(fields, words.join(" "));
   if (words.length <= 1) return phrase;
-  let total = phrase;
-  for (const word of words) {
-    const score = bestFieldScore(card, word);
-    if (score === 0) return 0;
-    total += score;
-  }
-  return total;
+  return words.reduce((total, word) => total + bestFieldScore(fields, word), phrase);
 }
 
 /** Apply the category filter and the search box to the expanded card list.
