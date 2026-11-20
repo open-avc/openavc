@@ -1460,7 +1460,7 @@ export interface DriverAuthDef {
   password_field?: string;
   /** Skip the handshake when the username config is empty. Default true. */
   skip_if_empty?: boolean;
-  /** Per-stage handshake timeout. Default 10. */
+  /** Per-stage handshake timeout in seconds; must be more than 0. Default 10. */
   timeout_seconds?: number;
   /** Line ending appended to credentials. Default "\r\n". */
   line_ending?: string;

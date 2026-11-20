@@ -539,6 +539,27 @@
   },
   "transport": "tcp"
  },
+ "auth_timeout_not_positive": {
+  "auth": {
+   "password_prompt": "P:",
+   "timeout_seconds": 0,
+   "username_prompt": "U:"
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "auth_unsupported_type": {
   "auth": {
    "password_prompt": "P:",

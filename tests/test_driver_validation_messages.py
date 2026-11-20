@@ -839,6 +839,7 @@ CASES: dict[str, Any] = {
     "auth_wrong_transport": _d(transport="udp", auth={"username_prompt": "U:", "password_prompt": "P:"}),
     "auth_missing_prompts": _d(auth={"type": "telnet_login"}),
     "auth_redos_pattern": _d(auth={"username_prompt": "U:", "password_prompt": "P:", "success_pattern": "(a+)+$"}),
+    "auth_timeout_not_positive": _d(auth={"username_prompt": "U:", "password_prompt": "P:", "timeout_seconds": 0}),
     # --- liveness ---
     "liveness_not_mapping": _d(liveness="ping"),
     "liveness_wrong_transport": _d(transport="http", liveness={"send": "PING\r"}),

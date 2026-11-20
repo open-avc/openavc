@@ -74,6 +74,9 @@
  "auth_redos_pattern": [
   "auth.success_pattern: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
  ],
+ "auth_timeout_not_positive": [
+  "auth.timeout_seconds: must be a positive number"
+ ],
  "auth_unsupported_type": [
   "auth: unsupported type 'oauth' (only 'telnet_login')"
  ],

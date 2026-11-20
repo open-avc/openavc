@@ -56,6 +56,7 @@ import asyncio
 import re
 from typing import Any, NamedTuple
 
+from openavc.drivers.auth_block import BLANK, RUN, AuthModel, read_auth, sign_in_plan
 from openavc.drivers.base import ConnectionFaultError
 from openavc.drivers.param_labels import param_label
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
@@ -83,14 +84,9 @@ _AUTH_MAX_BUFFER = DEFAULT_MAX_BUFFER
 _BLANK_SIGN_IN_WINDOW_S = 2.5
 _BLANK_SIGN_IN_QUIET_S = 0.5
 
-# The handshake's own default, and what a zero or negative timeout falls back
-# to: one emptied to 0 (the Driver Builder's box cleared) would abort on the
-# first look and the device could never connect.
-_DEFAULT_TIMEOUT_S = 10.0
-
-
 class _Login(NamedTuple):
-    """One sign-in, read from the ``auth:`` block and the device's config."""
+    """One sign-in, read from the ``auth:`` block (``auth_block``) and the
+    device's config."""
 
     username: str
     password: str
@@ -156,10 +152,9 @@ class SignIn:
     def _arm_sign_in(self) -> None:
         """Plan this connect's sign-in, and read the line raw from the first
         byte when there is one."""
-        auth_def = self._definition.get("auth")
-        plan = self._auth_plan(auth_def) if isinstance(auth_def, dict) else None
-        self._auth_pending = plan == "run"
-        self._auth_watch_blank = plan == "blank"
+        plan = self._auth_plan(self._definition.get("auth"))
+        self._auth_pending = plan == RUN
+        self._auth_watch_blank = plan == BLANK
         if self._auth_pending or self._auth_watch_blank:
             self._auth_buffer = bytearray()
             self._auth_event = asyncio.Event()
@@ -167,32 +162,18 @@ class SignIn:
             self._auth_search_pos = 0
             self._auth_mode = True
 
-    def _auth_plan(self, auth_def: dict[str, Any]) -> str | None:
-        """What connect() does about the `auth:` block: "run" the handshake,
-        "blank" (skipped because the credential it types first is blank, so
-        on TCP only listen for a prompt nobody can answer), or None (no
-        handshake applies). Mirrors the early-exit checks in _perform_auth_handshake
-        so the two stay aligned."""
-        if auth_def.get("type", "telnet_login") != "telnet_login":
-            return None
-        # The handshake assumes a TCP/serial byte stream — it swaps out the
-        # frame parser and buffers raw bytes. On udp/http/osc that breaks the
-        # transport's normal data path, so never run it there. The loader also
-        # rejects auth on these transports; this is the runtime backstop.
-        if self._effective_transport() not in ("tcp", "serial"):
-            return None
-        if not auth_def.get("username_prompt") or not auth_def.get("password_prompt"):
-            return None
-        username_field = auth_def.get("username_field", "username")
-        username = str(self.config.get(username_field, "") or "")
-        if auth_def.get("skip_if_empty", True) and not username:
-            # A serial line has no connect for a device to prompt on.
-            return "blank" if self._effective_transport() == "tcp" else None
-        return "run"
+    def _auth_plan(self, auth_def: Any) -> str | None:
+        """What connect() does about the `auth:` block over the transport this
+        device connects over: "run" the handshake, "blank", or None
+        (``auth_block.sign_in_plan``). A transport that carries no byte stream
+        never signs in, though the loader refuses the block there too: the
+        handshake swaps out the frame parser and buffers raw bytes, which would
+        break that transport's data path."""
+        return sign_in_plan(read_auth(auth_def), self._effective_transport(), self.config)
 
-    def _auth_should_run(self, auth_def: dict[str, Any]) -> bool:
+    def _auth_should_run(self, auth_def: Any) -> bool:
         """True when connect() runs the login handshake."""
-        return self._auth_plan(auth_def) == "run"
+        return self._auth_plan(auth_def) == RUN
 
     async def _post_connect(self) -> None:
         """Sign in before BaseDriver reports the device connected.
@@ -267,13 +248,13 @@ class SignIn:
         auth_failed, naming the blank setting. Otherwise they go through the
         normal response matching, as they would have without the wait.
         """
-        auth_def = self._definition.get("auth") or {}
-        field = auth_def.get("username_field", "username")
+        # Planned only for a block that reads (``_arm_sign_in``).
+        auth = read_auth(self._definition.get("auth"))
         saved_parser = getattr(self, "_saved_frame_parser", None)
         replay: list[bytes] = []
         try:
-            prompt = _compile(auth_def.get("username_prompt", ""))
-            await self._listen_for_prompt(prompt, field)
+            prompt = _compile(auth.username_prompt)
+            await self._listen_for_prompt(prompt, auth.username_field)
             # No prompt: what arrived meanwhile is the device's own traffic.
             pending = bytes(self._auth_buffer)
             if pending:
@@ -283,7 +264,7 @@ class SignIn:
         for frame in replay:
             await self.on_data_received(frame)
 
-    async def _listen_for_prompt(self, prompt: re.Pattern[str], field: str) -> None:
+    async def _listen_for_prompt(self, prompt: re.Pattern[str], field: Any) -> None:
         """Until the window ends, a flood, or bytes then quiet: raise the
         moment the prompt is among the bytes."""
         loop = asyncio.get_running_loop()
@@ -310,7 +291,7 @@ class SignIn:
             return bool(self._auth_buffer)
         return False
 
-    def _blank_sign_in_fault(self, field: str) -> ConnectionFaultError:
+    def _blank_sign_in_fault(self, field: Any) -> ConnectionFaultError:
         schema = (self._definition.get("config_schema") or {}).get(field)
         label = param_label(field, schema if isinstance(schema, dict) else None)
         return ConnectionFaultError(
@@ -321,53 +302,38 @@ class SignIn:
     async def _perform_auth_handshake(self) -> None:
         """Run the Telnet-style login handshake declared in `auth:` (if any).
 
-        YAML schema (top-level `auth:` block):
-            auth:
-              type: telnet_login
-              username_prompt: "login: "        # regex
-              password_prompt: "Password: "     # regex
-              success_pattern: "GNET> "         # optional regex
-              failure_pattern: "Login incorrect" # optional regex
-              username_field: username           # config field, default "username"
-              password_field: password           # config field, default "password"
-              skip_if_empty: true                # default true — empty user => skip
-              timeout_seconds: 10
-              line_ending: "\r\n"
-
-        Runs with the line already raw (``_post_connect`` took the frame
+        The block's fields and their defaults are ``auth_block``'s. Runs with the line already raw (``_post_connect`` took the frame
         parser off); the parser goes back on once the stages end, however
         they end.
         """
-        auth_def = self._definition.get("auth")
-        if not isinstance(auth_def, dict) or not self._auth_should_run(auth_def):
+        auth = read_auth(self._definition.get("auth"))
+        if sign_in_plan(auth, self._effective_transport(), self.config) != RUN:
             self._auth_mode = False
             return
-        login = self._read_login(auth_def)
+        login = self._read_login(auth)
         saved_parser = getattr(self, "_saved_frame_parser", None)
         try:
             await self._sign_in_stages(login)
         finally:
             self._end_raw_read(saved_parser)
 
-    def _read_login(self, auth_def: dict[str, Any]) -> _Login:
+    def _read_login(self, auth: AuthModel) -> _Login:
         """The credentials, patterns, timeout and line ending one sign-in
-        uses. The password is masked in this device's log lines from here
-        on, whatever its field is called."""
-        username = str(self.config.get(auth_def.get("username_field", "username"), "") or "")
-        password = str(self.config.get(auth_def.get("password_field", "password"), "") or "")
+        uses, from the block as ``auth_block`` reads it. The password is
+        masked in this device's log lines from here on, whatever its field is
+        called."""
+        password = auth.password(self.config)
         if password:
             self.redact_in_log(password)
-        timeout = float(auth_def.get("timeout_seconds", _DEFAULT_TIMEOUT_S))
-        line_ending = auth_def.get("line_ending", "\r\n")
         return _Login(
-            username=username,
+            username=auth.username(self.config),
             password=password,
-            user_re=_compile(auth_def.get("username_prompt", "")),
-            pass_re=_compile(auth_def.get("password_prompt", "")),
-            success_re=_compile_optional(auth_def.get("success_pattern")),
-            failure_re=_compile_optional(auth_def.get("failure_pattern")),
-            timeout=_DEFAULT_TIMEOUT_S if timeout <= 0 else timeout,
-            line_ending=line_ending,
+            user_re=_compile(auth.username_prompt),
+            pass_re=_compile(auth.password_prompt),
+            success_re=_compile_optional(auth.success_pattern),
+            failure_re=_compile_optional(auth.failure_pattern),
+            timeout=auth.timeout,
+            line_ending=auth.line_ending,
         )
 
     async def _sign_in_stages(self, login: _Login) -> None:

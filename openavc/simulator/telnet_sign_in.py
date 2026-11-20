@@ -7,12 +7,17 @@ without hardware. The driver's half is ``openavc/drivers/sign_in.py``.
 
 The rules worth knowing before changing anything here:
 
+* **The device signs in when the driver does.** Both read the block through
+  ``drivers/auth_block.py``: its defaults, the timeout (0 or less is the
+  10-second default) and the plan, read here over the TCP stream the device
+  serves (``SIGN_IN_TRANSPORT``), which stands in for a serial or SSH line
+  as the driver's connection does under simulation.
 * **The device skips when the driver skips.** With ``skip_if_empty`` (on unless
   the block turns it off) and no username in the device's settings, the driver
   signs in to nothing. The device prompts anyway only while its
   ``sign_in_required`` error mode is on, which plays a unit with a password set.
-  A TCP device whose driver can skip, and that has both prompts, offers that
-  mode.
+  A device whose driver, on its own transport, listens for a prompt in place
+  of a blank sign-in (TCP only) offers that mode.
 * **Credentials are not checked**, with one exception: ``"invalid"`` as the
   username or the password is the designated bad credential. The device
   answers it with the ``failure_pattern`` when the block declares one,
@@ -20,12 +25,8 @@ The rules worth knowing before changing anything here:
   does.
 * **Prompts go out as text.** A prompt is a pattern the driver matches, so the
   device prints it with the common regex marks taken out (``_literal``).
-* **The block is read when a connection starts**, so a value that cannot be
-  read (a timeout that is not a number) fails that connection's sign-in and
-  never the device's construction.
-* The defaults restate the driver's own: type ``telnet_login``, the username in
-  the ``username`` setting, ``skip_if_empty`` on, a CRLF line ending, a
-  10-second timeout.
+* **The block is read when a connection starts**, and a value that cannot be
+  read takes its default, as it does for the driver.
 """
 
 from __future__ import annotations
@@ -33,8 +34,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
+from openavc.drivers.auth_block import BLANK, RUN, AuthModel, read_auth, sign_in_plan
+from openavc.drivers.transport_choice import declared_transport
 from openavc.transport.binary_helpers import encode_escape_sequences
 
 # The sign-in logs as the generated simulator it belongs to.
@@ -56,41 +59,28 @@ SIGN_IN_REQUIRED_DEFINITION = {
 #: The username or password the device refuses.
 BAD_CREDENTIAL = "invalid"
 
-
-def telnet_login(driver_def: dict) -> dict | None:
-    """The driver's ``auth:`` block when it signs in the Telnet way, else None."""
-    auth_def = driver_def.get("auth")
-    if not isinstance(auth_def, dict):
-        return None
-    if auth_def.get("type", "telnet_login") != "telnet_login":
-        return None
-    return auth_def
+#: What a simulated device signs a client in over: the TCP stream it serves,
+#: for a TCP driver and for a serial or SSH one it stands in for.
+SIGN_IN_TRANSPORT = "tcp"
 
 
-def skips_blank_credential(auth_def: dict) -> bool:
-    """True when the driver skips its sign-in for a blank username."""
-    return bool(auth_def.get("skip_if_empty", True))
-
-
-def driver_skips(auth_def: dict, config: dict) -> bool:
-    """True when the driver signs in to nothing: it skips for a blank
-    username, and the device's settings have none."""
-    username = str(config.get(auth_def.get("username_field", "username"), "") or "")
-    return skips_blank_credential(auth_def) and not username
+def sign_in_for(driver_def: dict, config: dict, insists: bool) -> AuthModel | None:
+    """The driver's ``auth:`` block, read, when the device asks this client to
+    sign in: the driver signs in, or it skips for a blank username and the
+    device ``insists`` (its ``sign_in_required`` mode is on); else None."""
+    auth = read_auth(driver_def.get("auth"))
+    plan = sign_in_plan(auth, SIGN_IN_TRANSPORT, config)
+    if plan == BLANK:
+        return auth if insists else None
+    return auth if plan == RUN else None
 
 
 def offers_sign_in_required(driver_def: dict) -> bool:
-    """True when the driver skips its sign-in for a blank credential on a TCP
-    device that prompts for both, the case the ``sign_in_required`` mode plays
-    out."""
-    auth_def = telnet_login(driver_def)
-    return (
-        auth_def is not None
-        and driver_def.get("transport", "tcp") == "tcp"
-        and bool(auth_def.get("username_prompt"))
-        and bool(auth_def.get("password_prompt"))
-        and skips_blank_credential(auth_def)
-    )
+    """True when the driver, over its own transport, skips its sign-in for a
+    blank username and listens for a prompt instead (TCP only): the case the
+    ``sign_in_required`` mode plays out."""
+    auth = read_auth(driver_def.get("auth"))
+    return sign_in_plan(auth, declared_transport(driver_def), {}) == BLANK
 
 
 def encode_line_ending(value: str | bytes) -> bytes:
@@ -121,20 +111,16 @@ Emit = Callable[[bytes], Awaitable[None]]
 
 
 class TelnetSignIn:
-    """One connection's sign-in, read from the ``auth:`` block as it starts."""
+    """One connection's sign-in, from the ``auth:`` block as read when it
+    starts."""
 
-    def __init__(self, auth_def: dict[str, Any]):
-        username_prompt = auth_def.get("username_prompt", "")
-        password_prompt = auth_def.get("password_prompt", "")
-        success_pattern = auth_def.get("success_pattern")
-        failure_pattern = auth_def.get("failure_pattern")
-        line_ending = auth_def.get("line_ending", "\r\n")
-        self.timeout = float(auth_def.get("timeout_seconds", 10))
-        self.username_prompt = _literal(username_prompt)
-        self.password_prompt = _literal(password_prompt)
-        self.success_text = _literal(success_pattern) if success_pattern else None
-        self.failure_text = _literal(failure_pattern) if failure_pattern else None
-        self.ending = encode_line_ending(line_ending)
+    def __init__(self, auth: AuthModel):
+        self.timeout = auth.timeout
+        self.username_prompt = _literal(auth.username_prompt)
+        self.password_prompt = _literal(auth.password_prompt)
+        self.success_text = _literal(auth.success_pattern) if auth.success_pattern else None
+        self.failure_text = _literal(auth.failure_pattern) if auth.failure_pattern else None
+        self.ending = encode_line_ending(auth.line_ending)
 
     async def run(
         self, reader: asyncio.StreamReader, emit: Emit, device: str, client_id: str,

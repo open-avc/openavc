@@ -123,9 +123,8 @@ from openavc.simulator.telnet_sign_in import (
     SIGN_IN_REQUIRED_DEFINITION,
     SIGN_IN_REQUIRED_MODE,
     TelnetSignIn,
-    driver_skips,
     offers_sign_in_required,
-    telnet_login,
+    sign_in_for,
 )
 from openavc.simulator.template_handler import ExplicitHandler, fill, state_writes
 
@@ -382,14 +381,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         (telnet_sign_in.py). The client is admitted at once when the driver
         signs in to nothing, unless the ``sign_in_required`` error mode is on.
         """
-        auth_def = telnet_login(self._driver_def)
-        if auth_def is None:
+        auth = sign_in_for(
+            self._driver_def, self.config, self.has_error_behavior(SIGN_IN_REQUIRED_MODE)
+        )
+        if auth is None:
             return True
-        if driver_skips(auth_def, self.config) and not self.has_error_behavior(
-            SIGN_IN_REQUIRED_MODE
-        ):
-            return True
-        sign_in = TelnetSignIn(auth_def)
+        sign_in = TelnetSignIn(auth)
         return await sign_in.run(
             reader, partial(self._emit_sign_in, writer, client_id), self.name, client_id
         )

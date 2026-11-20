@@ -239,10 +239,10 @@ async def test_a_pattern_that_does_not_compile_fails_before_anything_is_sent(fie
     assert wire.sent == []
 
 
-async def test_a_timeout_that_is_not_a_number_fails_before_the_patterns_are_read():
+async def test_a_timeout_that_is_not_a_number_is_the_default_and_a_bad_pattern_still_fails():
     driver = _driver({**_AUTH, "timeout_seconds": "soon", "username_prompt": "(unclosed"})
     driver.transport = _Wire(_Parser())
-    with pytest.raises(ValueError, match="could not convert string to float"):
+    with pytest.raises(ValueError, match="Invalid auth regex pattern"):
         await driver._perform_auth_handshake()
 
 

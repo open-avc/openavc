@@ -380,7 +380,7 @@ def test_the_send_shape_leaf_stays_pure() -> None:
         "bad = sorted(m for m in sys.modules if m.startswith('openavc') and m not in "
         "{'openavc', 'openavc.drivers', 'openavc.drivers.send_shape', 'openavc.drivers.spec', "
         "'openavc.drivers.driver_model', 'openavc.drivers.query_entry', "
-        "'openavc.drivers.framing_checks'}); "
+        "'openavc.drivers.framing_checks', 'openavc.drivers.auth_block'}); "
         "print(bad); sys.exit(1 if bad else 0)"
     ) % str(root)
     done = subprocess.run([sys.executable, "-I", "-S", "-c", code], capture_output=True, text=True)

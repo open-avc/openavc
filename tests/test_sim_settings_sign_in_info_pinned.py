@@ -12,7 +12,9 @@ import logging
 
 import pytest
 
+from openavc.drivers.auth_block import read_auth
 from openavc.simulator.tcp_simulator import TCPSimulator
+from openavc.simulator.telnet_sign_in import TelnetSignIn
 from openavc.simulator.ui_info import slider_step
 from openavc.simulator.yaml_auto import SIGN_IN_REQUIRED_MODE, YAMLAutoSimulator
 
@@ -190,6 +192,8 @@ async def _sign_in(sim, feed: bytes = b"", eof: bool = False, reader=None):
 
 @pytest.mark.parametrize("auth", [
     None, "telnet_login", {"type": "token"}, {"type": None, "username_prompt": "u"},
+    # A prompt missing: the driver signs in to nothing, so the device asks for nothing.
+    {**_AUTH, "username_prompt": None},
 ])
 async def test_no_telnet_login_admits_without_a_word(auth):
     ok, out = await _sign_in(_signer(auth, {"username": "u"}))
@@ -201,12 +205,6 @@ async def test_the_prompts_go_out_as_literals_and_no_success_ends_quietly():
     ok, out = await _sign_in(sim, b"admin\r\nsecret\r\n")
     assert (ok, out) == (True, b"login: Pass\\w+: ".replace(b"\\", b""))
     assert [e["direction"] for e in sim.get_protocol_log()] == ["out", "out"]
-
-
-async def test_a_prompt_written_as_none_goes_out_empty():
-    sim = _signer({**_AUTH, "username_prompt": None}, {"username": "admin"})
-    ok, out = await _sign_in(sim, b"admin\r\nsecret\r\n")
-    assert (ok, out) == (True, b"Passw+: ")
 
 
 async def test_a_silenced_client_hears_nothing_but_is_still_read():
@@ -229,10 +227,14 @@ async def test_a_blank_user_is_admitted_unless_the_device_insists():
     assert await _sign_in(sim, b"x\r\ny\r\n") == (True, b"login: Passw+: ")
 
 
-async def test_a_bad_timeout_is_read_only_when_the_sign_in_runs():
+async def test_a_timeout_that_does_not_read_is_the_default():
     assert await _sign_in(_signer({**_AUTH, "timeout_seconds": "soon"}, {})) == (True, b"")
-    with pytest.raises(ValueError):
-        await _sign_in(_signer({**_AUTH, "timeout_seconds": "soon"}, {"username": "u"}))
+    ok, out = await _sign_in(
+        _signer({**_AUTH, "timeout_seconds": "soon"}, {"username": "u"}), b"u\r\np\r\n",
+    )
+    assert (ok, out) == (True, b"login: Passw+: ")
+    for written in ("soon", None, 0, -2):
+        assert TelnetSignIn(read_auth({**_AUTH, "timeout_seconds": written})).timeout == 10.0
 
 
 async def test_a_custom_field_and_an_ending_without_newline():

@@ -125,6 +125,20 @@ def test_the_json_value_spec_stays_a_leaf():
     assert _openavc_modules_loaded(module, "-I", "-S") == {"openavc", "openavc.drivers", module}
 
 
+def test_the_sign_in_reading_and_the_devices_half_stay_leaves():
+    # The driver, the simulated device and the checker read an auth: block
+    # through auth_block, so it takes the contract's tables and nothing else;
+    # the device's half adds only the transport rule and the escape encoder.
+    assert _openavc_modules_loaded("openavc.drivers.auth_block", "-I", "-S") == {
+        "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.auth_block",
+    }
+    assert _openavc_modules_loaded("openavc.simulator.telnet_sign_in", "-I", "-S") == {
+        "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.auth_block",
+        "openavc.drivers.transport_choice", "openavc.simulator", "openavc.simulator.telnet_sign_in",
+        "openavc.transport", "openavc.transport.binary_helpers",
+    }
+
+
 def test_the_reread_queries_stay_within_the_protocol_closure():
     # The validator imports the then_query / read_back query lists; they read
     # the lines a driver sends through the driver model (pure, the checker's
@@ -136,6 +150,7 @@ def test_the_reread_queries_stay_within_the_protocol_closure():
         "openavc.drivers.driver_model",
         "openavc.drivers.query_entry",
         "openavc.drivers.framing_checks",
+        "openavc.drivers.auth_block",
         "openavc.simulator",
         "openavc.simulator.send_templates",
         "openavc.simulator.reread_queries",

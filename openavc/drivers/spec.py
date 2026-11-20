@@ -2518,7 +2518,7 @@ DEFS = {
             },
             'timeout_seconds': {
                 'type': 'number',
-                'doc': 'Per-stage handshake timeout. Default 10.',
+                'doc': 'Per-stage handshake timeout in seconds; must be more than 0. Default 10.',
             },
             'line_ending': {
                 'type': 'string',
