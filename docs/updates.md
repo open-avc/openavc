@@ -237,6 +237,8 @@ If your system is connected to OpenAVC Cloud, your integrator may manage updates
 
 The cloud sends an update only to a system that can install it by itself. A Docker container or a development checkout is skipped, and the portal says how it updates instead. In releases after OpenAVC 0.40.0, so is a copy started by hand rather than as its service, and a system whose product firmware carries its updates.
 
+A fleet update installs only a newer version. A system already on the version it names, or on a newer one, is skipped when the update is sent, so one updated by hand while the fleet update waited for its turn is left alone. From OpenAVC 0.41.0 the system refuses such an update itself and the portal shows its answer: "Already on vX; a fleet update installs only a newer version". The exception is a rollback the cloud marks as one. An update staged from the cloud stops showing in the Updates view once the system runs that version or a newer one.
+
 If OpenAVC Cloud needs a newer version of OpenAVC than your system runs, the Programmer IDE's Dashboard and Cloud Connection page say "Cloud features need OpenAVC vX or later. Update this system." The system stays connected and keeps every cloud feature it still supports; click the notice to open the Updates view. Releases before OpenAVC 0.41.0 record this only in the system log.
 
 Even with cloud management, you can always check for and install updates locally from the Programmer IDE.

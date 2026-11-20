@@ -524,6 +524,12 @@ MESSAGES: tuple[Message, ...] = (
               "The file's SHA-256.", required=False, default=None),
         Field("auto_restart", "boolean", True, "Whether to restart onto it at once.",
               default=True),
+        Field("rollback", "boolean", True,
+              "Whether the release may be the one this system runs or an older one. Without "
+              "it, a release that is not newer is refused: \"Already on vX; a fleet update "
+              "installs only a newer version\".",
+              required=False, default=False, since=FIRST_CONTRACT_RELEASE, ignorable=True,
+              why="An older agent installs any release it is sent, so a rollback still installs."),
         _USER_ID, _USER_NAME,
     ), priority=4, requires="fleet_update", answer="command_result"),
     Message("panel_software_update", "down", "session",

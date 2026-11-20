@@ -2318,6 +2318,14 @@
             "default": true,
             "x-since": "0.5.14"
           },
+          "rollback": {
+            "type": "boolean",
+            "description": "Whether the release may be the one this system runs or an older one. Without it, a release that is not newer is refused: \"Already on vX; a fleet update installs only a newer version\".",
+            "default": false,
+            "x-since": "0.41.0",
+            "x-ignorable": true,
+            "x-why": "An older agent installs any release it is sent, so a rollback still installs."
+          },
           "user_id": {
             "type": "string",
             "description": "The cloud user who asked, for this instance's own log.",
@@ -2352,10 +2360,11 @@
           "update_url": "https://github.com/open-avc/openavc/releases/download/v0.40.0/openavc-0.40.0.tar.gz",
           "checksum_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "auto_restart": true,
+          "rollback": true,
           "user_id": "5b1d0c7e-2a44-4f1e-8d0a-6c9e1b2a3f40",
           "user_name": "Pat Example"
         },
-        "sig": "0076d78e35be6a7c01ed65c01e60349361096348684332652286954bef7863ef"
+        "sig": "ca7e238b960eeaf16423be8b3968661f27bb59c9df46969f16a8e53f5c54fd74"
       }
     },
     "panel_software_update": {

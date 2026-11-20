@@ -421,6 +421,7 @@ async def test_command_handler_uses_cloud_url():
         "1.0.0",
         "https://github.com/open-avc/openavc/releases/download/v1.0.0/setup.exe",
         "abc123",
+        rollback=False,
     )
 
     # Verify result was sent back
@@ -579,6 +580,7 @@ async def test_end_to_end_cloud_update_message():
         "1.2.0",
         "https://github.com/open-avc/openavc/releases/download/v1.2.0/OpenAVC-Setup-1.2.0.exe",
         "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        rollback=False,
     )
 
     # Step 4: Verify result message has all fields the cloud expects

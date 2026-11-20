@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from openavc import restart
-from openavc.updater.checker import ReleaseInfo, UpdateChecker
+from openavc.updater.checker import (
+    ReleaseInfo,
+    UpdateChecker,
+    not_newer_refusal,
+    still_an_update,
+)
 from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
     DeploymentType,
@@ -577,6 +582,7 @@ class UpdateManager:
                 staged["target_version"],
                 staged["update_url"],
                 staged.get("checksum_sha256"),
+                rollback=bool(staged.get("rollback")),
             )
             # Clear the staged record only after a successful apply. A transient
             # failure (network blip during download) must keep it so the
@@ -654,32 +660,19 @@ class UpdateManager:
 
     async def apply_cloud_update(
         self, target_version: str, update_url: str,
-        checksum_sha256: str | None = None,
+        checksum_sha256: str | None = None, *, rollback: bool = False,
     ) -> dict[str, Any]:
         """Download and apply an update using a cloud-provided URL and checksum.
 
         Unlike apply_update() which discovers artifacts from GitHub Releases,
         this method uses the exact URL and checksum the cloud platform provides.
+        Refused first for any reason ``_cloud_update_refusal`` gives.
         """
-        if self._firmware_host:
-            return self._firmware_host.refusal()
-        if self.update_in_progress:
-            return {"success": False, "error": "Update already in progress"}
-
-        if not updates_itself(self._deployment_type):
-            return self_update_refusal(self._deployment_type, target_version)
-
-        # Validate the cloud-provided URL before fetching anything: require
-        # https so a plain-HTTP or downgraded URL can't steer the download to an
-        # attacker. The checksum is already fail-closed, so integrity is assured
-        # regardless of host; this is defense in depth on the transport.
+        refusal = self._cloud_update_refusal(target_version, update_url, rollback)
+        if refusal:
+            return refusal
         from urllib.parse import urlparse
         parsed = urlparse(update_url)
-        if parsed.scheme != "https":
-            return {
-                "success": False,
-                "error": f"Refusing non-HTTPS update URL (scheme: {parsed.scheme or 'none'})",
-            }
 
         self._update_in_progress = True
         self._set_state("system.update_error", "")
@@ -766,6 +759,28 @@ class UpdateManager:
         finally:
             self._update_in_progress = False
 
+    def _cloud_update_refusal(
+        self, target_version: str, update_url: str, rollback: bool,
+    ) -> dict[str, Any] | None:
+        """Why an update the cloud sent is not started, before anything is
+        fetched; None when it may go ahead. A target that is not newer is
+        refused unless the cloud marked it a rollback
+        (``checker.not_newer_refusal``). The URL must be https, so a plain-HTTP
+        or downgraded URL can't steer the download to an attacker: defense in
+        depth on the transport, since the checksum is already fail-closed.
+        """
+        if self._firmware_host:
+            return self._firmware_host.refusal()
+        if self.update_in_progress:
+            return {"success": False, "error": "Update already in progress"}
+        if not updates_itself(self._deployment_type):
+            return self_update_refusal(self._deployment_type, target_version)
+        from urllib.parse import urlparse
+        scheme = urlparse(update_url).scheme
+        if scheme != "https":
+            return {"success": False, "error": f"Refusing non-HTTPS update URL (scheme: {scheme or 'none'})"}
+        return not_newer_refusal(target_version, __version__, rollback)
+
     # --- Cloud-staged update (auto_restart=False) -----------------------
 
     def _staged_path(self) -> Path:
@@ -817,13 +832,14 @@ class UpdateManager:
 
     def stage_update(
         self, target_version: str, update_url: str,
-        checksum_sha256: str | None = None,
+        checksum_sha256: str | None = None, *, rollback: bool = False,
     ) -> None:
         """Persist a cloud-staged update so it can be applied manually later (A63).
 
         Called when the cloud sends ``software_update`` with
         ``auto_restart=False``. The next call to ``apply_update`` uses this
-        target instead of polling GitHub.
+        target instead of polling GitHub. A rollback keeps its mark, so the
+        record is read as one.
         """
         if self._firmware_host:
             raise PermissionError(self._firmware_host.guidance)
@@ -832,6 +848,7 @@ class UpdateManager:
             "target_version": target_version,
             "update_url": update_url,
             "checksum_sha256": checksum_sha256,
+            "rollback": rollback,
         }
         try:
             self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -844,7 +861,12 @@ class UpdateManager:
             log.exception("Failed to persist cloud-staged update")
 
     def get_staged_update(self) -> dict[str, Any] | None:
-        """Return the staged-update record, or None if no update is staged."""
+        """Return the staged-update record, or None if no update is staged.
+
+        A record that no longer moves this system (``checker.still_an_update``:
+        it was installed, or the system was updated past it another way) is
+        dropped here, so nothing offers or installs it again.
+        """
         if self._firmware_host:
             return None
         import json
@@ -861,6 +883,10 @@ class UpdateManager:
         target = data.get("target_version")
         url = data.get("update_url")
         if not target or not url:
+            return None
+        if not still_an_update(target, __version__, bool(data.get("rollback"))):
+            log.info("Dropping the cloud-staged update to v%s: this system runs v%s", target, __version__)
+            self.clear_staged_update()
             return None
         return data
 

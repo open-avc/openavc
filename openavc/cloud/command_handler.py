@@ -25,8 +25,10 @@ from openavc.cloud.protocol import (
 )
 from openavc.core.project_update import MigrationNotes
 from openavc.drivers.spec import is_file_command
+from openavc.updater.checker import not_newer_refusal
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
+from openavc.version import __version__
 
 if TYPE_CHECKING:
     from openavc.cloud.agent import CloudAgent
@@ -428,7 +430,8 @@ class CommandHandler:
 
         When the cloud provides an update_url, downloads directly from that URL
         and verifies against the provided checksum. Otherwise falls back to
-        checking GitHub Releases independently.
+        checking GitHub Releases independently. A target that is not newer is
+        refused, staged or not, unless the cloud marks it a rollback.
         """
         payload = read_payload(SOFTWARE_UPDATE, payload)
         from openavc.updater.host import get_firmware_host
@@ -438,8 +441,6 @@ class CommandHandler:
             return
         target_version = payload["target_version"]
         auto_restart = payload["auto_restart"]
-        update_url = payload["update_url"]
-        checksum_sha256 = payload["checksum_sha256"]
         log.info(
             f"Cloud software update: {actor} → version={target_version}"
         )
@@ -480,48 +481,15 @@ class CommandHandler:
                 )
                 return
 
-            if not auto_restart:
-                # A63 — persist the cloud-provided URL + checksum so a later
-                # manual apply uses this exact target instead of falling
-                # back to GitHub. Surface system.update_staged_version so the
-                # IDE can show "Update v0.6.0 staged by cloud".
-                if update_url:
-                    self._update_manager.stage_update(
-                        target_version, update_url, checksum_sha256,
-                    )
-                    result_text = (
-                        f"Update to {target_version} staged. Apply from the "
-                        "Programmer IDE when ready."
-                    )
-                else:
-                    result_text = (
-                        f"Update to {target_version} available. "
-                        "auto_restart=false, waiting for manual apply."
-                    )
-                await self._send_result(
-                    request_id, True,
-                    result=result_text,
-                )
+            refusal = not_newer_refusal(target_version, __version__, payload["rollback"])
+            if refusal:
+                await self._send_apply_result(request_id, refusal)
                 return
 
-            # Cloud provided a direct URL — use it instead of checking GitHub
-            if update_url:
-                apply_result = await self._update_manager.apply_cloud_update(
-                    target_version, update_url, checksum_sha256,
-                )
-                await self._send_apply_result(request_id, apply_result)
+            if not auto_restart:
+                await self._stage_software_update(request_id, payload)
             else:
-                # Fallback: no URL provided, check GitHub independently
-                check_result = await self._update_manager.check_for_updates()
-                if not check_result.get("update_available"):
-                    await self._send_result(
-                        request_id, True,
-                        result="System is already up to date.",
-                    )
-                    return
-
-                apply_result = await self._update_manager.apply_update()
-                await self._send_apply_result(request_id, apply_result)
+                await self._install_software_update(request_id, payload)
 
         except Exception as e:
             log.exception("Cloud software update failed")
@@ -529,6 +497,38 @@ class CommandHandler:
                 request_id, False,
                 error=f"Update failed: {e}",
             )
+
+    async def _stage_software_update(self, request_id: str, payload: dict[str, Any]) -> None:
+        """A63: persist the cloud-provided URL + checksum (and a rollback's
+        mark) so a later manual apply uses this exact target instead of
+        falling back to GitHub. Surfaces system.update_staged_version so the
+        IDE can show "Update v0.6.0 staged by cloud"."""
+        target_version, update_url = payload["target_version"], payload["update_url"]
+        if update_url:
+            self._update_manager.stage_update(
+                target_version, update_url, payload["checksum_sha256"], rollback=payload["rollback"],
+            )
+            result_text = f"Update to {target_version} staged. Apply from the Programmer IDE when ready."
+        else:
+            result_text = f"Update to {target_version} available. auto_restart=false, waiting for manual apply."
+        await self._send_result(request_id, True, result=result_text)
+
+    async def _install_software_update(self, request_id: str, payload: dict[str, Any]) -> None:
+        """From the cloud's URL when it sent one; otherwise the newest release
+        GitHub offers, checked for here."""
+        update_url = payload["update_url"]
+        if update_url:
+            apply_result = await self._update_manager.apply_cloud_update(
+                payload["target_version"], update_url, payload["checksum_sha256"],
+                rollback=payload["rollback"],
+            )
+        else:
+            check_result = await self._update_manager.check_for_updates()
+            if not check_result.get("update_available"):
+                await self._send_result(request_id, True, result="System is already up to date.")
+                return
+            apply_result = await self._update_manager.apply_update()
+        await self._send_apply_result(request_id, apply_result)
 
     async def _send_apply_result(self, request_id: str, apply_result: dict[str, Any]) -> None:
         """Answer with what the updater said: its message, or what to do instead of updating."""

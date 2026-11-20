@@ -17,7 +17,7 @@ import httpx
 
 from openavc.version import __version__
 from openavc.utils.outbound import internet_client, internet_failure
-from openavc.utils.version_rule import read_version
+from openavc.utils.version_rule import compare_versions, read_version
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +79,38 @@ def is_newer(candidate: str, current: str) -> bool:
         return False
     running = read_version(current)
     return running is None or offered > running
+
+
+#: The code a cloud update that is no update for this system is refused with.
+NOT_NEWER = "not_newer"
+
+
+def not_newer_refusal(target: str, running: str, rollback: bool = False) -> dict[str, Any] | None:
+    """What an update the cloud sent answers when ``target`` is no update
+    for a system running ``running``; None when it may go ahead.
+
+    A fleet update installs only a newer release (``is_newer``), unless the
+    cloud marks it a rollback. A target that is not a version is no update.
+    """
+    if rollback or is_newer(target, running):
+        return None
+    if read_version(target) is None:
+        said = "The update names no release version"
+    else:
+        said = f"Already on v{running}"
+    return {
+        "success": False,
+        "error": NOT_NEWER,
+        "message": f"{said}; a fleet update installs only a newer version",
+    }
+
+
+def still_an_update(target: str, running: str, rollback: bool = False) -> bool:
+    """Whether an update staged for ``target`` still moves a system running
+    ``running``: a newer release, or, for a rollback, any other release."""
+    if rollback:
+        return compare_versions(target, running) != 0
+    return is_newer(target, running)
 
 
 class UpdateChecker:

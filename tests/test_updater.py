@@ -934,15 +934,16 @@ class TestUpdateManager:
         mock_state = MagicMock()
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
         mgr.stage_update(
-            "0.6.0", "https://example.com/x.tar.gz", checksum_sha256="abc"
+            "9.9.9", "https://example.com/x.tar.gz", checksum_sha256="abc"
         )
         staged = mgr.get_staged_update()
         assert staged is not None
-        assert staged["target_version"] == "0.6.0"
+        assert staged["target_version"] == "9.9.9"
         assert staged["update_url"] == "https://example.com/x.tar.gz"
         assert staged["checksum_sha256"] == "abc"
+        assert staged["rollback"] is False
         mock_state.set.assert_any_call(
-            "system.update_staged_version", "0.6.0", source="system"
+            "system.update_staged_version", "9.9.9", source="system"
         )
 
     def test_get_staged_update_returns_none_when_absent(self, tmp_path):
@@ -957,7 +958,7 @@ class TestUpdateManager:
     def test_clear_staged_update_removes_file(self, tmp_path):
         mock_state = MagicMock()
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
-        mgr.stage_update("0.6.0", "https://example.com/x.tar.gz")
+        mgr.stage_update("9.9.9", "https://example.com/x.tar.gz")
         assert (tmp_path / "staged-update.json").exists()
         mgr.clear_staged_update()
         assert not (tmp_path / "staged-update.json").exists()
@@ -974,7 +975,7 @@ class TestUpdateManager:
 
         captured: dict = {}
 
-        async def fake_apply_cloud(target_version, update_url, checksum_sha256=None):
+        async def fake_apply_cloud(target_version, update_url, checksum_sha256=None, *, rollback=False):
             captured["target_version"] = target_version
             captured["update_url"] = update_url
             captured["checksum_sha256"] = checksum_sha256
