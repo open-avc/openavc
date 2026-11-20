@@ -76,7 +76,7 @@ from starlette.requests import Request
 
 from openavc import config, listen_sockets, restart, runtime_flags, start_retry, status_folder
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
-from openavc.api import simulator_proxy
+from openavc.api import driver_catalog, simulator_proxy
 from openavc.api.host_policy import (
     EndpointPolicy, HostPolicyMiddleware, PolicyMount,
     configure_policy, endpoint_policy, validate_policies,
@@ -126,8 +126,8 @@ ensure_starter_projects()
 # Create engine
 engine = Engine(config.PROJECT_PATH)
 
-# Create discovery engine
-discovery_engine = DiscoveryEngine()
+# Create discovery engine, reading the server's one copy of the driver index
+discovery_engine = DiscoveryEngine(community_index=driver_catalog.index_cache())
 
 # One device audit at a time; it and a Discovery scan refuse each other.
 audit_manager = AuditManager(engine.devices, discovery_engine)

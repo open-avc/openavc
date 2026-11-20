@@ -21,7 +21,8 @@ is. What it found is ranked by how the query scores each one
 (``_score_driver_match``: an exact id or manufacturer first, then the id,
 manufacturer, name, compatible models, tags and description, each with its
 own weight; several words add each word's score to the whole query's). Each entry with a file is
-answered with its ``download_url``, built into the answer and never written
+answered with its ``download_url`` (``api/driver_catalog.catalog_file_url``,
+the address every catalog install is built from), built into the answer and never written
 into the shared copy. Installing goes through the REST install route, so an
 AI install does everything an IDE install does.
 
@@ -37,8 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.api.driver_catalog import devices_cache, index_cache
-from openavc.discovery.community_index import COMMUNITY_REPO_URL
+from openavc.api.driver_catalog import catalog_file_url, devices_cache, index_cache
 from openavc.utils.search_words import finds_every_word, search_words
 
 #: The fields a search filters on, each compared whole, in any case.
@@ -69,8 +69,9 @@ def _with_download_url(drv: dict) -> dict:
     file. The entry itself is the shared copy Browse Drivers lists, so it is
     never written."""
     answer = dict(drv)
-    if isinstance(drv.get("file"), str):
-        answer["download_url"] = f"{COMMUNITY_REPO_URL}/{drv['file']}"
+    url = catalog_file_url(drv)
+    if url is not None:
+        answer["download_url"] = url
     return answer
 
 

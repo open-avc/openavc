@@ -9,11 +9,17 @@ the check against the hashes the catalog publishes for that file's own path,
 before anything is written. The hashes are looked up here from the community
 index, never taken from the request, and a disagreement fetches the index once
 more past the cached copy before refusing (``utils/community_integrity.py``
-``CatalogCheck``). Browse Community, every install's check and the AI's
-catalog tools read the same cached copy of the index (``index_cache``), and
-the AI's model lookup reads this server's one copy of ``devices.json``
-(``devices_cache``); a device page's missing-driver list and Discovery keep
-caches of their own.
+``CatalogCheck``). This server keeps one copy of the index (``index_cache``),
+which every reader asks: Browse Community, every install's check, the AI's
+catalog tools, a device page's missing-driver list and its Install Missing,
+and Discovery (``main.py`` hands it to the scan's engine, whose copy the
+Device Audit and the problem report read). The AI's model lookup reads this
+server's one copy of ``devices.json`` (``devices_cache``).
+
+Which entry an id reads is the first the index lists for it
+(``entries_by_id``), and the address a listed driver is installed from is
+``catalog_file_url``: Install & Add, Install Missing and the missing-driver
+list ask ``catalog_install`` for it rather than take one from the caller.
 
 Each of the three files an install may bring answers a failure in its own
 words (the main file, a YAML driver's declared companion, a Python driver's
@@ -25,7 +31,7 @@ them in place, or leaves the installed driver as it was.
 """
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any, NamedTuple
 from urllib.parse import urlparse
@@ -48,16 +54,17 @@ from openavc.utils.outbound import internet_client, internet_failure
 # routes' to a reader.
 log = get_logger("openavc.api.routes.drivers")
 
-# The community index Browse Community, the installs and the AI read
-# (``index_cache``), and the device catalog the AI reads (``devices_cache``).
+# The community index every reader asks (``index_cache``), and the device
+# catalog the AI reads (``devices_cache``).
 _index_cache: Any = None
 _devices_cache: Any = None
 
 
 def index_cache() -> Any:
-    """The cached community index, made on first use: Browse Community lists
-    it, every install's hash lookup reads it, and so do the AI's catalog
-    search and a driver's catalog entry."""
+    """This server's one cached copy of the community index, made on first
+    use: Browse Community lists it, every install's hash lookup reads it, and
+    so do the AI's catalog tools, a device page's missing drivers and the
+    Discovery scan."""
     global _index_cache
     if _index_cache is None:
         from openavc.discovery.community_index import CommunityIndexCache
@@ -75,6 +82,46 @@ def devices_cache() -> Any:
 
         _devices_cache = CommunityDevicesCache()
     return _devices_cache
+
+
+def entries_by_id(drivers: list[Any]) -> dict[str, dict[str, Any]]:
+    """Each driver id's entry in the index: the first one it lists for the id.
+    An element that is not an object, or names no id, is left out."""
+    entries: dict[str, dict[str, Any]] = {}
+    for entry in drivers:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry["id"]:
+            entries.setdefault(entry["id"], entry)
+    return entries
+
+
+def catalog_file_url(entry: Mapping[str, Any] | None) -> str | None:
+    """The address an index entry's driver file is installed from, on the
+    catalog's published branch; None for an entry that names no file."""
+    from openavc.discovery.community_index import COMMUNITY_REPO_URL
+
+    file = entry.get("file") if entry else None
+    if not isinstance(file, str) or not file:
+        return None
+    return f"{COMMUNITY_REPO_URL}/{file}"
+
+
+async def catalog_install(driver_id: str) -> Any:
+    """The install this server's copy of the index gives for ``driver_id``:
+    its file's address and the floor the index declares for it, as a
+    ``CommunityDriverInstallRequest``; None when the index lists no file for
+    the id (or could not be read)."""
+    from openavc.api.models import CommunityDriverInstallRequest
+
+    entry = entries_by_id(await index_cache().get_drivers()).get(driver_id)
+    file_url = catalog_file_url(entry)
+    if entry is None or file_url is None:
+        return None
+    floor = entry.get("min_platform_version")
+    return CommunityDriverInstallRequest(
+        driver_id=driver_id,
+        file_url=file_url,
+        min_platform_version=floor if isinstance(floor, str) and floor else None,
+    )
 
 
 def _drivers_owner_repo() -> str:
@@ -150,12 +197,9 @@ async def _catalog_hashes(driver_id: str, force: bool = False):
 
     files = None
     try:
-        for entry in await index_cache().get_drivers(force=force):
-            if entry.get("id") == driver_id:
-                candidate = entry.get("files")
-                if isinstance(candidate, dict):
-                    files = candidate
-                break
+        entry = entries_by_id(await index_cache().get_drivers(force=force)).get(driver_id)
+        if entry is not None and isinstance(entry.get("files"), dict):
+            files = entry["files"]
     except Exception:
         # Catalog unreachable. The artifact download itself would normally fail
         # too, so this is rare; treat it as "no hashes published" rather than

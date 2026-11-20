@@ -213,10 +213,12 @@ export async function discoveryExport(): Promise<string> {
   return res.text();
 }
 
+/** Add a scanned device with the driver its card chose, installing the driver
+ *  first when it is not installed. The server installs the copy its own
+ *  driver library lists, and refuses a driver it has no copy of. */
 export async function discoveryInstallAndMatch(options: {
   ip: string;
   driver_id: string;
-  file_url: string;
 }): Promise<{
   status: string;
   device: DiscoveredDevice | null;

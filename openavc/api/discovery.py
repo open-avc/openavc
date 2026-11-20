@@ -240,9 +240,10 @@ class AddDeviceRequest(BaseModel):
 
 
 class InstallAndMatchRequest(BaseModel):
+    # No file_url: the server installs the copy its own index lists. One an
+    # older Programmer still sends is dropped (the default extra='ignore').
     ip: str
     driver_id: str
-    file_url: str
 
 
 # --- Endpoints ---
@@ -512,6 +513,19 @@ class _MissingSettings(HTTPException):
         self.keys = [key for key, _label in missing]
 
 
+def _refuse_a_driver_not_installed(driver_id: str) -> None:
+    """A scanned device is added only with a driver this server runs. One that
+    is not installed, or whose file did not load, is refused in the words a
+    device page gives for it (``core/installed_equipment.py``), with nothing
+    saved: the project would otherwise gain a device that never connects."""
+    if get_driver_class(driver_id) is not None:
+        return
+    from openavc.core.installed_equipment import missing_driver_reason
+
+    reason = missing_driver_reason(driver_id).rstrip(".")
+    raise HTTPException(status_code=422, detail=f"{reason}. The device was not added.")
+
+
 @router.post("/add-device")
 async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     """Add a discovered device to the project.
@@ -525,6 +539,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="No project loaded")
 
     discovery = _get_engine()
+    _refuse_a_driver_not_installed(req.driver_id)
 
     # Look up the discovered device for extra info
     discovered = discovery.results.get(req.ip)
@@ -644,20 +659,22 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
 
 @router.post("/install-and-match")
 async def install_and_match(req: InstallAndMatchRequest) -> dict[str, Any]:
-    """Install a community driver and add the device to the project.
+    """Add a discovered device with the driver its card chose, installing the
+    driver first when it is not installed.
 
-    One-click flow: install driver → add device to project → return result.
+    Which copy, and from where, is this server's to say: an installed driver
+    is added as it is, with nothing downloaded; one that is not is installed
+    from the address, and held to the floor, that this server's copy of the
+    community index lists for it (``driver_catalog.catalog_install``), the
+    copy the scan matched against; one the index does not list either is
+    refused, with nothing installed and no device added.
     """
-    from openavc.api.rest import install_community_driver, CommunityDriverInstallRequest
-
     engine = _get_engine()
 
-    # Step 1: Install the driver (also refreshes discovery matches)
-    install_req = CommunityDriverInstallRequest(
-        driver_id=req.driver_id,
-        file_url=req.file_url,
-    )
-    await install_community_driver(install_req)
+    # Step 1: Install the driver when it is not here (the install also
+    # refreshes discovery's matches).
+    if get_driver_class(req.driver_id) is None:
+        await _install_from_the_index(req.driver_id)
 
     # Step 2: Add device to project (reuse add_device logic)
     add_req = AddDeviceRequest(ip=req.ip, driver_id=req.driver_id)
@@ -690,6 +707,24 @@ async def install_and_match(req: InstallAndMatchRequest) -> dict[str, Any]:
         "name": result.get("name"),
         "device": device.to_dict() if device else None,
     }
+
+
+async def _install_from_the_index(driver_id: str) -> None:
+    """Install ``driver_id`` as this server's copy of the community index
+    lists it; refused (404) when the index lists no file for it."""
+    from openavc.api.driver_catalog import catalog_install
+    from openavc.api.rest import install_community_driver
+
+    install = await catalog_install(driver_id)
+    if install is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Driver '{driver_id}' is not installed and is not in the community "
+                "driver library. The device was not added."
+            ),
+        )
+    await install_community_driver(install)
 
 
 @router.get("/export", response_class=PlainTextResponse)

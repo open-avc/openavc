@@ -348,17 +348,23 @@ export function DiscoveryPanel() {
       if (r.port_labels) setPortLabels(r.port_labels, r.port_drivers);
       if (r.warnings) setWarnings(r.warnings);
     }).catch(console.error);
+    // The scan read the server's copy of the driver library as it started,
+    // so the cards' driver names and version floors are read from it again.
+    api.fetchCommunityDrivers().then((drivers) => {
+      if (!dropped) setCommunityDrivers(drivers);
+    }).catch(console.error);
     return () => { dropped = true; };
   }, [status, setDevices, setPortLabels, setWarnings]);
 
   const driverNameLookup = useMemo(() => {
-    const map = new Map<string, { name: string; manufacturer: string; source: "installed" | "community"; community?: CommunityDriver }>();
+    // A driver's name: the installed copy's, else the library's.
+    const map = new Map<string, DriverEntry>();
     for (const d of installedDrivers) {
-      map.set(d.id, { name: d.name, manufacturer: d.manufacturer, source: "installed" });
+      map.set(d.id, { name: d.name, manufacturer: d.manufacturer });
     }
     for (const c of communityDrivers) {
       if (!map.has(c.id)) {
-        map.set(c.id, { name: c.name, manufacturer: c.manufacturer, source: "community", community: c });
+        map.set(c.id, { name: c.name, manufacturer: c.manufacturer, community: c });
       }
     }
     return map;
@@ -965,7 +971,9 @@ export function DiscoveryPanel() {
 
 // --- Device Card ---
 
-type DriverEntry = { name: string; manufacturer: string; source: "installed" | "community"; community?: CommunityDriver };
+/** A driver as a card names it; `community` is its library entry when it
+ *  is not installed and the library lists it. */
+type DriverEntry = { name: string; manufacturer: string; community?: CommunityDriver };
 
 function DeviceCard({
   device,
@@ -1369,7 +1377,10 @@ function DriverAddRow({
 }) {
   const entry = driverNameLookup.get(driverId);
   const driverName = entry?.name ?? driverId;
-  const isCommunity = entry?.source === "community";
+  // Whether the driver is installed is the server's driver list, which follows
+  // every driver change. One that is not is offered Install & Add, and the
+  // server installs the copy its own library lists, or says why it cannot.
+  const isCommunity = !installedDrivers.some((d) => d.id === driverId);
   // A community driver this OpenAVC is too old for: marked and not offered,
   // as Browse Drivers does, rather than refused after the click.
   const runningVersion = useConnectionStore((s) => String(s.liveState["system.version"] ?? ""));
@@ -1414,16 +1425,9 @@ function DriverAddRow({
       // Install + add — no setup preview for community drivers (driver isn't installed yet)
       setBusy(true);
       try {
-        const community = entry?.community;
-        if (!community) {
-          setError("Community driver not found in catalog");
-          return;
-        }
-        const fileUrl = `https://raw.githubusercontent.com/open-avc/openavc-drivers/main/${community.file}`;
         const result = await api.discoveryInstallAndMatch({
           ip: device.ip,
           driver_id: driverId,
-          file_url: fileUrl,
         });
         if (result.device) onDeviceUpdated(result.device);
         if (result.status === "ok") {

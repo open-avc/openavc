@@ -265,7 +265,10 @@ class ScanBlocked(RuntimeError):
 class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, HostSweep):
     """Orchestrates device discovery across all scanning methods."""
 
-    def __init__(self) -> None:
+    def __init__(self, community_index: CommunityIndexCache | None = None) -> None:
+        """``community_index`` is the copy of the community index the scan
+        reads: the server's one copy (``main.py`` hands it
+        ``api/driver_catalog.index_cache()``), else one of its own."""
         self.oui_db = OUIDatabase()
         self.discovery_hints: list[DiscoveryHint] = []
         self.signal_index: SignalIndex = SignalIndex()
@@ -279,7 +282,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         # ({driver_id: async probe}). Populated by
         # load_discovery_companions_from_dirs().
         self._discovery_companions: dict[str, CompanionProbe] = {}
-        self.community_index = CommunityIndexCache()
+        self.community_index = community_index if community_index is not None else CommunityIndexCache()
         self.results: dict[str, DiscoveredDevice] = {}
         # Passive-source flood guard (see _get_or_create_passive).
         self._passive_sources_created = 0

@@ -115,9 +115,12 @@ async def list_missing_drivers() -> dict[str, Any]:
     ``load_error`` is present only when the driver's file is installed but
     did not load, and says why (``drivers/refused_files``).
 
+    The catalog read is this server's one copy (``api/driver_catalog.py``
+    ``index_cache``), the one Browse Community lists.
+
     Declared before /devices/{device_id} so the literal path wins routing.
     """
-    from openavc.discovery.community_index import CommunityIndexCache
+    from openavc.api.driver_catalog import entries_by_id, index_cache
 
     engine = _get_engine()
     missing_ids = engine.devices.get_missing_drivers()
@@ -129,12 +132,7 @@ async def list_missing_drivers() -> dict[str, Any]:
         if dev.get("orphaned") and dev.get("driver") in devices_per_driver:
             devices_per_driver[dev["driver"]].append(dev["id"])
 
-    if not hasattr(list_missing_drivers, "_cache"):
-        list_missing_drivers._cache = CommunityIndexCache()
-    catalog = await list_missing_drivers._cache.get_drivers()
-    catalog_by_id: dict[str, dict[str, Any]] = {
-        entry.get("id", ""): entry for entry in catalog if entry.get("id")
-    }
+    catalog_by_id = entries_by_id(await index_cache().get_drivers())
 
     result: list[dict[str, Any]] = []
     for driver_id in missing_ids:
@@ -152,16 +150,17 @@ async def list_missing_drivers() -> dict[str, Any]:
 def _community_match(match: dict[str, Any] | None) -> dict[str, Any] | None:
     """A missing driver's catalog entry as the missing-drivers answer gives it,
     with the URL to install it from; None when the catalog has no file for it."""
-    from openavc.discovery.community_index import COMMUNITY_REPO_URL
+    from openavc.api.driver_catalog import catalog_file_url
 
-    if not match or not match.get("file"):
+    file_url = catalog_file_url(match)
+    if match is None or file_url is None:
         return None
     return {
         "id": match["id"],
         "name": match.get("name", match["id"]),
         "manufacturer": match.get("manufacturer", ""),
         "category": match.get("category", ""),
-        "file_url": f"{COMMUNITY_REPO_URL}/{match['file']}",
+        "file_url": file_url,
         "min_platform_version": match.get("min_platform_version"),
     }
 
@@ -211,22 +210,16 @@ async def get_ssh_key() -> dict[str, Any]:
 async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[str, Any]:
     """Bulk-install community drivers requested by IDs, then activate orphans.
 
-    Each ID is looked up in the community catalog. Failures don't abort the
-    batch; per-driver outcomes are returned so the UI can show which
-    succeeded vs. failed.
+    Each ID is looked up in this server's copy of the community catalog
+    (``driver_catalog.catalog_install``: the address and floor it lists).
+    Failures don't abort the batch; per-driver outcomes are returned so the UI
+    can show which succeeded vs. failed.
     """
-    from openavc.api.models import CommunityDriverInstallRequest
+    from openavc.api.driver_catalog import catalog_install
     from openavc.api.routes.drivers import install_community_driver
-    from openavc.discovery.community_index import COMMUNITY_REPO_URL, CommunityIndexCache
 
     if not body.driver_ids:
         return {"installed": [], "failed": [], "activated_devices": []}
-
-    cache = CommunityIndexCache()
-    catalog = await cache.get_drivers()
-    catalog_by_id: dict[str, dict[str, Any]] = {
-        entry.get("id", ""): entry for entry in catalog if entry.get("id")
-    }
 
     installed: list[str] = []
     failed: list[dict[str, Any]] = []
@@ -238,16 +231,12 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
                 activated.append(device_id)
 
     for driver_id in body.driver_ids:
-        match = catalog_by_id.get(driver_id)
-        if not match or not match.get("file"):
+        install = await catalog_install(driver_id)
+        if install is None:
             failed.append({"driver_id": driver_id, "error": "Not in community catalog"})
             continue
         try:
-            result = await install_community_driver(CommunityDriverInstallRequest(
-                driver_id=driver_id,
-                file_url=f"{COMMUNITY_REPO_URL}/{match['file']}",
-                min_platform_version=match.get("min_platform_version"),
-            ))
+            result = await install_community_driver(install)
             installed.append(driver_id)
             # What THIS install unblocked. Each call retries the orphans its
             # own driver was holding up, so by the time the sweep below runs

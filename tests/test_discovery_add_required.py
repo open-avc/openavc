@@ -102,7 +102,6 @@ async def test_install_and_add_names_the_settings_it_still_needs(engine, vault_d
     monkeypatch.setattr(rest, "install_community_driver", _installed)
     result = await install_and_match(InstallAndMatchRequest(
         ip="192.0.2.60", driver_id="acme_vault_test",
-        file_url="https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/acme_vault_test.py",
     ))
     assert result["status"] == "installed_not_added"
     assert result["missing"] == ["api_key"]

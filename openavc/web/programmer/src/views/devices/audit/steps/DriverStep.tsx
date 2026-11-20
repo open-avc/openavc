@@ -4,6 +4,7 @@ import * as audit from "../../../../api/auditClient";
 import * as driversApi from "../../../../api/driverClient";
 import { parseApiError } from "../../../../api/errors";
 import type { CommunityDriver, DriverInfo, InstalledDriver } from "../../../../api/types";
+import { DRIVER_CATALOG_BASE_URL } from "../../../../components/shared/catalogUpdates";
 import { useAuditStore } from "../../../../store/auditStore";
 import { useConnectionStore } from "../../../../store/connectionStore";
 import { useDriverBuilderStore } from "../../../../store/driverBuilderStore";
@@ -32,7 +33,6 @@ import {
   spinStyle,
 } from "../auditStyles";
 
-const CATALOG_BASE = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/";
 const NOT_LISTED = "__not_listed__";
 
 /** Step 3: the manufacturer, the model, and the driver to test. */
@@ -159,7 +159,7 @@ export function DriverStep() {
     setError("");
     setBusy("install");
     try {
-      const url = `${CATALOG_BASE}${option.file}`;
+      const url = `${DRIVER_CATALOG_BASE_URL}${option.file}`;
       // Through the store, so Drivers > Installed and Add Device see it too.
       const drivers = useDriverBuilderStore.getState();
       if (option.installed) {

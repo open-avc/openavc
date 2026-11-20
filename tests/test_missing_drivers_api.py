@@ -111,7 +111,7 @@ async def running_app():
     ws.set_engine(engine)
 
     # Patch the community-index fetch to skip the real GitHub call. Both
-    # endpoints construct their own CommunityIndexCache, so we patch the
+    # endpoints read the server's one CommunityIndexCache, so we patch the
     # cache class's get_drivers method.
     with patch(
         "openavc.discovery.community_index.CommunityIndexCache.get_drivers",

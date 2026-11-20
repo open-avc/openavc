@@ -2,8 +2,10 @@
 
 Each cache keeps its copy for ten minutes, tries a failed fetch once more,
 and answers the copy it has when that fails too. The server's one copy of
-each, the one Browse Drivers, installs and the AI's catalog tools read, is
-made in ``api/driver_catalog.py``.
+each is made in ``api/driver_catalog.py``: Browse Drivers, installs, the AI's
+catalog tools and a device page's missing drivers read it, and ``main.py``
+hands it to the Discovery engine, so a scan, a device audit and a problem
+report read it too.
 
 The index cache also keeps what it last fetched (``identity``): when, from
 where, the SHA-256 of the bytes, and how many drivers they held, or why the

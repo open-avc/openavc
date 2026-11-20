@@ -417,12 +417,19 @@ async def test_a_python_driver_above_this_platform_is_refused_through_install_an
     from openavc.api import discovery
     from openavc.api.discovery import InstallAndMatchRequest, install_and_match
 
+    class _Index:
+        # The server's copy of the index lists the file and no floor, so the
+        # file's own floor is the one that refuses it.
+        async def get_drivers(self, force=False):
+            return [{"id": DRIVER_ID, "file": "utility/acme_widget.py"}]
+
+    monkeypatch.setattr(driver_catalog, "_index_cache", _Index())
     monkeypatch.setattr(discovery, "_engine", MagicMock())
     lib.catalog.pages[CATALOG + "acme_widget.py"] = _python(
         "new", min_platform_version="999.0.0"
     )
     refusal = await _refused(install_and_match(InstallAndMatchRequest(
-        ip="192.0.2.60", driver_id=DRIVER_ID, file_url=CATALOG + "acme_widget.py",
+        ip="192.0.2.60", driver_id=DRIVER_ID,
     )))
     assert refusal.status_code == 422
     assert refusal.detail.startswith("This driver requires OpenAVC 999.0.0 or later.")
