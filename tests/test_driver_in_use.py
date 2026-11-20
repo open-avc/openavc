@@ -78,7 +78,6 @@ def library(tmp_path: Path, monkeypatch) -> SimpleNamespace:
         devices=SimpleNamespace(get_devices_using_driver=lambda driver_id: []),
     )
     monkeypatch.setattr(driver_change, "_running_engine", lambda: engine)
-    monkeypatch.setattr(CODE_VIEW_ROUTES, "_get_engine", lambda: engine)
     yield SimpleNamespace(repo=repo, engine=engine)
     for name in [n for n in sys.modules if n.startswith("openavc_driver_acme_")]:
         sys.modules.pop(name, None)

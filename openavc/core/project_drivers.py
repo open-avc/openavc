@@ -21,8 +21,9 @@ bundle unpacked, which proves nobody has edited it since.
 answer: an import's and an open's warnings say why a driver was left out. The
 door that installs them holds their ids (``driver_change.holding``) from its
 first step to its announcement, ``declared_ids`` naming them before anything
-is read by running it; the routes in ``api/routes/project.py`` do, around the
-synchronous steps in ``core/project_library.py``. The starter refresh holds
+is read by running it, and follows the ones installed with
+``driver_change.changed``; the routes in ``api/routes/project.py`` do, around
+the synchronous steps in ``core/project_library.py``. The starter refresh holds
 nothing: it runs at startup, before any door can change a driver.
 """
 

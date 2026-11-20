@@ -31,7 +31,7 @@ from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
 from openavc.drivers.child_ids import child_display_name
-from openavc.drivers.driver_change import holding
+from openavc.drivers.driver_change import announce, changed, holding
 from openavc.ui.matrix_inference import propose_matrices
 from openavc.ui.matrix_model import resolve_matrix_config
 from openavc.utils.log_buffer import get_log_buffer
@@ -762,7 +762,10 @@ async def import_library_project(request: Request) -> dict[str, Any]:
 
     A .zip's drivers come in through the driver-change module, the ids they
     declare held (``driver_change.holding``) from the install to the
-    announcement, as at every other door that brings a driver in."""
+    announcement, and what follows any driver change follows the ones it
+    installed (``driver_change.changed``: the simulation, the running
+    project's devices waiting for them, Discovery), as at every other door
+    that brings a driver in."""
     from openavc.core.project_library import bundled_driver_ids
 
     form = await request.form()
@@ -780,8 +783,7 @@ async def import_library_project(request: Request) -> dict[str, Any]:
     async with holding(*bundled_driver_ids(content)):
         result = _import_into_library(content, filename, override_id)
         if result.get("installed_drivers"):
-            from openavc.api.routes.drivers import announce_drivers_changed
-            await announce_drivers_changed()
+            await changed(*result["installed_drivers"])
 
     return {
         "status": "imported",
@@ -882,6 +884,8 @@ async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
             f"Saved project '{data.library_id}' is not a valid project file",
             e,
         )
+    finally:
+        await _follow_bundled_drivers(opened)
 
     engine.keep_update_notes(opened.update_notes, replace=True)
     await engine.broadcast_ws({
@@ -890,10 +894,25 @@ async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
         "source": "library",
     })
     await engine.reload_project()
-    # A saved project installs the drivers it carries as it opens.
-    from openavc.api.routes.drivers import announce_drivers_changed
-    await announce_drivers_changed()
+    # Told again once the opened project runs, so the devices the driver
+    # lists name on each driver are the opened project's.
+    await announce()
     return engine
+
+
+async def _follow_bundled_drivers(opened: Any) -> None:
+    """What follows a driver change, for the drivers an open installed
+    (``driver_change.changed``), at once, whatever came of the rest of the
+    open: they are this server's from the moment they are in.
+
+    Before the project reload, which builds the opened project's devices
+    from the drivers there now, so none of them is built twice, and a
+    running simulation reads the new drivers before those devices first
+    come up. The project the open replaces is still running, so a device of
+    its waiting for one of them comes up until the reload replaces it."""
+    installed = opened.installs.installed_drivers
+    if installed:
+        await changed(*installed)
 
 
 @router.post("/project/create-blank")

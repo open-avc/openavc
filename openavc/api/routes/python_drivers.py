@@ -11,6 +11,13 @@ installed with a hyphen or capitals in its id meets; New Driver holds the id
 it gives to the narrower id pattern (``driver_id``), and a save holds a new
 id it writes into DRIVER_INFO to it too.
 
+**What follows a change.** The create, the delete and the reload end with
+``driver_change.changed`` (the simulation, the devices on the driver,
+Discovery, the announcement), as every other door that changes a driver does.
+A plain save writes the file and registers nothing, so the running driver is
+the one it was and nothing follows it; Save & Reload is the save and then the
+reload.
+
 **A Python driver is a file set, not a file.** The main ``<id>.py`` travels
 with its conventional siblings — ``<id>_discovery.py`` (discovery probe) and
 ``<id>_sim.py`` (simulator). Install fetches the trio as one unit, so export
@@ -36,11 +43,10 @@ from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerR
 from fastapi import APIRouter, Depends, HTTPException
 
 from openavc.core.host_policy import HostCategory
-from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
-from openavc.drivers.driver_change import changed, file_revision, holding, revision
+from openavc.drivers.driver_change import announce, changed, file_revision, holding, revision
 from openavc.drivers.driver_id import id_refusal
 from openavc.drivers.driver_in_use import project_devices_on
 from openavc.drivers.driver_file_name import is_driver_file_stem, keeps_installed_id
@@ -58,13 +64,6 @@ from openavc.drivers.registry import register_driver, require_mutable_driver
 log = get_logger(__name__)
 
 router = APIRouter(route_class=ProgrammerRoute)
-
-
-async def _announce(driver_id: str) -> None:
-    # Imported here: drivers.py imports this module.
-    from openavc.api.routes.drivers import announce_drivers_changed
-
-    await announce_drivers_changed(driver_id)
 
 
 def remove_python_companions(main_path: Path) -> list[str]:
@@ -342,10 +341,13 @@ async def _create_python_driver(body: PythonDriverCreateRequest) -> dict:
 
     driver_class = load_python_driver_file(filepath)
     if driver_class:
-        _claim_created(driver_class.DRIVER_INFO["id"], filepath)
+        registered = driver_class.DRIVER_INFO["id"]
+        _claim_created(registered, filepath)
         register_driver(driver_class)
-
-    await _announce(body.id)
+        await changed(registered)
+    else:
+        # A file that does not load serves nothing yet: only the lists change.
+        await announce(body.id)
     return {"status": "created", "driver_id": body.id}
 
 
@@ -449,20 +451,14 @@ async def _reload_python_driver(driver_id: str) -> dict:
     if result["status"] == "error":
         return result
 
-    # Reconnect devices using this driver
-    engine = _get_engine()
+    # What follows every driver change: the simulation reads the file again,
+    # the devices on it are built again (on the id it declared too, when the
+    # reload renamed it, so they are left waiting rather than running the old
+    # class), Discovery matches against it, and every Programmer is told.
     new_driver_id = result["driver_id"]
     old_driver_id = result.get("old_driver_id")
+    renamed = [old_driver_id] if old_driver_id and old_driver_id != new_driver_id else []
+    outcome = await changed(new_driver_id, *renamed)
 
-    reconnected: list[str] = []
-
-    # Reconnect devices using the new driver ID
-    reconnected.extend(await engine.devices.reload_driver(new_driver_id))
-
-    # If the driver ID changed, also reconnect devices using the old ID
-    if old_driver_id and old_driver_id != new_driver_id:
-        reconnected.extend(await engine.devices.reload_driver(old_driver_id))
-
-    result["devices_reconnected"] = reconnected
-    await _announce(new_driver_id)
+    result["devices_reconnected"] = outcome.reconnected
     return result

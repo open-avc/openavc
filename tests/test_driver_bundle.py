@@ -86,16 +86,10 @@ def stub_engine_wiring(monkeypatch):
     fake_engine.devices.status_of = lambda device_id: "running"
     fake_engine.simulation.drivers_changed = AsyncMock(return_value=False)
     fake_engine.ws.broadcast = AsyncMock(return_value=None)
-    # Each module under test reads the engine through its own namespace: the
-    # in-use check and what follows every change from the driver-change step,
-    # the Code view's listing and reload from routes.python_drivers, so a
-    # single patch would leave one of them reaching for the real (unstarted)
-    # engine.
+    # The in-use check and what follows every change read the engine from
+    # the driver-change step.
     monkeypatch.setattr(
         "openavc.drivers.driver_change._running_engine", lambda: fake_engine
-    )
-    monkeypatch.setattr(
-        "openavc.api.routes.python_drivers._get_engine", lambda: fake_engine
     )
 
     # Skip the install path's catalog-hash lookup. These tests drive the

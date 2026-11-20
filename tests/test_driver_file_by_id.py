@@ -71,16 +71,8 @@ def stub_engine_wiring(monkeypatch):
         AsyncMock(return_value=None),
         raising=False,
     )
-    engine = MagicMock()
-    engine.project = None
-    engine.devices.retry_all_orphans = AsyncMock(return_value=[])
-    engine.devices.get_devices_using_driver = lambda driver_id: []
-    monkeypatch.setattr("openavc.api.routes.python_drivers._get_engine", lambda: engine)
     monkeypatch.setattr(
         "openavc.api.routes.drivers.announce_drivers_changed", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        "openavc.api.routes.python_drivers._announce", AsyncMock(return_value=None)
     )
     yield
     for name in [n for n in sys.modules if n.startswith("openavc_driver_acme_widget")]:

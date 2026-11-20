@@ -394,13 +394,11 @@ def doors(tmp_path, isolated, monkeypatch):
     monkeypatch.setattr(system_config, "DRIVER_DEFINITIONS_DIR", built_in)
     monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", repo)
     monkeypatch.setattr(drivers_routes, "_get_driver_repo_dir", lambda: repo)
-    engine = SimpleNamespace(project=None, devices=SimpleNamespace(get_devices_using_driver=lambda _id: []))
     followed: list[tuple] = []
 
     async def _changed(*driver_ids, gone=()):
         followed.append((driver_ids, tuple(gone)))
 
-    monkeypatch.setattr(python_routes, "_get_engine", lambda: engine)
     for routes in (drivers_routes, python_routes):
         monkeypatch.setattr(routes, "changed", _changed)
     return SimpleNamespace(built_in=built_in, repo=repo, followed=followed)

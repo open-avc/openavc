@@ -74,12 +74,16 @@ be put in place is left out with a warning, and the driver goes in without it.
 
 What follows a change is ``changed``, which every door calls once the folder
 and the registry say what serves each id now (after ``admit``, a delete, a
-reload, an uninstall): the running simulation reads its drivers again and
-restarts the simulated devices on the id, the devices on it are built again
-and the waiting ones come up, Discovery matches its found devices again, and
+reload, an uninstall, the Code view's create, a project's drivers installed
+as it is imported or opened): the running simulation reads its drivers again
+and restarts the simulated devices on the id, the devices on it are built
+again and the waiting ones come up, Discovery reads the drivers installed now
+(its next scan reads the same list) and matches its found devices again, and
 every open Programmer is told (``announce``). A door names the ids a driver
 arrived for or changed, and the ids it took away (``gone``), whose devices it
-leaves as they are.
+leaves as they are. A save that writes a file and registers nothing (the Code
+view's plain Save) changes no running driver, so nothing follows it; its Save
+& Reload's reload does.
 
 There is no FastAPI here: ``admit`` and ``claim`` raise ``DriverRefused`` (a
 status, a sentence, and the loader's reasons when it refused the file) for
@@ -676,8 +680,10 @@ async def changed(*driver_ids: str, gone: Collection[str] = ()) -> Changed:
        from the class that serves it now, and one waiting for it comes up
        (``reload_driver``); then every device waiting for a driver that is
        registered now comes up. A device on a ``gone`` id is left as it is.
-    3. **Discovery.** Its driver hints and discovery files are read again, and
-       every device a scan found is matched again.
+    3. **Discovery.** The drivers installed now are its list of installed
+       drivers, which the next scan's catalog fold reads too; their driver
+       hints and discovery files are read again, and every device a scan
+       found is matched again.
     4. **The announcement** to every open Programmer (``announce``), naming
        the first id.
 
