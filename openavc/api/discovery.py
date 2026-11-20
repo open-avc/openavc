@@ -10,6 +10,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
 
 from openavc.api.auth import require_programmer_auth
+from openavc.api.discovery_drivers import install_from_the_index, refuse_driver_not_installed
 from openavc.api.errors import api_error as _api_error
 from openavc.api.routes.devices import sanitize_device_name
 from openavc.core.required_config import (
@@ -513,29 +514,17 @@ class _MissingSettings(HTTPException):
         self.keys = [key for key, _label in missing]
 
 
-def _refuse_a_driver_not_installed(driver_id: str) -> None:
-    """A scanned device is added only with a driver this server runs. One that
-    is not installed, or whose file did not load, is refused in the words a
-    device page gives for it (``core/installed_equipment.py``), with nothing
-    saved: the project would otherwise gain a device that never connects."""
-    if get_driver_class(driver_id) is not None:
-        return
-    raise HTTPException(status_code=422, detail=_not_added(driver_id))
-
-
-def _not_added(driver_id: str) -> str:
-    """Why a scanned device was not added with ``driver_id``, which is not
-    here, and what to do instead."""
-    from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
-    from openavc.drivers.refused_files import refusal_for
-
-    if refusal_for(driver_id) is not None:
-        instead = "Fix its driver file, or choose another driver for this device."
-    elif is_product_hardware_id(driver_id):
-        instead = "Choose another driver for this device."
-    else:
-        instead = "Install it first, or choose another driver for this device."
-    return f"{missing_driver_reason(driver_id).rstrip('.')}. The device was not added. {instead}"
+def _ready_to_add(driver_id: str) -> DiscoveryEngine:
+    """The discovery engine a scanned device is added from, once there is a
+    project to add it to and ``driver_id`` is a driver this server runs
+    (``discovery_drivers.refuse_driver_not_installed``)."""
+    if _app_engine is None:
+        raise HTTPException(status_code=503, detail="Engine not available")
+    if _app_engine.project is None:
+        raise HTTPException(status_code=503, detail="No project loaded")
+    discovery = _get_engine()
+    refuse_driver_not_installed(driver_id)
+    return discovery
 
 
 @router.post("/add-device")
@@ -545,13 +534,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     Creates a new device entry in the project from discovery results.
     The device is immediately connected.
     """
-    if _app_engine is None:
-        raise HTTPException(status_code=503, detail="Engine not available")
-    if _app_engine.project is None:
-        raise HTTPException(status_code=503, detail="No project loaded")
-
-    discovery = _get_engine()
-    _refuse_a_driver_not_installed(req.driver_id)
+    discovery = _ready_to_add(req.driver_id)
 
     # Look up the discovered device for extra info
     discovered = discovery.results.get(req.ip)
@@ -679,14 +662,15 @@ async def install_and_match(req: InstallAndMatchRequest) -> dict[str, Any]:
     from the address, and held to the floor, that this server's copy of the
     community index lists for it (``driver_catalog.catalog_install``), the
     copy the scan matched against; one the index does not list either is
-    refused, with nothing installed and no device added.
+    refused, with nothing installed and no device added
+    (``discovery_drivers.install_from_the_index``).
     """
     engine = _get_engine()
 
     # Step 1: Install the driver when it is not here (the install also
     # refreshes discovery's matches).
     if get_driver_class(req.driver_id) is None:
-        await _install_from_the_index(req.driver_id)
+        await install_from_the_index(req.driver_id)
 
     # Step 2: Add device to project (reuse add_device logic)
     add_req = AddDeviceRequest(ip=req.ip, driver_id=req.driver_id)
@@ -719,25 +703,6 @@ async def install_and_match(req: InstallAndMatchRequest) -> dict[str, Any]:
         "name": result.get("name"),
         "device": device.to_dict() if device else None,
     }
-
-
-async def _install_from_the_index(driver_id: str) -> None:
-    """Install ``driver_id`` as this server's copy of the community index
-    lists it; refused (404) when the index lists no file for it."""
-    from openavc.api.driver_catalog import catalog_install
-    from openavc.api.rest import install_community_driver
-
-    install = await catalog_install(driver_id)
-    if install is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"Driver '{driver_id}' is not installed and is not in the community "
-                "driver library. The device was not added. Import the driver's file "
-                "first, or choose another driver for this device."
-            ),
-        )
-    await install_community_driver(install)
 
 
 @router.get("/export", response_class=PlainTextResponse)

@@ -91,9 +91,17 @@ def entries_by_id(drivers: list[Any]) -> dict[str, dict[str, Any]]:
     An element that is not an object, or names no id, is left out."""
     entries: dict[str, dict[str, Any]] = {}
     for entry in drivers:
-        if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry["id"]:
-            entries.setdefault(entry["id"], entry)
+        driver_id = _entry_id(entry)
+        if driver_id:
+            entries.setdefault(driver_id, entry)
     return entries
+
+
+def _entry_id(entry: Any) -> str:
+    """The driver id an index element names; empty for an element that is not
+    an object or whose id is not text."""
+    driver_id = entry.get("id") if isinstance(entry, dict) else None
+    return driver_id if isinstance(driver_id, str) else ""
 
 
 def catalog_file_url(entry: Mapping[str, Any] | None) -> str | None:
