@@ -56,7 +56,6 @@ import yaml
 
 from openavc.drivers.spec import without_null_sections
 from openavc.drivers.compiled_protocol import (
-    apply_send_frame,
     build_send_frame,
     coerce_osc_value,
     conversion_of,
@@ -250,13 +249,14 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         commands ride inside a computed-length binary header (send_frame,
         e.g. eISCP) sends frames the line reader would mis-split (the length
         byte can be 0x0a or 0x0d): those are read as length-prefixed frames,
-        the header stripped before matching and put back on every reply, as
-        the real device answers.
+        the header stripped before matching and put back on every reply
+        (``_framed_for_link``), as the real device answers.
         """
         self._line_mode = True
         self._send_frame = self._build_sim_send_frame(driver_def.get("send_frame"))
         if self._send_frame:
             self._line_mode = False
+        self._reply_frame = driver_def.get("frame_parser")
 
     def _read_transport(self, driver_def: dict, config: dict | None) -> None:
         """Which server start() runs, and what listens beside it.
@@ -690,10 +690,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
     # driver's frame_parser expects.
     _build_sim_send_frame = staticmethod(build_send_frame)
 
-    def _wrap_send_frame(self, data: bytes) -> bytes:
-        """Wrap a response body in the send_frame packet header (computed length)."""
-        return apply_send_frame(self._send_frame, data)
-
     async def _read_send_frame_messages(
         self, reader: asyncio.StreamReader, buffer: bytearray | None,
     ) -> list[bytes] | None:
@@ -748,11 +744,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         self._handling_command = True
         try:
             resp = self._dispatch_command(data)
-            # Re-wrap the reply in the send_frame packet header so the driver's
-            # receive-side length-prefix parser can read it (build/strip parity).
-            if resp is not None and self._send_frame:
-                resp = self._wrap_send_frame(resp)
-            return resp
+            return None if resp is None else self._framed_for_link(resp)
         finally:
             self._handling_command = False
 

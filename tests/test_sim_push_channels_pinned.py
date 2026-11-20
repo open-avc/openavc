@@ -174,8 +174,9 @@ def test_the_struct_frame_wraps_a_notification():
         "type": "struct_frame", "length_size": 2, "length_endian": "little",
         "header_reserve": 2, "mid_reserve": 1, "trailer_reserve": 1, "length_adjust": 1}})
     assert sim._wrap_push_tcp_frame(b"abc") == b"\x00\x00\x02\x00\x00abc\x00"
+    # A length its field cannot carry (3 - 9) is no frame the parser reads back.
     sim = _sim(push={"type": "tcp_listener", "frame_parser": {"type": "struct_frame", "length_adjust": 9}})
-    assert sim._wrap_push_tcp_frame(b"abc") == b"\x00\x00abc"
+    assert sim._wrap_push_tcp_frame(b"abc") == b"abc"
     sim = _sim(push={"type": "tcp_listener", "frame_parser": {"type": "delimiter"}})
     assert sim._wrap_push_tcp_frame(b"abc") == b"abc"
     assert _sim()._wrap_push_tcp_frame(b"abc") == b"abc"

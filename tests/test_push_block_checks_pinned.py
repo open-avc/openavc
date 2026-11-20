@@ -8,6 +8,9 @@ with its section tag. The cases reach the block's type and keys, each type's
 own addressing (multicast's group and port, udp_listener's and tcp_listener's
 port, sse's paths, idle timeout and session, tcp_listener's frame parser), a
 ``{config_field}`` template in any of them, and ``register:`` / ``unregister:``.
+The cases run at the door that loads a driver, which refuses a struct_frame's
+fields and only names a length_prefix's or fixed_length's
+(``tests/test_push_frame_parser_doors.py`` has both kinds of door).
 
 These record what the checks say today, so a restructuring that keeps the
 contract keeps every message, its position and its tag.

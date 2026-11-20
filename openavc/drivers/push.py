@@ -262,7 +262,6 @@ class PushChannel:
         a link cut).
         """
         from openavc.transport import tcp_listener
-        from openavc.transport.frame_parsers import build_frame_parser
 
         raw_port = self._resolve_push_value(push_def.get("port"))
         port = push_port(push_def, self.config)
@@ -277,13 +276,7 @@ class PushChannel:
             # Connected to the simulator: a port of its own (module docstring).
             port = 0
 
-        frame_cfg = push_def.get("frame_parser")
-        if isinstance(frame_cfg, dict):
-            def factory() -> Any:
-                return build_frame_parser(frame_cfg)
-        else:
-            factory = None
-
+        factory = self._push_frame_factory(push_def.get("frame_parser"))
         try:
             sub = await tcp_listener.subscribe(
                 port=port,
@@ -305,6 +298,32 @@ class PushChannel:
         self.config["listener_port"] = sub.port
 
         await self._run_push_register(push_def)
+
+    def _push_frame_factory(self, frame_cfg: Any) -> Callable[[], Any] | None:
+        """What builds a fresh frame parser for each dial-back connection, or
+        None to read the connection unframed.
+
+        A frame parser the table refuses (a driver that loaded with one names
+        it on its Installed entry) is said once here, when the listener opens,
+        rather than failing on every dial-back."""
+        from openavc.transport.frame_parsers import build_frame_parser
+
+        if not isinstance(frame_cfg, dict):
+            return None
+        try:
+            build_frame_parser(frame_cfg)
+        except ValueError as e:
+            log.warning(
+                f"[{self.device_id}] push: frame_parser {e}; the frames the "
+                f"device pushes are read unframed, so none of them reaches the "
+                f"driver's reply rules whole"
+            )
+            return None
+
+        def factory() -> Any:
+            return build_frame_parser(frame_cfg)
+
+        return factory
 
     async def _start_push_udp_listener(self, push_def: dict[str, Any]) -> None:
         """Open the shared UDP port the device sends its packets to.

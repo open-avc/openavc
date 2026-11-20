@@ -1809,7 +1809,7 @@ For protocols that don't use a simple delimiter, you can specify a frame parser:
 }
 ```
 
-Types: `length_prefix` (reads a length header then N bytes), `fixed_length` (messages are always N bytes), `struct_frame` (fixed reserved regions around a length field and payload — common in device dial-back notification containers; fields documented in the `push` section below, but usable here too). For anything more complex, use a Python driver.
+Types: `length_prefix` (reads a length header then N bytes) and `fixed_length` (messages are always N bytes). A third type, `struct_frame`, frames a push listener's dial-back notifications only (the `push` section below). For anything more complex, use a Python driver.
 
 For `length_prefix`:
 
@@ -1820,7 +1820,9 @@ For `length_prefix`:
 - `header_extra` — constant bytes **after** the length field, before the data (in that example, version + reserved = 4). Default `0`. The full fixed header consumed per frame is `length_offset + header_size + header_extra`.
 - `length_endian` — `big` (default) or `little`. Byte order of the length field.
 
-For `fixed_length`, set `length` to the byte count of every frame.
+For `fixed_length`, set `length` to the byte count of every frame, 1 or more.
+
+The simulator answers in the same frame, so a simulated device's replies reach the driver whole (platform 0.41.0). It writes the constant bytes before and after the length field as zero bytes, which the driver skips unread; a driver that also declares `send_frame` gets its replies in that header instead.
 
 #### `send_frame` (advanced)
 
@@ -1944,7 +1946,7 @@ push:
 - `port` — the local TCP port OpenAVC listens on, as a literal (0–65535), or a `{config_field}` template so the installer can change it per device. `0` lets the operating system pick a free port — convenient, but only a fixed port can be opened in a host firewall: on a Linux install with `ufw` or `firewalld` active, OpenAVC opens a fixed push port by itself when the service next starts, and leaves a `0` port alone. Devices pointed at the same port share one listener; each device's frames are matched to it by source address.
 - `register` — the name of a command that tells the device where to dial back. Reference the reserved `{listener_port}` token in the command's `path`/`send` string — it resolves to the actual bound port. The command runs right after the listener opens, and again on every reconnect, so devices whose registrations don't survive a reboot or a link cut re-arm automatically.
 - `unregister` — optional; the command that cancels the registration. It runs best-effort when the device is disconnected on purpose (project reload, device removed), freeing the device's subscriber slot — dial-back devices typically allow only a handful of registered controllers.
-- `frame_parser` — how the dial-back byte stream is split into notifications (it's a separate stream, so the control transport's framing doesn't apply). `struct_frame` fits the common shape above — reserved header + length field + reserved bytes + payload + reserved trailer; `length_prefix` and `fixed_length` are also accepted. Omit it to dispatch raw reads (fine for devices that send one plain-text line per connection).
+- `frame_parser` — how the dial-back byte stream is split into notifications (it's a separate stream, so the control transport's framing doesn't apply). `struct_frame` fits the common shape above: reserved header, length field, reserved bytes, payload, reserved trailer. `length_prefix` and `fixed_length` are also accepted, with the fields the top-level `frame_parser` takes and held to the same values. Omit it to dispatch raw reads (fine for devices that send one plain-text line per connection).
 
 ```yaml
 # HTTP listener — the device POSTs notifications to a callback URL OpenAVC

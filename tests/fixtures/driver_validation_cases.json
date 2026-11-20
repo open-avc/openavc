@@ -7229,6 +7229,30 @@
   },
   "transport": "tcp"
  },
+ "push_fixed_length_no_bytes": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "frame_parser": {
+    "length": 0,
+    "type": "fixed_length"
+   },
+   "port": 0,
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "push_frame_parser_not_mapping": {
   "commands": {
    "noop": {
@@ -7261,6 +7285,31 @@
   "push": {
    "frame_parser": {
     "type": "delimiter"
+   },
+   "port": 0,
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "push_length_prefix_negative_offsets": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "frame_parser": {
+    "header_extra": -1,
+    "length_offset": -1,
+    "type": "length_prefix"
    },
    "port": 0,
    "type": "tcp_listener"

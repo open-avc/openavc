@@ -153,7 +153,7 @@ async def test_a_frame_parser_a_python_driver_cannot_build():
     "frame_parser, reason",
     [
         ({"type": "length_prefix", "header_size": 3}, "header_size must be 1, 2, or 4"),
-        ({"type": "fixed_length", "length": 0}, "length must be positive"),
+        ({"type": "fixed_length", "length": 0}, "length must be a positive integer (got 0)"),
         ({"type": "struct_frame", "length_size": 3}, "length_size must be 1, 2, or 4"),
     ],
 )

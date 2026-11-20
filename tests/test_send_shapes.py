@@ -379,7 +379,8 @@ def test_the_send_shape_leaf_stays_pure() -> None:
         "import sys; sys.path.insert(0, %r); import openavc.drivers.send_shape; "
         "bad = sorted(m for m in sys.modules if m.startswith('openavc') and m not in "
         "{'openavc', 'openavc.drivers', 'openavc.drivers.send_shape', 'openavc.drivers.spec', "
-        "'openavc.drivers.driver_model', 'openavc.drivers.query_entry'}); "
+        "'openavc.drivers.driver_model', 'openavc.drivers.query_entry', "
+        "'openavc.drivers.framing_checks'}); "
         "print(bad); sys.exit(1 if bad else 0)"
     ) % str(root)
     done = subprocess.run([sys.executable, "-I", "-S", "-c", code], capture_output=True, text=True)

@@ -1,20 +1,21 @@
 """The framing checks' field tables against the contract and the runtime.
 
-``framing_checks`` judges each frame type's fields from one table, with the
-value the runtime falls back to when a field is absent. These hold that every
-type the contract names has its table; that every row is a field the contract
-declares (``spec.DEFS``), held to at least what it declares (its enum, its
-minimum) and that every declared field but the type and ``include_header``
-has a row; and that the table's fallbacks build the same parser or send
-header the runtime builds from an empty block. A field or default changed on
-one side and not the other fails here.
+``framing_checks`` holds each frame type's fields in one table, with the value
+the runtime falls back to when a field is absent and the class the runtime
+builds from them. These hold that every type the contract names has its row;
+that every field is one the contract declares (``spec.DEFS``), held to at
+least what it declares (its enum, its minimum), and that every declared field
+but the type has one; that each row names a class the runtime builds; and that
+the table's fallbacks build the same parser or send header the runtime builds
+from an empty block. A field or default changed on one side and not the other
+fails here.
 """
 from __future__ import annotations
 
 import pytest
 
 from openavc.drivers.compiled_protocol import build_send_frame
-from openavc.drivers.framing_checks import FRAME_FIELDS, SEND_FRAME_FIELDS
+from openavc.drivers.framing_checks import FRAME_TYPES, SEND_FRAME_FIELDS
 from openavc.drivers.spec import (
     DEFS,
     FRAME_PARSER_TYPES,
@@ -23,13 +24,21 @@ from openavc.drivers.spec import (
 )
 from openavc.transport.frame_parsers import build_frame_parser
 
+FRAME_FIELDS = {name: row.fields for name, row in FRAME_TYPES.items()}
+
 
 def test_every_frame_type_the_contract_names_has_its_fields() -> None:
-    assert set(FRAME_FIELDS) == set(FRAME_PARSER_TYPES) | set(PUSH_FRAME_PARSER_TYPES)
+    assert set(FRAME_TYPES) == set(FRAME_PARSER_TYPES) | set(PUSH_FRAME_PARSER_TYPES)
     assert set(SEND_FRAME_FIELDS) == set(SEND_FRAME_TYPES)
 
 
-@pytest.mark.parametrize("frame_type", sorted(FRAME_FIELDS))
+@pytest.mark.parametrize("frame_type", sorted(FRAME_TYPES))
+def test_each_row_names_the_class_the_runtime_builds(frame_type: str) -> None:
+    parser = build_frame_parser({"type": frame_type})
+    assert type(parser).__name__ == FRAME_TYPES[frame_type].parser
+
+
+@pytest.mark.parametrize("frame_type", sorted(FRAME_TYPES))
 def test_a_frame_tables_fallbacks_are_the_runtimes(frame_type: str) -> None:
     fallbacks = {field.key: field.default for field in FRAME_FIELDS[frame_type]}
     from_table = build_frame_parser({"type": frame_type, **fallbacks})
@@ -47,9 +56,8 @@ def test_a_send_frame_tables_fallbacks_are_the_runtimes(frame_type: str) -> None
     )
 
 
-# The declared fields no row judges: the type picks the table, and
-# include_header is a switch the runtime reads as truthy.
-_UNJUDGED = {"type", "include_header"}
+# The declared field that is no row: the type picks the row.
+_UNJUDGED = {"type"}
 
 _TABLES = [
     ("frameParser", FRAME_FIELDS),
@@ -71,6 +79,10 @@ def test_every_declared_field_has_a_row_and_every_row_is_declared(def_name, tabl
 def test_every_row_holds_at_least_what_the_contract_declares(def_name, tables) -> None:
     fields = DEFS[def_name]["fields"]
     for frame_type, row in _rows(tables):
+        if row.rule is None:
+            # A switch the runtime reads as true or false: the shape walk's.
+            assert fields[row.key]["type"] == "boolean"
+            continue
         decl = fields[row.key]
         where = f"{frame_type}.{row.key}"
         not_its_type = "x" if decl["type"] == "integer" else 5

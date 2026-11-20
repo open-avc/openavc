@@ -746,11 +746,18 @@
  "polling_when_undeclared_field": [
   "polling.queries[0]: 'when' field 'has_zones' is not a declared config field (config_schema / default_config / config_derived)"
  ],
+ "push_fixed_length_no_bytes": [
+  "push.frame_parser.length: must be a positive integer"
+ ],
  "push_frame_parser_not_mapping": [
   "push: frame_parser must be a mapping"
  ],
  "push_frame_parser_unknown_type": [
   "push: frame_parser type 'delimiter' must be struct_frame, length_prefix, or fixed_length"
+ ],
+ "push_length_prefix_negative_offsets": [
+  "push.frame_parser.length_offset: must be a non-negative integer",
+  "push.frame_parser.header_extra: must be a non-negative integer"
  ],
  "push_multicast_bad_group": [
   "push: group '10.0.0.1' must be an IPv4 multicast address (224.0.0.0 - 239.255.255.255) or a {config_field} template"

@@ -9,7 +9,9 @@ that is a safe regex, numbers no smaller than the watchdog takes, and ``args``
 only on OSC. ``frame_parser:`` names a type and is held to that type's fields;
 ``send_frame:`` is held to its fields only when its type is known; a command
 prefix or suffix is text. A ``push:`` block's own ``frame_parser`` is checked
-with the push block, and a ``struct_frame`` there is held to its fields.
+with the push block: a ``struct_frame`` there is held to its fields at every
+door, and the other types' fields at the author's doors only (a door that
+loads the driver names them instead, so the load cases here say nothing).
 
 Each case is a set of top-level keys over one driver. The expected value is
 every error ``validate_driver_issues`` reports for the whole definition, in
@@ -401,10 +403,14 @@ CASES: dict[str, dict[str, Any]] = {
         header_reserve=-1, mid_reserve="x", trailer_reserve=1.5, length_size=3,
         length_adjust=True, length_endian="middle",
     ),
-    "push_frame_prefix_unchecked": push_frame(
+    "push_frame_prefix_named_at_load": push_frame(
         type="length_prefix", header_size=3, header_offset="x", length_endian="middle",
     ),
-    "push_frame_fixed_unchecked": push_frame(type="fixed_length", length=0),
+    "push_frame_fixed_named_at_load": push_frame(type="fixed_length", length=0),
+    "push_frame_prefix_strict": push_frame(
+        type="length_prefix", header_size=3, header_offset="x", length_endian="middle",
+    ),
+    "push_frame_fixed_strict": push_frame(type="fixed_length", length=0),
     "push_frame_type_list": push_frame(type=["struct_frame"]),
     "push_frame_type_mapping": push_frame(type={"struct_frame": 1}),
     "push_frame_type_cased": push_frame(type="STRUCT_FRAME"),
@@ -437,7 +443,7 @@ CASES: dict[str, dict[str, Any]] = {
     },
 }
 
-STRICT = {"every_block_wrong_strict"}
+STRICT = {"every_block_wrong_strict", "push_frame_prefix_strict", "push_frame_fixed_strict"}
 
 
 EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_prefix', 'command_prefix: must be a string'),
@@ -849,7 +855,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
  'push_frame_endian_cased': [('push',
                               "push: frame_parser length_endian must be 'big' or 'little'")],
  'push_frame_endian_none': [('push', "push: frame_parser length_endian must be 'big' or 'little'")],
- 'push_frame_fixed_unchecked': [],
+ 'push_frame_fixed_named_at_load': [],
+ 'push_frame_fixed_strict': [('push.frame_parser.length',
+                              'push.frame_parser.length: must be a positive integer')],
  'push_frame_header_reserve_negative': [('push',
                                          'push: frame_parser header_reserve must be a non-negative '
                                          'integer')],
@@ -863,7 +871,13 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
  'push_frame_mid_reserve_float': [('push',
                                    'push: frame_parser mid_reserve must be a non-negative '
                                    'integer')],
- 'push_frame_prefix_unchecked': [],
+ 'push_frame_prefix_named_at_load': [],
+ 'push_frame_prefix_strict': [('push.frame_parser.header_size',
+                               'push.frame_parser.header_size: must be 1, 2, or 4'),
+                              ('push.frame_parser.header_offset',
+                               'push.frame_parser.header_offset: must be an integer'),
+                              ('push.frame_parser.length_endian',
+                               "push.frame_parser.length_endian: must be 'big' or 'little'")],
  'push_frame_struct_defaults': [],
  'push_frame_struct_everything_wrong': [('push',
                                          'push: frame_parser header_reserve must be a non-negative '

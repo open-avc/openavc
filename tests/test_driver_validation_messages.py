@@ -771,6 +771,14 @@ CASES: dict[str, Any] = {
         type="tcp_listener", port=0,
         frame_parser={"type": "struct_frame", "length_endian": "mid"},
     ),
+    "push_fixed_length_no_bytes": _push(
+        type="tcp_listener", port=0,
+        frame_parser={"type": "fixed_length", "length": 0},
+    ),
+    "push_length_prefix_negative_offsets": _push(
+        type="tcp_listener", port=0,
+        frame_parser={"type": "length_prefix", "length_offset": -1, "header_extra": -1},
+    ),
     "push_register_not_a_name": _push(type="tcp_listener", port=0, register=5),
     "push_register_unknown_command": _push(type="tcp_listener", port=0, register="arm"),
     "push_register_list_empty": _push(type="tcp_listener", port=0, register=[]),

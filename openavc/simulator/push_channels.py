@@ -36,10 +36,24 @@ import re
 import socket
 from typing import Any
 
-from openavc.drivers.compiled_protocol import safe_substitute
+from openavc.drivers.compiled_protocol import apply_send_frame, safe_substitute
 from openavc.simulator.state_replies import map_key
+from openavc.transport.frame_parsers import write_frame
 
 logger = logging.getLogger("openavc.simulator.yaml_auto")
+
+
+def framed_as_read(frame_parser: Any, payload: bytes, what: str) -> bytes:
+    """``payload`` in the frame ``frame_parser`` declares, as the driver's
+    parser built from it reads it back (``frame_parsers.write_frame``); as it
+    is when the block names no frame. A frame that cannot carry the payload,
+    or a block the runtime cannot build a parser from, sends it as it is too,
+    with a warning saying why: ``what`` names the message."""
+    try:
+        return write_frame(frame_parser if isinstance(frame_parser, dict) else None, payload)
+    except ValueError as e:
+        logger.warning("%s went out unframed: %s", what, e)
+        return payload
 
 # The state keys a notification template names as ``{state.<key>}``.
 _NOTIFICATION_STATE_REF = re.compile(r"\{state\.([\w.]+)(?::[^{}]*)?\}")
@@ -75,11 +89,13 @@ class PushChannels:
     """The push targets a driver declares and the notifications sent on them."""
 
     # Host attributes (YAMLAutoSimulator and its server bases). Also asked of
-    # the host: _instance_config, _get_delimiter and _to_wire
+    # the host: _instance_config, _get_delimiter, _to_wire and capacity_kind
     # (YAMLAutoSimulator); _silenced, log_protocol and send_to_listener
     # (BaseSimulator); push (TCPSimulator); push_datagram (the datagram
     # server); push_sse_event and post_http_callback (HTTPServerMixin).
     _driver_def: dict
+    _send_frame: dict | None
+    _reply_frame: Any
     name: str
     _is_udp: bool
     _is_osc: bool
@@ -261,25 +277,11 @@ class PushChannels:
         return False
 
     def _wrap_push_tcp_frame(self, payload: bytes) -> bytes:
-        """Wrap a notification payload in the declared frame container.
-
-        Inverse of the platform's StructFrameParser: zeroed reserve regions
-        around a length field that counts ``len(payload) - length_adjust``.
-        Without a struct_frame declaration the payload goes out raw.
-        """
+        """Wrap a notification payload in the frame the listener's own
+        ``frame_parser`` reads, whatever its type (``framed_as_read``).
+        Without one the payload goes out raw."""
         frame = (self._push_tcp or {}).get("frame")
-        if not frame or frame.get("type") != "struct_frame":
-            return payload
-        length_size = int(frame.get("length_size", 2))
-        endian = "little" if frame.get("length_endian") == "little" else "big"
-        length_value = len(payload) - int(frame.get("length_adjust", 0))
-        return (
-            bytes(int(frame.get("header_reserve", 0)))
-            + max(0, length_value).to_bytes(length_size, endian)
-            + bytes(int(frame.get("mid_reserve", 0)))
-            + payload
-            + bytes(int(frame.get("trailer_reserve", 0)))
-        )
+        return framed_as_read(frame, payload, "A dial-back notification")
 
     def _emit_push_tcp(self, payload: bytes) -> None:
         """Dial each registered subscriber and push one framed notification."""
@@ -505,6 +507,20 @@ class PushChannels:
         """Whether anyone is on the control link to push to: a UDP peer that
         spoke to the device, or a connected stream client."""
         return self._peer_heard() if self._is_udp else bool(self._clients)
+
+    def _framed_for_link(self, data: bytes) -> bytes:
+        """A reply as it goes out on the control link, framed as the driver
+        reads it: in the
+        send_frame header when the driver declares one (it carries the
+        device's own constant bytes, where a frame parser's writer has only
+        zero bytes to put), else, on a byte stream, in the frame its
+        ``frame_parser`` reads (``framed_as_read``). An empty message is no
+        frame."""
+        if self._send_frame:
+            return apply_send_frame(self._send_frame, data)
+        if not data or self.capacity_kind != "stream":
+            return data
+        return framed_as_read(self._reply_frame, data, "A reply")
 
     def _send_on_control_link(self, data: bytes) -> None:
         """Send on the control link: the last UDP peer that spoke to the

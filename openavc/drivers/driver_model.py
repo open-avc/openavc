@@ -26,6 +26,9 @@ What it holds so far:
   each line once, in the order first sent, with every entry that sends it.
   A reader that answers or covers each line reads these, each with its
   filter stated.
+* ``problems`` also holds the fields of a push listener's frame parser the
+  frame table refuses where push does not refuse them at every door
+  (``framing_checks.push_frame_field_issues``).
 
 The rules worth knowing before changing anything here:
 
@@ -43,7 +46,8 @@ The rules worth knowing before changing anything here:
 * **Members arrive with the rules that need them.** A part of the file no
   rule reads through the model yet has no member here.
 
-Pure: the standard library, ``spec`` and the leaves it composes, with
+Pure: the standard library, ``spec`` and the leaves it composes (``query_entry``,
+``framing_checks``), with
 absolute ``openavc.`` imports (``tests/test_avcdriver_semantic_purity.py``).
 Vendored with the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 """
@@ -54,6 +58,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.drivers.framing_checks import push_frame_field_issues
 from openavc.drivers.query_entry import OSC_MESSAGE, QueryEntry, read_query_entry
 
 YAML = "yaml"
@@ -66,6 +71,9 @@ START_UP = "start_up"
 THEN_QUERY = "then_query"
 READ_BACK = "read_back"
 ORIGINS = (POLL, START_UP, THEN_QUERY, READ_BACK)
+
+# The code of a push listener's frame field the frame table refuses.
+FRAME_FIELD = "frame_field"
 
 
 @dataclass(frozen=True)
@@ -142,6 +150,9 @@ def read_driver(definition: Mapping[str, Any], kind: str = YAML) -> DriverModel:
     problems = tuple(
         ModelProblem(line.place, line.entry.problem.code, line.entry.problem.words)
         for line in queries if line.entry.problem is not None
+    ) + tuple(
+        ModelProblem(place, FRAME_FIELD, words)
+        for place, words in push_frame_field_issues(definition)
     )
     return DriverModel(YAML, definition, WireModel(queries), problems)
 

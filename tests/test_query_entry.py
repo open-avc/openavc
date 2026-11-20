@@ -332,5 +332,5 @@ def test_the_driver_model_stays_pure() -> None:
     # logger, no yaml, no runtime, nothing outside the standard library.
     assert _modules_loaded("openavc.drivers.driver_model") == {
         "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.query_entry",
-        "openavc.drivers.driver_model",
+        "openavc.drivers.framing_checks", "openavc.drivers.driver_model",
     }

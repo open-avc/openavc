@@ -12,6 +12,12 @@ Built-in parsers:
     - StructFrameParser: fixed reserve + length field + fixed reserve +
       payload + fixed reserve (device dial-back notification containers)
     - CallableFrameParser: wraps a user function for custom protocols
+
+The three a driver file declares by ``type`` (length_prefix, fixed_length,
+struct_frame) are rows of ``drivers/framing_checks.FRAME_TYPES``, which
+``build_frame_parser`` builds them from. Each also writes a payload back into
+one frame (``frame``), the inverse of ``feed``, which the simulator answers
+with (``write_frame``).
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable
 
+from openavc.drivers.framing_checks import field_problems, field_values, frame_type
 from openavc.utils.logger import get_logger
 
 # Re-exported: the bound belongs to both sides of the wire, so it is defined
@@ -59,6 +66,24 @@ class FrameParser(ABC):
     @abstractmethod
     def reset(self) -> None:
         """Clear the internal buffer and any parser state."""
+
+    def frame(self, payload: bytes) -> bytes:
+        """The bytes a device sends for one ``payload``, framed so this parser
+        reads it back: ``feed(frame(payload)) == [payload]``. Raises
+        ValueError for a payload the frame cannot carry. A parser with no
+        writer raises NotImplementedError."""
+        raise NotImplementedError(f"{type(self).__name__} writes no frames")
+
+
+def _length_field(value: int, size: int, endian: str) -> bytes:
+    """``value`` as a length field of ``size`` bytes, or ValueError when the
+    field cannot hold it (the frame would be read back wrong)."""
+    if value < 0:
+        raise ValueError(f"the frame would carry length {value}, which no length field holds")
+    try:
+        return value.to_bytes(size, endian)  # type: ignore[arg-type]
+    except OverflowError:
+        raise ValueError(f"length {value} does not fit a {size}-byte length field") from None
 
 
 class DelimiterFrameParser(FrameParser):
@@ -119,6 +144,9 @@ class LengthPrefixFrameParser(FrameParser):
 
     ``include_header`` controls whether the returned message includes the fixed
     header bytes or just the payload.
+
+    ``frame`` writes the constant bytes before and after the length field as
+    zero bytes: the parser skips them unread.
     """
 
     def __init__(
@@ -139,6 +167,7 @@ class LengthPrefixFrameParser(FrameParser):
         self._header_offset = header_offset
         self._include_header = include_header
         self._length_offset = length_offset
+        self._header_extra = header_extra
         self._length_endian = "little" if length_endian == "little" else "big"
         # Total fixed header consumed before the data body: the constant bytes
         # before the length field + the length field + the constant bytes after.
@@ -199,6 +228,12 @@ class LengthPrefixFrameParser(FrameParser):
     def reset(self) -> None:
         self._buffer = b""
 
+    def frame(self, payload: bytes) -> bytes:
+        length = _length_field(
+            len(payload) - self._header_offset, self._header_size, self._length_endian
+        )
+        return bytes(self._length_offset) + length + bytes(self._header_extra) + payload
+
 
 class FixedLengthFrameParser(FrameParser):
     """
@@ -237,6 +272,14 @@ class FixedLengthFrameParser(FrameParser):
     def reset(self) -> None:
         self._buffer = b""
 
+    def frame(self, payload: bytes) -> bytes:
+        if len(payload) != self._length:
+            raise ValueError(
+                f"a fixed_length frame is exactly {self._length} bytes; "
+                f"this payload is {len(payload)}"
+            )
+        return bytes(payload)
+
 
 class StructFrameParser(FrameParser):
     """
@@ -254,6 +297,8 @@ class StructFrameParser(FrameParser):
     ``length_adjust`` is added to the decoded length-field value to get the
     payload byte count, for protocols whose length field includes constant
     overhead (Panasonic's counts the payload plus 8, so ``length_adjust: -8``).
+
+    ``frame`` writes the reserved regions as zero bytes.
     """
 
     def __init__(
@@ -324,41 +369,57 @@ class StructFrameParser(FrameParser):
     def reset(self) -> None:
         self._buffer = b""
 
+    def frame(self, payload: bytes) -> bytes:
+        length = _length_field(
+            len(payload) - self._length_adjust, self._length_size, self._length_endian
+        )
+        return (
+            bytes(self._header_reserve) + length + bytes(self._mid_reserve)
+            + payload + bytes(self._trailer_reserve)
+        )
 
-def build_frame_parser(config: dict) -> FrameParser | None:
+
+#: The classes ``framing_checks.FRAME_TYPES`` names, by name.
+_PARSERS: dict[str, type[FrameParser]] = {
+    parser.__name__: parser
+    for parser in (LengthPrefixFrameParser, FixedLengthFrameParser, StructFrameParser)
+}
+
+
+def build_frame_parser(config: dict | None) -> FrameParser | None:
     """Build a FrameParser from a declarative config mapping, or None.
 
     The shared interpreter for ``frame_parser:`` blocks — used by the YAML
     driver's top-level receive framing and by push-channel subscriptions
-    (``push: {type: tcp_listener, frame_parser: ...}``). Returns None for a
-    missing/unknown config so callers can fall back to their default framing.
+    (``push: {type: tcp_listener, frame_parser: ...}``). The type is a row of
+    ``framing_checks.FRAME_TYPES``: the class it names, built from each field
+    the row holds (its default when absent). A value the row refuses raises
+    ValueError naming every such field in the checks' own words, so a parser
+    is never built from a value it cannot frame with. Returns None for a
+    missing config or a type the table does not hold, so callers can fall
+    back to their default framing.
     """
     if not config or not isinstance(config, dict):
         return None
-    parser_type = config.get("type", "")
-    if parser_type == "length_prefix":
-        return LengthPrefixFrameParser(
-            header_size=config.get("header_size", 2),
-            header_offset=config.get("header_offset", 0),
-            include_header=config.get("include_header", False),
-            length_offset=config.get("length_offset", 0),
-            header_extra=config.get("header_extra", 0),
-            length_endian=config.get("length_endian", "big"),
-        )
-    if parser_type == "fixed_length":
-        return FixedLengthFrameParser(
-            length=config.get("length", 1),
-        )
-    if parser_type == "struct_frame":
-        return StructFrameParser(
-            header_reserve=config.get("header_reserve", 0),
-            length_size=config.get("length_size", 2),
-            length_endian=config.get("length_endian", "big"),
-            length_adjust=config.get("length_adjust", 0),
-            mid_reserve=config.get("mid_reserve", 0),
-            trailer_reserve=config.get("trailer_reserve", 0),
-        )
-    return None
+    row = frame_type(config)
+    if row is None:
+        return None
+    refused = [
+        f"{key} must be {words} (got {value!r})"
+        for key, words, value in field_problems(row.fields, config)
+    ]
+    if refused:
+        raise ValueError("; ".join(refused))
+    return _PARSERS[row.parser](**field_values(row, config))
+
+
+def write_frame(config: dict | None, payload: bytes) -> bytes:
+    """``payload`` as a device sends it to a parser built from ``config``,
+    which reads it back whole; as it is when ``config`` names no type the
+    table holds. Raises ValueError for a field the table refuses or a payload
+    the frame cannot carry."""
+    parser = build_frame_parser(config)
+    return payload if parser is None else parser.frame(payload)
 
 
 # SLIP (RFC 1055) control bytes. OSC 1.1 frames OSC packets over a byte

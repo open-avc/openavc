@@ -135,6 +135,7 @@ def test_the_reread_queries_stay_within_the_protocol_closure():
     allowed = ALLOWED | {
         "openavc.drivers.driver_model",
         "openavc.drivers.query_entry",
+        "openavc.drivers.framing_checks",
         "openavc.simulator",
         "openavc.simulator.send_templates",
         "openavc.simulator.reread_queries",

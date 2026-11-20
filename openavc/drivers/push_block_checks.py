@@ -11,8 +11,10 @@ own checks, run after the type and the keys:
   to (never 0: a person types this port into the device);
 * ``tcp_listener`` opens a local port the device dials back to after a
   registration command tells it where (``{listener_port}``; 0 lets the OS
-  pick), with its own frame parser for the pushed frames (a ``struct_frame``'s
-  fields judged from ``framing_checks``' table, the other types' not at all);
+  pick), with its own frame parser for the pushed frames, every type's fields
+  judged from ``framing_checks.FRAME_TYPES``: a ``struct_frame``'s here, at
+  every door, the others' at the author's doors
+  (``framing_checks.push_frame_field_issues``);
 * ``sse`` holds GET path(s) open on the driver's own HTTP session, with an
   optional device session the stream carries;
 * ``http_listener`` accepts device POSTs on a platform-assigned callback path
@@ -38,7 +40,12 @@ import re
 from typing import Any, Callable
 
 from openavc.drivers.declared_names import DeclaredSections, config_field_names
-from openavc.drivers.framing_checks import FRAME_FIELDS, field_problems, spoken_choices
+from openavc.drivers.framing_checks import (
+    FRAME_TYPES,
+    PUSH_EVERY_DOOR_FRAME_TYPES,
+    field_problems,
+    spoken_choices,
+)
 from openavc.drivers.spec import (
     PUSH_FRAME_PARSER_TYPES,
     PUSH_REGISTER_ENTRY_KEYS,
@@ -191,16 +198,14 @@ def _tcp_listener_checks(check: _PushCheck) -> None:
     if not isinstance(frame, dict):
         check.found.append("push: frame_parser must be a mapping")
         return
-    frame_type = frame.get("type")
-    if frame_type not in PUSH_FRAME_PARSER_TYPES:
+    type_name = frame.get("type")
+    if type_name not in PUSH_FRAME_PARSER_TYPES:
         choices = spoken_choices(PUSH_FRAME_PARSER_TYPES, quoted=False)
-        check.found.append(f"push: frame_parser type {frame_type!r} must be {choices}")
-    elif frame_type == "struct_frame":
-        # Only a struct_frame's fields are judged here; the framing checks
-        # hold every type's (framing_checks.FRAME_FIELDS).
+        check.found.append(f"push: frame_parser type {type_name!r} must be {choices}")
+    elif type_name in PUSH_EVERY_DOOR_FRAME_TYPES:
         check.found.extend(
             f"push: frame_parser {key} must be {words}"
-            for key, words, _ in field_problems(FRAME_FIELDS[frame_type], frame)
+            for key, words, _ in field_problems(FRAME_TYPES[type_name].fields, frame)
         )
 
 
