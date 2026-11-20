@@ -62,6 +62,12 @@ a plugin's config, state, a device whose driver is not installed.
 A report that records one device's settings (the device audit's connection)
 asks :func:`secret_config_keys` which of them hold a credential, by name and
 by the driver's own declaration, and shows them with :func:`mask_secret_fields`.
+
+**Where a secret may go** is ``utils/secret_audience``'s table, not this
+module's: an exit reads the registered values through
+:meth:`SecretRegistry.masked` or :meth:`SecretRegistry.to_mask`, naming
+itself, and gets nothing masked only where that table says it may carry a
+secret.
 """
 
 from __future__ import annotations
@@ -72,6 +78,7 @@ from typing import Any, Iterable
 from urllib.parse import quote, quote_plus
 
 from openavc.drivers.spec import secret_settings
+from openavc.utils.secret_audience import Exit, may_carry_secret
 
 # Config field names whose values are credentials. Matched case-insensitively:
 # exact names for ambiguous words (so a benign `user_label` isn't caught, nor a
@@ -646,6 +653,25 @@ class SecretRegistry:
         """Whether :meth:`redact_any` has anything to mask."""
         return bool(self._config or self._runtime or self._project)
 
+    def to_mask(self, where: Any, device_id: str | None = None) -> set[str]:
+        """The values the exit ``where`` must not carry
+        (:mod:`~openavc.utils.secret_audience`): none for an exit that may
+        carry a secret; else one device's own (:meth:`secrets_for`) when
+        ``device_id`` is given, and every device's (:meth:`all_secrets`)
+        otherwise."""
+        if may_carry_secret(where):
+            return set()
+        return self.secrets_for(device_id) if device_id else self.all_secrets()
+
+    def masked(self, where: Any, text: str, device_id: str | None = None) -> str:
+        """``text`` as the exit ``where`` may carry it: as it is when that
+        exit may carry a secret; else with one device's own secrets masked
+        (:meth:`redact_for`) when ``device_id`` is given, and every device's
+        (:meth:`redact_any`) otherwise."""
+        if may_carry_secret(where):
+            return text
+        return self.redact_for(device_id, text) if device_id else self.redact_any(text)
+
     def _invalidate(self, device_id: str) -> None:
         self._device_patterns.pop(device_id, None)
         self._all_dirty = True
@@ -679,7 +705,7 @@ class SecretRedactionFilter(logging.Filter):
             message = record.getMessage()
         except Exception:
             return True
-        redacted = registry.redact_any(message)
+        redacted = registry.masked(Exit.LOG, message)
         if redacted != message:
             # Collapse to the redacted string; args are already interpolated in.
             record.msg = redacted

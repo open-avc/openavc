@@ -61,6 +61,7 @@ from openavc.drivers.param_labels import param_label
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.transport.frame_parsers import DEFAULT_MAX_BUFFER
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -448,7 +449,7 @@ class SignIn:
     def _quotable(self, text: str) -> str:
         """What the device sent, as a fault may quote it: this device's
         secrets masked in the raw text, before quoting escapes it."""
-        return get_secret_registry().redact_for(self.device_id, text)
+        return get_secret_registry().masked(Exit.SENTENCE, text, self.device_id)
 
     def _refuse_auth_flood(self, target: re.Pattern[str]) -> None:
         if self._auth_overflow:

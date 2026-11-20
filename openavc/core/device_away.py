@@ -48,6 +48,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_config import driver_connection
 from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -478,8 +479,8 @@ class DeviceAwayMixin:
         """Write why a device is away, all five keys in one batch, the
         sentence masked with this device's secrets first."""
         if status.offline_detail:
-            status = replace(status, offline_detail=get_secret_registry().redact_for(
-                device_id, status.offline_detail,
+            status = replace(status, offline_detail=get_secret_registry().masked(
+                Exit.SENTENCE, status.offline_detail, device_id,
             ))
         self.state.set_batch(status.state_keys(device_id), source="device_manager")
 

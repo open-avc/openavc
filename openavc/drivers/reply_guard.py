@@ -48,6 +48,7 @@ from typing import Any, Callable
 from openavc.drivers.contract_events import RULE_FAILED
 from openavc.drivers.state_writes import UndeclaredStateError
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -151,8 +152,8 @@ class ReplyGuard:
         self, form: str, rule: Any, exc: Exception, reply: dict[str, Any],
     ) -> None:
         secrets = get_secret_registry()
-        where = secrets.redact_for(self.device_id, rule_text(form, rule))
-        error = secrets.redact_for(self.device_id, error_text(exc))
+        where = secrets.masked(Exit.SENTENCE, rule_text(form, rule), self.device_id)
+        error = secrets.masked(Exit.SENTENCE, error_text(exc), self.device_id)
         self._observe(RULE_FAILED, rule=where, error=error, **reply)
         if where in self._failed_rules:
             log.debug(f"[{self.device_id}] Response rule {where!r} failed again: {error}")

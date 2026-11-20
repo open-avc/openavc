@@ -56,6 +56,7 @@ from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.child_placement import placement_example
 from openavc.drivers.contract_events import CHILD_UNPLACED, CHILD_UNREGISTERED
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 
 # Payload bytes an audit keeps (raw chunks included).
 TRAFFIC_CAP_BYTES = 20 * 1024 * 1024
@@ -227,7 +228,7 @@ class AuditObserver:
 
     def snapshot_secrets(self) -> None:
         """Take the device's registered credentials while it still exists."""
-        self._secrets |= get_secret_registry().secrets_for(self.device_id)
+        self._secrets |= get_secret_registry().to_mask(Exit.REPORT, self.device_id)
 
     def add_secrets(self, values: Iterable[str]) -> None:
         self._secrets |= {v for v in values if isinstance(v, str) and v}

@@ -113,8 +113,9 @@ async def capture_http_transport(driver: Any) -> Any:
     from openavc.drivers.transport_ladder import http_settings
     from openavc.transport.http_client import HTTPClientTransport, request_target
     from openavc.utils.log_redaction import get_secret_registry
+    from openavc.utils.secret_audience import Exit
 
-    masked = TrafficRedactor(get_secret_registry().secrets_for(driver.device_id))
+    masked = TrafficRedactor(get_secret_registry().to_mask(Exit.PROGRAMMER, driver.device_id))
 
     class _CaptureHTTPTransport(HTTPClientTransport):
         def __init__(self, **kwargs: Any) -> None:

@@ -93,9 +93,11 @@ def cloud_state_value(value: Any) -> Any:
     of any address written ``scheme://user:password@host`` shown as ``***``.
 
     A camera driver's "Login in Stream Address" writes such an address into
-    state so a panel on this system can play the stream. The relay, the alert
-    monitor and the AI read tools all send state through this; every other
-    value is returned as it is. A string without an ``@`` cannot hold such an
+    state so a panel on this system can play the stream: driver state on this
+    system may carry a secret and the cloud may not
+    (``utils/secret_audience``). The relay, the alert monitor and the AI read
+    tools all send state through this; every other value is returned as it
+    is. A string without an ``@`` cannot hold such an
     address, so it skips the pattern: a snapshot can be tens of thousands of
     values.
     """

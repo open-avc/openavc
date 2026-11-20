@@ -53,6 +53,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
 
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 
 log = logging.getLogger("audit.session")
 
@@ -244,7 +245,7 @@ class SessionLog(logging.Handler):
                 f"{stamp}.{int(record.msecs):03d} {record.levelname:<7} "
                 f"[{record.name}] {message}"
             )
-            self.lines.append(get_secret_registry().redact_any(line))
+            self.lines.append(get_secret_registry().masked(Exit.REPORT, line))
         except Exception:
             self.handleError(record)
 

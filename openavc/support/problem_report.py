@@ -103,6 +103,7 @@ from openavc.utils.log_redaction import (
     mask_secret_fields,
     secret_config_keys,
 )
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -388,7 +389,7 @@ def build_report(
     settings, setting_secrets = _secret_settings(snapshot)
     page_context, param_secrets = _context(context, snapshot.commands)
     secrets = (
-        set(get_secret_registry().secrets_for(snapshot.device_id))
+        get_secret_registry().to_mask(Exit.REPORT, snapshot.device_id)
         | setting_secrets | param_secrets | snapshot.state_secrets()
     )
     redactions = [Redaction(v) for v in sorted(secrets) if isinstance(v, str) and v]

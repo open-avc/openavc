@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from openavc.core.device_traffic import get_traffic_recorder
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 
 
 def wire_held(device_id: str | None, direction: str) -> bool:
@@ -59,4 +60,4 @@ def format_wire_data(
 
     if not device_id:
         return text
-    return get_secret_registry().redact_for(device_id, text)
+    return get_secret_registry().masked(Exit.LOG, text, device_id)

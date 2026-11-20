@@ -16,6 +16,7 @@ from openavc.utils.log_redaction import (
     redact_text,
     secret_config_keys,
 )
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import safe_path_within
 
@@ -123,7 +124,7 @@ class SystemToolsMixin:
         # the device logins, the plugin logins and the mesh key the engine
         # registered from the login file (Engine._register_project_secrets).
         # The marker itself is no secret, and masked it would read as one.
-        secrets |= get_secret_registry().all_secrets()
+        secrets |= get_secret_registry().to_mask(Exit.CLOUD)
         secrets.discard(SAVED_LOGIN)
 
         try:

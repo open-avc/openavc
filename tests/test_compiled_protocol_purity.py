@@ -43,6 +43,9 @@ ALLOWED = {
     # installs on every handler. Stdlib-only (logging + re), so it does not
     # widen what the simulator or the validator has to be able to import.
     "openavc.utils.log_redaction",
+    # Asked by log_redaction (which exits may carry a secret). Stdlib only
+    # (enum), so it widens nothing either.
+    "openavc.utils.secret_audience",
     "openavc.system_config",
 }
 

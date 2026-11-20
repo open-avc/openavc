@@ -25,6 +25,7 @@ from dataclasses import dataclass, asdict
 from typing import Any
 
 from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 
 
 @dataclass
@@ -221,7 +222,7 @@ class LogBuffer:
         out = []
         for entry in entries:
             data = entry.to_dict()
-            data["message"] = registry.redact_any(data.get("message", ""))
+            data["message"] = registry.masked(Exit.LOG, data.get("message", ""))
             out.append(data)
         return out
 

@@ -57,6 +57,7 @@ from openavc.utils.log_redaction import (
     compile_secret_pattern,
     get_secret_registry,
 )
+from openavc.utils.secret_audience import Exit
 
 log = logging.getLogger(__name__)
 
@@ -422,7 +423,7 @@ def serialize_entry(
     survives) of the redacted bytes. Without a redactor, the device's
     registered secrets are used."""
     if redactor is None:
-        redactor = TrafficRedactor(get_secret_registry().secrets_for(entry.device_id))
+        redactor = TrafficRedactor(get_secret_registry().to_mask(Exit.REPORT, entry.device_id))
     data = redactor.data(entry.data)
     out: dict[str, Any] = {
         "seq": entry.seq,
