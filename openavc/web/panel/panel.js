@@ -7,6 +7,7 @@
 
 import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
 import { assetUrl, basePath } from './modules/base_path.js';
+import { ASK_AGAIN_SOON, NOT_READY_CLOSE, SHOW_SERVER_PAGE, STARTING_RETRY_MS, afterNotReady } from './modules/not_ready.js';
 import { lookPictures, pickLook, withTwoStateWords } from './modules/looks.js';
 import {
     applyStyle, clearStateColours, dropFadedBackground, updateImageTint,
@@ -94,13 +95,6 @@ const FRAMES = new Map([
 
 /** How the page on screen goes when no page replaces it: at once, with no transition. */
 const LEAVE_AT_ONCE = { transition: 'none', duration: 0 };
-
-/** The server's close for a socket it is not ready to serve: still starting,
- *  failed to start, or stopping, the phase as the reason
- *  (middleware/startup_splash.py). */
-const NOT_READY_CLOSE = 4503;
-/** How often a socket turned away while the server starts tries again. */
-const STARTING_RETRY_MS = 1000;
 
 /**
  * A Container's caption at its `label_position`: against the top or the
@@ -553,9 +547,9 @@ class PanelApp {
 
     /** What a closed socket means: a refusal with a reason says so in place
      *  of the panel; a device not approved asks again before connecting; a
-     *  start that failed shows the server's own page; a server still
-     *  starting is asked again soon; and anything else reconnects, a little
-     *  later each time. */
+     *  server not ready for it shows its page or is asked again soon
+     *  (modules/not_ready.js); and anything else reconnects, a little later
+     *  each time. */
     _socketClosed(event) {
         if (this.access.ended) return;
         const code = event.code;
@@ -573,7 +567,8 @@ class PanelApp {
             this.access.waitForAccess({ afterRefusal: true }).then(() => this.connect());
             return;
         }
-        if (code === NOT_READY_CLOSE && event.reason === 'failed' && this._failedStartIsShownHere()) {
+        const notReady = afterNotReady(event, this.embedded);
+        if (notReady === SHOW_SERVER_PAGE) {
             this.showServerPage();
             return;
         }
@@ -584,25 +579,14 @@ class PanelApp {
         if (retryEl) {
             retryEl.textContent = `Reconnecting (attempt ${this.reconnectAttempts})...`;
         }
-        // A start takes seconds, so it is asked again on a short steady wait;
-        // anything else backs off (capped at maxReconnectDelay).
-        if (code === NOT_READY_CLOSE && event.reason === 'starting') {
+        // A start takes seconds; anything else backs off (capped at
+        // maxReconnectDelay).
+        if (notReady === ASK_AGAIN_SOON) {
             setTimeout(() => this.connect(), STARTING_RETRY_MS);
             return;
         }
         setTimeout(() => this.connect(), this.reconnectDelay);
         this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
-    }
-
-    /** Whether a failed start is shown on this screen by loading the
-     *  server's page, which says why it could not start, counts down to its
-     *  next try or offers Start again, and reloads itself onto the panel once
-     *  a start succeeds. Not in the Builder's own frame, whose Programmer
-     *  says why, and not through Remote Access: that page asks the system's
-     *  own address how the start is going, which the cloud does not forward,
-     *  so it would never come back. Those keep reconnecting. */
-    _failedStartIsShownHere() {
-        return !this.embedded && basePath() === '';
     }
 
     /** Load this page again. While a start has failed the server answers
