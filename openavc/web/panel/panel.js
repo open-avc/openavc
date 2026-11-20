@@ -553,8 +553,9 @@ class PanelApp {
 
     /** What a closed socket means: a refusal with a reason says so in place
      *  of the panel; a device not approved asks again before connecting; a
-     *  server still starting is asked again soon; and anything else
-     *  reconnects, a little later each time. */
+     *  start that failed shows the server's own page; a server still
+     *  starting is asked again soon; and anything else reconnects, a little
+     *  later each time. */
     _socketClosed(event) {
         if (this.access.ended) return;
         const code = event.code;
@@ -572,6 +573,10 @@ class PanelApp {
             this.access.waitForAccess({ afterRefusal: true }).then(() => this.connect());
             return;
         }
+        if (code === NOT_READY_CLOSE && event.reason === 'failed' && this._failedStartIsShownHere()) {
+            this.showServerPage();
+            return;
+        }
         // A server that said it is not ready answered: no session question.
         if (code !== NOT_READY_CLOSE) this.access.checkSessionAfterDrop();
         this.reconnectAttempts++;
@@ -587,6 +592,24 @@ class PanelApp {
         }
         setTimeout(() => this.connect(), this.reconnectDelay);
         this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
+    }
+
+    /** Whether a failed start is shown on this screen by loading the
+     *  server's page, which says why it could not start, counts down to its
+     *  next try or offers Start again, and reloads itself onto the panel once
+     *  a start succeeds. Not in the Builder's own frame, whose Programmer
+     *  says why, and not through Remote Access: that page asks the system's
+     *  own address how the start is going, which the cloud does not forward,
+     *  so it would never come back. Those keep reconnecting. */
+    _failedStartIsShownHere() {
+        return !this.embedded && basePath() === '';
+    }
+
+    /** Load this page again. While a start has failed the server answers
+     *  every page's address with its own page, and with the panel again once
+     *  a start succeeds. */
+    showServerPage() {
+        location.reload();
     }
 
     send(msg) {

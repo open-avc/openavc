@@ -27,13 +27,20 @@ redrawn -- with nothing on the end of a wire.
 from __future__ import annotations
 
 import json
+import os
 import re as _re
+import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e import conftest as e2e_conftest
 
 # Skip-gate only: the browser comes from pytest-playwright's session fixtures.
 pytest.importorskip("playwright.sync_api")
@@ -148,9 +155,11 @@ def _state(base_url: str, key: str) -> Any:
 class _ServedPanel:
     """A page showing the panel of a running instance, plus that instance."""
 
-    def __init__(self, page: Page, base_url: str, failed: list[str]):
+    def __init__(self, page: Page, base_url: str, failed: list[str], handle=None):
         self.page = page
         self.base_url = base_url
+        #: The instance's server (tests/e2e/conftest.py's handle).
+        self.handle = handle
         #: Every same-origin response the browser got back with a 4xx/5xx.
         self.failed_requests = failed
 
@@ -187,7 +196,7 @@ def served_panel(server_factory, page: Page):
     page.locator('[data-element-id="btn_laptop"]').wait_for(
         state="visible", timeout=READY_TIMEOUT,
     )
-    return _ServedPanel(page, handle.base_url, failed)
+    return _ServedPanel(page, handle.base_url, failed, handle)
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +293,82 @@ def test_loading_and_driving_the_panel_asks_for_nothing_that_is_not_there(
                 "the press never landed, so the request log proves nothing")
 
     assert served_panel.failed_requests == []
+
+
+# ---------------------------------------------------------------------------
+# A start that failed is shown on the glass by the server's own page
+# ---------------------------------------------------------------------------
+
+def _start_on_its_port(handle, log_path: Path) -> subprocess.Popen:
+    """Another server process for ``handle``'s project and data folder, on
+    the same port, the way the computer's service manager starts the next one
+    after a stop. Nothing starts it again when it ends."""
+    env = {
+        **os.environ,
+        "OPENAVC_PORT": str(urlparse(handle.base_url).port),
+        "OPENAVC_BIND": "127.0.0.1",
+        "OPENAVC_PROJECT": str(handle.project_path),
+        "OPENAVC_DATA_DIR": str(handle.data_dir),
+        "OPENAVC_E2E_CONTROL_FILE": str(handle.control_file),
+        "OPENAVC_CLOUD_ENABLED": "false",
+        "OPENAVC_RATE_LIMIT_ENABLED": "false",
+        "PYTHONUNBUFFERED": "1",
+    }
+    for managed in ("OPENAVC_SERVICE_MANAGED", "INVOCATION_ID"):
+        env.pop(managed, None)
+    with open(log_path, "wb") as log:
+        return subprocess.Popen(
+            [sys.executable, "-m", "openavc.main"],
+            cwd=str(e2e_conftest.OPENAVC_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT,
+        )
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=10.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5.0)
+
+
+def test_a_failed_start_shows_its_reason_on_the_panel_then_the_room_again(served_panel) -> None:
+    """The room page would otherwise stay up, offline, with no reason. The
+    server is stopped and started again on its port with a project that
+    cannot be loaded (a folder where the file was); the panel, reconnecting,
+    is turned away for a failed start and loads its page again, which is the
+    server's own page with the reason. Once a start succeeds, that page loads
+    the panel again by itself."""
+    page = served_panel.page
+    handle = served_panel.handle
+    project = handle.project_path
+    root = project.parent
+    good = project.read_bytes()
+    page.evaluate("() => { window.__sameDocument = true; }")
+
+    _stop(handle.process)
+    project.unlink()
+    project.mkdir()
+    # So no start restores a backup over the folder.
+    if (root / "backups").exists():
+        (root / "backups").rename(root / "backups-aside")
+    failing = _start_on_its_port(handle, root / "server-failed.log")
+    try:
+        expect(page.locator("#message")).to_have_text("OpenAVC could not start", timeout=30_000)
+        expect(page.locator("#error")).to_contain_text("project")
+        expect(page.locator("#again")).to_be_visible()
+        assert page.evaluate("() => window.__sameDocument === undefined"), "the page was not loaded again"
+    finally:
+        _stop(failing)
+
+    project.rmdir()
+    project.write_bytes(good)
+    fixed = _start_on_its_port(handle, root / "server-fixed.log")
+    try:
+        served_panel.element("btn_laptop").wait_for(state="visible", timeout=30_000)
+        expect(page.locator("#offline-overlay")).not_to_have_class(_re.compile(r"\bvisible\b"))
+    finally:
+        _stop(fixed)
 
 
 # ---------------------------------------------------------------------------

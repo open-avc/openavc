@@ -98,6 +98,22 @@ def test_while_starting_a_page_is_the_splash():
     assert "fetch('/api/startup-status'" in reply.text
 
 
+def test_after_a_failed_start_a_page_is_the_splash_until_a_start_succeeds():
+    """A panel turned away for a failed start loads its page again
+    (web/panel/panel.js), so a failed start must answer that page with the
+    splash, never the panel, or the panel would reload for ever."""
+    record = _record(error="project unreadable")
+    client = _client(record)
+    reply = client.get("/panel/?page=main")
+    assert reply.status_code == 503
+    assert reply.headers["content-type"].startswith("text/html")
+    assert "OpenAVC could not start" in reply.text
+    record.hold()
+    assert client.get("/panel").status_code == 503
+    record.stopping()
+    assert client.get("/panel").status_code == 503
+
+
 def test_a_path_merely_starting_with_api_is_not_the_api():
     reply = _client(_record()).get("/apiary")
     assert reply.status_code == 503

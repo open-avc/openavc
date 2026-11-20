@@ -5077,8 +5077,8 @@ const tests = {
     // stopping) accepts it and closes it at once with 4503, the phase as the
     // reason. The panel stays down through the handshake (no flash of the
     // room between the two), asks a start again every second, and backs off
-    // from a failed start as from any drop; the server's first message is
-    // what brings it up.
+    // from a stop as from any drop; the server's first message is what
+    // brings it up.
     async reconnect_a_server_not_ready_keeps_the_panel_down() {
         clearAccessOverlay();
         const rig = remoteRig(reply(200, '{"access":"open"}', true));
@@ -5101,9 +5101,9 @@ const tests = {
             const starting = [turnedAway('starting'), turnedAway('starting'), turnedAway('starting')].flat();
             assert(JSON.stringify(starting) === '[1000,1000,1000]',
                 `a start is asked again every second, got ${JSON.stringify(starting)}`);
-            const failed = [turnedAway('failed'), turnedAway('failed'), turnedAway('failed')].flat();
-            assert(JSON.stringify(failed) === '[1000,1500,2250]',
-                `a failed start backs off, got ${JSON.stringify(failed)}`);
+            const stopping = [turnedAway('stopping'), turnedAway('stopping'), turnedAway('stopping')].flat();
+            assert(JSON.stringify(stopping) === '[1000,1500,2250]',
+                `a stop backs off, got ${JSON.stringify(stopping)}`);
             assert(rig.fetched.length === 0, 'the server said why: no question about the session');
             assert(rig.sockets === 7, `each retry opens a socket, got ${rig.sockets}`);
 
@@ -5112,6 +5112,64 @@ const tests = {
         } finally {
             window.setTimeout = realSetTimeout;
             resetAfterDrop(app);
+            rig.restore();
+        }
+    },
+
+    // A start that failed has its reason, its countdown and Start again on
+    // the server's own page, which the server serves at every page's address
+    // until a start succeeds, and which reloads itself onto the panel then.
+    // So a panel turned away for a failed start loads its page again, once,
+    // and asks nothing more. Two panels keep reconnecting instead: the
+    // Builder's own frame (the Programmer around it says why), and a panel
+    // opened through Remote Access (the page's questions go to the system's
+    // own address, which the cloud does not forward).
+    async reconnect_a_failed_start_shows_the_servers_page() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(200, '{"access":"open"}', true));
+        const realSetTimeout = window.setTimeout;
+        const scheduled = [];
+        window.setTimeout = (fn, ms) => { scheduled.push({ fn, ms }); return 0; };
+        const turnAway = (app, reason) => {
+            scheduled.length = 0;
+            let loaded = 0;
+            app.showServerPage = () => { loaded++; };
+            app.connect();
+            app.ws.onclose({ code: 4503, reason });
+            return { loaded, delays: scheduled.map((t) => t.ms) };
+        };
+        const apps = [];
+        const made = (setUp) => { const app = mkApp(); setUp(app); apps.push(app); return app; };
+        try {
+            const room = turnAway(made(() => {}), 'failed');
+            assert(room.loaded === 1, `a failed start loads the server's page once, got ${room.loaded}`);
+            assert(room.delays.length === 0,
+                `and schedules no reconnect, got ${JSON.stringify(room.delays)}`);
+            assert(rig.fetched.length === 0, 'the server said why: no question about the session');
+
+            for (const reason of ['starting', 'stopping']) {
+                const other = turnAway(made(() => {}), reason);
+                assert(other.loaded === 0, `a server ${reason} is not a failed start`);
+                assert(other.delays.length === 1, `a server ${reason} is asked again`);
+            }
+            const drop = mkApp();
+            apps.push(drop);
+            drop.showServerPage = () => { throw new Error('a dropped socket is not a failed start'); };
+            drop.connect();
+            assert(JSON.stringify(dropSocket(drop, 1006)) === '[1000]', 'a drop reconnects');
+
+            const preview = turnAway(made((app) => { app.embedded = true; }), 'failed');
+            assert(preview.loaded === 0, "the Builder's frame is left to the Programmer");
+            assert(JSON.stringify(preview.delays) === '[1000]',
+                `the Builder's frame backs off, got ${JSON.stringify(preview.delays)}`);
+
+            const remote = await atPath('/tunnel/t1/panel/', async () => turnAway(made(() => {}), 'failed'));
+            assert(remote.loaded === 0, 'a panel opened through Remote Access keeps reconnecting');
+            assert(JSON.stringify(remote.delays) === '[1000]',
+                `through Remote Access it backs off, got ${JSON.stringify(remote.delays)}`);
+        } finally {
+            window.setTimeout = realSetTimeout;
+            for (const app of apps) resetAfterDrop(app);
             rig.restore();
         }
     },
