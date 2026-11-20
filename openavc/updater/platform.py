@@ -16,6 +16,11 @@ Detects how OpenAVC was installed to determine update behavior:
 Also THE exit code an applied update or rollback ends the process with, by
 install type and never by operating system (``update_exit``), which the
 updater's exit and the automatic rollback at start both ask.
+
+And THE answers the cloud offers an update by: the kind of release file each
+install type updates from (``artifact_kind``), and whether an update sent to
+this system is installed (``installs_updates``). The cloud agent's hello
+reports both, so the cloud sends only what the updater will install.
 """
 
 from __future__ import annotations
@@ -161,8 +166,8 @@ def artifact_kind(deployment_type: DeploymentType) -> str:
 
 
 def installs_updates(deployment_type: DeploymentType) -> bool:
-    """Whether an update sent to this system is installed, as its hello
-    reports it to the cloud: it updates itself (``updates_itself``) and no
+    """THE answer to whether an update sent to this system is installed, as
+    its hello reports it to the cloud: it updates itself (``updates_itself``) and no
     product firmware owns its updates (host.py). Each is what the updater
     checks before it installs one."""
     from openavc.updater.host import get_firmware_host
