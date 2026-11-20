@@ -1309,8 +1309,10 @@ async def test_a_window_the_audit_cannot_finish_closes_with_why(driver):
         assert view["watch_error"] == "the window broke"
         failed = [e.text for e in session.timeline if e.kind == "command.failed"]
         assert failed == ["Set Volume: the audit could not finish watching it: the window broke."]
-        assert heard[-1]["type"] == "audit.commands"
-        assert heard[-1]["commands"]["trials"][0]["summary"] == view["summary"]
+        # The listen step publishes on its own schedule, so its update may
+        # land after this one: read the last trials the wizard was sent.
+        sent = [m for m in heard if m["type"] == "audit.commands" and "trials" in m["commands"]]
+        assert sent[-1]["commands"]["trials"][0]["summary"] == view["summary"]
 
         del commands._hold_open
         again = await commands.send("power_on")
