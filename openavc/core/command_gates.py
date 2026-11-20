@@ -14,6 +14,15 @@ range; then every param passes the declared-schema gate
 right now (connected, or the command is ``available_offline``) is the device
 manager's own question, and so is what a refusal means for the device.
 
+Where a secret parameter's value may go is decided here too, since the send
+holds the declaration (``is_secret_param``): the device's masking learns the
+value before the checks run (``register_secret_values``), so the device's
+traffic and any log line or driver error that echoes it are masked; a
+refusal names the parameter without it (``drivers/param_validation``); and
+what a door logs or announces of a command shows it as ``***``
+(``shown_params``). Only the device itself may carry it
+(``utils/secret_audience``).
+
 The rule worth knowing before changing any of them: each reads the driver
 INSTANCE's DRIVER_INFO through ``command_definition``, never the class's or the
 catalog's, so a command set built at runtime (discovered controls, channel
@@ -49,7 +58,13 @@ from openavc.drivers.command_files import (
     takes_file_sentence,
 )
 from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import file_param_names, is_file_command, secret_settings
+from openavc.drivers.spec import (
+    file_param_names,
+    is_file_command,
+    is_secret_setting,
+    secret_settings,
+)
+from openavc.utils.log_redaction import REDACTED, get_secret_registry
 
 
 def _driver_info(driver: Any) -> dict[str, Any]:
@@ -73,6 +88,60 @@ def _param_defs(driver: Any, command: str) -> dict[str, Any] | None:
     cmd_def = command_definition(driver, command)
     pdefs = cmd_def.get("params") if cmd_def is not None else None
     return pdefs if isinstance(pdefs, dict) else None
+
+
+def is_secret_param(driver: Any, command: str, key: str) -> bool:
+    """Whether parameter ``key`` of ``command`` holds a secret, by the live
+    driver's declaration (``spec.is_secret_setting``): marked secret, or
+    named ``password``. With no live driver there is no declaration, and
+    every parameter is treated as one."""
+    if driver is None:
+        return True
+    return is_secret_setting(key, (_param_defs(driver, command) or {}).get(key))
+
+
+def _secret_text(value: Any) -> str | None:
+    """A value as the masking matches it: text as it is, a number as its
+    digits; None for anything else."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def register_secret_values(
+    driver: Any, device_id: str, command: str, params: dict[str, Any] | None,
+) -> None:
+    """Have this device's masking learn each secret parameter's value, as a
+    driver's ``redact_in_log`` does: from then on the device's traffic, a
+    reply that echoes it, and every log line mask it as they mask the
+    device's password. Values under the masking's four-character floor are
+    not learned; no refusal or announcement quotes a secret either way."""
+    registry = get_secret_registry()
+    for key, value in (params or {}).items():
+        text = _secret_text(value)
+        if text is not None and is_secret_param(driver, command, key):
+            registry.add_runtime_secret(device_id, text)
+
+
+def shown_params(driver: Any, command: str, params: Any) -> Any:
+    """``params`` as a log line or an announcement of the command may show
+    them: each secret parameter's value as ``***``. Nothing to hide stays as
+    it is (an empty value, a saved-on-this-system marker), so a preview still
+    shows a value that resolved to nothing."""
+    if not isinstance(params, dict):
+        return params
+    return {
+        key: REDACTED if _hidden(driver, command, key, value) else value
+        for key, value in params.items()
+    }
+
+
+def _hidden(driver: Any, command: str, key: str, value: Any) -> bool:
+    if value in (None, "") or saved_params.is_any_marker(value):
+        return False
+    return is_secret_param(driver, command, key)
 
 
 def fill_saved_params(

@@ -237,16 +237,18 @@ class CommandHandler:
         device_id = payload["device_id"]
         command = payload["command"]
         params = payload["params"]
+        # What the log and the announcement show: a secret parameter as ***.
+        shown = self._devices.params_shown(device_id, command, params)
 
         log.info(
             f"Cloud command: {actor} → {device_id}.{command}"
-            f"({params})"
+            f"({shown})"
         )
 
         await self._events.emit("cloud.command", {
             "device_id": device_id,
             "command": command,
-            "params": params,
+            "params": shown,
             "user_name": payload["user_name"],
             "user_id": payload["user_id"],
             "request_id": request_id,

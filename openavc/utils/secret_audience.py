@@ -20,8 +20,13 @@ values reads them through ``SecretRegistry.masked`` or
 the registry's values outside the registry (``tests/test_secret_audience.py``
 sweeps the code for any other). Not every exit asks yet: some mask by a rule
 of their own (a URL's password, a credential's name), and a few still send a
-secret as they were given it (a setup run's result, a refused command's
-parameters). This table is the rule they are held to.
+secret as they were given it (a setup run's result). This table is the rule
+they are held to.
+
+A command's secret parameter is the send's to keep in
+(``core/command_gates.py``): it holds the declaration, so a refusal names the
+parameter without its value, a door logs and announces the command with it
+masked, and the device's masking learns the value before the checks run.
 
 The WebSocket rows are the client types ``core/ws_hub.MESSAGE_AUDIENCE``
 names (:attr:`Exit.PANEL`, :attr:`Exit.PROGRAMMER`): that table says who a

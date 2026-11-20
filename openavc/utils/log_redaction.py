@@ -593,9 +593,16 @@ class SecretRegistry:
         self._all_dirty = True
 
     def add_runtime_secret(self, device_id: str, value: str) -> None:
+        """Mask ``value`` in this device's traffic and every log line, from
+        now until the device is forgotten. A value already known keeps the
+        compiled patterns: every command carrying a secret parameter adds it
+        again (``core/command_gates.register_secret_values``)."""
         if not isinstance(value, str) or len(value) < MIN_SECRET_LEN:
             return
-        self._runtime.setdefault(device_id, set()).add(value)
+        known = self._runtime.setdefault(device_id, set())
+        if value in known:
+            return
+        known.add(value)
         self._invalidate(device_id)
 
     def forget(self, device_id: str) -> None:

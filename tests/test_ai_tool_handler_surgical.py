@@ -142,6 +142,8 @@ def mock_engine():
     engine.project_path.parent = MagicMock()
     engine.devices = MagicMock()
     engine.devices.add_device = AsyncMock()
+    # No driver here marks a parameter secret: every value shows as sent.
+    engine.devices.params_shown = lambda _device_id, _command, params: params
     engine.broadcast_ws = AsyncMock()
     engine._project_revision = 0
 

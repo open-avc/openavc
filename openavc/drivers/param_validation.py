@@ -10,7 +10,13 @@ runtime never disagree about the same step.
 
 The number and format checks are shared by both doors (:func:`_check_range`,
 :func:`_check_format`), so a refused command parameter and a refused setting
-give their reason in the same words. Where the two differ, they differ on
+give their reason in the same words. A refusal quotes the value it refused,
+except a secret's (``spec.is_secret_setting``: a parameter or setting marked
+secret, or named ``password``): that one is named with the rule it broke and
+never with the value, since the sentence reaches a panel, the log, the
+Programmer and the cloud, and only the device may carry a secret
+(``utils/secret_audience``). The rule reads the declaration, not the value,
+so a value too short for the log's masking is kept out too. Where the two differ, they differ on
 purpose: a device setting is persisted config, so a value outside its
 declared list is refused, while a command parameter's unrecognized value
 passes through (a ``$var`` may resolve to a wire value outside the authored
@@ -33,9 +39,11 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.param_labels import param_label
+from openavc.drivers.spec import is_secret_setting
 
 # Tuples, not sets: a declared type is whatever the definition holds, and a
 # membership test must not raise on an unhashable one.
@@ -102,25 +110,41 @@ class UnknownDeviceSettingError(DeviceSettingValueError):
 # --- The checks both doors share ---
 
 
+@dataclass(frozen=True)
+class _Refused:
+    """The value a refusal is about: ``where`` names it at the front of the
+    sentence, and ``secret`` says it is a secret, whose value no refusal
+    quotes (the module docstring has why)."""
+
+    where: str
+    secret: bool = False
+
+    def got(self, shown: str, lead: str = ", got ") -> str:
+        """``lead`` and the refused value as the sentence quotes it, or
+        nothing for a secret."""
+        return "" if self.secret else f"{lead}{shown}"
+
+
 def _number_kind(ptype: str) -> str:
     """What a refusal calls the number a type wants."""
     return "whole number" if ptype == "integer" else "number"
 
 
 def _check_range(
-    num: float | int, decl: dict[str, Any], where: str, error: type[ValueError],
+    num: float | int, decl: dict[str, Any], refused: _Refused, error: type[ValueError],
 ) -> None:
     """Refuse a number outside the declared ``min``/``max``. Either bound may
-    be absent; one that is not a number is ignored. ``where`` names the
-    value at the front of the refusal."""
+    be absent; one that is not a number is ignored."""
     mn, mx = decl.get("min"), decl.get("max")
     if isinstance(mn, (int, float)) and num < mn:
-        raise error(f"{where} must be at least {mn}, got {num:g}")
+        raise error(f"{refused.where} must be at least {mn}{refused.got(f'{num:g}')}")
     if isinstance(mx, (int, float)) and num > mx:
-        raise error(f"{where} must be at most {mx}, got {num:g}")
+        raise error(f"{refused.where} must be at most {mx}{refused.got(f'{num:g}')}")
 
 
-def _check_format(pattern: Any, text: str, where: str, error: type[ValueError]) -> None:
+def _check_format(
+    pattern: Any, text: str, refused: _Refused, error: type[ValueError],
+) -> None:
     """Refuse text that does not fully match the declared pattern.
 
     A malformed pattern refuses nothing: rejecting it is load-time
@@ -133,7 +157,8 @@ def _check_format(pattern: Any, text: str, where: str, error: type[ValueError]) 
         return
     if not matched:
         raise error(
-            f"{where} value {text!r} does not match the required format ({pattern})"
+            f"{refused.where}{refused.got(repr(text), ' value ')} does not match "
+            f"the required format ({pattern})"
         )
 
 
@@ -200,15 +225,16 @@ def validate_device_setting_value(key: str, sdef: Any, value: Any) -> Any:
         return value
     if value is None:
         raise DeviceSettingValueError(f"'{key}': a value is required")
+    refused = _Refused(f"'{key}'", is_secret_setting(key, sdef))
     stype = sdef.get("type", "string")
     if stype == "boolean":
-        return _setting_boolean(key, value)
+        return _setting_boolean(refused, value)
     if stype in _NUMERIC_TYPES:
-        return _setting_number(key, stype, sdef, value)
-    return _setting_text(key, sdef, value)
+        return _setting_number(refused, stype, sdef, value)
+    return _setting_text(refused, sdef, value)
 
 
-def _setting_boolean(key: str, value: Any) -> bool:
+def _setting_boolean(refused: _Refused, value: Any) -> bool:
     """A boolean setting's value as a real bool."""
     if isinstance(value, bool):
         return value
@@ -219,19 +245,21 @@ def _setting_boolean(key: str, value: Any) -> bool:
         return True
     if word in _FALSE_WORDS:
         return False
-    raise DeviceSettingValueError(f"'{key}' must be true or false, got {value!r}")
+    raise DeviceSettingValueError(
+        f"{refused.where} must be true or false{refused.got(repr(value))}"
+    )
 
 
 def _setting_number(
-    key: str, stype: str, sdef: dict[str, Any], value: Any,
+    refused: _Refused, stype: str, sdef: dict[str, Any], value: Any,
 ) -> float | int:
     """A numeric setting's value, of its declared type and inside its range."""
     num = _setting_numeric_value(value, stype)
     if num is None:
         raise DeviceSettingValueError(
-            f"'{key}' must be a {_number_kind(stype)}, got {value!r}"
+            f"{refused.where} must be a {_number_kind(stype)}{refused.got(repr(value))}"
         )
-    _check_range(num, sdef, f"'{key}'", DeviceSettingValueError)
+    _check_range(num, sdef, refused, DeviceSettingValueError)
     return num
 
 
@@ -265,20 +293,20 @@ def _parsed_setting_number(value: Any) -> float | int | None:
     return num if math.isfinite(num) else None
 
 
-def _setting_text(key: str, sdef: dict[str, Any], value: Any) -> str:
+def _setting_text(refused: _Refused, sdef: dict[str, Any], value: Any) -> str:
     """A text setting's value, trimmed: one of its declared values when it
     has a list, else matching its declared format."""
     sval = str(value).strip() if not isinstance(value, str) else value.strip()
     values = sdef.get("values")
     if isinstance(values, list) and values:
-        return _setting_choice(key, values, sval, value)
+        return _setting_choice(refused, values, sval, value)
     regex = sdef.get("regex") or sdef.get("pattern")
     if regex and sval != "":
-        _check_format(regex, sval, f"'{key}'", DeviceSettingValueError)
+        _check_format(regex, sval, refused, DeviceSettingValueError)
     return sval
 
 
-def _setting_choice(key: str, values: list[Any], sval: str, value: Any) -> str:
+def _setting_choice(refused: _Refused, values: list[Any], sval: str, value: Any) -> str:
     """The wire value a setting with a declared list is written as.
 
     An enum list may carry {value, label} entries (label shown in the editor,
@@ -291,7 +319,8 @@ def _setting_choice(key: str, values: list[Any], sval: str, value: Any) -> str:
     resolved = _resolve_enum_param_value(sval, values)
     if resolved not in wire:
         raise DeviceSettingValueError(
-            f"'{key}' must be one of: {', '.join(wire)} — got {value!r}"
+            f"{refused.where} must be one of: {', '.join(wire)}"
+            f"{refused.got(repr(value), ' — got ')}"
         )
     return resolved
 
@@ -507,14 +536,16 @@ def _normalized_param(command: str, name: str, pdef: dict[str, Any], value: Any)
             value = value.strip()
         if value == "":
             return value
-    where = f"'{command}': '{name}'"
+    refused = _Refused(f"'{command}': '{name}'", is_secret_setting(name, pdef))
     ptype = pdef.get("type", "string")
     if ptype in _NUMERIC_TYPES:
-        return _normalized_number(where, ptype, pdef, value)
-    return _normalized_text(where, pdef, value)
+        return _normalized_number(refused, ptype, pdef, value)
+    return _normalized_text(refused, pdef, value)
 
 
-def _normalized_number(where: str, ptype: str, pdef: dict[str, Any], value: Any) -> Any:
+def _normalized_number(
+    refused: _Refused, ptype: str, pdef: dict[str, Any], value: Any,
+) -> Any:
     """A numeric param's value, checked against its range.
 
     A *numeric* value is normalized to the declared type so a scaled control
@@ -528,8 +559,10 @@ def _normalized_number(where: str, ptype: str, pdef: dict[str, Any], value: Any)
     """
     num = _as_number(value, ptype)
     if num is None:
-        raise CommandParamError(f"{where} must be a {_number_kind(ptype)}, got {value!r}")
-    _check_range(num, pdef, where, CommandParamError)
+        raise CommandParamError(
+            f"{refused.where} must be a {_number_kind(ptype)}{refused.got(repr(value))}"
+        )
+    _check_range(num, pdef, refused, CommandParamError)
     if isinstance(value, str):
         return value
     if ptype == "integer":
@@ -540,7 +573,7 @@ def _normalized_number(where: str, ptype: str, pdef: dict[str, Any], value: Any)
     return int(round(num)) if decimals <= 0 else round(num, decimals)
 
 
-def _normalized_text(where: str, pdef: dict[str, Any], value: Any) -> Any:
+def _normalized_text(refused: _Refused, pdef: dict[str, Any], value: Any) -> Any:
     """A non-numeric param's value: a declared label mapped to its wire value,
     then checked against its declared pattern.
 
@@ -555,5 +588,5 @@ def _normalized_text(where: str, pdef: dict[str, Any], value: Any) -> Any:
         value = _resolve_enum_param_value(value, options)
     pattern = pdef.get("pattern")
     if pattern:
-        _check_format(pattern, value, where, CommandParamError)
+        _check_format(pattern, value, refused, CommandParamError)
     return value

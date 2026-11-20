@@ -445,6 +445,8 @@ async def _reached(element_id: str, event: str, *, project: bool = True) -> list
     engine = MagicMock()
     engine.project = ProjectConfig.model_validate(_project()) if project else None
     engine.events.emit = AsyncMock()
+    # No driver here marks a parameter secret: every value shows as resolved.
+    engine.devices.params_shown = lambda _device_id, _command, params: params
     return await UIEventRuntime(engine).handle(event, element_id, dry_run=True)
 
 

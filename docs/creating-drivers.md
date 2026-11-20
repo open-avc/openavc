@@ -1298,7 +1298,7 @@ These rules apply to every driver format — a Python driver's declared `min`/`m
 **Two presentation-only parameter settings.** Neither changes the value the device receives:
 
 - `unit` puts a unit beside the input when the command is run (`%`, `ms`, `dB`) — worth setting wherever the number alone is ambiguous. The same key means the same thing on a state variable. A device setting takes no `unit` (the device page lists a setting by its label and value), so name the unit in the setting's label instead: `Page Volume (dB)`.
-- `secret: true` masks the input, for a parameter that carries a password, PIN, or key. Use it wherever a credential would otherwise sit on screen in plain text. The same key does the same job on a `config_schema` field. A parameter marked this way, or named `password`, is also kept off the project when someone saves it in a macro step or a control's action: the system keeps the value, the step holds a placeholder, and your driver receives the real value when the step runs. A placeholder that reaches a command any other way is refused before your driver sees it.
+- `secret: true` masks the input, for a parameter that carries a password, PIN, or key. Use it wherever a credential would otherwise sit on screen in plain text. The same key does the same job on a `config_schema` field. A parameter marked this way, or named `password`, is also kept off the project when someone saves it in a macro step or a control's action: the system keeps the value, the step holds a placeholder, and your driver receives the real value when the step runs. A placeholder that reaches a command any other way is refused before your driver sees it. A value that does not fit the parameter is refused by the parameter's name and the rule it broke, without the value, and the log shows the value as `***`.
 
 ```yaml
 set_audio_delay:
@@ -3903,7 +3903,7 @@ All transport types (TCP, serial, HTTP, UDP) automatically log every send and re
 - **You do not need to add any logging code** for protocol traffic. It's built into the transport layer. (One exception, below: a secret the *device* hands you at runtime.)
 - Every `TX` (sent) and `RX` (received) message appears in the Programmer IDE's device log, filterable by device.
 - Text data is shown decoded. Binary data is shown as hex.
-- Credentials are masked. Any config field you mark `secret: true`, and any field named like a credential (`password`, `token`, `api_key`, `passphrase`, `username`), has its **value** replaced with `***` wherever it appears in the log.
+- Credentials are masked. Any config field you mark `secret: true`, and any field named like a credential (`password`, `token`, `api_key`, `passphrase`, `username`), has its **value** replaced with `***` wherever it appears in the log. So does a command parameter marked `secret: true` or named `password`, from the first time a command carries it. As with `redact_in_log` below, a value shorter than four characters is not masked in the log.
 
 **Example log output** (automatic, no code needed):
 ```

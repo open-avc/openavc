@@ -131,7 +131,9 @@ def device_error_text(exc: BaseException) -> str:
     the event's sentence, says it this way, so a trigger forwarding
     ``$trigger.error`` never sends an empty message. The text is kept as it
     is when there is some: the Programmer and a trigger read it, and a panel
-    receives its own copy of the event that names only the device.
+    receives its own copy of the event that names only the device. A failed
+    command's event masks the device's secrets in it before it is published
+    (``core/device_commands.py``).
     """
     text = str(exc)
     return text if text.strip() else type(exc).__name__

@@ -19,6 +19,13 @@ login file, against the live driver, before anything else reads the
 parameters (``command_gates.fill_saved_params``); a marker any other door
 sends is refused.
 
+What a secret parameter's value may reach is decided here, since this door
+holds the declaration: the device's masking learns the value before the
+checks run, a refusal names the parameter without it, a ``device.error`` the
+send publishes is masked with the device's secrets, and a door that logs or
+announces a command asks ``params_shown`` for the copy it may show
+(``core/command_gates.py``).
+
 The rule worth knowing before changing it: whether a command goes out now is
 one rule, ``command_goes_out``. The device accepts commands (connected, or
 its connection held open until it answers, ``accepts_commands``, which is also
@@ -43,7 +50,9 @@ from openavc.core.command_gates import (
     check_file_door,
     coerce_child_id_params,
     fill_saved_params,
+    register_secret_values,
     send_file_command,
+    shown_params,
     validate_command_params,
 )
 from openavc.core.device_errors import (
@@ -53,6 +62,8 @@ from openavc.core.device_errors import (
     mark_failed_command,
     not_connected,
 )
+from openavc.utils.log_redaction import get_secret_registry
+from openavc.utils.secret_audience import Exit
 
 if TYPE_CHECKING:
     from openavc.core.device_sleep import SleepBook
@@ -78,13 +89,27 @@ def _checked_params(
     nothing and send_command publishes no device.error for it. The refusal is
     still marked with its command, so a control's script call words it as a
     press on that command does.
+
+    The device's masking learns each secret value twice: as it was given,
+    before the checks, so a refused one is masked too, and as the driver
+    gets it (trimmed, a label as its wire value).
     """
+    register_secret_values(driver, device_id, command, params)
     try:
         params = coerce_child_id_params(driver, command, params)
-        return validate_command_params(driver, command, params)
+        checked = validate_command_params(driver, command, params)
     except Exception as exc:
         mark_failed_command(exc, device_id, command)
         raise
+    register_secret_values(driver, device_id, command, checked)
+    return checked
+
+
+def _error_announced(device_id: str, exc: BaseException) -> str:
+    """What ``device.error.<id>`` says of a failed send: ``device_error_text``
+    with this device's secrets masked, a secret parameter the driver echoed
+    included."""
+    return get_secret_registry().masked(Exit.SENTENCE, device_error_text(exc), device_id)
 
 
 class DeviceCommandsMixin:
@@ -115,7 +140,8 @@ class DeviceCommandsMixin:
 
         Any exception raised by the driver's ``send_command`` is published as
         ``device.error.<device_id>`` (payload: ``{"device_id", "error"}``, the
-        error in ``device_error_text``'s words) and then re-raised. A refusal before sending (an undeclared name, the
+        error in ``device_error_text``'s words, the device's secrets masked)
+        and then re-raised. A refusal before sending (an undeclared name, the
         wrong door, offline, a parameter the declaration refuses) is raised
         with no event. Transport-level loss is reported separately as
         ``device.disconnected.<device_id>`` from the transport callback; the
@@ -171,7 +197,7 @@ class DeviceCommandsMixin:
             mark_failed_command(exc, device_id, command)
             await self.events.emit(
                 f"device.error.{device_id}",
-                {"device_id": device_id, "error": device_error_text(exc)},
+                {"device_id": device_id, "error": _error_announced(device_id, exc)},
             )
             raise
         # Armed only on a send that did not raise. A command that never left
@@ -179,6 +205,12 @@ class DeviceCommandsMixin:
         # would suppress the very fault that stopped it.
         self._note_command_sent(device_id, driver, command)
         return result
+
+    def params_shown(self, device_id: str, command: str, params: Any) -> Any:
+        """``params`` as a door may log or announce them: each secret
+        parameter's value as ``***``, by the device's live declaration; every
+        value, for a device with no live driver (``command_gates.shown_params``)."""
+        return shown_params(self._devices.get(device_id), command, params)
 
     def _offline_refusal(self, device_id: str) -> ConnectionError:
         """Why a command to this device cannot go out now.

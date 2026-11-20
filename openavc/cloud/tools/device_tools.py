@@ -538,7 +538,9 @@ class DeviceToolsMixin:
         command = input.get("command", "")
         params = input.get("params", {})
         await self._events.emit("ai.device_command", {
-            "device_id": device_id, "command": command, "params": params,
+            "device_id": device_id, "command": command,
+            # A secret parameter as ***.
+            "params": self._devices.params_shown(device_id, command, params),
         })
         try:
             await self._devices.send_command(device_id, command, params)

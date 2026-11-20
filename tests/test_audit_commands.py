@@ -523,11 +523,13 @@ async def test_a_refusal_of_the_drivers_own_request_is_not_the_commands(driver):
             assert trial.refusals["last_error_writes"] == 0
             [later] = trial.refusals["later"]
             assert later["error"] == "refused" and later["count"] == 1
-            assert later["request"] == '"CODE 0000\\r"'
+            # The pin is a secret parameter, so the send taught the device's
+            # masking its value and the report shows it masked.
+            assert later["request"] == '"CODE ***\\r"'
             sentence = trial_sentence(commands._trial_view(trial, every_entry=True))
             assert "the device refused it" not in sentence
             assert "the device refused a request the driver sent on its own" in sentence
-            assert sentence.endswith('("CODE 0000\\r"): refused.')
+            assert sentence.endswith('("CODE ***\\r"): refused.')
             assert trial.effects[0]["outcome"] in ("confirmed", "already")
     finally:
         await run.stop()

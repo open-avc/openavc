@@ -328,10 +328,11 @@ class MacroSteps:
             log.debug(f"  Macro step skipped (device offline): {device_id}.{command}")
             return
         params = self._resolve_params(step.get("params") or {}, run.context)
-        log.debug(f"  Macro step: {device_id}.{command}({params})")
+        shown = self.devices.params_shown(device_id, command, params)
+        log.debug(f"  Macro step: {device_id}.{command}({shown})")
         # A value the step saved on this system is filled in by the send,
         # never here: the log line above and the step's progress keep the
-        # marker (core/saved_params.py).
+        # marker (core/saved_params.py), and show any other secret as ***.
         await self.devices.send_command(device_id, command, params, **saved_kwargs(step.get("params")))
 
     async def _group_command_step(

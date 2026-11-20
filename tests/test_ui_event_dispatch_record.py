@@ -48,6 +48,11 @@ def _engine(tmp_path: Path, elements: list[dict], macros: list[dict] | None = No
     # it -- so an engine holding no macros is a room where every macro button
     # is broken, which is not what these cases are about.
     engine.macros.load_macros([m.model_dump() for m in engine.project.macros])
+    # No device is loaded here (each case stands in for the send), and a
+    # device with no live driver has no declaration to say which parameters
+    # are secret, so its record would show none of them: these cases read the
+    # record as an Acme driver that marks none secret writes it.
+    engine.devices.params_shown = lambda _device_id, _command, params: params
     return engine
 
 

@@ -439,11 +439,14 @@ class UIEventRuntime:
             # $system ref from the state store.
             for k, v in params.items():
                 params[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
+            # The record goes back to whoever pressed, the cloud AI's
+            # simulated press included: a secret parameter shows as ***.
+            shown = engine.devices.params_shown(device_id, command, params)
             if dry_run:
                 # The params are resolved above and reported, because that is
                 # the half worth previewing: a $value that resolves to None is
                 # the mistake, and it is invisible until the command is sent.
-                record(device=device_id, command=command, params=params, sent=False)
+                record(device=device_id, command=command, params=shown, sent=False)
                 return
             try:
                 # A value this action saved on this system is filled in by the
@@ -451,13 +454,13 @@ class UIEventRuntime:
                 await engine.devices.send_command(
                     device_id, command, params, **saved_kwargs(action_def.get("params")),
                 )
-                record(device=device_id, command=command, params=params, sent=True)
+                record(device=device_id, command=command, params=shown, sent=True)
             except Exception as exc:  # Catch-all: driver send_command may raise arbitrary errors
                 log.exception(f"Binding command failed: {device_id}.{command}")
                 # sent and outcome from the failure's own code: a partly done
                 # or unconfirmed command reached the device.
                 record(
-                    device=device_id, command=command, params=params, **outcome_fields(exc),
+                    device=device_id, command=command, params=shown, **outcome_fields(exc),
                     error=self._command_error(device_id, command, exc),
                 )
 
