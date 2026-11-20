@@ -1936,97 +1936,89 @@ class TestAgentRefusalNacks:
 
 
 # ===========================================================================
-# A59 — Honor `features_disabled` from cloud's upgrade_required field.
-# Without this, an outdated agent would accept feature messages the cloud
-# expects it to reject. The cloud still sends the full enabled_capabilities
-# list for back-compat, so the agent has to subtract features_disabled.
+# The cloud's upgrade notice: the two state keys the Programmer shows, the
+# capabilities `features_disabled` switches off (the cloud still grants them in
+# `enabled_capabilities`), and the keys cleared once the agent stops.
 # ===========================================================================
 
 
-class TestFeaturesDisabledSubtraction:
-    """Tests for features_disabled handling in _connect_and_run."""
+def _agent_with_state():
+    from unittest.mock import MagicMock
 
-    def _build_handshake_result(
-        self,
-        enabled_capabilities: list[str],
-        features_disabled: list[str] | None = None,
-    ):
-        """Build a HandshakeResult with optional upgrade_required."""
-        from openavc.cloud.handshake import HandshakeResult
-        upgrade = None
-        if features_disabled is not None:
-            upgrade = {
-                "min_version": "1.2.0",
-                "message": "Test upgrade required",
-                "features_disabled": features_disabled,
-            }
-        return HandshakeResult(
-            session_id="s1",
-            session_token="tok",
-            signing_key=b"k" * 32,
-            session_expires="2099-01-01T00:00:00Z",
-            enabled_capabilities=enabled_capabilities,
-            config={},
-            upgrade_required=upgrade,
-        )
+    from openavc.cloud.agent import CloudAgent
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
-    def _apply_caps(self, agent, result):
-        """Run just the bits of _connect_and_run that touch capabilities."""
-        # Mirror the order from _connect_and_run: set caps first, then
-        # subtract features_disabled if upgrade_required is present.
-        agent._enabled_capabilities = result.enabled_capabilities
-        if result.upgrade_required:
-            features_disabled = result.upgrade_required.get("features_disabled") or []
-            if features_disabled:
-                agent._enabled_capabilities = [
-                    c for c in agent._enabled_capabilities if c not in features_disabled
-                ]
+    return CloudAgent(
+        StateStore(), EventBus(), MagicMock(),
+        {"endpoint": "wss://cloud.example.com/agent/v1", "system_id": "s1"},
+    )
+
+
+class TestUpgradeNotice:
+    def test_a_notice_sets_the_keys_the_programmer_shows(self):
+        agent = _agent_with_state()
+        agent._enabled_capabilities = ["monitoring", "fleet_update"]
+
+        agent._apply_upgrade_notice({
+            "min_version": "0.5.14",
+            "message": "Cloud features need OpenAVC v0.5.14 or later. Update this system.",
+        })
+
+        assert agent.state.get("system.cloud_upgrade_required") is True
+        assert agent.state.get("system.cloud_min_version") == "0.5.14"
+        # Below the floor alone, everything granted keeps working.
+        assert agent._enabled_capabilities == ["monitoring", "fleet_update"]
 
     def test_features_disabled_subtracts_from_enabled_capabilities(self):
-        """A59: features in features_disabled are removed from the active list."""
-        from openavc.cloud.agent import CloudAgent
-        agent = CloudAgent.__new__(CloudAgent)
-        agent._enabled_capabilities = []
+        agent = _agent_with_state()
+        agent._enabled_capabilities = ["monitoring", "tunnel", "fleet_update", "diagnostics"]
 
-        result = self._build_handshake_result(
-            enabled_capabilities=["monitoring", "tunnel", "fleet_update", "diagnostics"],
-            features_disabled=["fleet_update", "diagnostics"],
-        )
-        self._apply_caps(agent, result)
+        agent._apply_upgrade_notice({
+            "min_version": "1.2.0", "message": "",
+            "features_disabled": ["fleet_update", "diagnostics"],
+        })
 
-        assert "fleet_update" not in agent._enabled_capabilities
-        assert "diagnostics" not in agent._enabled_capabilities
-        # Unaffected capabilities remain
-        assert "monitoring" in agent._enabled_capabilities
-        assert "tunnel" in agent._enabled_capabilities
+        assert agent._enabled_capabilities == ["monitoring", "tunnel"]
 
-    def test_no_upgrade_required_keeps_all_capabilities(self):
-        """When upgrade_required is absent, the full list is kept."""
-        from openavc.cloud.agent import CloudAgent
-        agent = CloudAgent.__new__(CloudAgent)
-        agent._enabled_capabilities = []
+    @pytest.mark.parametrize("notice", [None, {}])
+    def test_no_notice_clears_the_keys_and_keeps_every_capability(self, notice):
+        agent = _agent_with_state()
+        agent._apply_upgrade_notice({"min_version": "1.2.0", "message": ""})
+        agent._enabled_capabilities = ["monitoring", "fleet_update"]
 
-        result = self._build_handshake_result(
-            enabled_capabilities=["monitoring", "fleet_update"],
-            features_disabled=None,
-        )
-        self._apply_caps(agent, result)
+        agent._apply_upgrade_notice(notice)
+
+        assert agent.state.get("system.cloud_upgrade_required") is False
+        assert agent.state.get("system.cloud_min_version") == ""
+        assert agent._enabled_capabilities == ["monitoring", "fleet_update"]
+
+    def test_an_empty_features_disabled_keeps_all(self):
+        agent = _agent_with_state()
+        agent._enabled_capabilities = ["monitoring", "fleet_update"]
+
+        agent._apply_upgrade_notice({"min_version": "1.2.0", "message": "", "features_disabled": []})
 
         assert agent._enabled_capabilities == ["monitoring", "fleet_update"]
 
-    def test_empty_features_disabled_keeps_all(self):
-        """An empty features_disabled list is a no-op."""
-        from openavc.cloud.agent import CloudAgent
-        agent = CloudAgent.__new__(CloudAgent)
-        agent._enabled_capabilities = []
+    def test_a_min_version_that_is_not_text_is_kept_as_none(self):
+        agent = _agent_with_state()
 
-        result = self._build_handshake_result(
-            enabled_capabilities=["monitoring", "fleet_update"],
-            features_disabled=[],
-        )
-        self._apply_caps(agent, result)
+        agent._apply_upgrade_notice({"min_version": 5, "message": ""})
 
-        assert agent._enabled_capabilities == ["monitoring", "fleet_update"]
+        assert agent.state.get("system.cloud_upgrade_required") is True
+        assert agent.state.get("system.cloud_min_version") == ""
+
+    @pytest.mark.asyncio
+    async def test_stopping_the_agent_clears_the_notice(self):
+        """Unpaired or switched off, no cloud's notice applies any more."""
+        agent = _agent_with_state()
+        agent._apply_upgrade_notice({"min_version": "0.5.14", "message": ""})
+
+        await agent.stop()
+
+        assert agent.state.get("system.cloud_upgrade_required") is False
+        assert agent.state.get("system.cloud_min_version") == ""
 
 
 # ===========================================================================

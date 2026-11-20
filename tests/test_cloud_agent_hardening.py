@@ -21,6 +21,7 @@ from openavc.cloud.agent import (
 from openavc.cloud.session import Session, SessionInvalid
 from openavc.cloud.sequencer import Sequencer
 from openavc.cloud.crypto import generate_system_key, derive_signing_key
+from openavc.core.state_store import StateStore
 
 
 # --- Test doubles ---------------------------------------------------------
@@ -75,6 +76,8 @@ def _bare_agent() -> CloudAgent:
     agent._ws = None
     agent._session = None
     agent._sig_failure_count = 0
+    agent._enabled_capabilities = []
+    agent.state = StateStore()
     return agent
 
 

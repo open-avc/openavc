@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { CopyButton } from "../components/shared/CopyButton";
+import { CloudUpgradeNotice } from "../components/shared/CloudUpgradeNotice";
 import { useNavigationStore } from "../store/navigationStore";
 import {
   getCloudStatus,
@@ -219,6 +220,8 @@ export function CloudSettingsView() {
               {status.stop_detail}
             </div>
           )}
+
+          {isPaired && <CloudUpgradeNotice style={{ margin: "var(--space-sm) 0 var(--space-md)" }} />}
 
           {isPaired && (
             <>

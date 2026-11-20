@@ -258,7 +258,7 @@ MESSAGES: tuple[Message, ...] = (
                         "Capabilities switched off until the update.", required=False,
                         vocabulary="capabilities", since="0.11.0",
               ignorable=True,
-              why="The cloud gates those features itself too; an older agent keeps its own side of them on."),
+              why="An older agent keeps those features on, and the notice still names the release it needs."),
               )),
     )),
     Message("auth_failed", "down", "handshake", "Refuses the handshake, naming why.", (

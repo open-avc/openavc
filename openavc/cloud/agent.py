@@ -374,7 +374,39 @@ class CloudAgent:
             self._session = None
 
         self._connected = False
+        # A stopped agent (unpaired, or cloud switched off) has no cloud whose
+        # notice still applies, so the Programmer stops showing it.
+        self._apply_upgrade_notice(None)
         log.info("Cloud agent: stopped")
+
+    def _apply_upgrade_notice(self, notice: dict[str, Any] | None) -> None:
+        """Take in session_start's upgrade notice, or clear it with None.
+
+        Sets `system.cloud_upgrade_required` and `system.cloud_min_version`,
+        which the Programmer's Cloud Connection page and Dashboard show as
+        "Cloud features need OpenAVC vX or later. Update this system.", and
+        switches off the capabilities the notice lists in `features_disabled`.
+        The cloud still grants them in `enabled_capabilities`, so only this
+        side turns them off; everything else keeps working.
+        """
+        if not notice:
+            self.state.set("system.cloud_upgrade_required", False, source="cloud")
+            self.state.set("system.cloud_min_version", "", source="cloud")
+            return
+        min_ver = notice.get("min_version", "")
+        self.state.set("system.cloud_upgrade_required", True, source="cloud")
+        self.state.set(
+            "system.cloud_min_version", min_ver if isinstance(min_ver, str) else "",
+            source="cloud",
+        )
+        log.warning("Cloud requires core v%s or later: %s", min_ver, notice.get("message", ""))
+        features_disabled = notice.get("features_disabled") or []
+        removed = [c for c in self._enabled_capabilities if c in features_disabled]
+        if removed:
+            self._enabled_capabilities = [
+                c for c in self._enabled_capabilities if c not in features_disabled
+            ]
+            log.warning("Cloud agent: disabled capabilities due to outdated core: %s", removed)
 
     # --- Connection Loop ---
 
@@ -515,34 +547,7 @@ class CloudAgent:
                 result.enabled_capabilities
             ) or []
 
-            # Handle upgrade_required from cloud
-            if result.upgrade_required:
-                min_ver = result.upgrade_required.get("min_version", "")
-                self.state.set("system.cloud_upgrade_required", True, source="cloud")
-                self.state.set("system.cloud_min_version", min_ver, source="cloud")
-                log.warning(
-                    "Cloud requires core v%s or later: %s",
-                    min_ver, result.upgrade_required.get("message", ""),
-                )
-                # Apply the per-feature gate from `features_disabled`. The
-                # cloud still sends the full `enabled_capabilities` list
-                # for back-compat, so we have to subtract the disabled
-                # features here. Without this, an outdated agent would
-                # accept feature messages the cloud expects it to reject.
-                features_disabled = result.upgrade_required.get("features_disabled") or []
-                if features_disabled:
-                    removed = [c for c in self._enabled_capabilities if c in features_disabled]
-                    if removed:
-                        self._enabled_capabilities = [
-                            c for c in self._enabled_capabilities if c not in features_disabled
-                        ]
-                        log.warning(
-                            "Cloud agent: disabled capabilities due to outdated core: %s",
-                            removed,
-                        )
-            else:
-                self.state.set("system.cloud_upgrade_required", False, source="cloud")
-                self.state.set("system.cloud_min_version", "", source="cloud")
+            self._apply_upgrade_notice(result.upgrade_required)
 
             # Apply the cloud update policy to the UpdateManager. Always apply,
             # even when update_policy is absent: session_start carries the full

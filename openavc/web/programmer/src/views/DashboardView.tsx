@@ -3,6 +3,7 @@ import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCir
 import qrcode from "qrcode-generator";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
+import { CloudUpgradeNotice } from "../components/shared/CloudUpgradeNotice";
 import { Dialog } from "../components/shared/Dialog";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { PromptDialog } from "../components/shared/PromptDialog";
@@ -1010,6 +1011,8 @@ export function DashboardView() {
               onClick={() => useNavigationStore.getState().navigateTo("cloud")}
             />
           </div>
+
+          <CloudUpgradeNotice style={{ marginBottom: "var(--space-xl)" }} />
 
           {/* Update available card */}
           {!!liveState["system.update_available"] && (

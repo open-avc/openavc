@@ -237,6 +237,8 @@ If your system is connected to OpenAVC Cloud, your integrator may manage updates
 
 The cloud sends an update only to a system that can install it by itself. A Docker container or a development checkout is skipped, and the portal says how it updates instead. In releases after OpenAVC 0.40.0, so is a copy started by hand rather than as its service, and a system whose product firmware carries its updates.
 
+If OpenAVC Cloud needs a newer version of OpenAVC than your system runs, the Programmer IDE's Dashboard and Cloud Connection page say "Cloud features need OpenAVC vX or later. Update this system." The system stays connected and keeps every cloud feature it still supports; click the notice to open the Updates view. Releases before OpenAVC 0.41.0 record this only in the system log.
+
 Even with cloud management, you can always check for and install updates locally from the Programmer IDE.
 
 A single system can opt out of the automatic half: turn on **Notify only** in
