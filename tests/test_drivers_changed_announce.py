@@ -22,14 +22,15 @@ from openavc.api.routes.driver_definitions import (
     patch_driver_definition,
 )
 from openavc.api.routes.drivers import announce_drivers_changed
+from openavc.core.ws_hub import MESSAGE_AUDIENCE, PROGRAMMER
 
 
 class _Hub:
     def __init__(self) -> None:
-        self.sent: list[tuple[dict, str | None]] = []
+        self.sent: list[dict] = []
 
-    async def broadcast(self, message: dict, client_type: str | None = None) -> None:
-        self.sent.append((message, client_type))
+    async def broadcast(self, message: dict) -> None:
+        self.sent.append(message)
 
 
 @pytest.fixture()
@@ -69,12 +70,13 @@ DEFINITION = {
 
 async def test_the_push_goes_to_programmers_only(hub):
     await announce_drivers_changed("acme_widget")
-    assert hub.sent == [({"type": "drivers.changed", "driver_id": "acme_widget"}, "programmer")]
+    assert hub.sent == [{"type": "drivers.changed", "driver_id": "acme_widget"}]
+    assert MESSAGE_AUDIENCE["drivers.changed"] == {PROGRAMMER}
 
 
 async def test_a_door_that_wrote_several_names_none(hub):
     await announce_drivers_changed()
-    assert hub.sent == [({"type": "drivers.changed"}, "programmer")]
+    assert hub.sent == [{"type": "drivers.changed"}]
 
 
 async def test_nothing_is_sent_before_the_engine_starts(monkeypatch):
@@ -86,6 +88,6 @@ async def test_a_builder_save_edit_and_delete_each_announce(hub, driver_dirs):
     await create_driver_definition(DriverDefinitionRequest(**DEFINITION))
     await patch_driver_definition("acme_widget", {"name": "Acme Widget II"})
     await delete_driver_definition_endpoint("acme_widget")
-    assert [m for m, _ in hub.sent] == [
+    assert hub.sent == [
         {"type": "drivers.changed", "driver_id": "acme_widget"},
     ] * 3

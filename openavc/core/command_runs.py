@@ -334,7 +334,7 @@ class CommandRuns:
     async def _publish(self, run: CommandRun) -> None:
         try:
             await self._engine.broadcast_ws(
-                {"type": "command.run", **run.to_dict()}, client_type="programmer",
+                {"type": "command.run", **run.to_dict()},
             )
         except Exception:
             log.debug("command.run broadcast failed", exc_info=True)

@@ -556,4 +556,4 @@ class SetupActionRunner:
             bare = _Line(line.step, line.pct, line.status)
             msg = {"type": "action.progress", **run.message(bare)}
         self._keep(run, msg)
-        await self._engine.broadcast_ws(msg, client_type="programmer")
+        await self._engine.broadcast_ws(msg)

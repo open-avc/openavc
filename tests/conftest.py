@@ -334,6 +334,42 @@ def _reset_rate_limit_buckets():
 
 
 @pytest.fixture
+def unrowed_push_allowed():
+    """Asked for by a test that sends a message type with no audience row on
+    purpose, so the check below lets it through."""
+
+
+@pytest.fixture(autouse=True)
+def _every_push_has_an_audience_row(request):
+    """Fail any test whose run pushed a message type with no row in
+    ``core/ws_hub.MESSAGE_AUDIENCE``: such a type reaches the Programmer only,
+    which is a decision nobody made. ``tests/test_ws_audience.py`` sweeps the
+    code; this catches a type built at run time that the sweeps cannot read.
+
+    Patched by hand, not through ``monkeypatch``: an autouse fixture that asks
+    for ``monkeypatch`` creates it before every test's own fixtures, which
+    moves when those fixtures' patches are undone."""
+    from openavc.core.ws_hub import WSHub
+
+    unrowed: list = []
+    note = WSHub.__dict__["_no_row"]
+
+    def recording(hub, msg_type):
+        unrowed.append(msg_type)
+        note(hub, msg_type)
+
+    WSHub._no_row = recording
+    try:
+        yield
+    finally:
+        WSHub._no_row = note
+    if unrowed and "unrowed_push_allowed" not in request.fixturenames:
+        pytest.fail(
+            f"Pushed with no row in core/ws_hub.MESSAGE_AUDIENCE: {sorted(set(map(str, unrowed)))}"
+        )
+
+
+@pytest.fixture
 def claimed_engine(tmp_path, monkeypatch):
     """A real engine wired into the app on an instance with a password set,
     its panel device store in the test's own directory. The panel approval

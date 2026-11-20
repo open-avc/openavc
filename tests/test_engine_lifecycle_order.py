@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 from openavc.core.engine import Engine
+from openavc.core.ws_hub import MESSAGE_AUDIENCE
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
 
@@ -637,8 +638,8 @@ async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_
         await eng.start()
         sent = []
 
-        async def broadcast(message, *, client_type=None):
-            sent.append((message["type"], client_type))
+        async def broadcast(message):
+            sent.append((message["type"], sorted(MESSAGE_AUDIENCE[message["type"]])))
 
         eng.broadcast_ws = broadcast
         events = [
@@ -653,15 +654,18 @@ async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_
         # Saying a queue was cleared reaches no client and saves nothing: the
         # clear was saved before it is said (core/pending_queue.py).
         await eng.events.emit("device.pending_settings_applied", {"device_id": "d1"})
+        everyone, programmer = ["panel", "programmer"], ["programmer"]
         assert sent == [
-            ("macro.started", None), ("macro.progress", None), ("macro.completed", None),
-            ("macro.cancelled", None), ("macro.error", None), ("macro.step_error", None),
-            ("macro.skipped", None),
-            ("trigger.fired", None), ("trigger.skipped", None), ("trigger.pending", None),
-            ("trigger.queued", None), ("trigger.completed", None),
-            ("script.error", "programmer"),
-            ("plugin.started", None), ("plugin.stopped", None), ("plugin.error", None),
-            ("plugin.missing", None),
+            ("macro.started", everyone), ("macro.progress", everyone),
+            ("macro.completed", everyone), ("macro.cancelled", everyone),
+            ("macro.error", everyone), ("macro.step_error", everyone),
+            ("macro.skipped", everyone),
+            ("trigger.fired", everyone), ("trigger.skipped", everyone),
+            ("trigger.pending", everyone), ("trigger.queued", everyone),
+            ("trigger.completed", everyone),
+            ("script.error", programmer),
+            ("plugin.started", everyone), ("plugin.stopped", everyone),
+            ("plugin.error", everyone), ("plugin.missing", everyone),
         ]
         assert eng._bookkeeping_queue == []
     finally:

@@ -10,6 +10,11 @@ Two halves of one pipeline:
     them, so they batch into a 50 ms window and go out as one
     ``state.update`` / ``state.delete`` message.
 
+THE rule for which clients a server push reaches is ``MESSAGE_AUDIENCE``
+below: every message ``broadcast`` sends is looked up there by its ``type``,
+and a type with no row reaches the Programmer only. No sender chooses its
+own audience.
+
 Owned by the engine (``engine.ws``). ``Engine.broadcast_ws`` forwards here
 and stays the platform-wide entry point for sending a message to panels.
 """
@@ -38,6 +43,73 @@ _WS_SEND_QUEUE_MAX = 256
 _STATE_FLUSH_INTERVAL = 0.05
 
 
+# --- Who each push reaches -----------------------------------------------------
+#
+# The WebSocket handler (api/ws.py) makes every client one of two types, from
+# its credential and never from what it asked to be: the Programmer, or a
+# panel. An integration such as Node-RED is whichever of the two it connected
+# as, and a socket through Remote Access gets what its type gets.
+
+PANEL = "panel"
+PROGRAMMER = "programmer"
+CLIENT_TYPES = frozenset({PANEL, PROGRAMMER})
+
+_EVERYONE = frozenset({PANEL, PROGRAMMER})
+_PROGRAMMER_ONLY = frozenset({PROGRAMMER})
+
+# One row per message type the server pushes. A type with no row reaches the
+# Programmer only, and the log says so once.
+MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
+    # Live state, every 50 ms; a client's namespace filter narrows it further.
+    "state.update": _EVERYONE,
+    "state.delete": _EVERYONE,
+    # What a panel draws, and the page it shows.
+    "ui.definition": _EVERYONE,
+    "ui.navigate": _EVERYONE,
+    "ui.files": _EVERYONE,
+    # The project's revision after a save, and a project replaced outright.
+    "project.reloaded": _EVERYONE,
+    "project.replaced": _EVERYONE,
+    # A macro's run (a panel's button follows its progress).
+    "macro.started": _EVERYONE,
+    "macro.progress": _EVERYONE,
+    "macro.completed": _EVERYONE,
+    "macro.cancelled": _EVERYONE,
+    "macro.skipped": _EVERYONE,
+    "macro.error": _EVERYONE,
+    "macro.step_error": _EVERYONE,
+    # A trigger firing, waiting, queued, skipped or done.
+    "trigger.fired": _EVERYONE,
+    "trigger.pending": _EVERYONE,
+    "trigger.queued": _EVERYONE,
+    "trigger.skipped": _EVERYONE,
+    "trigger.completed": _EVERYONE,
+    # A plugin starting, stopping, failing, or named by the project and absent.
+    "plugin.started": _EVERYONE,
+    "plugin.stopped": _EVERYONE,
+    "plugin.error": _EVERYONE,
+    "plugin.missing": _EVERYONE,
+    # A plugin's own save of its settings that failed.
+    "error": _EVERYONE,
+    # A script's exception and its traceback; a panel draws nothing from it.
+    "script.error": _PROGRAMMER_ONLY,
+    # A panel waiting for approval, with its code and address.
+    "panel.devices.changed": _PROGRAMMER_ONLY,
+    # The drivers on this server changed, so the IDE's lists reload.
+    "drivers.changed": _PROGRAMMER_ONLY,
+    # A setup action's progress, with the handler's own result message.
+    "action.progress": _PROGRAMMER_ONLY,
+    # A device command run from the IDE, and its result.
+    "command.run": _PROGRAMMER_ONLY,
+    # A Discovery scan: each device's whole record (address, MAC, serial
+    # number, firmware, open ports), which over REST takes a Programmer
+    # sign-in.
+    "discovery.phase": _PROGRAMMER_ONLY,
+    "discovery.update": _PROGRAMMER_ONLY,
+    "discovery.complete": _PROGRAMMER_ONLY,
+}
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Log an exception from a fire-and-forget task instead of swallowing it."""
     if task.cancelled():
@@ -59,9 +131,9 @@ class WSHub:
         self._ns_filters: dict[int, tuple[str, ...]] = {}
         # What each client is and how it got in: id(ws) -> "panel" |
         # "programmer", and id(ws) -> (admission kind, panel device id or
-        # None). A broadcast can be aimed at one client type, and a panel
-        # device's sockets, or every socket a now-closed mode admitted, can be
-        # closed by what admitted them.
+        # None). A broadcast reaches the client types its message type's row
+        # names, and a panel device's sockets, or every socket a now-closed
+        # mode admitted, can be closed by what admitted them.
         self._client_types: dict[int, str] = {}
         self._admissions: dict[int, tuple[str, str | None]] = {}
         # Per-client bounded send queues + their writer tasks: id(ws) -> ...
@@ -89,6 +161,8 @@ class WSHub:
         self._state_deleted_keys: set[str] = set()
         self._batch_task: asyncio.Task | None = None
         self._running = False
+        # Message types sent with no row in MESSAGE_AUDIENCE, logged once each.
+        self._unrowed: set[Any] = set()
 
     # --- Client registry ---
 
@@ -98,7 +172,7 @@ class WSHub:
         return len(self._clients)
 
     def add_client(self, ws, ns_prefixes: tuple[str, ...] | None = None,
-                   *, defer_delivery: bool = False, client_type: str = "panel",
+                   *, defer_delivery: bool = False, client_type: str = PANEL,
                    admitted_by: str = "", panel_device: str | None = None) -> None:
         """Register a WebSocket client with optional namespace filter.
 
@@ -272,9 +346,7 @@ class WSHub:
 
     # --- Broadcast ---
 
-    async def broadcast(
-        self, message: dict[str, Any], *, client_type: str | None = None
-    ) -> None:
+    async def broadcast(self, message: dict[str, Any]) -> None:
         """Queue a JSON message for delivery to all connected WS clients.
 
         Never awaits a client send: messages go onto per-client bounded
@@ -284,23 +356,21 @@ class WSHub:
         auto-reconnect and resnapshot, which is cheaper than letting one
         sick client apply backpressure engine-wide.
 
-        ``client_type`` narrows delivery to one kind of client. Panels hold
-        no credential and subscribe to the ``system`` namespace like
-        everything else, so a message that is the Programmer's business
-        (a panel waiting for approval, with its code and address) is sent
-        with ``client_type="programmer"`` and never reaches a panel.
+        Which clients it reaches is the message type's row in
+        ``MESSAGE_AUDIENCE``; a type with no row reaches the Programmer only.
         """
+        msg_type = message.get("type")
+        reach = self._reach(msg_type)
         if not self._clients:
             return
 
-        msg_type = message.get("type")
         # state.update and state.delete carry per-key payloads; a client with
         # ns_prefixes should only receive keys under those namespaces.
         is_filterable = msg_type in ("state.update", "state.delete")
 
         full_text: str | None = None
         for ws in list(self._clients):
-            if client_type is not None and self._client_types.get(id(ws)) != client_type:
+            if self._client_types.get(id(ws)) not in reach:
                 continue
             ns = self._ns_filters.get(id(ws)) if is_filterable else None
             if not ns:
@@ -322,6 +392,25 @@ class WSHub:
                 text = json.dumps({"type": "state.delete", "keys": filtered_keys})
 
             self._enqueue(ws, text)
+
+    def _reach(self, msg_type: Any) -> frozenset[str]:
+        """The client types a message of this type reaches: its row, or the
+        Programmer only for a type with none."""
+        reach = MESSAGE_AUDIENCE.get(msg_type)
+        if reach is None:
+            self._no_row(msg_type)
+            return _PROGRAMMER_ONLY
+        return reach
+
+    def _no_row(self, msg_type: Any) -> None:
+        """Log, once per type, a push sent with no row in ``MESSAGE_AUDIENCE``."""
+        if msg_type in self._unrowed:
+            return
+        self._unrowed.add(msg_type)
+        log.warning(
+            f"A '{msg_type}' message has no row in the WebSocket audience "
+            "table, so only the Programmer receives it"
+        )
 
     def send(self, ws, message: dict[str, Any]) -> None:
         """Queue a JSON message for ONE client, on the same terms as broadcast.

@@ -28,6 +28,7 @@ from openavc.core.setup_actions import (
     SetupLease,
 )
 from openavc.core.state_store import StateStore
+from openavc.core.ws_hub import MESSAGE_AUDIENCE, PROGRAMMER
 from openavc.drivers.actions import resolve_device_actions
 from openavc.drivers.base import BaseDriver
 
@@ -149,7 +150,6 @@ class _FakeEngine:
         self.events = EventBus()
         self.ws_messages: list[dict[str, Any]] = []
         # Who each message was for: None = every client, as Engine.broadcast_ws.
-        self.ws_client_types: list[str | None] = []
 
     async def persist_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> int:
         # Mirror the door's contract: the change made to a copy of the
@@ -169,11 +169,8 @@ class _FakeEngine:
         # round it asks for are pinned by tests/test_setup_action_saves.py.
         self.devices.merge_live_config(device_id, delta)
 
-    async def broadcast_ws(
-        self, message: dict[str, Any], *, client_type: str | None = None
-    ) -> None:
+    async def broadcast_ws(self, message: dict[str, Any]) -> None:
         self.ws_messages.append(message)
-        self.ws_client_types.append(client_type)
 
 
 def _make_env(driver_cls=_ProvisionDriver):
@@ -255,17 +252,14 @@ async def test_progress_goes_to_the_programmer_never_a_panel():
     runner, engine, _dm, driver = _make_env()
     await runner.start("dev1", _setup_action(driver), {"password": "secret"})
     await _drain(runner)
-    sent_to = [
-        who for msg, who in zip(engine.ws_messages, engine.ws_client_types)
-        if msg["type"] == "action.progress"
-    ]
-    assert sent_to and set(sent_to) == {"programmer"}
+    assert any(msg["type"] == "action.progress" for msg in engine.ws_messages)
+    assert MESSAGE_AUDIENCE["action.progress"] == {PROGRAMMER}
 
 
-async def test_the_engine_door_passes_the_client_type_to_the_hub():
+async def test_the_engine_door_hands_the_message_to_the_hub_as_is():
     hub = SimpleNamespace(broadcast=AsyncMock())
-    await Engine.broadcast_ws(SimpleNamespace(ws=hub), {"type": "x"}, client_type="programmer")
-    hub.broadcast.assert_awaited_once_with({"type": "x"}, client_type="programmer")
+    await Engine.broadcast_ws(SimpleNamespace(ws=hub), {"type": "action.progress"})
+    hub.broadcast.assert_awaited_once_with({"type": "action.progress"})
 
 
 async def test_none_connection_field_in_delta_is_ignored():

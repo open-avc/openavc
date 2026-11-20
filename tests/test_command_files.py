@@ -32,6 +32,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.file_staging import FileStaging, StagingError
 from openavc.core.macro_validation import macro_issues
 from openavc.core.state_store import StateStore
+from openavc.core.ws_hub import MESSAGE_AUDIENCE, PROGRAMMER
 from openavc.drivers.actions import resolve_device_actions
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.command_files import CommandFile, DeviceFile, FileCommandError
@@ -305,10 +306,10 @@ class _Engine:
         self.project = None
         self.file_staging = FileStaging(tmp_path / "stage")
         self.command_runs = CommandRuns(self, self.file_staging)
-        self.messages: list[tuple[dict, str | None]] = []
+        self.messages: list[tuple[dict, frozenset[str]]] = []
 
-    async def broadcast_ws(self, message, *, client_type=None):
-        self.messages.append((message, client_type))
+    async def broadcast_ws(self, message):
+        self.messages.append((message, MESSAGE_AUDIENCE[message["type"]]))
 
 
 async def _staged(engine: _Engine, data: bytes) -> str:
@@ -334,7 +335,7 @@ async def test_a_run_goes_in_the_background_and_deletes_the_file(tmp_path):
     assert engine.file_staging.staged_paths() == []
     kinds = {(m["type"], m["status"]) for m, _ in engine.messages}
     assert ("command.run", "running") in kinds and ("command.run", DONE) in kinds
-    assert {who for _, who in engine.messages} == {"programmer"}
+    assert {who for _, who in engine.messages} == {frozenset({PROGRAMMER})}
     last = engine.messages[-1][0]
     assert last["files"] == [{"param": "image", "name": "fw.bin", "size": 4000, "read": 4000}]
 

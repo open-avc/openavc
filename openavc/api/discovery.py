@@ -54,13 +54,15 @@ def set_discovery_engine(discovery_engine: DiscoveryEngine) -> None:
 
 def set_broadcast_fn(fn) -> None:
     """Set the WebSocket broadcast (``Engine.broadcast_ws``) the scan's updates
-    go out through. It takes ``client_type``; ``_send_to_programmers`` names it."""
+    go out through; ``core.ws_hub.MESSAGE_AUDIENCE`` sends every ``discovery.*``
+    type to the Programmer only."""
     global _broadcast_fn
     _broadcast_fn = fn
 
 
 async def _send_to_programmers(message: dict[str, Any]) -> None:
-    """Send one ``discovery.*`` update to the Programmer clients, never a panel.
+    """Send one ``discovery.*`` update, which reaches the Programmer clients
+    and never a panel (its row in ``core.ws_hub.MESSAGE_AUDIENCE``).
 
     Every update discovery sends goes through here: the scan's live feed and
     the re-match after a driver change. A device's update carries its whole
@@ -69,7 +71,7 @@ async def _send_to_programmers(message: dict[str, Any]) -> None:
     Programmer sign-in; a panel draws none of it.
     """
     if _broadcast_fn is not None:
-        await _broadcast_fn(message, client_type="programmer")
+        await _broadcast_fn(message)
 
 
 def _get_engine() -> DiscoveryEngine:

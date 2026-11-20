@@ -30,9 +30,9 @@ created. Cookies are set only here and on the claim route, and never for a
 tunnelled request, so nothing is ever set on the cloud's origin.
 
 The Programmer's side is the protected ``/api/panel/devices`` family (list,
-approve, deny, revoke, rename) and one push, ``panel.devices.changed``, sent
-to programmer clients only: every server push otherwise reaches panels too,
-and a pending request's details are not theirs to see.
+approve, deny, revoke, rename) and one push, ``panel.devices.changed``, which
+reaches programmer clients only (its row in ``core.ws_hub.MESSAGE_AUDIENCE``):
+a pending request's details are not a panel's to see.
 """
 
 from __future__ import annotations
@@ -183,7 +183,7 @@ async def push_change(engine: Any, reason: str, device: PanelDevice | None = Non
     message: dict[str, Any] = {"type": PUSH_TYPE, "reason": reason}
     if device is not None:
         message["device"] = device.public()
-    await engine.ws.broadcast(message, client_type="programmer")
+    await engine.ws.broadcast(message)
 
 
 async def _sweep(engine: Any, store: PanelDeviceStore) -> None:

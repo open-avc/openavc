@@ -414,18 +414,15 @@ class Engine(
 
     # --- WebSocket Management ---
 
-    async def broadcast_ws(
-        self, message: dict[str, Any], *, client_type: str | None = None
-    ) -> None:
-        """Send a message to every connected WS client (panels, IDE).
+    async def broadcast_ws(self, message: dict[str, Any]) -> None:
+        """Send a message to the connected WS clients its type reaches.
 
         The engine-wide broadcast door — macros, triggers, discovery, and the
         REST routes all send through here. Delivery, per-client
-        queues, and namespace filtering live in ``core.ws_hub``.
-        ``client_type`` narrows delivery to one kind of client, as there
-        (``"programmer"`` for a message that is the Programmer's business).
+        queues, and namespace filtering live in ``core.ws_hub``, and so does
+        who receives each message type (``MESSAGE_AUDIENCE``).
         """
-        await self.ws.broadcast(message, client_type=client_type)
+        await self.ws.broadcast(message)
 
     # --- Panel access ---
 
@@ -456,15 +453,12 @@ class Engine(
             if config.get("panels", "upgrade_notice", False):
                 config.set("panels", "upgrade_notice", False)
                 config.save()
-        await self.ws.broadcast(
-            {
-                "type": "panel.devices.changed",
-                "reason": "access_changed",
-                "access": mode,
-                "upgrade_notice": bool(config.get("panels", "upgrade_notice", False)),
-            },
-            client_type="programmer",
-        )
+        await self.ws.broadcast({
+            "type": "panel.devices.changed",
+            "reason": "access_changed",
+            "access": mode,
+            "upgrade_notice": bool(config.get("panels", "upgrade_notice", False)),
+        })
 
     async def _retry_client_missing_devices(self) -> None:
         """Reconnect every device that stopped retrying because a program it
@@ -488,7 +482,6 @@ class Engine(
                     await self.ws.broadcast(
                         {"type": "panel.devices.changed", "reason": "expired",
                          "device": device.public()},
-                        client_type="programmer",
                     )
         except asyncio.CancelledError:
             raise
@@ -525,13 +518,12 @@ class Engine(
         self._event_sub_ids.append(self.events.on("plugin.missing", self._on_plugin_event))
 
     async def _on_script_error(self, event: str, payload: dict[str, Any]) -> None:
-        """Forward script error events to the Programmer's WebSocket clients.
-
-        Never a panel's: the payload carries the exception's text and its
-        traceback, and a panel draws nothing from it. The room hears about a
-        failed control through the press's own answer.
+        """Forward script error events to the WebSocket clients
+        ``script.error``'s row in ``core.ws_hub.MESSAGE_AUDIENCE`` names (the
+        Programmer). The room hears about a failed control through the
+        press's own answer.
         """
-        await self.broadcast_ws({"type": "script.error", **payload}, client_type="programmer")
+        await self.broadcast_ws({"type": "script.error", **payload})
 
     async def _on_trigger_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward trigger events to WebSocket clients."""

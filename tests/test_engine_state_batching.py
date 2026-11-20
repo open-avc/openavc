@@ -235,10 +235,10 @@ async def test_broadcast_fast_path_drops_failing_client(engine):
     engine.ws.add_client(bad)
     assert bad in engine.ws._clients
 
-    await engine.ws.broadcast({"type": "ping"})
+    await engine.ws.broadcast({"type": "ui.navigate"})
     await engine.ws.flush_sends()
 
-    assert received_ok == [{"type": "ping"}]
+    assert received_ok == [{"type": "ui.navigate"}]
     assert bad not in engine.ws._clients
     assert good in engine.ws._clients
     engine.ws.remove_client(good)
@@ -313,14 +313,14 @@ async def test_broadcast_returns_promptly_with_stuck_client(engine):
     engine.ws.add_client(good)
 
     # Pre-fix this hung until the stuck client's send completed (never).
-    await asyncio.wait_for(engine.ws.broadcast({"type": "ping"}), timeout=0.5)
+    await asyncio.wait_for(engine.ws.broadcast({"type": "ui.navigate"}), timeout=0.5)
 
     # The healthy client still gets the message even while the other is stuck.
     for _ in range(50):
         if good.received:
             break
         await asyncio.sleep(0.01)
-    assert good.received == [{"type": "ping"}]
+    assert good.received == [{"type": "ui.navigate"}]
     engine.ws.remove_client(stuck)
     engine.ws.remove_client(good)
 
@@ -340,7 +340,7 @@ async def test_stuck_client_dropped_on_queue_overflow(engine):
     # healthy client's writer keeps draining (as any real emit path does) —
     # only the stuck client's queue may fill.
     for _ in range(_WS_SEND_QUEUE_MAX + 2):
-        await engine.ws.broadcast({"type": "ping"})
+        await engine.ws.broadcast({"type": "ui.navigate"})
         await asyncio.sleep(0)
 
     assert stuck not in engine.ws._clients
@@ -367,13 +367,13 @@ async def test_deferred_delivery_buffers_until_ready(engine):
     ws = _CollectingWS()
     engine.ws.add_client(ws, defer_delivery=True)
 
-    await engine.ws.broadcast({"type": "ping", "seq": 1})
+    await engine.ws.broadcast({"type": "ui.navigate", "seq": 1})
     await asyncio.sleep(0.05)
     assert ws.received == []  # buffered, not delivered
 
     engine.ws.mark_client_ready(ws)
     await engine.ws.flush_sends()
-    assert ws.received == [{"type": "ping", "seq": 1}]
+    assert ws.received == [{"type": "ui.navigate", "seq": 1}]
     engine.ws.remove_client(ws)
 
 
@@ -383,7 +383,7 @@ async def test_per_client_delivery_preserves_order(engine):
     ws = _CollectingWS()
     engine.ws.add_client(ws)
     for i in range(10):
-        await engine.ws.broadcast({"type": "ping", "seq": i})
+        await engine.ws.broadcast({"type": "ui.navigate", "seq": i})
     await engine.ws.flush_sends()
     assert [m["seq"] for m in ws.received] == list(range(10))
     engine.ws.remove_client(ws)

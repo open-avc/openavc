@@ -716,7 +716,7 @@ async def announce(driver_id: str | None = None) -> None:
         message: dict[str, Any] = {"type": "drivers.changed"}
         if driver_id:
             message["driver_id"] = driver_id
-        await engine.ws.broadcast(message, client_type="programmer")
+        await engine.ws.broadcast(message)
     except Exception:
         log.exception("Could not announce the driver change for '%s'", driver_id)
 
