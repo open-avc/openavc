@@ -66,6 +66,9 @@ def _notifying(notifications, **changes) -> dict:
     return definition
 
 
+# The json rules' keys are the ones the compile reads: the mappings: entries
+# here name no state variable, so the runtime reads none of them, and a body
+# carrying only "zone" or "ignored" is one the driver ignores.
 _JSON_RULES = [
     {"json": True, "set": {"power": {"key": "status.power"}, "name": "label[0]"}},
     {"json": True, "mappings": [{"key": "zone.level"}, "skipped", {"path": "ignored"}]},
@@ -288,6 +291,7 @@ CASES: dict[str, dict] = {
     ),
     # ── what raises today ──
     "rule_not_a_mapping": _notifying({"level": "LVL {value}"}, responses=["^LVL$"]),
+    # A set: that is not a mapping reads nothing, as the compile reads it.
     "json_set_not_a_mapping": _notifying(
         {"level": "LVL {value}"}, responses=[{"json": True, "set": ["level"]}],
     ),
@@ -530,9 +534,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                             'template or a respond() call in a handler) is sent verbatim, so '
                             'end it with the delimiter; only the handlers the simulator '
                             'generates are terminated for you.')],
- 'json_set_not_a_mapping': ('raises',
-                            'AttributeError',
-                            "'list' object has no attribute 'values'"),
+ 'json_set_not_a_mapping': [],
  'notification_boolean_formatted': [('info',
                                      'reply_framing',
                                      '2 simulator replies checked, all terminated with '
@@ -590,8 +592,14 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                     'notification \'level\' emits \'[{"zone": 1}, {"zone": '
                                     "2}]' which matches no driver response pattern, so the "
                                     'driver will ignore it')],
- 'notification_json_list_unwrap': [],
- 'notification_json_mapping_key': [],
+ 'notification_json_list_unwrap': [('warning',
+                                    'notifications',
+                                    'notification \'level\' emits \'[{"zone": 1}]\' which matches no '
+                                    'driver response pattern, so the driver will ignore it')],
+ 'notification_json_mapping_key': [('warning',
+                                    'notifications',
+                                    'notification \'level\' emits \'{"zone": {"level": 4}}\' which matches no '
+                                    'driver response pattern, so the driver will ignore it')],
  'notification_json_not_json': [('warning',
                                  'notifications',
                                  "notification 'level' emits 'zone {value' which matches no "

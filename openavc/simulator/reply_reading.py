@@ -17,10 +17,12 @@ its own way, so each is its own reader and none is a variant of another:
   JSON keys and no delimiter).
 
 These are the validator's own readings of the rules. The runtime reads replies
-in ``openavc.drivers.text_replies`` and ``openavc.drivers.json_replies``; a JSON
-rule's keys are read here by name only (a ``set:`` spec's ``key``, else its
-``path``; a ``mappings:`` entry's ``key``; a ``child_set`` state's ``key``, else
-its ``path``), cut to the top-level name a body must carry.
+in ``openavc.drivers.text_replies`` and ``openavc.drivers.json_replies``. A JSON
+rule's keys are the ones the compile reads (``build_json_mappings`` for its
+flat mappings, ``json_value_spec`` for a child's value specs), so a spec naming
+no key counts its state variable's own name, and each is cut to the top-level
+name a body must carry; whether the body also passes the rule's ``require:``
+or ``only_when:`` is not asked.
 """
 
 from __future__ import annotations
@@ -31,10 +33,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.compiled_protocol import (
+    build_json_mappings,
     decode_delimiter,
     parse_json_reply,
     safe_substitute,
 )
+from openavc.drivers.json_value_spec import CHILD, json_value_mapping
 
 
 # Transports where the driver reads replies by splitting a byte stream on its
@@ -94,38 +98,36 @@ def compile_response_patterns(responses: list, config: dict) -> list[re.Pattern]
     return patterns
 
 
-def _spec_key(spec: Any) -> Any:
-    """The key a ``set:`` or ``state:`` value spec names: its ``key``, else
-    its ``path``; a shorthand spec is the key itself."""
-    return spec.get("key", spec.get("path")) if isinstance(spec, dict) else spec
+def _flat_keys(resp: dict) -> Iterator[Any]:
+    """The keys of the rule's flat mappings, as the compile reads them: its
+    ``mappings:`` entries, else its ``set:`` items (``build_json_mappings``)."""
+    for mapping in build_json_mappings(resp, {}):
+        yield mapping["key"]
 
 
-def _set_keys(resp: dict) -> Iterator[Any]:
-    for spec in (resp.get("set") or {}).values():
-        yield _spec_key(spec)
-
-
-def _mapping_keys(resp: dict) -> Iterator[Any]:
-    for mapping in resp.get("mappings") or []:
-        yield mapping.get("key") if isinstance(mapping, dict) else None
+def _child_specs(resp: dict) -> Iterator[tuple[Any, Any]]:
+    """Each (prop, value spec) in the states of a json rule's ``child_set``
+    entries; an entry or a state that is not a mapping carries none."""
+    entries = resp.get("child_set")
+    for entry in entries if isinstance(entries, list) else ():
+        state_map = entry.get("state") if isinstance(entry, dict) else None
+        yield from state_map.items() if isinstance(state_map, dict) else ()
 
 
 def _child_state_keys(resp: dict) -> Iterator[Any]:
-    # A json rule's child_set routes by JSON path too (literal id per entry):
-    # a body carrying one of those paths' top-level keys is parsed just the
-    # same, so a per-child notification is not ignored.
-    for entry in resp.get("child_set") or []:
-        state_map = entry.get("state") if isinstance(entry, dict) else None
-        for spec in (state_map or {}).values():
-            yield _spec_key(spec)
+    """The keys a json rule's ``child_set`` entries read, as a child's value
+    spec is read (``json_value_spec.CHILD``): a body carrying one of those
+    paths' top-level keys is parsed just the same, so a per-child
+    notification is not ignored."""
+    mappings = (json_value_mapping(prop, spec, None, CHILD) for prop, spec in _child_specs(resp))
+    return (mapping["key"] for mapping in mappings if mapping is not None)
 
 
 def _top_level_keys(resp: dict) -> Iterator[str]:
-    """Every key a JSON rule names that is text, cut to its top-level name,
-    in the order the rule lists them: its ``set:`` specs, its ``mappings:``
-    entries (a mapping is read by its ``key`` only) and its ``child_set``
-    entries' states."""
-    for named in (_set_keys, _mapping_keys, _child_state_keys):
+    """Every key a JSON rule reads that is text, cut to its top-level name,
+    in the order the compile lists them: its flat mappings, then its
+    ``child_set`` entries' states."""
+    for named in (_flat_keys, _child_state_keys):
         for key in named(resp):
             if isinstance(key, str) and key:
                 yield key.split(".")[0].split("[")[0]
