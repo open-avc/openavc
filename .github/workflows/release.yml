@@ -74,23 +74,11 @@ jobs:
       - id: ver
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          # Fail the release if the tag and the bundled pyproject version
-          # disagree. The installer filename/AppVersion is named from the tag,
-          # but the running server reports pyproject's [project].version
-          # (version.py -> /api/health, tray tooltip, system.version, cloud), so
-          # a mismatch ships a build whose advertised version differs from what
-          # it reports. get-version.py is the same reader the installer uses.
-          PYPROJECT_VERSION=$(python3 installer/get-version.py)
-          if [ "$TAG" != "$PYPROJECT_VERSION" ]; then
-            echo "::error::Release tag v$TAG does not match pyproject.toml version $PYPROJECT_VERSION. Bump pyproject.toml to $TAG (or fix the tag) and re-release."
-            exit 1
-          fi
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
-          if [[ "$TAG" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+          # Fails the release on a tag that is not a version OpenAVC reads or
+          # that differs from pyproject.toml's version, and says whether it is
+          # a pre-release by the version rule (installer/release-version.py).
+          OUTPUTS=$(python3 installer/release-version.py "$TAG") || { echo "$OUTPUTS"; exit 1; }
+          echo "$OUTPUTS" >> "$GITHUB_OUTPUT"
 
   # ── Windows installer (.exe) ────────────────────────────────────────
   windows:
@@ -450,6 +438,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
@@ -476,14 +465,14 @@ jobs:
         run: |
           GHCR="ghcr.io/${{ github.repository_owner }}/openavc"
           TAGS="${GHCR}:${VERSION}"
-          # Only tag :latest for stable releases (no hyphen in version)
-          if [[ "$VERSION" != *-* ]]; then
+          # Only a stable release is tagged :latest (the version job decides)
+          if [ "$PRERELEASE" = "false" ]; then
             TAGS="${TAGS},${GHCR}:latest"
           fi
           # Add Docker Hub tags if configured
           if [ "${{ vars.DOCKERHUB_ENABLED }}" = "true" ]; then
             TAGS="${TAGS},openavc/openavc:${VERSION}"
-            if [[ "$VERSION" != *-* ]]; then
+            if [ "$PRERELEASE" = "false" ]; then
               TAGS="${TAGS},openavc/openavc:latest"
             fi
           fi
