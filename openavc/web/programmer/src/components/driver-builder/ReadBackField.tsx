@@ -10,18 +10,19 @@ import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { DriverCommandDef } from "../../api/types";
 import { FIELD_HINT, FIELD_LABEL, FlagField } from "./commandFieldParts";
+import { commandForm } from "./validateDriver";
 
 type ReadBack = DriverCommandDef["read_back"];
 type ReadBackForm = "osc" | "http" | "raw";
 
-/** Which read-back form the field offers a command. An address is OSC, a path
- *  or method is HTTP, as the runtime picks; the driver's transport answers for
- *  a command that declares neither yet. `commandRoute` in validateDriver.ts
- *  reads the command's own fields only, the way the runtime sends it. */
+/** Which read-back form the field offers a command. An OSC or HTTP command,
+ *  by the form the runtime sends it in (`commandForm` in validateDriver.ts,
+ *  where an empty field fills nothing), reads back in its own form; the
+ *  driver's transport answers for a command that fills neither yet. */
 export function readBackForm(cmd: DriverCommandDef, transport: string | undefined): ReadBackForm {
-  if (cmd.address !== undefined || transport === "osc") return "osc";
-  const requestShape = cmd.path !== undefined || cmd.method !== undefined;
-  return requestShape || transport === "http" ? "http" : "raw";
+  const form = commandForm(cmd);
+  if (form === "osc" || transport === "osc") return "osc";
+  return form === "http" || transport === "http" ? "http" : "raw";
 }
 
 /** Per form: how the command reads itself back (null: it cannot), what the

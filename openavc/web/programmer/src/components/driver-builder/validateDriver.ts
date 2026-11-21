@@ -6,7 +6,12 @@ import type {
 import type { DriverValidationIssue } from "../../api/driverClient";
 // Contract constant tables, generated from the platform's driver-contract
 // registry (types.gen.ts).
-import { CHILD_RESERVED_PROPS, DISALLOWED_OPEN_PORTS } from "../../api/types";
+import {
+  CHILD_RESERVED_PROPS,
+  DISALLOWED_OPEN_PORTS,
+  SEND_FORM_ORIGINS,
+  SEND_FORMS,
+} from "../../api/types";
 import { parseApiError } from "../../api/errors";
 import { isSecretSetting } from "../shared/secretSetting";
 import { oscArgsAsText } from "./fieldText";
@@ -84,34 +89,66 @@ const BASELINE_CONFIG_KEYS = new Set([
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
 
 // ── Transport ↔ command-shape routing ──────────────────────────────────
-// The runtime routes each command/setting-write by SHAPE, not by the
-// driver's transport (configurable.py): a `udp` block goes out as a datagram
-// beside the transport, else anything with an `address` goes to the OSC
-// sender, else `path`/`method` goes to HTTP, else the raw `send` string. These helpers give the editor the same routing knowledge, so the
-// Live Test panel can say which sender a command will reach and a transport
-// switch can strip the fields the new sender would ignore.
+// The runtime routes each command/setting-write by the fields it fills, not
+// by the driver's transport: an IR code, a `udp` block as a datagram beside
+// the transport, an `address` to the OSC sender, `path`/`method` to HTTP,
+// else the `send` line. The table is the platform's (SEND_FORMS in
+// types.gen.ts, read by drivers/command_form.py), and `commandForm` reads it
+// the way the runtime does: tests/fixtures/command_form_cases.json holds the
+// two to one answer (commandForm.parity.test.ts). These helpers give the
+// editor that routing knowledge, so the Live Test panel can say which sender
+// a command will reach and a transport switch can strip the fields the new
+// sender would ignore.
 
-export type CommandRoute = "osc" | "http" | "raw" | "udp";
+/** A form a command or a setting's write is sent in. */
+export type CommandForm = (typeof SEND_FORMS)[number]["form"];
+
+/** The sender the Live Test names: a command that fills no form is offered
+ *  the line editor, so it routes as a line. */
+export type CommandRoute = CommandForm;
 
 /** Fields that route a definition to a specific sender, or ride along with it. */
 const OSC_SHAPE_FIELDS = ["address", "args"] as const;
 const HTTP_SHAPE_FIELDS = ["method", "path", "body", "headers", "query_params"] as const;
 const RAW_SHAPE_FIELDS = ["send", "string"] as const;
 
-/** Which sender the runtime will route this command/write to (shape-based,
- *  mirroring configurable.py's `_is_osc_command` / `_is_http_command`). */
-export function commandRoute(cmd: {
-  address?: string;
-  path?: string;
-  method?: string;
-  udp?: unknown;
-}): CommandRoute {
-  // A udp: block is a datagram beside the transport, on any transport, and
-  // the runtime takes it before it looks at the other shapes.
-  if (cmd.udp !== undefined && cmd.udp !== null) return "udp";
-  if (cmd.address !== undefined) return "osc";
-  if (cmd.path !== undefined || cmd.method !== undefined) return "http";
-  return "raw";
+/** Whether a form field says something: anything but null, false, zero, or
+ *  an empty string, list or mapping (`command_form.fills`, which reads a
+ *  value's truth the way Python does). Nothing is trimmed: a `send` that is
+ *  a line feed is a real keepalive. */
+export function fillsForm(value: unknown): boolean {
+  if (!value) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+/** Every form a command (or a setting's write, `origin`) fills a field of,
+ *  in the order the runtime tries them (`command_form.declared_forms`). */
+export function declaredForms(
+  block: unknown,
+  origin: keyof typeof SEND_FORM_ORIGINS = "command",
+): CommandForm[] {
+  if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+  const fields = block as Record<string, unknown>;
+  const takes: readonly CommandForm[] = SEND_FORM_ORIGINS[origin];
+  return SEND_FORMS.filter(
+    (row) => takes.includes(row.form) && row.fields.some((field) => fillsForm(fields[field])),
+  ).map((row) => row.form);
+}
+
+/** The form the runtime sends `block` in: the first it fills, or null when
+ *  it fills none (`command_form.command_form`). */
+export function commandForm(
+  block: unknown,
+  origin: keyof typeof SEND_FORM_ORIGINS = "command",
+): CommandForm | null {
+  return declaredForms(block, origin)[0] ?? null;
+}
+
+/** Which sender the runtime will route this command/write to. */
+export function commandRoute(cmd: object): CommandRoute {
+  return commandForm(cmd) ?? "raw";
 }
 
 /** True when a wire field carries authored content — worth telling the user
@@ -347,9 +384,7 @@ function strayWireFields(obj: Record<string, unknown>): {
   route: CommandRoute;
   stray: string[];
 } {
-  const route = commandRoute(
-    obj as { address?: string; path?: string; method?: string },
-  );
+  const route = commandRoute(obj);
   const present = (fields: readonly string[]) =>
     fields.filter((f) => hasContent(obj[f]));
   const stray =
