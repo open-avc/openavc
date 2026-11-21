@@ -269,4 +269,28 @@ check("cycle_draws_empty_instead_of_overflowing", () => {
   pageSurface.end();
 });
 
+check("fallback_skips_subpages_on_the_glass", () => {
+  // A project holding ONLY sub-pages has no destination at all: the fallback
+  // must not hand `pages[0]` to the glass, and edit mode keeps it for
+  // authoring a panel that has no regular page yet.
+  // 只有子页面的项目根本没有目的地：兜底不能把 pages[0] 递给玻璃；编辑模式
+  // 保留它，供创作尚无普通页面的面板。
+  const wasEditMode = app.editMode;
+  app.editMode = false;
+  app.uiDef = {
+    pages: [
+      { id: "sub_only", name: "Only", page_type: "subpage", elements: [],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: {}, hidden: [] }] },
+    ],
+    settings: {},
+  };
+  app.currentPage = "";
+  let resolved = app._pageToDraw();
+  if (resolved !== null) throw new Error(`glass fallback drew ${resolved && resolved.id}`);
+  app.editMode = true;
+  resolved = app._pageToDraw();
+  if (!resolved || resolved.id !== "sub_only") throw new Error("edit mode lost its sub-page preview");
+  app.editMode = wasEditMode;
+});
+
 console.log(JSON.stringify(results, null, 2));

@@ -1301,6 +1301,14 @@ class PanelApp {
         const pages = this.uiDef.pages || [];
         const page = pages.find(p => p.id === this.currentPage && (this.editMode || !isSubPage(p)))
             || (pages.length ? fallbackPage(pages) : null);
+        // The fallback can still answer a sub-page -- a project holding only
+        // sub-pages hands `pages[0]` to it -- and the glass must not show a
+        // page that was never a destination. Edit mode keeps it, for
+        // authoring a panel that has no regular page yet.
+        // 兜底仍可能拿到子页面——只有子页面的项目会把 pages[0] 递给它——玻璃
+        // 上不能画一个从不是目的地的页面。编辑模式保留它，供创作尚无普通页面
+        // 的面板。
+        if (page && !this.editMode && isSubPage(page)) return null;
         if (page) this.currentPage = page.id;
         return page;
     }
