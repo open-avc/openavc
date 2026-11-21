@@ -31,7 +31,14 @@ from jsonschema.exceptions import best_match
 
 from openavc.drivers import discovery_block, spec
 from openavc.drivers.avcdriver_semantic import check_driver_definition, unknown_key_errors
-from openavc.drivers.shape_checks import LEFT_FIELDS, LEFT_KEYS, READ_KEYS, ShapeWalk, shape_refusals
+from openavc.drivers.shape_checks import (
+    LEFT_FIELDS,
+    LEFT_KEYS,
+    READ_KEYS,
+    UNUSABLE_NUMBER_SENTENCES,
+    ShapeWalk,
+    shape_refusals,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCHEMA = json.loads((_ROOT / "openavc/drivers/avcdriver.schema.json").read_text(encoding="utf-8"))
@@ -88,6 +95,13 @@ SHAPES: dict[str, dict[str, Any]] = {
     "mapping_state_a_list": {"responses": [{"match": "P(\\d)", "mappings": [{"group": 1, "state": ["power"]}]}]},
     "setup_kind_in_yaml": {"actions": [{"id": "a", "kind": "setup", "label": "A"}]},
     "every_null_section": {name: None for name in spec.NULL_AS_ABSENT},
+    # Numbers the schema's kinds take and no reader can use.
+    "variable_min_infinite": {"state_variables": {"power": {"type": "integer", "label": "Power", "min": math.inf}}},
+    "variable_max_nan": {"state_variables": {"power": {"type": "number", "label": "Power", "max": math.nan}}},
+    "throttle_too_large": {"responses": [{**TEXT_RULE, "throttle": 10**400}]},
+    "param_min_negative_infinity": {
+        "commands": {"noop": {"send": "N{x}\r", "params": {"x": {"type": "number", "min": -math.inf}}}},
+    },
 }
 
 # What the schema refuses that the walk leaves: these JSON Schema keywords
@@ -157,11 +171,19 @@ def _left_only(error: Any) -> bool:
     )
 
 
+def _beyond_the_schema(message: str) -> bool:
+    """A number no reader can use: JSON Schema takes an infinity, NaN and an
+    integer past a float as numbers, so this refusal is the walk's alone."""
+    return message.endswith(tuple(UNUSABLE_NUMBER_SENTENCES.values()))
+
+
 @pytest.mark.parametrize("case", sorted(CORPUS))
 def test_the_walk_refuses_only_what_the_schema_refuses(case: str) -> None:
     definition = spec.without_null_sections(CORPUS[case])
     schema_places = [_place(e.absolute_path) for e in _schema_refusals(CORPUS[case])]
     for loc, message in shape_refusals(definition):
+        if _beyond_the_schema(message):
+            continue
         assert any(_related(loc, place) for place in schema_places), (loc, message, schema_places)
 
 
@@ -429,3 +451,19 @@ def test_a_nan_in_a_driver_file_is_never_could_not_be_checked() -> None:
     for strict in (True, False):
         verdict = check_driver_definition(definition, strict=strict)
         assert not any("could not be checked" in m for m in [*verdict.errors, *verdict.notices])
+
+
+@pytest.mark.parametrize(
+    "case, said",
+    [
+        ("variable_min_infinite", "state_variables.power.min: must be a finite number, not .inf"),
+        ("variable_max_nan", "state_variables.power.max: must be a number; .nan is not one"),
+        ("throttle_too_large", "responses[0].throttle: must be a number no larger than about 1.8e308"),
+        ("param_min_negative_infinity", "commands.noop.params.x.min: must be a finite number, not -.inf"),
+    ],
+)
+def test_a_number_no_reader_can_use_is_refused_by_the_author_and_named_at_load(case: str, said: str) -> None:
+    definition = {**BASE, **SHAPES[case]}
+    assert list(check_driver_definition(definition, strict=True).errors) == [said]
+    loaded = check_driver_definition(definition, strict=False)
+    assert (list(loaded.errors), list(loaded.notices)) == ([], [said])

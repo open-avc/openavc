@@ -7,6 +7,9 @@ schema is generated from, and at each value it reaches it judges:
 
 * its kind (``type``: a string, an integer, a number, a boolean, a mapping, a
   list), an integer written ``5.0`` passing as one, as the schema passes it;
+* a number its kind takes that is no usable number (``usable_number``: an
+  infinity, NaN, or an integer too large for a float), which the schema takes
+  and no reader can use;
 * a fixed set of values (``enum``, ``const``), naming the set; a value only a
   Python driver may use (``python_enum``) is named as needing one;
 * the keys a mapping must carry (``required``); the definition's own
@@ -29,8 +32,8 @@ the unknown-key walk (``avcdriver_semantic.unknown_key_errors``): its reader
 (``discovery_block``) judges it at every door, honouring the block's
 ``requires:`` gate, so its sentences are that reader's.
 ``tests/test_shape_walk.py`` holds it to the published schema: it never
-refuses a value the schema takes, and every refusal of the schema it does
-not make is of one of those kinds.
+refuses a value the schema takes, a number no reader can use apart, and
+every refusal of the schema it does not make is of one of those kinds.
 
 It reads the definition as handed to it; the null-as-absent read
 (``spec.without_null_sections``) comes first, in the caller. A refusal is a
@@ -38,16 +41,18 @@ place (``commands.power.params.level.type``, ``responses[2]``) and a
 sentence that opens with that place, so the walk's tags and the published
 schema's paths are one spelling.
 
-Purity contract: standard library plus ``spec``, like every module the
+Purity contract: standard library plus ``spec`` and ``usable_number``, like every module the
 definition walk imports; vendored into openavc-drivers and openavc-sdk with
 it.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from openavc.drivers.spec import DEFS, FIELDS
+from openavc.drivers.usable_number import is_number_value
 
 # How each JSON kind is named in a sentence, in the words the definition
 # walk's own messages use.
@@ -139,6 +144,31 @@ _HINTS = (
 )
 
 
+# What is said of a value of a number kind that is no usable number
+# (``usable_number``): the schema's kinds take an infinity, NaN and an integer
+# past a float as numbers, and no reader can use one.
+UNUSABLE_NUMBER_SENTENCES = {
+    "nan": "must be a number; .nan is not one",
+    "inf": "must be a finite number, not .inf",
+    "-inf": "must be a finite number, not -.inf",
+    "too_large": "must be a number no larger than about 1.8e308",
+}
+
+
+def _unusable_number_sentence(value: Any) -> str:
+    if isinstance(value, int):
+        return UNUSABLE_NUMBER_SENTENCES["too_large"]
+    if math.isnan(value):
+        return UNUSABLE_NUMBER_SENTENCES["nan"]
+    return UNUSABLE_NUMBER_SENTENCES["inf" if value > 0 else "-inf"]
+
+
+def _is_unusable_number(kinds: tuple[str, ...], value: Any) -> bool:
+    """A value a number kind takes that no reader can use."""
+    numeric = "number" in kinds or "integer" in kinds
+    return numeric and _is_number(value) and not is_number_value(value)
+
+
 def kind_fits(kind: str, value: Any) -> bool:
     """Whether ``value`` is of the JSON kind ``kind``, as the published
     schema reads it."""
@@ -224,7 +254,9 @@ class ShapeWalk:
     def _judged(self, node: dict[str, Any], value: Any, loc: str) -> bool:
         """The value's kind, then its value set, then its forms: the first
         that refuses says so, and nothing after it is asked."""
-        checks = (self._fits_kind, self._fits_const, self._fits_enum, self._fits_forms)
+        checks = (
+            self._fits_kind, self._is_usable, self._fits_const, self._fits_enum, self._fits_forms,
+        )
         return all(check(node, value, loc) for check in checks)
 
     def _descend(self, node: dict[str, Any], value: Any, loc: str) -> None:
@@ -246,6 +278,13 @@ class ShapeWalk:
         if not kinds or any(kind_fits(kind, value) for kind in kinds):
             return True
         self._refuse(loc, f"must be {_kind_words(node, kinds)}{_hint(kinds, value)}")
+        return False
+
+    def _is_usable(self, node: dict[str, Any], value: Any, loc: str) -> bool:
+        """A number the field's kind takes is also one a reader can use."""
+        if not _is_unusable_number(_kinds(node), value):
+            return True
+        self._refuse(loc, _unusable_number_sentence(value))
         return False
 
     def _fits_const(self, node: dict[str, Any], value: Any, loc: str) -> bool:

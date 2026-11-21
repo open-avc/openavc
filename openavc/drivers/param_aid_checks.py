@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from openavc.drivers.spec import PARAM_OPTIONS_FROM_SOURCES, VALUE_TYPES
+from openavc.drivers.usable_number import is_number_value
 from openavc.utils.regex_safety import regex_safety_error
 
 
@@ -73,24 +74,23 @@ def _pattern_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> li
 
 
 def _bounds_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> list[str]:
-    """``min`` and ``max`` are numbers, and min is not above max."""
+    """``min`` and ``max`` are numbers, and min is not above max. Only usable
+    numbers are compared (``is_number_value``): a boolean, an infinity or NaN
+    is the shape walk's to name, refused at the author's doors and named at
+    load."""
     low, high = pdef.get("min"), pdef.get("max")
     errors = [
         f"{at}: {name} must be a number"
         for name, bound in (("min", low), ("max", high))
         if bound is not None and not _numeric(bound)
     ]
-    if _both_numeric(low, high) and low > high:
+    if is_number_value(low) and is_number_value(high) and low > high:
         errors.append(f"{at}: min ({low}) must be <= max ({high})")
     return errors
 
 
 def _numeric(value: Any) -> bool:
     return isinstance(value, (int, float))
-
-
-def _both_numeric(low: Any, high: Any) -> bool:
-    return _numeric(low) and _numeric(high)
 
 
 def _decimals_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> list[str]:

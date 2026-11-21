@@ -46,6 +46,7 @@ from openavc.drivers.declared_names import (
     declared_enum_values,
 )
 from openavc.drivers.query_entry import EACH_CHILD, QueryEntry, read_query_entry
+from openavc.drivers.usable_number import is_number_value
 
 # A {child_id} / {child_id:spec} token in a query template.
 _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
@@ -463,11 +464,11 @@ class QueryEntries:
 
 
 def _whole(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, int) and is_number_value(value)
 
 
 def _number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return is_number_value(value)
 
 
 # What a gate on a variable of each typed kind waits for, and how a value it

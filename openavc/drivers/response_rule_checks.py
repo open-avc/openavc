@@ -39,6 +39,7 @@ from typing import Any
 
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import child_writable_props, declared_id_kind
+from openavc.drivers.usable_number import is_number_value
 from openavc.utils.regex_safety import regex_safety_error
 
 # The keys a json value spec ({key, type, map, contains}) may carry.
@@ -77,8 +78,11 @@ def response_rule_errors(
 
 
 def _not_positive_seconds(value: Any) -> bool:
-    # Written as the refusal, not as "value > 0": NaN passes, as it always has.
-    return isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0
+    """Not a number, or a usable one of 0 or less. A number no reader can use
+    (an infinity, NaN) is the shape walk's to name."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return True
+    return is_number_value(value) and value <= 0
 
 
 def _throttle_errors(where: str, rule: dict[str, Any]) -> list[str]:

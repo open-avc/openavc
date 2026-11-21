@@ -31,6 +31,7 @@ import pytest
 from openavc.api.models import TestCommandRequest as CommandRequest
 from openavc.api.routes.driver_test import _test_via_configurable_driver
 from openavc.drivers.avcdriver_semantic import validate_driver_definition
+from openavc.drivers.reply_throttle import ReplyThrottle
 
 
 def _definition(reply_var: str) -> dict:
@@ -172,18 +173,23 @@ async def test_the_live_test_does_not_make_the_rest_of_the_server_strict(
 
 
 @pytest.mark.asyncio
-async def test_a_response_rule_that_fails_on_the_reply_is_reported_by_name():
+async def test_a_response_rule_that_fails_on_the_reply_is_reported_by_name(monkeypatch):
     """A rule that raises while reading the reply is skipped by the runtime,
     which keeps the rest of the reply readable. The Test tab still has to say
     so, or the device answered, nothing changed, and the test passed."""
+
+    def fails(*_args, **_kwargs):
+        raise RuntimeError("the hold could not be read")
+
+    monkeypatch.setattr(ReplyThrottle, "_throttle_hold", fails)
     definition = _definition("power")
-    definition["responses"][0]["throttle"] = float("nan")
+    definition["responses"][0]["throttle"] = 1
     result = await _run(definition, b"PWR=on\r")
 
     assert result["success"] is False
     assert result["received"]
     assert result["contract_errors"] == [
         r'Response rule "match: PWR=(\w+)" failed on a reply and was skipped: '
-        "KeyError: ''. Check this rule in the driver."
+        "RuntimeError: the hold could not be read. Check this rule in the driver."
     ]
     assert result["error"] is None

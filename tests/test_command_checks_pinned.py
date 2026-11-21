@@ -657,7 +657,6 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                           ('commands.c', "Command 'c' param 'd': min must be a number"),
                           ('commands.c', "Command 'c' param 'd': max must be a number"),
                           ('commands.c', "Command 'c' param 'e': min (5) must be <= max (1)"),
-                          ('commands.c', "Command 'c' param 'g': min (True) must be <= max (0)"),
                           ('commands.c', "Command 'c' param 'h': decimals must be a non-negative integer"),
                           ('commands.c', "Command 'c' param 'i': decimals must be a non-negative integer"),
                           ('commands.c', "Command 'c' param 'j': decimals must be a non-negative integer"),

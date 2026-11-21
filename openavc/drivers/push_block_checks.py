@@ -53,6 +53,7 @@ from openavc.drivers.spec import (
     PUSH_TYPE_KEYS,
     is_multicast_group,
 )
+from openavc.drivers.usable_number import is_number_value
 from openavc.utils.regex_safety import regex_safety_error
 
 # The keys an unknown type is measured against, so its other keys are still
@@ -153,8 +154,11 @@ def _is_port(value: Any, lowest: int) -> bool:
 
 
 def _not_positive_seconds(value: Any) -> bool:
-    # Written as the refusal, not as "value > 0": NaN passes, as it always has.
-    return isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0
+    """Not a number, or a usable one of 0 or less. A number no reader can use
+    (an infinity, NaN) is the shape walk's to name."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return True
+    return is_number_value(value) and value <= 0
 
 
 def _blank(value: Any) -> bool:
