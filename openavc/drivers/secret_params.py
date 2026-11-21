@@ -4,7 +4,8 @@ reader asks.
 A parameter is secret by its own declaration, the rule every setting follows
 (``spec.is_secret_setting``): it is marked ``secret: true`` (or carries the
 older ``type: password``), or it is named ``password``, the one name that
-declares itself. No other name counts: a ``pin`` or a ``token`` the driver
+declares itself, even on a command that lists no such parameter or on a
+driver that is not installed. No other name counts: a ``pin`` or a ``token`` the driver
 does not mark is not a secret here, so it is neither saved on this system nor
 filled in from it. The outbound redactors (the log, the Device Audit, a
 problem report, the cloud AI's log tool) also mask what is named like a
@@ -67,5 +68,6 @@ def secret_params(commands: Any, command: Any, keys: Iterable[Any]) -> frozenset
 
 def device_commands(driver_class: Any, config: dict[str, Any]) -> dict[str, Any]:
     """The ``commands`` a project's device declares, with no driver running
-    (``inline_merge.declared_commands``); none for a driver not installed."""
+    (``inline_merge.declared_commands``); none for a driver not installed,
+    where only a parameter named ``password`` is a secret."""
     return declared_commands(driver_class, config) if driver_class is not None else {}

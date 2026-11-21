@@ -93,11 +93,12 @@ def is_secret_param(driver: Any, command: str, key: str) -> bool:
     driver's declaration (``drivers/secret_params``): marked secret, or
     named ``password``. With no live driver there is no declaration, and
     every parameter is treated as one."""
-    return driver is None or _declared_secret(driver, command, key)
+    return driver is None or _secret_for_driver(driver, command, key)
 
 
-def _declared_secret(driver: Any, command: str, key: str) -> bool:
-    """Whether the live driver declares ``key`` of ``command`` a secret; never
+def _secret_for_driver(driver: Any, command: str, key: str) -> bool:
+    """Whether ``key`` of ``command`` is a secret by the live driver's
+    declaration (a parameter named ``password`` by its name alone); never
     with no driver, so nothing is filled in from a guess."""
     return secret_params.is_secret_param(_driver_info(driver).get("commands"), command, key)
 
@@ -168,7 +169,7 @@ def fill_saved_params(
         return params
     filled = dict(params or {})
     for key in marked:
-        value = fill(key, filled[key]) if _declared_secret(driver, command, key) else None
+        value = fill(key, filled[key]) if _secret_for_driver(driver, command, key) else None
         if value is None:
             raise _not_saved_here(driver, command, key)
         filled[key] = value

@@ -46,8 +46,9 @@ Which parameters are secret is the one answer the send gives too
 (``drivers/secret_params``), read off each device's own declaration: the
 commands its installed driver declares with the device's own protocol merged
 over them, worked out from the project's data (a group step: any member's).
-A driver that is not installed says nothing, so its steps keep their values
-until it is.
+A parameter named ``password`` is one by its name alone, whether or not the
+command lists it. Otherwise a driver that is not installed says nothing, so
+its steps keep their values until it is.
 
 The driver registry, the driver contract and the settings layering only
 (``core/device_config.layered_config``): ``core/device_logins.py`` imports
