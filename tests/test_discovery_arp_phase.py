@@ -284,7 +284,7 @@ async def test_an_arp_only_address_that_answers_a_second_ping_is_a_proven_host()
     assert device.alive is True
     assert "10.20.0.9" not in engine._arp_provisional
     assert alive == ["10.20.0.9"]
-    assert engine.scan_status.devices_found == 1
+    assert engine.get_status()["devices_found"] == 1
     assert pinged[0] == ("10.20.0.9", 1.5, "10.20.0.2", icmp.METHOD_DGRAM)
     # Proven, so its MAC is read and it is announced like any host.
     assert device.mac == OTHER_MAC
@@ -300,7 +300,7 @@ async def test_an_arp_only_address_that_stays_quiet_is_carried_unproven():
     assert device.alive is True
     assert engine._arp_provisional == {"10.20.0.9"}
     assert alive == ["10.20.0.9"]
-    assert engine.scan_status.devices_found == 0
+    assert engine.get_status()["devices_found"] == 0
     assert [p[0] for p in pinged] == ["10.20.0.9", "10.20.0.9"]
     # Its MAC is still read: the port scan decides whether it earns a place.
     assert device.mac == OTHER_MAC
@@ -317,7 +317,7 @@ async def test_proven_and_unproven_addresses_both_join_the_hosts_after_the_swept
 
     assert alive == ["10.20.0.5", "10.20.0.9", "10.20.0.8"]
     assert engine._arp_provisional == {"10.20.0.9"}
-    assert engine.scan_status.devices_found == 2
+    assert engine.get_status()["devices_found"] == 2
 
 
 async def test_the_second_look_leaves_out_a_subnets_network_and_broadcast_addresses():

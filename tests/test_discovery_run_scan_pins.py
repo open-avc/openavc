@@ -99,20 +99,19 @@ async def test_the_complete_event_carries_the_count_and_the_duration():
         "warnings": [],
     }
     assert engine.scan_status.duration >= 2.0
-    assert engine.scan_status.devices_found == 2
+    assert engine.get_status()["devices_found"] == 2
 
 
 async def test_a_failed_matcher_still_counts_and_says_so(caplog):
     engine, events = _engine_with_events()
     engine.results["192.0.2.10"] = DiscoveredDevice(ip="192.0.2.10")
-    engine.scan_status.devices_found = 0
 
     with patch.object(engine, "_scan_pipeline", new_callable=AsyncMock), \
          patch.object(engine, "_finalize_scan", side_effect=RuntimeError("matcher")), \
          caplog.at_level(logging.ERROR, logger="discovery"):
         await engine._run_scan(["192.0.2.0/24"], timeout=10.0)
 
-    assert engine.scan_status.devices_found == 1
+    assert engine.get_status()["devices_found"] == 1
     assert engine.scan_status.status == "complete"
     assert engine.scan_status.warnings == [
         "Driver matching failed — devices were found but could not "
@@ -217,7 +216,7 @@ async def test_a_cancelled_scan_still_reports_and_emits_then_raises():
 
     probes.assert_not_awaited()
     finalize.assert_not_awaited()
-    assert engine.scan_status.devices_found == 1
+    assert engine.get_status()["devices_found"] == 1
     assert engine.scan_status.status == "cancelled"
     event = _complete(events)
     assert event["status"] == "cancelled"

@@ -97,6 +97,7 @@ async def test_the_drops_are_logged_with_their_counts(caplog):
     engine._arp_provisional.add("192.0.2.40")    # named by ARP, answered nothing
     with caplog.at_level(logging.INFO, logger="discovery"):
         await engine._finalize_scan()
+        engine._settle_status(truncated=False)
     assert "Removed 1 stale devices not found in this scan" in caplog.messages
     assert "Dropped 1 ARP-named host(s) that answered nothing" in caplog.messages
     assert sorted(engine.results) == ["192.0.2.20"]
@@ -108,4 +109,5 @@ async def test_nothing_dropped_logs_neither_line(caplog):
     _alive(engine, "192.0.2.20")
     with caplog.at_level(logging.INFO, logger="discovery"):
         await engine._finalize_scan()
+        engine._settle_status(truncated=False)
     assert not any("stale" in m or "ARP-named" in m for m in caplog.messages)

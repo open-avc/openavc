@@ -75,8 +75,8 @@ class _AcmeScan:
     def refold_cached_catalog(self) -> None:
         pass
 
-    async def refresh_device_matches(self, ip):
-        return self.results.get(ip)
+    def rematch(self):
+        return list(self.results.values())
 
 
 @pytest.fixture

@@ -26,6 +26,16 @@ def _engine_with(ip: str, **fields) -> DiscoveryEngine:
     return engine
 
 
+async def _finish(engine: DiscoveryEngine) -> None:
+    """The matcher, then the scan's ending, where the probation ends."""
+    await engine._finalize_scan()
+    await engine._end_scan(truncated=False, cancelled=False)
+
+
+def _count(engine: DiscoveryEngine) -> int:
+    return engine.get_status()["devices_found"]
+
+
 @pytest.mark.parametrize(
     "fields",
     [
@@ -52,19 +62,19 @@ def test_a_reverse_dns_name_is_not_the_device_answering():
 
 
 @pytest.mark.asyncio
-async def test_finalize_drops_an_arp_host_that_answered_nothing():
+async def test_the_scans_end_drops_an_arp_host_that_answered_nothing():
     engine = _engine_with("192.168.4.47", mac="aa:bb:cc:dd:ee:ff")
-    await engine._finalize_scan()
+    await _finish(engine)
     assert "192.168.4.47" not in engine.results
-    assert engine.scan_status.devices_found == 0
+    assert _count(engine) == 0
 
 
 @pytest.mark.asyncio
-async def test_finalize_keeps_an_arp_host_with_an_open_port():
+async def test_the_scans_end_keeps_an_arp_host_with_an_open_port():
     engine = _engine_with(
         "192.168.4.24", mac="aa:bb:cc:dd:ee:ff", open_ports=[10001]
     )
-    await engine._finalize_scan()
+    await _finish(engine)
     assert "192.168.4.24" in engine.results
 
 
@@ -75,7 +85,7 @@ async def test_a_ping_answering_host_is_never_dropped_for_being_quiet():
     engine = DiscoveryEngine()
     engine.results["192.168.4.20"] = DiscoveredDevice(ip="192.168.4.20")
     engine._arp_provisional = set()
-    await engine._finalize_scan()
+    await _finish(engine)
     assert "192.168.4.20" in engine.results
 
 
@@ -139,7 +149,7 @@ async def test_a_host_that_earns_its_place_is_announced_at_the_end():
         sent.append(msg)
 
     engine._on_update = capture
-    await engine._finalize_scan()
+    await _finish(engine)
 
     announced = [m for m in sent if m.get("type") == "discovery.update"]
     assert [m["device"]["ip"] for m in announced] == ["192.168.4.24"]
@@ -158,7 +168,7 @@ async def test_a_dropped_host_is_never_announced_at_all():
         sent.append(msg)
 
     engine._on_update = capture
-    await engine._finalize_scan()
+    await _finish(engine)
 
     assert [m for m in sent if m.get("type") == "discovery.update"] == []
     assert "192.168.4.47" not in engine.results
@@ -172,15 +182,14 @@ async def test_the_live_count_matches_what_the_panel_is_shown():
     engine._arp_provisional = set()
 
     engine._get_or_create("192.168.4.20")            # answered a ping
-    assert engine.scan_status.devices_found == 1
+    assert _count(engine) == 1
 
     engine._get_or_create("192.168.4.47")            # ARP named it only
     engine._arp_provisional.add("192.168.4.47")
-    engine._refresh_device_count()
-    assert engine.scan_status.devices_found == 1
+    assert _count(engine) == 1
 
-    await engine._finalize_scan()                    # it answered nothing
-    assert engine.scan_status.devices_found == 1
+    await _finish(engine)                            # it answered nothing
+    assert _count(engine) == 1
     assert "192.168.4.47" not in engine.results
 
 
@@ -190,8 +199,7 @@ async def test_a_host_that_earns_its_place_joins_the_count():
     engine._arp_provisional = set()
     engine._get_or_create("192.168.4.24").open_ports = [10001]
     engine._arp_provisional.add("192.168.4.24")
-    engine._refresh_device_count()
-    assert engine.scan_status.devices_found == 0
+    assert _count(engine) == 0
 
-    await engine._finalize_scan()
-    assert engine.scan_status.devices_found == 1
+    await _finish(engine)
+    assert _count(engine) == 1

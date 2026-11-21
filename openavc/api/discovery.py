@@ -89,7 +89,9 @@ async def refresh_all_device_matches() -> None:
     discovery results stay in sync with the current driver registry, and so
     the next scan runs the ``*_discovery.py`` checks of the drivers there now.
     The community catalog folded in is the copy already fetched, so a change
-    on a system that cannot reach the internet never waits on a fetch.
+    on a system that cannot reach the internet never waits on a fetch. The
+    devices sent again are the scan's outcome (``DiscoveryEngine.rematch``),
+    so one still on the ARP probation is never sent.
     """
     if _engine is None:
         return
@@ -101,18 +103,16 @@ async def refresh_all_device_matches() -> None:
     # — discovery's whole job is suggesting what to install next.
     _engine.refold_cached_catalog()
 
-    for ip in list(_engine.results.keys()):
-        updated = await _engine.refresh_device_matches(ip)
-        if updated:
-            try:
-                await _send_to_programmers({
-                    "type": "discovery.update",
-                    "device": updated,
-                    "phase": "refresh",
-                    "progress": 1.0,
-                })
-            except Exception:
-                pass
+    for updated in _engine.rematch():
+        try:
+            await _send_to_programmers({
+                "type": "discovery.update",
+                "device": updated,
+                "phase": "refresh",
+                "progress": 1.0,
+            })
+        except Exception:
+            pass
 
 
 async def _build_port_labels(
@@ -327,7 +327,10 @@ async def get_results(
       ``evidence_log`` -> full audit trail for the "Why?" UI reveal
     """
     engine = _get_engine()
+    # Read together, before the port labels are awaited, so the devices and
+    # the status are the same moment's outcome.
     devices = engine.get_results()
+    status = engine.get_status()
 
     if state:
         devices = [
@@ -353,7 +356,6 @@ async def get_results(
 
     port_labels, port_drivers = await _build_port_labels(engine)
 
-    status = engine.get_status()
     return {
         "scan_id": status["scan_id"],
         "status": status["status"],

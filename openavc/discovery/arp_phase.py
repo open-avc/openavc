@@ -10,10 +10,10 @@ The rules worth knowing before changing anything here:
   table names, inside the scanned subnets, gets a second, unhurried ping
   (``_second_look``). One that answers is a host; one that stays quiet is
   carried on to the port scan unproven (``_arp_provisional``) and kept only if
-  it answers something for itself before the matcher finishes
-  (``_settle_arp_only_hosts``, the scan's last step). Until then it is held
-  off the wire and out of the device count. With no way to ping, those
-  addresses are left out.
+  it answers something for itself before the scan settles
+  (``_end_probation``, which the engine runs on every way a scan ends). Until
+  then it is held out of the scan's outcome: off the wire, out of the results
+  and out of the count. With no way to ping, those addresses are left out.
 * The ARP read covers every alive host: it is one cheap read and the phase's
   strongest signal. Only the name lookups are bounded
   (``ArpPlan.name_lookup_hosts``).
@@ -200,7 +200,6 @@ class ArpHarvest:
         for ip in still_quiet:
             self._get_or_create(ip).alive = True
             self._arp_provisional.add(ip)
-        self._refresh_device_count()
         alive_ips.extend(candidates)
 
     async def _look_up_names(
@@ -313,30 +312,19 @@ class ArpHarvest:
             device.device_name,
         ))
 
-    def _refresh_device_count(self) -> None:
-        """Publish the count of devices actually being shown.
-
-        Hosts the ARP table only named are excluded: they are held off the
-        wire until they earn their place, so counting them would report
-        more devices than the panel is displaying and then tick DOWN when
-        the unproven ones are dropped.
-        """
-        self.scan_status.devices_found = len(self.results) - len(
-            self._arp_provisional
-        )
-
-    async def _settle_arp_only_hosts(self, connected: Container[str]) -> None:
-        """The end of each ARP-named host's probation, as the matcher finishes.
+    def _end_probation(self, connected: Container[str]) -> list[DiscoveredDevice]:
+        """End each ARP-named host's probation, as the scan settles.
 
         One that never answered anything is not a device. It got a sweep, a
-        second ping, a port scan and the passive listeners to show itself;
-        with nothing to show, listing it would be inventing equipment out of
-        a cache entry that nobody can act on. A device a project driver is
-        connected to (an address in ``connected``) answers that driver, even
-        when the port it answers on was the one the scan left alone.
+        second ping, a port scan and the passive listeners to show itself,
+        or as many of them as ran before the scan was stopped; with nothing
+        to show, listing it would be inventing equipment out of a cache entry
+        that nobody can act on. A device a project driver is connected to (an
+        address in ``connected``) answers that driver, even when the port it
+        answers on was the one the scan left alone.
 
-        Whatever is left has earned its place, so it is announced now: the
-        first the panel hears of it.
+        Whatever is left has earned its place. It is returned, in address
+        order, for the engine to announce: the first a client hears of it.
         """
         unproven = [ip for ip in self._arp_provisional if self._unproven(ip, connected)]
         for ip in unproven:
@@ -346,7 +334,9 @@ class ArpHarvest:
                 "Dropped %d ARP-named host(s) that answered nothing",
                 len(unproven),
             )
-        await self._announce_earned_arp_hosts()
+        earned = [self.results[ip] for ip in sorted(self._arp_provisional) if ip in self.results]
+        self._arp_provisional.clear()
+        return earned
 
     def _unproven(self, ip: str, connected: Container[str]) -> bool:
         """An ARP-named host still in the results that showed nothing of its
@@ -357,11 +347,3 @@ class ArpHarvest:
             and not self._answered_for_itself(device)
             and ip not in connected
         )
-
-    async def _announce_earned_arp_hosts(self) -> None:
-        """End every probation, announcing each host still in the results."""
-        for ip in sorted(self._arp_provisional):
-            self._arp_provisional.discard(ip)
-            earned = self.results.get(ip)
-            if earned is not None:
-                await self._emit_device_update(earned, "finalize")

@@ -24,7 +24,8 @@ class TestScanStatus:
         assert s.phase_number == 0
         assert s.total_phases == 8
         assert s.progress == 0.0
-        assert s.devices_found == 0
+        assert "devices_found" not in s.to_dict()  # the outcome's, not the status's
+        assert DiscoveryEngine().get_status()["devices_found"] == 0
         assert s.subnets == []
 
     def test_to_dict_has_all_fields(self):
@@ -555,7 +556,7 @@ class TestScanPipeline:
             await self.engine._scan_pipeline(["192.168.1.0/30"])
 
         # Should complete without error, even with no devices
-        assert self.engine.scan_status.devices_found == 0
+        assert self.engine.get_status()["devices_found"] == 0
 
     async def test_pipeline_finds_devices(self):
         """Pipeline discovers devices through ping + port + ARP."""

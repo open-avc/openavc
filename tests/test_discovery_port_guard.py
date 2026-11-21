@@ -463,6 +463,7 @@ class TestADeviceInTheProjectIsStillIdentified:
         engine._arp_provisional.add("10.77.0.6")
         engine._get_or_create("10.77.0.6").alive = True
         await engine._finalize_scan()
+        engine._settle_status(truncated=False)
         assert "10.77.0.5" in engine.results
         assert "10.77.0.6" not in engine.results
 

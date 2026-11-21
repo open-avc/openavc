@@ -23,9 +23,13 @@ The rules worth knowing before changing anything here:
   short still identifies what it observed, and reports itself ``partial``.
 * An address only the ARP table named is held back until it answers
   something for itself (``_arp_provisional``; its probation is
-  ``arp_phase``'s, from the second look to the verdict as the matcher
-  finishes): a panel cannot un-see a device, so it is announced only once
-  it has earned its place.
+  ``arp_phase``'s, from the second look to the verdict as the scan settles):
+  a panel cannot un-see a device, so it is announced only once it has earned
+  its place.
+* A scan ends in one place on every way out, finished, cut short, stopped or
+  with its matcher failed (``_end_scan``): the probation ends, the end state
+  is settled, and every client is told. What it holds is one answer,
+  ``outcome()`` (``scan_outcome``), that every exit reads.
 * A port a connected project device holds is never connected to
   (``port_guard``); that device is identified from its driver instead.
 """
@@ -49,6 +53,7 @@ from openavc.discovery.port_phase import (  # noqa: F401 -- THOROUGH_EXTRA_PORTS
     PortScanSettings,
 )
 from openavc.discovery.probe_phase import DriverProbes
+from openavc.discovery.scan_outcome import ScanOutcome, ScanStatus
 from openavc.discovery.sweep_phase import HostSweep
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.hints import DiscoveryHint, load_discovery_hints
@@ -121,59 +126,6 @@ PHASE_WEIGHTS: dict[str, dict[str, float]] = {
 # once per host; the bar only needs to look alive, so one message a second is
 # plenty and keeps a 1022-host sweep off the WS send queue.
 _INTRA_EMIT_INTERVAL: float = 1.0
-
-
-class ScanStatus:
-    """Tracks scan progress."""
-
-    def __init__(self) -> None:
-        self.scan_id: str = ""
-        # idle, running, complete, cancelled, partial ("partial" = the scan hit
-        # its time limit or errored, so the phases below ran on a subset of the
-        # network; the accompanying warning says so).
-        self.status: str = "idle"
-        self.phase: str = ""
-        self.phase_number: int = 0
-        self.total_phases: int = 8
-        self.message: str = ""
-        self.progress: float = 0.0
-        self.devices_found: int = 0
-        self.started_at: float = 0.0
-        self.duration: float = 0.0
-        self.subnets: list[str] = []
-        self.total_hosts_scanned: int = 0
-        self.active_adapter: dict[str, str] | None = None
-        # Environment problems that kept scan phases from working (missing
-        # ping capability, multicast joins failing, ...) plus anything the
-        # budget narrowed. Zero devices plus a reason beats zero devices
-        # plus silence, and narrowed coverage must never read as full.
-        self.warnings: list[str] = []
-        # Ceiling on the whole scan: the request's explicit timeout, or the
-        # scan_depth policy's when it supplied none.
-        self.budget_seconds: float = 0.0
-        # Deadline actually granted to each budgeted phase, derived from
-        # that phase's measured workload (see discovery.scan_budget).
-        self.phase_budgets: dict[str, float] = {}
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "scan_id": self.scan_id,
-            "status": self.status,
-            "phase": self.phase,
-            "phase_number": self.phase_number,
-            "total_phases": self.total_phases,
-            "message": self.message,
-            "progress": round(self.progress, 2),
-            "devices_found": self.devices_found,
-            "started_at": self.started_at,
-            "duration": round(self.duration, 2),
-            "subnets": self.subnets,
-            "total_hosts_scanned": self.total_hosts_scanned,
-            "active_adapter": self.active_adapter,
-            "warnings": list(self.warnings),
-            "budget_seconds": round(self.budget_seconds, 2),
-            "phase_budgets": dict(self.phase_budgets),
-        }
 
 
 def _log_reach_choice(control_ip: str, ignore_pin: bool) -> None:
@@ -318,8 +270,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self._scan_source_ip: str = ""
         # Hosts the ARP table vouched for that answered no ping. They are
         # scanned like any other host but must EARN their place; anything
-        # still mute at the end is dropped as the matcher finishes
-        # (arp_phase's _settle_arp_only_hosts).
+        # still mute at the end is dropped as the scan settles
+        # (arp_phase's _end_probation).
         self._arp_provisional: set[str] = set()
         # Hosts this scan has port-scanned, whatever the result. Phase 7's
         # follow-up decides which passive-only hosts still need a scan from
@@ -464,25 +416,26 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             for prefix in hint.oui
         )
 
+    def outcome(self) -> ScanOutcome:
+        """What the scan holds now: the one answer every exit reads
+        (``scan_outcome``), a host still on the ARP probation left out."""
+        return ScanOutcome.read(self.scan_status, self.results, self._arp_provisional)
+
     def get_results(self) -> list[dict[str, Any]]:
-        """Return current discovery results sorted identified > possible > unknown."""
-        # State-then-IP ordering: identified first, then possible, then
-        # unknown. Within each bucket, sort by IP for stable display.
-        state_rank = {"identified": 0, "possible": 1, "unknown": 2}
-
-        def sort_key(d: DiscoveredDevice) -> tuple:
-            state = d.identification.state.value if d.identification else "unknown"
-            try:
-                ip_tuple = tuple(int(p) for p in d.ip.split("."))
-            except ValueError:
-                ip_tuple = (999, 999, 999, 999)
-            return (state_rank.get(state, 9), ip_tuple)
-
-        devices = sorted(self.results.values(), key=sort_key)
-        return [d.to_dict() for d in devices]
+        """The outcome's devices, identified, then possible, then unknown."""
+        return self.outcome().device_records()
 
     def get_status(self) -> dict[str, Any]:
-        return self.scan_status.to_dict()
+        """The scan's progress and end state, with the outcome's count."""
+        return {**self.scan_status.to_dict(), "devices_found": self.outcome().count}
+
+    def rematch(self) -> list[dict[str, Any]]:
+        """Identify every device again from the evidence it already holds,
+        after a driver change, and return the outcome's records to send: a
+        host on probation is matched too, and sent when it earns its place."""
+        for device in self.results.values():
+            self._identify(device)
+        return self.get_results()
 
     def is_scanning(self) -> bool:
         """True while a scan is running."""
@@ -690,15 +643,17 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self._held = {}
 
     async def stop_scan(self) -> None:
-        """Cancel a running scan."""
+        """Cancel a running scan, which ends as every scan does
+        (``_end_scan``), cancelled. One stopped before it began never ran its
+        own ending, so it is ended here."""
         if self._scan_task and not self._scan_task.done():
             self._scan_task.cancel()
             try:
                 await self._scan_task
             except asyncio.CancelledError:
                 pass
-            self.scan_status.status = "cancelled"
-            self.scan_status.duration = time.time() - self.scan_status.started_at
+            if self.scan_status.status == "running":
+                await self._end_scan(truncated=False, cancelled=True)
 
     async def _run_scan(self, subnets: list[str], timeout: float) -> None:
         """Execute the full scan pipeline.
@@ -718,8 +673,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         out.
 
         A cancel (Stop) ends the scan where it is, the matcher included, and
-        the scan settles as ``cancelled``. Every way out settles the status and
-        tells every client, so a Programmer that did not press Stop sees the
+        the scan settles as ``cancelled``. Every way out ends the scan the same
+        way (``_end_scan``), so a Programmer that did not press Stop sees the
         scan end too.
         """
         truncated = False
@@ -732,8 +687,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             log.info("Scan cancelled")
             raise
         finally:
-            self._settle_status(truncated, cancelled)
-            await self._emit_complete()
+            await self._end_scan(truncated, cancelled)
 
     async def _run_phases(self, subnets: list[str], timeout: float) -> bool:
         """Phases 1-7 under the scan's ceiling: True when they ran to the end,
@@ -794,32 +748,36 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
                 "be identified. See the server log for details."
             )
 
-    def _settle_status(self, truncated: bool, cancelled: bool = False) -> None:
-        """The scan's final status, duration and device count.
+    async def _end_scan(self, truncated: bool, cancelled: bool) -> None:
+        """End the scan, on every way out: settle what it holds, announce the
+        ARP-named hosts that earned their place, then tell every client the
+        scan is over, with the outcome's status, count and warnings."""
+        earned = self._settle_status(truncated, cancelled)
+        for device in earned:
+            await self._emit_device_update(device, "finalize")
+        await self._emit(self.outcome().complete_event())
+
+    def _settle_status(self, truncated: bool, cancelled: bool = False) -> list[DiscoveredDevice]:
+        """Settle what the scan holds, once: end the ARP probation, then the
+        end state and duration. The count is the outcome's, read when asked.
+
+        Returns the ARP-named hosts that earned their place, which no client
+        has heard of yet. The settling itself awaits nothing, so a scan whose
+        announcements are cut short still holds its settled outcome.
 
         A narrowed scan is partial too: the budget dropped work before running
         it, so the results cover less of the network than was asked for.
         Reporting that as "complete" is the silent-cap failure the warnings
         exist to prevent. A cancelled scan says so, whatever it got through.
         """
+        earned = self._end_probation(self._connected_evidence())
         self.scan_status.status = (
             "cancelled" if cancelled or self.scan_status.status == "cancelled"
             else "partial" if (truncated or self._narrowed)
             else "complete"
         )
         self.scan_status.duration = time.time() - self.scan_status.started_at
-        self.scan_status.devices_found = len(self.results)
-
-    async def _emit_complete(self) -> None:
-        """Tell the clients the scan is over: its status, count, duration and warnings."""
-        await self._emit({
-            "type": "discovery.complete",
-            "scan_id": self.scan_status.scan_id,
-            "status": self.scan_status.status,
-            "total_devices": len(self.results),
-            "duration_seconds": self.scan_status.duration,
-            "warnings": list(self.scan_status.warnings),
-        })
+        return earned
 
     async def _scan_pipeline(self, subnets: list[str]) -> None:
         # Refresh the SignalIndex with the latest community catalog so
@@ -990,11 +948,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         just paid for, reporting a "complete" scan with zero identifications.
         """
         await self._set_phase(8, "finalize", "Matching drivers...")
-        connected = self._connected_evidence()
-        await self._match_each_device(connected)
+        await self._match_each_device(self._connected_evidence())
         self._drop_stale_devices()
-        await self._settle_arp_only_hosts(connected)
-        self.scan_status.devices_found = len(self.results)
 
     async def _match_each_device(self, connected: dict[str, list[Evidence]]) -> None:
         """Identify every device from its evidence, sending each as it is
@@ -1073,7 +1028,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         """Get existing device record or create a new one."""
         if ip not in self.results:
             self.results[ip] = DiscoveredDevice(ip=ip)
-            self._refresh_device_count()
         return self.results[ip]
 
     def _phase_base_progress(self, phase: str) -> float:
@@ -1147,8 +1101,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         its place. A panel has no way to un-see a device -- results arrive
         over the wire and are never reconciled against a final list -- so
         announcing one that may be dropped at the end would leave it on
-        screen for good. The ones that survive are announced as the matcher
-        finishes (``_settle_arp_only_hosts``).
+        screen for good. The ones that survive are announced as the scan
+        ends (``_end_scan``).
         """
         if device.ip in self._arp_provisional:
             return
