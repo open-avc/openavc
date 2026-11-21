@@ -1,0 +1,120 @@
+{
+  "$comment": [
+    "Every file one release publishes, the install types that update from each, and its",
+    "SHA256SUMS.txt, for the version below. Owned by openavc: tests/test_release_assets.py holds",
+    "the release workflow's names and checksum list to it, and the updater's readers. A built",
+    "file's bytes are its own name, so each hash in sha256sums is the SHA-256 of that name.",
+    "installed_by names each install in its own words: its deployment type and what",
+    "platform.system() and platform.machine() return there. kind is artifact_kind's word for",
+    "that install type; null for a file no install updates from.",
+    "checksum_list is the published file sha256sums is the text of.",
+    "final_release_adds: what release-pi.yml uploads to a final release afterwards, spelled with this",
+    "version; no installed system updates from them, and SHA256SUMS.txt never lists them.",
+    "Renaming a release file: change the workflow, this list and the updater together."
+  ],
+  "version": "0.41.0-rc1",
+  "checksum_list": "SHA256SUMS.txt",
+  "built": [
+    {
+      "name": "OpenAVC-Setup-0.41.0-rc1.exe",
+      "kind": "installer",
+      "installed_by": [
+        {
+          "deployment_type": "windows_installer",
+          "system": "Windows",
+          "machine": "AMD64"
+        }
+      ]
+    },
+    {
+      "name": "OpenAVC-0.41.0-rc1-macos-arm64.pkg",
+      "kind": null,
+      "installed_by": []
+    },
+    {
+      "name": "OpenAVC-0.41.0-rc1-macos-x86_64.pkg",
+      "kind": null,
+      "installed_by": []
+    },
+    {
+      "name": "openavc-0.41.0-rc1-macos-arm64.tar.gz",
+      "kind": "package",
+      "installed_by": [
+        {
+          "deployment_type": "macos_app",
+          "system": "Darwin",
+          "machine": "arm64"
+        }
+      ]
+    },
+    {
+      "name": "openavc-0.41.0-rc1-macos-x86_64.tar.gz",
+      "kind": "package",
+      "installed_by": [
+        {
+          "deployment_type": "macos_app",
+          "system": "Darwin",
+          "machine": "x86_64"
+        }
+      ]
+    },
+    {
+      "name": "openavc-0.41.0-rc1-linux-amd64.tar.gz",
+      "kind": "package",
+      "installed_by": [
+        {
+          "deployment_type": "linux_package",
+          "system": "Linux",
+          "machine": "x86_64"
+        }
+      ]
+    },
+    {
+      "name": "openavc-0.41.0-rc1-linux-arm64.tar.gz",
+      "kind": "package",
+      "installed_by": [
+        {
+          "deployment_type": "linux_package",
+          "system": "Linux",
+          "machine": "aarch64"
+        },
+        {
+          "deployment_type": "android_appliance",
+          "system": "Linux",
+          "machine": "aarch64"
+        }
+      ]
+    }
+  ],
+  "published": [
+    "OpenAVC-0.41.0-rc1-macos-arm64.pkg",
+    "OpenAVC-0.41.0-rc1-macos-arm64.pkg.sig",
+    "OpenAVC-0.41.0-rc1-macos-x86_64.pkg",
+    "OpenAVC-0.41.0-rc1-macos-x86_64.pkg.sig",
+    "OpenAVC-Setup-0.41.0-rc1.exe",
+    "OpenAVC-Setup-0.41.0-rc1.exe.sig",
+    "SHA256SUMS.txt",
+    "SHA256SUMS.txt.sig",
+    "openavc-0.41.0-rc1-linux-amd64.tar.gz",
+    "openavc-0.41.0-rc1-linux-amd64.tar.gz.sig",
+    "openavc-0.41.0-rc1-linux-arm64.tar.gz",
+    "openavc-0.41.0-rc1-linux-arm64.tar.gz.sig",
+    "openavc-0.41.0-rc1-macos-arm64.tar.gz",
+    "openavc-0.41.0-rc1-macos-arm64.tar.gz.sig",
+    "openavc-0.41.0-rc1-macos-x86_64.tar.gz",
+    "openavc-0.41.0-rc1-macos-x86_64.tar.gz.sig"
+  ],
+  "final_release_adds": [
+    "openavc-0.41.0-rc1-pi.img.xz",
+    "openavc-0.41.0-rc1-pi.img.xz.sha256"
+  ],
+  "sha256sums": [
+    "e54f34f434cb11734cb44540f9b2576cb3a3dcc6eefdda6b2aba66cd8299d6ea  OpenAVC-0.41.0-rc1-macos-arm64.pkg",
+    "4037284db5f80edb360cad72fb851c91f3c2cb5008d213742a0a9e5b8fbd3439  OpenAVC-0.41.0-rc1-macos-x86_64.pkg",
+    "a47bbdf54480656ed5d9fe4db8e18220e88e183d82b7fd53ec0719f2a40b31de  OpenAVC-Setup-0.41.0-rc1.exe",
+    "3e7c15c5e5433a5485256f19e9c9740fa6a89718c2a8c4326184051f8fca8483  openavc-0.41.0-rc1-linux-amd64.tar.gz",
+    "2b6c5e5e47f1df790a73a71120c6bd60cf17f1d0ab483693d9f1e8a31fe082f6  openavc-0.41.0-rc1-linux-arm64.tar.gz",
+    "aca8f6cd74a50291e4624d2bf5c5ee7a925100707726ffbee5ed7afa049e41d4  openavc-0.41.0-rc1-macos-arm64.tar.gz",
+    "b1429f23cd9053eb2511e75f78cc64952e3c810e490b51c0f75be2b674418f14  openavc-0.41.0-rc1-macos-x86_64.tar.gz"
+  ]
+}

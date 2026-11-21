@@ -29,13 +29,18 @@ from openavc.updater.checker import (
 from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
     DeploymentType,
-    artifact_kind,
     detect_deployment_type,
     offline_update_instructions,
     rollback_refusal,
     self_update_refusal,
     update_exit,
     updates_itself,
+)
+from openavc.updater.release_files import (
+    CHECKSUMS_FILE,
+    artifact_name as release_artifact_name,
+    listed_checksum,
+    signature_name,
 )
 from openavc.version import __version__
 from openavc.utils.outbound import internet_client, internet_failure
@@ -261,24 +266,9 @@ class UpdateManager:
         self._save_history()
 
     def _get_artifact_name(self, release: ReleaseInfo) -> str:
-        """Determine the platform-specific artifact name for this release."""
-        if artifact_kind(self._deployment_type) == "installer":
-            return f"OpenAVC-Setup-{release.version}.exe"
+        """The release file this system updates from (release_files.py)."""
         import platform
-        machine = platform.machine().lower()
-        # macOS self-updates swap a tarball of the .app (the .pkg is
-        # first-install only). Arch labels match the CI runners: arm64 / x86_64.
-        if self._deployment_type == DeploymentType.MACOS_APP:
-            arch = "arm64" if machine in ("aarch64", "arm64") else "x86_64"
-            return f"openavc-{release.version}-macos-{arch}.tar.gz"
-        # Linux: detect architecture
-        if machine in ("x86_64", "amd64"):
-            arch = "amd64"
-        elif machine in ("aarch64", "arm64"):
-            arch = "arm64"
-        else:
-            arch = machine
-        return f"openavc-{release.version}-linux-{arch}.tar.gz"
+        return release_artifact_name(release.version, self._deployment_type, platform.machine())
 
     def _find_asset_url(self, release: ReleaseInfo, artifact_name: str) -> str:
         """Find the download URL for a specific artifact in the release assets."""
@@ -320,7 +310,7 @@ class UpdateManager:
         # Fail-closed: a release with no checksums file is refused rather than
         # applied unverified — absence of a checksum must never downgrade to
         # "apply anyway" (supply-chain protection).
-        checksum_url = self._find_asset_url(release, "SHA256SUMS.txt")
+        checksum_url = self._find_asset_url(release, CHECKSUMS_FILE)
         if not checksum_url:
             artifact_path.unlink(missing_ok=True)
             raise RuntimeError(
@@ -333,7 +323,7 @@ class UpdateManager:
         # For tarball-swap deployments, fetch the artifact's detached signature
         # next to it so the root helper can verify it before extracting.
         if self._consumes_signed_tarball():
-            sig_url = self._find_asset_url(release, artifact_name + ".sig")
+            sig_url = self._find_asset_url(release, signature_name(artifact_name))
             if sig_url:
                 await self._download_sidecar_sig(sig_url, artifact_path)
             else:
@@ -416,14 +406,7 @@ class UpdateManager:
             resp.raise_for_status()
             checksums_text = resp.text
 
-        # Parse: each line is "hash  filename"
-        expected_hash = ""
-        for line in checksums_text.strip().splitlines():
-            parts = line.split()
-            if len(parts) >= 2 and parts[1].strip("*") == artifact_name:
-                expected_hash = parts[0].lower()
-                break
-
+        expected_hash = listed_checksum(checksums_text, artifact_name)
         if not expected_hash:
             raise RuntimeError(f"Checksum for '{artifact_name}' not found in SHA256SUMS.txt")
 
