@@ -89,13 +89,25 @@ def declared_commands(driver_class: Any, config: dict[str, Any]) -> dict[str, An
     naming any of them is not a param. A Python driver's are its class's: it
     builds any others itself once it runs."""
     info = getattr(driver_class, "DRIVER_INFO", None) or {}
-    commands = info.get("commands") or {}
-    if not (isinstance(driver_class, type) and issubclass(driver_class, InlineMerge)):
-        return commands
+    merged = _own_over_file(driver_class, info, config) if _merges_own_protocol(driver_class) else None
+    return merged if merged is not None else (info.get("commands") or {})
+
+
+def _merges_own_protocol(driver_class: Any) -> bool:
+    """Whether a device of ``driver_class`` merges a protocol of its own in:
+    a YAML driver's does."""
+    return isinstance(driver_class, type) and issubclass(driver_class, InlineMerge)
+
+
+def _own_over_file(
+    driver_class: Any, info: dict[str, Any], config: dict[str, Any],
+) -> dict[str, Any] | None:
+    """The file's commands with the device's own over them, as the running
+    driver's ``DRIVER_INFO`` holds them; None when the device authors none."""
     definition = getattr(driver_class, "_definition", None) or {}
     own, ir = own_commands(definition, info, config)
     if not own and not ir:
-        return commands
+        return None
     return build_commands_meta({**(definition.get("commands") or {}), **own, **ir})
 
 
