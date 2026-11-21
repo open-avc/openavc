@@ -890,7 +890,7 @@ def build_json_mappings(
     read — not a regex capture ref. Types default to the matching state
     variable's declared type.
     """
-    mappings: list[dict[str, Any]] = list(resp.get("mappings", []))
+    mappings: list[dict[str, Any]] = list(listed_mappings(resp))
     set_map = resp.get("set")
     if not mappings and isinstance(set_map, dict):
         mappings += [
@@ -898,6 +898,14 @@ def build_json_mappings(
             for state_key, spec in set_map.items()
         ]
     return mappings
+
+
+def listed_mappings(resp: dict[str, Any]) -> list[Any]:
+    """A rule's ``mappings:`` list, or none when it is not a list: YAML reads
+    a ``mappings:`` key with nothing under it as null, which the loader names
+    and loads, so the rule is read on its ``set:`` instead of raising."""
+    listed = resp.get("mappings")
+    return listed if isinstance(listed, list) else []
 
 
 def _typed_mapping(mp: Any, state_vars: dict[str, Any]) -> Any:
@@ -957,7 +965,7 @@ def build_regex_mappings(
     an explicit entry still wins for a state named in both. The json twin is
     ``build_json_mappings``.
     """
-    mappings = [_typed_mapping(mp, state_vars) for mp in resp.get("mappings", [])]
+    mappings = [_typed_mapping(mp, state_vars) for mp in listed_mappings(resp)]
     set_map = resp.get("set")
     if isinstance(set_map, dict):
         for state_key, value_expr in set_map.items():
@@ -996,7 +1004,7 @@ def _osc_rule(resp: dict[str, Any], instance: _Instance) -> OscRule:
     """An OSC address rule (``address:`` in place of ``match:``)."""
     return (
         safe_substitute(resp["address"], instance.config),
-        list(resp.get("mappings", [])),
+        list(listed_mappings(resp)),
         compile_osc_child_set(resp, instance.child_types, instance.device_id),
         build_throttle(resp),
         rule_condition(resp),
