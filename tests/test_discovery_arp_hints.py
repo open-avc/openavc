@@ -16,7 +16,14 @@ import pytest
 from openavc.discovery import icmp
 
 from openavc.discovery.engine import DiscoveryEngine
-from openavc.discovery.result import DiscoveredDevice
+from openavc.discovery.result import DiscoveredDevice, Evidence, SignalTier
+from openavc.discovery.scan_budget import ArpPlan
+
+_ARP = "openavc.discovery.arp_phase"
+
+
+async def _quiet_ping(ip, timeout=1.0, source_ip="", method=""):
+    return icmp.RESULT_TIMEOUT
 
 
 def _engine_with(ip: str, **fields) -> DiscoveryEngine:
@@ -39,17 +46,73 @@ def _count(engine: DiscoveryEngine) -> int:
 @pytest.mark.parametrize(
     "fields",
     [
+        # What the device answered that leaves no fingerprint record.
         {"open_ports": [10001]},
-        {"mdns_services": ["_http._tcp"]},
         {"ssdp_info": {"server": "Linux/3.0 UPnP/1.0"}},
         {"snmp_info": {"sysDescr": "switch"}},
-        {"protocols": ["telnet"]},
         {"device_name": "AMP-1"},
     ],
 )
 def test_an_arp_host_that_answers_something_is_kept(fields):
     engine = _engine_with("192.168.4.24", mac="aa:bb:cc:dd:ee:ff", **fields)
     assert engine._answered_for_itself(engine.results["192.168.4.24"])
+
+
+# The tiers whose records are the device's own words. A tier added to
+# SignalTier fails here until it is placed on one side or the other.
+_THE_DEVICES_OWN = {
+    SignalTier.PASSIVE_LISTENER,
+    SignalTier.BROADCAST_PROBE,
+    SignalTier.ACTIVE_PROBE,
+}
+
+
+@pytest.mark.parametrize("tier", list(SignalTier))
+def test_a_record_counts_as_the_device_answering_by_its_tier(tier):
+    engine = _engine_with("192.168.4.24", mac="aa:bb:cc:dd:ee:ff")
+    device = engine.results["192.168.4.24"]
+    device.evidence_log.append(Evidence(tier=tier, source="acme:1"))
+    assert engine._answered_for_itself(device) is (tier in _THE_DEVICES_OWN)
+
+
+@pytest.mark.asyncio
+async def test_an_arp_host_with_only_its_card_maker_and_a_dns_name_is_dropped():
+    # Through the ARP phase itself, so the host carries the OUI and host-name
+    # records every probation host gets: a cache entry and a PTR record are
+    # not the device answering.
+    engine = DiscoveryEngine()
+    engine.scan_status.subnets = ["192.168.4.0/24"]
+    engine._ping_method = icmp.METHOD_DGRAM
+    with patch.object(icmp, "ping_host", side_effect=_quiet_ping), \
+         patch(f"{_ARP}.harvest_arp_table", return_value={"192.168.4.47": "00:60:9f:aa:bb:cc"}), \
+         patch(f"{_ARP}._resolve_hostnames", return_value={"192.168.4.47": "old-laptop.lan"}):
+        await engine._arp_phase([], ArpPlan(name_lookup_hosts=None, netbios=False, budget=10.0))
+    device = engine.results["192.168.4.47"]
+    assert {ev.source.split(":")[0] for ev in device.evidence_log} == {"oui", "hostname"}
+    assert engine._arp_provisional == {"192.168.4.47"}
+
+    await _finish(engine)
+
+    assert "192.168.4.47" not in engine.results
+
+
+@pytest.mark.asyncio
+async def test_an_arp_host_that_answered_netbios_is_kept():
+    # A NetBIOS name is the device answering, though its record is the same
+    # host-name record reverse DNS leaves.
+    engine = DiscoveryEngine()
+    engine.scan_status.subnets = ["192.168.4.0/24"]
+    engine._ping_method = icmp.METHOD_DGRAM
+    with patch.object(icmp, "ping_host", side_effect=_quiet_ping), \
+         patch(f"{_ARP}.harvest_arp_table", return_value={"192.168.4.48": "00:60:9f:aa:bb:cd"}), \
+         patch(f"{_ARP}._resolve_hostnames", return_value={}), \
+         patch(f"{_ARP}.netbios_sweep", return_value={"192.168.4.48": {"hostname": "AMP-1"}}):
+        await engine._arp_phase([], ArpPlan(name_lookup_hosts=None, netbios=True, budget=10.0))
+    assert engine._arp_provisional == {"192.168.4.48"}
+
+    await _finish(engine)
+
+    assert "192.168.4.48" in engine.results
 
 
 def test_a_reverse_dns_name_is_not_the_device_answering():
@@ -203,3 +266,77 @@ async def test_a_host_that_earns_its_place_joins_the_count():
 
     await _finish(engine)
     assert _count(engine) == 1
+
+
+# ---------------------------------------------------------------------------
+# A host the ARP table named that then spoke for itself, through the scan's
+# own paths: the second look that puts it on probation, the listener or probe
+# merge that records what it said, the matcher, and the scan's end.
+
+_ACME_WIDGET = {
+    "id": "acme_widget",
+    "name": "Acme Widget",
+    "category": "audio",
+    "manufacturer": "Acme",
+    "transport": "tcp",
+    "discovery": {"amx_ddp": [{"make": "Acme", "model_pattern": "Widget*"}]},
+}
+
+
+class _Silent:
+    """A passive listener that heard nobody."""
+
+    results: dict = {}
+
+
+async def _on_probation(ip: str) -> DiscoveryEngine:
+    """An engine whose second look put ``ip`` on probation: the ARP table
+    named it and it ignored the ping."""
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([dict(_ACME_WIDGET)])
+    engine._ping_method = icmp.METHOD_DGRAM
+    with patch.object(icmp, "ping_host", side_effect=_quiet_ping):
+        await engine._second_look([ip], [])
+    assert engine._arp_provisional == {ip}
+    return engine
+
+
+@pytest.mark.asyncio
+async def test_an_arp_host_identified_by_its_amx_beacon_is_kept():
+    from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
+
+    engine = await _on_probation("10.77.0.9")
+    beacons = AMXDDPScanner()
+    # Make and Model, no Config-Name: the beacon names no device.
+    beacons._handle_datagram(
+        b"AMXB<-UUID=00:60:9f:aa:bb:cc><-SDKClass=AudioProcessor>"
+        b"<-Make=Acme><-Model=Widget 3000><-Revision=1.0.0>",
+        "10.77.0.9",
+    )
+    engine._passive_scanners = (_Silent(), _Silent(), beacons)
+    await engine.merge_passive_results()
+
+    await _finish(engine)
+
+    device = engine.results.get("10.77.0.9")
+    assert device is not None
+    assert device.identification.state.value == "identified"
+    assert device.identification.driver_id == "acme_widget"
+    assert _count(engine) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_arp_host_that_answered_a_udp_probe_is_kept():
+    from openavc.discovery.tier_matcher import evidence_broadcast
+
+    engine = await _on_probation("10.77.0.9")
+    # A reply that named nothing: the device answered, and that is all.
+    engine._probe_finished[0] = [
+        ("10.77.0.9", evidence_broadcast("custom_acme_widget_udp", {"ip": "10.77.0.9"}, port=9999),
+         "broadcast_probe"),
+    ]
+    await engine.merge_probe_results()
+
+    await _finish(engine)
+
+    assert "10.77.0.9" in engine.results

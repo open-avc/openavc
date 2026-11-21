@@ -11,7 +11,8 @@ The rules worth knowing before changing anything here:
   (``_second_look``). One that answers is a host; one that stays quiet is
   carried on to the port scan unproven (``_arp_provisional``) and kept only if
   it answers something for itself before the scan settles
-  (``_end_probation``, which the engine runs on every way a scan ends). Until
+  (``_end_probation``, which the engine runs on every way a scan ends;
+  ``_answered_for_itself`` reads its evidence's tiers first). Until
   then it is held out of the scan's outcome: off the wire, out of the results
   and out of the count. With no way to ping, those addresses are left out.
 * The ARP read covers every alive host: it is one cheap read and the phase's
@@ -38,7 +39,7 @@ from collections.abc import Container
 
 from openavc.discovery import icmp
 from openavc.discovery.network_scanner import harvest_arp_table, netbios_sweep
-from openavc.discovery.result import DiscoveredDevice, merge_device_info
+from openavc.discovery.result import DiscoveredDevice, SignalTier, merge_device_info
 from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.scan_budget import ArpPlan, DepthPolicy
 from openavc.discovery.scan_evidence import mac_info_and_evidence, names_and_mac
@@ -300,15 +301,28 @@ class ArpHarvest:
     def _answered_for_itself(device: DiscoveredDevice) -> bool:
         """Did the DEVICE answer something, rather than a cache or a DNS?
 
-        Reverse DNS is deliberately not on this list: that is the name
-        server talking, not the equipment.
+        Asked of its evidence first: every record of a fingerprint tier is
+        the device's own words (an announcement it sent, a broadcast or a
+        probe it answered: ``SignalTier``), so a beacon that names no device,
+        a probe reply that names nothing, and any listener or probe added
+        later all count with no change here.
+
+        An enrichment record does not say who spoke. The network card's
+        maker comes from the ARP table and a reverse-DNS name from the name
+        server, and every host on probation carries those. So the answers
+        the device gave that leave no fingerprint record are asked of the
+        device itself: a port that accepted a connection (recorded only when
+        a driver names the port, and not until the last phase), an SNMP reply
+        (recorded only when it carries an enterprise number), an SSDP reply
+        that named no type, and a name the device gave for itself (NetBIOS,
+        or a listener's), which reverse DNS never writes.
         """
-        return any((
+        return any(
+            ev.tier is not SignalTier.ENRICHMENT for ev in device.evidence_log
+        ) or any((
             device.open_ports,
-            device.mdns_services,
-            device.ssdp_info,
             device.snmp_info,
-            device.protocols,
+            device.ssdp_info,
             device.device_name,
         ))
 
