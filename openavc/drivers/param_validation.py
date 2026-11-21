@@ -338,7 +338,9 @@ def _as_number(value: Any, ptype: str) -> float | None:
     ``Device 'x' not found`` -- about a device that is connected and rendering.
     """
     f = usable_number(value)
-    if f is None or (ptype == "integer" and not f.is_integer()):
+    if f is None:
+        return None
+    if ptype == "integer" and not f.is_integer():
         return None
     return f
 

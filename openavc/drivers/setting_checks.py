@@ -72,11 +72,15 @@ def _bounds_errors(where: str, setting_def: dict[str, Any]) -> list[str]:
     usable number (``is_number_value``: a boolean, an infinity or NaN) is not
     compared, and the shape walk names it."""
     mn, mx = setting_def.get("min"), setting_def.get("max")
-    if not all(map(is_number_value, (mn, mx))):
+    if not _comparable(mn, mx):
         return []
     if mn > mx:
         return [f"{where}: min ({mn}) is greater than max ({mx})"]
     return []
+
+
+def _comparable(low: Any, high: Any) -> bool:
+    return is_number_value(low) and is_number_value(high)
 
 
 def _write_errors(where: str, setting_def: dict[str, Any]) -> list[str]:

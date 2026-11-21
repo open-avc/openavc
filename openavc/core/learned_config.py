@@ -68,15 +68,24 @@ def _accepted_number(field_def: dict[str, Any], ftype: str, value: Any) -> tuple
     """A numeric field's reading of ``value``: a usable number
     (``usable_number``), whole for an integer field, inside the field's
     bounds where each bound is a usable number."""
-    number: float | int | None = usable_number(value)
-    if number is None or (ftype == "integer" and not float(number).is_integer()):
+    number = usable_number(value)
+    if number is None:
         return False, None
     if ftype == "integer":
+        if not number.is_integer():
+            return False, None
         number = int(number)
-    low, high = number_value(field_def.get("min")), number_value(field_def.get("max"))
-    if (low is not None and number < low) or (high is not None and number > high):
+    if not _within_bounds(field_def, number):
         return False, None
     return True, number
+
+
+def _within_bounds(field_def: dict[str, Any], number: float) -> bool:
+    """Inside each of the field's bounds that is a usable number."""
+    low, high = number_value(field_def.get("min")), number_value(field_def.get("max"))
+    above_low = low is None or number >= low
+    below_high = high is None or number <= high
+    return above_low and below_high
 
 
 def accepted_value(field_def: dict[str, Any], value: Any) -> tuple[bool, Any]:

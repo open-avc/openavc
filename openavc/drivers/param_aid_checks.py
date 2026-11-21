@@ -84,9 +84,13 @@ def _bounds_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> lis
         for name, bound in (("min", low), ("max", high))
         if bound is not None and not _numeric(bound)
     ]
-    if is_number_value(low) and is_number_value(high) and low > high:
+    if _comparable(low, high) and low > high:
         errors.append(f"{at}: min ({low}) must be <= max ({high})")
     return errors
+
+
+def _comparable(low: Any, high: Any) -> bool:
+    return is_number_value(low) and is_number_value(high)
 
 
 def _numeric(value: Any) -> bool:
