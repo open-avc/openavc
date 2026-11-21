@@ -330,6 +330,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `ui.audio_mute_route.<element_id>` | `element_id`, `output`, `mute` | Audio-breakaway output mute changed |
 | `ui.submit.<element_id>` | `element_id`, `value` | Text input or keypad submitted |
 | `ui.page.<page_id>` | (none) | Page navigation |
+| `ui.subpage.<container_id>` | (none) | A sub-page container switched to another sub-page |
 | `device.connected.<device_id>` | (none) | Device connected |
 | `device.disconnected.<device_id>` | (none) | Transport-level loss (socket dropped, serial port gone, poll watchdog tripped) |
 | `device.error.<device_id>` | `device_id`, `error` | Protocol/parse/command failure on an otherwise-live connection. `error` is the error's own text, or its type (such as `TimeoutError`) when it has no text; for a command, the device's password and secret parameters in it show as `***`. Complementary to `device.disconnected`; if a single exception is both, only `device.disconnected` fires |
