@@ -91,7 +91,9 @@ CASES: dict[str, dict[str, Any]] = {
         all={"send": "X", "method": "GET", "address": "/x", "udp": {}, "ir": "x"},
         false_send={"send": False, "ir": None},
     ),
-    "an_empty_address_is_an_osc_command": cmds(
+    # A null or empty field fills no form (drivers/command_form.py), so an
+    # empty address beside a line sends the line.
+    "an_empty_address_is_no_osc_command": cmds(
         a={"address": ""},
         b={"address": "", "args": [{"type": "x"}]},
         c={"address": "", "send": "X"},
@@ -487,8 +489,8 @@ CASES.update({
 # And what the breaks of the moved code found unwatched, recorded from the code
 # before the move.
 CASES.update({
-    # an ir: that is present but empty is still a way of sending
-    "an_empty_ir_is_a_form": cmds(
+    # an ir: that is empty or false is no way of sending, as the runtime reads it
+    "an_empty_ir_is_no_form": cmds(
         a={"send": "X\r", "ir": ""},
         b={"ir": False},
     ),
@@ -558,22 +560,14 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                   "'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside "
                   'the main transport)'),
                  ('commands.all',
-                  "Command 'all': declares send and path/method and address and udp and ir, but a command "
-                  "sends one way. Keep one of 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), "
-                  "or 'udp' (a datagram beside the main transport)"),
-                 ('commands.all',
-                  "Command 'all': 'udp' needs a 'payload' (the datagram) or a 'magic_packet' (the field "
-                  'holding the MAC to wake)'),
+                  "Command 'all': declares send and path/method and address and ir, but a command sends "
+                  "one way. Keep one of 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or "
+                  "'udp' (a datagram beside the main transport)"),
                  ('commands.false_send',
                   "Command 'false_send': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' "
                   "(OSC), or 'udp' (a datagram beside the main transport)")],
- 'an_empty_address_is_an_osc_command': [('commands.b',
-                                         "Command 'b': args[0] unknown OSC type 'x' (expected one of "
-                                         'f/i/s/h/d/T/F/N)'),
-                                        ('commands.c',
-                                         "Command 'c': declares send and address, but a command sends one "
-                                         "way. Keep one of 'send' (TCP/serial), 'path'/'method' (HTTP), "
-                                         "'address' (OSC), or 'udp' (a datagram beside the main transport)")],
+ 'an_empty_address_is_no_osc_command': [('commands.a', "Command 'a': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)"),
+                                        ('commands.b', "Command 'b': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)")],
  'osc_args': [('commands.not_a_list', "Command 'not_a_list': args must be a list"),
               ('commands.items', "Command 'items': args[1] must be a mapping"),
               ('commands.items',
@@ -599,9 +593,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                       ('commands.neither',
                        "Command 'neither': 'udp' needs a 'payload' (the datagram) or a 'magic_packet' (the "
                        'field holding the MAC to wake)'),
-                      ('commands.empty',
-                       "Command 'empty': 'udp' needs a 'payload' (the datagram) or a 'magic_packet' (the "
-                       'field holding the MAC to wake)'),
+                      ('commands.empty', "Command 'empty': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)"),
                       ('commands.host', "Command 'host': 'udp.host' must be a string"),
                       ('commands.broadcast', "Command 'broadcast': 'udp.broadcast' must be true or false")],
  'udp_ports': [('commands.missing',
@@ -832,7 +824,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                      "Command 'e': 'read_back' reads a value back over the device's connection, and a 'udp' "
                      'command is sent beside it, so nothing would answer'),
                     ('commands.f',
-                     "Command 'f': 'read_back' reads a value back over the device's connection, and a 'ir' "
+                     "Command 'f': 'read_back' reads a value back over the device's connection, and an 'ir' "
                      'command is sent beside it, so nothing would answer'),
                     ('commands.g',
                      "Command 'g': 'read_back: true' reads back from an OSC command's own address or an HTTP "
@@ -958,10 +950,7 @@ EXPECTED.update({'a_config_field_name_that_is_not_text': [('commands.a.send',
                          ('commands.spaced',
                           "Command 'spaced': 'udp.port' must be between 1 and 65535, got  65536 ")]})
 
-EXPECTED.update({'an_empty_ir_is_a_form': [('commands.a',
-                            "Command 'a': declares send and ir, but a command sends one way. Keep one of "
-                            "'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a "
-                            'datagram beside the main transport)')],
+EXPECTED.update({'an_empty_ir_is_no_form': [('commands.b', "Command 'b': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)")],
  'decimals_zero': [],
  'every_aid_on_one_param': [('commands.a',
                              "Command 'a' param 'a': pattern: pattern must be a string, got int"),

@@ -1,5 +1,6 @@
 """A YAML driver's HTTP command: the request a command with ``path`` or
-``method`` makes, and what becomes of its answer.
+``method`` makes (``command_form`` says which commands those are), and what
+becomes of its answer.
 
 The rules worth knowing before changing anything here:
 
@@ -62,10 +63,6 @@ class HttpCommands:
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
     _effective_transport: Callable[[], str]
 
-    def _is_http_command(self, cmd_def: dict[str, Any]) -> bool:
-        """Check if a command definition uses HTTP-style fields."""
-        return "path" in cmd_def or "method" in cmd_def
-
     async def _send_http_command(
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
     ) -> Any:
@@ -94,15 +91,17 @@ class HttpCommands:
         """Send the request ``req_def`` declares, a command's or a device
         setting's ``write``, filled from ``all_params``; the answer, unread.
 
-        GET when ``req_def`` names no method; ``where`` names its fields in a
-        warning and ``name`` names it in the log.
+        GET when ``req_def`` names no method and the root when it names no
+        path (a null or empty field names none, as ``command_form`` reads
+        it); ``where`` names its fields in a warning and ``name`` names it in
+        the log.
         """
         headers = self._build_http_headers(req_def.get("headers"), all_params)
-        path = self._substitute_for_wire(f"{where}.path", req_def.get("path", "/"), all_params)
+        path = self._substitute_for_wire(f"{where}.path", req_def.get("path") or "/", all_params)
         json_body, content = self._http_body(name, where, req_def.get("body"), all_params)
         query_params = self._http_query(req_def.get("query_params"), all_params)
         return await self.transport.request(
-            req_def.get("method", "GET").upper(), path, params=query_params,
+            str(req_def.get("method") or "GET").upper(), path, params=query_params,
             json_body=json_body, content=content, headers=headers,
         )
 

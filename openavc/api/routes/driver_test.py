@@ -435,7 +435,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 **heard.result_fields(),
             }
 
-        sent_repr = _describe_outgoing(definition, cmd_def, config, body.params or {})
+        sent_repr = _describe_outgoing(cmd_def, config, body.params or {})
 
         # send_command is fire-and-forget for TCP/OSC. For HTTP it returns
         # the response synchronously and on_data_received gets called with
@@ -550,7 +550,6 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
 
 
 def _describe_outgoing(
-    definition: dict[str, Any],
     cmd_def: dict[str, Any],
     config: dict[str, Any],
     params: dict[str, Any],
@@ -559,15 +558,19 @@ def _describe_outgoing(
 
     Used by the test panel so authors can see which placeholders resolved to
     which values — the same string the runtime substitutes, not the raw
-    template.
+    template. Written in the form the runtime sends the command in
+    (``command_form``); a line on an HTTP device is its line, which the HTTP
+    connection reads as a request, and an IR code or a datagram is not
+    summarised.
     """
+    from openavc.drivers.command_form import command_form
     from openavc.drivers.configurable import ConfigurableDriver
     from openavc.drivers.send_shape import osc_arg_tag, osc_arg_text
 
-    transport = effective_transport(config, definition)
     all_params = {**config, **params}
+    form = command_form(cmd_def)
 
-    if "address" in cmd_def:  # OSC
+    if form == "osc":
         addr = ConfigurableDriver._safe_substitute(
             cmd_def.get("address", ""), all_params
         )
@@ -585,15 +588,16 @@ def _describe_outgoing(
         )
         return f"OSC {addr}" + (f" [{arg_summary}]" if arg_summary else "")
 
-    if transport == "http" or "method" in cmd_def or "path" in cmd_def:
-        method = cmd_def.get("method", "GET").upper()
+    if form == "http":
+        method = str(cmd_def.get("method") or "GET").upper()
         path = ConfigurableDriver._safe_substitute(
-            cmd_def.get("path", "/"), all_params
+            str(cmd_def.get("path") or "/"), all_params
         )
         return f"{method} {path}"
 
-    raw = cmd_def.get("send", "")
-    return ConfigurableDriver._safe_substitute(raw, all_params) if raw else ""
+    if form == "raw":
+        return ConfigurableDriver._safe_substitute(cmd_def["send"], all_params)
+    return ""
 
 
 async def _test_raw(body: TestCommandRequest) -> dict:

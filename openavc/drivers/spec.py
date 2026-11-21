@@ -526,6 +526,32 @@ def send_fields(origin: str, docs: dict[str, dict] | None = None) -> dict[str, d
         for name in SEND_SHAPES[origin]
     }
 
+
+# --- which form a send goes out in --------------------------------------------
+
+# A command goes out in one form, chosen by the fields it fills, in this
+# order: an IR code through the bound bridge, a udp: datagram beside the
+# connection, an OSC message, an HTTP request, else a line of the device's
+# protocol. Each row is the form and the fields that choose it; a field that
+# is null, false, zero, or an empty string, list or mapping chooses nothing,
+# so a path: "" left beside a send sends the line. A device setting's write takes
+# the last three. drivers/command_form.py reads this table for the runtime,
+# the checker and the simulator, and the Driver Builder reads it from
+# types.gen.ts.
+SEND_FORMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ir", ("ir",)),
+    ("udp", ("udp",)),
+    ("osc", ("address",)),
+    ("http", ("path", "method")),
+    ("raw", ("send",)),
+)
+
+# The forms each origin of a send can take, from SEND_FORMS.
+SEND_FORM_ORIGINS: dict[str, tuple[str, ...]] = {
+    "command": ("ir", "udp", "osc", "http", "raw"),
+    "setting_write": ("osc", "http", "raw"),
+}
+
 # --- command params ----------------------------------------------------------
 
 # Sources a param's option list can cascade from (`options_from.source`).

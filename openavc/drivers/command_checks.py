@@ -1,7 +1,8 @@
 """A command's load-time checks: one entry of a driver definition's ``commands:``.
 
 A YAML command is checked in this order: how it sends (exactly one of
-``send``, ``path``/``method``, ``address``, ``udp``, ``ir``), an OSC command's
+``send``, ``path``/``method``, ``address``, ``udp``, ``ir``, each filled:
+``command_form``, where a null or empty field fills nothing), an OSC command's
 ``args`` (``send_shape.osc_args_errors``, which a setting's OSC write asks
 too), a ``udp:`` block, its parameters' form aids (``param_aid_checks``),
 what ``sets:`` and ``query_for:`` name, then then the four checks every command
@@ -38,7 +39,7 @@ driver contract (openavc-drivers' catalog CI, openavc-sdk).
 from __future__ import annotations
 
 import re
-from typing import Any, Callable
+from typing import Any
 
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
@@ -47,27 +48,25 @@ from openavc.drivers.declared_names import (
     did_you_mean,
     substitution_names,
 )
+from openavc.drivers.command_form import command_form, declared_forms
 from openavc.drivers.param_aid_checks import param_aid_errors
 from openavc.drivers.send_shape import osc_args_errors
 from openavc.drivers.spec import (
     FILE_PARAM_EXCLUDED_KEYS,
     FILE_PARAM_MAX_BYTES,
     PLACEHOLDER,
+    SEND_FORMS,
 )
 
-# Each way a command can send, and how its declaration says so. An empty
-# ``send`` is the Driver Builder's seed for a new command, not a form.
-_FORMS: tuple[tuple[str, Callable[[dict[str, Any]], Any]], ...] = (
-    ("send", lambda cmd: cmd.get("send")),
-    ("path/method", lambda cmd: cmd.get("path") or cmd.get("method")),
-    ("address", lambda cmd: cmd.get("address") is not None),
-    ("udp", lambda cmd: cmd.get("udp") is not None),
-    ("ir", lambda cmd: cmd.get("ir") is not None),
-)
+# Each form a command can send in, as a message names it (by the fields that
+# choose it, spec.SEND_FORMS), in the order _ONE_FORM lists them.
+_FORM_WORDS = {
+    form: "/".join(dict(SEND_FORMS)[form]) for form in ("raw", "http", "osc", "udp", "ir")
+}
 
 # The forms sent beside the device's own connection (a datagram, a bridge's
-# emitter), so no reply to them comes back over it.
-_SIDE_FORMS = ("udp", "ir")
+# emitter), so no reply to them comes back over it, as a message names each.
+_SIDE_FORMS = {"udp": "a 'udp'", "ir": "an 'ir'"}
 
 _ONE_FORM = (
     "'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' "
@@ -75,14 +74,9 @@ _ONE_FORM = (
 )
 
 
-def _forms(cmd_def: dict[str, Any]) -> list[str]:
-    """The ways a command declares it sends, in ``_FORMS`` order."""
-    return [name for name, declares in _FORMS if declares(cmd_def)]
-
-
 def _side_form(cmd_def: dict[str, Any]) -> str | None:
-    """``udp`` or ``ir`` when the command is sent beside the connection."""
-    forms = _forms(cmd_def)
+    """``ir`` or ``udp`` when the command is sent beside the connection."""
+    forms = declared_forms(cmd_def)
     return next((form for form in _SIDE_FORMS if form in forms), None)
 
 
@@ -104,9 +98,9 @@ class CommandSection:
         where = f"Command '{cmd_name}'"
         if not isinstance(cmd_def, dict):
             return [f"{where}: must be a dict"]
-        forms = _forms(cmd_def)
+        forms = declared_forms(cmd_def)
         errors = _form_errors(where, forms)
-        if "address" in forms:
+        if "osc" in forms:
             errors.extend(osc_args_errors(where, cmd_def.get("args")))
         if "udp" in forms:
             errors.extend(udp_block_errors(where, cmd_def.get("udp"), self.config_names))
@@ -220,12 +214,14 @@ def _literal_or_param(value: Any, params: dict[str, Any]) -> bool:
 
 
 def _form_errors(where: str, forms: list[str]) -> list[str]:
-    """A command sends exactly one way (``forms``: the ways it declares)."""
+    """A command sends exactly one way (``forms``: the ways it declares,
+    ``command_form.declared_forms``)."""
     if not forms:
         return [f"{where}: must have {_ONE_FORM}"]
     if len(forms) > 1:
+        words = " and ".join(word for form, word in _FORM_WORDS.items() if form in forms)
         return [
-            f"{where}: declares {' and '.join(forms)}, but a command sends one "
+            f"{where}: declares {words}, but a command sends one "
             f"way. Keep one of {_ONE_FORM}"
         ]
     return []
@@ -408,8 +404,8 @@ class SharedCommandChecks:
         if side is not None:
             return [
                 f"{where}: 'read_back' reads a value back over the device's "
-                f"connection, and a '{side}' command is sent beside it, so nothing "
-                f"would answer"
+                f"connection, and {_SIDE_FORMS[side]} command is sent beside it, so "
+                f"nothing would answer"
             ]
         if raw is True:
             return [] if _reads_its_own_address(cmd_def) else [
@@ -440,8 +436,7 @@ class SharedCommandChecks:
 
 def _reads_its_own_address(cmd_def: dict[str, Any]) -> bool:
     """An OSC or HTTP command, which ``read_back: true`` reads back from."""
-    forms = _forms(cmd_def)
-    return "address" in forms or "path/method" in forms
+    return command_form(cmd_def) in ("osc", "http")
 
 
 def _is_query_list(raw: Any) -> bool:

@@ -29,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.drivers.command_form import command_form
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -159,16 +160,17 @@ class CommandCapture:
 async def capture_command_transport(driver: Any, cmd_def: dict[str, Any]) -> CommandCapture:
     """Attach the capture that matches the route ``cmd_def`` will take.
 
-    The runtime picks a command's route from its declared fields, not from the
-    driver's transport, so the capture follows the command too. Close the
-    capture when done (an HTTP one holds a session).
+    The runtime picks a command's route from the fields it fills
+    (``command_form``), not from the driver's transport, so the capture asks
+    the same rule. Close the capture when done (an HTTP one holds a session).
     """
     udp: CaptureUdp | None = None
-    if "address" in cmd_def:
+    form = command_form(cmd_def)
+    if form == "osc":
         route, capture = "osc", capture_osc_transport()
-    elif "path" in cmd_def or "method" in cmd_def:
+    elif form == "http":
         route, capture = "http", await capture_http_transport(driver)
-    elif isinstance(cmd_def.get("udp"), dict):
+    elif form == "udp":
         # The side channel never touches driver.transport: the driver opens a
         # socket for the send. Hand it one that records instead.
         route, capture = "udp", CaptureTransport()

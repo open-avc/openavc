@@ -408,6 +408,8 @@ CASES: dict[str, dict[str, Any]] = {
     "settings_write_osc_args_text": setting(write={"address": "/vol", "args": "i"}),
     "settings_write_osc_no_args": setting(write={"address": "/vol"}),
     "settings_write_osc_address_none": setting(write={"address": None, "args": [{"type": "q"}]}),
+    # an empty address fills no form (drivers/command_form.py): no OSC write,
+    # so its args are not read
     "settings_write_osc_address_empty": setting(write={"address": "", "args": [{"type": "q"}]}),
     # --- device_settings: map -------------------------------------------
     "settings_map_none": setting(map=None),
@@ -1344,9 +1346,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
  'settings_write_none': [('device_settings.volume',
                           "Device setting 'volume': missing 'write' block (send / path / address); "
                           'a device setting must be writable')],
- 'settings_write_osc_address_empty': [('device_settings.volume',
-                                       "Device setting 'volume' write: args[0] unknown OSC type "
-                                       "'q' (expected one of f/i/s/h/d/T/F/N)")],
+ 'settings_write_osc_address_empty': [],
  'settings_write_osc_address_none': [],
  'settings_write_osc_args_text': [('device_settings.volume',
                                    "Device setting 'volume' write: args must be a list")],

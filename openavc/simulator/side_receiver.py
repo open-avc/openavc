@@ -41,6 +41,8 @@ import re
 from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, NamedTuple
 
+from openavc.drivers.command_form import command_form
+
 #: How many numbers start(0) tries before a refusal stands: one each server
 #: picks, then the rest drawn (DRAWN_PORTS).
 SIDE_PORT_ATTEMPTS = 20
@@ -60,11 +62,12 @@ _LONE_PLACEHOLDER = re.compile(r"\{[^{}]+\}")
 
 
 def side_send_blocks(driver_def: dict) -> dict[str, dict]:
-    """Each command's udp: block, by command name."""
+    """Each command's udp: block, by command name: every command the runtime
+    sends as a datagram (``command_form``) whose block it can send."""
     return {
         name: cmd["udp"]
         for name, cmd in (driver_def.get("commands") or {}).items()
-        if isinstance(cmd, dict) and isinstance(cmd.get("udp"), dict)
+        if command_form(cmd) == "udp" and isinstance(cmd["udp"], dict)
     }
 
 

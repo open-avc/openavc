@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.declared_names import UNEVALUATED_KEY, declared_enum_values
 from openavc.drivers.send_shape import osc_args_errors
 from openavc.drivers.spec import CONNECTION_FIELDS, VALUE_TYPES, is_secret_setting
@@ -85,16 +86,16 @@ def _comparable(low: Any, high: Any) -> bool:
 
 def _write_errors(where: str, setting_def: dict[str, Any]) -> list[str]:
     """A setting needs a ``write`` block (the runtime raises
-    NotImplementedError without one). An OSC write shares the command arg
-    encoder, so its arg types are checked too and a bad tag fails at load,
-    not at the first write."""
+    NotImplementedError without one). An OSC write (``command_form``, as
+    the runtime picks it) shares the command arg encoder, so its arg types
+    are checked too and a bad tag fails at load, not at the first write."""
     write = setting_def.get("write")
     if not isinstance(write, dict):
         return [
             f"{where}: missing 'write' block (send / path / address); "
             f"a device setting must be writable"
         ]
-    if write.get("address") is None:
+    if command_form(write, "setting_write") != "osc":
         return []
     return osc_args_errors(f"{where} write", write.get("args"))
 

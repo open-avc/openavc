@@ -54,6 +54,7 @@ from urllib.parse import unquote
 
 import yaml
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.spec import without_null_sections
 from openavc.drivers.usable_number import usable_number
 from openavc.drivers.compiled_protocol import (
@@ -1663,11 +1664,14 @@ def _framed_send(cmd_def: dict, prefix: str) -> Any:
     """The text a command puts on the wire, framed with the driver's prefix
     unless it is raw, already starts with it, or is a udp: payload (the side
     channel never carries the main protocol's prefix); falsy when it sends
-    nothing."""
-    send_template = cmd_def.get("send", "")
-    if not send_template:
-        udp_def = cmd_def.get("udp")
-        return (udp_def.get("payload") or "") if isinstance(udp_def, dict) else send_template
+    neither a line nor a datagram (``command_form``)."""
+    form = command_form(cmd_def)
+    if form == "udp":
+        udp_def = cmd_def["udp"]
+        return (udp_def.get("payload") or "") if isinstance(udp_def, dict) else ""
+    if form != "raw":
+        return ""
+    send_template = cmd_def["send"]
     if not prefix or cmd_def.get("raw"):
         return send_template
     return send_template if send_template.startswith(prefix) else prefix + send_template

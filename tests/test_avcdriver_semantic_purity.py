@@ -1,7 +1,8 @@
 """Import-guard for the driver-contract modules.
 
 ``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py`` and the
-check modules it imports (``action_checks``, ``command_checks``, ``condition_checks``,
+check modules it imports (``action_checks``, ``command_checks`` (with the form rule it
+asks, ``command_form``), ``condition_checks``,
 ``child_fault_checks``, ``child_type_checks``, ``conversion_checks``, ``declared_names``, ``discovery_block``, ``discovery_hint``, ``driver_id``, ``driver_warnings``, ``framing_checks``,
 ``liveness_checks``,
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``, with the reader it asks,
@@ -37,6 +38,7 @@ ALLOWED = {
     "openavc.drivers.child_ids",
     "openavc.drivers.child_type_checks",
     "openavc.drivers.command_checks",
+    "openavc.drivers.command_form",
     "openavc.drivers.condition_checks",
     "openavc.drivers.conversion_checks",
     "openavc.drivers.declared_names",

@@ -14,12 +14,12 @@ changing anything here:
   would leave the setting pending forever and re-sent on every connect. The
   reply comes from the ``responses:`` rule the real driver reads the
   device's report with.
-* **The write form is asked in the runtime's order** (``setting_writes.py``):
-  an ``address`` write is OSC and never reaches this chain (OSC answers from
-  the response address map), then ``path`` / ``method`` is HTTP, built into
-  the exact line ``respond_http`` synthesizes (``"METHOD /path|body"``, POST
-  by default), then ``send``. Here each form is picked by being filled in,
-  where the runtime picks by its key being present.
+* **The write form is the runtime's** (``command_form``, which
+  ``setting_writes.py`` asks too): an ``address`` write is OSC and never
+  reaches this chain (OSC answers from the response address map), then
+  ``path`` / ``method`` is HTTP, built into the exact line ``respond_http``
+  synthesizes (``"METHOD /path|body"``, POST by default), then ``send``. A
+  field that is null or empty chooses nothing, on both sides.
 * **No command_prefix.** ``set_device_setting`` substitutes, escape-decodes,
   applies ``send_frame`` and sends; it never adds the prefix a command gets,
   so neither does the pattern.
@@ -43,6 +43,7 @@ import re
 from collections.abc import Callable, Iterator
 from typing import Any
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import conversion_of, decode_delimiter, safe_substitute
 from openavc.drivers.spec import placeholder_names
 from openavc.simulator.command_handler import CommandHandler
@@ -130,14 +131,12 @@ def _value_line(entry: Any, instance_config: Callable[[], dict]) -> str | None:
 
 def write_template(write: dict) -> str | None:
     """The line a ``device_settings`` write puts on this transport, in the
-    runtime's order (the module docstring); None for an OSC write, which
-    never reaches this chain, and an empty one."""
-    if write.get("address"):
-        return None
-    path = _filled(write.get("path"))
-    if path or write.get("method"):
-        return _http_line(write, path)
-    return _filled(write.get("send"))
+    form the runtime writes it (``command_form``); None for an OSC write,
+    which never reaches this chain, and an empty one."""
+    form = command_form(write, "setting_write")
+    if form == "http":
+        return _http_line(write, _filled(write.get("path")))
+    return _filled(write.get("send")) if form == "raw" else None
 
 
 def _http_line(write: dict, path: str | None) -> str:

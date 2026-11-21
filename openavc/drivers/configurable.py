@@ -56,6 +56,7 @@ from openavc.drivers.base import (
     BaseDriver,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
 )
+from openavc.drivers.command_form import command_form
 from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.declared_roster import DeclaredRoster
 from openavc.drivers.http_commands import HttpCommands
@@ -432,15 +433,16 @@ class ConfigurableDriver(
     async def _send_in_form(
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
     ) -> Any:
-        """One command in the form its definition takes: an OSC message
-        (``address``), an HTTP request (``path`` or ``method``), else a
-        byte-stream line. A command that cannot go out (a form this device's
-        connection cannot carry, or nothing to send) raises ``not_sent``."""
-        if self._is_osc_command(cmd_def):
+        """One command in the form its definition takes (``command_form``):
+        an OSC message, an HTTP request, else a byte-stream line. A command
+        that cannot go out (a form this device's connection cannot carry, or
+        nothing to send) raises ``not_sent``."""
+        form = command_form(cmd_def)
+        if form == "osc":
             return await self._send_osc_command(command, cmd_def, params)
-        if self._is_http_command(cmd_def):
+        if form == "http":
             return await self._send_http_command(command, cmd_def, params)
-        data = self.build_wire(command, params)
+        data = self.build_wire(command, params) if form == "raw" else None
         if data is None:
             raise not_sent(command, cmd_def.get("label"), form=None, transport=None)
         await self.transport.send(data)

@@ -36,6 +36,7 @@ import re
 import socket
 from typing import Any
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import apply_send_frame, safe_substitute
 from openavc.simulator.state_replies import map_key
 from openavc.transport.frame_parsers import write_frame
@@ -620,13 +621,12 @@ def _registration_matcher(commands: dict, cmd_name: Any) -> re.Pattern | None:
     send template, ``{listener_port}`` a port capture, any other token one
     run of non-separators, an HTTP body or trailing whitespace allowed."""
     cmd = commands.get(cmd_name) if isinstance(cmd_name, str) else None
-    if not isinstance(cmd, dict):
-        return None
-    if "path" in cmd or "method" in cmd:
-        template = f"{cmd.get('method', 'GET').upper()} {cmd.get('path', '/')}"
+    form = command_form(cmd)
+    if form == "http":
+        template = f"{str(cmd.get('method') or 'GET').upper()} {cmd.get('path') or '/'}"
+    elif form == "raw":
+        template = str(cmd["send"])
     else:
-        template = str(cmd.get("send", ""))
-    if not template:
         return None
     pattern = re.escape(template)
     pattern = pattern.replace(re.escape("{listener_port}"), r"(?P<lport>\d+)")

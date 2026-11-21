@@ -139,10 +139,6 @@ class OscWire:
 
     _build_osc_args = staticmethod(build_osc_args)
 
-    def _is_osc_command(self, cmd_def: dict[str, Any]) -> bool:
-        """Check if a command definition uses OSC-style fields."""
-        return "address" in cmd_def
-
     async def _send_osc_command(
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
     ) -> Any:

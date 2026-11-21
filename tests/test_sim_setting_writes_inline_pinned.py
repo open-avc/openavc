@@ -62,18 +62,12 @@ def _level(pattern: str) -> list[tuple]:
     ({"path": "", "method": "patch", "body": "x={value}"}, _level(r"^PATCH /\|x=(-?\d+)$")),
     ({"path": "/v/{value}", "body": 5}, _level(r"^POST /v/(-?\d+)$")),
     ({"path": "/v/{value}", "body": ""}, _level(r"^POST /v/(-?\d+)$")),
+    # Which form a write takes is the shape table's (test_command_form.py);
+    # these rows are the line each form's handler is built from.
     ({"path": "/v/{value}", "send": "LVL {value}"}, _level(r"^POST /v/(-?\d+)$")),
     ({"address": "/x", "send": "LVL {value}"}, []),
-    ({"address": "/x", "path": "/v/{value}"}, []),
-    # The write form is picked by what is filled in, not by which keys are
-    # present: an empty address or path hands on to the next form.
-    ({"address": "", "send": "LVL {value}"}, _level(r"^LVL (-?\d+)$")),
     ({"path": "", "send": "LVL {value}"}, _level(r"^LVL (-?\d+)$")),
-    ({"path": 5, "send": "LVL {value}"}, _level(r"^LVL (-?\d+)$")),
-    ({"method": "", "send": "LVL {value}"}, _level(r"^LVL (-?\d+)$")),
-    ({"send": ""}, []),
     ({"send": 5}, []),
-    ({}, []),
     ({"send": "SET {value}\\rGET?"}, _level(r"^SET (-?\d+)$")),
     ({"send": "HDR\\r\\nSET {value}"}, _level(r"^SET (-?\d+)$")),
     ({"send": "A {value}\\rB {value}"}, _level(r"^A (-?\d+)$")),
@@ -329,7 +323,7 @@ def test_an_inline_response_capture_is_read_through_its_variables_conversion():
 _JSON_CONFIG = {
     "commands": {
         "status": {"label": "Status", "method": "get", "path": "/api/{zone}/status", "poll": True},
-        "root": {"label": "Root", "poll": True},
+        "root": {"label": "Root", "poll": True},  # no path or method: never sent
         "posted": {"label": "Posted", "method": "POST", "path": "/p", "poll": True},
         "lined": {"label": "Lined", "send": "S", "poll": True},
         "nopoll": {"label": "Plain", "path": "/plain"},
@@ -349,7 +343,6 @@ def test_an_inline_http_device_answers_its_poll_commands_with_one_json_body():
     sim = _generic_sim(_JSON_CONFIG, "http")
     assert [p.pattern for p in sim._inline_json_polls] == [
         r"^GET\ /api/[^\s|]+/status(?:\|.*)?$",
-        r"^GET\ /(?:\|.*)?$",
         r"^POST\ /p(?:\|.*)?$",
     ]
     assert [(m["state"], m["key"]) for m in sim._inline_json_fields] == [
@@ -359,7 +352,7 @@ def test_an_inline_http_device_answers_its_poll_commands_with_one_json_body():
     body = sim.handle_command(b"GET /api/7/status|ignored")
     assert body == b'{"data": {"power": "on", "level": 3}, "nokey": ""}'
     assert sim.handle_command(b"GET /api/7 8/status") is None
-    assert sim.handle_command(b"GET /|") == body
+    assert sim.handle_command(b"POST /p|") == body
 
 
 def test_a_json_body_replaces_a_value_in_the_way_of_a_nested_key():

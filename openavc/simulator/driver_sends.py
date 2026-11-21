@@ -30,6 +30,7 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import derive_config, safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
@@ -217,10 +218,11 @@ def _query_probes(queries: list, config: dict, transport: Any) -> list[str]:
 
 
 def _command_probes(commands: dict, driver_def: dict) -> list[str]:
-    """A sample of each command whose ``send`` is text."""
+    """A sample of each command sent as a line (``command_form``) whose
+    ``send`` is text."""
     probes: list[str] = []
     for cmd_def in commands.values():
-        send_template = cmd_def.get("send") if isinstance(cmd_def, dict) else None
+        send_template = cmd_def.get("send") if command_form(cmd_def) == "raw" else None
         if not isinstance(send_template, str) or not send_template:
             continue
         sample = command_sample(send_template, cmd_def.get("params", {}), driver_def)

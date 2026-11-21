@@ -715,6 +715,28 @@ def _push_keys_by_type() -> str:
     return out
 
 
+def _send_forms() -> str:
+    """Emit the form table a command's form is read from (spec.SEND_FORMS)
+    and which forms each origin takes, for ``commandForm`` in
+    validateDriver.ts."""
+    out = _doc_block(
+        "Each form a command or a device setting's write is sent in, with the "
+        "fields that choose it, in the order the runtime tries them. A field "
+        "that is null, false, zero, or an empty string, list or mapping "
+        "chooses nothing (drivers/command_form.py).", "",
+    )
+    out += "export const SEND_FORMS = [\n"
+    for form, fields in spec.SEND_FORMS:
+        out += f'  {{ form: "{form}", fields: [{_quoted(fields)}] }},\n'
+    out += "] as const;\n\n"
+    out += _doc_block("The forms each origin of a send can take, from SEND_FORMS.", "")
+    out += "export const SEND_FORM_ORIGINS = {\n"
+    for origin, forms in spec.SEND_FORM_ORIGINS.items():
+        out += f"  {origin}: [{_quoted(forms)}],\n"
+    out += "} as const;\n"
+    return out
+
+
 def _contract_keys() -> str:
     """Emit the declared key set of every block the registry closes.
 
@@ -915,6 +937,7 @@ def render_types_ts() -> str:
     for name, shape, getter, doc in CONSTANTS:
         sections.append(_render_constant(name, shape, getter(), doc) + "\n")
     sections.append(_push_keys_by_type() + "\n")
+    sections.append(_send_forms() + "\n")
     sections.append(_contract_keys() + "\n")
     sections.append(_serial_line_settings() + "\n")
 

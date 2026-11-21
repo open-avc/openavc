@@ -36,6 +36,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import build_json_mappings
 from openavc.drivers.inline_protocol import (
     declare_command_params,
@@ -138,9 +139,8 @@ def json_polls(driver_def: dict) -> list[re.Pattern]:
 
 
 def _is_http_poll(cmd: Any) -> bool:
-    if not isinstance(cmd, dict) or "send" in cmd:
-        return False
-    return bool(cmd.get("poll"))
+    """A polled command the runtime sends as an HTTP request (``command_form``)."""
+    return command_form(cmd) == "http" and bool(cmd.get("poll"))
 
 
 def _poll_pattern(cmd: dict) -> re.Pattern:

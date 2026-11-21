@@ -52,6 +52,7 @@ import time
 from typing import Any, Callable
 
 from openavc.drivers.child_registration import ChildRegistrations, registered_since
+from openavc.drivers.command_form import command_form
 from openavc.drivers.query_entry import EACH_CHILD, read_query_entry
 from openavc.drivers.spec import FOLLOW_UP_SETTLE_S
 from openavc.transport.pacing import sleep_at_least
@@ -130,8 +131,6 @@ class Rereads:
     _push_params: Callable[[], dict[str, Any]]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
     _safe_substitute: Callable[[str, dict[str, Any]], str]
-    _is_osc_command: Callable[[dict[str, Any]], bool]
-    _is_http_command: Callable[[dict[str, Any]], bool]
     _child_registrations: Callable[[list[Any]], ChildRegistrations]
     _holds_registration: Callable[[Any, Any], bool]
     _registrations_made: Callable[[], int]
@@ -398,12 +397,13 @@ class Rereads:
     ) -> list[ReadBack]:
         """``read_back: true``: the command's own address or path, filled as
         the send filled it."""
-        if self._is_osc_command(cmd_def):
+        form = command_form(cmd_def)
+        if form == "osc":
             address = self._substitute_for_wire(
                 f"commands.{command}.address", cmd_def.get("address", ""), all_params,
             )
             return [(f"osc {address}", ("osc", address))]
-        if self._is_http_command(cmd_def):
+        if form == "http":
             path = self._substitute_for_wire(
                 f"commands.{command}.path", cmd_def.get("path") or "/", all_params,
             )

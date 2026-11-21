@@ -514,9 +514,10 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                      'reply_framing',
                                      '3 simulator replies checked, all terminated with '
                                      "'\\\\r\\\\n'.")],
- 'malformed_command_not_a_mapping': ('raises',
-                                     'AttributeError',
-                                     "'str' object has no attribute 'get'"),
+ 'malformed_command_not_a_mapping': [('info',
+                                      'reply_framing',
+                                      '2 simulator replies checked, all terminated with '
+                                      "'\\\\r\\\\n'.")],
  'malformed_commands_null': [],
  'malformed_config_derived_text': [('info',
                                     'reply_framing',

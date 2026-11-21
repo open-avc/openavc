@@ -128,6 +128,15 @@ def test_the_json_value_spec_stays_a_leaf():
     assert _openavc_modules_loaded(module, "-I", "-S") == {"openavc", "openavc.drivers", module}
 
 
+def test_the_command_form_rule_stays_a_leaf():
+    # The runtime, the checker and the simulator ask which form a send takes
+    # through command_form, so it reads the contract's table and nothing else.
+    module = "openavc.drivers.command_form"
+    assert _openavc_modules_loaded(module, "-I", "-S") == {
+        "openavc", "openavc.drivers", "openavc.drivers.spec", module,
+    }
+
+
 def test_the_sign_in_reading_and_the_devices_half_stay_leaves():
     # The driver, the simulated device and the checker read an auth: block
     # through auth_block, so it takes the contract's tables and the number rule

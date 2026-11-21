@@ -7,10 +7,10 @@ The rules worth knowing before changing anything here:
 * **These two come before the connected gate** (``_send_command`` asks
   ``_side_sender`` first): an IR device routed through a bridge has no
   transport of its own, and a wake is sent exactly while the control link is
-  down. ``_side_sender`` is where a send decides that a command is one of
-  them, and a definition that is not a mapping is neither; the Driver
-  Builder's dry run of one command picks its route with its own checks
-  (``dry_run.capture_command_transport``), so a new kind is added there too.
+  down. Which form a command takes is ``command_form``'s (the IR code first,
+  then the datagram, then the connection's own forms), which the Driver
+  Builder's dry run asks too. A block that is not a mapping has nothing to
+  send, and the command is refused as not sent.
 * **An ``ir:`` code** goes to the bound bridge's emitter as its Pronto text
   and repeat count (one when absent); the bridge driver converts and
   confirms it.
@@ -43,6 +43,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from openavc.drivers.command_form import command_form
+from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.udp_side import WAKE_ON_LAN_PORT, WakeAddressError, normalize_mac
 from openavc.utils.logger import get_logger
@@ -50,6 +52,15 @@ from openavc.utils.logger import get_logger
 # These lines have always logged under the YAML driver runtime's name, which
 # the IDE's log view shows as their source.
 log = get_logger("openavc.drivers.configurable")
+
+
+def _side_block(command: str, cmd_def: dict[str, Any], form: str) -> dict[str, Any]:
+    """A command's ``ir:`` or ``udp:`` block; a block that is not a mapping
+    has nothing to send, and the command is refused as not sent."""
+    block = cmd_def.get(form)
+    if not isinstance(block, dict):
+        raise not_sent(command, cmd_def.get("label"), form=None, transport=None)
+    return block
 
 
 def _udp_port_number(where: str, text: str) -> int:
@@ -86,12 +97,12 @@ class SideSends:
 
     def _side_sender(self, cmd_def: Any) -> Any:
         """The sender for a command that needs no connection of the device's
-        own, an IR code or a UDP side-send; None for every other command."""
-        if not isinstance(cmd_def, dict):
-            return None
-        if cmd_def.get("ir"):
+        own, an IR code or a UDP side-send (``command_form``); None for every
+        other command."""
+        form = command_form(cmd_def)
+        if form == "ir":
             return self._send_ir_command
-        if isinstance(cmd_def.get("udp"), dict):
+        if form == "udp":
             return self._send_udp_side
         return None
 
@@ -99,7 +110,7 @@ class SideSends:
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
     ) -> Any:
         """An IR code-set command, emitted through the bound bridge."""
-        ir = cmd_def["ir"]
+        ir = _side_block(command, cmd_def, "ir")
         return await self.emit_via_bridge(
             "ir", {"pronto": ir.get("pronto", ""), "repeat": ir.get("repeat", 1)},
         )
@@ -109,6 +120,7 @@ class SideSends:
     ) -> Any:
         """A UDP side-send, its params checked and wire-mapped as on the
         transport's own route."""
+        _side_block(command, cmd_def, "udp")
         _given, wire = self._given_and_wire(command, cmd_def, params)
         return await self._send_udp_command(command, cmd_def, wire)
 

@@ -208,10 +208,13 @@ def test_an_ir_code_goes_to_the_bridge_and_comes_first() -> None:
     assert sender == drv._send_ir_command
 
 
-def test_a_udp_block_must_be_a_mapping() -> None:
+def test_a_udp_block_that_is_not_a_mapping_is_still_a_side_send() -> None:
+    # The datagram is its form (command_form); its sender refuses the block
+    # as not sent (test_command_form.py).
     drv = _driver()
     assert drv._side_sender({"udp": {"payload": "x"}}) == drv._send_udp_side
-    assert drv._side_sender({"udp": "x"}) is None
+    assert drv._side_sender({"udp": "x"}) == drv._send_udp_side
+    assert drv._side_sender({"udp": {}}) is None
 
 
 async def test_an_ir_code_is_emitted_with_its_pronto_and_repeat() -> None:

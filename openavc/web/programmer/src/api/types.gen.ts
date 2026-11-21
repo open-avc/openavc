@@ -124,6 +124,26 @@ export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = 
 };
 
 /**
+ * Each form a command or a device setting's write is sent in, with the fields
+ * that choose it, in the order the runtime tries them. A field that is null,
+ * false, zero, or an empty string, list or mapping chooses nothing
+ * (drivers/command_form.py).
+ */
+export const SEND_FORMS = [
+  { form: "ir", fields: ["ir"] },
+  { form: "udp", fields: ["udp"] },
+  { form: "osc", fields: ["address"] },
+  { form: "http", fields: ["path", "method"] },
+  { form: "raw", fields: ["send"] },
+] as const;
+
+/** The forms each origin of a send can take, from SEND_FORMS. */
+export const SEND_FORM_ORIGINS = {
+  command: ["ir", "udp", "osc", "http", "raw"],
+  setting_write: ["osc", "http", "raw"],
+} as const;
+
+/**
  * Declared keys of every closed contract block, for the unknown-key check.
  * __root__ is the top level; the rest are $defs names.
  */

@@ -10,8 +10,9 @@ The rules worth knowing before changing anything here:
   platform's push values fill the write as they fill a command's send, and a
   placeholder nothing fills goes out as written with the warning a command's
   send gives.
-* **Three write forms**, chosen by the keys the ``write`` block has, in this
-  order: ``address`` is an OSC message (refused unless connected, and on an
+* **Three write forms**, chosen by the fields the ``write`` block fills, in
+  this order (``command_form``, where a field that is null or empty fills
+  nothing): ``address`` is an OSC message (refused unless connected, and on an
   OSC transport); ``path`` or ``method`` an HTTP request (refused unless the
   transport is HTTP); ``send`` a line of the device's protocol (refused unless
   connected; inside the ``send_frame`` header on every link, UDP included,
@@ -38,6 +39,7 @@ from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import UnknownDeviceSettingError
+from openavc.drivers.command_form import command_form
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -88,15 +90,13 @@ class SettingWrites:
         return setting_def, write_def
 
     def _setting_writer(self, write_def: dict[str, Any]) -> Callable[..., Any] | None:
-        """The write form a ``write`` block names, in the order they are
-        tried."""
-        if "address" in write_def:
-            return self._write_setting_osc
-        if "path" in write_def or "method" in write_def:
-            return self._write_setting_http
-        if write_def.get("send", ""):
-            return self._write_setting_line
-        return None
+        """The write form a ``write`` block takes (``command_form``, a
+        setting write's forms); None when it fills none."""
+        return {
+            "osc": self._write_setting_osc,
+            "http": self._write_setting_http,
+            "raw": self._write_setting_line,
+        }.get(command_form(write_def, "setting_write"))
 
     def _setting_wire_value(self, key: str, setting_def: dict[str, Any], value: Any) -> Any:
         """The device's own word for the value, else its real value as the
@@ -147,9 +147,10 @@ class SettingWrites:
                 f"[{self.device_id}] Setting '{key}' uses HTTP write "
                 f"but transport is not HTTP"
             )
-        # A write posts when it names no method.
+        # A write posts when it names no method (or a null or empty one).
         response = await self._http_request(
-            key, f"device_settings.{key}.write", {"method": "POST", **write_def}, params,
+            key, f"device_settings.{key}.write",
+            {**write_def, "method": write_def.get("method") or "POST"}, params,
         )
         # Whatever the body was, the answer is read: often the cheapest read
         # of the new value.
