@@ -41,6 +41,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
+from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
     config_field_names,
@@ -267,11 +268,10 @@ def _ids_errors(roster: _Roster, source: str, raw_ids: Any) -> list[str]:
 
 
 def _reads_as_integer(item: str | int) -> bool:
-    try:
-        int(str(item).strip())
-    except ValueError:
-        return False
-    return True
+    """Whether a listed id names a child of a type with integer ids, by the
+    runtime's rule (``child_ids.coerce_child_local_id``; a type with no
+    ``id_format`` has integer ids)."""
+    return coerce_child_local_id(None, item) is not None
 
 
 def _count_errors(roster: _Roster, source: str, count: Any) -> list[str]:

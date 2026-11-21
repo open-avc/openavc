@@ -37,6 +37,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import child_writable_props, declared_id_kind
 from openavc.drivers.usable_number import is_number_value
@@ -291,11 +292,10 @@ def _json_contains_errors(where: str, spec: dict[str, Any]) -> list[str]:
 
 
 def _reads_as_int(value: Any) -> bool:
-    try:
-        int(str(value).strip())
-    except ValueError:
-        return False
-    return True
+    """Whether a literal id names a child of a type with integer ids, by the
+    runtime's rule (``child_ids.coerce_child_local_id``; a type with no
+    ``id_format`` has integer ids)."""
+    return coerce_child_local_id(None, value) is not None
 
 
 def _is_capture_ref(value: Any) -> bool:

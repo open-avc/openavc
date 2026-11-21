@@ -9,11 +9,14 @@ what counts as a valid id is how a command lands on the wrong child.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi import HTTPException
 
 from openavc.api.routes.devices import _coerce_local_id
 from openavc.core.command_gates import coerce_child_id_params
+from openavc.drivers.avcdriver_semantic import validate_driver_definition
 from openavc.drivers.base import CommandParamError
 from openavc.drivers.child_ids import child_id_kind, coerce_child_local_id
 from openavc.drivers.child_ids import child_display_name
@@ -324,3 +327,38 @@ def test_a_child_type_named_by_a_number_is_refused_in_a_sentence_at_command_time
     assert str(refused.value) == (
         "'go': 'z': child_type 'zone' is not a declared child_entity_type (declared: 1, bus)"
     )
+
+
+# --- the checker asks the same rule -------------------------------------------
+
+_PROBES = ["lit", "x", " 3 ", "03", 1.5, True, False, None, 7, -2, "", 1e3, "٣", "+4"]
+
+
+def _id_refusals(child_set_id: Any = None, ids: Any = None) -> list[str]:
+    zone: dict[str, Any] = {
+        "id_format": {"type": "integer"},
+        "state_variables": {"level": {"type": "number", "label": "Level"}},
+        "instances": {"ids": ids} if ids is not None else {"count": 2},
+    }
+    responses = [] if child_set_id is None else [{"json": True, "child_set": [
+        {"type": "zone", "id": child_set_id, "state": {"level": "a"}}]}]
+    errors = validate_driver_definition({
+        "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+        "commands": {"noop": {"send": "NOOP\r"}},
+        "state_variables": {"power": {"type": "string", "label": "Power"}},
+        "child_entity_types": {"zone": zone}, "responses": responses,
+    })
+    return [e for e in errors if "is not an integer" in e]
+
+
+@pytest.mark.parametrize("raw", _PROBES, ids=repr)
+def test_the_checker_refuses_a_literal_integer_id_exactly_when_the_runtime_cannot_read_it(raw):
+    """A json rule's literal id and an ``ids:`` entry on an integer type are
+    refused as "not an integer" for the ids the runtime's coercion cannot
+    read, and for no other. (A bool, a float or ``None`` is refused earlier
+    as not a literal id at all.)"""
+    unreadable = coerce_child_local_id(INT_TYPE, raw) is None
+    scalar = isinstance(raw, (str, int)) and not isinstance(raw, bool)
+    expected = unreadable and scalar
+    assert bool(_id_refusals(child_set_id=raw)) is expected
+    assert bool(_id_refusals(ids=[raw])) is expected
