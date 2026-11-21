@@ -30,7 +30,9 @@ from __future__ import annotations
 import asyncio
 import functools
 import json
-from fnmatch import fnmatch
+import os
+import re
+from fnmatch import fnmatch, translate
 from typing import Any, Callable
 
 from openavc.core.state_store import StateStore
@@ -160,13 +162,27 @@ def _exact_or_namespace(table: dict[str, Any], name: str) -> Any:
     row (a key ending in ``.``) it falls under, else None."""
     if name in table:
         return table[name]
-    fits = [key for key in table if key.endswith(".") and name.startswith(key)]
-    return table[max(fits, key=len)] if fits else None
+    end = len(name)
+    while (end := name.rfind(".", 0, end)) != -1:
+        row = table.get(name[:end + 1])
+        if row is not None:
+            return row
+    return None
+
+
+# Every pattern above as one expression, built once at import: each event
+# stream subscriber asks inside every emit on the bus, a state change
+# included, and a name the engine does not push is then answered by one match.
+# Folded the way ``fnmatch`` folds names (``os.path.normcase``).
+_ANY_BUS_PUSH = re.compile(
+    "|".join(translate(os.path.normcase(pattern)) for pattern in BUS_PUSHES))
 
 
 def bus_push_type(event: str) -> str | None:
     """The type the engine pushes this bus event as, or None when it is not
     pushed (matched the way the bus matches its subscriptions)."""
+    if not _ANY_BUS_PUSH.match(os.path.normcase(event)):
+        return None
     for pattern, msg_type in BUS_PUSHES.items():
         if fnmatch(event, pattern):
             return msg_type

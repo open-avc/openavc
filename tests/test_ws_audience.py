@@ -352,3 +352,19 @@ def test_a_device_error_s_panel_copy_names_the_device():
 def test_the_panel_copies_name_only_rows_the_table_has():
     for key in PANEL_COPIES:
         assert key in MESSAGE_AUDIENCE or key.endswith("."), key
+
+
+def test_an_event_the_engine_does_not_push_is_answered_without_walking_its_patterns(monkeypatch):
+    """Every subscriber's check runs inside every emit on the bus, a state
+    change included, so a name no pushed pattern can match is answered by one
+    match against all of them, not one match per pattern."""
+    from openavc.core import ws_hub
+
+    calls = []
+    real = ws_hub.fnmatch
+    monkeypatch.setattr(ws_hub, "fnmatch", lambda name, pat: calls.append(pat) or real(name, pat))
+    for event in ("state.changed.var.a", "device.connected.p1", "custom.x", "plugin.acme.moved"):
+        event_visible(event, panel=True)
+    assert calls == []
+    assert ws_hub.bus_push_type("macro.started.acme") == "macro.started"
+    assert ws_hub.bus_push_type("plugin.error") == "plugin.error"
