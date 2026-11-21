@@ -12,6 +12,9 @@ So these are mostly tests that it stays quiet.
 from __future__ import annotations
 
 from openavc.cloud.tools.ui_lookups import declared_child_roster as _declared_child_roster
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.cloud.tools.ui_lookups import unknown_child_id as _unknown_child_id
 
 
@@ -134,3 +137,46 @@ def test_a_driver_that_raises_is_not_allowed_to_cost_a_write() -> None:
     assert _unknown_child_id(
         devices, ["acme_switcher"], "device.acme_switcher.output.7.signal",
     ) is None
+
+
+# --- The roster in the form a key carries -------------------------------------
+
+
+def _loaded(pad_width: int):
+    """A real YAML driver, loaded: its own formatter pads the state keys."""
+    cls = create_configurable_driver_class({
+        "id": "acme_switcher", "name": "Acme Switcher", "transport": "tcp",
+        "default_config": {"host": "", "port": 23},
+        "state_variables": {},
+        "child_entity_types": {"output": {
+            "id_format": {"type": "integer", "pad_width": pad_width},
+            "instances": {"count": 4},
+            "state_variables": {"level": {"type": "integer"}},
+        }},
+        "commands": {},
+    })
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    return cls("acme_switcher", {"host": "127.0.0.1", "port": 23}, state, events)
+
+
+def test_a_padded_driver_s_real_keys_are_silent_and_its_roster_is_named_padded() -> None:
+    """The key a padded driver writes (``output.01.level``) names a declared
+    child; the unpadded one binds to nothing and is told the ids to write."""
+    devices = _Devices({"acme_switcher": _loaded(pad_width=2)})
+
+    def ask(key: str):
+        return _unknown_child_id(devices, ["acme_switcher"], key)
+
+    assert ask("device.acme_switcher.output.01.level") is None
+    assert ask("device.acme_switcher.output.04.level") is None
+    assert ask("device.acme_switcher.output.1.level") == {"01", "02", "03", "04"}
+    assert ask("device.acme_switcher.output.05.level") == {"01", "02", "03", "04"}
+
+
+def test_an_unpadded_driver_still_names_a_padded_key() -> None:
+    devices = _Devices({"acme_switcher": _loaded(pad_width=0)})
+    assert _unknown_child_id(devices, ["acme_switcher"],
+                             "device.acme_switcher.output.1.level") is None
+    assert _unknown_child_id(devices, ["acme_switcher"],
+                             "device.acme_switcher.output.01.level") == {"1", "2", "3", "4"}

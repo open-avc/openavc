@@ -22,6 +22,7 @@ answer from there.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -158,17 +159,39 @@ def undeclared_state_property(devices: Any, device_ids: list[str], key: Any) -> 
         return None
 
 
-def declared_child_roster(type_def: dict, config: Any) -> set[str] | None:
+def declared_child_roster(
+    type_def: dict, config: Any, key_id: Callable[[Any], str] = str,
+) -> set[str] | None:
     """The child IDs this type declares, or None when it will not say.
 
     The rule itself is ``drivers.child_ids.declared_child_ids`` -- the same one
     the matrix picker builds its destination list from, so a page checked
     against an eight-output frame and a matrix drawn on one cannot disagree
     about how many outputs it has. Here they are only ever compared with the id
-    written in a state key, so they arrive as text and lose their order.
+    written in a state key, so each arrives as ``key_id`` writes it (the form
+    the key carries; its text when no driver is asked) and loses its order.
     """
     ids = declared_child_ids(type_def, config)
-    return {str(v) for v in ids} if ids else None
+    return {key_id(v) for v in ids} if ids else None
+
+
+def _key_id(driver: Any, child: ChildKey) -> Callable[[Any], str]:
+    """How ``driver`` writes a declared id of ``child``'s type in a state key:
+    read through the type's id_format (``child_ids.coerce_child_local_id``),
+    then padded by the driver's own ``format_child_id``. An id either cannot
+    take is its text, so the roster never loses an id."""
+    fmt = getattr(driver, "format_child_id", None)
+
+    def key_id(declared: Any) -> str:
+        local = coerce_child_local_id(child.type_def, declared)
+        if local is None or not callable(fmt):
+            return str(declared)
+        try:
+            return str(fmt(child.type_name, local))
+        except (TypeError, ValueError):
+            return str(declared)
+
+    return key_id
 
 
 def unknown_child_id(devices: Any, device_ids: list[str], key: Any) -> set[str] | None:
@@ -188,7 +211,10 @@ def unknown_child_id(devices: Any, device_ids: list[str], key: Any) -> set[str] 
         child = bound.child() if bound is not None else None
         if child is None:
             return None
-        roster = declared_child_roster(child.type_def, getattr(bound.driver, "config", None) or {})
+        roster = declared_child_roster(
+            child.type_def, getattr(bound.driver, "config", None) or {},
+            _key_id(bound.driver, child),
+        )
         if not roster or child.raw_id in roster:
             return None
         return roster
