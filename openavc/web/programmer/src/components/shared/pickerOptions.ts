@@ -108,10 +108,19 @@ export function pageGroups(
     const t = p.page_type ?? "page";
     return t === "overlay" || t === "sidebar";
   });
+  // Sub-pages are listed on their own and NEVER under "Pages": a nav target
+  // picker that offered them would author a move the panel refuses -- a
+  // sub-page draws only inside a sub-page container.
+  // 子页面单独成组，绝不混入 "Pages"：导航选择器若提供它们，编排出的切换
+  // 面板会拒绝——子页面只绘制在子页面容器内。
+  const subpage = pages.filter((p) => (p.page_type ?? "page") === "subpage");
   const groups: SelectGroup[] = [];
   if (regular.length > 0) groups.push({ label: "Pages", options: regular.map(option) });
   if (overlay.length > 0) {
     groups.push({ label: "Overlays / Sidebars", options: overlay.map(option) });
+  }
+  if (subpage.length > 0) {
+    groups.push({ label: "Sub-pages", options: subpage.map(option) });
   }
   return groups;
 }

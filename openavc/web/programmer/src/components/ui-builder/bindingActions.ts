@@ -109,18 +109,29 @@ export interface BindingRefIds {
   deviceIds: ReadonlySet<string>;
   macroIds: ReadonlySet<string>;
   pageIds: ReadonlySet<string>;
+  // The sub-pages and the sub-page containers, for the ui.subpage action:
+  // its page must be a sub-page specifically, its container a
+  // subpage_container element specifically -- a regular page or an ordinary
+  // element named there is broken in a way "page exists" cannot see.
+  // 子页面与子页面容器集合，供 ui.subpage 动作使用：其 page 必须是子页面，
+  // 其 container 必须是 subpage_container 元素——在这里填普通页面或普通元素
+  // 是"页面存在"检查发现不了的坏法。
+  subpageIds: ReadonlySet<string>;
+  containerIds: ReadonlySet<string>;
 }
 
 /** What an action names by id, which is also the field it is named in. */
-type ReferenceKind = "device" | "macro" | "page";
+type ReferenceKind = "device" | "macro" | "page" | "subpage" | "container";
 
-/** The one id each action names: a command's device, a macro call's macro, a
- *  page move's page. A field another action carries means nothing to the
- *  runtime, so it is not read. */
-const NAMED_BY_ACTION = new Map<unknown, ReferenceKind>([
-  ["device.command", "device"],
-  ["macro", "macro"],
-  ["ui.navigate", "page"],
+/** What each action names, as (kind, field) pairs: a command's device, a macro
+ *  call's macro, a page move's page, and a sub-page switch's container AND
+ *  sub-page -- two ids of two kinds. A field another action carries means
+ *  nothing to the runtime, so it is not read. */
+const NAMED_BY_ACTION = new Map<unknown, readonly (readonly [ReferenceKind, string])[]>([
+  ["device.command", [["device", "device"]]],
+  ["macro", [["macro", "macro"]]],
+  ["ui.navigate", [["page", "page"]]],
+  ["ui.subpage", [["container", "container"], ["subpage", "page"]]],
 ]);
 
 /** How the binding card names each kind in its Broken badge. */
@@ -128,6 +139,8 @@ export const REFERENCE_NOUNS: Record<ReferenceKind, string> = {
   device: "Device",
   macro: "Macro",
   page: "Page",
+  subpage: "Sub-page",
+  container: "Container",
 };
 
 /** Whether a page move can land: a page in the project, or a target the panel
@@ -141,6 +154,8 @@ const IDS_OF_KIND: Record<ReferenceKind, keyof BindingRefIds> = {
   device: "deviceIds",
   macro: "macroIds",
   page: "pageIds",
+  subpage: "subpageIds",
+  container: "containerIds",
 };
 
 function resolves(kind: ReferenceKind, id: unknown, ids: BindingRefIds): boolean {
@@ -162,10 +177,13 @@ export interface BrokenReference {
  * or macro in the same field an action does.
  */
 export function brokenReference(a: Record<string, unknown>, ids: BindingRefIds): BrokenReference | null {
-  const kind = NAMED_BY_ACTION.get(a.action);
-  if (!kind) return null;
-  const id = a[kind];
-  return id && !resolves(kind, id, ids) ? { kind, id: String(id) } : null;
+  const named = NAMED_BY_ACTION.get(a.action);
+  if (!named) return null;
+  for (const [kind, field] of named) {
+    const id = a[field];
+    if (id && !resolves(kind, id, ids)) return { kind, id: String(id) };
+  }
+  return null;
 }
 
 /** First broken reference in an action — a device/macro/page id that no
@@ -191,6 +209,7 @@ const RUNS_ONLY_WITH = new Map<unknown, readonly string[]>([
   ["macro", ["macro"]],
   ["state.set", ["key"]],
   ["ui.navigate", ["page"]],
+  ["ui.subpage", ["container", "page"]],
   ["script.call", ["function"]],
   ["event.emit", ["event"]],
 ]);

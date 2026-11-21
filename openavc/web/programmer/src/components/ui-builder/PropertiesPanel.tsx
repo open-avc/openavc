@@ -788,6 +788,12 @@ function PageProperties({
           animation: overlay.animation ?? "slide-left",
         },
       });
+    } else if (newType === "subpage") {
+      // A sub-page keeps the full-canvas grid a regular page has, and drops
+      // any overlay box: it is not a dialog, it shows inside a container.
+      // 子页面保留普通页面的全画布网格，并丢弃弹窗框：它不是对话框，而是
+      // 显示在容器之内。
+      onChange({ page_type: "subpage", overlay: undefined });
     }
   };
 
@@ -822,7 +828,7 @@ function PageProperties({
         gap: "var(--space-sm)",
       }}
     >
-      {sectionHeader(isSidebar ? "Sidebar Properties" : isOverlay ? "Overlay Properties" : "Page Properties")}
+      {sectionHeader(pageType === "subpage" ? "Sub-page Properties" : isSidebar ? "Sidebar Properties" : isOverlay ? "Overlay Properties" : "Page Properties")}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <FieldRow label="Page Type">
@@ -834,6 +840,7 @@ function PageProperties({
             <option value="page">Page</option>
             <option value="overlay">Overlay</option>
             <option value="sidebar">Sidebar</option>
+            <option value="subpage">Sub-page</option>
           </select>
         </FieldRow>
 

@@ -98,10 +98,17 @@ function shownBinding(el: UIElement, slot: string): Record<string, unknown> | un
   return showOf(el)?.[slot] as Record<string, unknown> | undefined;
 }
 
-/** A page nav aimed at a page that is not there. */
+/** A page nav aimed at a page that is not there -- or at a sub-page, which
+ *  exists but is not a destination: it shows inside a sub-page container.
+ *  指向不存在页面的 page_nav——或指向子页面：子页面存在但不是目的地，
+ *  它显示在子页面容器之内。 */
 function targetPageIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   const target = el.type === "page_nav" ? el.target_page : undefined;
-  if (!target || pageExists(target, refs.pageIds)) return [];
+  if (!target) return [];
+  if (refs.subpageIds.has(target)) {
+    return [{ severity: "error", message: `Target page "${target}" is a sub-page; show it in a sub-page container instead of navigating to it` }];
+  }
+  if (pageExists(target, refs.pageIds)) return [];
   return [{ severity: "error", message: `Target page "${target}" does not exist` }];
 }
 
@@ -366,6 +373,10 @@ const UNNAMED_STEP: Record<BrokenReference["kind"], string> = {
   device: "device.command",
   macro: "call macro",
   page: "ui.navigate",
+  // A sub-page switch's two refs both locate at its own action name
+  // (子页面切换的两个引用都定位在它自己的动作名上).
+  subpage: "ui.subpage",
+  container: "ui.subpage",
 };
 
 /** The device group a group command names that is not in the project. */
@@ -412,6 +423,14 @@ function macroIssues(macros: MacroConfig[], refs: ProjectRefs): ValidationIssue[
 function idlePageIssues(project: ProjectConfig, pageIds: ReadonlySet<string>): ValidationIssue[] {
   const idlePage = project.ui.settings.idle_page;
   if (!idlePage || pageIds.has(idlePage)) return [];
+  // A sub-page answers "exists" but never "navigable": the idle return is a
+  // page move, and a sub-page draws only inside a container.
+  // 子页面答得了"存在"，答不了"可导航"：空闲返回是一次页面切换，而子页面
+  // 只绘制在容器内。
+  const isSubpage = project.ui.pages.some((p) => p.id === idlePage && (p.page_type ?? "page") === "subpage");
+  if (isSubpage) {
+    return [{ severity: "error", message: `Idle page "${idlePage}" is a sub-page, which cannot be navigated to; pick a regular page`, location: "Settings > Idle Page" }];
+  }
   return [{ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" }];
 }
 
@@ -428,6 +447,20 @@ export function validateProject(
 ): ValidationIssue[] {
   const refs: ProjectRefs = {
     pageIds: new Set(project.ui.pages.map((p) => p.id)),
+    // Sub-pages and the containers that show them, so Validate can say a nav
+    // aimed at a sub-page is a wrong turn and a ui.subpage naming a regular
+    // page picked the wrong action.
+    // 子页面与显示它们的容器，让 Validate 能指出"导航到子页面是走错了路"、
+    // "ui.subpage 填普通页面是选错了动作"。
+    subpageIds: new Set(project.ui.pages.filter((p) => (p.page_type ?? "page") === "subpage").map((p) => p.id)),
+    containerIds: new Set(
+      [
+        ...project.ui.pages.flatMap((p) => p.elements ?? []),
+        ...project.ui.master_elements ?? [],
+      ]
+        .filter((el) => el.type === "subpage_container")
+        .map((el) => el.id),
+    ),
     deviceIds: new Set(project.devices.map((d) => d.id)),
     macroIds: new Set(project.macros.map((m) => m.id)),
     groupIds: new Set((project.device_groups ?? []).map((g) => g.id)),

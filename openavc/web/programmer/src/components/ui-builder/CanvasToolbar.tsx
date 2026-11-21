@@ -34,6 +34,7 @@ import {
   RectangleHorizontal,
   RectangleVertical,
   Code2,
+  PictureInPicture2,
 } from "lucide-react";
 import type { MacroConfig, UIConfig, UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -280,7 +281,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
     setRenamingGroupName(null);
   };
 
-  const handleAddPage = (pageType: "page" | "overlay" | "sidebar" = "page") => {
+  const handleAddPage = (pageType: "page" | "overlay" | "sidebar" | "subpage" = "page") => {
     if (!ui) return;
     const newPages = addPage(ui.pages, pageType);
     const newPageId = newPages[newPages.length - 1].id;
@@ -488,6 +489,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
         )}
         {!isCustomPage(page) && page.page_type === "sidebar" && (
           <PanelRight size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        )}
+        {!isCustomPage(page) && page.page_type === "subpage" && (
+          <PictureInPicture2 size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         )}
         {renamingPageId === page.id ? (
           <input
@@ -736,6 +740,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
                     { type: "page" as const, label: "Page", icon: null },
                     { type: "overlay" as const, label: "Overlay", icon: <Layers size={12} /> },
                     { type: "sidebar" as const, label: "Sidebar", icon: <PanelRight size={12} /> },
+                    { type: "subpage" as const, label: "Sub-page", icon: <PictureInPicture2 size={12} /> },
                   ] as const
                 ).map((item) => (
                   <button

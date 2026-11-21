@@ -19,7 +19,9 @@ import type { ProjectConfig, UIElement } from "../../api/types";
 const IDS: BindingRefIds = {
   deviceIds: new Set(["amp"]),
   macroIds: new Set(["all_on"]),
-  pageIds: new Set(["main"]),
+  pageIds: new Set(["main", "media_sub"]),
+  subpageIds: new Set(["media_sub"]),
+  containerIds: new Set(["cam_box"]),
 };
 
 describe("slotActions", () => {
@@ -45,6 +47,16 @@ describe("actionDanglingRef: the Broken badge", () => {
     expect(actionDanglingRef({ action: "device.command", device: "ghost" }, IDS)).toBe('Device "ghost" not found');
     expect(actionDanglingRef({ action: "macro", macro: "ghost" }, IDS)).toBe('Macro "ghost" not found');
     expect(actionDanglingRef({ action: "ui.navigate", page: "ghost" }, IDS)).toBe('Page "ghost" not found');
+  });
+
+  it("checks a sub-page switch against its own kinds: the container AND the sub-page", () => {
+    // A regular page named in a switch is broken even though it exists:
+    // the author picked the wrong action (在切换动作里填普通页面即使存在也算坏：
+    // 作者选错了动作).
+    expect(actionDanglingRef({ action: "ui.subpage", container: "cam_box", page: "main" }, IDS)).toBe('Sub-page "main" not found');
+    expect(actionDanglingRef({ action: "ui.subpage", container: "ghost_box", page: "media_sub" }, IDS)).toBe('Container "ghost_box" not found');
+    expect(actionDanglingRef({ action: "ui.subpage", container: "cam_box", page: "ghost" }, IDS)).toBe('Sub-page "ghost" not found');
+    expect(actionDanglingRef({ action: "ui.subpage", container: "cam_box", page: "media_sub" }, IDS)).toBeNull();
   });
 
   it("takes what exists, the panel's own targets, and a field not filled in", () => {
