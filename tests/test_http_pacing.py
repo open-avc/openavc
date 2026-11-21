@@ -186,12 +186,28 @@ async def test_a_yaml_http_poll_is_spaced_by_the_delay(device) -> None:
     assert all(gap >= DELAY - 0.01 for gap in gaps), gaps
 
 
-async def test_yaml_http_start_up_does_not_wait_twice(device) -> None:
+async def test_yaml_http_start_up_does_not_wait_twice(device, monkeypatch) -> None:
     """on_connect used to sleep the delay itself, because the transport did
-    not; now the transport does, so start-up waits once, not twice."""
+    not; now the transport does, so start-up waits once, not twice.
+
+    Counted as the waits asked for rather than timed: one request after
+    another on a loaded machine can be late by as much as the delay itself,
+    which no bound on the gap tells apart from a second wait."""
     port, log, _ = device
+    real_sleep = asyncio.sleep
+    waits: list[float] = []
+
+    async def counted_sleep(seconds, *args, **kwargs):
+        if seconds >= DELAY * 0.9:
+            waits.append(seconds)
+        return await real_sleep(seconds, *args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "sleep", counted_sleep)
     drv = await _connected_driver(port, _acme_http(on_connect=["/s1", "/s2", "/s3"]))
     await drv.disconnect()
+    monkeypatch.setattr(asyncio, "sleep", real_sleep)
     gaps = _gaps(log, ["/s1", "/s2", "/s3"])
     assert len(gaps) == 2
-    assert all(DELAY - 0.01 <= gap < 1.5 * DELAY for gap in gaps), gaps
+    assert all(gap >= DELAY - 0.01 for gap in gaps), gaps
+    # The transport waits once after each of the three requests.
+    assert len(waits) == 3, waits
