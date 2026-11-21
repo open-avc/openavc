@@ -2,14 +2,15 @@
 Update version checker.
 
 Queries the GitHub Releases API to determine if a newer version is available.
-Supports stable and beta channels. Which release is newer is the version
-rule's (``openavc/utils/version_rule.py``).
+Supports stable and beta channels. Which release is newer, and whether two
+versions are one release, are the version rule's
+(``openavc/utils/version_rule.py``); the updater's own questions about
+versions (is it an update, is it still one, did it apply) are asked here.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,33 +37,37 @@ class ReleaseInfo:
     assets: list[dict[str, str]] = field(default_factory=list)
 
 
-# The three-part reading below is what rollback.py's installer and cache
-# sorting compares; which release is newer is the version rule's.
-_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$")
+def same_version(a: str, b: str) -> bool:
+    """Whether ``a`` and ``b`` are one release by the version rule
+    (``0.41.0-rc1``, ``0.41.0rc1`` and ``v0.41.0-rc1`` are); when either is
+    not a version, whether they are the same text."""
+    compared = compare_versions(a, b)
+    if compared is None:
+        return a == b
+    return compared == 0
 
 
-def is_valid_semver(version_str: str) -> bool:
-    """Return True if the string parses as MAJOR.MINOR.PATCH (optional -prerelease).
+def update_applied(running: str, from_version: str, to_version: str) -> bool:
+    """Whether an update from ``from_version`` to ``to_version`` applied, on
+    a system now running ``running``.
 
-    Distinguishes a genuine parse (including a real "0.0.0") from a regex miss,
-    which ``parse_semver`` can't express through its (0, 0, 0, "") fallback.
+    It did when the system runs the target, or no longer runs the version it
+    left: a release's tag and the version it bundles have been allowed to
+    differ. A version that is empty says nothing. The history at load and
+    the pending marker at confirm both ask this, and the cloud decides it the
+    same way.
     """
-    return _SEMVER_RE.match(version_str.lstrip("v").strip()) is not None
+    return _runs(running, to_version) or _left(running, from_version)
 
 
-def parse_semver(version_str: str) -> tuple[int, int, int, str]:
-    """Parse a semver string into (major, minor, patch, prerelease).
+def _runs(running: str, version: str) -> bool:
+    """Whether ``version`` is given and the system runs it."""
+    return bool(version) and same_version(running, version)
 
-    Handles formats: "1.2.3", "v1.2.3", "1.2.3-beta.1", "v1.2.3-rc.2"
-    Returns (major, minor, patch, prerelease_suffix).
-    """
-    clean = version_str.lstrip("v").strip()
-    match = _SEMVER_RE.match(clean)
-    if not match:
-        return (0, 0, 0, "")
-    major, minor, patch = int(match.group(1)), int(match.group(2)), int(match.group(3))
-    prerelease = match.group(4) or ""
-    return (major, minor, patch, prerelease)
+
+def _left(running: str, version: str) -> bool:
+    """Whether ``version`` is given and the system no longer runs it."""
+    return bool(version) and not same_version(running, version)
 
 
 def is_newer(candidate: str, current: str) -> bool:

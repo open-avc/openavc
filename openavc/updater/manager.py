@@ -22,7 +22,9 @@ from openavc.updater.checker import (
     ReleaseInfo,
     UpdateChecker,
     not_newer_refusal,
+    same_version,
     still_an_update,
+    update_applied,
 )
 from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
@@ -152,20 +154,14 @@ class UpdateManager:
         if self._history and self._history[0].get("status") == "pending":
             expected = self._history[0].get("to_version", "")
             from_version = self._history[0].get("from_version", "")
-            # The update applied if the running version is no longer the version
-            # we updated FROM. Don't require an exact match against `expected`:
-            # `expected` is the release tag while __version__ comes from the
-            # bundled pyproject, and a documented tag/pyproject skew would
-            # otherwise mark a genuinely-applied update as failed.
-            applied = (
-                (bool(expected) and __version__ == expected)
-                or (bool(from_version) and __version__ != from_version)
-            )
-            if applied:
+            # Reaching `expected` is not required: it is the release tag while
+            # __version__ comes from the bundled pyproject, and a tag/pyproject
+            # skew would otherwise mark a genuinely-applied update as failed.
+            if update_applied(__version__, from_version, expected):
                 self._history[0]["status"] = "success"
                 # What actually ran, which a release tag may not name.
                 self._history[0]["running_version"] = __version__
-                if expected and __version__ != expected:
+                if expected and not same_version(__version__, expected):
                     self._history[0]["note"] = (
                         f"Applied; running v{__version__} (release tag v{expected})"
                     )
@@ -208,9 +204,9 @@ class UpdateManager:
         # Strictly back where we started. Not merely "not on the target": a
         # release tag and the bundled pyproject version are allowed to differ,
         # and treating that skew as a revert would invent one on every restart.
-        if not from_version or not to_version or from_version == to_version:
+        if not from_version or not to_version or same_version(from_version, to_version):
             return
-        if __version__ != from_version:
+        if not same_version(__version__, from_version):
             return
 
         row["status"] = "rolled_back"

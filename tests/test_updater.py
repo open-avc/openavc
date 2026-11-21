@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from openavc.updater.checker import UpdateChecker, ReleaseInfo, parse_semver, is_newer, is_valid_semver
+from openavc.updater.checker import UpdateChecker, ReleaseInfo, is_newer
 from openavc.updater.platform import (
     DeploymentType,
     detect_deployment_type,
@@ -34,32 +34,7 @@ from openavc.updater.manager import UpdateManager
 pytestmark = pytest.mark.usefixtures("under_its_service")
 
 
-# --- Semver Parsing ---
-
-
-class TestParseSemver:
-    def test_simple(self):
-        assert parse_semver("1.2.3") == (1, 2, 3, "")
-
-    def test_with_v_prefix(self):
-        assert parse_semver("v1.2.3") == (1, 2, 3, "")
-
-    def test_with_prerelease(self):
-        assert parse_semver("1.0.0-beta.1") == (1, 0, 0, "beta.1")
-
-    def test_with_v_and_prerelease(self):
-        assert parse_semver("v2.1.0-rc.2") == (2, 1, 0, "rc.2")
-
-    def test_invalid(self):
-        assert parse_semver("not-a-version") == (0, 0, 0, "")
-
-    def test_is_valid_semver_distinguishes_miss_from_zero(self):
-        # parse_semver returns (0,0,0,"") for both a real 0.0.0 and a regex miss;
-        # is_valid_semver tells them apart.
-        assert is_valid_semver("0.0.0") is True
-        assert is_valid_semver("v1.2.3-rc.2") is True
-        assert is_valid_semver("v0.13") is False
-        assert is_valid_semver("not-a-version") is False
+# --- Which release is newer ---
 
 
 class TestIsNewer:

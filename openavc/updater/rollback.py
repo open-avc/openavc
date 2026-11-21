@@ -17,6 +17,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
 from openavc.utils.spawn import CREATE_NO_WINDOW
+from openavc.utils.version_rule import Version, read_version
 
 log = logging.getLogger(__name__)
 
@@ -360,14 +361,9 @@ def confirm_startup(data_dir: Path) -> None:
     clear_pending_marker(data_dir)
     from_version = marker.get("from_version", "")
     to_version = marker.get("to_version", "")
-    # Mirror UpdateManager._load_history: the update applied if the running
-    # version reached the target, or simply moved off the version we started
-    # from (handles release-tag/pyproject skew).
-    applied = (
-        (bool(to_version) and __version__ == to_version)
-        or (bool(from_version) and __version__ != from_version)
-    )
-    if applied:
+    from openavc.updater.checker import update_applied
+
+    if update_applied(__version__, from_version, to_version):
         log.info(
             "Update confirmed successful after startup (v%s -> v%s)",
             from_version, __version__,
@@ -501,25 +497,32 @@ def _archives_still_named(data_dir: Path) -> set[str] | None:
 
 
 def _cached_installers(cache_dir: Path) -> list[Path]:
-    """The installers in the cache whose names carry a version, oldest first."""
-    from openavc.updater.checker import is_valid_semver
-    return sorted(
-        (inst for inst in cache_dir.glob("OpenAVC-Setup-*.exe")
-         if is_valid_semver(inst.stem.removeprefix("OpenAVC-Setup-"))),
-        key=_installer_version,
+    """The installers in the cache whose names carry a version, oldest first
+    by the version rule (a release candidate before its release). A file
+    whose name carries no version is not one of ours and is not listed."""
+    readable = (
+        inst for inst in cache_dir.glob("OpenAVC-Setup-*.exe")
+        if _installer_version(inst) is not None
     )
+    return sorted(readable, key=_installer_version)
+
+
+def _names(installer: Path, version: Version | None) -> bool:
+    """Whether ``installer`` is ``version``'s, in either spelling
+    (``0.41.0-rc1`` and ``0.41.0rc1`` are one release). A version that does
+    not read names no installer."""
+    return version is not None and _installer_version(installer) == version
 
 
 def _installers_no_rollback_uses(installers: list[Path], from_version: str) -> list[Path]:
     """All but the running version's installer and the one a rollback restores:
     ``from_version``'s, else the newest other one."""
-    from openavc.updater.checker import parse_semver
     from openavc.version import __version__
 
-    running = parse_semver(__version__)
-    others = [inst for inst in installers if _installer_version(inst) != running]
-    wanted = parse_semver(from_version) if from_version else None
-    previous = [inst for inst in others if _installer_version(inst) == wanted]
+    running = read_version(__version__)
+    others = [inst for inst in installers if not _names(inst, running)]
+    wanted = read_version(from_version)
+    previous = [inst for inst in others if _names(inst, wanted)]
     keep = (previous or others)[-1:]
     return [inst for inst in others if inst not in keep]
 
@@ -622,16 +625,15 @@ def _find_pre_update_backup(data_dir: Path, marker: dict) -> Path | None:
     return candidates[-1] if candidates else None
 
 
-def _installer_version(installer: Path) -> tuple[int, int, int, str]:
-    """Parse the semver tuple out of an `OpenAVC-Setup-<version>.exe` filename.
+def _installer_version(installer: Path) -> Version | None:
+    """The version an ``OpenAVC-Setup-<version>.exe`` file name carries, by
+    the version rule; None when it carries none.
 
-    Compare using this instead of string-equal on filenames: a prerelease
-    suffix or a different but equivalent normalization (e.g. "0.10.3-rc.1"
-    vs "0.10.3-rc1") would otherwise leave rollback unable to find or
-    exclude the matching installer.
+    Compare these rather than file names: ``0.10.3-rc.1``, ``0.10.3-rc1`` and
+    ``0.10.3rc1`` name one release, and a release candidate is older than
+    its release.
     """
-    from openavc.updater.checker import parse_semver
-    return parse_semver(installer.stem.removeprefix("OpenAVC-Setup-"))
+    return read_version(installer.stem.removeprefix("OpenAVC-Setup-"))
 
 
 def _macos_previous_bundle(app_dir: Path) -> Path | None:
@@ -656,16 +658,12 @@ def can_rollback(app_dir: Path) -> bool:
         # must exist. The fresh-install path caches the running version's own
         # installer, which is not a rollback target.
         from openavc.system_config import get_system_config
-        from openavc.updater.checker import parse_semver
         from openavc.version import __version__
         cache_dir = get_system_config().data_dir / "update-cache"
         if not cache_dir.exists():
             return False
-        current_ver = parse_semver(__version__)
-        return any(
-            _installer_version(inst) != current_ver
-            for inst in cache_dir.glob("OpenAVC-Setup-*.exe")
-        )
+        current = read_version(__version__)
+        return any(not _names(inst, current) for inst in _cached_installers(cache_dir))
     if sys.platform == "darwin":
         # macOS: the wrapper snapshots the whole .app to OpenAVC.app.previous.
         previous = _macos_previous_bundle(app_dir)
@@ -729,25 +727,19 @@ def _rollback_windows(
         log.error("Rollback failed: no update-cache directory")
         return False
 
-    # Find the cached installer matching the version we're rolling back to.
-    # Match semver-wise so a prerelease tag or renormalized suffix (e.g.
-    # "0.10.3-rc.1" vs "0.10.3-rc1") doesn't break filename equality.
-    from openavc.updater.checker import parse_semver
-    installers = sorted(cache_dir.glob("OpenAVC-Setup-*.exe"))
+    # The cached installer for the version we're rolling back to, matched by
+    # the version rule so "0.10.3-rc.1" finds "0.10.3rc1".
+    installers = _cached_installers(cache_dir)
     if not installers:
         log.error("Rollback failed: no cached installer found")
         return False
 
-    # Prefer the exact from_version installer; fall back to any that isn't to_version
-    target_ver = parse_semver(from_version)
-    to_ver = parse_semver(to_version)
-    installer = None
-    for inst in installers:
-        if _installer_version(inst) == target_ver:
-            installer = inst
-            break
+    # Prefer from_version's installer; else the newest that isn't to_version's.
+    target = read_version(from_version)
+    leaving = read_version(to_version)
+    installer = next((inst for inst in installers if _names(inst, target)), None)
     if installer is None:
-        candidates = [i for i in installers if _installer_version(i) != to_ver]
+        candidates = [i for i in installers if not _names(i, leaving)]
         if not candidates:
             log.error("Rollback failed: no suitable installer (only v%s cached)", to_version)
             return False
@@ -808,7 +800,6 @@ def rollback_target_version(app_dir: Path) -> str:
     with no cached installer. Returns "" when the target can't be determined
     (rollback may still be possible; the caller reports availability separately).
     """
-    from openavc.updater.checker import parse_semver
     from openavc.version import __version__
 
     if sys.platform == "win32":
@@ -816,15 +807,13 @@ def rollback_target_version(app_dir: Path) -> str:
         cache_dir = get_system_config().data_dir / "update-cache"
         if not cache_dir.exists():
             return ""
-        current = parse_semver(__version__)
+        current = read_version(__version__)
         candidates = [
-            inst for inst in cache_dir.glob("OpenAVC-Setup-*.exe")
-            if _installer_version(inst) != current
+            inst for inst in _cached_installers(cache_dir) if not _names(inst, current)
         ]
         if not candidates:
             return ""
-        best = max(candidates, key=_installer_version)
-        return best.stem.removeprefix("OpenAVC-Setup-")
+        return candidates[-1].stem.removeprefix("OpenAVC-Setup-")
 
     if sys.platform == "darwin":
         # The .app.previous snapshot carries the same bundled pyproject.toml the
