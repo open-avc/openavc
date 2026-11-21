@@ -90,18 +90,36 @@ export class Surface {
 
 /**
  * The surfaces on screen: the page's, and the overlay stack, each overlay
- * open over it a surface of its own, oldest first. While an overlay draws its
- * controls register on it; on the page otherwise (`drawing`).
+ * open over it a surface of its own, oldest first; plus the sub-page
+ * containers' surfaces, one per container element showing a sub-page. While
+ * an overlay or a container draws, its controls register on it; on the page
+ * otherwise (`drawing`, innermost scope wins).
+ * 屏幕上的表面：页面本身、弹窗栈（最旧在前），以及每个正在显示子页面的容器
+ * 元素各自的 Surface。弹窗或容器绘制期间，其控件注册在它上面；否则注册在
+ * 页面上（drawing，最内层作用域优先）。
  */
 export class Surfaces {
     constructor() {
         this.page = new Surface();
         this.overlays = [];
+        // The open sub-page containers, by element id. A container can sit on
+        // the page or inside an overlay; its surface ends when its host's
+        // does (the renderer registered that) or when it switches sub-page.
+        // 打开的子页面容器，按元素 id。容器可在页面或弹窗内；其 Surface 随宿主
+        // 结束（渲染器已注册）或切换子页面时结束。
+        this.containers = new Map();
         this._drawingOverlay = null;
+        this._drawingContainer = null;
     }
 
-    /** The surface a control being drawn registers on. */
-    get drawing() { return this._drawingOverlay || this.page; }
+    /**
+     * The surface a control being drawn registers on. A container drawing its
+     * sub-page is the innermost scope, then an overlay drawing its page, then
+     * the page itself.
+     * 正在绘制的控件注册到的表面。容器绘制子页面是最内层作用域，其次是弹窗，
+     * 最后是页面本身。
+     */
+    get drawing() { return this._drawingContainer || this._drawingOverlay || this.page; }
 
     /** Run `draw` with `overlay` as the surface being drawn, and return what it returns. */
     drawOn(overlay, draw) {
@@ -110,16 +128,38 @@ export class Surfaces {
         try { return draw(); } finally { this._drawingOverlay = was; }
     }
 
-    /** Every binding on screen: the page's, then each overlay's, oldest first. */
-    everyBinding() {
-        if (!this.overlays.length) return this.page.bindings;
-        return [this.page, ...this.overlays].flatMap((surface) => surface.bindings);
+    /**
+     * Run `draw` with `surface` as the container being drawn, and register it
+     * under `containerId` while it runs, so showSubpage finds the entry even
+     * from inside the first draw. Nested containers save and restore, exactly
+     * as overlays do.
+     * 以 `surface` 为正在绘制的容器运行 `draw`，并在运行期间以 `containerId`
+     * 登记，使首次绘制期间 showSubpage 也能找到该条目。嵌套容器与弹窗一样
+     * 保存并恢复。
+     */
+    drawInContainer(containerId, surface, draw) {
+        const was = this._drawingContainer;
+        this._drawingContainer = surface;
+        // Registered before the draw and left afterwards: the entry stays in
+        // the map for as long as the surface shows, ending only when its host
+        // ends or the container switches sub-page (the panel owns both).
+        // 在绘制前登记并在绘制后保留：只要该 Surface 还在显示，条目就留在映射
+        // 中，直到宿主结束或容器切换子页面（两者都由面板负责）。
+        this.containers.set(containerId, surface);
+        try { return draw(); } finally { this._drawingContainer = was; }
     }
 
-    /** Every control on screen, by element id; an overlay's over the page's. */
+    /** Every binding on screen: the page's, then each overlay's, oldest first, then each container's. */
+    everyBinding() {
+        const containerBindings = [...this.containers.values()].flatMap((surface) => surface.bindings);
+        if (!this.overlays.length) return [...this.page.bindings, ...containerBindings];
+        return [this.page, ...this.overlays].flatMap((surface) => surface.bindings).concat(containerBindings);
+    }
+
+    /** Every control on screen, by element id; an overlay's over the page's, a container's over both. */
     everyControl() {
-        if (!this.overlays.length) return this.page.elementMap;
-        return Object.assign({}, this.page.elementMap, ...this.overlays.map((surface) => surface.elementMap));
+        const maps = [this.page.elementMap, ...this.overlays.map((surface) => surface.elementMap)];
+        return Object.assign({}, ...maps, ...[...this.containers.values()].map((surface) => surface.elementMap));
     }
 }
 

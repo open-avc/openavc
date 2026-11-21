@@ -1103,6 +1103,38 @@
     pointer-events: none;
 }
 
+/* ===== Sub-page container ===== */
+
+/* A sub-page container is a window onto a sub-page: the shown page's elements
+   place by percentage inside it, so the frame clips what an author nudged past
+   its edge -- this is a screen within a screen, not a region that grows.
+   子页面容器是子页面的窗口：被显示页面的元素按百分比定位在框内，越界内容被
+   裁剪——这是屏中屏，不是会撑大的区域。 */
+.panel-subpage {
+    overflow: hidden;
+}
+.subpage-host {
+    position: absolute;
+    inset: 0;
+    /* Centres a `contain` box; a `fill` box is absolutely positioned and
+       ignores the flex layout (居中 contain 盒；fill 盒为绝对定位，不受
+       flex 布局影响). */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.subpage-content-fill {
+    position: absolute;
+    inset: 0;
+}
+/* Sized by the panel (_fitSubpage) to the glass's aspect inside the frame, so
+   a differently-shaped container letterboxes instead of warping.
+   由面板（_fitSubpage）按玻璃纵横比在框内定尺寸，形状不同的容器留边而不变形。 */
+.subpage-content-contain {
+    position: relative;
+    flex: none;
+}
+
 /* ===== Clock ===== */
 
 .panel-clock {
