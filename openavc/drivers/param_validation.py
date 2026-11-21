@@ -273,8 +273,9 @@ def _setting_numeric_value(value: Any, stype: str) -> float | int | None:
 
 
 def _parsed_setting_number(value: Any) -> float | int | None:
-    """A number as given, or parsed from text; None for anything else. A
-    boolean is never a number, and neither are NaN and infinity, for the
+    """A number as given (a whole number kept exact), or parsed from text,
+    when it is a usable number (``usable_number``); None for anything else. A
+    boolean, NaN, an infinity or a number too large to hold is not one, for the
     reason ``_as_number`` gives: the range check cannot stop them, and the
     device would get ``nan`` formatted into its command."""
     if not isinstance(value, (int, float, str)):
@@ -322,20 +323,19 @@ def _setting_choice(refused: _Refused, values: list[Any], sval: str, value: Any)
 
 def _as_number(value: Any, ptype: str) -> float | None:
     """Coerce a command-param value to a float for range checking, or None when
-    it isn't a valid number of the declared type. Booleans never count as
-    numbers; an integer param rejects a non-integral value (5.0 is fine, 5.5 is
-    not).
+    it isn't a valid number of the declared type. Whether it is a number at all
+    is the usable-number rule's (``usable_number``: never a boolean, NaN, an
+    infinity or a number too large to hold); an integer param also rejects a
+    non-integral value (5.0 is fine, 5.5 is not).
 
-    NaN and infinity are not numbers here, and the range check below cannot be
-    the thing that stops them: every comparison with NaN is False, so NaN
-    cleared ``num < min`` and ``num > max`` alike and went out on the wire --
-    a fader set to an undefined level, reported as a success. Infinity was
-    caught only where a ``max`` happened to be declared, so a param without one
-    took it. Rejected here, before the integer check, because that check is
-    where it would otherwise stop being a value question at all:
-    ``int(float("nan"))`` raises ValueError and ``int(float("inf"))`` raises
-    OverflowError, and the REST door answers a bare ValueError with
-    ``Device 'x' not found`` -- about a device that is connected and rendering.
+    The range check below cannot be the thing that stops NaN or infinity:
+    every comparison with NaN is False, so NaN cleared ``num < min`` and
+    ``num > max`` alike and went out on the wire -- a fader set to an undefined
+    level, reported as a success. Infinity was caught only where a ``max``
+    happened to be declared, so a param without one took it. And a number the
+    rule refuses never reaches the integer check, where ``int()`` of it would
+    raise, and the REST door answers a bare ValueError with ``Device 'x' not
+    found`` -- about a device that is connected and rendering.
     """
     f = usable_number(value)
     if f is None:
