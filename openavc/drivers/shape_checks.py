@@ -249,7 +249,7 @@ class ShapeWalk:
         return False
 
     def _fits_const(self, node: dict[str, Any], value: Any, loc: str) -> bool:
-        if node.get("const", value) == value:
+        if "const" not in node or node["const"] == value:
             return True
         self._refuse(loc, f"must be {_shown(node['const'])}")
         return False

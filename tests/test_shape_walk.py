@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ from jsonschema.exceptions import best_match
 
 from openavc.drivers import discovery_block, spec
 from openavc.drivers.avcdriver_semantic import check_driver_definition, unknown_key_errors
-from openavc.drivers.shape_checks import LEFT_FIELDS, LEFT_KEYS, READ_KEYS, shape_refusals
+from openavc.drivers.shape_checks import LEFT_FIELDS, LEFT_KEYS, READ_KEYS, ShapeWalk, shape_refusals
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCHEMA = json.loads((_ROOT / "openavc/drivers/avcdriver.schema.json").read_text(encoding="utf-8"))
@@ -408,3 +409,23 @@ def test_a_python_driver_s_schema_takes_no_null_the_registry_does_not_declare() 
         kinds = rendered.get("type", [])
         assert "null" not in (kinds if isinstance(kinds, list) else [kinds]), name
         assert {"type": "null"} not in rendered.get("anyOf", []), name
+
+
+@pytest.mark.parametrize(
+    "node, refused",
+    [({"enum": [1, 2]}, True), ({"const": 1}, True), ({"type": "string"}, True), ({}, False)],
+)
+def test_a_nan_is_judged_like_any_other_value_and_never_stops_the_walk(
+    node: dict[str, Any], refused: bool,
+) -> None:
+    """NaN is unequal even to itself, so a test written as "the value equals
+    the node's const, or itself when there is none" refused it everywhere and
+    then raised looking for the const."""
+    assert ShapeWalk().refuses(node, math.nan) is refused
+
+
+def test_a_nan_in_a_driver_file_is_never_could_not_be_checked() -> None:
+    definition = {**BASE, "state_variables": {"level": {"type": "integer", "label": "Level", "min": math.nan}}}
+    for strict in (True, False):
+        verdict = check_driver_definition(definition, strict=strict)
+        assert not any("could not be checked" in m for m in [*verdict.errors, *verdict.notices])
