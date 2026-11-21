@@ -433,7 +433,7 @@ async def test_a_script_calls_driver_fault_is_in_the_devices_own_log(engine, cap
 
 async def test_script_error_reaches_the_programmer_and_no_panel(engine, sockets):
     panel, programmer = sockets
-    engine.events.on("script.error", engine._on_script_error)
+    engine.events.on("script.error", engine._pusher("script.error"))
     await engine.handle_ui_event("press", "flash_script")
     await engine.ws.flush_sends()
 

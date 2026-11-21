@@ -120,8 +120,12 @@ async def test_the_engine_forwards_skipped_as_a_frame_like_every_other_outcome()
     the bus. `macro.skipped` has to be in it, or a client is back to waiting."""
     fake_self = MagicMock()
     fake_self.broadcast_ws = AsyncMock()
-    await Engine._on_macro_event(
-        fake_self, "macro.skipped.warm_up",
+    fake_self.events = EventBus()
+    fake_self._event_sub_ids = []
+    fake_self._pusher = lambda msg_type: Engine._pusher(fake_self, msg_type)
+    Engine._bridge_events_to_ws(fake_self)
+    await fake_self.events.emit(
+        "macro.skipped.warm_up",
         {"macro_id": "warm_up", "name": "Warm Up", "reason": "cooldown (60s) not elapsed"},
     )
     fake_self.broadcast_ws.assert_awaited_once_with({

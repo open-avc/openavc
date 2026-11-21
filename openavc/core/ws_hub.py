@@ -10,10 +10,16 @@ Two halves of one pipeline:
     them, so they batch into a 50 ms window and go out as one
     ``state.update`` / ``state.delete`` message.
 
-THE rule for which clients a server push reaches is ``MESSAGE_AUDIENCE``
-below: every message ``broadcast`` sends is looked up there by its ``type``,
-and a type with no row reaches the Programmer only. No sender chooses its
-own audience.
+THE rule for which clients a server push reaches, and what a panel receives
+of it, is the table below. Every message ``broadcast`` sends is looked up in
+``MESSAGE_AUDIENCE`` by its ``type``, and a type with no row reaches the
+Programmer only; no sender chooses its own audience. The event stream (a
+client subscribed to bus events by name, ``api/ws.py``) asks the same table
+through ``event_reach`` and ``WSHub.panel_copy``: a bus event the engine also
+pushes (``BUS_PUSHES``) answers by its type's row, any other by its
+namespace's row in ``EVENT_AUDIENCE``, so a client hears a thing on both
+paths or on neither. ``PANEL_COPIES`` names what a panel gets instead of a
+payload written for the Programmer, on both paths.
 
 Owned by the engine (``engine.ws``). ``Engine.broadcast_ws`` forwards here
 and stays the platform-wide entry point for sending a message to panels.
@@ -22,8 +28,10 @@ and stays the platform-wide entry point for sending a message to panels.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
-from typing import Any
+from fnmatch import fnmatch
+from typing import Any, Callable
 
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
@@ -78,17 +86,19 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     "macro.skipped": _EVERYONE,
     "macro.error": _EVERYONE,
     "macro.step_error": _EVERYONE,
-    # A trigger firing, waiting, queued, skipped or done.
-    "trigger.fired": _EVERYONE,
-    "trigger.pending": _EVERYONE,
-    "trigger.queued": _EVERYONE,
-    "trigger.skipped": _EVERYONE,
-    "trigger.completed": _EVERYONE,
+    # A trigger firing, waiting, queued, skipped or done: the IDE's
+    # bookkeeping, which no panel draws.
+    "trigger.fired": _PROGRAMMER_ONLY,
+    "trigger.pending": _PROGRAMMER_ONLY,
+    "trigger.queued": _PROGRAMMER_ONLY,
+    "trigger.skipped": _PROGRAMMER_ONLY,
+    "trigger.completed": _PROGRAMMER_ONLY,
     # A plugin starting, stopping, failing, or named by the project and absent.
-    "plugin.started": _EVERYONE,
-    "plugin.stopped": _EVERYONE,
-    "plugin.error": _EVERYONE,
-    "plugin.missing": _EVERYONE,
+    # A failure's text can carry a local path or an address.
+    "plugin.started": _PROGRAMMER_ONLY,
+    "plugin.stopped": _PROGRAMMER_ONLY,
+    "plugin.error": _PROGRAMMER_ONLY,
+    "plugin.missing": _PROGRAMMER_ONLY,
     # A plugin's own save of its settings that failed.
     "error": _EVERYONE,
     # A script's exception and its traceback; a panel draws nothing from it.
@@ -109,6 +119,151 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     "discovery.complete": _PROGRAMMER_ONLY,
 }
 
+# The bus events the engine pushes as messages of their own
+# (``Engine._bridge_events_to_ws`` subscribes each): the pattern, as the bus
+# matches it, and the type the push carries. On the event stream, a subscribed
+# event that matches one answers by that type's row above.
+BUS_PUSHES: dict[str, str] = {
+    **{f"macro.{kind}.*": f"macro.{kind}" for kind in (
+        "started", "progress", "completed", "cancelled", "error", "step_error",
+        "skipped")},
+    **{name: name for name in (
+        "trigger.fired", "trigger.skipped", "trigger.pending", "trigger.queued",
+        "trigger.completed", "script.error",
+        "plugin.started", "plugin.stopped", "plugin.error", "plugin.missing")},
+}
+
+# The event stream's rows for every other bus event, by namespace (the
+# longest that fits wins). A namespace with no row reaches the Programmer
+# only: a plugin's own events, a peer instance's, the cloud's, the AI's carry
+# other systems' payloads.
+EVENT_AUDIENCE: dict[str, frozenset[str]] = {
+    # A state change is the state stream's (``state.update``), so no client
+    # hears it here: a ``*`` subscription would double the hot path.
+    "state.": frozenset(),
+    # What a panel already reflects, and what a project's author sends.
+    "custom.": _EVERYONE,
+    "ui.": _EVERYONE,
+    "device.": _EVERYONE,
+    "macro.": _EVERYONE,
+    "system.": _EVERYONE,
+}
+
+# The namespaces a panel hears on the event stream, in the table's order (the
+# Node-RED package's `event in` node warns from a copy of this list).
+PANEL_EVENT_NAMESPACES = tuple(
+    namespace for namespace, reach in EVENT_AUDIENCE.items() if PANEL in reach)
+
+
+def _exact_or_namespace(table: dict[str, Any], name: str) -> Any:
+    """The row ``name`` has in ``table``: its own, else the longest namespace
+    row (a key ending in ``.``) it falls under, else None."""
+    if name in table:
+        return table[name]
+    fits = [key for key in table if key.endswith(".") and name.startswith(key)]
+    return table[max(fits, key=len)] if fits else None
+
+
+def bus_push_type(event: str) -> str | None:
+    """The type the engine pushes this bus event as, or None when it is not
+    pushed (matched the way the bus matches its subscriptions)."""
+    for pattern, msg_type in BUS_PUSHES.items():
+        if fnmatch(event, pattern):
+            return msg_type
+    return None
+
+
+def event_reach(event: str) -> frozenset[str]:
+    """The client types that hear a bus event on the event stream: its push's
+    row when the engine pushes it, else its namespace's row, else the
+    Programmer only."""
+    msg_type = bus_push_type(event)
+    if msg_type is not None:
+        return MESSAGE_AUDIENCE.get(msg_type, _PROGRAMMER_ONLY)
+    reach = _exact_or_namespace(EVENT_AUDIENCE, event)
+    return _PROGRAMMER_ONLY if reach is None else reach
+
+
+# --- What a panel receives of it ----------------------------------------------
+#
+# A row here means a panel gets a copy made for the room instead of the
+# payload, on whichever path the thing arrives: keyed by a pushed type (which
+# answers for the bus event it is pushed from too), or by an event namespace
+# ending in ``.``. Each copy is ``(name, payload, hub) -> dict``, sync, and
+# returns a new dict: the bus hands every subscriber the same payload, and a
+# trigger reading ``$trigger.error`` keeps the text.
+
+_DEVICE_ERROR_PREFIX = "device.error."
+
+
+def _device_error_for_the_room(name: str, payload: Any, hub: WSHub) -> dict[str, Any]:
+    """A device error's ``error`` is a driver's exception text or the
+    platform's words for the Programmer, written for neither the room nor a
+    control a panel runs, so the panel's copy names the device instead."""
+    given = payload if isinstance(payload, dict) else {}
+    device_id = str(given.get("device_id") or name[len(_DEVICE_ERROR_PREFIX):])
+    copy: dict[str, Any] = {
+        "device_id": device_id,
+        "error": f"{hub.device_label(device_id)} reported an error. Contact support.",
+    }
+    if isinstance(given.get("source"), str):
+        copy["source"] = given["source"]
+    return copy
+
+
+PANEL_COPIES: dict[str, Callable[[str, Any, "WSHub"], dict[str, Any]]] = {
+    _DEVICE_ERROR_PREFIX: _device_error_for_the_room,
+}
+
+
+def _panel_copy_of(name: str) -> Callable[[str, Any, WSHub], dict[str, Any]] | None:
+    """The copy a panel gets of ``name`` (a pushed type or a bus event), or None
+    when a panel gets the payload itself."""
+    return _exact_or_namespace(PANEL_COPIES, bus_push_type(name) or name)
+
+
+def _filtered_state_text(message: dict[str, Any], ns: tuple[str, ...]) -> str | None:
+    """A ``state.update`` or ``state.delete`` cut to the keys under ``ns`` (a
+    client's namespace filter), or None when none of its keys are."""
+    if message.get("type") == "state.update":
+        changes = {k: v for k, v in message.get("changes", {}).items() if k.startswith(ns)}
+        return json.dumps({"type": "state.update", "changes": changes}) if changes else None
+    keys = [k for k in message.get("keys", []) if k.startswith(ns)]
+    return json.dumps({"type": "state.delete", "keys": keys}) if keys else None
+
+
+class _Outgoing:
+    """One broadcast's message, encoded once for each form a client gets: the
+    message, a panel's copy (its type's row in ``PANEL_COPIES``), or a state
+    batch cut to a client's namespace filter."""
+
+    def __init__(self, message: dict[str, Any], hub: WSHub) -> None:
+        self._message = message
+        self._hub = hub
+        msg_type = message.get("type")
+        # state.update and state.delete carry per-key payloads; a client with
+        # ns_prefixes should only receive keys under those namespaces.
+        self._filterable = msg_type in ("state.update", "state.delete")
+        self._room_copy = (_exact_or_namespace(PANEL_COPIES, msg_type)
+                           if isinstance(msg_type, str) else None)
+
+    @functools.cached_property
+    def _full(self) -> str:
+        return json.dumps(self._message)
+
+    @functools.cached_property
+    def _panel(self) -> str:
+        copy = self._room_copy(self._message["type"], self._message, self._hub)
+        return json.dumps(copy, default=str)
+
+    def text_for(self, client_type: str | None, ns: tuple[str, ...] | None) -> str | None:
+        """What this client is sent, or None when nothing of it is its."""
+        if self._room_copy is not None and client_type == PANEL:
+            return self._panel
+        if ns and self._filterable:
+            return _filtered_state_text(self._message, ns)
+        return self._full
+
 
 def _log_task_exception(task: asyncio.Task) -> None:
     """Log an exception from a fire-and-forget task instead of swallowing it."""
@@ -122,8 +277,10 @@ def _log_task_exception(task: asyncio.Task) -> None:
 class WSHub:
     """Registry of connected WebSocket clients + the batched push loop."""
 
-    def __init__(self, state: StateStore):
+    def __init__(self, state: StateStore, project: Callable[[], Any] | None = None):
         self._state = state
+        # The project now, for the names a panel's copy uses (None: none loaded).
+        self._project = project or (lambda: None)
 
         # WebSocket clients (set of WebSocket connections)
         self._clients: set = set()
@@ -358,40 +515,19 @@ class WSHub:
 
         Which clients it reaches is the message type's row in
         ``MESSAGE_AUDIENCE``; a type with no row reaches the Programmer only.
+        A type with a row in ``PANEL_COPIES`` reaches a panel as that copy.
         """
-        msg_type = message.get("type")
-        reach = self._reach(msg_type)
+        reach = self._reach(message.get("type"))
         if not self._clients:
             return
-
-        # state.update and state.delete carry per-key payloads; a client with
-        # ns_prefixes should only receive keys under those namespaces.
-        is_filterable = msg_type in ("state.update", "state.delete")
-
-        full_text: str | None = None
+        outgoing = _Outgoing(message, self)
         for ws in list(self._clients):
-            if self._client_types.get(id(ws)) not in reach:
+            client_type = self._client_types.get(id(ws))
+            if client_type not in reach:
                 continue
-            ns = self._ns_filters.get(id(ws)) if is_filterable else None
-            if not ns:
-                if full_text is None:
-                    full_text = json.dumps(message)
-                text = full_text
-            elif msg_type == "state.update":
-                changes = message.get("changes", {})
-                filtered = {k: v for k, v in changes.items()
-                            if k.startswith(ns)}
-                if not filtered:
-                    continue
-                text = json.dumps({"type": "state.update", "changes": filtered})
-            else:  # state.delete
-                keys = message.get("keys", [])
-                filtered_keys = [k for k in keys if k.startswith(ns)]
-                if not filtered_keys:
-                    continue
-                text = json.dumps({"type": "state.delete", "keys": filtered_keys})
-
-            self._enqueue(ws, text)
+            text = outgoing.text_for(client_type, self._ns_filters.get(id(ws)))
+            if text is not None:
+                self._enqueue(ws, text)
 
     def _reach(self, msg_type: Any) -> frozenset[str]:
         """The client types a message of this type reaches: its row, or the
@@ -411,6 +547,18 @@ class WSHub:
             f"A '{msg_type}' message has no row in the WebSocket audience "
             "table, so only the Programmer receives it"
         )
+
+    def panel_copy(self, name: str, payload: Any) -> Any:
+        """What a panel receives of ``payload`` under ``name`` (a pushed type or
+        a bus event): its row's copy in ``PANEL_COPIES``, or the payload."""
+        room_copy = _panel_copy_of(name)
+        return payload if room_copy is None else room_copy(name, payload, self)
+
+    def device_label(self, device_id: str) -> str:
+        """The name a panel's copy calls a device by."""
+        from openavc.api.error_messages import device_error_label
+
+        return device_error_label(device_id, self._state, self._project())
 
     def send(self, ws, message: dict[str, Any]) -> None:
         """Queue a JSON message for ONE client, on the same terms as broadcast.

@@ -4,8 +4,8 @@ const { compile, parsePatterns } = require("../lib/glob");
 const { serverOf, attachStatus } = require("../lib/node-common");
 
 // What a connection with no API key is shown: the events a panel already
-// reflects. Mirrors PANEL_VISIBLE_EVENT_PREFIXES in the server's
-// core/event_bus.py (a test there pins the two together). A pattern that can
+// reflects. Mirrors PANEL_EVENT_NAMESPACES in the server's
+// core/ws_hub.py (a test there pins the two together). A pattern that can
 // never match any of these is a node that will sit silent, so it is said.
 const PANEL_VISIBLE_PREFIXES = ["custom.", "ui.", "device.", "macro.", "system."];
 

@@ -67,8 +67,9 @@ def test_every_reply_type_the_package_reads_is_one_the_server_produces():
     produced = set(re.findall(r'"type":\s*"([a-z_.]+)"', server))
     # Macro lifecycle frames are relayed from bus events by name: the engine
     # subscribes to `macro.<status>.*` and broadcasts `{"type": "macro.<status>"}`.
-    engine = (ROOT / "openavc" / "core" / "engine.py").read_text(encoding="utf-8")
-    produced |= set(re.findall(r'events\.on\("(macro\.[a-z_]+)\.\*"', engine))
+    from openavc.core.ws_hub import BUS_PUSHES
+
+    produced |= set(BUS_PUSHES.values())
     assert read, "the connection switches on no reply types"
     unknown = read - produced
     assert not unknown, f"the package reads reply types the server never sends: {sorted(unknown)}"
@@ -141,10 +142,10 @@ def test_the_event_in_node_s_idea_of_what_a_keyless_connection_hears_is_the_serv
     """`event in` warns when a pattern can never match anything a keyless
     (panel-posture) connection is shown, so the node is not left silent. The
     list it judges by is a copy of the server's; this keeps the two equal."""
-    from openavc.core.event_bus import PANEL_VISIBLE_EVENT_PREFIXES
+    from openavc.core.ws_hub import PANEL_EVENT_NAMESPACES
 
     js = (PACKAGE / "nodes" / "openavc-event-in.js").read_text(encoding="utf-8")
     match = re.search(r"PANEL_VISIBLE_PREFIXES = \[([^\]]+)\]", js)
     assert match, "openavc-event-in.js no longer declares PANEL_VISIBLE_PREFIXES"
     mirrored = tuple(re.findall(r'"([^"]+)"', match.group(1)))
-    assert mirrored == PANEL_VISIBLE_EVENT_PREFIXES
+    assert mirrored == PANEL_EVENT_NAMESPACES

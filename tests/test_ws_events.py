@@ -38,15 +38,15 @@ from openavc.api.ws import (
     _parse_event_patterns,
 )
 from openavc.core.event_bus import (
-    EVENT_STREAM_EXCLUDED_PREFIXES,
     EXTERNAL_EMIT_PREFIXES,
-    PANEL_VISIBLE_EVENT_PREFIXES,
     EventBus,
     check_event_emit,
     event_visible,
 )
 from openavc.core.state_store import StateStore
-from openavc.core.ws_hub import _WS_SEND_QUEUE_MAX, WSHub
+from openavc.core.ws_hub import (
+    _WS_SEND_QUEUE_MAX, EVENT_AUDIENCE, PANEL_EVENT_NAMESPACES, WSHub,
+)
 
 
 class FakeWS:
@@ -224,11 +224,13 @@ async def test_state_changes_ride_the_state_stream_never_this_one(stream):
     assert not [f for f in ws.frames("event") if f["event"].startswith("state.")]
 
 
-def test_visibility_is_one_rule_with_three_lists():
-    for prefix in EVENT_STREAM_EXCLUDED_PREFIXES:
+def test_visibility_is_the_audience_table_s():
+    excluded = [ns for ns, reach in EVENT_AUDIENCE.items() if not reach]
+    assert excluded == ["state."]
+    for prefix in excluded:
         assert not event_visible(prefix + "x", panel=False)
         assert not event_visible(prefix + "x", panel=True)
-    for prefix in PANEL_VISIBLE_EVENT_PREFIXES:
+    for prefix in PANEL_EVENT_NAMESPACES:
         assert event_visible(prefix + "x", panel=True)
     assert not event_visible("cloud.x", panel=True)
     assert event_visible("cloud.x", panel=False)

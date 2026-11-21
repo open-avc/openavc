@@ -59,6 +59,7 @@ import uuid
 from fnmatch import fnmatch, fnmatchcase
 from typing import Any, Callable
 
+from openavc.core.ws_hub import PANEL, PROGRAMMER, event_reach
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -68,21 +69,14 @@ log = get_logger(__name__)
 #
 # Two remote doors reach the bus from outside the process -- the WebSocket's
 # event stream and its `event.emit` message, and `POST /api/events` -- and both
-# ask here, the way every remote door into the state store asks
-# `state_store.check_state_write`. One rule, so a subscription and an emit
+# ask here what an outside caller may emit, the way every remote door into the
+# state store asks `state_store.check_state_write`. One rule, so the two doors
 # cannot reach different conclusions about the same name.
 
-# What no external subscriber receives as an event. A state change is the
-# state stream's job (`state.update`, batched at 50 ms), and a `*` subscription
-# that also carried `state.changed` would double the hot path to say nothing
-# the next update does not already say.
-EVENT_STREAM_EXCLUDED_PREFIXES = ("state.",)
-
-# What an UNAUTHENTICATED subscriber may see: the namespaces a panel already
-# reflects. The rest -- a plugin's, a peer instance's, the cloud's, the AI's --
-# carry other systems' payloads, and the log stream is programmer-only on the
-# same reasoning.
-PANEL_VISIBLE_EVENT_PREFIXES = ("custom.", "ui.", "device.", "macro.", "system.")
+# Who a subscription reaches is not decided here: it is the WebSocket audience
+# table's (`core/ws_hub`), the one that decides who a server push reaches, so
+# a client hears a thing on the event stream exactly when it would get the
+# push. `event_visible` asks it.
 
 # What ANY external caller may emit. Every other namespace is owned by a
 # subsystem -- a driver's lifecycle, a plugin, the cloud, a peer -- and a
@@ -94,12 +88,9 @@ EXTERNAL_EMIT_PREFIXES = ("custom.",)
 
 
 def event_visible(event: str, *, panel: bool) -> bool:
-    """Whether an external subscriber with this posture receives ``event``."""
-    if event.startswith(EVENT_STREAM_EXCLUDED_PREFIXES):
-        return False
-    if panel:
-        return event.startswith(PANEL_VISIBLE_EVENT_PREFIXES)
-    return True
+    """Whether an external subscriber with this posture receives ``event``:
+    its row in the WebSocket audience table (``ws_hub.event_reach``)."""
+    return (PANEL if panel else PROGRAMMER) in event_reach(event)
 
 
 def check_event_emit(event: Any, payload: Any) -> str | None:

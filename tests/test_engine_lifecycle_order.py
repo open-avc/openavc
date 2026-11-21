@@ -660,12 +660,12 @@ async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_
             ("macro.completed", everyone), ("macro.cancelled", everyone),
             ("macro.error", everyone), ("macro.step_error", everyone),
             ("macro.skipped", everyone),
-            ("trigger.fired", everyone), ("trigger.skipped", everyone),
-            ("trigger.pending", everyone), ("trigger.queued", everyone),
-            ("trigger.completed", everyone),
+            ("trigger.fired", programmer), ("trigger.skipped", programmer),
+            ("trigger.pending", programmer), ("trigger.queued", programmer),
+            ("trigger.completed", programmer),
             ("script.error", programmer),
-            ("plugin.started", everyone), ("plugin.stopped", everyone),
-            ("plugin.error", everyone), ("plugin.missing", everyone),
+            ("plugin.started", programmer), ("plugin.stopped", programmer),
+            ("plugin.error", programmer), ("plugin.missing", programmer),
         ]
         assert eng._bookkeeping_queue == []
     finally:

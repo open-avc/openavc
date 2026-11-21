@@ -27,6 +27,7 @@ import asyncio
 import hmac
 import socket
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,7 @@ from openavc.core.state_persister import StatePersister
 from openavc.core.state_store import StateStore
 from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.ui_events import UIEventRuntime
-from openavc.core.ws_hub import WSHub
+from openavc.core.ws_hub import BUS_PUSHES, WSHub
 from openavc.discovery import network_scanner
 from openavc.ui.action_devices import annotate_action_devices
 from openavc.ui.matrix_model import resolve_ui
@@ -101,8 +102,9 @@ class Engine(
         self.state = StateStore()
         self.events = EventBus()
         # WebSocket fan-out + batched state push (see ws_hub); broadcast_ws
-        # below is the engine-wide door to it.
-        self.ws = WSHub(self.state)
+        # below is the engine-wide door to it. The project names the devices
+        # a panel's copy of a device error mentions.
+        self.ws = WSHub(self.state, project=lambda: self.project)
         # The panels approved to run this system (core/panel_devices). Loaded
         # here, not in start(): the socket gate asks it from the first
         # handshake, and a test-built engine that never starts still has it.
@@ -489,59 +491,19 @@ class Engine(
             log.exception("Panel device sweep stopped")
 
     def _bridge_events_to_ws(self) -> None:
-        """Subscribe the forwarders below to the engine events they carry to
-        the WebSocket clients. Once, at a start, after everything that
-        raises them exists."""
-        # Bridge macro events to WebSocket for live progress tracking
-        self._event_sub_ids.append(self.events.on("macro.started.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.progress.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.completed.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.cancelled.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.error.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.step_error.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.skipped.*", self._on_macro_event))
+        """Subscribe a forwarder to each engine event the WebSocket clients
+        are pushed (``core.ws_hub.BUS_PUSHES``: the bus pattern and the type
+        it is pushed as). Once, at a start, after everything that raises them
+        exists. Who each reaches is its type's row in ``MESSAGE_AUDIENCE``."""
+        for pattern, msg_type in BUS_PUSHES.items():
+            self._event_sub_ids.append(self.events.on(pattern, self._pusher(msg_type)))
 
-        # Bridge trigger events to WebSocket
-        self._event_sub_ids.append(self.events.on("trigger.fired", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.skipped", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.pending", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.queued", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.completed", self._on_trigger_event))
-
-        # Bridge script error events to WebSocket
-        self._event_sub_ids.append(self.events.on("script.error", self._on_script_error))
-
-        # Bridge plugin lifecycle events to WebSocket
-        self._event_sub_ids.append(self.events.on("plugin.started", self._on_plugin_event))
-        self._event_sub_ids.append(self.events.on("plugin.stopped", self._on_plugin_event))
-        self._event_sub_ids.append(self.events.on("plugin.error", self._on_plugin_event))
-        self._event_sub_ids.append(self.events.on("plugin.missing", self._on_plugin_event))
-
-    async def _on_script_error(self, event: str, payload: dict[str, Any]) -> None:
-        """Forward script error events to the WebSocket clients
-        ``script.error``'s row in ``core.ws_hub.MESSAGE_AUDIENCE`` names (the
-        Programmer). The room hears about a failed control through the
-        press's own answer.
-        """
-        await self.broadcast_ws({"type": "script.error", **payload})
-
-    async def _on_trigger_event(self, event: str, payload: dict[str, Any]) -> None:
-        """Forward trigger events to WebSocket clients."""
-        await self.broadcast_ws({"type": event, **payload})
-
-    async def _on_macro_event(self, event: str, payload: dict[str, Any]) -> None:
-        """Forward macro lifecycle events to WebSocket clients."""
-        # event is like "macro.progress.system_on" -> extract "progress"
-        parts = event.split(".")
-        event_type = parts[1] if len(parts) >= 2 else "unknown"
-        await self.broadcast_ws({
-            "type": f"macro.{event_type}",
-            **payload,
-        })
-
-    async def _on_plugin_event(self, event: str, payload: dict[str, Any]) -> None:
-        """Forward plugin lifecycle events to WebSocket clients."""
-        await self.broadcast_ws({"type": event, **(payload or {})})
+    def _pusher(self, msg_type: str) -> Callable[[str, Any], Awaitable[None]]:
+        """The bus handler that pushes an event as a ``msg_type`` message,
+        its payload the message's fields."""
+        async def push(event: str, payload: dict[str, Any] | None) -> None:
+            await self.broadcast_ws({"type": msg_type, **(payload or {})})
+        return push
 
     # --- Periodic backup ---
 
