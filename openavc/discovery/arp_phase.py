@@ -326,6 +326,14 @@ class ArpHarvest:
         Whatever is left has earned its place. It is returned, in address
         order, for the engine to announce: the first a client hears of it.
         """
+        self._drop_unproven(connected)
+        earned = [self.results[ip] for ip in sorted(self._arp_provisional) if ip in self.results]
+        self._arp_provisional.clear()
+        return earned
+
+    def _drop_unproven(self, connected: Container[str]) -> None:
+        """Remove each ARP-named host that showed nothing of its own, and say
+        in the log how many."""
         unproven = [ip for ip in self._arp_provisional if self._unproven(ip, connected)]
         for ip in unproven:
             del self.results[ip]
@@ -334,13 +342,10 @@ class ArpHarvest:
                 "Dropped %d ARP-named host(s) that answered nothing",
                 len(unproven),
             )
-        earned = [self.results[ip] for ip in sorted(self._arp_provisional) if ip in self.results]
-        self._arp_provisional.clear()
-        return earned
 
     def _unproven(self, ip: str, connected: Container[str]) -> bool:
         """An ARP-named host still in the results that showed nothing of its
-        own and is no project device's: the matcher drops it."""
+        own and is no project device's: the probation's end drops it."""
         device = self.results.get(ip)
         return (
             device is not None
