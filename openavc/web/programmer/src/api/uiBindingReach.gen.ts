@@ -64,6 +64,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
   "status_led": [
     "look"
   ],
+  "subpage_container": [
+    "look"
+  ],
   "text_input": [
     "value"
   ]
@@ -255,6 +258,10 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
   "status_led": [
     "label"
   ],
+  "subpage_container": [
+    "default_page",
+    "subpage_fit"
+  ],
   "text_input": [
     "label",
     "placeholder"
@@ -308,7 +315,7 @@ export const NAVIGATION_SENTINELS = new Set(["$back", "$dismiss"]);
  * runs at all. Which is why it is generated rather than typed here: a fifth
  * copy of a closed set is how `navigate` outlived `ui.navigate`.
  */
-export const DISPATCHED_ACTIONS: string[] = ["device.command", "event.emit", "macro", "script.call", "state.set", "ui.navigate", "value_map"];
+export const DISPATCHED_ACTIONS: string[] = ["device.command", "event.emit", "macro", "script.call", "state.set", "ui.navigate", "ui.subpage", "value_map"];
 
 /**
  * Macro steps that are NOT binding actions.

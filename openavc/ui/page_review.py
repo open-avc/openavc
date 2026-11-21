@@ -146,6 +146,10 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "select": frozenset({"look", "value"}),
     "slider": frozenset({"value"}),
     "status_led": frozenset({"look"}),
+    # subpage_container: the frame's colour/background per state, like a
+    # group's -- the shown sub-page's controls bring their own bindings.
+    # subpage_container：外框颜色/背景随状态，同 group——子页面里的控件自带绑定。
+    "subpage_container": frozenset({"look"}),
     "text_input": frozenset({"value"}),
 }
 
@@ -273,6 +277,7 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
         "send_on_release", "send_throttle_ms", "step", "thumb_size", "unit",
     }),
     "status_led": frozenset({"label"}),
+    "subpage_container": frozenset({"default_page", "subpage_fit"}),
     "text_input": frozenset({"label", "placeholder"}),
 }
 

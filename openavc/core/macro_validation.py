@@ -64,7 +64,7 @@ FileCommand = Callable[[Mapping[str, Any]], "str | None"]
 BUILTIN_STEP_ACTIONS = frozenset((
     "device.command", "group.command", "delay", "state.set",
     "macro", "event.emit", "conditional", "wait_until", "ui.navigate",
-    "help.request", "help.clear",
+    "ui.subpage", "help.request", "help.clear",
 ))
 STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "device.command": ("device", "command"),
@@ -82,6 +82,12 @@ STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     # '$back' / '$dismiss' (all non-empty strings, so the required-field
     # check below matches the runtime's "page is required" rule).
     "ui.navigate": ("page",),
+    # ui.subpage: both fields name ids the panel needs -- which container to
+    # switch and which sub-page to show in it. A sub-page only draws inside a
+    # container, so neither alone can do anything.
+    # ui.subpage：两个字段都是面板必需的 id——切换哪个容器、在容器里显示哪个
+    # 子页面。子页面只在容器里绘制，缺一个都无从生效。
+    "ui.subpage": ("container", "page"),
     # help.request: every field is optional. A bare step is the common case --
     # a panel button whose whole meaning is "someone in this room needs a
     # person" -- and requiring a message would make the simplest wiring the
@@ -562,17 +568,44 @@ class _ProjectRefs:
     #: The pages a page move can land on: the project's, and the panel's own
     #: ``$back`` and ``$dismiss``.
     page_targets: frozenset[str]
+    #: The sub-pages: pages of type "subpage", which draw only inside a
+    #: sub-page container and are not directly navigable.
+    #: 子页面：page_type 为 "subpage" 的页面，只绘制在子页面容器内，不可直接导航。
+    subpage_targets: frozenset[str]
+    #: The sub-page containers: elements of type "subpage_container", a
+    #: sub-page switch's "container" value names one of these.
+    #: 子页面容器：type 为 "subpage_container" 的元素，ui.subpage 的 container
+    #: 值必须指向其中之一。
+    container_elements: frozenset[str]
 
     @classmethod
     def of(cls, project: Any) -> _ProjectRefs:
         # Imported here: openavc.ui's reviews import this module.
         from openavc.ui.page_references import NAVIGATION_SENTINELS
 
+        ui = getattr(project, "ui", None)
+        pages = _listed(ui, "pages")
+        subpages = frozenset(p.id for p in pages if getattr(p, "page_type", "page") == "subpage")
+        # A container can sit on any page (or be a master element), and the
+        # ids are project-unique, so one pass over each element list suffices.
+        # 容器可位于任意页面（或作为 master 元素），id 全项目唯一，遍历一次即可。
+        containers = {
+            element.id
+            for page in pages
+            for element in _listed(page, "elements")
+            if getattr(element, "type", "") == "subpage_container"
+        } | {
+            master.id
+            for master in _listed(ui, "master_elements")
+            if getattr(master, "type", "") == "subpage_container"
+        }
         return cls(
             devices=_ids(project, "devices"),
             macros=_ids(project, "macros"),
             groups={g.id: list(g.device_ids or []) for g in _listed(project, "device_groups")},
-            page_targets=_ids(getattr(project, "ui", None), "pages") | NAVIGATION_SENTINELS,
+            page_targets=_ids(ui, "pages") | NAVIGATION_SENTINELS,
+            subpage_targets=subpages,
+            container_elements=frozenset(containers),
         )
 
 
@@ -614,8 +647,39 @@ def _macro_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
 def _page_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
     page = step.get("page")
     if not page or page in refs.page_targets:
+        # A sub-page exists but is not a destination: a page move aimed at one
+        # is the wrong action picked, said separately from "not found" so the
+        # fix it suggests (a ui.subpage step) is the right one.
+        # 子页面存在但不是目的地：指向它的页面切换是选错了动作，单独措辞而非
+        # 笼统的"不存在"，让提示给出的修法（改用 ui.subpage 步骤）就是对的。
+        if page and page in refs.subpage_targets:
+            return [
+                f"{path}: page '{page}' is a sub-page, shown inside a sub-page "
+                "container, not navigated to (use a ui.subpage step)"
+            ]
         return []
     return [f"{path}: page '{page}' not found in project"]
+
+
+def _subpage_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
+    # Both ids are checked, and checked against their own kind: the container
+    # must be a subpage_container element, the page must be a sub-page. A
+    # regular page named here is a real mistake, not an unknown id -- the
+    # author picked the wrong action, and the wording says so.
+    # 两个 id 都校验，且各对其类：container 必须是 subpage_container 元素，
+    # page 必须是子页面。在这里填普通页面是真实的错误而非未知 id——作者选错
+    # 了动作，措辞直接说明这一点。
+    container = step.get("container")
+    page = step.get("page")
+    found: list[str] = []
+    if container and container not in refs.container_elements:
+        found.append(f"{path}: sub-page container '{container}' not found in project")
+    if page and page not in refs.subpage_targets:
+        found.append(
+            f"{path}: page '{page}' is not a sub-page in the project "
+            "(sub-pages have page_type 'subpage'; a regular page cannot be shown in a container)"
+        )
+    return found
 
 
 #: The one id each action names, checked by its kind.
@@ -624,6 +688,7 @@ _REFERENCE_CHECKS: dict[str, Callable[[dict, str, _ProjectRefs], list[str]]] = {
     "group.command": _group_reference,
     "macro": _macro_reference,
     "ui.navigate": _page_reference,
+    "ui.subpage": _subpage_reference,
 }
 
 

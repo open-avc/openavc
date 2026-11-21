@@ -28,7 +28,7 @@ not the 1.56% it would need of the page.
 
 ## The element types
 
-`button`, `camera_preset`, `clock`, `custom`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led` and `text_input`
+`button`, `camera_preset`, `clock`, `custom`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led`, `subpage_container` and `text_input`
 
 That is the whole set. `type` is a free-form string in the file, so anything else
 is accepted by the loader, saved, given a placement -- and then dropped by the
@@ -174,7 +174,7 @@ Where a floor is not what the shape of the control suggests.
 
 ## Types with no floor at all
 
-`button`, `camera_preset`, `clock`, `custom`, `gauge`, `group`, `image`, `label`, `page_nav` and `plugin`
+`button`, `camera_preset`, `clock`, `custom`, `gauge`, `group`, `image`, `label`, `page_nav`, `plugin` and `subpage_container`
 
 These have **no fixed internals**: nothing inside them keeps a size when the box
 shrinks. What limits them is their content -- a caption, an icon, an image,
@@ -238,6 +238,7 @@ you asked for never happens. Check this table before binding.
 | select | `show.value`, `show.look` |
 | slider | `show.value` |
 | status_led | `show.look` |
+| subpage_container | `show.look` |
 | text_input | `show.value` |
 
 `show.visible_when` is absent from the table because it is honored for every
@@ -286,9 +287,10 @@ indistinguishable from a dead device.
 - `script.call`
 - `state.set`
 - `ui.navigate`
+- `ui.subpage`
 - `value_map`
 
-`device.command`, `event.emit`, `macro`, `state.set` and `ui.navigate` name a macro step as well, so the two vocabularies read like one.
+`device.command`, `event.emit`, `macro`, `state.set`, `ui.navigate` and `ui.subpage` name a macro step as well, so the two vocabularies read like one.
 These steps are **not** binding actions, and are silent when written here:
 `conditional`, `delay`, `group.command`, `help.clear`, `help.request` and `wait_until`.
 To reach one of those, put it in a macro and call that macro with
@@ -353,6 +355,7 @@ element second.
 | select | `label`, `options` |
 | slider | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `thumb_size`, `unit` |
 | status_led | `label` |
+| subpage_container | `default_page`, `subpage_fit` |
 | text_input | `label`, `placeholder` |
 
 Fields common to every element are not in the table because no renderer owns
