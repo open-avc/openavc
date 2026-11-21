@@ -316,6 +316,25 @@ def test_a_command_writes_state_and_answers_with_its_reply():
     assert sim._state["level"] == 31
 
 
+def test_a_command_addressed_to_a_child_reads_its_id_through_the_type():
+    # The captured id is read the way the roster holds it: a text-id type's
+    # "001" is that child, an integer type's "001" is child 1.
+    for id_format, instances, held in (
+        ({"type": "string"}, {"ids": ["001", "B2"]}, "001"),
+        ({"type": "integer"}, {"count": 2}, "1"),
+    ):
+        sim = _sim({"route": {
+            "send": "R{output}={input}",
+            "params": {"output": {"type": "child_id", "child_type": "output"},
+                       "input": {"type": "integer"}},
+            "sets": {"input": "{input}"},
+        }}, child_entity_types={"output": {
+            "id_format": id_format, "instances": instances,
+            "state_variables": {"input": {"type": "integer"}}}})
+        sim.handle_command(b"R001=5")
+        assert sim._state[f"output.{held}.input"] == 5, id_format
+
+
 def test_settings_handlers_follow_the_commands():
     sim = _sim({"set_level": {"send": "VOL {v}", "params": {"v": {"type": "integer"}}}},
                device_settings={"bright": {"type": "integer", "state_key": "level",

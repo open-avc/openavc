@@ -67,7 +67,12 @@ from openavc.drivers.compiled_protocol import (
     state_var_default,
     value_to_wire,
 )
-from openavc.simulator.child_roster import declared_ids, project_ids, seeded_children
+from openavc.simulator.child_roster import (
+    declared_ids,
+    project_ids,
+    roster_id,
+    seeded_children,
+)
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
@@ -872,10 +877,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _addressed_child(self, handler: CommandHandler, m: re.Match) -> str | None:
         """The rostered child a child-addressed command names: its captured
-        id, through the param's map, unpadded. None when the capture is
-        missing or names a child the roster doesn't know (the device analog
-        of addressing a port that isn't there), and the command goes
-        unanswered."""
+        id, through the param's map, read through the type's id_format the
+        way the roster holds it (``child_roster.roster_id``). None when the
+        capture is missing or names a child the roster doesn't know (the
+        device analog of addressing a port that isn't there), and the command
+        goes unanswered."""
         try:
             raw_id = m.group(handler.child_id_group)
         except (IndexError, re.error):
@@ -885,7 +891,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         raw_id = str(raw_id).strip()
         if handler.child_wire_map is not None:
             raw_id = handler.child_wire_map.get(raw_id, raw_id)
-        child_id = str(int(raw_id)) if raw_id.isdigit() else raw_id
+        child_id = roster_id(self._child_types().get(handler.child_type), raw_id)
         if child_id not in self._child_roster.get(handler.child_type, []):
             logger.debug(
                 "%s: %s addressed unknown %s %r",
