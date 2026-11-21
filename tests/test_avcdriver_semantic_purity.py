@@ -7,7 +7,8 @@ check modules it imports (``action_checks``, ``command_checks``, ``condition_che
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``, with the reader it asks,
 ``query_entry``, and the driver model, ``driver_model``,
 ``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``serial_line``, ``setting_checks``,
-``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``, ``tagged_errors``),
+``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``, ``tagged_errors``,
+and the number rule they read numbers through, ``usable_number``),
 ``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
@@ -63,6 +64,7 @@ ALLOWED = {
     "openavc.drivers.substitution_checks",
     "openavc.drivers.tagged_errors",
     "openavc.drivers.transport_choice",
+    "openavc.drivers.usable_number",
     "openavc.utils",
     "openavc.utils.regex_safety",
     "openavc.utils.version_rule",

@@ -53,6 +53,7 @@ from openavc.drivers.child_routes import (
 )
 from openavc.drivers.json_value_spec import FLAT, json_value_mapping
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
+from openavc.drivers.usable_number import usable_number
 from openavc.transport.binary_helpers import (
     DEFAULT_MAX_BUFFER,
     encode_escape_sequences,
@@ -175,16 +176,10 @@ def derive_config(config: dict[str, Any], derived: Any) -> None:
 
 
 def _min_as_number(var_def: dict[str, Any]) -> float | None:
-    """A state variable's declared ``min`` as a float, or None if it isn't a
-    number. Booleans are not numbers here: ``min: true`` is an authoring
-    mistake, and ``float(True)`` would quietly seed 1."""
-    raw = var_def.get("min")
-    if raw is None or isinstance(raw, bool):
-        return None
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return None
+    """A state variable's declared ``min`` as a float, or None when it is no
+    usable number (``usable_number``): ``min: true`` would quietly seed 1, and
+    an infinity or NaN has no whole number to round up to."""
+    return usable_number(var_def.get("min"))
 
 
 def state_var_default(var_def: dict[str, Any]) -> Any:
@@ -488,28 +483,14 @@ def conversion_of(decl: Any) -> dict[str, Any] | None:
     return found or None
 
 
-def _finite(raw: Any) -> float | None:
-    """``raw`` as a finite float, or None. Booleans are not numbers here."""
-    if isinstance(raw, bool):
-        return None
-    if isinstance(raw, (int, float)):
-        number = float(raw)
-    else:
-        try:
-            number = float(str(raw).strip())
-        except ValueError:
-            return None
-    return number if math.isfinite(number) else None
-
-
 def _whole(number: float) -> int:
     """Nearest whole number, halves away from zero (not banker's rounding)."""
     return int(math.floor(abs(number) + 0.5)) * (1 if number >= 0 else -1)
 
 
 def _scale_offset(decl: dict[str, Any]) -> tuple[float, float]:
-    scale = _finite(decl.get("scale"))
-    offset = _finite(decl.get("offset"))
+    scale = usable_number(decl.get("scale"))
+    offset = usable_number(decl.get("offset"))
     return (1.0 if scale is None or scale == 0 else scale), (offset or 0.0)
 
 
@@ -520,12 +501,12 @@ def is_unknown_reading(raw: Any, decl: Any) -> bool:
     if not isinstance(codes, list):
         return False
     text = str(raw).strip()
-    number = _finite(raw)
+    number = usable_number(raw)
     for code in codes:
         if isinstance(code, str):
             if text == code:
                 return True
-        elif number is not None and _finite(code) == number:
+        elif number is not None and usable_number(code) == number:
             return True
     return False
 
@@ -545,7 +526,7 @@ def reading_from_wire(raw: Any, decl: Any, value_type: str) -> tuple[bool, Any]:
         return True, None
     if decl.get("scale") is None and decl.get("offset") is None:
         return False, None
-    number = _finite(raw)
+    number = usable_number(raw)
     if number is None:
         return False, None
     scale, offset = _scale_offset(decl)
@@ -568,7 +549,7 @@ def value_to_wire(value: Any, decl: Any) -> Any:
         return codes[0] if isinstance(codes, list) and codes else None
     if decl.get("scale") is None and decl.get("offset") is None:
         return value
-    number = _finite(value)
+    number = usable_number(value)
     if number is None:
         return value
     scale, offset = _scale_offset(decl)
@@ -861,9 +842,8 @@ def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
     raw = resp.get("throttle")
     if raw is None:
         return None
-    try:
-        window = float(raw)
-    except (TypeError, ValueError):
+    window = usable_number(raw)
+    if window is None:
         log.warning("Invalid response throttle %r ignored", raw)
         return None
     if window <= 0:

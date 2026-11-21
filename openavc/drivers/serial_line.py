@@ -27,15 +27,17 @@ Only ``default_config`` is judged by the checker: it is what reaches a
 device's config. A ``config_schema`` entry for a line setting is a label the
 device form does not draw, since its serial picker reads this table.
 
-Purity contract, as ``spec``: standard library only. It is part of the driver
+Purity contract, as ``spec``: standard library and ``usable_number`` (the
+number rule it reads a number through). It is part of the driver
 contract the community catalog and the SDK vendor; an import-guard test
 enforces it.
 """
 
 from __future__ import annotations
 
-import math
 import re
+
+from openavc.drivers.usable_number import usable_number
 
 SERIAL_LINE_SETTINGS: dict[str, dict[str, object]] = {
     "baudrate": {
@@ -101,13 +103,7 @@ def _number_written(value: object) -> object:
 def _line_number(value: object) -> float | None:
     """A number, or decimal text, as a finite float; None for anything else."""
     written = _number_written(value)
-    if written is None:
-        return None
-    try:
-        number = float(written)  # type: ignore[arg-type]
-    except OverflowError:  # an int too large to be a float is no setting
-        return None
-    return number if math.isfinite(number) else None
+    return None if written is None else usable_number(written)
 
 
 def _spellings(choice: dict[str, object]) -> list[str]:

@@ -37,13 +37,13 @@ transport, no I/O.
 
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.usable_number import usable_number
 
 # Tuples, not sets: a declared type is whatever the definition holds, and a
 # membership test must not raise on an unhashable one.
@@ -277,20 +277,12 @@ def _parsed_setting_number(value: Any) -> float | int | None:
     boolean is never a number, and neither are NaN and infinity, for the
     reason ``_as_number`` gives: the range check cannot stop them, and the
     device would get ``nan`` formatted into its command."""
-    if isinstance(value, bool):
+    if not isinstance(value, (int, float, str)):
         return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        num = value
-    elif isinstance(value, str):
-        try:
-            num = float(value.strip())
-        except ValueError:
-            return None
-    else:
-        return None
-    return num if math.isfinite(num) else None
+    num = usable_number(value)
+    if num is not None and isinstance(value, int):
+        return value  # a whole number, kept exact
+    return num
 
 
 def _setting_text(refused: _Refused, sdef: dict[str, Any], value: Any) -> str:
@@ -345,15 +337,8 @@ def _as_number(value: Any, ptype: str) -> float | None:
     OverflowError, and the REST door answers a bare ValueError with
     ``Device 'x' not found`` -- about a device that is connected and rendering.
     """
-    if isinstance(value, bool):
-        return None
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(f):
-        return None
-    if ptype == "integer" and f != int(f):
+    f = usable_number(value)
+    if f is None or (ptype == "integer" and not f.is_integer()):
         return None
     return f
 

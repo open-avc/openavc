@@ -55,6 +55,7 @@ from urllib.parse import unquote
 import yaml
 
 from openavc.drivers.spec import without_null_sections
+from openavc.drivers.usable_number import usable_number
 from openavc.drivers.compiled_protocol import (
     build_send_frame,
     coerce_osc_value,
@@ -159,20 +160,15 @@ _SAFE_HANDLER_BUILTINS: dict[str, Any] = {
 
 
 def _as_number(value: Any) -> float | None:
-    """Return value as a float, or None if it isn't numeric.
+    """A min/max bound as a float, or None when it is no usable number
+    (``usable_number``).
 
-    Used for min/max bounds, which the schema types as numbers but a malformed
-    driver could author as a non-numeric scalar. Returning None lets the caller
-    skip clamping rather than crash on `value < min` (TypeError) or int('abc').
+    The schema types bounds as numbers, but a malformed driver could author
+    text, a boolean or an infinity. Returning None lets the caller skip
+    clamping rather than crash on `value < min` (TypeError), int('abc'), or a
+    bound of -.inf it could never round to.
     """
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return None
+    return usable_number(value)
 
 
 

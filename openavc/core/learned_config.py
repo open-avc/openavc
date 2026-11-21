@@ -56,11 +56,27 @@ from typing import Any
 
 from openavc.core.device_config import apply_config_delta
 from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.usable_number import number_value, usable_number
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
 _CONNECTED_EVENT = "device.connected."
+
+
+def _accepted_number(field_def: dict[str, Any], ftype: str, value: Any) -> tuple[bool, Any]:
+    """A numeric field's reading of ``value``: a usable number
+    (``usable_number``), whole for an integer field, inside the field's
+    bounds where each bound is a usable number."""
+    number: float | int | None = usable_number(value)
+    if number is None or (ftype == "integer" and not float(number).is_integer()):
+        return False, None
+    if ftype == "integer":
+        number = int(number)
+    low, high = number_value(field_def.get("min")), number_value(field_def.get("max"))
+    if (low is not None and number < low) or (high is not None and number > high):
+        return False, None
+    return True, number
 
 
 def accepted_value(field_def: dict[str, Any], value: Any) -> tuple[bool, Any]:
@@ -85,22 +101,7 @@ def accepted_value(field_def: dict[str, Any], value: Any) -> tuple[bool, Any]:
                 return True, option_value
         return False, None
     if ftype in ("integer", "number", "float"):
-        if isinstance(value, bool):
-            return False, None
-        try:
-            number = float(str(value).strip())
-        except ValueError:
-            return False, None
-        if ftype == "integer":
-            if number != int(number):
-                return False, None
-            number = int(number)
-        low, high = field_def.get("min"), field_def.get("max")
-        if isinstance(low, (int, float)) and number < low:
-            return False, None
-        if isinstance(high, (int, float)) and number > high:
-            return False, None
-        return True, number
+        return _accepted_number(field_def, ftype, value)
     if ftype == "boolean":
         if isinstance(value, bool):
             return True, value

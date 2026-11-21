@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.spec import AUTH_TRANSPORTS
+from openavc.drivers.usable_number import number_value, usable_number
 
 #: The sign-in type a block that names none runs.
 TELNET_LOGIN = "telnet_login"
@@ -139,25 +140,17 @@ def auth_problems(block: Any) -> tuple[tuple[str, str], ...]:
     anyway, as (place, words): a timeout that is a number of 0 or less."""
     if not isinstance(block, Mapping):
         return ()
-    value = block.get("timeout_seconds")
-    if _is_number(value) and value <= 0:
+    seconds = number_value(block.get("timeout_seconds"))
+    if seconds is not None and seconds <= 0:
         return (("auth.timeout_seconds", "must be a positive number"),)
     return ()
 
 
-def _is_number(value: Any) -> bool:
-    """A number as YAML reads one; a boolean is not."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
 def _timeout(value: Any) -> float:
-    """Seconds per stage: the value when it reads as a number above 0, else
-    the default."""
-    try:
-        seconds = float(value)
-    except (TypeError, ValueError):
-        return DEFAULT_TIMEOUT_S
-    return DEFAULT_TIMEOUT_S if seconds <= 0 else seconds
+    """Seconds per stage: the value when it reads as a usable number above 0
+    (``usable_number``), else the default."""
+    seconds = usable_number(value)
+    return DEFAULT_TIMEOUT_S if seconds is None or seconds <= 0 else seconds
 
 
 def _line_ending(value: Any) -> str:

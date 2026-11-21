@@ -33,6 +33,9 @@ ALLOWED = {
     # the child_set: compiler coerces by declared type, and the reserved keys
     # have to coerce by theirs or `online` writes the truthy string "false".
     "openavc.drivers.spec",
+    # THE usable-number rule: the seed rule, a conversion and the JSON
+    # readers ask it. Standard library only.
+    "openavc.drivers.usable_number",
     "openavc.transport",
     "openavc.transport.binary_helpers",
     "openavc.utils",
@@ -127,13 +130,16 @@ def test_the_json_value_spec_stays_a_leaf():
 
 def test_the_sign_in_reading_and_the_devices_half_stay_leaves():
     # The driver, the simulated device and the checker read an auth: block
-    # through auth_block, so it takes the contract's tables and nothing else;
-    # the device's half adds only the transport rule and the escape encoder.
+    # through auth_block, so it takes the contract's tables and the number rule
+    # and nothing else; the device's half adds only the transport rule and the
+    # escape encoder.
     assert _openavc_modules_loaded("openavc.drivers.auth_block", "-I", "-S") == {
         "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.auth_block",
+        "openavc.drivers.usable_number",
     }
     assert _openavc_modules_loaded("openavc.simulator.telnet_sign_in", "-I", "-S") == {
         "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.auth_block",
+        "openavc.drivers.usable_number",
         "openavc.drivers.transport_choice", "openavc.simulator", "openavc.simulator.telnet_sign_in",
         "openavc.transport", "openavc.transport.binary_helpers",
     }

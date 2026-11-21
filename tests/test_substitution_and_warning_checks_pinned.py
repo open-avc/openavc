@@ -596,11 +596,7 @@ def _token_readings(template: str) -> dict[str, Any]:
 
 # --- recorded from the code as it is ----------------------------------------
 
-EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('warning',
-  'polling.queries',
-  'polling.queries: could not be checked for warnings (int too large to convert to float). One of '
-  'its values is not the kind it should be, such as a number or true/false where a name goes; '
-  'correct it and check again')],
+EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [],
  'poll_each_child_unhashable': [('error',
   'polling.queries[0]',
   "polling.queries[0]: each_child type ['output'] is not a declared child_entity_type"),
@@ -613,31 +609,11 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
   "polling.queries: could not be checked for warnings (unhashable type: 'list'). One of its values "
   'is not the kind it should be, such as a number or true/false where a name goes; correct it and '
   'check again')],
- 'poll_interval_too_large': [('warning',
-  'polling.queries',
-  'polling.queries: could not be checked for warnings (int too large to convert to float). One of '
-  'its values is not the kind it should be, such as a number or true/false where a name goes; '
-  'correct it and check again')],
- 'poll_interval_too_large_at_no_gap': [('warning',
-  'polling.queries',
-  'polling.queries: could not be checked for warnings (int too large to convert to float). One of '
-  'its values is not the kind it should be, such as a number or true/false where a name goes; '
-  'correct it and check again')],
- 'poll_tcp_delay_infinite': [('warning',
-  'polling.queries',
-  'polling.queries: could not be checked for warnings (cannot convert float infinity to integer). '
-  'One of its values is not the kind it should be, such as a number or true/false where a name '
-  'goes; correct it and check again')],
- 'poll_udp_delay_infinite': [('warning',
-  'polling.queries',
-  'polling.queries: could not be checked for warnings (cannot convert float infinity to integer). '
-  'One of its values is not the kind it should be, such as a number or true/false where a name '
-  'goes; correct it and check again')],
- 'poll_udp_delay_nan': [('warning',
-  'polling.queries',
-  'polling.queries: could not be checked for warnings (cannot convert float NaN to integer). One '
-  'of its values is not the kind it should be, such as a number or true/false where a name goes; '
-  'correct it and check again')],
+ 'poll_interval_too_large': [],
+ 'poll_interval_too_large_at_no_gap': [],
+ 'poll_tcp_delay_infinite': [],
+ 'poll_udp_delay_infinite': [],
+ 'poll_udp_delay_nan': [],
  'silence_extra_unhashable': [('warning',
   'liveness',
   "liveness: could not be checked for warnings (unhashable type: 'list'). One of its values is not "
@@ -645,14 +621,19 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
   'again')],
  'silence_interval_too_large': [('warning',
   'liveness',
-  'liveness: could not be checked for warnings (int too large to convert to float). One of its '
-  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
-  'it and check again')],
+  'Nothing notices if the device stops answering over osc: it '
+  'sends no poll at its default config, and there is no liveness '
+  'block, so the device reads connected for as long as the '
+  'connection stays open. Add a liveness block that asks '
+  'something the device answers in every state.')],
  'silence_interval_too_large_no_queries': [('warning',
   'liveness',
-  'liveness: could not be checked for warnings (int too large to convert to float). One of its '
-  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
-  'it and check again')],
+  'Nothing notices if the device stops answering over '
+  'osc: it sends no poll at its default config, and '
+  'there is no liveness block, so the device reads '
+  'connected for as long as the connection stays open. '
+  'Add a liveness block that asks something the device '
+  'answers in every state.')],
  'silence_transport_unhashable': [('error', 'transport', "Unsupported transport: ['tcp']"),
                                   ('warning',
                                    'liveness',
@@ -1152,13 +1133,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                       'poll_interval in default_config.')],
  'poll_interval_bool': [],
  'poll_interval_missing': [],
- 'poll_interval_nan': [('warning',
-                        'polling.queries',
-                        'Each poll sends 1 lines, 0.1 s at 50 ms apart (the spacing used when no '
-                        'inter_command_delay is set), longer than the nan s poll interval: the '
-                        'device answers polls more than half the time, and each reading refreshes '
-                        'every nan s. Poll less per cycle, or set a longer poll_interval in '
-                        'default_config.')],
+ 'poll_interval_nan': [],
  'poll_interval_negative': [],
  'poll_interval_text': [('warning',
                          'polling.queries',
@@ -1482,19 +1457,12 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                               'every state.')],
  'silence_http': [],
  'silence_interval_nan': [('warning',
-                           'polling.queries',
-                           'Each poll sends 1 lines, 0.1 s at 50 ms apart (the spacing used when '
-                           'no inter_command_delay is set), longer than the nan s poll interval: '
-                           'the device answers polls more than half the time, and each reading '
-                           'refreshes every nan s. Poll less per cycle, or set a longer '
-                           'poll_interval in default_config.'),
-                          ('warning',
-                           'liveness',
-                           'Nothing notices if the device stops answering over tcp: it sends no '
-                           'poll at its default config, and there is no liveness block, so the '
-                           'device reads connected for as long as the connection stays open. Add a '
-                           'liveness block that asks something the device answers in every '
-                           'state.')],
+  'liveness',
+  'Nothing notices if the device stops answering over tcp: it sends no '
+  'poll at its default config, and there is no liveness block, so the '
+  'device reads connected for as long as the connection stays open. Add '
+  'a liveness block that asks something the device answers in every '
+  'state.')],
  'silence_interval_zero': [('warning',
                             'liveness',
                             'Nothing notices if the device stops answering over tcp: it sends no '
