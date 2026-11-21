@@ -52,7 +52,7 @@ async def _await_scan(discovery_engine: Any, timeout: Any) -> str | None:
         return "timeout must be a number of seconds"
     elapsed, poll_interval = 0.0, 3.0
     while elapsed < wait_timeout:
-        if discovery_engine.get_status()["status"] not in ("running", "scanning"):
+        if discovery_engine.get_status()["status"] != "running":
             break
         await asyncio.sleep(poll_interval)
         elapsed += poll_interval
@@ -280,6 +280,8 @@ class SystemToolsMixin:
             else:
                 identification_summary["unknown"] += 1
 
+        # How the scan ended and its warnings: a scan cut short ("partial")
+        # or stopped ("cancelled") says why, so the answer can say so too.
         status = discovery_engine.get_status()
         return {
             "devices": devices,
@@ -287,6 +289,7 @@ class SystemToolsMixin:
             "identification_summary": identification_summary,
             "scan_status": status["status"],
             "scan_duration_seconds": status["duration"],
+            "warnings": status["warnings"],
         }
 
     async def _list_themes(self, input: dict) -> Any:

@@ -194,14 +194,15 @@ class TestListeners:
         assert warnings.index("mDNS could not join") < warnings.index("AMX could not bind")
         assert sum(1 for w in warnings if "could not" in w) == 2
 
-    async def test_listener_warnings_come_before_the_driver_probes_warnings(self):
+    async def test_a_listener_is_named_once_when_released_after_the_driver_probes(self):
         engine = _engine()
         run = _Run(engine)
         run.env_errors = {"mdns": "mDNS could not join", "ssdp": None, "amx": None}
         run.probe_warning = "A driver probe could not run."
         await run.run()
         warnings = engine.scan_status.warnings
-        assert warnings.index("mDNS could not join") < warnings.index("A driver probe could not run.")
+        assert warnings.index("A driver probe could not run.") < warnings.index("mDNS could not join")
+        assert warnings.count("mDNS could not join") == 1
 
 
 # --- Phase 3: the host sweep ---------------------------------------------

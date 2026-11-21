@@ -29,7 +29,10 @@ The rules worth knowing before changing anything here:
 * A scan ends in one place on every way out, finished, cut short, stopped or
   with its matcher failed (``_end_scan``): the probation ends, the end state
   is settled, and every client is told. What it holds is one answer,
-  ``outcome()`` (``scan_outcome``), that every exit reads.
+  ``outcome()`` (``scan_outcome``), that every exit reads. The listeners are
+  released on every way out too, and that is where a listener that could not
+  work becomes a warning (``passive_phase``), so a scan cut short or stopped
+  still names it.
 * A port a connected project device holds is never connected to
   (``port_guard``); that device is identified from its driver instead.
 """
@@ -855,19 +858,19 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             followup = await self._port_phase(alive_ips, policy, gentle)
             await self._launch_snmp(background, alive_ips, snmp)
             await self._passive_collect_phase(background, alive_ips, followup)
-            self._report_listener_failures(listeners)
             await self._driver_probe_phase(subnets, control_ip)
             # Phase 8 (the matcher) deliberately does NOT run here — it runs
             # in _run_scan, outside the scan deadline. See _finalize_scan.
         finally:
             # Release the passive listeners (each holds a bound UDP socket on
             # 5353/1900/9131 plus a blocked recvfrom executor thread) and the
-            # SNMP scanner on EVERY exit path. On the success path phase 7
-            # already collected them (done -> no-op); on a timeout, a cancel,
-            # or ANY pipeline error this finally is the only thing that stops
-            # their 600s loops, so the sockets/threads don't leak into the next
-            # scan that binds the same SO_REUSEADDR ports.
-            await self._cancel_background_tasks(*background.tasks())
+            # SNMP scanner on EVERY exit path, and name each listener that
+            # could not work. On the success path phase 7 already collected
+            # them (done -> no-op); on a timeout, a cancel, or ANY pipeline
+            # error this finally is the only thing that stops their 600s
+            # loops, so the sockets/threads don't leak into the next scan that
+            # binds the same SO_REUSEADDR ports.
+            await self._release_listeners(listeners, background)
 
     def _alive_ips(self) -> list[str]:
         """Hosts marked alive so far this scan, in address order.

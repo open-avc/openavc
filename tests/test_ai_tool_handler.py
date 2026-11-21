@@ -269,7 +269,7 @@ async def test_get_discovery_results_envelope_includes_identification_summary(ha
         # No identification record — falls through to the "unknown" bucket.
         {"ip": "10.0.0.5", "identification": None},
     ]
-    mock_engine.get_status.return_value = {"status": "complete", "duration": 12.5}
+    mock_engine.get_status.return_value = {"status": "complete", "duration": 12.5, "warnings": []}
 
     with patch("openavc.api.discovery._engine", mock_engine):
         msg = _make_tool_call_msg("get_discovery_results")
@@ -301,7 +301,7 @@ async def test_get_discovery_results_summary_respects_category_filter(handler, m
         {"ip": "10.0.0.3", "category": "switcher",
          "identification": {"state": "identified", "driver_id": "extron_sis"}},
     ]
-    mock_engine.get_status.return_value = {"status": "complete", "duration": 1.0}
+    mock_engine.get_status.return_value = {"status": "complete", "duration": 1.0, "warnings": []}
 
     with patch("openavc.api.discovery._engine", mock_engine):
         msg = _make_tool_call_msg("get_discovery_results", {"category": "projector"})

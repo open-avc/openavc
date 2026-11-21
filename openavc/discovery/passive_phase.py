@@ -25,6 +25,9 @@ The rules worth knowing before changing anything here:
   already found keeps updating.
 * A listener that could not open its socket ends the collect window early
   only when every listener has exited: nothing is left to hear anything.
+* A listener that could not work becomes a scan warning when the listeners
+  are released (``_release_listeners``), on every way a scan ends, so a scan
+  cut short or stopped still names it.
 * The SNMP scan is waited for ``scan_budget.SNMP_COLLECT_SECONDS``, the
   figure phase 7's budget counts for it.
 
@@ -280,6 +283,18 @@ class PassiveCollection:
         # Pick up a MAC + OUI for passive-discovered devices the phase-4
         # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
         await self._late_arp_harvest()
+
+    async def _release_listeners(
+        self, listeners: Iterable[Any], background: BackgroundScans,
+    ) -> None:
+        """Stop every background task the scan started, then name each
+        listener that could not work, on every way a scan ends: one cut short
+        by its time limit, an error or a Stop says so as a finished one does.
+        A second cancel landing on the stop still leaves the warnings."""
+        try:
+            await self._cancel_background_tasks(*background.tasks())
+        finally:
+            self._report_listener_failures(listeners)
 
     def _report_listener_failures(self, listeners: Iterable[Any]) -> None:
         """A listener that could not work (multicast join failed on every

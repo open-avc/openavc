@@ -257,7 +257,7 @@ async def test_start_scan_validates_inputs(monkeypatch):
 class _FinishedDiscoveryEngine(_FakeDiscoveryEngine):
     def get_status(self):
         self.calls.append("status")
-        return {"status": "complete", "duration": 4}
+        return {"status": "complete", "duration": 4, "warnings": []}
 
     def get_results(self):
         return []
