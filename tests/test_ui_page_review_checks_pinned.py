@@ -24,7 +24,9 @@ Every element here is invented.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -334,15 +336,17 @@ def test_a_gauge_wider_than_the_device_is_not_warned() -> None:
     assert findings == []
 
 
-def test_a_declared_true_reads_as_a_bound_of_one_in_the_width_check() -> None:
-    """Pinned as it is: the fill skips a boolean bound, the width check does not."""
-    _, findings = range_review(
-        {"id": "f1", "type": "fader", "min": -1, "max": 0}, {"min": True}, KEY,
+@pytest.mark.parametrize("bound", [True, False, math.inf, -math.inf, math.nan, pytest.param(10**400, id="too-large"), "5"])
+def test_a_declared_bound_that_is_no_usable_number_is_neither_filled_nor_compared(bound: Any) -> None:
+    """A driver's ``min: true`` (or an infinity, NaN, or a number too large to
+    hold) is no bound: the fill skips it and so does the width check, as the
+    Builder's own range check does."""
+    adjustments, findings = range_review(
+        {"id": "f1", "type": "fader", "min": -1, "max": 0}, {"min": bound, "max": bound}, KEY,
     )
-    assert [f.message for f in findings] == [
-        "f1: min -1 is below the True the driver declares for device.amp.volume. The "
-        "bottom of its travel commands a value the device refuses.",
-    ]
+    assert (adjustments, findings) == ([], [])
+    adjustments, findings = range_review({"id": "f1", "type": "fader"}, {"min": bound, "max": bound}, KEY)
+    assert (adjustments, findings) == ([], [])
 
 
 def test_no_declaration_or_a_type_with_no_range_says_nothing() -> None:

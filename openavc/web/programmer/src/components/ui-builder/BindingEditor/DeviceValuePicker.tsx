@@ -531,15 +531,22 @@ function parseUnitFromLabel(label: string | undefined): string | undefined {
   return /^[A-Za-z%°]{1,5}$/.test(candidate) ? candidate : undefined;
 }
 
+/** A declared or authored bound that is a usable number: finite, so neither
+ *  true / false nor an infinity or NaN. Mirrors is_number_value in
+ *  openavc/drivers/usable_number.py, which the AI's page review asks. */
+function isUsableNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 /** What matching the control to the driver would set, and whether anything
  *  actually differs. Null when the element has no range fields or the var
- *  declares no numeric range. */
+ *  declares no usable numeric range. */
 export function driverRangeTarget(
   element: UIElement,
   varDef: DeviceStateVarDef,
 ): { min: number; max: number; step?: number; unit?: string; differs: boolean } | null {
   if (!RANGE_ELEMENTS.has(element.type)) return null;
-  if (typeof varDef.min !== "number" || typeof varDef.max !== "number") return null;
+  if (!isUsableNumber(varDef.min) || !isUsableNumber(varDef.max)) return null;
   const unit = UNIT_ELEMENTS.has(element.type)
     ? varDef.unit || parseUnitFromLabel(varDef.label)
     : undefined;
@@ -575,10 +582,10 @@ export function driverRangeOverreach(
 ): string[] {
   if (!COMMANDING_ELEMENTS.has(element.type)) return [];
   const over: string[] = [];
-  if (typeof varDef.min === "number" && typeof element.min === "number" && element.min < varDef.min) {
+  if (isUsableNumber(varDef.min) && isUsableNumber(element.min) && element.min < varDef.min) {
     over.push(`its Min of ${element.min} is below the ${varDef.min} the driver declares`);
   }
-  if (typeof varDef.max === "number" && typeof element.max === "number" && element.max > varDef.max) {
+  if (isUsableNumber(varDef.max) && isUsableNumber(element.max) && element.max > varDef.max) {
     over.push(`its Max of ${element.max} is above the ${varDef.max} the driver declares`);
   }
   return over;

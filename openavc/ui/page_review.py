@@ -57,6 +57,7 @@ from openavc.core.condition_eval import SURFACE, eval_operator
 from openavc.core.event_bus import check_project_emit
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 from openavc.core.ui_events import DISPATCHED_ACTIONS
+from openavc.drivers.usable_number import is_number_value
 from openavc.ui.control_minimums import (
     PIXEL_SLACK,
     REFERENCE_HEIGHT_PX,
@@ -2615,13 +2616,14 @@ def _range_fields(el_type: str) -> tuple[str, ...]:
 def _declared_fill(declared: Mapping[str, Any], field: str) -> Any:
     """What the driver declares for this field, when it is the kind the field takes.
 
-    A unit is words and every other bound a number, in ``_literal_kind``'s
-    sense: a boolean is neither, so it fills nothing. None when there is nothing
-    to fill with.
+    A unit is words, in ``_literal_kind``'s sense, and every other bound a
+    usable number (``is_number_value``): a boolean, an infinity or NaN fills
+    nothing. None when there is nothing to fill with.
     """
     value = declared.get(field)
-    wanted = "text" if field == "unit" else "number"
-    return value if _literal_kind(value) == wanted else None
+    if field == "unit":
+        return value if _literal_kind(value) == "text" else None
+    return value if is_number_value(value) else None
 
 
 def _range_fills(
@@ -2661,16 +2663,16 @@ _TRAVEL_ENDS: tuple[tuple[str, Callable[[Any, Any], bool], str, str], ...] = (
 def _wider_than_device(
     element: Mapping[str, Any], declared: Mapping[str, Any], state_key: str,
 ) -> list[Finding]:
-    """Each end of the control's travel that commands a value the device refuses."""
+    """Each end of the control's travel that commands a value the device refuses.
+
+    Both ends are compared only when each is a usable number
+    (``is_number_value``): a driver's ``min: true`` is no bound, as the
+    Builder's range check (``driverRangeOverreach``) reads it too."""
     el_id = str(element.get("id", "?"))
     findings: list[Finding] = []
     for field, beyond, side, end in _TRAVEL_ENDS:
         device, written = declared.get(field), element.get(field)
-        if (
-            isinstance(device, (int, float))
-            and isinstance(written, (int, float))
-            and beyond(written, device)
-        ):
+        if is_number_value(device) and is_number_value(written) and beyond(written, device):
             findings.append(Finding(
                 el_id, "range_wider_than_device",
                 f"{el_id}: {field} {_num(written)} is {side} the {_num(device)} the driver "
