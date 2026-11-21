@@ -98,7 +98,7 @@ from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, re
 from openavc.audit.session import AuditError, error_sentence
 from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.drivers.command_files import CommandFile, DeviceFile
-from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.secret_params import secret_params_of
 from openavc.utils.log_redaction import is_secret_key
 
 if TYPE_CHECKING:
@@ -952,12 +952,12 @@ def _status_queries(catalog: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
 
 
 def _secret_params(entry: dict[str, Any]) -> set[str]:
-    """The parameters whose value is a secret: marked so, or named like a
+    """The parameters whose value is kept out of the report: each one the
+    driver's declaration makes a secret (``drivers/secret_params``), and, as
+    the report's own net over what it sends away, each one named like a
     credential."""
-    return {
-        k for k, pdef in (entry.get("params") or {}).items()
-        if isinstance(pdef, dict) and (is_secret_setting(k, pdef) or is_secret_key(k))
-    }
+    params = entry.get("params") or {}
+    return set(secret_params_of(entry, params)) | {k for k in params if is_secret_key(k)}
 
 
 def _declared(entry: dict[str, Any]) -> dict[str, Any]:

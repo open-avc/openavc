@@ -67,6 +67,27 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+def layered_config(
+    defaults: Mapping[str, Any], device_config: Mapping[str, Any], connection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """A device's settings layered, later winning: its driver's
+    ``default_config``, the device's ``config``, its connection row. Pure, so
+    a reader with only a project's data (``core/saved_params``) layers them
+    as ``resolve_device_config`` does.
+
+    ``ir_codes`` overlays per code on top of the driver's shipped default set
+    rather than the shallow merge's whole-map replace: a device that authors
+    a single code (one IrCodesEditor save persists just that code) must not
+    wipe every code the driver ships.
+    """
+    merged = {**defaults, **device_config, **connection}
+    default_codes = defaults.get("ir_codes")
+    device_codes = device_config.get("ir_codes")
+    if isinstance(default_codes, dict) and isinstance(device_codes, dict):
+        merged["ir_codes"] = {**default_codes, **device_codes}
+    return merged
+
+
 def resolve_device_config(device, project) -> dict:
     """Get device config dict with driver defaults and connection table merged in.
 
@@ -83,18 +104,11 @@ def resolve_device_config(device, project) -> dict:
     login (``core.typed_fields``), before the bridge and USB rewrites.
     """
     cfg = device.model_dump() if hasattr(device, "model_dump") else dict(device)
-    defaults = get_driver_default_config(cfg.get("driver", ""))
-    device_config = cfg.get("config", {})
-    conn = project.connections.get(cfg["id"], {})
-    merged = {**defaults, **device_config, **conn}
-    # ir_codes overlays per code on top of the driver's shipped default set
-    # rather than the shallow merge's whole-map replace: a device that
-    # authors a single code (one IrCodesEditor save persists just that code)
-    # must not wipe every code the driver ships.
-    default_codes = defaults.get("ir_codes")
-    device_codes = device_config.get("ir_codes")
-    if isinstance(default_codes, dict) and isinstance(device_codes, dict):
-        merged["ir_codes"] = {**default_codes, **device_codes}
+    merged = layered_config(
+        get_driver_default_config(cfg.get("driver", "")),
+        cfg.get("config", {}),
+        project.connections.get(cfg["id"], {}),
+    )
     # A space typed around an address or a login comes off before anything
     # dials it, so a project saved with one connects without an edit.
     merged = trim_typed_fields(cfg.get("driver", ""), merged)

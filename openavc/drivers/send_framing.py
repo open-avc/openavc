@@ -48,6 +48,34 @@ from openavc.utils.logger import get_logger
 log = get_logger("openavc.drivers.configurable")
 
 
+def command_prefix(config: dict[str, Any], definition: dict[str, Any]) -> str:
+    """What goes before a command: the device's ``command_prefix``, else the
+    definition's."""
+    return config.get("command_prefix") or definition.get("command_prefix") or ""
+
+
+def command_suffix(config: dict[str, Any], definition: dict[str, Any]) -> str:
+    """What goes after a command: the device's ``command_suffix``, else the
+    definition's."""
+    return config.get("command_suffix") or definition.get("command_suffix") or ""
+
+
+def inline_suffix(
+    config: dict[str, Any], driver_info: dict[str, Any], definition: dict[str, Any],
+) -> str:
+    """What ends a command the device authored: the suffix, else the line
+    ending, which is the device's configured delimiter, else the driver's
+    (``DRIVER_INFO``, then the definition), so a command typed in the editor
+    does not need its own \\r. Pure, so the inline merge's commands can be
+    worked out from a project's device with no driver running
+    (``inline_merge.declared_commands``)."""
+    return command_suffix(config, definition) or (
+        config.get("delimiter")
+        or driver_info.get("delimiter")
+        or definition.get("delimiter", "")
+    )
+
+
 class SendFraming:
     """Send-side framing, for ``ConfigurableDriver``."""
 
@@ -67,33 +95,13 @@ class SendFraming:
         """The prefix, suffix and ``send_frame`` header, the device's config
         first, then the definition. Set before the inline-protocol merge,
         which frames the device's own commands with them."""
-        self._command_prefix = (
-            self.config.get("command_prefix")
-            or self._definition.get("command_prefix")
-            or ""
-        )
-        self._command_suffix = (
-            self.config.get("command_suffix")
-            or self._definition.get("command_suffix")
-            or ""
-        )
+        self._command_prefix = command_prefix(self.config, self._definition)
+        self._command_suffix = command_suffix(self.config, self._definition)
         self._send_frame = self._build_send_frame(self._definition.get("send_frame"))
 
-    def _line_ending(self) -> str:
-        """The line terminator a command the device authored ends with when
-        no suffix is set: the device's configured delimiter, else the driver's
-        (DRIVER_INFO, then the definition), so a command typed in the editor
-        does not need its own \\r."""
-        return (
-            self.config.get("delimiter")
-            or self.DRIVER_INFO.get("delimiter")
-            or self._definition.get("delimiter", "")
-        )
-
     def _inline_suffix(self) -> str:
-        """What ends a command the device authored: the suffix, else the
-        line ending."""
-        return self._command_suffix or self._line_ending()
+        """What ends a command the device authored (``inline_suffix``)."""
+        return inline_suffix(self.config, self.DRIVER_INFO, self._definition)
 
     def build_wire(
         self, command: str, params: dict[str, Any] | None = None

@@ -15,7 +15,9 @@ right now (connected, or the command is ``available_offline``) is the device
 manager's own question, and so is what a refusal means for the device.
 
 Where a secret parameter's value may go is decided here too, since the send
-holds the declaration (``is_secret_param``): the device's masking learns the
+holds the declaration (``is_secret_param``, which asks
+``drivers/secret_params`` about the running driver's, the answer the save
+gives from the project's data): the device's masking learns the
 value before the checks run (``register_secret_values``), so the device's
 traffic and any log line or driver error that echoes it are masked; a
 refusal names the parameter without it (``drivers/param_validation``); and
@@ -39,6 +41,7 @@ from typing import Any
 from openavc.core import saved_params
 
 from openavc.core.device_traffic import RX, TX, get_traffic_recorder
+from openavc.drivers import secret_params
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
     CommandParamError,
@@ -58,12 +61,7 @@ from openavc.drivers.command_files import (
     takes_file_sentence,
 )
 from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import (
-    file_param_names,
-    is_file_command,
-    is_secret_setting,
-    secret_settings,
-)
+from openavc.drivers.spec import file_param_names, is_file_command
 from openavc.utils.log_redaction import REDACTED, get_secret_registry
 
 
@@ -92,12 +90,16 @@ def _param_defs(driver: Any, command: str) -> dict[str, Any] | None:
 
 def is_secret_param(driver: Any, command: str, key: str) -> bool:
     """Whether parameter ``key`` of ``command`` holds a secret, by the live
-    driver's declaration (``spec.is_secret_setting``): marked secret, or
+    driver's declaration (``drivers/secret_params``): marked secret, or
     named ``password``. With no live driver there is no declaration, and
     every parameter is treated as one."""
-    if driver is None:
-        return True
-    return is_secret_setting(key, (_param_defs(driver, command) or {}).get(key))
+    return driver is None or _declared_secret(driver, command, key)
+
+
+def _declared_secret(driver: Any, command: str, key: str) -> bool:
+    """Whether the live driver declares ``key`` of ``command`` a secret; never
+    with no driver, so nothing is filled in from a guess."""
+    return secret_params.is_secret_param(_driver_info(driver).get("commands"), command, key)
 
 
 def _secret_text(value: Any) -> str | None:
@@ -164,10 +166,9 @@ def fill_saved_params(
     marked = [key for key, value in (params or {}).items() if saved_params.is_any_marker(value)]
     if not marked:
         return params
-    secret = secret_settings(_param_defs(driver, command))
     filled = dict(params or {})
     for key in marked:
-        value = fill(key, filled[key]) if key in secret else None
+        value = fill(key, filled[key]) if _declared_secret(driver, command, key) else None
         if value is None:
             raise _not_saved_here(driver, command, key)
         filled[key] = value

@@ -733,7 +733,9 @@ def login_settings_in(driver_id: str, keys: Iterable[Any]) -> list[str]:
     login, in the order given: each one in ``login_fields``, and, for a driver
     that is not installed, any setting named like a credential
     (``log_redaction.is_secret_key``), a username aside, since nothing else can
-    say which of that device's settings are logins."""
+    say which of that device's settings are logins. The one place the name
+    rule keeps a value rather than masks one: it fails safe, keeping a likely
+    login out of the project until the driver says which are."""
     fields = login_fields(driver_id)
     installed = get_driver_class(driver_id) is not None
     return [

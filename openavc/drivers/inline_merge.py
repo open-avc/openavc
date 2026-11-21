@@ -25,12 +25,15 @@ The rules worth knowing before changing anything here:
   be written to the class. The state variables are seeded again so the
   device's own appear on the device card before the first reply.
 * **The device's commands are framed once, here**, with the prefix and the
-  suffix, else the line ending (``send_framing``'s ``_command_prefix`` and
-  ``_inline_suffix``, so ``_init_send_framing`` runs first), and their names
-  are kept (``_inline_command_names``, which ``send_framing`` reads) so a
-  send does not frame them again. Their ``{placeholder}`` tokens become
-  declared params so the Send Command card prompts for them; a token naming
-  a config field is left to the config.
+  suffix, else the line ending (``send_framing``'s ``command_prefix`` and
+  ``inline_suffix``), and their names are kept (``_inline_command_names``,
+  which ``send_framing`` reads) so a send does not frame them again. Their
+  ``{placeholder}`` tokens become declared params so the Send Command card
+  prompts for them; a token naming a config field is left to the config.
+* **What a device declares is worked out by one function** (``own_commands``),
+  which the running driver's merge calls and ``declared_commands`` calls for
+  a project's device with no driver running, so the save and the send judge
+  a command on the same declaration (``drivers/secret_params``).
 * **The IR codes** are the driver's shipped ``default_config.ir_codes``
   overlaid with the device's own (already layered into the config); each
   becomes a command sent through the bound bridge (``side_sends``).
@@ -54,7 +57,46 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
     normalize_ir_codes,
 )
+from openavc.drivers.send_framing import command_prefix, inline_suffix
 from openavc.drivers.yaml_driver_info import build_commands_meta
+
+
+def own_commands(
+    definition: dict[str, Any], driver_info: dict[str, Any], config: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The commands a device's ``config`` authors over its driver: its own
+    commands, framed with the prefix and the suffix (else the line ending)
+    and given a param for each ``{placeholder}`` that names no config field,
+    and its IR codes. Both empty for a device that authors none."""
+    commands = normalize_config_commands(
+        config.get("commands"),
+        inline_suffix(config, driver_info, definition),
+        prefix=command_prefix(config, definition),
+    )
+    # config_keys are excluded: a {host} token resolves from config, not
+    # a prompt.
+    declare_command_params(commands, set(config.keys()))
+    return commands, normalize_ir_codes(config.get("ir_codes"))
+
+
+def declared_commands(driver_class: Any, config: dict[str, Any]) -> dict[str, Any]:
+    """The ``commands`` of ``DRIVER_INFO`` a device of ``driver_class`` with
+    ``config`` declares, worked out with no driver running: the class's, with
+    a YAML driver's device commands and IR codes merged over them by name, as
+    ``_merge_config_protocol`` merges them into the running driver. ``config``
+    is the device's settings as its driver is handed them (the driver's
+    defaults, the device's config, its connection row), since a placeholder
+    naming any of them is not a param. A Python driver's are its class's: it
+    builds any others itself once it runs."""
+    info = getattr(driver_class, "DRIVER_INFO", None) or {}
+    commands = info.get("commands") or {}
+    if not (isinstance(driver_class, type) and issubclass(driver_class, InlineMerge)):
+        return commands
+    definition = getattr(driver_class, "_definition", None) or {}
+    own, ir = own_commands(definition, info, config)
+    if not own and not ir:
+        return commands
+    return build_commands_meta({**(definition.get("commands") or {}), **own, **ir})
 
 
 def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
@@ -78,8 +120,6 @@ class InlineMerge:
     config: dict[str, Any]
     DRIVER_INFO: dict[str, Any]
     _definition: dict[str, Any]
-    _command_prefix: str
-    _inline_suffix: Callable[[], str]
     _init_state_variables: Callable[[], None]
 
     def _merge_config_protocol(self) -> None:
@@ -87,10 +127,8 @@ class InlineMerge:
         ``state_variables`` / ``ir_codes`` over the file definition, into a
         per-instance ``_definition`` and ``DRIVER_INFO``; a no-op when the
         device authors none of them."""
-        norm_commands = normalize_config_commands(
-            self.config.get("commands"),
-            self._inline_suffix(),
-            prefix=self._command_prefix,
+        norm_commands, ir_commands = own_commands(
+            self._definition, self.DRIVER_INFO, self.config,
         )
         # File commands (not in this set) are the ones send_command frames.
         self._inline_command_names: set[str] = set(norm_commands)
@@ -98,14 +136,9 @@ class InlineMerge:
         norm_state_vars = normalize_config_state_vars(
             self.config.get("state_variables")
         )
-        ir_commands = normalize_ir_codes(self.config.get("ir_codes"))
 
         if not any((norm_commands, norm_responses, norm_state_vars, ir_commands)):
             return
-
-        # config_keys are excluded: a {host} token resolves from config, not
-        # a prompt.
-        declare_command_params(norm_commands, set(self.config.keys()))
 
         self._definition = self._merged_definition(
             {**norm_commands, **ir_commands}, norm_responses, norm_state_vars,

@@ -53,11 +53,21 @@ trimming, learned settings, the driver validator):
     the connection ``password``, and any field the driver marks
     ``secret: true`` or ``type: password``, whatever it is called. It lives in
     the driver contract because the driver validator asks it too; the
-    Programmer mirrors it (``secretSetting.ts``);
+    Programmer mirrors it (``secretSetting.ts``). A command's parameter is
+    judged by the same rule on the device's own declaration
+    (``drivers/secret_params``);
   - the project's own: :data:`PROJECT_SECRET_FIELDS`, the mesh key.
 
-The name rule (:func:`is_secret_key`) is the backstop for what nothing marks:
-a plugin's config, state, a device whose driver is not installed.
+**The name rule** (:func:`is_secret_key`) is the outbound redactors' net and
+nothing more: the logs, the traffic recorder's state lines, the Device Audit,
+a problem report and the cloud AI's log tool also mask a value named like a
+credential, since what they send away may hold one nothing marks (a plugin's
+config, state, a field the driver forgot to mark). It never decides what is
+a secret: a parameter named ``pin`` or ``token`` that its driver does not mark
+is not saved on this system nor filled in from it, and the Programmer shows it
+as typed. One reader keeps a value by it: the login file, for a device whose
+driver is not installed (``device_logins.login_settings_in``), where nothing
+else can say which of its settings are logins.
 
 A report that records one device's settings (the device audit's connection)
 asks :func:`secret_config_keys` which of them hold a credential, by name and
@@ -80,7 +90,9 @@ from urllib.parse import quote, quote_plus
 from openavc.drivers.spec import secret_settings
 from openavc.utils.secret_audience import Exit, may_carry_secret
 
-# Config field names whose values are credentials. Matched case-insensitively:
+# Field names that look like a credential's: the outbound redactors' net
+# (module docstring, "The name rule"), never what makes a value a secret.
+# Matched case-insensitively:
 # exact names for ambiguous words (so a benign `user_label` isn't caught, nor a
 # command's `send_key` or a setting's `state_key`), substrings for the
 # unambiguous secret markers. Mirrors the auth fields BaseDriver.connect reads
@@ -114,7 +126,9 @@ IDENTITY_KEYS = frozenset({"username", "user"})
 
 
 def is_secret_key(key: Any) -> bool:
-    """True when a config field *name* marks its value as a credential."""
+    """True when a field *name* looks like a credential's: what the outbound
+    redactors mask on top of the declared secrets. Not what decides a secret
+    (``drivers/spec.is_secret_setting``, ``drivers/secret_params``)."""
     key_l = str(key).lower()
     return key_l in SECRET_KEY_EXACT or any(
         marker in key_l for marker in SECRET_KEY_SUBSTRINGS

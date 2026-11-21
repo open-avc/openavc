@@ -93,7 +93,7 @@ from openavc.audit.report_text import (
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.core.device_traffic import RING_ENTRIES, get_traffic_recorder, serialize_entry
 from openavc.drivers.registry import get_driver_class
-from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.secret_params import device_commands, is_secret_param
 from openavc.support.report_contract import report_version
 from openavc.utils.log_buffer import get_log_buffer
 from openavc.utils.log_redaction import (
@@ -179,7 +179,9 @@ class Snapshot:
         self.driver_loaded = cls is not None
         info = dict(getattr(cls, "DRIVER_INFO", None) or {})
         self.schema = info.get("config_schema") or {}
-        self.commands = info.get("commands") or {}
+        # The device's own declaration, its own protocol merged: which of a
+        # command's parameters the save and the send treat as secret.
+        self.commands = device_commands(cls, self.config)
 
         identity = driver_identity(self.driver_id, catalog) if self.driver_id else None
         self.contents: dict[str, bytes] = dict((identity or {}).pop("_contents", {}) or {})
@@ -261,12 +263,12 @@ def _context(raw: dict[str, Any] | None, commands: dict[str, Any]) -> tuple[dict
     params = raw.get("params")
     secrets: set[str] = set()
     if isinstance(params, dict):
-        command = commands.get(str(raw.get("command") or "")) or {}
-        defs = command.get("params") or {} if isinstance(command, dict) else {}
+        command = str(raw.get("command") or "")
         masked: dict[str, Any] = {}
         for key, value in params.items():
-            spec = defs.get(key) if isinstance(defs, dict) else None
-            secret = is_secret_setting(key, spec) or is_secret_key(key)
+            # The declaration decides; a name like a credential's is the
+            # report's own net over what it sends away.
+            secret = is_secret_param(commands, command, key) or is_secret_key(key)
             if secret and value not in (None, ""):
                 if isinstance(value, str):
                     secrets.add(value)

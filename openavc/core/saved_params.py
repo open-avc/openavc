@@ -42,11 +42,16 @@ nothing saved behind it never reaches a device, and the device is never sent
 a marker as its key. The log, a simulated press and a step's progress keep the
 marker: they are handed the parameters before the fill.
 
-Which parameters are secret is read off the driver installed for each device
-(a group step: any member's). A driver that is not installed says nothing, so
-its steps keep their values until it is.
+Which parameters are secret is the one answer the send gives too
+(``drivers/secret_params``), read off each device's own declaration: the
+commands its installed driver declares with the device's own protocol merged
+over them, worked out from the project's data (a group step: any member's).
+A driver that is not installed says nothing, so its steps keep their values
+until it is.
 
-Stdlib and the driver registry only: ``core/device_logins.py`` imports this.
+The driver registry, the driver contract and the settings layering only
+(``core/device_config.layered_config``): ``core/device_logins.py`` imports
+this.
 """
 
 from __future__ import annotations
@@ -57,8 +62,9 @@ import secrets as _secrets
 from collections.abc import Callable, Collection, Iterator
 from typing import Any
 
-from openavc.drivers.registry import get_driver_class
-from openavc.drivers.spec import secret_settings
+from openavc.core.device_config import layered_config
+from openavc.drivers.registry import get_driver_class, get_driver_default_config
+from openavc.drivers.secret_params import device_commands, secret_params
 
 #: How every saved-on-this-system marker starts: a device login's
 #: (``device_logins.SAVED_LOGIN``) and a saved parameter's.
@@ -187,10 +193,16 @@ def names_in(project: Any) -> set[str]:
 # --- moving values held in the clear ------------------------------------------------
 
 
-def _drivers(project: Any) -> dict[str, str]:
-    """Each device's driver, by device id."""
-    pairs = ((_get(d, "id"), _get(d, "driver")) for d in _get(project, "devices") or [])
-    return {device_id: driver for device_id, driver in pairs if isinstance(device_id, str) and isinstance(driver, str)}
+def _devices(project: Any) -> dict[str, Any]:
+    """Each device, by device id."""
+    return {
+        device_id: d for d in _get(project, "devices") or []
+        if isinstance(device_id := _get(d, "id"), str)
+    }
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _groups(project: Any) -> dict[str, list[str]]:
@@ -202,15 +214,6 @@ def _groups(project: Any) -> dict[str, list[str]]:
     }
 
 
-def command_secrets(driver_id: Any, command: Any) -> frozenset[str]:
-    """The parameters of ``command`` the installed driver ``driver_id`` marks
-    secret; none for a driver that is not installed."""
-    cls = get_driver_class(driver_id) if isinstance(driver_id, str) else None
-    commands = (getattr(cls, "DRIVER_INFO", None) or {}).get("commands") if cls is not None else None
-    definition = commands.get(command) if isinstance(commands, dict) else None
-    return secret_settings(definition.get("params")) if isinstance(definition, dict) else frozenset()
-
-
 def _held_in_the_clear(value: Any) -> bool:
     return isinstance(value, str) and value != "" and not value.startswith("$") and not is_any_marker(value)
 
@@ -219,7 +222,24 @@ class _Secrets:
     """Which parameters of a step or an action are secret, in one project."""
 
     def __init__(self, project: Any) -> None:
-        self._drivers, self._groups = _drivers(project), _groups(project)
+        self._devices, self._groups = _devices(project), _groups(project)
+        self._connections = _mapping(_get(project, "connections"))
+        self._commands: dict[str, dict[str, Any]] = {}
+
+    def _declared(self, device_id: Any) -> dict[str, Any]:
+        """The commands device ``device_id`` declares, its own protocol
+        merged, from its settings as its driver is handed them."""
+        if device_id not in self._commands:
+            device = self._devices.get(device_id)
+            driver_id = _get(device, "driver")
+            cls = get_driver_class(driver_id) if isinstance(driver_id, str) else None
+            config = layered_config(
+                get_driver_default_config(driver_id) if cls is not None else {},
+                _mapping(_get(device, "config")),
+                _mapping(self._connections.get(device_id)),
+            )
+            self._commands[device_id] = device_commands(cls, config)
+        return self._commands[device_id]
 
     def clear_in(self, holder: Any) -> list[str]:
         """The secret parameters ``holder`` holds in the clear, in its order."""
@@ -228,10 +248,10 @@ class _Secrets:
         else:
             targets = self._groups.get(_get(holder, "group"), [])
         command = _get(holder, "command")
+        params = _get(holder, "params")
         names: set[str] = set()
         for device_id in targets:
-            names |= command_secrets(self._drivers.get(device_id), command)
-        params = _get(holder, "params")
+            names |= secret_params(self._declared(device_id), command, params)
         return [key for key in params if key in names and _held_in_the_clear(params[key])]
 
 
