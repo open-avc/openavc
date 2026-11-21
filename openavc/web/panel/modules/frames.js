@@ -218,7 +218,8 @@ class PanelFrame {
         this.host = host;
         this.element = element;
         this.source = source;
-        this.who = source.pluginId ? `plugin '${source.pluginId}'` : `custom control '${element.id}'`;
+        this.who = source.pluginId ? `plugin '${source.pluginId}'`
+            : (source.who || `custom control '${element.id}'`);
         // What stops this frame: its listener and its status waiter.
         this._stops = [];
         this.stopped = false;
@@ -228,8 +229,15 @@ class PanelFrame {
         if (source.fileLabel) this._checkFile();
         this.loading = this._drawLoading();
         this._register();
+        // A frame with no bridge (a `web` element showing somebody else's page)
+        // gets nothing and listens for nothing: no opening message, no state
+        // pushes, no actions -- the remote page is display-only, and the
+        // sandbox is the whole of its reach.
+        // 无桥的帧（显示他人页面的 web 元素）什么都不收、什么都不听：无开场
+        // 消息、无状态推送、无动作——远程页面仅用于显示，沙箱就是它的全部
+        // 能力边界。
         this.iframe.addEventListener('load', () => this.open());
-        this._listen();
+        if (!this.source.noBridge) this._listen();
         applyStyle(this.node, host.themedStyle(source.styleType, element.style));
         // It stops when the surface it is drawn on ends.
         host.onEnd(() => this._stop());
@@ -290,8 +298,13 @@ class PanelFrame {
         // control). Every check reads these off the node rather than
         // re-deriving them, so the opening snapshot, the live pushes and the
         // bridge cannot end up answering differently.
-        el._grant = grantOf(this.element);
-        el._ownNamespace = this.source.ownNamespace;
+        // A no-bridge frame carries NO grant whatever a hand-edited file says:
+        // the remote page reaches nothing, so the grant is refused at the door
+        // rather than interpreted -- otherwise a state push would cross it.
+        // 无桥帧一律不带 grant，无论手改文件写了什么：远程页面什么都到不了，
+        // grant 在门口即被拒绝而非被解释——否则状态推送会越过它。
+        el._grant = this.source.noBridge ? NO_GRANT : grantOf(this.element);
+        el._ownNamespace = this.source.noBridge ? null : this.source.ownNamespace;
         this.stateFilter = (key) => mayRead(el._grant, el._ownNamespace, key);
         el._stateFilter = this.stateFilter;
     }
@@ -378,6 +391,9 @@ class PanelFrame {
      *  wall panels outlive the token lifetime by design). */
     async open() {
         this.loading.remove();
+        // No bridge, nothing to say: the load is the whole conversation.
+        // 无桥则无话可说：加载本身即是全部对话。
+        if (this.source.noBridge) return;
         const themeVars = {};
         const root = document.documentElement;
         for (const prop of THEME_VARIABLES) {

@@ -150,6 +150,9 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     # group's -- the shown sub-page's controls bring their own bindings.
     # subpage_container：外框颜色/背景随状态，同 group——子页面里的控件自带绑定。
     "subpage_container": frozenset({"look"}),
+    # web: the url a show.value binding names switches the embedded page.
+    # web：show.value 绑定所指的状态键切换被嵌的页面。
+    "web": frozenset({"value"}),
     "text_input": frozenset({"value"}),
 }
 
@@ -278,6 +281,14 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
     }),
     "status_led": frozenset({"label"}),
     "subpage_container": frozenset({"default_page", "subpage_fit"}),
+    # web: the url the frame shows and the sandbox tokens the author ticked.
+    # grant is here because the shared frame machinery reads it -- and a web
+    # element's no-bridge frame answers it with NO_GRANT, so a hand-authored
+    # grant is refused at the door rather than interpreted.
+    # web：帧所显示的 url 与作者勾选的沙箱 token。grant 在表中是因为共享帧
+    # 机制会读取它——而 web 的无桥帧以 NO_GRANT 应答，手写的 grant 在门口
+    # 即被拒绝而非被解释。
+    "web": frozenset({"grant", "sandbox_permissions", "url"}),
     "text_input": frozenset({"label", "placeholder"}),
 }
 
@@ -1718,6 +1729,7 @@ INERT_WITHOUT: dict[str, tuple[str, str | None, str]] = {
     "label": ("text", "value", "the string to draw, or a show.value binding"),
     "select": ("options", "items", "[{label, value}, ...] for the list of choices"),
     "custom": ("custom_file", None, "a page in the project's ui/ folder, e.g. 'room_map/index.html'"),
+    "web": ("url", "value", "an http(s) URL to embed"),
 }
 
 

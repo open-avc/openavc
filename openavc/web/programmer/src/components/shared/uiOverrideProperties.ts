@@ -3,7 +3,7 @@
  *
  * Writing `ui.<element id>.<property>` changes that control on every panel
  * showing it, live, and clearing the key puts the element back the way it was
- * authored. The panel reads exactly these five and nothing else.
+ * authored. The panel reads exactly these six and nothing else.
  *
  * MIRRORS `OVERRIDES` in `openavc/web/panel/modules/overrides.js`. Pinned by
  * `tests/test_ui_override_properties_mirror.py`, because a property offered
@@ -17,6 +17,10 @@ export interface UiOverrideProperty {
   /** The shape of the value, shown as the row's type badge. */
   type: "string" | "boolean" | "number";
   hint: string;
+  /** The element types this override applies to, when it is not every
+   *  element. A picker only offers the key on those types.
+   *  适用元素类型（非全元素时）。选择器只对这些类型提供该键。 */
+  appliesTo?: readonly string[];
 }
 
 export const UI_OVERRIDE_PROPERTIES: readonly UiOverrideProperty[] = [
@@ -49,6 +53,13 @@ export const UI_OVERRIDE_PROPERTIES: readonly UiOverrideProperty[] = [
     label: "Opacity",
     type: "number",
     hint: "0 to 1. Below 1 fades the control.",
+  },
+  {
+    name: "url",
+    label: "URL",
+    type: "string",
+    hint: "Web Page elements: switches the page the frame shows while the key is set. Clearing it puts the element's own URL back.",
+    appliesTo: ["web"],
   },
 ] as const;
 

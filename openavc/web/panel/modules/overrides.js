@@ -43,7 +43,7 @@ function styleOverride(property) {
 }
 
 /**
- * The five, in the order they are put back and drawn. `capture` is what a
+ * The six, in the order they are put back and drawn. `capture` is what a
  * row keeps of the control as first drawn, which is all its `putBack` reads;
  * `draw` answers whether it drew anything: a control with no words to
  * replace takes no label.
@@ -77,6 +77,43 @@ export const OVERRIDES = [
         },
         draw: (el, value) => {
             el.style.display = (value === false || value === 'false') ? 'none' : '';
+            return true;
+        },
+    },
+    {
+        name: 'url',
+        // Web element only: the page its frame shows. This is what makes a
+        // web element controllable out of the box -- state.set ui.<id>.url
+        // works with no binding authored and no variable declared, the same
+        // standing start every other override gives a control.
+        // 仅 web 元素：其帧显示的页面。这让 web 元素开箱即受控——
+        // state.set ui.<id>.url 无需创作绑定、无需声明变量，与其他覆盖字段
+        // 给控件的"从零起点"一致。
+        //
+        // The entry runs on every control, so it gates: `draw` reads the
+        // node's element type (draw receives no elementDef; the draw tree
+        // writes it), and capture/putBack read elementDef's. A cleared key
+        // puts the element's own url back and lets the redraw re-assert a
+        // binding's answer, so override > binding > static.
+        // 该条目会作用于每个控件，因此需要门控：draw 读节点的元素类型
+        // （draw 不收 elementDef，绘制树会写入），capture/putBack 读
+        // elementDef 的。键被清除时先放回元素自身的 url，再由重绘重新确认
+        // 绑定的答案——优先级 override > binding > static。
+        capture: (el, elementDef) => ({
+            url: elementDef?.type === 'web' ? String(elementDef.url || '') : undefined,
+        }),
+        putBack: (el, base, ui, elementDef) => {
+            if (elementDef?.type !== 'web' || !base?.url) return false;
+            const iframe = el._pluginIframe;
+            if (!iframe) return false;
+            iframe.src = base.url;
+            return true;
+        },
+        draw: (el, value) => {
+            if (el.dataset.elementType !== 'web') return false;
+            const iframe = el._pluginIframe;
+            if (!iframe) return false;
+            iframe.src = String(value);
             return true;
         },
     },

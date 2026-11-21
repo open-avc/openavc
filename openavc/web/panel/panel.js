@@ -2564,6 +2564,98 @@ class PanelApp {
         });
     }
 
+    // --- Web ---
+    // --- 网页 ---
+
+    /**
+     * A window onto somebody else's page: the URL drawn in the same sandboxed
+     * frame a plugin or custom control uses, with no bridge -- the remote page
+     * receives nothing (no config, no state, no token) and its messages reach
+     * nothing. It is display-and-switch: the `url` a show.value binding names
+     * swaps the source at runtime, and that is the whole of what macros and
+     * scripts can move.
+     *
+     * 他人页面的窗口：URL 画在与插件、自定义控件相同的沙箱帧里，但无桥——
+     * 远程页面收不到任何东西（配置、状态、令牌），其消息也到达不了任何地方。
+     * 它是"显示与切换"：show.value 绑定所指的 url 在运行时换源，这就是宏与
+     * 脚本能移动的全部。
+     */
+    renderWebElement(element) {
+        // http(s) or there is no frame. javascript:, data: and relative paths
+        // either breach the sandbox's spirit or would draw from the panel's own
+        // origin, which the sandbox exists to keep out.
+        // 必须是 http(s)，否则不画帧。javascript:/data: 与相对路径要么破坏
+        // 沙箱本意，要么会画到面板自身源上——而沙箱正是为了把它们挡在外面。
+        const url = String(element.url || '').trim();
+        if (!/^https?:\/\/\S+$/.test(url)) {
+            return framePlaceholder(this._frameHost(), element, { styleType: 'web', label: 'Web page (no URL chosen)' });
+        }
+
+        const frame = drawFrame(this._frameHost(), element, {
+            className: 'panel-web',
+            styleType: 'web',
+            src: url,
+            // allow-scripts always, plus what the author ticked -- the server
+            // has already filtered the list against the shared whitelist.
+            // allow-scripts 恒有，外加作者勾选项——服务端已按共享白名单过滤。
+            sandboxTokens: ['allow-scripts', ...(element.sandbox_permissions || [])],
+            // Streaming-friendly features, fixed: autoplay for a camera page
+            // that starts playing, encrypted-media for DRM'd streams,
+            // fullscreen because a wall panel asks for it.
+            // 固定的流媒体友好特性：autoplay 让摄像头页开播，encrypted-media
+            // 支持 DRM 流，fullscreen 因为壁挂面板需要。
+            allowFeatures: ['autoplay', 'encrypted-media', 'fullscreen'],
+            config: {},
+            loadingText: 'Loading page...',
+            placeholderLabel: 'Web',
+            // Live in the designer: seeing what you embedded is the point.
+            // 在设计器中实时渲染：看到所嵌的内容正是目的。
+            liveInEditMode: true,
+            // The bridge is the one thing a remote page must never have.
+            // 桥是远程页面绝不能拥有的东西。
+            noBridge: true,
+            who: `web page '${element.id}'`,
+        });
+        // The url override's draw gates on this, and masters do not walk the
+        // draw tree that writes it -- so the renderer writes its own.
+        // url 覆盖的 draw 以此门控，而 master 元素不走写入它的绘制树——
+        // 渲染器自行写入。
+        frame.dataset.elementType = 'web';
+
+        if (element.bindings?.show?.value) {
+            this.bindings.push({
+                type: 'web_url',
+                element: frame,
+                elementDef: element,
+                binding: element.bindings.show.value,
+                // The frame starts on element.url; the binding's key takes
+                // over the moment it holds a usable string.
+                // 帧从 element.url 起步；绑定键一旦持有可用字符串即接管。
+                defaultUrl: url,
+            });
+        }
+        return frame;
+    }
+
+    /** The url binding's evaluator: the bound key's string switches the page,
+     *  falling back to the element's own while the key holds nothing usable.
+     *  The first evaluation is skipped only when it names the url the frame
+     *  already loaded -- a redraw mid-session must still land on the state's
+     *  answer.
+     *  url 绑定的求值器：绑定键的字符串切换页面，键中没有可用值时回落到
+     *  元素自带的 url。仅当首次求值所指即帧已加载的 url 时跳过——会话中途的
+     *  重绘仍须落到状态键的答案上。 */
+    evaluateWebUrl(b) {
+        const raw = this.state[b.binding.key];
+        const next = (typeof raw === 'string' && raw.trim()) ? raw.trim() : b.defaultUrl;
+        if (!next || b._lastUrl === next) return;
+        const first = b._lastUrl === undefined;
+        b._lastUrl = next;
+        if (first && next === b.defaultUrl) return;
+        const iframe = b.element && b.element._pluginIframe;
+        if (iframe) iframe.src = next;
+    }
+
     /** Is the person actually in this frame right now?
      *
      *  The browser is the only thing that can answer: clicking or tapping into

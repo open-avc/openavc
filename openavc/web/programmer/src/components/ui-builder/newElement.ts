@@ -76,6 +76,8 @@ export const DEFAULT_ELEMENT_SIZES: Record<string, { w: number; h: number }> = {
   // A window onto a sub-page: wide enough to read as a content area, not a
   // tile (够宽，读作内容区而非小卡片).
   subpage_container: { w: 50, h: 50 },
+  // A web page wants room to be a page (网页需要页面级的空间).
+  web: { w: 50, h: 50 },
 };
 
 /** Fallback size for an element type with no entry above (incl. plugins). */
@@ -204,6 +206,10 @@ const NEW_ELEMENT_FIELDS = new Map<string, () => Partial<UIElement>>([
   // host page's own labels sit around it (不带 label：子页面容器是窗口而非带
   // 标题的区域，标题由宿主页面的元素承担).
   ["subpage_container", () => ({ default_page: "" })],
+  // No url default: an empty one is the review's "draws an empty box" case,
+  // and the author picks the page (url 无默认：空即评审的"空框"用例，页面由
+  // 作者选择).
+  ["web", () => ({ url: "", sandbox_permissions: [] })],
   ["clock", () => ({ clock_mode: "time" })],
   ["keypad", () => ({
     label: "Keypad",

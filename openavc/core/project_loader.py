@@ -33,7 +33,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, ValidationInfo, field_validator, model_validator
 
 
 class _ForwardCompatModel(BaseModel):
@@ -563,6 +563,29 @@ class UIElement(_ForwardCompatModel):
     # subpage_fit：子页面如何填满容器框。"fill"（默认）把子页面的百分比坐标
     # 直接拉伸到容器框；"contain" 等比缩放，余下空间用容器背景补齐，避免变形。
     subpage_fit: str | None = None
+    # Web element fields (web element only).
+    # web 元素字段（仅 web 元素读取）。
+    #
+    # url: the http(s) page the element embeds in its sandboxed iframe. A
+    # show.value binding can point at a state key whose value switches the
+    # source at runtime; this field is what shows while the key holds nothing.
+    # The target site must allow embedding (no X-Frame-Options /
+    # frame-ancestors refusal) -- nothing here can preflight that, so a
+    # refused page draws blank.
+    # url：元素在沙箱 iframe 中嵌入的 http(s) 页面。show.value 绑定可指向一个
+    # 状态键，其值在运行时切换源；绑定键为空时显示本字段。目标站点必须允许
+    # 被嵌（无 X-Frame-Options/frame-ancestors 拒绝）——这里无法预检，被拒的
+    # 页面画出来是空白。
+    url: str | None = None
+    # sandbox_permissions: the extra iframe sandbox tokens the author opted
+    # into, filtered against the same whitelist a plugin's declaration is
+    # (core/plugin_extensions.py -- allow-scripts is always set and never
+    # listed). Kept on the element so the Builder's checkboxes round-trip; the
+    # panel reads them the way it reads a plugin's.
+    # sandbox_permissions：作者勾选的额外 iframe 沙箱 token，按插件声明同一
+    # 白名单过滤（core/plugin_extensions.py——allow-scripts 恒有且不列出）。
+    # 存在元素上让 Builder 复选框得以回写，面板读取方式与读取插件的相同。
+    sandbox_permissions: list[str] | None = None
     options: list[dict[str, Any]] | None = None
     placeholder: str | None = None
     src: str | None = None
@@ -671,6 +694,37 @@ class UIElement(_ForwardCompatModel):
     @classmethod
     def id_no_dots(cls, v: str) -> str:
         return _validate_id(v, "UI element ID")
+
+    @field_validator("sandbox_permissions")
+    @classmethod
+    def sandbox_tokens_from_the_whitelist(cls, v: list[str] | None, info: ValidationInfo) -> list[str] | None:
+        """A web element's sandbox opt-ins keep only tokens the whitelist holds.
+
+        The Builder offers checkboxes, but a hand-edited file or an AI write
+        can carry anything -- and the sandbox attribute is the entire isolation
+        story, so a token that is not on the policy never reaches the frame.
+        Dropped tokens are logged with the element id, the way a plugin's
+        declaration is. ``allow-scripts`` is always set by the renderer and
+        never belongs in the list.
+        # web 元素的沙箱勾选项只保留白名单内的 token。Builder 提供复选框，但
+        # 手改文件或 AI 写入可能携带任何值——沙箱属性是全部隔离手段，不在策略
+        # 内的 token 绝不进帧。被剔除的 token 带元素 id 记日志，与插件声明的
+        # 处理一致。allow-scripts 由渲染器恒定添加，不属于此列表。
+        """
+        if not v:
+            return v
+        # Imported here: the whitelist is the only thing needed, and this
+        # keeps the loader's import graph flat.
+        # 函数级导入：白名单是这里唯一需要的东西，同时保持加载器的导入图扁平。
+        from openavc.core.plugin_extensions import ALLOWED_SANDBOX_PERMISSIONS
+
+        kept = [t for t in v if t in ALLOWED_SANDBOX_PERMISSIONS]
+        for dropped in (t for t in v if t not in ALLOWED_SANDBOX_PERMISSIONS):
+            log.warning(
+                "UI element '%s' sandbox_permissions: token '%s' is not on the "
+                "whitelist and was dropped", info.data.get("id", "?"), dropped,
+            )
+        return kept or None
 
     @model_validator(mode="after")
     def matrix_config_is_shaped_right(self) -> "UIElement":

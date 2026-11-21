@@ -28,7 +28,7 @@ not the 1.56% it would need of the page.
 
 ## The element types
 
-`button`, `camera_preset`, `clock`, `custom`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led`, `subpage_container` and `text_input`
+`button`, `camera_preset`, `clock`, `custom`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led`, `subpage_container`, `text_input` and `web`
 
 That is the whole set. `type` is a free-form string in the file, so anything else
 is accepted by the loader, saved, given a placement -- and then dropped by the
@@ -174,7 +174,7 @@ Where a floor is not what the shape of the control suggests.
 
 ## Types with no floor at all
 
-`button`, `camera_preset`, `clock`, `custom`, `gauge`, `group`, `image`, `label`, `page_nav`, `plugin` and `subpage_container`
+`button`, `camera_preset`, `clock`, `custom`, `gauge`, `group`, `image`, `label`, `page_nav`, `plugin`, `subpage_container` and `web`
 
 These have **no fixed internals**: nothing inside them keeps a size when the box
 shrinks. What limits them is their content -- a caption, an icon, an image,
@@ -240,6 +240,7 @@ you asked for never happens. Check this table before binding.
 | status_led | `show.look` |
 | subpage_container | `show.look` |
 | text_input | `show.value` |
+| web | `show.value` |
 
 `show.visible_when` is absent from the table because it is honored for every
 element type, from the page tree rather than from the renderer.
@@ -357,6 +358,7 @@ element second.
 | status_led | `label` |
 | subpage_container | `default_page`, `subpage_fit` |
 | text_input | `label`, `placeholder` |
+| web | `grant`, `sandbox_permissions`, `url` |
 
 Fields common to every element are not in the table because no renderer owns
 them: `aspect_lock`, `bindings`, `css_class`, `hidden`, `id`, `locked`, `pages`, `parent`, `placement`, `placements`, `style` and `type`.
@@ -366,7 +368,7 @@ them: `aspect_lock`, `bindings`, `css_class`, `hidden`, `id`, `locked`, `pages`,
 element belongs to no layout, so there it is an element property and works.
 
 Four types draw an empty box when one particular thing is missing, and a write
-warns about each: a `custom` needs `custom_file`; a `image` needs `src`; a `label` needs `text` or a `show.value` binding; a `page_nav` needs `target_page`; a `select` needs `options` or a `show.items` binding.
+warns about each: a `custom` needs `custom_file`; a `image` needs `src`; a `label` needs `text` or a `show.value` binding; a `page_nav` needs `target_page`; a `select` needs `options` or a `show.items` binding; a `web` needs `url` or a `show.value` binding.
 
 ## When a keypad sends
 

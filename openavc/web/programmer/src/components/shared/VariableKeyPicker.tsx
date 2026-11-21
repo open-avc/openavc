@@ -248,6 +248,11 @@ export function VariableKeyPicker({
         seen.add(id);
         const name = el.label || el.id;
         for (const prop of UI_OVERRIDE_PROPERTIES) {
+          // A gated override is only offered on the element types it applies
+          // to -- ui.<id>.url is a web element's handle, not a button's.
+          // 带门控的覆盖项只对适用类型的元素提供——ui.<id>.url 是 web 元素
+          // 的把手，不是按钮的。
+          if (prop.appliesTo && !prop.appliesTo.includes(el.type ?? "")) continue;
           const key = `ui.${id}.${prop.name}`;
           offeredUiKeys.add(key);
           entries.push({

@@ -60,6 +60,7 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "subpage_container", label: "Sub-page Container", category: "navigation", description: "A window onto a sub-page; buttons on this page switch which sub-page it shows" },
   { type: "camera_preset", label: "Camera Preset", category: "navigation", description: "Button to recall a PTZ camera preset position" },
   { type: "custom", label: "Custom Control", category: "display", description: "Your own HTML/CSS/JS, running in its own box on the page" },
+  { type: "web", label: "Web Page", category: "display", description: "A device's or any web page, embedded in a sandboxed frame; a binding can switch the URL" },
 ];
 
 // --- Screen presets ---

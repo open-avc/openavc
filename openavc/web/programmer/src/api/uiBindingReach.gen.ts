@@ -67,6 +67,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
   "subpage_container": [
     "look"
   ],
+  "web": [
+    "value"
+  ],
   "text_input": [
     "value"
   ]
@@ -261,6 +264,11 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
   "subpage_container": [
     "default_page",
     "subpage_fit"
+  ],
+  "web": [
+    "grant",
+    "sandbox_permissions",
+    "url"
   ],
   "text_input": [
     "label",

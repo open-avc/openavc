@@ -317,6 +317,12 @@ export interface UIElement {
   // Sub-page container 字段：初始显示的子页面，以及填充方式（fill/contain）。
   default_page?: string | null;
   subpage_fit?: "fill" | "contain" | null;
+  // Web element: the http(s) page it embeds and the sandbox tokens the author
+  // ticked (filtered against the server's whitelist on load).
+  // web 元素：所嵌入的 http(s) 页面与作者勾选的沙箱 token（加载时按服务端
+  // 白名单过滤）。
+  url?: string | null;
+  sandbox_permissions?: string[] | null;
   css_class?: string | null;
   /** A word this control passes to whatever it runs, read in a macro as
    *  $trigger.tag, so one macro can serve a whole array of controls. */

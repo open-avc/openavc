@@ -127,6 +127,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
 | **Matrix** | Routing: a wall of destination tiles, a list of dropdowns, or a crosspoint grid | Video/audio switcher routing |
 | **Custom Control** | A page you wrote yourself, running inside the element's box | Seating map, rack diagram, a control nothing else covers |
+| **Web Page** | A device's or any web page, embedded in a sandboxed frame; a binding can switch the URL | A camera's own control page, a switcher's routing UI, a dashboard |
 
 ## Custom Controls
 
@@ -225,6 +226,17 @@ To build one:
 The **Fit** setting decides how the sub-page fills the container: **Fill** stretches its percentage coordinates onto the box; **Contain** keeps the screen's shape and letterboxes the rest, so a wide sub-page in a tall box is centered, not warped. A sub-page's own controls bind state and run actions exactly as they would on a full page, and its timers and bindings end when the host page goes or the container switches. Master elements never draw inside a container -- a sub-page is content, and the frame around it belongs to the host page.
 
 Deleting a page cleans up after itself: a nav aimed at it is cleared, and a sub-page switch that would have shown it is removed.
+
+## The Web Page element
+
+A **Web Page** element embeds an http(s) URL in a sandboxed frame -- the same frame machinery a custom control and a plugin run in. It exists for the control surfaces device vendors already built: a camera's own PTZ page, a switcher's routing UI, a DSP's zone editor. The vendor wrote the page and maintains it; the panel hosts it.
+
+- **The target site must allow being embedded.** A page that sends `X-Frame-Options` or a `frame-ancestors` policy refuses, and the frame draws blank -- most public sites refuse, device WebUIs and self-hosted dashboards usually allow. Open the URL in a browser tab first; nothing in the Builder can check it for you.
+- **The frame has no bridge.** The embedded page receives nothing from the room (no state, no device access, no events) and its buttons reach nothing in OpenAVC. It is display-and-switch: bind the **Value** card to a state key (say `var.camera_stream`) and any macro or script that sets that key switches the page (`state.set var.camera_stream = "https://camera.local/stream3"`). Create the variable on the spot with the picker's **+ New Variable** row at the bottom of the list, or ahead of time on the Variables page.
+- **Sandbox opt-ins** let a page that needs them submit forms, open dialogs or pop-ups, or keep its own origin (so its cookies and storage work). They are the same whitelist a plugin's declaration is filtered against; everything else is refused on load.
+- The element has no `grant` and no availability marking -- remote content reaches nothing, and a blank frame cannot be told apart from a slow one.
+
+Two-way data (the page reacting to room state, or sending commands back) is what the [custom control](custom-controls.md) is for: its markup runs with a message bridge, and it can wrap whatever third-party page you embed.
 
 ## Bindings
 
