@@ -160,6 +160,7 @@ const TYPE_FIELDS: Record<string, (props: SectionProps) => React.JSX.Element> = 
   level_meter: LevelMeterFields,
   fader: FaderFields,
   group: GroupFields,
+  subpage_container: SubpageContainerFields,
   clock: ClockFields,
   list: ListFields,
   matrix: MatrixFields,
@@ -314,6 +315,49 @@ function PageNavFields({ element, pages, onChange }: SectionProps) {
       >
         Light up while its page is showing
       </CheckboxRow>
+    </>
+  );
+}
+
+/**
+ * The sub-page a container opens with, and how it fills the box. The picker
+ * offers sub-pages ONLY -- a regular page cannot be shown in a container, and
+ * a picker that offered one would author an opening the review then warns
+ * about. Empty is allowed: the container starts blank until a button's
+ * "Show Sub-page" action names it.
+ * 容器初始显示的子页面，以及它如何填满容器框。选择器只提供子页面——普通
+ * 页面无法在容器中显示，若提供反而会编排出评审随后警告的初始页。允许为空：
+ * 容器先留空，直到某个按钮的"显示子页面"动作指名它。
+ */
+function SubpageContainerFields({ element, pages, onChange }: SectionProps) {
+  const subpages = pages.filter((p) => (p.page_type ?? "page") === "subpage");
+  return (
+    <>
+      <FieldRow label="Default Sub-page">
+        <SearchableSelect
+          value={element.default_page || ""}
+          onChange={(default_page) => onChange({ default_page: default_page || undefined })}
+          groups={[
+            { options: subpages.map((p) => ({ value: p.id, label: p.name || p.id, hint: p.id })) },
+          ]}
+          placeholder="None (starts empty)..."
+          searchPlaceholder="Search sub-pages..."
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Fit">
+        <select
+          value={element.subpage_fit || "fill"}
+          onChange={(e) => {
+            const fit = e.target.value;
+            onChange({ subpage_fit: fit === "fill" ? undefined : (fit as "contain") });
+          }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        >
+          <option value="fill">Fill (stretch to the box)</option>
+          <option value="contain">Contain (keep shape, letterbox)</option>
+        </select>
+      </FieldRow>
     </>
   );
 }
