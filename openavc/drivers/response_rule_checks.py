@@ -26,6 +26,9 @@ and the properties it writes are the base class's, the same for all three.
 The runtime's twin is ``child_routes.py``, which compiles the same entries and
 skips what it cannot read; refusing them here is what tells the author why.
 
+Which key a json value spec names is ``json_value_spec``'s reading, the one
+the runtime compiles with; these checks judge the key as written.
+
 Purity contract, as for ``avcdriver_semantic``: standard library, the sibling
 contract modules and the stdlib-only regex-safety helper. The module is
 vendored with the rest of the driver contract (openavc-drivers' catalog CI,
@@ -40,6 +43,7 @@ from typing import Any
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import child_writable_props, declared_id_kind
+from openavc.drivers.json_value_spec import CHILD, written_key
 from openavc.drivers.usable_number import is_number_value
 from openavc.utils.regex_safety import regex_safety_error
 
@@ -562,8 +566,11 @@ _JSON_ROUTES = _JsonRoutes()
 
 
 def _json_spec_errors(where: str, prop: Any, spec: dict[str, Any]) -> list[str]:
+    """A child's long-form value spec: the key it names, which the runtime
+    reads through ``json_value_spec`` (``key`` winning over ``path``), must be
+    non-blank text, and it carries only the spec's own fields."""
     errors = []
-    key = spec.get("key", spec.get("path"))
+    key = written_key(spec, CHILD)
     if not isinstance(key, str) or not key.strip():
         errors.append(f'{where}: state \'{prop}\' needs a JSON path: "a.b" or {{key: a.b}}')
     unknown = set(spec) - _JSON_SPEC_KEYS

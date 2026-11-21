@@ -226,11 +226,11 @@ export function coercionTypesEquivalent(a: string, b: string): boolean {
 }
 
 /** Read the rows of a `json: true` rule, mirroring the runtime's
- *  build_json_mappings: a non-empty `mappings` list wins (entries carry
- *  {state, key, type?, map?}; type defaults to "string" there); otherwise
- *  each `set` entry is a string JSON path or a {key|path, type, map} spec
- *  whose path defaults to the state name and whose type defaults to the
- *  state variable's DECLARED type. */
+ *  build_json_mappings (json_value_spec.py): a non-empty `mappings` list
+ *  wins (entries carry {state, key, type?, map?}, the field named by `key`
+ *  alone); otherwise each `set` entry is a string JSON path or a
+ *  {key|path, type, map} spec whose path defaults to the state name. Either
+ *  way the type defaults to the state variable's DECLARED type. */
 export function getJsonRows(
   resp: DriverResponseDef,
   stateVariables: Record<string, StateVarDefLike | undefined>,
@@ -249,7 +249,7 @@ export function getJsonRows(
       rows.push({
         state: entry.state ?? "",
         path: entry.key == null ? "" : String(entry.key),
-        type: entry.type ?? "string",
+        type: entry.type ?? declaredStateType(stateVariables, entry.state ?? ""),
         ...(entry.map ? { map: entry.map } : {}),
         ...(isContainsScalar(entry.contains) ? { contains: entry.contains } : {}),
       });
@@ -291,7 +291,7 @@ export function getJsonRows(
  *  (`set: {var: "path"}`); a row needing a type override or map becomes a
  *  {key, type?, map?} object; blank/duplicate state names (which a set map
  *  can't carry) fall back to the explicit mappings list with type spelled
- *  out (the mappings form defaults to "string", not the declared type).
+ *  out.
  *  Unknown keys on the original rule (and throttle) ride through verbatim,
  *  child_set included — a json rule routes to children by literal id and
  *  JSON path, so an edit to the field rows must not drop it. after_json is

@@ -314,8 +314,8 @@ const results = {};
 
 // --- json: true rules: row loading + minimal re-serialization ---------------
 // Mirrors build_json_mappings (compiled_protocol.py): a non-empty mappings
-// list wins; set values are string paths (type = declared) or {key|path,
-// type, map} specs; the mappings form defaults type to "string".
+// list wins; set values are string paths or {key|path, type, map} specs;
+// both forms default the type to the declared one.
 const jsonVars = {
   power: { type: "boolean" },
   volume: { type: "integer" },
@@ -358,14 +358,27 @@ const jsonVars = {
   };
 }
 {
-  // A non-empty mappings list wins over set, and its type default is
-  // "string" (NOT the declared type — that default is set-form only).
+  // A non-empty mappings list wins over set, and an entry with no type takes
+  // the declared one, as the runtime reads it (json_value_spec.LISTED); a
+  // written type wins, and an undeclared variable reads as "string".
   const got = H.getJsonRows(
-    { json: true, mappings: [{ state: "volume", key: "vol" }], set: { power: "p" } },
+    {
+      json: true,
+      mappings: [
+        { state: "volume", key: "vol" },
+        { state: "power", key: "pw", type: "string" },
+        { state: "nowhere", key: "n" },
+      ],
+      set: { power: "p" },
+    },
     jsonVars,
   );
   results.json_rows_from_mappings = {
-    pass: eq(got, [{ state: "volume", path: "vol", type: "string" }]),
+    pass: eq(got, [
+      { state: "volume", path: "vol", type: "integer" },
+      { state: "power", path: "pw", type: "string" },
+      { state: "nowhere", path: "n", type: "string" },
+    ]),
     detail: got,
   };
 }

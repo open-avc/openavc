@@ -266,6 +266,19 @@ CASES = {
             {"type": "zone", "id": 1, "state": {"nope": {"wrong": 1}}},
         ),
     ],
+    # The key a child's spec names, as written: key wins over path, even null.
+    "json_child_set_state_key_as_written": [
+        js(
+            {"type": "zone", "id": 1, "state": {"level": {"key": None}}},
+            {"type": "zone", "id": 1, "state": {"level": {"key": ""}}},
+            {"type": "zone", "id": 1, "state": {"level": {"key": 0}}},
+            {"type": "zone", "id": 1, "state": {"level": {"key": None, "path": "a"}}},
+            {"type": "zone", "id": 1, "state": {"level": {"path": None}}},
+            {"type": "zone", "id": 1, "state": {"level": {"path": 0}}},
+            {"type": "zone", "id": 1, "state": {"level": {"path": ""}}},
+            {"type": "zone", "id": 1, "state": {"level": {"key": "a", "path": 0}}},
+        ),
+    ],
     # A key YAML read as a number, beside an unknown key: named as text.
     "json_child_set_state_keys_not_text": [
         js({"type": "zone", "id": 1, "state": {"level": {"key": "a", 1: "x", "zz": "y"}}}),
@@ -503,7 +516,16 @@ def _definition(case: str) -> dict[str, Any]:
     }
 
 
-EXPECTED: dict[str, list[tuple[str, str]]] = {'json_child_set_state_keys_not_text': [('responses[0]',
+EXPECTED: dict[str, list[tuple[str, str]]] = {'json_child_set_state_key_as_written': [
+    ('responses[0]', 'Response 0: child_set[0]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('responses[0]', 'Response 0: child_set[1]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('responses[0]', 'Response 0: child_set[2]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('responses[0]', 'Response 0: child_set[3]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('responses[0]', 'Response 0: child_set[4]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('responses[0]', 'Response 0: child_set[5]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('responses[0]', 'Response 0: child_set[6]: state \'level\' needs a JSON path: "a.b" or {key: a.b}'),
+    ('child_entity_types.bare', 'child_entity_types.bare: must be a mapping')],
+ 'json_child_set_state_keys_not_text': [('responses[0]',
   "Response 0: child_set[0]: state 'level' has ['1', 'zz'], which a json rule does not read; the "
   'spec is {key, type, map, contains}'),
  ('child_entity_types.bare', 'child_entity_types.bare: must be a mapping')],

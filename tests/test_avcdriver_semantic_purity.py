@@ -6,7 +6,8 @@ check modules it imports (``action_checks``, ``command_checks``, ``condition_che
 ``liveness_checks``,
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``, with the reader it asks,
 ``query_entry``, and the driver model, ``driver_model``,
-``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``serial_line``, ``setting_checks``,
+``reply_name_checks``, ``response_rule_checks`` (with the value-spec reading it asks,
+``json_value_spec``), ``routing_checks``, ``serial_line``, ``setting_checks``,
 ``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``, ``tagged_errors``,
 and the number rule they read numbers through, ``usable_number``),
 ``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
@@ -45,6 +46,7 @@ ALLOWED = {
     "openavc.drivers.driver_model",
     "openavc.drivers.driver_warnings",
     "openavc.drivers.framing_checks",
+    "openavc.drivers.json_value_spec",
     "openavc.drivers.liveness_checks",
     "openavc.drivers.param_aid_checks",
     "openavc.drivers.platform_floor_checks",

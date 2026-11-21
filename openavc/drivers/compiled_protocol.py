@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,7 +51,7 @@ from openavc.drivers.child_routes import (
     compile_json_child_set,
     compile_osc_child_set,
 )
-from openavc.drivers.json_value_spec import FLAT, json_value_mapping
+from openavc.drivers.json_value_spec import FLAT, LISTED, Place, json_value_mapping
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
 from openavc.drivers.usable_number import usable_number
 from openavc.transport.binary_helpers import (
@@ -865,17 +865,29 @@ def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
     return {"window": window, "last": {}}
 
 
-def _json_set_mapping(
-    state_key: str, spec: Any, state_variables: dict[str, Any]
-) -> dict[str, Any]:
-    """One json ``set:`` item as a mapping, typed by its state variable unless
-    the spec says otherwise; how a flat item reads the spec is ``FLAT``, which
-    leaves no item out, so this is never None."""
+def _declared_type(state_key: Any, state_variables: dict[str, Any]) -> Any:
+    """The type a state variable declares, ``string`` when it declares none."""
     var_def = state_variables.get(state_key, {})
-    default_type = (
-        var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+    return var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+
+
+def _json_mappings(
+    items: Iterable[tuple[Any, Any]], state_variables: dict[str, Any], place: Place
+) -> list[dict[str, Any]]:
+    """Each (state variable, value spec) as a mapping, typed by its state
+    variable unless the spec says otherwise; one ``place`` leaves out is
+    dropped (``FLAT`` and ``LISTED`` leave none out)."""
+    compiled = (
+        json_value_mapping(name, spec, _declared_type(name, state_variables), place)
+        for name, spec in items
     )
-    return json_value_mapping(state_key, spec, default_type, FLAT)
+    return [mapping for mapping in compiled if mapping is not None]
+
+
+def _names_a_state(entry: Any) -> bool:
+    """A ``mappings:`` entry the runtime can write: one naming its state
+    variable. Any other entry reads nothing."""
+    return isinstance(entry, dict) and isinstance(entry.get("state"), str) and bool(entry["state"])
 
 
 def build_json_mappings(
@@ -885,19 +897,22 @@ def build_json_mappings(
 
     Accepts the detailed ``mappings`` list or the friendly ``set`` map, the
     ``set`` read only when there are no ``mappings`` (unlike a regex rule,
-    ``build_regex_mappings``, which keeps both). In a json rule a ``set`` value
-    is a value spec (``openavc.drivers.json_value_spec``), the JSON path to
-    read — not a regex capture ref. Types default to the matching state
-    variable's declared type.
+    ``build_regex_mappings``, which keeps both). Either way each item is a
+    value spec (``openavc.drivers.json_value_spec``: a ``set`` item as
+    ``FLAT`` reads it, a ``mappings`` entry as ``LISTED`` does), the JSON path
+    to read — not a regex capture ref — typed by its state variable unless it
+    says otherwise. Each mapping is a new dict: the definition's own entries
+    are shared by every device on the driver.
     """
-    mappings: list[dict[str, Any]] = list(listed_mappings(resp))
+    listed = [entry for entry in listed_mappings(resp) if _names_a_state(entry)]
+    if listed:
+        return _json_mappings(
+            ((entry["state"], entry) for entry in listed), state_variables, LISTED
+        )
     set_map = resp.get("set")
-    if not mappings and isinstance(set_map, dict):
-        mappings += [
-            _json_set_mapping(state_key, spec, state_variables)
-            for state_key, spec in set_map.items()
-        ]
-    return mappings
+    if listed_mappings(resp) or not isinstance(set_map, dict):
+        return []
+    return _json_mappings(set_map.items(), state_variables, FLAT)
 
 
 def listed_mappings(resp: dict[str, Any]) -> list[Any]:
