@@ -39,6 +39,7 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import STATE_BATCH, build_state_batch_payload
+from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.utils.log_redaction import mask_url_password
 from openavc.utils.logger import get_logger
 
@@ -395,7 +396,9 @@ class StateRelay:
             return _TIER_TOP
         var_def = type_def.get("state_variables", {}).get(prop)
         if not isinstance(var_def, dict) and type_def.get("dynamic"):
-            var_def = self._dynamic_child_var(driver, child_type, local_id, prop)
+            var_def = self._dynamic_child_var(
+                driver, child_type, coerce_child_local_id(type_def, local_id), prop,
+            )
         if not isinstance(var_def, dict):
             # The reserved presence/fault keys ride the FAST tier rather than
             # the default child cadence, matching the device's own connected /
@@ -420,30 +423,27 @@ class StateRelay:
 
     @staticmethod
     def _dynamic_child_var(
-        driver: Any, child_type: str, local_id: str, prop: str
+        driver: Any, child_type: str, lid: int | str | None, prop: str
     ) -> dict[str, Any] | None:
         """The per-child schema entry for ``prop``, or None.
 
-        The state key carries the padded/string form of the local id;
-        integer-id types are retried with the int form. Any lookup error
-        (unknown child, race with deregistration) means "not claimed" —
-        the caller falls back to the default child tier.
+        The state key carries the padded/string form of the local id; the
+        driver is asked by the id the type reads it as (``lid``, through
+        ``child_ids.coerce_child_local_id``: an integer type's ``"01"`` is
+        1, a text type's ``"001"`` stays ``"001"``). An id the type cannot
+        read (``None``), or any lookup error (unknown child, race with
+        deregistration), means "not claimed" — the caller falls back to the
+        default child tier.
         """
         get_schema = getattr(driver, "get_child_schema", None)
-        if not callable(get_schema):
+        if not callable(get_schema) or lid is None:
             return None
-        candidates: list[Any] = [local_id]
-        if local_id.isdigit():
-            candidates.append(int(local_id))
-        for lid in candidates:
-            try:
-                schema = get_schema(child_type, lid) or {}
-            except Exception:
-                continue
-            var_def = schema.get(prop)
-            if isinstance(var_def, dict):
-                return var_def
-        return None
+        try:
+            schema = get_schema(child_type, lid) or {}
+        except Exception:
+            return None
+        var_def = schema.get(prop)
+        return var_def if isinstance(var_def, dict) else None
 
     async def _flush_bucket_loop(
         self, bucket: str, config_key: str, default_interval: float

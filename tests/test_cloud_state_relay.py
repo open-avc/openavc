@@ -29,6 +29,7 @@ from openavc.cloud.protocol import STATE_BATCH
 from openavc.cloud.state_relay import StateRelay
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +231,29 @@ class TestKeyTier:
         assert relay._key_tier("device.core.component.Mixer.mute") == "top"
         assert relay._key_tier("device.core.component.Mixer.meter.rms") == "low"
         assert relay._key_tier("device.core.component.Mixer.input.1.gain") == "child"
+
+    def test_a_dynamic_child_is_asked_for_by_the_id_its_type_reads(self):
+        """The key carries a padded id ("01"); the per-child schema is found
+        under the id the type reads it as (1), so its own cloud_priority on a
+        reserved key is the one honored, not the platform's default entry."""
+        cls = create_configurable_driver_class({
+            "id": "acme_dsp", "name": "Acme DSP", "transport": "tcp",
+            "default_config": {"host": "", "port": 23}, "state_variables": {},
+            "child_entity_types": {"block": {
+                "dynamic": True, "id_format": {"type": "integer", "pad_width": 2},
+                "state_variables": {"name": {"type": "string"}}}},
+            "commands": {},
+        })
+        state, events = StateStore(), EventBus()
+        state.set_event_bus(events)
+        driver = cls("core", {"host": "127.0.0.1", "port": 23}, state, events)
+        driver.register_child("block", 1, schema={
+            "online": {"type": "boolean", "cloud_priority": "low"},
+            "mute": {"type": "boolean", "cloud_priority": "high"},
+        })
+        relay = StateRelay(_RecordingAgent(drivers={"core": driver}), StateStore())
+        assert relay._key_tier("device.core.block.01.online") == "low"
+        assert relay._key_tier("device.core.block.01.mute") == "top"
 
     def test_flat_state_var_low_priority_is_low(self):
         """cloud_priority: low on a TOP-LEVEL state variable slows that key;
