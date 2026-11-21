@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   deploymentLabel,
   healthProbeOutcome,
   historyEntryDisplay,
   panelSoftwareDisplay,
+  sameVersion,
   updateCompletionOutcome,
   semverLt,
 } from "./updatesHelpers";
@@ -93,6 +96,51 @@ describe("a release candidate's direction", () => {
 // "success" from a system sitting on the older version -- measured on an
 // appliance panel, and the only part of that defect a customer ever saw. The
 // server now writes `rolled_back`; this is what the page makes of it.
+// Whether the version changed across the restart is read by the version
+// rule, on the corpus `tests/fixtures/version_rule_cases.json` the server's
+// settle runs too: one release spelled two ways ("0.41.0-rc1", "0.41.0rc1")
+// did not change.
+const corpus: { ascending: { versions: string[] }[]; unreadable: unknown[] } = JSON.parse(
+  readFileSync(resolve(process.cwd(), "../../../tests/fixtures/version_rule_cases.json"), "utf-8"),
+);
+const classes = corpus.ascending.map((cls) => cls.versions);
+
+describe("sameVersion", () => {
+  it("reads every spelling of a release as that release", () => {
+    for (const versions of classes) {
+      for (const a of versions) {
+        for (const b of versions) expect(sameVersion(a, b), `${a} = ${b}`).toBe(true);
+      }
+    }
+  });
+
+  it("reads two releases as two", () => {
+    for (let i = 1; i < classes.length; i++) {
+      expect(sameVersion(classes[i - 1][0], classes[i][0])).toBe(false);
+      expect(sameVersion(classes[i][0], classes[i - 1][0])).toBe(false);
+    }
+  });
+
+  it("compares a value that is no version as text", () => {
+    for (const text of corpus.unreadable) {
+      if (typeof text !== "string") continue;
+      expect(sameVersion(text, text)).toBe(true);
+      expect(sameVersion(text, "0.40.0")).toBe(false);
+    }
+  });
+});
+
+describe("a restart onto the same release spelled another way", () => {
+  it("is no update in the health probe", () => {
+    expect(healthProbeOutcome("0.41.0-rc1", "0.41.0rc1", "update")).toBeNull();
+  });
+
+  it("is a restart that applied nothing in the snapshot", () => {
+    expect(updateCompletionOutcome("0.41.0-rc1", "restarting", "0.41.0rc1", "idle", "update"))
+      .toBe("same_version_restart");
+  });
+});
+
 describe("historyEntryDisplay", () => {
   it("shows a reverted update as failed, in words", () => {
     const d = historyEntryDisplay({

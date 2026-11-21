@@ -11,6 +11,14 @@ export function semverLt(a: string, b: string): boolean {
   return compareVersions(a, b) === -1;
 }
 
+/** True when `a` and `b` are one release by the version rule ("0.41.0-rc1"
+ *  and "0.41.0rc1" are); when either is not a version, when they are the
+ *  same text. The server's settle asks the same (`checker.same_version`). */
+export function sameVersion(a: string, b: string): boolean {
+  const compared = compareVersions(a, b);
+  return compared === null ? a === b : compared === 0;
+}
+
 const DEPLOYMENT_LABELS: Record<string, string> = {
   windows_installer: "Windows Installer",
   linux_package: "Linux Package",
@@ -46,7 +54,7 @@ export function updateCompletionOutcome(
   status: string,
   action: "update" | "rollback" | null,
 ): CompletionOutcome {
-  if (prevVersion && version && version !== prevVersion) {
+  if (prevVersion && version && !sameVersion(version, prevVersion)) {
     if (action === "rollback" || semverLt(version, prevVersion)) return "rolled_back";
     return "updated";
   }
@@ -76,7 +84,7 @@ export function healthProbeOutcome(
   probedVersion: string,
   action: "update" | "rollback" | null,
 ): CompletionOutcome {
-  if (!startVersion || !probedVersion || probedVersion === startVersion) return null;
+  if (!startVersion || !probedVersion || sameVersion(probedVersion, startVersion)) return null;
   return updateCompletionOutcome(startVersion, "", probedVersion, "", action);
 }
 
