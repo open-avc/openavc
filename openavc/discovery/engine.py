@@ -432,7 +432,12 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
     def rematch(self) -> list[dict[str, Any]]:
         """Identify every device again from the evidence it already holds,
         after a driver change, and return the outcome's records to send: a
-        host on probation is matched too, and sent when it earns its place."""
+        host on probation is matched too, and sent when it earns its place.
+
+        The evidence is kept from the scan, so only an identification moves,
+        when a driver installed since claims one of the signals; the cards
+        update without a rescan.
+        """
         for device in self.results.values():
             self._identify(device)
         return self.get_results()
@@ -451,21 +456,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         """Clear all discovery results."""
         self.results.clear()
         self.scan_status = ScanStatus()
-
-    async def refresh_device_matches(self, ip: str) -> dict[str, Any] | None:
-        """Re-run TierMatcher.match() for a single device.
-
-        Used after installing a community driver so the device card
-        updates without a full rescan. The evidence_log is preserved
-        from the original scan; only the identification result changes
-        when a new driver hint claims one of the existing signals.
-        """
-        device = self.results.get(ip)
-        if not device:
-            return None
-
-        self._identify(device)
-        return device.to_dict()
 
     def _identify(self, device: DiscoveredDevice) -> None:
         """The device's identification from its evidence, and its driver's
@@ -758,8 +748,9 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         await self._emit(self.outcome().complete_event())
 
     def _settle_status(self, truncated: bool, cancelled: bool = False) -> list[DiscoveredDevice]:
-        """Settle what the scan holds, once: end the ARP probation, then the
-        end state and duration. The count is the outcome's, read when asked.
+        """Settle what the scan holds, once: the end state and duration, then
+        the end of the ARP probation. The count is the outcome's, read when
+        asked.
 
         Returns the ARP-named hosts that earned their place, which no client
         has heard of yet. The settling itself awaits nothing, so a scan whose
@@ -770,14 +761,13 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         Reporting that as "complete" is the silent-cap failure the warnings
         exist to prevent. A cancelled scan says so, whatever it got through.
         """
-        earned = self._end_probation(self._connected_evidence())
         self.scan_status.status = (
             "cancelled" if cancelled or self.scan_status.status == "cancelled"
             else "partial" if (truncated or self._narrowed)
             else "complete"
         )
         self.scan_status.duration = time.time() - self.scan_status.started_at
-        return earned
+        return self._end_probation(self._connected_evidence())
 
     async def _scan_pipeline(self, subnets: list[str]) -> None:
         # Refresh the SignalIndex with the latest community catalog so

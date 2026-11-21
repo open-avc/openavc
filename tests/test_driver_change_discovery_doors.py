@@ -216,7 +216,7 @@ def world(tmp_path: Path, monkeypatch):
         the community catalog in with the installed drivers."""
         discovery.community_index.get_drivers = AsyncMock(return_value=[])
         await discovery.refresh_signal_index_with_catalog()
-        await discovery.refresh_device_matches(FOUND)
+        discovery.rematch()
         identification = discovery.results[FOUND].identification
         return identification.driver_id if identification.state == DeviceState.IDENTIFIED else None
 

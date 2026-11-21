@@ -13,6 +13,11 @@ from openavc.discovery.engine import DiscoveryEngine, ScanStatus
 from openavc.discovery.result import DiscoveredDevice
 
 
+def _rematched(engine: DiscoveryEngine, ip: str) -> dict | None:
+    """The record a re-match after a driver change sends for ``ip``."""
+    return next((d for d in engine.rematch() if d["ip"] == ip), None)
+
+
 # --- ScanStatus tests ---
 
 
@@ -688,18 +693,16 @@ class TestDriverMatching:
         self.engine.load_driver_hints_from_registry(registry)
         assert self.engine.signal_index.driver_count() == 1
 
-    async def test_refresh_device_matches_nonexistent(self):
-        """Refreshing matches for a device not in results returns None."""
-        result = await self.engine.refresh_device_matches("10.0.0.99")
-        assert result is None
+    async def test_a_rematch_with_nothing_found_sends_nothing(self):
+        assert self.engine.rematch() == []
 
-    async def test_refresh_device_matches_existing(self):
-        """Refreshing matches re-runs TierMatcher.match on the device."""
+    async def test_a_rematch_identifies_each_device_again(self):
+        """A re-match re-runs TierMatcher.match on every device."""
         self.engine.results["10.0.0.1"] = DiscoveredDevice(
             ip="10.0.0.1",
             open_ports=[4352],
         )
-        result = await self.engine.refresh_device_matches("10.0.0.1")
+        result = _rematched(self.engine, "10.0.0.1")
         assert result is not None
         assert result["ip"] == "10.0.0.1"
         # No driver hints loaded → unknown state.
@@ -729,7 +732,7 @@ class TestCategoryFromIdentifyingDriver:
         engine = DiscoveryEngine()
         engine.load_driver_hints_from_registry([dict(self._ACME)])
         engine.results["10.0.0.5"] = self._device()
-        result = await engine.refresh_device_matches("10.0.0.5")
+        result = _rematched(engine, "10.0.0.5")
         assert result["identification"]["state"] == "identified"
         assert result["category"] == "audio"
 
@@ -737,7 +740,7 @@ class TestCategoryFromIdentifyingDriver:
         engine = DiscoveryEngine()
         engine.load_driver_hints_from_registry([dict(self._ACME)])
         engine.results["10.0.0.5"] = self._device(category="display")
-        result = await engine.refresh_device_matches("10.0.0.5")
+        result = _rematched(engine, "10.0.0.5")
         assert result["category"] == "display"
 
     async def test_the_catalog_copy_supplies_it_when_the_driver_is_not_installed(self):
@@ -745,7 +748,7 @@ class TestCategoryFromIdentifyingDriver:
         engine.load_driver_hints_from_registry([])
         engine._rebuild_signal_index(community_drivers=[dict(self._ACME)])
         engine.results["10.0.0.5"] = self._device()
-        result = await engine.refresh_device_matches("10.0.0.5")
+        result = _rematched(engine, "10.0.0.5")
         assert result["identification"]["driver_id"] == "acme_dsp"
         assert result["category"] == "audio"
 
@@ -753,7 +756,7 @@ class TestCategoryFromIdentifyingDriver:
         engine = DiscoveryEngine()
         engine.load_driver_hints_from_registry([dict(self._ACME)])
         engine.results["10.0.0.5"] = DiscoveredDevice(ip="10.0.0.5")
-        result = await engine.refresh_device_matches("10.0.0.5")
+        result = _rematched(engine, "10.0.0.5")
         assert result["category"] is None
 
 
