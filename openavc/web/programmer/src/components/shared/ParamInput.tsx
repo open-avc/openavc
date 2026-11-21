@@ -101,7 +101,8 @@ export interface ParamInputProps {
    *  its name, so the required checks read it like any other field. */
   file?: File | null;
   onFile?: (file: File | null) => void;
-  /** The param's key, for a file param's own check (its label names it). */
+  /** The param's key: a file param's own check names it, and a param named
+   *  `password` is masked whatever its definition says (`isSecretSetting`). */
   name?: string;
   /** The param's key, given by a surface that saves its params into the
    *  project (a macro step, a control's action): a secret param's value is
@@ -448,7 +449,7 @@ export function ParamInput({
         : undefined;
     widget = (
       <input
-        type={maskedInputType(def, isNumber ? "number" : "text")}
+        type={maskedInputType(name ?? savedParamKey, def, isNumber ? "number" : "text")}
         autoComplete="new-password"
         value={value}
         min={effMin}

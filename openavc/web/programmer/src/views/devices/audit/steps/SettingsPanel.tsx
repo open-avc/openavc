@@ -112,6 +112,7 @@ export function SettingsPanel({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <ParamInput
                     def={def}
+                    name={s.key}
                     value={value}
                     onChange={(v) => setValues((prev) => ({ ...prev, [s.key]: v }))}
                     placeholder="New value"

@@ -112,6 +112,24 @@ describe("a command form's pickers", () => {
     expect(required.options[required.selectedIndex].disabled).toBe(true);
   });
 
+  it("masks a parameter named password, and one marked secret, whatever its type says", () => {
+    render(
+      <CommandParamForm
+        params={{
+          password: { type: "string", label: "Password" },
+          code: { type: "string", secret: true, label: "Code" },
+          pin: { type: "string", label: "PIN" },
+        }}
+        values={{ password: "", code: "", pin: "" }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect((screen.getByPlaceholderText("Password") as HTMLInputElement).type).toBe("password");
+    expect((screen.getByPlaceholderText("Code") as HTMLInputElement).type).toBe("password");
+    // A name like a credential's decides nothing: the driver did not mark it.
+    expect((screen.getByPlaceholderText("PIN") as HTMLInputElement).type).toBe("text");
+  });
+
   it("names each field by its label, else its key made readable, in every layout", () => {
     const params = {
       level: { type: "integer", label: "Level" },

@@ -4,10 +4,10 @@ import { normalizeOptionList } from "../../components/shared/paramOptions";
 import { paramLabel } from "../../components/shared/paramLabel";
 import { isSecretSetting } from "../../components/shared/secretSetting";
 
-/** Default string value to seed a param field with. */
-export function defaultFor(def: ActionParam): string {
+/** Default string value to seed param `name`'s field with. */
+export function defaultFor(def: ActionParam, name: string): string {
   // Never pre-fill a password/secret field — it must always start blank.
-  if (isSecretSetting(null, def)) return "";
+  if (isSecretSetting(name, def)) return "";
   if (def.default !== undefined && def.default !== null) return String(def.default);
   if (def.type === "enum" && def.values && def.values.length > 0 && def.required) {
     // Seed the wire value of the first option (values may be {value, label}).
@@ -22,7 +22,7 @@ export function seedParamValues(
   params: Record<string, ActionParam>,
 ): Record<string, string> {
   const seed: Record<string, string> = {};
-  for (const [name, def] of Object.entries(params)) seed[name] = defaultFor(def);
+  for (const [name, def] of Object.entries(params)) seed[name] = defaultFor(def, name);
   return seed;
 }
 

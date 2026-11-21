@@ -10,8 +10,11 @@
 //
 // Mirrors is_secret_setting in openavc/drivers/spec.py, which the server's
 // readers ask (the logs, reports, the login file, the space trimming, the
-// driver validator); tests/test_secret_setting_parity.py runs one corpus
-// through both.
+// driver validator, and drivers/secret_params for a command's parameters);
+// tests/test_secret_setting_parity.py runs one corpus through both. Every
+// caller passes the field's key whenever it has one, so a field named
+// `password` reads the same everywhere; that test also fails a call that
+// passes `null` for it.
 
 export const PASSWORD_FIELD = "password";
 
@@ -22,8 +25,12 @@ export function isSecretSetting(key: string | null | undefined, def: unknown): b
   return d.secret === true || d.type === "password";
 }
 
-/** The type of the plain input a form shows `def`'s value in: masked for a
- *  secret, else `otherwise`. */
-export function maskedInputType(def: unknown, otherwise: string): string {
-  return isSecretSetting(null, def) ? "password" : otherwise;
+/** The type of the plain input a form shows the value of field `key`
+ *  (declared as `def`) in: masked for a secret, else `otherwise`. */
+export function maskedInputType(
+  key: string | null | undefined,
+  def: unknown,
+  otherwise: string,
+): string {
+  return isSecretSetting(key, def) ? "password" : otherwise;
 }

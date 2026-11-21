@@ -9,14 +9,19 @@ as a number. A field one side calls a secret and the other does not is a
 password shown on screen, or one written to the log, so both run this corpus
 and compare answer for answer, as the monitor and parameter-label rules do.
 
-The last test is the tripwire that keeps it one rule: no other module looks at
-``secret`` or ``type: password`` itself.
+The last tests are the tripwires that keep it one rule: no other module looks
+at ``secret`` or ``type: password`` itself; every form in the Programmer names
+the field it asks about, so a field named ``password`` reads the same in each;
+and the name list (``log_redaction.is_secret_key``) is read only by the
+outbound redactors, the net over what they send away, never by what decides a
+secret.
 
 Every field here is invented. This tests a platform rule.
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -210,3 +215,56 @@ def test_every_exemption_still_exists():
     """An exemption whose line is gone would let a new reader hide behind it."""
     present = set(_hits(PROGRAMMER_SRC, (".ts", ".tsx"), TS_PATTERNS))
     assert not [key for key in TS_EXEMPT if key not in present]
+
+
+#: A call that asks the rule without the field's name: a field named
+#: ``password`` would then read as secret in one form and not in another.
+TS_KEYLESS = re.compile(r"""\b(isSecretSetting|maskedInputType)\(\s*(null|undefined)\b""")
+
+
+def test_every_programmer_form_names_the_field_it_asks_about():
+    found = [f"{where}: {line}" for where, line in _hits(PROGRAMMER_SRC, (".ts", ".tsx"), (TS_KEYLESS,))]
+    assert not found, (
+        "These ask isSecretSetting without the field's key; pass it, so a field "
+        "named password is a secret here as it is everywhere else:\n" + "\n".join(found)
+    )
+
+
+#: The modules that also mask a value named like a credential, each sending
+#: what it masks away from this system, and why. Nothing else reads the name
+#: list: what decides a secret is the declaration (``drivers/secret_params``).
+NAME_LIST_READERS: dict[str, str] = {
+    "utils/log_redaction.py": "the list itself, and the log's own masking",
+    "core/state_store.py": "the state's debug log line",
+    "audit/commands.py": "the Device Audit's report",
+    "support/problem_report.py": "a problem report",
+    "cloud/tools/system_tools.py": "the cloud AI's log tool",
+    "core/device_logins.py":
+        "the login file, for a device whose driver is not installed: it keeps a likely login out of the project",
+}
+
+
+def _reads_the_name_list(path: Path) -> bool:
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.alias) and node.name == "is_secret_key":
+            return True
+        if isinstance(node, ast.Name) and node.id == "is_secret_key":
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == "is_secret_key":
+            return True
+    return False
+
+
+def test_only_the_outbound_redactors_read_the_name_list():
+    root = OPENAVC_ROOT / "openavc"
+    readers = {
+        path.relative_to(root).as_posix()
+        for path in sorted(root.rglob("*.py"))
+        if "node_modules" not in path.parts and _reads_the_name_list(path)
+    }
+    assert readers - set(NAME_LIST_READERS) == set(), (
+        "These read log_redaction.is_secret_key, a net only the outbound "
+        "redactors cast; whether a value is a secret is its declaration "
+        "(openavc.drivers.secret_params, openavc.drivers.spec.is_secret_setting)"
+    )
+    assert set(NAME_LIST_READERS) - readers == set(), "an entry here names a module that no longer reads it"
