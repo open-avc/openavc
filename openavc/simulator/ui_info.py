@@ -12,13 +12,16 @@ The rules worth knowing before changing anything here:
   the driver declares is used as written.
 * **A child's name**: its project label, else the type's ``instances.label``
   with ``{id}`` filled in, else the type's label and the id. A project label is
-  keyed by the padded id the platform uses; a run of digits is read as a
-  number to find the roster's unpadded one.
+  keyed by the padded id the platform uses, read through the type's id_format
+  to find the roster's unpadded one (``child_roster.roster_id``): an integer
+  type's ``"001"`` is child 1, a text type's ``"001"`` stays ``"001"``.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
+
+from openavc.simulator.child_roster import roster_id
 
 #: A slider never gets more stops than this from a step the simulator invents.
 MAX_STOPS = 500
@@ -141,7 +144,7 @@ class _ChildNames(NamedTuple):
         inst = tdef.get("instances") if isinstance(tdef.get("instances"), dict) else {}
         template = inst.get("label") if isinstance(inst.get("label"), str) else None
         type_label = tdef.get("label") or ctype.replace("_", " ").title()
-        return cls(type_label, template, _project_labels(project_entries))
+        return cls(type_label, template, _project_labels(tdef, project_entries))
 
     def entry(self, cid: str) -> dict:
         """The project's label, else the type's template, else type and id."""
@@ -151,17 +154,17 @@ class _ChildNames(NamedTuple):
         return {"id": cid, "label": label or f"{self.type_label} {cid}"}
 
 
-def _project_labels(entries: dict[str, Any]) -> dict[str, str]:
-    """The project's labels for one child type, keyed by the roster's id."""
+def _project_labels(tdef: dict, entries: dict[str, Any]) -> dict[str, str]:
+    """The project's labels for one child type, keyed by the roster's id
+    (``child_roster.roster_id``, the rule the roster adds project children
+    by), so a text id ``"001"`` keeps its label and an integer type's ``"001"``
+    labels child 1."""
     labels: dict[str, str] = {}
     for pid, meta in entries.items():
         label = meta.get("label") if isinstance(meta, dict) else None
         if not label:
             continue
-        pid_norm = str(pid).strip()
-        if pid_norm.isdigit():
-            pid_norm = str(int(pid_norm))
-        labels[pid_norm] = str(label)
+        labels[roster_id(tdef, pid)] = str(label)
     return labels
 
 

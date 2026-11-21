@@ -465,16 +465,22 @@ def test_a_blank_project_label_never_hides_another_for_the_same_child():
     assert entries[1] == {"id": "2", "label": "Two"}
 
 
-def test_a_text_id_that_is_all_digits_misses_its_project_label():
-    # Recorded as it is: the label lookup reads "001" as the number 1 whatever
-    # the child type's id kind, while a text-id roster keeps "001".
+def test_a_text_id_that_is_all_digits_finds_its_project_label():
+    # The label lookup reads a project id the way the roster does, through the
+    # type's id kind: a text-id type keeps "001", an integer type reads it as 1.
     sim = _yaml_sim(child_entity_types={"zone": {
         "id_format": {"type": "string"}, "instances": {"ids": ["001", "B2"]},
         "state_variables": {"x": {"type": "integer"}}}})
     sim.set_child_entities({"zone": {"001": {"label": "Lobby"}, "B2": {"label": "Bar"}}})
     assert sim._child_roster["zone"] == ["001", "B2"]
     assert sim.to_info_dict()["children"]["zone"]["entries"] == [
-        {"id": "001", "label": "Zone 001"}, {"id": "B2", "label": "Bar"}]
+        {"id": "001", "label": "Lobby"}, {"id": "B2", "label": "Bar"}]
+    sim = _yaml_sim(child_entity_types={"zone": {
+        "id_format": {"type": "integer", "pad_width": 3}, "instances": {"count": 2},
+        "state_variables": {"x": {"type": "integer"}}}})
+    sim.set_child_entities({"zone": {"001": {"label": "Lobby"}, " 002 ": {"label": "Bar"}}})
+    assert sim.to_info_dict()["children"]["zone"]["entries"] == [
+        {"id": "1", "label": "Lobby"}, {"id": "2", "label": "Bar"}]
 
 
 def test_an_empty_unit_leaves_the_slider_without_one():

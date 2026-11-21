@@ -21,7 +21,9 @@ knowing before changing anything here:
 * **Ids are the wire's text.** The roster holds each id as unpadded text,
   the form a regex capture or an expanded ``{child_id}`` query carries; a
   project child's padded id is read back through the type's ``id_format``,
-  and one it cannot read is kept as it is.
+  and one it cannot read is kept as it is. ``roster_id`` is that reading, the
+  runtime's own rule (``child_ids.coerce_child_local_id``), and an id looked
+  up in the roster is read by it first.
 """
 
 from __future__ import annotations
@@ -100,10 +102,21 @@ def project_ids(type_def: Any, entries: dict) -> list:
     """The project's children of one type, each padded id as the id the wire
     carries, or as its text when the type's id_format cannot read it (an id
     the driver could not route still names a child)."""
-    return [_wire_id(type_def, padded) for padded in entries]
+    return [wire_id(type_def, padded) for padded in entries]
 
 
-def _wire_id(type_def: Any, padded: Any) -> Any:
+def wire_id(type_def: Any, raw: Any) -> Any:
+    """An id as the wire carries it: read through the type's id_format
+    (``child_ids.coerce_child_local_id``, the runtime's rule), so an integer
+    type's ``"002"`` is 2 and a text type's ``"002"`` stays ``"002"``; the
+    text as given when the type cannot read it. What a ``{child_id}`` query
+    is filled with."""
     # `is not None` and not `or`: local id 0 is a real id and falsy.
-    local = coerce_child_local_id(type_def, padded)
-    return local if local is not None else str(padded)
+    local = coerce_child_local_id(type_def, raw)
+    return local if local is not None else str(raw)
+
+
+def roster_id(type_def: Any, raw: Any) -> str:
+    """The roster's text for an id (``wire_id`` as text): the key a project
+    label, a captured id or a query's child is looked up by."""
+    return str(wire_id(type_def, raw))
