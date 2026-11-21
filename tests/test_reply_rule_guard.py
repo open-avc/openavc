@@ -200,18 +200,18 @@ async def test_an_after_json_rule_that_fails_leaves_the_json_reads_and_counts_on
     assert _failures(seen)[0]["rule"] == r'match: "err": "(\w+)"'
 
 
-async def test_a_throttle_that_cannot_be_timed_fails_its_rule_and_nothing_else():
-    """A real raise: a window that is not a number compares false both ways,
-    so the first reply is held against a fire that was never stamped."""
+@pytest.mark.parametrize("window", [float("nan"), float("inf"), 10**400], ids=["nan", "inf", "huge"])
+async def test_a_throttle_that_cannot_be_timed_is_no_throttle(window: Any) -> None:
+    """A window that is no usable number is not compiled, so the rule writes
+    every reply rather than holding one against a fire never stamped."""
     driver, seen, _ = _driver(_definition("tcp", [
-        {"match": r"PWR(\w+)", "throttle": float("nan"), "set": {"power": "$1"}},
+        {"match": r"PWR(\w+)", "throttle": window, "set": {"power": "$1"}},
     ]))
     await driver.on_data_received(b"PWRon")
     await driver.on_data_received(b"PWRoff")
     assert (driver._framed_messages, driver._parsed_messages) == (2, 2)
-    assert _kinds(seen) == [RULE_FAILED, RULE_FAILED]
-    assert _failures(seen)[0]["error"].startswith("KeyError")
-    driver._drop_all_held()
+    assert _failures(seen) == []
+    assert driver.get_state("power") == "off"
 
 
 # --- OSC rules -------------------------------------------------------------
