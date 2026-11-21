@@ -393,13 +393,27 @@ def coerce_value(raw: str, value_type: str) -> Any:
     return _coerce(raw, value_type, _TEXT)
 
 
+def _json_number(value: Any) -> float:
+    """A JSON number or numeric string as a float, or ValueError when it is no
+    usable number (``usable_number``: NaN, an infinity, or too large to hold).
+    JSON ``true`` and ``false`` read as 1 and 0."""
+    if isinstance(value, bool):
+        return float(value)
+    number = usable_number(value)
+    if number is None:
+        raise ValueError(f"{value!r} is not a usable number")
+    return number
+
+
 def _json_integer(value: Any) -> int:
     """A JSON number or numeric string as an int: a float, or a string of
-    one, is cut toward zero ("5.7" -> 5)."""
+    one, is cut toward zero ("5.7" -> 5). A whole number is kept exact rather
+    than rounded through a float."""
+    number = _json_number(value)
     try:
         return int(value)
     except (TypeError, ValueError):
-        return int(float(value))
+        return int(number)
 
 
 def _json_text(value: Any) -> str:
@@ -418,7 +432,7 @@ def _text_and_said(value: Any, value_type: str) -> str:
 #: rather than round-tripped through ``str`` (JSON ``true`` would become the
 #: string "True").
 _JSON = _WireForm(
-    numbers=_numbers(_json_integer, float),
+    numbers=_numbers(_json_integer, _json_number),
     absorbs=(TypeError, ValueError),
     unconverted=_text_and_said,
     boolean=lambda value: value if isinstance(value, bool) else coerce_bool_token(value),

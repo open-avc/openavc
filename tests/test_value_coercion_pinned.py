@@ -133,10 +133,41 @@ def test_json_that_will_not_convert_becomes_text_and_is_said(value, value_type, 
     assert [r.getMessage() for r in caplog.records] == [message]
 
 
-@pytest.mark.parametrize("value", [math.inf, "1e400"])
-def test_json_infinity_for_an_integer_escapes_as_an_overflow(value):
-    with pytest.raises(OverflowError):
-        coerce_json_value(value, "integer")
+@pytest.mark.parametrize("value_type", ["integer", "number", "float"])
+@pytest.mark.parametrize(
+    "value, text",
+    [
+        (math.inf, "inf"),
+        (-math.inf, "-inf"),
+        ("1e400", "1e400"),
+        ("-Infinity", "-Infinity"),
+        pytest.param(10**400, str(10**400), id="too-large"),
+    ],
+)
+def test_json_number_no_state_can_hold_becomes_text_and_is_said(value, text, value_type, caplog):
+    """An infinity, or a number too large to be a float, is no reading for a
+    number state: it is warned about and kept as its text, as any other value
+    that will not convert is, rather than raising out of the reply."""
+    with caplog.at_level(logging.WARNING, logger=_LOGGER):
+        assert _typed(coerce_json_value(value, value_type)) == (text, "str")
+    assert [r.getMessage() for r in caplog.records] == [
+        f"Cannot coerce {value!r} to {value_type}, returning string"
+    ]
+
+
+def test_json_nan_for_a_number_state_becomes_text_and_is_said(caplog):
+    with caplog.at_level(logging.WARNING, logger=_LOGGER):
+        assert _typed(coerce_json_value(math.nan, "number")) == ("nan", "str")
+    assert [r.getMessage() for r in caplog.records] == [
+        "Cannot coerce nan to number, returning string"
+    ]
+
+
+def test_json_integer_keeps_a_large_whole_number_exact():
+    """A whole number a float can hold is kept as the int it is, never
+    rounded through a float on the way."""
+    assert _typed(coerce_json_value(2**60 + 1, "integer")) == (2**60 + 1, "int")
+    assert _typed(coerce_json_value(str(2**60 + 1), "integer")) == (2**60 + 1, "int")
 
 
 # ── An OSC argument ──
