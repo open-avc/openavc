@@ -91,6 +91,7 @@ from openavc.simulator.osc_simulator import OSCDispatchMixin
 from openavc.simulator.push_channels import PushChannels
 from openavc.simulator.query_handlers import (
     ChildQueryHandler,
+    Children,
     ListQueryHandler,
     QueryHandler,
     child_handlers,
@@ -1255,7 +1256,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         (query_handlers.py), rebuilt when project children arrive."""
         self._child_query_handlers = []
         self._child_query_handlers.extend(child_handlers(
-            every_query_entry(self._driver_def), self._child_roster,
+            every_query_entry(self._driver_def),
+            Children(self._child_roster, self._child_types()),
             self._child_list_answers, self._query_wire_line,
         ))
 

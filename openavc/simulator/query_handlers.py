@@ -46,6 +46,7 @@ from openavc.drivers.child_ids import page_starts
 from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.drivers.query_entry import EACH_CHILD, OSC_MESSAGE, QueryEntry, read_query_entry
+from openavc.simulator.child_roster import wire_id
 from openavc.simulator.command_names import infer_state_var
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
@@ -229,9 +230,27 @@ def _start_up_handler(entry: Any, wire_line: WireLine) -> QueryHandler | None:
 # ── reads of the children ──
 
 
+@dataclass(frozen=True)
+class Children:
+    """The roster the child reads are built for: each type's ids as the
+    roster holds them (unpadded text), and the types they are read against."""
+
+    roster: dict[str, list[str]]
+    types: dict[str, Any]
+
+    def ids(self, ctype: str) -> list[str]:
+        return self.roster.get(ctype, [])
+
+    def wire_id(self, ctype: str, cid: str) -> Any:
+        """A child as a ``{child_id}`` is filled with it: through the type's
+        id_format (``child_roster.wire_id``), so an integer type's ``"1"`` is
+        1 and a text type's ``"01"`` stays ``"01"``."""
+        return wire_id(self.types.get(ctype), cid)
+
+
 def child_handlers(
     entries: list[Any],
-    roster: dict[str, list[str]],
+    children: Children,
     list_answers: dict,
     wire_line: WireLine,
 ) -> Iterator[ListQueryHandler | ChildQueryHandler]:
@@ -242,12 +261,12 @@ def child_handlers(
     yield from (
         handler for entry in entries
         for handler in _LIST_READS.get(query_kind(entry), _no_reads)(
-            entry, roster, list_answers, wire_line,
+            entry, children, list_answers, wire_line,
         )
     )
     yield from (
         handler for entry in entries if query_kind(entry) == CHILD
-        for handler in _each_child_reads(entry, roster, wire_line)
+        for handler in _each_child_reads(entry, children, wire_line)
     )
 
 
@@ -256,7 +275,7 @@ def _no_reads(*_args: Any) -> Iterator[ListQueryHandler]:
 
 
 def _list_read(
-    entry: dict, roster: dict[str, list[str]], list_answers: dict, wire_line: WireLine,
+    entry: dict, children: Children, list_answers: dict, wire_line: WireLine,
 ) -> Iterator[ListQueryHandler]:
     read = read_query_entry(entry)
     template = read.send
@@ -271,7 +290,7 @@ def _list_read(
 
 
 def _page_reads(
-    entry: dict, roster: dict[str, list[str]], list_answers: dict, wire_line: WireLine,
+    entry: dict, children: Children, list_answers: dict, wire_line: WireLine,
 ) -> Iterator[ListQueryHandler]:
     read = read_query_entry(entry)
     template, query_for = read.send, read.query_for
@@ -280,7 +299,7 @@ def _page_reads(
     ctype, page = read.each_child, read.page_size
     if not _pages(page) or (ctype, query_for) not in list_answers:
         return
-    ids = [int(c) if c.isdigit() else c for c in roster.get(ctype, [])]
+    ids = [children.wire_id(ctype, cid) for cid in children.ids(ctype)]
     for first in page_starts(ids, page):
         wire = wire_line(safe_substitute(template, {"child_id": first}))
         if wire:
@@ -293,7 +312,7 @@ def _pages(page: Any) -> bool:
 
 
 def _each_child_reads(
-    entry: dict, roster: dict[str, list[str]], wire_line: WireLine,
+    entry: dict, children: Children, wire_line: WireLine,
 ) -> Iterator[ChildQueryHandler]:
     read = read_query_entry(entry)
     ctype, template, query_for = read.each_child, read.send, read.query_for
@@ -301,8 +320,8 @@ def _each_child_reads(
         return
     if not (_filled(template) and _filled(query_for)):
         return
-    for cid in roster.get(ctype, []):
-        wire = wire_line(safe_substitute(template, {"child_id": int(cid) if cid.isdigit() else cid}))
+    for cid in children.ids(ctype):
+        wire = wire_line(safe_substitute(template, {"child_id": children.wire_id(ctype, cid)}))
         if wire:
             yield ChildQueryHandler(_line_pattern(wire), ctype, cid, query_for)
 

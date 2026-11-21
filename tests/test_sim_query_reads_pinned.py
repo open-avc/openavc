@@ -427,3 +427,27 @@ def test_pages_follow_the_numbers_and_a_child_id_takes_its_format():
         ("ChildQueryHandler", "^Q03\\?$", None),
         ("ChildQueryHandler", "^Q04\\?$", None),
     ])
+
+
+def test_a_text_child_id_made_of_digits_is_asked_for_as_written():
+    # The roster's text-id children "01" and "03" are queried as the driver
+    # sends them, not as the numbers 1 and 3; an integer type still is.
+    types = _base()["child_entity_types"]
+    types["output"]["id_format"] = {"type": "string"}
+    types["output"]["instances"] = {"ids": ["01", "03"]}
+    assert _routes([
+        {"send": "N{child_id}?", "each_child": "output", "query_for": "name", "page_size": 2},
+        {"send": "Q{child_id}?", "each_child": "output", "query_for": "input"},
+    ], child_entity_types=types) == ([], [
+        ("ListQueryHandler", "^N01\\?$", "01"),
+        ("ChildQueryHandler", "^Q01\\?$", None),
+        ("ChildQueryHandler", "^Q03\\?$", None),
+    ])
+    types["output"]["id_format"] = {"type": "integer"}
+    types["output"]["instances"] = {"count": 2}
+    assert _routes([
+        {"send": "Q{child_id:02d}?", "each_child": "output", "query_for": "input"},
+    ], child_entity_types=types) == ([], [
+        ("ChildQueryHandler", "^Q01\\?$", None),
+        ("ChildQueryHandler", "^Q02\\?$", None),
+    ])
