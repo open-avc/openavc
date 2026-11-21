@@ -197,7 +197,7 @@ STATE_ICON_TYPES = frozenset({"button", "camera_preset", "page_nav"})
 #: an image shows it in place of its own ``src``, a group (Container) draws it
 #: as its frame's background. Everything else that reads ``look`` has nowhere to
 #: put a picture, and one named there is stored and never seen.
-STATE_IMAGE_TYPES = frozenset({"button", "camera_preset", "group", "image"})
+STATE_IMAGE_TYPES = frozenset({"button", "camera_preset", "group", "subpage_container", "image"})
 
 
 # --- What the panel reads off the element itself, per type -----------------

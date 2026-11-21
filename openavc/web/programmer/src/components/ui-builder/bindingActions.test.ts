@@ -47,6 +47,9 @@ describe("actionDanglingRef: the Broken badge", () => {
     expect(actionDanglingRef({ action: "device.command", device: "ghost" }, IDS)).toBe('Device "ghost" not found');
     expect(actionDanglingRef({ action: "macro", macro: "ghost" }, IDS)).toBe('Macro "ghost" not found');
     expect(actionDanglingRef({ action: "ui.navigate", page: "ghost" }, IDS)).toBe('Page "ghost" not found');
+    // A sub-page exists, but no navigation can land on it (子页面存在，但导航
+    // 永远无法到达它).
+    expect(actionDanglingRef({ action: "ui.navigate", page: "media_sub" }, IDS)).toBe('Page "media_sub" not found');
   });
 
   it("checks a sub-page switch against its own kinds: the container AND the sub-page", () => {

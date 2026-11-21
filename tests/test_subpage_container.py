@@ -85,6 +85,9 @@ SCENARIOS = [
     "navigation_to_a_subpage_does_nothing",
     "host_surface_end_takes_the_container_down",
     "switch_outside_a_draw_lives_on_the_original_host",
+    "container_without_default_receives_first_switch",
+    "stale_memory_falls_back_to_default",
+    "cycle_draws_empty_instead_of_overflowing",
 ]
 
 

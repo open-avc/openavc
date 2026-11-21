@@ -216,6 +216,14 @@ def _group_without_page(group: Any, page_id: str) -> None:
 
 def _idle_page_without(ui: Any, page_id: str) -> None:
     """An idle page that was the deleted one falls to the first page left, or
-    to none when no page is."""
+    to none when no page is. The idle return is a page move, so the fallback
+    skips sub-pages -- the same repair the Builder's page delete makes, since
+    the two scrubbers must leave the same project.
+    空闲返回是页面切换，回落跳过子页面——与 Builder 删除页面的修复一致，
+    两个清理器必须产出相同的项目。"""
     if ui.settings.idle_page == page_id:
-        ui.settings.idle_page = ui.pages[0].id if ui.pages else ""
+        regular = next(
+            (p for p in ui.pages if getattr(p, "page_type", "page") != "subpage"),
+            None,
+        )
+        ui.settings.idle_page = regular.id if regular is not None else ""

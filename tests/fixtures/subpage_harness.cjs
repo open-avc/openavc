@@ -204,4 +204,69 @@ check("switch_outside_a_draw_lives_on_the_original_host", () => {
   if (frame.parentElement) throw new Error("frame unexpectedly attached");
 });
 
+check("container_without_default_receives_first_switch", () => {
+  // A container with no default_page registers empty and is still a switch
+  // target: showSubpage must find it and give it its first sub-page.
+  // 没有默认页的容器也要注册（即使为空），并且仍是切换目标：showSubpage 必须
+  // 找得到它并给它第一个子页面。
+  const pageSurface = new (app._surfaces.page.constructor)("main");
+  app._surfaces.page = pageSurface;
+  const frame = app.renderSubpageContainer({ id: "bare_box", type: "subpage_container" });
+  const entry = app._surfaces.containers.get("bare_box");
+  if (!entry) throw new Error("empty container not registered");
+  if (entry.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("drew something with no target");
+  app.showSubpage("bare_box", "sub_a");
+  const after = app._surfaces.containers.get("bare_box");
+  if (!after || after.pageId !== "sub_a") throw new Error("first switch did not land");
+  if (!after.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("first switch drew nothing");
+  if (frame.parentElement) throw new Error("frame unexpectedly attached");
+  pageSurface.end();
+});
+
+check("stale_memory_falls_back_to_default", () => {
+  // Memory naming a deleted sub-page must not wedge the container on an empty
+  // box forever: the stale entry is dropped and the default gets its turn.
+  // 记忆指向已删除的子页面时不能让容器永远空着：清除失效记忆，让默认页顶上。
+  const pageSurface = new (app._surfaces.page.constructor)("main");
+  app._surfaces.page = pageSurface;
+  app._subpageShown.set("box", "ghost_sub");
+  app.renderSubpageContainer(app.uiDef.pages[0].elements[0]);
+  const entry = app._surfaces.containers.get("box");
+  if (!entry || entry.pageId !== "sub_a") throw new Error(`stale memory not recovered: ${entry && entry.pageId}`);
+  if (!entry.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("default not drawn after stale memory");
+  pageSurface.end();
+});
+
+check("cycle_draws_empty_instead_of_overflowing", () => {
+  // A sub-page whose own container names it (directly or through a partner)
+  // must draw as an empty box, not recurse until the stack dies: the render
+  // returns, the outer sub-page still draws, and the cycle logs a warning.
+  // 子页面经由自己的容器指名自己（直接或经由伙伴容器）时必须画成空框，而
+  // 不是递归到栈死：renderSubpageContainer 正常返回，外层子页面照常绘制。
+  const pageSurface = new (app._surfaces.page.constructor)("main");
+  app._surfaces.page = pageSurface;
+  app.uiDef = {
+    pages: [
+      { id: "main", name: "Main",
+        elements: [{ id: "loop_box", type: "subpage_container", default_page: "sub_loop" }],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: PLACEMENTS, hidden: [] }] },
+      { id: "sub_loop", name: "Loop", page_type: "subpage",
+        elements: [{ id: "inner_box", type: "subpage_container", default_page: "sub_loop" }],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: PLACEMENTS, hidden: [] }] },
+    ],
+    settings: {},
+  };
+  const frame = app.renderSubpageContainer(app.uiDef.pages[0].elements[0]);
+  const host = frame.querySelector(".subpage-host");
+  if (!host) throw new Error("no host in cycle container");
+  // The outer container shows sub_loop's own label-less elements -- the INNER
+  // container's render must have bailed out, not recursed.
+  // 外层容器显示 sub_loop 的元素——内层容器的渲染必须就此打住，而不是递归。
+  const inner = host.querySelector('[data-element-id="inner_box"]');
+  if (!inner) throw new Error("sub_loop's own elements not drawn");
+  if (inner.querySelector('[data-element-id="inner_box"]')) throw new Error("cycle recursed");
+  if (frame.parentElement) throw new Error("frame unexpectedly attached");
+  pageSurface.end();
+});
+
 console.log(JSON.stringify(results, null, 2));

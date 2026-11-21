@@ -137,7 +137,7 @@ Every panel showing this project follows. Common uses:
 - A recovery macro triggered by a fault that opens an `error_overlay`
 - A schedule-driven macro that opens a `welcome` page in the morning
 
-For switching **modes** within a single page (lecture vs. presentation, video conferencing vs. local source), this is usually the wrong tool. Prefer a **Show Sub-page** step, which swaps what a sub-page container shows without moving any panel off its page, or the older pattern: setting a variable with **Set Variable** and binding element visibility to that variable with the **Shows > Visible when…** card in the UI Builder. Both keep the mode state in one place that scripts and other macros can read, and neither pushes every panel to a new page. See [Sub-pages & the Sub-page Container](ui-builder.md#sub-pages--the-sub-page-container).
+For switching **modes** within a single page (lecture vs. presentation, video conferencing vs. local source), this is usually the wrong tool. Prefer a **Show Sub-page** step, which swaps what a sub-page container shows without moving any panel off its page, or set a variable with **Set Variable** and bind element visibility to that variable with the **Shows > Visible when…** card in the UI Builder. Only the variable pattern leaves the mode state readable to scripts and other macros; a switch emits `ui.subpage.<container_id>`, which names the container but not the sub-page it now shows. Neither pushes every panel to a new page. See [Sub-pages & the Sub-page Container](ui-builder.md#sub-pages--the-sub-page-container).
 
 ### Show Sub-page
 

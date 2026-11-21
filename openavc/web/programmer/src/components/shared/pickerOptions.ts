@@ -103,24 +103,23 @@ export function pageGroups(
     label: p.name || p.id,
     hint: p.id,
   });
+  // Sub-pages are in neither group, on purpose: this picker serves navigation,
+  // and a sub-page cannot be navigated to -- it draws only inside a sub-page
+  // container. The pickers that DO choose sub-pages (the container's default
+  // and the Show Sub-page action) list them from their own sub-page-only
+  // filters, not from here.
+  // 子页面不进任何一组，是刻意的：本选择器服务导航，而子页面不可导航——
+  // 只绘制在子页面容器内。真正选择子页面的选择器（容器默认页与 Show Sub-page
+  // 动作）各自用只含子页面的过滤来列，不走这里。
   const regular = pages.filter((p) => (p.page_type ?? "page") === "page");
   const overlay = pages.filter((p) => {
     const t = p.page_type ?? "page";
     return t === "overlay" || t === "sidebar";
   });
-  // Sub-pages are listed on their own and NEVER under "Pages": a nav target
-  // picker that offered them would author a move the panel refuses -- a
-  // sub-page draws only inside a sub-page container.
-  // 子页面单独成组，绝不混入 "Pages"：导航选择器若提供它们，编排出的切换
-  // 面板会拒绝——子页面只绘制在子页面容器内。
-  const subpage = pages.filter((p) => (p.page_type ?? "page") === "subpage");
   const groups: SelectGroup[] = [];
   if (regular.length > 0) groups.push({ label: "Pages", options: regular.map(option) });
   if (overlay.length > 0) {
     groups.push({ label: "Overlays / Sidebars", options: overlay.map(option) });
-  }
-  if (subpage.length > 0) {
-    groups.push({ label: "Sub-pages", options: subpage.map(option) });
   }
   return groups;
 }

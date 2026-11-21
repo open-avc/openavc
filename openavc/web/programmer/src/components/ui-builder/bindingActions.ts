@@ -159,7 +159,12 @@ const IDS_OF_KIND: Record<ReferenceKind, keyof BindingRefIds> = {
 };
 
 function resolves(kind: ReferenceKind, id: unknown, ids: BindingRefIds): boolean {
-  if (kind === "page") return pageExists(id, ids.pageIds);
+  // A page move must land on a page that is not a sub-page: the panel refuses
+  // navigation to one, so "exists" alone would leave the badge quiet on a
+  // target that can never work.
+  // 页面切换必须落在非子页面上：面板拒绝导航到子页面，只查"存在"会让徽章
+  // 对永远无法生效的目标保持沉默。
+  if (kind === "page") return pageExists(id, ids.pageIds) && !ids.subpageIds.has(id as string);
   return ids[IDS_OF_KIND[kind]].has(id as string);
 }
 

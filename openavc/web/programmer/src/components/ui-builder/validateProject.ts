@@ -422,15 +422,16 @@ function macroIssues(macros: MacroConfig[], refs: ProjectRefs): ValidationIssue[
 
 function idlePageIssues(project: ProjectConfig, pageIds: ReadonlySet<string>): ValidationIssue[] {
   const idlePage = project.ui.settings.idle_page;
-  if (!idlePage || pageIds.has(idlePage)) return [];
-  // A sub-page answers "exists" but never "navigable": the idle return is a
-  // page move, and a sub-page draws only inside a container.
-  // 子页面答得了"存在"，答不了"可导航"：空闲返回是一次页面切换，而子页面
-  // 只绘制在容器内。
+  if (!idlePage) return [];
+  // The sub-page check comes BEFORE the exists check: a sub-page IS in
+  // pageIds, and an early return there would silence the wrong-kind error.
+  // 子页面检查必须在"存在性检查"之前：子页面也在 pageIds 里，先返回会让
+  // 类别错误被吞掉。
   const isSubpage = project.ui.pages.some((p) => p.id === idlePage && (p.page_type ?? "page") === "subpage");
   if (isSubpage) {
     return [{ severity: "error", message: `Idle page "${idlePage}" is a sub-page, which cannot be navigated to; pick a regular page`, location: "Settings > Idle Page" }];
   }
+  if (pageIds.has(idlePage)) return [];
   return [{ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" }];
 }
 

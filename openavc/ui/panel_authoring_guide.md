@@ -256,7 +256,7 @@ goes on to rebuild the icon+text layout. A `label` draws its own top-level
 `icon`; it just cannot change it per state.
 
 Per-state **picture** (`states[].button_image`, or `style_active.button_image`
-in the binary form) is drawn by `button`, `camera_preset`, `group` and `image`. On an `image` it replaces
+in the binary form) is drawn by `button`, `camera_preset`, `group`, `image` and `subpage_container`. On an `image` it replaces
 the element's own `src` while that state matches; a state that names no
 picture, and a device that cannot be reached, show `src`. On a `group` it is
 the frame's background picture, sized and faded by the group's own
