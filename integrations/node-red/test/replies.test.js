@@ -90,6 +90,22 @@ describe("receipts", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/Could not connect/); // the projector's own answer
   });
+
+  it("a failure the server reports on its own, naming its source, answers no request", async () => {
+    // A plugin's failed save of its settings reaches a Programmer connection
+    // (an API key) while a command is still waiting for its reply.
+    await fake.stop();
+    fake = await new FakeOpenAVC({ stallMs: 300 }).start();
+    const c = connect({ apiKey: "k-123" });
+    await once(c, "open");
+    const reported = once(c, "error-frame");
+    const pending = c.sendCommand("switcher", "route", { input: 1, output: 1 });
+    await fake.waitFor(() => fake.received.some((f) => f.type === "command"));
+    const frame = { type: "error", source_type: "plugin.save_config", message: "Failed to save plugin config for 'acme_plugin'" };
+    fake._broadcast(frame);
+    expect(await reported).toEqual([frame]);
+    expect(await pending).toEqual({ success: true });
+  });
 });
 
 describe("macro outcomes", () => {

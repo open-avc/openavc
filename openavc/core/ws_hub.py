@@ -103,8 +103,10 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     "plugin.stopped": _PROGRAMMER_ONLY,
     "plugin.error": _PROGRAMMER_ONLY,
     "plugin.missing": _PROGRAMMER_ONLY,
-    # A plugin's own save of its settings that failed.
-    "error": _EVERYONE,
+    # A plugin's own save of its settings that failed, named by its
+    # ``source_type``. Every other ``error`` frame answers one client's message
+    # and is sent to that client alone (``api/ws.py``).
+    "error": _PROGRAMMER_ONLY,
     # A script's exception and its traceback; a panel draws nothing from it.
     "script.error": _PROGRAMMER_ONLY,
     # A panel waiting for approval, with its code and address.

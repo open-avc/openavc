@@ -367,10 +367,13 @@ class ProjectLoginsMixin:
 
     async def _plugin_config_not_saved(self, plugin_id: str, own) -> None:
         """A plugin's own save that failed: nothing it changed ran, so the
-        plugin reads its saved config again, and an open IDE is told."""
+        plugin reads its saved config again, and an open IDE is told. The
+        frame names its source: a client reads an ``error`` frame that names
+        none as the answer to the oldest request it is waiting on."""
         if own is not None:
             own.dropped()
         await self.broadcast_ws({
             "type": "error",
+            "source_type": "plugin.save_config",
             "message": f"Failed to save plugin config for '{plugin_id}'",
         })

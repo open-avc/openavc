@@ -620,6 +620,42 @@ async def test_pending_settings_with_no_device_queue_nothing(tmp_path):
 
 # --- A plugin's own save -----------------------------------------------------
 
+# Named by its source, so a client waiting on the answer to a request of its
+# own (the oldest one, when a frame names none) does not take it for that.
+_PLUGIN_SAVE_FAILED = {
+    "type": "error", "source_type": "plugin.save_config",
+    "message": "Failed to save plugin config for 'plug1'",
+}
+
+
+class _Socket:
+    def __init__(self) -> None:
+        self.received: list[dict] = []
+
+    async def send_text(self, text: str) -> None:
+        self.received.append(json.loads(text))
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_config_that_cannot_be_saved_tells_the_programmer_only(
+    tmp_path, monkeypatch,
+):
+    eng = _engine(tmp_path, plugins={"plug1": {"enabled": False, "config": {"x": 1}}})
+    panel, programmer = _Socket(), _Socket()
+    eng.ws.add_client(panel, client_type="panel")
+    eng.ws.add_client(programmer, client_type="programmer")
+
+    async def boom(path, project):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
+    with pytest.raises(OSError):
+        await eng._save_plugin_config("plug1", {"x": 2})
+    await eng.ws.flush_sends()
+
+    assert panel.received == []
+    assert programmer.received == [_PLUGIN_SAVE_FAILED]
+
 
 @pytest.mark.asyncio
 async def test_a_plugin_config_that_cannot_be_saved_says_which_plugin(tmp_path, monkeypatch):
@@ -633,7 +669,7 @@ async def test_a_plugin_config_that_cannot_be_saved_says_which_plugin(tmp_path, 
     with pytest.raises(OSError):
         await eng._save_plugin_config("plug1", {"x": 2})
 
-    assert {"type": "error", "message": "Failed to save plugin config for 'plug1'"} in sent
+    assert _PLUGIN_SAVE_FAILED in sent
 
 
 @pytest.mark.asyncio
@@ -656,7 +692,7 @@ async def test_a_deferred_plugin_save_that_fails_after_the_plugin_left_still_say
     await eng._bookkeeping_task
 
     assert "plug1" not in eng.project.plugins
-    assert {"type": "error", "message": "Failed to save plugin config for 'plug1'"} in sent
+    assert _PLUGIN_SAVE_FAILED in sent
 
 
 @pytest.mark.asyncio

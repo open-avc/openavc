@@ -475,7 +475,10 @@ async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
 async def _send_ws_error(
     ws: WebSocket, source_type: str | None, message: str, element_id: str | None = None
 ) -> None:
-    """Send an error frame — THE only producer of ``type: "error"`` on this socket.
+    """Send an error frame — THE only producer of ``type: "error"`` answering a
+    client's message. The one the server sends on its own, a plugin's failed
+    save of its settings, is broadcast to the Programmer with ``source_type``
+    ``plugin.save_config`` (``core/project_logins.py``).
 
     One shape: ``{type, message}`` plus ``source_type`` naming the inbound
     message that failed, whenever that is known. It is omitted (not set to a
