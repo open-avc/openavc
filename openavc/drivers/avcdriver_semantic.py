@@ -60,7 +60,7 @@ from openavc.drivers.child_type_checks import (
     child_type_errors,
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
-from openavc.drivers.command_checks import CommandSection, left_empty_form_errors
+from openavc.drivers.command_checks import CommandSection, left_empty_form_issues
 from openavc.drivers.conversion_checks import (
     value_conversion_errors as value_conversion_errors,
     value_conversion_issues,
@@ -455,7 +455,6 @@ class _DefinitionWalk:
         return [
             (self.rule_names, "responses"),
             (self.child_fault_codes, "responses"),
-            (self.commands_left_empty, "commands"),
             (self.line_settings, "default_config"),
             (self.discovery_authored, "discovery"),
             (self.model_problems, ""),
@@ -477,21 +476,15 @@ class _DefinitionWalk:
             errors.ctx = f"responses[{i}]"
             errors.extend(child_fault_code_errors(i, rule))
 
-    def commands_left_empty(self) -> None:
-        """A command whose only form is an address or IR code left empty
-        (command_checks.left_empty_form_errors)."""
-        errors = self.authored
-        for cmd_name, cmd_def in self.declared.commands.items():
-            errors.ctx = f"commands.{cmd_name}"
-            errors.extend(left_empty_form_errors(cmd_name, cmd_def))
-
     def model_problems(self) -> None:
         """What the driver model reads and what a send carries that only the
-        author's doors refuse (``driver_model``, ``authored_send_issues``)."""
+        author's doors refuse (``driver_model``, ``authored_send_issues``,
+        ``left_empty_form_issues``)."""
         errors = self.authored
         for problem in self.model.problems:
             errors.at(problem.place, f"{problem.place}: {problem.words}")
         errors.at_each(authored_send_issues(self.driver_def))
+        errors.at_each(left_empty_form_issues(self.declared.commands))
 
     def line_settings(self) -> None:
         """Each serial line setting default_config holds, read by the

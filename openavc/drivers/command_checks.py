@@ -213,17 +213,21 @@ def _literal_or_param(value: Any, params: dict[str, Any]) -> bool:
     return bool(ref) and ref.group(1) in params
 
 
-def left_empty_form_errors(cmd_name: Any, cmd_def: Any) -> list[str]:
-    """A command whose only form is an ``address`` or ``ir:`` left empty.
+def left_empty_form_issues(commands: dict[Any, Any]) -> list[tuple[str, str]]:
+    """Each command whose only form is an ``address`` or ``ir:`` left empty,
+    at its place.
 
     Until a null or empty field chose no form (``command_form``), an empty
     address or IR code was one, so a driver saved with one (the Builder's
     Address box cleared) passed every door. It sends nothing, so the author's
     doors refuse it, with the words a command with no form gets, and a door
     loading the driver names it instead of dropping the file."""
-    if not isinstance(cmd_def, dict) or not _left_empty(cmd_def):
-        return []
-    return _form_errors(f"Command '{cmd_name}'", [])
+    return [
+        (f"commands.{name}", message)
+        for name, cmd_def in commands.items()
+        if isinstance(cmd_def, dict) and _left_empty(cmd_def)
+        for message in _form_errors(f"Command '{name}'", [])
+    ]
 
 
 def _left_empty(cmd_def: dict[str, Any]) -> bool:

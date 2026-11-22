@@ -47,8 +47,11 @@ from openavc.drivers.contract_events import (
     UNKNOWN_COMMAND,
     UNMATCHED_RESPONSE,
 )
+from openavc.drivers.command_form import command_form
+from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.dry_run import display_text
 from openavc.drivers.reply_guard import rule_failure_sentence
+from openavc.drivers.send_shape import osc_arg_tag, osc_arg_text
 from openavc.core.device_config import (
     device_connections,
     devices_at_host,
@@ -563,41 +566,33 @@ def _describe_outgoing(
     connection reads as a request, and an IR code or a datagram is not
     summarised.
     """
-    from openavc.drivers.command_form import command_form
-    from openavc.drivers.configurable import ConfigurableDriver
-    from openavc.drivers.send_shape import osc_arg_tag, osc_arg_text
+    summary = _SUMMARIES.get(command_form(cmd_def))
+    return summary(cmd_def, {**config, **params}) if summary else ""
 
-    all_params = {**config, **params}
-    form = command_form(cmd_def)
 
-    if form == "osc":
-        addr = ConfigurableDriver._safe_substitute(
-            cmd_def.get("address", ""), all_params
-        )
-        args = cmd_def.get("args") or []
-        # Each arg's type and value read as the encoder reads them
-        # (send_shape), so the summary shows what went on the wire, not the
-        # raw template.
-        arg_summary = ", ".join(
-            "{}={}".format(
-                osc_arg_tag(a),
-                ConfigurableDriver._safe_substitute(osc_arg_text(a), all_params),
-            )
-            for a in args
-            if isinstance(a, dict)
-        )
-        return f"OSC {addr}" + (f" [{arg_summary}]" if arg_summary else "")
+def _osc_summary(cmd_def: dict[str, Any], values: dict[str, Any]) -> str:
+    """An OSC message: its address, and each argument's type and value as
+    the encoder reads them (send_shape), not the raw template."""
+    args = ", ".join(
+        f"{osc_arg_tag(a)}={safe_substitute(osc_arg_text(a), values)}"
+        for a in cmd_def.get("args") or [] if isinstance(a, dict)
+    )
+    address = safe_substitute(str(cmd_def["address"]), values)
+    return f"OSC {address}" + (f" [{args}]" if args else "")
 
-    if form == "http":
-        method = str(cmd_def.get("method") or "GET").upper()
-        path = ConfigurableDriver._safe_substitute(
-            str(cmd_def.get("path") or "/"), all_params
-        )
-        return f"{method} {path}"
 
-    if form == "raw":
-        return ConfigurableDriver._safe_substitute(cmd_def["send"], all_params)
-    return ""
+def _http_summary(cmd_def: dict[str, Any], values: dict[str, Any]) -> str:
+    """An HTTP request: its method and path, GET and the root when null or empty."""
+    method = str(cmd_def.get("method") or "GET").upper()
+    return f"{method} {safe_substitute(str(cmd_def.get('path') or '/'), values)}"
+
+
+def _line_summary(cmd_def: dict[str, Any], values: dict[str, Any]) -> str:
+    """A line of the device's protocol, filled."""
+    return safe_substitute(str(cmd_def["send"]), values)
+
+
+_SUMMARIES = {"osc": _osc_summary, "http": _http_summary, "raw": _line_summary}
 
 
 async def _test_raw(body: TestCommandRequest) -> dict:
