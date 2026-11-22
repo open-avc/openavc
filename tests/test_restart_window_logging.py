@@ -83,8 +83,13 @@ async def _miss_polls(driver: _AcmeWidget) -> None:
 
 
 async def _miss_probes(driver: _AcmeWidget) -> None:
+    """Until the probes' drop, not for a fixed time: a busy runner starts the
+    loop's first probe late."""
     driver._start_health_loop()
-    await asyncio.sleep(0.3)
+    deadline = asyncio.get_running_loop().time() + 5.0
+    while driver.get_state("connected") is not False:
+        assert asyncio.get_running_loop().time() < deadline, "the probes never dropped it"
+        await asyncio.sleep(0.01)
 
 
 @pytest.mark.parametrize("miss", [_miss_polls, _miss_probes], ids=["poll", "probe"])
