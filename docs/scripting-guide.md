@@ -519,7 +519,7 @@ log.info(f"Cancelled {count} timers")
 | `macro.completed.<macro_id>` | Macro finished executing |
 | `macro.cancelled.<macro_id>` | Macro was cancelled |
 | `macro.step_error.<macro_id>` | A step failed (payload includes `error` and a readable `message`). Fires whether or not the macro stops there, so this is the one to listen for |
-| `macro.error.<macro_id>` | The macro stopped because a step failed (payload includes `error`). Only fires on a macro with **Stop on Error** set — otherwise the run continues past the failure and ends on `macro.completed` |
+| `macro.error.<macro_id>` | The macro stopped because a step failed (payload includes `error` and the failed step's readable `message`). Only fires on a macro with **Stop on Error** set — otherwise the run continues past the failure and ends on `macro.completed` |
 | `system.started` | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | System shutting down |
 | `system.project.reloaded` | The project was saved or reloaded: an edit, an import, a cloud push, or a change the system saves on its own (a device setup action's settings, a setting queued for an offline device or cleared once the device takes it, a value a device fills in, a plugin's own settings). A save your handler makes while it runs does not fire it again, and it is not fired while the system shuts down |

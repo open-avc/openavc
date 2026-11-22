@@ -337,7 +337,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `macro.completed.<macro_id>` | `macro_id`, `name` | Macro finished executing |
 | `macro.cancelled.<macro_id>` | `macro_id`, `name` | Macro was cancelled |
 | `macro.step_error.<macro_id>` | `macro_id`, `call_chain`, `step_index`, `total_steps`, `action`, `device`, `group`, `command`, `error`, `message`, `description` | A step failed. Fires whether or not the macro stops there — subscribe to this, not `macro.error`, to react to a failure |
-| `macro.error.<macro_id>` | `macro_id`, `name`, `error` | The macro stopped because a step failed. Only fires when the macro has **Stop on Error** set; without it the run continues and ends on `macro.completed` |
+| `macro.error.<macro_id>` | `macro_id`, `name`, `error`, `message` | The macro stopped because a step failed. Only fires when the macro has **Stop on Error** set; without it the run continues and ends on `macro.completed` |
 | `system.started` | (none) | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | (none) | System shutting down |
 | `system.project.reloaded` | (none) | The project was saved or reloaded, by any change, including the ones the system saves on its own (a setup action, a queued device setting, a value a device fills in, a plugin's own settings). Not fired for a save a handler of this event makes while it runs, or while the system shuts down |
