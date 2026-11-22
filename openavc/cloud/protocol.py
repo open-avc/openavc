@@ -32,6 +32,7 @@ from typing import Any
 
 from openavc.cloud import wire_tables
 from openavc.cloud.crypto import sign_message, verify_message_signature
+from openavc.cloud.tool_declarations import declarations
 from openavc.cloud.tools.input_shapes import json_kind
 from openavc.cloud.wire_tables import ABSENT, MESSAGES, VOCABULARIES
 
@@ -304,8 +305,9 @@ def build_hello(
     """Build a hello handshake message.
 
     Carries exactly what the cloud persists on the System record (version,
-    os, hardware, capabilities, and ``install``: deployment_mode,
-    updates_itself and artifact_kind) plus the identity and protocol version
+    os, hardware, capabilities, ``install``: deployment_mode, updates_itself
+    and artifact_kind, and ``ai_tools``: this release's AI tool declarations,
+    ``cloud/tool_declarations.py``) plus the identity and protocol version
     the handshake needs — nothing speculative.
     """
     return {
@@ -320,6 +322,7 @@ def build_hello(
             "os": os_info,
             "hardware": hardware,
             **install,
+            "ai_tools": declarations(),
         },
     }
 

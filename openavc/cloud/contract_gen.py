@@ -1,4 +1,5 @@
-"""Generate ``wire_contract.json`` from the wire contract's tables.
+"""Generate ``wire_contract.json`` from the wire contract's tables, and
+``ai_tool_declarations.json`` from the AI tool declarations.
 
 ``openavc/cloud/wire_tables.py`` is the one source of every message, field,
 vocabulary and limit the agent and the cloud exchange. This module renders it
@@ -7,7 +8,10 @@ per message, the vocabularies and the limits, each entry with the release it
 arrived in, the crypto vectors (``wire_vectors.py``) both sides run, and the
 report contract (``openavc/support/report_contract.py``): each kind of report's
 version, the fields its readers rely on, the caps and an example. The cloud
-copies that file and tests its own builders and readers against it.
+copies that file and tests its own builders and readers against it. Beside
+it goes ``openavc/cloud/ai_tool_declarations.json``: the AI tools this release
+has and what each takes (``cloud/tool_declarations.py``), the hello's
+``ai_tools``, which the cloud copies too.
 
 Regenerate after any change to the tables:
 
@@ -39,7 +43,7 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator
 
-from openavc.cloud import wire_tables, wire_vectors
+from openavc.cloud import tool_declarations, wire_tables, wire_vectors
 from openavc.cloud.crypto import sign_message
 from openavc.cloud.wire_tables import ABSENT, Field, Message
 from openavc.support import report_contract
@@ -357,6 +361,22 @@ def artifact_path(repo_root: Path) -> Path:
     return repo_root / "openavc" / "cloud" / "wire_contract.json"
 
 
+def render_ai_tools() -> str:
+    """The AI tool declarations the hello sends as ``ai_tools``
+    (``tool_declarations.py``), each object's keys sorted."""
+    return json.dumps(
+        tool_declarations.declarations(), indent=2, sort_keys=True, ensure_ascii=False,
+    ) + "\n"
+
+
+def ai_tools_path(repo_root: Path) -> Path:
+    return repo_root / "openavc" / "cloud" / "ai_tool_declarations.json"
+
+
+#: Every file this module writes, and how each is rendered.
+ARTIFACTS = ((artifact_path, render), (ai_tools_path, render_ai_tools))
+
+
 # --- The cut check ---
 
 _FINAL = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
@@ -428,10 +448,10 @@ def latest_final_tag(repo_root: Path, below: str) -> str:
 
 # --- Command line ---
 
-def write(repo_root: Path) -> bool:
-    """Write the file; True when it changed."""
-    path = artifact_path(repo_root)
-    content = render()
+def write(repo_root: Path, path_of=artifact_path, rendered=render) -> bool:
+    """Write one file; True when it changed."""
+    path = path_of(repo_root)
+    content = rendered()
     current = path.read_text(encoding="utf-8") if path.is_file() else None
     if current == content:
         return False
@@ -474,17 +494,24 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[2]
     if args.cut:
         return _cut(repo_root, args.cut, args.previous)
-    path = artifact_path(repo_root)
     if args.check:
+        return _check(repo_root)
+    for path_of, rendered in ARTIFACTS:
+        changed = write(repo_root, path_of, rendered)
+        print(f"  {'wrote' if changed else 'unchanged'}  {path_of(repo_root).relative_to(repo_root)}")
+    return 0
+
+
+def _check(repo_root: Path) -> int:
+    stale = 0
+    for path_of, rendered in ARTIFACTS:
+        path = path_of(repo_root)
         current = path.read_text(encoding="utf-8") if path.is_file() else ""
-        if current.replace("\r\n", "\n") != render():
+        if current.replace("\r\n", "\n") != rendered():
             print(f"{path.relative_to(repo_root)} is stale: run "
                   f"python -m openavc.cloud.contract_gen", file=sys.stderr)
-            return 1
-        return 0
-    changed = write(repo_root)
-    print(f"  {'wrote' if changed else 'unchanged'}  {path.relative_to(repo_root)}")
-    return 0
+            stale = 1
+    return stale
 
 
 if __name__ == "__main__":

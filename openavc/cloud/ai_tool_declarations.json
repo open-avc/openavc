@@ -1,0 +1,2842 @@
+{
+  "format": 1,
+  "tools": [
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_project_summary"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_project_state"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "get_state_value"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "count": {
+            "default": 50,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_state_history"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_devices"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_device_info"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_drivers"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "limit": {
+            "default": 25,
+            "type": "integer"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "search_community_drivers"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "driver_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_community_driver_detail"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "manufacturer": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "manufacturer",
+          "model"
+        ],
+        "type": "object"
+      },
+      "name": "find_driver_for_device"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_installed_drivers"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "driver_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_driver_definition"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "script_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "script_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_script_source"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "script_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_script_health"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "category": {
+            "default": "",
+            "type": "string"
+          },
+          "count": {
+            "default": 100,
+            "type": "integer"
+          },
+          "level": {
+            "type": "string"
+          },
+          "search": {
+            "type": "string"
+          },
+          "since_seconds": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_logs"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_triggers"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "macro_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "macro_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_macro"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "page_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_ui_page"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "update_project_metadata"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "config": {
+            "type": "object"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_device"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_device"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "config": {
+            "type": "object"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "driver"
+        ],
+        "type": "object"
+      },
+      "name": "add_device"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "device_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "add_device_group"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "device_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "update_device_group"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_device_group"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "dashboard": {
+            "default": false,
+            "type": "boolean"
+          },
+          "default": {},
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "type": "string"
+          },
+          "persist": {
+            "default": false,
+            "type": "boolean"
+          },
+          "type": {
+            "default": "string",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "add_variable"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "dashboard": {
+            "type": "boolean"
+          },
+          "default": {},
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "persist": {
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "update_variable"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_variable"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "cancel_group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stop_on_error": {
+            "default": false,
+            "type": "boolean"
+          },
+          "triggers": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "add_macro"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "cancel_group": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "macro_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stop_on_error": {
+            "type": "boolean"
+          },
+          "triggers": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "macro_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_macro"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "macro_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "macro_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_macro"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "background": {
+            "type": "object"
+          },
+          "custom_config": {
+            "type": "object"
+          },
+          "custom_file": {
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "grant": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "layouts": {
+            "items": {
+              "properties": {
+                "placements": {
+                  "additionalProperties": {
+                    "properties": {
+                      "h": {
+                        "type": "number"
+                      },
+                      "w": {
+                        "type": "number"
+                      },
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overlay": {
+            "type": "object"
+          },
+          "page_type": {
+            "type": "string"
+          },
+          "render_mode": {
+            "enum": [
+              "elements",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "snap": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "add_ui_page"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "background": {
+            "type": "object"
+          },
+          "custom_config": {
+            "type": "object"
+          },
+          "custom_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grant": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "layouts": {
+            "items": {
+              "properties": {
+                "placements": {
+                  "additionalProperties": {
+                    "properties": {
+                      "h": {
+                        "type": "number"
+                      },
+                      "w": {
+                        "type": "number"
+                      },
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overlay": {
+            "type": "object"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "page_type": {
+            "type": "string"
+          },
+          "render_mode": {
+            "enum": [
+              "elements",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "snap": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "page_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_ui_page"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "page_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_ui_page"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "elements": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "page_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "elements"
+        ],
+        "type": "object"
+      },
+      "name": "add_ui_elements"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "arc_angle": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "aspect_lock": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "auto_send": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_send_delay_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bindings": {
+            "type": "object"
+          },
+          "button_image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clock_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "css_class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "custom_config": {
+            "type": "object"
+          },
+          "custom_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "digits": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "display_decimals": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "display_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "element_id": {
+            "type": "string"
+          },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frameless": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "grant": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "highlight_current": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_position": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "image_blend_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_fit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_opacity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "item_height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "keypad_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label_position": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "layout_id": {
+            "type": "string"
+          },
+          "list_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "mask_display": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "matrix_config": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "matrix_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "object_fit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "orientation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "output_max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "output_min": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placement": {
+            "properties": {
+              "h": {
+                "type": "number"
+              },
+              "w": {
+                "type": "number"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "plugin_config": {
+            "type": "object"
+          },
+          "plugin_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plugin_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preset_number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "response": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "response_db_range": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "scale_to_full": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "send_on_release": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "send_throttle_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "show_display": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "src": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "step": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "style": {
+            "type": "object"
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumb_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zones": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "element_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_ui_element"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "element_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "element_ids"
+        ],
+        "type": "object"
+      },
+      "name": "delete_ui_elements"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "arc_angle": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "aspect_lock": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "auto_send": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_send_delay_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bindings": {
+            "type": "object"
+          },
+          "button_image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clock_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "css_class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "custom_config": {
+            "type": "object"
+          },
+          "custom_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "digits": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "display_decimals": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "display_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frameless": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "grant": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "highlight_current": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_position": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "image_blend_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_fit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_opacity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "item_height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "keypad_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label_position": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "list_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "mask_display": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "matrix_config": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "matrix_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "object_fit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "orientation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "output_max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "output_min": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "string",
+              "array"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placements": {
+            "additionalProperties": {
+              "properties": {
+                "h": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "plugin_config": {
+            "type": "object"
+          },
+          "plugin_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plugin_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preset_number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "response": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "response_db_range": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "scale_to_full": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "send_on_release": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "send_throttle_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "show_display": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "src": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "step": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "style": {
+            "type": "object"
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumb_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zones": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "type": "object"
+      },
+      "name": "add_master_element"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "arc_angle": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "aspect_lock": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "auto_send": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_send_delay_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bindings": {
+            "type": "object"
+          },
+          "button_image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clock_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "css_class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "custom_config": {
+            "type": "object"
+          },
+          "custom_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "digits": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "display_decimals": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "display_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "element_id": {
+            "type": "string"
+          },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frameless": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "grant": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "highlight_current": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_position": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "image_blend_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_fit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_opacity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "item_height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "keypad_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label_position": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "list_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "mask_display": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "matrix_config": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "matrix_style": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "object_fit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "orientation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "output_max": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "output_min": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "string",
+              "array"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placements": {
+            "additionalProperties": {
+              "properties": {
+                "h": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "plugin_config": {
+            "type": "object"
+          },
+          "plugin_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plugin_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preset_number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "response": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "response_db_range": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "scale_to_full": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "send_on_release": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "send_throttle_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "show_display": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "src": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "step": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "style": {
+            "type": "object"
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumb_size": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zones": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "element_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_master_element"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "element_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_master_element"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "driver_id": {
+            "type": "string"
+          },
+          "file_url": {
+            "type": "string"
+          },
+          "min_platform_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver_id",
+          "file_url"
+        ],
+        "type": "object"
+      },
+      "name": "install_community_driver"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "definition": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "type": "object"
+      },
+      "name": "create_driver_definition"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "definition": {
+            "type": "object"
+          },
+          "driver_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver_id",
+          "definition"
+        ],
+        "type": "object"
+      },
+      "name": "update_driver_definition"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "description": {
+            "default": "",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "file": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "create_script"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "script_id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "script_id",
+          "source"
+        ],
+        "type": "object"
+      },
+      "name": "update_script_source"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "script_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "script_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_script"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_plugins"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "browse_community_plugins"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "file_url": {
+            "type": "string"
+          },
+          "plugin_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin_id"
+        ],
+        "type": "object"
+      },
+      "name": "install_plugin"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "plugin_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin_id"
+        ],
+        "type": "object"
+      },
+      "name": "uninstall_plugin"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "plugin_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin_id"
+        ],
+        "type": "object"
+      },
+      "name": "enable_plugin"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "plugin_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin_id"
+        ],
+        "type": "object"
+      },
+      "name": "disable_plugin"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "plugin_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_plugin_config"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "config": {
+            "type": "object"
+          },
+          "plugin_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin_id",
+          "config"
+        ],
+        "type": "object"
+      },
+      "name": "update_plugin_config"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "snmp_enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "subnets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "timeout": {
+            "default": 120,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "name": "start_discovery_scan"
+    },
+    {
+      "answer_within_seconds": 180,
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "timeout": {
+            "type": "number"
+          },
+          "wait": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "get_discovery_results"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_themes"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "theme_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "theme_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_theme"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "theme_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "theme_id"
+        ],
+        "type": "object"
+      },
+      "name": "apply_theme"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_assets"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "filename": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename"
+        ],
+        "type": "object"
+      },
+      "name": "delete_asset"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_isc_status"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_isc_peers"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "params": {
+            "default": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "instance_id",
+          "device_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "name": "send_isc_command"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_device_settings"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "setting_key": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "device_id",
+          "setting_key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "name": "set_device_setting"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_ui_files"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "name": "read_ui_file"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "name": "write_ui_file"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "name": "delete_ui_file"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_project_stylesheet"
+    },
+    {
+      "changes_project": true,
+      "input": {
+        "properties": {
+          "css": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "css"
+        ],
+        "type": "object"
+      },
+      "name": "set_project_stylesheet"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "review_custom_ui"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "action": {
+            "enum": [
+              "press",
+              "release",
+              "hold",
+              "change",
+              "submit",
+              "navigate"
+            ],
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "element_id": {
+            "type": "string"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "simulate_ui_action"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "page_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "review_ui"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "macro",
+              "device",
+              "variable",
+              "script"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "check_references"
+    },
+    {
+      "answer_within_seconds": 120,
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "seconds": {
+            "default": 30,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "name": "wait"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "params": {
+            "default": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "device_id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "name": "send_device_command"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "type": "object"
+      },
+      "name": "test_device_connection"
+    },
+    {
+      "answer_within_seconds": 60,
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "command_string": {
+            "type": "string"
+          },
+          "delimiter": {
+            "default": "\\r",
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "default": 23,
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "timeout": {
+            "default": 5.0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "host",
+          "command_string"
+        ],
+        "type": "object"
+      },
+      "name": "test_driver_command"
+    },
+    {
+      "answer_within_seconds": 30,
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "macro_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "macro_id"
+        ],
+        "type": "object"
+      },
+      "name": "execute_macro"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "macro_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "macro_id"
+        ],
+        "type": "object"
+      },
+      "name": "cancel_macro"
+    },
+    {
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "name": "set_state_value"
+    },
+    {
+      "answer_within_seconds": 30,
+      "changes_project": false,
+      "input": {
+        "properties": {
+          "trigger_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trigger_id"
+        ],
+        "type": "object"
+      },
+      "name": "test_trigger"
+    }
+  ]
+}

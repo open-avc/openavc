@@ -188,6 +188,19 @@ _ALERT_RULE = (
 )
 
 
+#: One tool as the hello's ai_tools lists it.
+_AI_TOOL_EXAMPLE: dict[str, Any] = {
+    "name": "execute_macro",
+    "changes_project": False,
+    "answer_within_seconds": 30,
+    "input": {
+        "type": "object",
+        "properties": {"macro_id": {"type": "string"}},
+        "required": ["macro_id"],
+    },
+}
+
+
 # --- Messages ---
 
 MESSAGES: tuple[Message, ...] = (
@@ -212,6 +225,29 @@ MESSAGES: tuple[Message, ...] = (
               "The kind of release file it installs an update from. An agent that reports "
               "none takes the kind its deployment mode is flagged with.",
               vocabulary="artifact_kinds", since=FIRST_CONTRACT_RELEASE),
+        Field("ai_tools", "object", {"format": 1, "tools": [_AI_TOOL_EXAMPLE]},
+              "The AI tools this instance has and what each takes, as "
+              "openavc/cloud/ai_tool_declarations.json holds them. An agent that sends "
+              "none declares no tools.",
+              required=False, since="0.41.0", fields=(
+                  Field("format", "integer", 1,
+                        "This field's own shape; it changes only when that shape does."),
+                  Field("tools", "array", [_AI_TOOL_EXAMPLE],
+                        "Each tool, in the order the agent lists them.", items=(
+                            Field("name", "string", "execute_macro", "The tool's name."),
+                            Field("changes_project", "boolean", False,
+                                  "Whether its success can change what get_project_summary "
+                                  "answers."),
+                            Field("answer_within_seconds", "integer", 30,
+                                  "The longest it takes to answer once started, for a tool "
+                                  "that waits.", required=False),
+                            Field("input", "object", _AI_TOOL_EXAMPLE["input"],
+                                  "Its inputs, as one JSON Schema object in a closed subset: "
+                                  "type, enum, default, minimum, maximum, items, properties, "
+                                  "required and additionalProperties, with no descriptions.",
+                                  open=True),
+                        )),
+              )),
     )),
     Message("authenticate", "up", "handshake", "Answers the challenge with proof of the system key.", (
         Field("system_id", "string", "6f1c9e2a-4b7d-4e0a-9a33-2c8d5e7f1b90", "This system's id."),

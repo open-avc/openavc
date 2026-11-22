@@ -25,6 +25,7 @@ from openavc.cloud.crypto import (
     generate_system_key,
     hash_system_key,
 )
+from openavc.cloud.tool_declarations import declarations
 from openavc.cloud.protocol import (
     PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
     HELLO, CHALLENGE, AUTHENTICATE, SESSION_START,
@@ -247,8 +248,9 @@ class TestProtocol:
         assert set(msg["payload"]) == {
             "protocol_version", "supported_versions", "system_id", "version",
             "capabilities", "os", "hardware", "deployment_mode",
-            "updates_itself", "artifact_kind",
+            "updates_itself", "artifact_kind", "ai_tools",
         }
+        assert msg["payload"]["ai_tools"] == declarations()
         # Handshake messages should NOT have seq/session/sig
         assert "seq" not in msg
         assert "session" not in msg

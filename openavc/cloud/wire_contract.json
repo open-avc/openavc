@@ -226,6 +226,59 @@
             ],
             "description": "The kind of release file it installs an update from. An agent that reports none takes the kind its deployment mode is flagged with.",
             "x-since": "0.41.0"
+          },
+          "ai_tools": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "integer",
+                "description": "This field's own shape; it changes only when that shape does.",
+                "x-since": "0.41.0"
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "The tool's name.",
+                      "x-since": "0.41.0"
+                    },
+                    "changes_project": {
+                      "type": "boolean",
+                      "description": "Whether its success can change what get_project_summary answers.",
+                      "x-since": "0.41.0"
+                    },
+                    "answer_within_seconds": {
+                      "type": "integer",
+                      "description": "The longest it takes to answer once started, for a tool that waits.",
+                      "x-since": "0.41.0"
+                    },
+                    "input": {
+                      "type": "object",
+                      "description": "Its inputs, as one JSON Schema object in a closed subset: type, enum, default, minimum, maximum, items, properties, required and additionalProperties, with no descriptions.",
+                      "x-since": "0.41.0"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "changes_project",
+                    "input"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Each tool, in the order the agent lists them.",
+                "x-since": "0.41.0"
+              }
+            },
+            "required": [
+              "format",
+              "tools"
+            ],
+            "additionalProperties": false,
+            "description": "The AI tools this instance has and what each takes, as openavc/cloud/ai_tool_declarations.json holds them. An agent that sends none declares no tools.",
+            "x-since": "0.41.0"
           }
         },
         "required": [
@@ -261,7 +314,28 @@
           "hardware": "x86_64",
           "deployment_mode": "linux_package",
           "updates_itself": true,
-          "artifact_kind": "package"
+          "artifact_kind": "package",
+          "ai_tools": {
+            "format": 1,
+            "tools": [
+              {
+                "name": "execute_macro",
+                "changes_project": false,
+                "answer_within_seconds": 30,
+                "input": {
+                  "type": "object",
+                  "properties": {
+                    "macro_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "macro_id"
+                  ]
+                }
+              }
+            ]
+          }
         }
       }
     },
