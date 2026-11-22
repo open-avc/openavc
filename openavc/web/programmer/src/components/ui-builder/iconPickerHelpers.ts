@@ -8,8 +8,10 @@
 import { SPRITE_ICON_NAMES } from "./spriteIconNames";
 
 // AV-relevant icon categories. Names must be sprite symbol ids — lucide-react
-// also exports legacy aliases (tv-2, unlock, home, ...) that preview fine in
-// the builder but don't exist in the sprite, so the panel renders them blank.
+// also exports legacy aliases (tv-2, unlock, home, ...) that the sprite does
+// not carry. The panel draws a control saved with one through its alias table
+// (web/panel/modules/icon_aliases.gen.js, written by build-icons.mjs), but the
+// picker offers only the current names.
 export const ICON_CATEGORIES: Record<string, string[]> = {
   "Power & System": [
     "power", "power-off", "plug", "zap", "shield", "lock", "lock-open", "settings",

@@ -18,6 +18,7 @@
  */
 
 import { assetUrl, basePath } from './base_path.js';
+import { ICON_ALIASES } from './icon_aliases.gen.js';
 import { REM_BASE_PX } from './layout.js';
 
 /** The class of the span a control's words go in beside an icon. */
@@ -54,6 +55,17 @@ export function nameAfterWords(button, text) {
 }
 
 /**
+ * The sprite's id for an icon name: an old Lucide name (home, tv-2, unlock),
+ * which the UI Builder still previews, as the id the sprite carries it under
+ * now (house, tv-minimal, lock-open), else the name itself.
+ */
+function spriteId(iconName) {
+    return Object.prototype.hasOwnProperty.call(ICON_ALIASES, iconName)
+        ? ICON_ALIASES[iconName]
+        : iconName;
+}
+
+/**
  * An icon node: an uploaded file (`assets://`) as a picture, else one from
  * the panel's sprite. `size` is in rem, so an icon scales with the rest of
  * the panel; leave it out and the stylesheet sizes the icon instead, since an
@@ -65,7 +77,7 @@ export function iconNode(iconName, size, color) {
 
     const svg = document.createElementNS(SVG, 'svg');
     const use = document.createElementNS(SVG, 'use');
-    const iconUrl = `${basePath()}/panel/icons.svg#${iconName}`;
+    const iconUrl = `${basePath()}/panel/icons.svg#${spriteId(iconName)}`;
     use.setAttribute('href', iconUrl);
     use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', iconUrl);
     svg.appendChild(use);
