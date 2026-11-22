@@ -116,8 +116,9 @@ async def test_a_timer_callback_that_raises_is_recorded_against_its_script(
     assert "poller.py" in entry["traceback"]
 
     # The frame keeps the timer id it always carried, and now says what the
-    # callback was running for, the way every other door's frame does.
-    assert emitted, "no script.error was emitted"
+    # callback was running for, the way every other door's frame does. It is
+    # emitted just after the record, a turn of the loop later.
+    await _wait_for(lambda: bool(emitted))
     assert emitted[0]["script_id"] == "poller"
     assert emitted[0]["timer_id"].startswith("timer_")
     assert emitted[0]["event"] == "every() timer"
