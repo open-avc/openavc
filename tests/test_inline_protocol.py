@@ -400,3 +400,21 @@ def test_normalize_responses_drops_incomplete_rows():
     # Missing the state target → skipped, not a crash.
     assert normalize_config_responses([{"mode": "contains", "text": "X"}]) == []
     assert normalize_config_responses(["not a dict", 42]) == []
+
+
+# ── A line ending that is not text ─────────────────────────────────────────
+
+
+def test_a_device_line_ending_that_is_not_text_is_passed_over():
+    # A delimiter written as a number (13, by hand or through the API) sets up
+    # the device: its own commands end with the driver's line ending, as the
+    # simulator reads such a delimiter too.
+    definition = {**GENERIC_DEF, "delimiter": "\r"}
+    cls = create_configurable_driver_class(definition)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    config = {"host": "127.0.0.1", "port": 4000, "delimiter": 13, "commands": {"ping": "PING"}}
+    drv = cls("acme_1", config, state, events)
+    assert drv._definition["commands"]["ping"]["send"] == "PING\r"
+    assert drv.build_wire("ping") == b"PING\r"

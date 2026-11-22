@@ -66,11 +66,13 @@ def inline_suffix(
     """What ends a command the device authored: the suffix, else the line
     ending, which is the device's configured delimiter, else the driver's
     (``DRIVER_INFO``, then the definition), so a command typed in the editor
-    does not need its own \\r. Pure, so the inline merge's commands can be
-    worked out from a project's device with no driver running
+    does not need its own \\r. A configured delimiter that is not text is
+    passed over, as the simulator reads it. Pure, so the inline merge's
+    commands can be worked out from a project's device with no driver running
     (``inline_merge.declared_commands``)."""
+    delimiter = config.get("delimiter")
     return command_suffix(config, definition) or (
-        config.get("delimiter")
+        (delimiter if isinstance(delimiter, str) else "")
         or driver_info.get("delimiter")
         or definition.get("delimiter", "")
     )
