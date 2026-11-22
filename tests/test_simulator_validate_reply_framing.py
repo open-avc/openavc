@@ -111,9 +111,24 @@ def test_a_datagram_transport_frames_its_own_messages():
     assert _run(driver).passed
 
 
-def test_a_driver_that_declares_no_delimiter_is_not_judged():
+def test_a_driver_that_declares_no_delimiter_is_judged_by_cr():
+    """The driver splits on CR when its file and its defaults name nothing, so
+    a hand-written reply without one never completes a frame there either."""
     driver = _driver('respond("PWR 1")')
     del driver["delimiter"]
+    result = _run(driver)
+    assert [i.check for i in result.errors] == ["reply_framing"]
+    assert "'\\r'" in result.errors[0].message
+    driver = _driver('respond("PWR 1\\r")')
+    del driver["delimiter"]
+    assert _run(driver).passed
+
+
+def test_a_driver_whose_frame_parser_frames_its_replies_is_not_judged():
+    """Its replies arrive whole, in the frame the parser reads, never split on
+    a line ending."""
+    driver = _driver('respond("PWR 1")')
+    driver["frame_parser"] = {"type": "length_prefix", "header_size": 1}
     assert _run(driver).passed
 
 

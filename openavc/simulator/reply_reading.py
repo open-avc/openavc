@@ -39,24 +39,16 @@ from openavc.drivers.compiled_protocol import (
     safe_substitute,
 )
 from openavc.drivers.json_value_spec import CHILD, json_value_mapping
+from openavc.drivers.line_ending import reply_line_ending
 
 
-# Transports where the driver reads replies by splitting a byte stream on its
-# delimiter. A datagram transport frames one message per packet, so a reply
-# there needs no terminator to be complete.
-DELIMITED_TRANSPORTS = ("tcp", "serial")
-
-
-def frame_delimiter(driver_def: dict) -> str | None:
-    """The terminator the driver's frame parser splits replies on, decoded,
-    or None for a transport that is not delimiter-framed (or a delimiter
-    that is not text, or decodes to nothing)."""
-    if driver_def.get("transport", "tcp") not in DELIMITED_TRANSPORTS:
-        return None
-    raw = driver_def.get("delimiter")
-    if not isinstance(raw, str) or not raw:
-        return None
-    return decode_delimiter(raw) or None
+def frame_delimiter(driver_def: dict, config: dict) -> str | None:
+    """The line ending the driver splits replies on, decoded, under
+    ``config`` (the driver's defaults where no device is known), or None: a
+    transport that is not a byte stream, a ``frame_parser`` that frames the
+    replies, or none (``line_ending.reply_line_ending``'s rule)."""
+    raw = reply_line_ending(driver_def, config)
+    return (decode_delimiter(raw) or None) if raw else None
 
 
 def response_lines(response_text: str, delimiter: str | None = None) -> list[str]:
@@ -189,7 +181,7 @@ class ReplyRules:
         the JSON keys, the delimiter."""
         patterns = compile_response_patterns(responses, config)
         json_keys = json_rule_keys(responses)
-        return cls(patterns, json_keys, frame_delimiter(driver_def))
+        return cls(patterns, json_keys, frame_delimiter(driver_def, config))
 
     @classmethod
     def regex_only(cls, responses: list, config: dict) -> ReplyRules:

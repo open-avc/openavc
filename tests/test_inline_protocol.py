@@ -19,7 +19,9 @@ from openavc.drivers.inline_protocol import (
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 # A bare "generic" definition: a transport and nothing else. The protocol is
-# expected to come entirely from the device config.
+# expected to come entirely from the device config. It names no line ending,
+# so a device's own command ends with CR, the driver's default, unless the
+# device sets one.
 GENERIC_DEF = {
     "id": "acme_widget",
     "name": "Acme Widget",
@@ -89,23 +91,24 @@ async def test_config_command_dict_shape_sends():
     spy = _SpySend()
     drv.transport = spy
     await drv.send_command("set_volume", {"level": 42})
-    assert spy.sent == [b"VOL42"]
+    assert spy.sent == [b"VOL42\r"]
 
 
 async def test_config_command_flat_string_shape_is_coerced():
     """The legacy flat ``{name: "raw string"}`` shape is promoted to {send:.}."""
     drv, _ = _make({"commands": {"ping": "PWR1"}})
-    assert drv._definition["commands"]["ping"] == {"send": "PWR1"}
+    assert drv._definition["commands"]["ping"] == {"send": "PWR1\r"}
 
     spy = _SpySend()
     drv.transport = spy
     await drv.send_command("ping")
-    assert spy.sent == [b"PWR1"]
+    assert spy.sent == [b"PWR1\r"]
 
 
 async def test_config_command_escape_sequences_encoded():
-    """Escape sequences in a config command are encoded on send."""
-    drv, _ = _make({"commands": {"poll": "STATUS?\\r\\n"}})
+    """Escape sequences in a config command are encoded on send (the device
+    sets no line ending, so the command goes as typed)."""
+    drv, _ = _make({"delimiter": "", "commands": {"poll": "STATUS?\\r\\n"}})
     spy = _SpySend()
     drv.transport = spy
     await drv.send_command("poll")
@@ -115,7 +118,7 @@ async def test_config_command_escape_sequences_encoded():
 async def test_config_commands_as_json_string_tolerated():
     """Commands authored as a JSON string (hand/AI-edited) still parse."""
     drv, _ = _make({"commands": '{"ping": "PWR1"}'})
-    assert drv._definition["commands"]["ping"] == {"send": "PWR1"}
+    assert drv._definition["commands"]["ping"] == {"send": "PWR1\r"}
 
 
 def test_command_placeholders_become_params():

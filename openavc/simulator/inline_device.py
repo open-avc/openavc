@@ -79,8 +79,6 @@ def merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, 
     merged["state_variables"] = {
         **(driver_def.get("state_variables") or {}), **derived, **norm_vars,
     }
-    if isinstance(cfg.get("delimiter"), str):
-        merged["delimiter"] = cfg["delimiter"]
     return merged, True
 
 

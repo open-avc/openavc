@@ -236,7 +236,9 @@ def test_the_inline_protocol_merges_over_the_file_in_its_order():
     }
     merged, had = _merge_inline_protocol(_GENERIC, config)
     assert had is True and merged is not _GENERIC
-    assert merged["delimiter"] == "\n"
+    # The device's line ending stays in its config, where the simulator reads
+    # it as the driver does (drivers/line_ending.py), under the file's.
+    assert "delimiter" not in merged
     assert list(merged["commands"]) == ["keep", "pwr"]
     assert merged["commands"]["keep"] == {"send": "KEEP"}
     # Framed as the driver frames a command the device authored: the line

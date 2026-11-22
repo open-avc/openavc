@@ -186,6 +186,7 @@ def test_simulator_matches_framed_command():
 # ── The one reading of a command's framing, and the readers that ask it ──
 
 _PLAIN = {k: v for k, v in ACME_RECEIVER.items() if k not in ("command_prefix", "command_suffix")}
+_NO_LINE_ENDING = {k: v for k, v in _PLAIN.items() if k != "delimiter"}
 
 #: A file command: the driver file, the device's settings, the command, and
 #: the text the driver frames it as.
@@ -246,7 +247,10 @@ AUTHORED_FRAMINGS = {
     "a_send_that_starts_with_the_prefix_keeps_one": (ACME_RECEIVER, {}, "!1MVLUP", "!1MVLUP\\r"),
     "a_send_that_ends_with_the_suffix_keeps_one": (ACME_RECEIVER, {}, "MVLUP\\r", "!1MVLUP\\r"),
     "the_driver_line_ending_with_no_suffix": (_PLAIN, {}, "MVLUP", "MVLUP\\r"),
-    "the_device_line_ending_over_the_driver_line_ending": (_PLAIN, {"delimiter": "\n"}, "MVLUP", "MVLUP\n"),
+    "the_driver_line_ending_over_the_device_line_ending": (_PLAIN, {"delimiter": "\n"}, "MVLUP", "MVLUP\\r"),
+    "the_device_line_ending_when_the_driver_names_none": (
+        _NO_LINE_ENDING, {"delimiter": "\n"}, "MVLUP", "MVLUP\n"),
+    "cr_when_neither_names_one": (_NO_LINE_ENDING, {}, "MVLUP", "MVLUP\r"),
     "the_device_prefix": (_PLAIN, {"command_prefix": "#"}, "MVLUP", "#MVLUP\\r"),
     "raw_is_as_written": (ACME_RECEIVER, {}, {"send": "MVLUP", "raw": True}, "MVLUP"),
 }

@@ -670,8 +670,9 @@ class TransportLadder:
         """
         Hook: resolve the message delimiter for this driver.
 
-        Checks DRIVER_INFO["delimiter"] first, then self.config["delimiter"],
-        then falls back to b"\\r". Override for custom logic.
+        The device's line ending, as ``drivers/line_ending.py`` reads it for
+        every reader (the simulator and the validator too): DRIVER_INFO's
+        delimiter, then self.config's, then b"\\r". Override for custom logic.
 
         An **empty** delimiter means "no delimiter", not "a delimiter of zero
         bytes", and resolves to None like any other raw byte-stream protocol.
@@ -686,18 +687,12 @@ class TransportLadder:
         ``invalid_config``, saying whether the driver or the device set it:
         the driver's wins, so the device page cannot change it.
         """
-        from openavc.transport.binary_helpers import encode_escape_sequences
+        from openavc.drivers.line_ending import LineEndingNotText, effective_delimiter
 
-        for source in (self.DRIVER_INFO, self.config):
-            delim = source.get("delimiter")
-            if delim is None:
-                continue
-            if not isinstance(delim, (str, bytes)):
-                raise _refused(_delimiter_not_text(delim, source is self.DRIVER_INFO))
-            raw = delim if isinstance(delim, bytes) else encode_escape_sequences(delim)
-            # "" and b"" both mean no framing, not a zero-length delimiter.
-            return raw or None
-        return b"\r"
+        try:
+            return effective_delimiter(self.DRIVER_INFO, self.config)
+        except LineEndingNotText as e:
+            raise _refused(_delimiter_not_text(e.value, e.from_driver)) from None
 
     async def _ssh_key_path(self, auth_method: str) -> str | None:
         """The private key an SSH connection signs in with.

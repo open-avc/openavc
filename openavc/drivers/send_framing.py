@@ -20,8 +20,9 @@ The rules worth knowing before changing anything here:
   it twice.
 * **A command the device authored itself** (the inline protocol) is framed
   once, when it is merged in (``framed_commands``), with the prefix unless it
-  already starts with it, and the suffix, else the line ending (the device's
-  ``delimiter``, else the driver's), unless it already ends with it, so its
+  already starts with it, and the suffix, else the line ending
+  (``line_ending.sent_line_ending``: the driver's ``delimiter``, else the
+  device's, else CR; none on HTTP), unless it already ends with it, so its
   poll line and the simulator see the framed form; ``build_wire`` leaves it
   alone (``_inline_command_names``).
 * **Sent unframed on purpose:** the Live Test's raw probe and the summary of
@@ -53,6 +54,7 @@ from collections.abc import Mapping
 from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
+from openavc.drivers.line_ending import sent_line_ending
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.utils.logger import get_logger
 
@@ -74,13 +76,13 @@ def command_suffix(config: Mapping[str, Any], definition: Mapping[str, Any]) -> 
 
 
 def inline_suffix(config: Mapping[str, Any], definition: Mapping[str, Any]) -> str:
-    """What ends a command the device authored: the suffix, else the line
-    ending, which is the device's configured delimiter, else the driver's
-    (a YAML driver's ``DRIVER_INFO`` carries the definition's), so a command
-    typed in the editor does not need its own \\r. A configured suffix or
-    delimiter that is not text is passed over, as the simulator reads it."""
-    suffix, delimiter = command_suffix(config, definition), config.get("delimiter")
-    return _text(suffix) or _text(delimiter) or definition.get("delimiter", "")
+    """What ends a command the device authored: the suffix, else the device's
+    line ending (``line_ending.sent_line_ending``: the driver's delimiter,
+    else the device's, else CR; none on HTTP), so a command typed in the
+    editor does not need its own \\r. A configured suffix that is not text is
+    passed over, and a line ending that is not text ends nothing (the running
+    driver refuses the connection for it)."""
+    return _text(command_suffix(config, definition)) or sent_line_ending(definition, config)
 
 
 def framed_send(

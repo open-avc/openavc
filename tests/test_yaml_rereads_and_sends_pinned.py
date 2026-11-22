@@ -828,9 +828,14 @@ def test_a_file_only_device_shares_the_class_definition() -> None:
     assert drv.DRIVER_INFO is type(drv).DRIVER_INFO
 
 
-def test_inline_commands_take_the_config_delimiter_first() -> None:
+def test_inline_commands_take_the_driver_delimiter_first() -> None:
+    # The driver's line ending, as the driver splits replies on it; the
+    # device's only where the driver names none.
     drv = _driver(LINE_UNIT, Capture(), delimiter="\n", commands={"ping": {"send": "PING"}})
-    assert drv._definition["commands"]["ping"]["send"] == "PING\n"
+    assert drv._definition["commands"]["ping"]["send"] == "PING\r"
+    unnamed = {k: v for k, v in LINE_UNIT.items() if k != "delimiter"}
+    own = _driver(unnamed, Capture(), delimiter="\n", commands={"ping": {"send": "PING"}})
+    assert own._definition["commands"]["ping"]["send"] == "PING\n"
     plain = _driver(LINE_UNIT, Capture(), commands={"ping": {"send": "PING"}})
     assert plain._definition["commands"]["ping"]["send"] == "PING\r"
     bare = _driver(_with(LINE_UNIT, delimiter=""), Capture(), commands={"ping": {"send": "PING"}})

@@ -55,6 +55,7 @@ from urllib.parse import unquote
 import yaml
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.line_ending import sent_line_ending
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.spec import without_null_sections
 from openavc.drivers.usable_number import usable_number
@@ -1522,14 +1523,15 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
     # ── Helpers ──
 
     def _get_delimiter(self) -> str:
-        """Get the line delimiter as a string.
+        """What ends each line the device answers with, decoded: the line
+        ending the driver splits on (``line_ending.sent_line_ending``: the
+        driver's delimiter, else this device's config over the driver's
+        defaults, else CR).
 
         HTTP responses don't have a line delimiter — the response body is
-        whatever the handler returned, with no trailing CRLF.
+        whatever the handler returned, with no trailing line ending.
         """
-        if self._is_http:
-            return ""
-        return decode_delimiter(self._driver_def.get("delimiter", "\r\n"))
+        return decode_delimiter(sent_line_ending(self._driver_def, self._instance_config()))
 
     def _var_def_for_key(self, state_key: str) -> dict:
         """Variable definition for a flat key, or for a dotted child key

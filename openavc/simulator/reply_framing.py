@@ -1,8 +1,10 @@
 """Whether every reply the simulator sends ends where the driver splits the
 stream: the simulator validator's ``reply_framing`` check.
 
-A driver on a delimited transport reads only what its delimiter completes, so
-a reply without one reaches it as nothing at all. Unlike the validator's other
+A driver on a delimited transport reads only what its line ending completes
+(``drivers/line_ending.py``'s ``reply_line_ending``: its delimiter, else the
+device's, else CR, and none when a ``frame_parser`` frames its replies), so a
+reply without one reaches it as nothing at all. Unlike the validator's other
 reply checks, this one does not read the definition: it builds a real simulator
 from it (``yaml_auto.YAMLAutoSimulator``, imported only when a delimiter makes
 the check apply), sends it the lines the driver sends (``driver_sends.
@@ -25,6 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from openavc.drivers.line_ending import reply_line_ending
 from openavc.simulator.driver_sends import effective_config, probed_lines
 from openavc.simulator.reply_reading import ReplyRules, frame_delimiter
 from openavc.simulator.validation_result import ValidationResult, examples
@@ -41,7 +44,9 @@ def check_reply_framing(
     """Check every simulator reply ends where the driver splits the stream.
 
     A driver on a delimited transport reads replies by splitting incoming
-    bytes on its ``delimiter``. A reply that arrives without one never
+    bytes on its line ending: its ``delimiter``, else the device's, else CR
+    (``line_ending.reply_line_ending``; none when a ``frame_parser`` frames
+    the replies, which it reads whole). A reply that arrives without one never
     completes a frame, so the driver parses **nothing at all** — no state, no
     liveness answer — while the simulator, the connection, and every other
     check of the validator look correct. That is the whole failure: the simulator
@@ -68,10 +73,11 @@ def check_reply_framing(
     why it sees replies the page cannot: one built from a capture group or an
     f-string is unresolvable as source and perfectly concrete as output.
     """
-    delimiter = frame_delimiter(driver_def)
+    config = effective_config(driver_def)
+    delimiter = frame_delimiter(driver_def, config)
     if delimiter is None:
         return
-    raw_delimiter = driver_def.get("delimiter")
+    raw_delimiter = reply_line_ending(driver_def, config)
 
     # Built lazily: importing the simulator pulls in its server bases, and a
     # caller who only wants the other checks should not pay for them.
