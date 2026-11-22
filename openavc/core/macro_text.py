@@ -68,6 +68,10 @@ _ANNOUNCED: dict[str, Callable[[dict[str, Any]], str]] = {
 }
 
 
+#: What a macro that stopped says to the room when no step said why.
+MACRO_STOPPED = "The macro stopped."
+
+
 class StepFailed(RuntimeError):
     """A step that failed under ``stop_on_error``, ending its run.
 
@@ -80,6 +84,12 @@ class StepFailed(RuntimeError):
     def __init__(self, detail: str, message: str) -> None:
         super().__init__(detail)
         self.message = message
+
+
+def stopped_message(exc: BaseException) -> str:
+    """The sentence a run that stopped on ``exc`` ends with: the failing
+    step's, else ``MACRO_STOPPED``. Never the exception's own text."""
+    return exc.message if isinstance(exc, StepFailed) else MACRO_STOPPED
 
 
 def no_such_macro(macro_id: str) -> str:

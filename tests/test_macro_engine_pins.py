@@ -353,6 +353,7 @@ async def test_a_step_that_fails_under_stop_on_error_ends_the_run_in_those_words
         "macro_id": "m", "name": "M",
         "error": "step 1/2, group.command, command 'power_on', on group 'wall': "
                  "Device group 'wall' not found. Check that the group exists in your project.",
+        "message": "Device group 'wall' not found. Check that the group exists in your project.",
     })]
 
 

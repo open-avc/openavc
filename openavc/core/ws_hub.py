@@ -35,6 +35,7 @@ import re
 from fnmatch import fnmatch, translate
 from typing import Any, Callable
 
+from openavc.core.macro_text import MACRO_STOPPED
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
 
@@ -80,7 +81,8 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     # The project's revision after a save, and a project replaced outright.
     "project.reloaded": _EVERYONE,
     "project.replaced": _EVERYONE,
-    # A macro's run (a panel's button follows its progress).
+    # A macro's run (a panel's button follows its progress). A failure reaches
+    # a panel as the room's sentence (``PANEL_COPIES``).
     "macro.started": _EVERYONE,
     "macro.progress": _EVERYONE,
     "macro.completed": _EVERYONE,
@@ -228,8 +230,24 @@ def _device_error_for_the_room(name: str, payload: Any, hub: WSHub) -> dict[str,
     return copy
 
 
+def _macro_failure_for_the_room(name: str, payload: Any, hub: WSHub) -> dict[str, Any]:
+    """A macro failure's ``error`` is the Programmer's words (a step's place,
+    its command, an exception's text), so a panel's copy carries the sentence
+    written for the room in its place: ``message``, else ``MACRO_STOPPED``.
+    Every other field stays, since a panel routes on ``type`` and finds the
+    run it started by ``macro_id`` and ``call_chain``."""
+    copy = dict(payload) if isinstance(payload, dict) else {}
+    sentence = copy.get("message")
+    if not isinstance(sentence, str) or not sentence:
+        sentence = MACRO_STOPPED
+    copy["error"] = copy["message"] = sentence
+    return copy
+
+
 PANEL_COPIES: dict[str, Callable[[str, Any, "WSHub"], dict[str, Any]]] = {
     _DEVICE_ERROR_PREFIX: _device_error_for_the_room,
+    "macro.error": _macro_failure_for_the_room,
+    "macro.step_error": _macro_failure_for_the_room,
 }
 
 

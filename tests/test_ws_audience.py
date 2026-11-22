@@ -349,6 +349,40 @@ def test_a_device_error_s_panel_copy_names_the_device():
     }
 
 
+_ROOM = "Lobby Widget is not connected."
+_PROGRAMMERS = "step 1/2, acme.flash: Traceback (most recent call last): /home/acme/secret.py"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("msg_type", ["macro.error", "macro.step_error"])
+async def test_a_panel_gets_a_macro_failure_as_the_room_s_sentence(msg_type):
+    hub = WSHub(StateStore())
+    panel, programmer = _Socket(), _Socket()
+    hub.add_client(panel, client_type=PANEL)
+    hub.add_client(programmer, client_type=PROGRAMMER)
+    message = {"type": msg_type, "macro_id": "acme", "call_chain": ["acme", "outer"],
+               "error": _PROGRAMMERS, "message": _ROOM}
+    as_sent = json.loads(json.dumps(message))
+    await hub.broadcast(message)
+    await hub.flush_sends()
+    assert panel.received == [{**as_sent, "error": _ROOM}]
+    assert programmer.received == [as_sent]
+    assert message == as_sent
+
+    # The event stream's copy of the bus event the push came from is the same.
+    payload = {k: v for k, v in as_sent.items() if k != "type"}
+    assert hub.panel_copy(f"{msg_type}.acme", payload) == {**payload, "error": _ROOM}
+    assert payload["error"] == _PROGRAMMERS
+
+
+@pytest.mark.parametrize("payload", [{}, {"macro_id": "acme", "error": _PROGRAMMERS},
+                                     {"error": _PROGRAMMERS, "message": ""}, "not a dict"])
+def test_a_macro_failure_with_no_sentence_reaches_a_panel_as_the_macro_stopping(payload):
+    copy = WSHub(StateStore()).panel_copy("macro.error.acme", payload)
+    assert copy["error"] == copy["message"] == "The macro stopped."
+    assert _PROGRAMMERS not in json.dumps(copy)
+
+
 def test_the_panel_copies_name_only_rows_the_table_has():
     for key in PANEL_COPIES:
         assert key in MESSAGE_AUDIENCE or key.endswith("."), key

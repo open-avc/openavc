@@ -23,7 +23,6 @@ from types import SimpleNamespace
 import pytest
 
 from openavc.core.engine import Engine
-from openavc.core.ws_hub import MESSAGE_AUDIENCE
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
 
@@ -630,42 +629,56 @@ async def test_start_prewarms_the_network_info_off_the_loop(tmp_path, no_update_
         await eng.stop()
 
 
+class _Socket:
+    def __init__(self) -> None:
+        self.received: list[dict] = []
+
+    async def send_text(self, text: str) -> None:
+        self.received.append(json.loads(text))
+
+
+_PROGRAMMERS = "step 1/1, acme.flash: Traceback (most recent call last): /home/acme/secret.py"
+_ROOM = "Lobby Widget is not connected."
+
+
 @pytest.mark.asyncio
 async def test_start_carries_engine_events_to_the_websocket(tmp_path, no_update_checks):
+    """What a panel and the Programmer each receive of every bus event the
+    started engine pushes: the Programmer all of it as emitted, a panel the
+    macro runs only, a failure as the room's sentence."""
     eng = Engine(_project(tmp_path))
     _quiet_services(eng, [])
     try:
         await eng.start()
-        sent = []
-
-        async def broadcast(message):
-            sent.append((message["type"], sorted(MESSAGE_AUDIENCE[message["type"]])))
-
-        eng.broadcast_ws = broadcast
-        events = [
-            "macro.started.m", "macro.progress.m", "macro.completed.m", "macro.cancelled.m",
-            "macro.error.m", "macro.step_error.m", "macro.skipped.m",
-            "trigger.fired", "trigger.skipped", "trigger.pending", "trigger.queued",
-            "trigger.completed", "script.error",
-            "plugin.started", "plugin.stopped", "plugin.error", "plugin.missing",
-        ]
-        for event in events:
-            await eng.events.emit(event, {})
+        panel, programmer = _Socket(), _Socket()
+        eng.ws.add_client(panel, client_type="panel")
+        eng.ws.add_client(programmer, client_type="programmer")
+        failure = {"macro_id": "m", "error": _PROGRAMMERS, "message": _ROOM}
+        events = {
+            "macro.started.m": {"macro_id": "m"}, "macro.progress.m": {"macro_id": "m"},
+            "macro.completed.m": {"macro_id": "m"}, "macro.cancelled.m": {"macro_id": "m"},
+            "macro.error.m": failure, "macro.step_error.m": failure,
+            "macro.skipped.m": {"macro_id": "m"},
+            "trigger.fired": {}, "trigger.skipped": {}, "trigger.pending": {},
+            "trigger.queued": {}, "trigger.completed": {}, "script.error": {},
+            "plugin.started": {}, "plugin.stopped": {}, "plugin.error": {"error": _PROGRAMMERS},
+            "plugin.missing": {},
+        }
+        for event, payload in events.items():
+            await eng.events.emit(event, payload)
         # Saying a queue was cleared reaches no client and saves nothing: the
         # clear was saved before it is said (core/pending_queue.py).
         await eng.events.emit("device.pending_settings_applied", {"device_id": "d1"})
-        everyone, programmer = ["panel", "programmer"], ["programmer"]
-        assert sent == [
-            ("macro.started", everyone), ("macro.progress", everyone),
-            ("macro.completed", everyone), ("macro.cancelled", everyone),
-            ("macro.error", everyone), ("macro.step_error", everyone),
-            ("macro.skipped", everyone),
-            ("trigger.fired", programmer), ("trigger.skipped", programmer),
-            ("trigger.pending", programmer), ("trigger.queued", programmer),
-            ("trigger.completed", programmer),
-            ("script.error", programmer),
-            ("plugin.started", programmer), ("plugin.stopped", programmer),
-            ("plugin.error", programmer), ("plugin.missing", programmer),
+        await eng.ws.flush_sends()
+
+        def pushed(event: str, payload: dict) -> dict:
+            return {"type": event.removesuffix(".m"), **payload}
+
+        assert programmer.received == [pushed(e, p) for e, p in events.items()]
+        room = {**failure, "error": _ROOM}
+        assert panel.received == [
+            pushed(e, room if e in ("macro.error.m", "macro.step_error.m") else p)
+            for e, p in events.items() if e.startswith("macro.")
         ]
         assert eng._bookkeeping_queue == []
     finally:

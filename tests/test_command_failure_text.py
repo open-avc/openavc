@@ -196,6 +196,25 @@ async def test_a_step_that_failed_because_a_step_inside_it_did_says_that_step_s_
     assert step_errors[1]["error"].endswith(FOR_THE_PROGRAMMER)
 
 
+async def test_a_macro_that_stopped_says_the_failing_step_s_sentence(engine):
+    errors = _collect(engine, "macro.error.*")
+    assert await engine.macros.execute("outer") == "failed"
+    assert [e["message"] for e in errors] == [FOR_THE_ROOM, FOR_THE_ROOM]
+    assert all(e["error"].endswith(FOR_THE_PROGRAMMER) for e in errors)
+
+
+async def test_a_macro_that_stopped_outside_any_step_says_it_stopped(engine, monkeypatch):
+    errors = _collect(engine, "macro.error.*")
+
+    async def broken(*_args, **_kwargs):
+        raise RuntimeError(PRIVATE)
+
+    monkeypatch.setattr(engine.macros, "execute_steps", broken)
+    assert await engine.macros.execute("flash") == "failed"
+    assert errors[0]["error"] == PRIVATE
+    assert errors[0]["message"] == "The macro stopped."
+
+
 async def test_a_group_command_answers_both_readers(engine):
     progress = _collect(engine, "macro.progress.*")
     step_errors = _collect(engine, "macro.step_error.*")

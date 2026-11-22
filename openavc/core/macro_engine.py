@@ -28,7 +28,7 @@ from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 from openavc.core.event_bus import EventBus
 from openavc.core.group_command import DeviceGroups, GroupCommand
 from openavc.core.macro_steps import MacroSteps
-from openavc.core.macro_text import StepWording
+from openavc.core.macro_text import StepWording, stopped_message
 from openavc.core.project_loader import MacroConfig, reads_as
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
@@ -448,7 +448,9 @@ class MacroEngine(MacroSteps):
             return "cancelled"
         except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
-            await self._announce_end(macro_id, name, task, "error", error=str(e))
+            await self._announce_end(
+                macro_id, name, task, "error", error=str(e), message=stopped_message(e),
+            )
             if nested_call:
                 raise
             return "failed"
