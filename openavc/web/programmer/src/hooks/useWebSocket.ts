@@ -7,14 +7,13 @@ import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
-import { finishedScanStatus, useDiscoveryStore } from "../store/discoveryStore";
+import { applyDiscoveryMessage } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
 import { invalidatePluginMacroActions } from "../components/macros/pluginMacroActions";
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
-import * as api from "../api/restClient";
 import { BASE } from "../api/base";
 import { waitForServerReady } from "../api/serverReady";
 import { askStartupStatus } from "../api/startupStatus";
@@ -441,36 +440,9 @@ export function useWebSocket() {
         }
       }
 
-      // Discovery events
-      if (msg.type === "discovery.update" && msg.device) {
-        useDiscoveryStore.getState().upsertDevice(msg.device as api.DiscoveredDevice);
-        if (typeof msg.progress === "number") {
-          useDiscoveryStore.getState().setPhase(
-            (msg.phase as string) ?? "",
-            msg.progress as number,
-            "",
-          );
-        }
-      }
-
-      if (msg.type === "discovery.phase") {
-        useDiscoveryStore.getState().setPhase(
-          (msg.phase as string) ?? "",
-          (msg.progress as number) ?? 0,
-          (msg.message as string) ?? "",
-        );
-        if (Array.isArray(msg.warnings)) {
-          useDiscoveryStore.getState().setWarnings(msg.warnings as string[]);
-        }
-      }
-
-      if (msg.type === "discovery.complete") {
-        // "partial" when it ran out of time or errored (the results are real
-        // but the sweep didn't finish); "cancelled" when someone pressed Stop.
-        useDiscoveryStore.getState().setStatus(finishedScanStatus(msg.status));
-        if (Array.isArray(msg.warnings)) {
-          useDiscoveryStore.getState().setWarnings(msg.warnings as string[]);
-        }
+      // A Discovery scan's progress, the devices it finds and its end.
+      if (typeof msg.type === "string" && msg.type.startsWith("discovery.")) {
+        applyDiscoveryMessage(msg);
       }
 
       // A panel asked to connect, or one was approved, denied, renamed,

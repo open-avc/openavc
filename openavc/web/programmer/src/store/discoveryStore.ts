@@ -104,3 +104,38 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
       warnings: [],
     }),
 }));
+
+type DiscoveryStore = ReturnType<typeof useDiscoveryStore.getState>;
+
+function applyWarnings(store: DiscoveryStore, warnings: unknown): void {
+  if (Array.isArray(warnings)) store.setWarnings(warnings as string[]);
+}
+
+/** Apply one ``discovery.*`` WebSocket message: a scan moved on a phase,
+ *  found a device, or ended. Any other type is left alone. */
+export function applyDiscoveryMessage(msg: Record<string, unknown>): void {
+  const store = useDiscoveryStore.getState();
+  switch (msg.type) {
+    case "discovery.update":
+      if (!msg.device) return;
+      store.upsertDevice(msg.device as DiscoveredDevice);
+      if (typeof msg.progress === "number") {
+        store.setPhase((msg.phase as string) ?? "", msg.progress, "");
+      }
+      return;
+    case "discovery.phase":
+      store.setPhase(
+        (msg.phase as string) ?? "",
+        (msg.progress as number) ?? 0,
+        (msg.message as string) ?? "",
+      );
+      applyWarnings(store, msg.warnings);
+      return;
+    case "discovery.complete":
+      // "partial" when it ran out of time or errored (the results are real
+      // but the sweep didn't finish); "cancelled" when someone pressed Stop.
+      store.setStatus(finishedScanStatus(msg.status));
+      applyWarnings(store, msg.warnings);
+      return;
+  }
+}
