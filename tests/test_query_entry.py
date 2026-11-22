@@ -333,5 +333,5 @@ def test_the_driver_model_stays_pure() -> None:
     assert _modules_loaded("openavc.drivers.driver_model") == {
         "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.query_entry",
         "openavc.drivers.framing_checks", "openavc.drivers.auth_block", "openavc.drivers.driver_model",
-        "openavc.drivers.usable_number",
+        "openavc.drivers.usable_number", "openavc.drivers.command_form",
     }
