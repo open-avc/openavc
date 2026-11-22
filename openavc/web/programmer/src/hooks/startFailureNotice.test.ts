@@ -6,11 +6,11 @@ import type { StartupStatus } from "../api/startupStatus";
 function failed(more: Partial<StartupStatus> = {}): StartupStatus {
   return {
     phase: "failed", version: "0.41.0", error: "Loading the project failed: bad JSON",
-    held: false, retryIn: 60, ...more,
+    held: false, retryIn: 60, problems: [], ...more,
   };
 }
 
-const READY: StartupStatus = { phase: "ready", version: "0.41.0", error: null, held: false, retryIn: null };
+const READY: StartupStatus = { phase: "ready", version: "0.41.0", error: null, held: false, retryIn: null, problems: [] };
 
 const toasts = () => useToastStore.getState().toasts;
 
@@ -75,5 +75,59 @@ describe("startFailureNotice", () => {
     useToastStore.getState().removeToast(toasts()[0].id);
     notice.heard(failed());
     expect(toasts()).toHaveLength(0);
+  });
+});
+
+describe("startFailureNotice: what a start went on past", () => {
+  const CLOUD = { stage: "cloud_agent", detail: "The connection to OpenAVC Cloud did not start. Check the server log for the reason." };
+  const UPDATES = { stage: "update_checks", detail: "The update checks did not start" };
+  const withProblems = (...problems: StartupStatus["problems"]): StartupStatus => ({ ...READY, problems });
+  const STARTING: StartupStatus = { ...READY, phase: "starting" };
+
+  it("says each part that did not start, and stays up", () => {
+    const notice = startFailureNotice();
+    expect(notice.heard(withProblems(CLOUD, UPDATES))).toBe(true);
+    expect(toasts()).toHaveLength(1);
+    expect(toasts()[0]).toMatchObject({
+      severity: "warning",
+      duration: 0,
+      message: "Some parts of OpenAVC did not start. The connection to OpenAVC Cloud did not start. "
+        + "Check the server log for the reason. The update checks did not start.",
+    });
+  });
+
+  it("says nothing for a start that went on past nothing", () => {
+    startFailureNotice().heard(READY);
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it("says it once per start, so a dismissed one stays gone after a network drop", () => {
+    const notice = startFailureNotice();
+    notice.heard(withProblems(CLOUD));
+    notice.heard(withProblems(CLOUD));
+    expect(toasts()).toHaveLength(1);
+    useToastStore.getState().removeToast(toasts()[0].id);
+    notice.heard(withProblems(CLOUD));
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it("says it again for a new start, and takes it down when a start misses nothing", () => {
+    const notice = startFailureNotice();
+    notice.heard(withProblems(CLOUD));
+    useToastStore.getState().removeToast(toasts()[0].id);
+    notice.heard(STARTING);
+    notice.heard(withProblems(CLOUD));
+    expect(toasts()).toHaveLength(1);
+    notice.heard(STARTING);
+    notice.heard(READY);
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it("replaces the failed start's notice once a start gets going without some parts", () => {
+    const notice = startFailureNotice();
+    notice.heard(failed());
+    notice.heard(withProblems(UPDATES));
+    expect(toasts()).toHaveLength(1);
+    expect(toasts()[0].severity).toBe("warning");
   });
 });

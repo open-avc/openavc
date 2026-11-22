@@ -12,10 +12,26 @@ describe("readStartupStatus", () => {
       problems: [], held: false, retry_in: 42,
     })).toEqual({
       phase: "failed", version: "0.41.0", error: "Loading the project failed: bad JSON", held: false, retryIn: 42,
+      problems: [],
     });
     expect(readStartupStatus({
       phase: "failed", ready: false, version: "0.41.0", error: "x", problems: [], held: true, retry_in: null,
     })).toMatchObject({ held: true, retryIn: null });
+  });
+
+  it("reads what the start went on past, and passes over an entry that is not one", () => {
+    expect(readStartupStatus({
+      phase: "ready", ready: true, version: "0.41.0", error: null, held: false, retry_in: null,
+      problems: [
+        { stage: "cloud_agent", detail: "The connection to OpenAVC Cloud did not start." },
+        { stage: "update_checks" },
+        "scripts",
+        { stage: "", detail: "No stage." },
+      ],
+    })?.problems).toEqual([
+      { stage: "cloud_agent", detail: "The connection to OpenAVC Cloud did not start." },
+    ]);
+    expect(readStartupStatus({ ready: true, error: null })?.problems).toEqual([]);
   });
 
   it("reads each phase the server says", () => {

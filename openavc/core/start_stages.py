@@ -16,7 +16,9 @@ Two kinds of stage:
   and why, is core/engine_lifecycle.py's docstring). One that raises is
   logged with its traceback and kept in ``problems`` as a ``StartProblem``:
   its stage and the sentence any reader may be told, never the exception's
-  text.
+  text. A service that catches its own failure, because a settings change
+  starts it again later as well (core/runtime_services.py), says so, and the
+  start keeps it the same way (``kept``).
 
 ``openavc.main`` hands both to the run-state record
 (middleware/startup_splash.py), which ``/api/startup-status`` answers. Every
@@ -104,6 +106,13 @@ class StartRun:
             self.problems.append(StartProblem(stage.stage, stage.detail))
             self.name(f"{_sentence(stage.stage.replace('_', ' '))}: {exc}")
             return None
+
+    def kept(self, stage: GoOn) -> None:
+        """``stage`` failed and its own catch logged why: kept in
+        ``problems`` and named in the warning, as a raise from ``go_on``
+        is, and the start goes on."""
+        self.problems.append(StartProblem(stage.stage, stage.detail))
+        self.name(f"{_sentence(stage.stage.replace('_', ' '))}: did not start")
 
     def name(self, failure: str) -> None:
         """A part of the start that failed, for the warning alone: a device

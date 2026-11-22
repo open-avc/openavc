@@ -87,6 +87,12 @@ export function useWebSocket() {
       connectedBefore = true;
       if (!reconnect) {
         loadFromServer();
+        // What this start went on past, which nothing else on the first
+        // connect asks.
+        const firstConnection = connection;
+        void askStartupStatus(`${BASE}/startup-status`, { cache: "no-store" }).then(({ status }) => {
+          if (status && firstConnection === connection) startFailure.heard(status);
+        });
         return;
       }
       const thisConnection = ++connection;

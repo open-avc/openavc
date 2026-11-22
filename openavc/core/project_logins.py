@@ -260,20 +260,18 @@ class ProjectLoginsMixin:
         that failed leaves it as it is, and so does a login in it other than
         the one saved here, which the move kept the saved one over
         (``held_as_saved``). Run once the plugins' half of the move has run,
-        or failed; never fatal."""
+        or failed, as a stage the start goes on past, which keeps a failure
+        on the run-state record."""
         backup, self._logins_backup_at_start = self._logins_backup_at_start, None
         if backup is None or self._logins_unsaved_at_start:
             return
         from openavc.core.backup_manager import seal_logins_in_backup
 
-        try:
-            built_in = {d.id for d in self.project.devices if self.installed_equipment.matches(d)}
-            await asyncio.to_thread(
-                seal_logins_in_backup, backup,
-                functools.partial(self._moved_if_saved, skip=built_in.__contains__),
-            )
-        except Exception:
-            log.exception("Could not take the logins out of the backup taken before they moved")
+        built_in = {d.id for d in self.project.devices if self.installed_equipment.matches(d)}
+        await asyncio.to_thread(
+            seal_logins_in_backup, backup,
+            functools.partial(self._moved_if_saved, skip=built_in.__contains__),
+        )
 
     def _moved_if_saved(self, raw: dict, *, skip) -> dict:
         """``raw`` (the start backup's project file) with its logins moved,

@@ -7,7 +7,7 @@ const HERE = "http://192.168.1.20:8080";
 const THERE = "http://127.0.0.1:8080";
 
 function status(phase: StartupStatus["phase"], more: Partial<StartupStatus> = {}): StartupStatus {
-  return { phase, version: "0.41.0", error: null, held: false, retryIn: null, ...more };
+  return { phase, version: "0.41.0", error: null, held: false, retryIn: null, problems: [], ...more };
 }
 
 const said = (s: StartupStatus): StatusProbe => ({ answered: true, status: s });

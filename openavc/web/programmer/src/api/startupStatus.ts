@@ -8,6 +8,13 @@
 
 export type ServerPhase = "starting" | "ready" | "failed" | "stopping";
 
+/** A whole stage the start went on past: its code and the sentence any
+ *  reader may be told (never the exception's text, which the log has). */
+export interface StartProblem {
+  stage: string;
+  detail: string;
+}
+
 export interface StartupStatus {
   phase: ServerPhase;
   /** The OpenAVC version that started; "" from a server too old to say. */
@@ -18,6 +25,9 @@ export interface StartupStatus {
   held: boolean;
   /** Seconds until a failed start ends to be started again, else null. */
   retryIn: number | null;
+  /** What the start went on past (the cloud connection, the update checks,
+   *  ...): empty from a start that missed nothing, or a server too old to say. */
+  problems: StartProblem[];
 }
 
 /** One ask: whether anything answered, and the status when the answer is
@@ -41,7 +51,18 @@ export function readStartupStatus(body: unknown): StartupStatus | null {
     error: phase === "failed" ? textOr(b.error, null) : null,
     held: b.held === true,
     retryIn: typeof b.retry_in === "number" ? b.retry_in : null,
+    problems: problemsOf(b.problems),
   };
+}
+
+function problemsOf(value: unknown): StartProblem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const p = asRecord(item);
+    const stage = p ? textOr(p.stage, "") : "";
+    const detail = p ? textOr(p.detail, "") : "";
+    return stage && detail ? [{ stage, detail }] : [];
+  });
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

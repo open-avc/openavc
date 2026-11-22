@@ -99,6 +99,23 @@ async def _nothing(*_a, **_k) -> None:
     return None
 
 
+async def _caught_its_own(*_a, **_k) -> bool:
+    """A service's start that failed inside its own catch, which logged it."""
+    return False
+
+
+#: Each service that catches its own start failure (core/runtime_services.py,
+#: since a settings change starts some of them again later): the engine's
+#: method that starts it, and the stage code the start keeps its failure under.
+CAUGHT = [
+    ("_start_isc", "isc"),
+    ("_start_mdns_advertiser", "mdns_announcement"),
+    ("_start_cloud_agent", "cloud_agent"),
+    ("_start_update_manager", "update_checks"),
+    ("_start_panel_software", "panel_software"),
+]
+
+
 def _project(tmp_path) -> str:
     project = {
         "version": "0.16.0",
@@ -148,10 +165,12 @@ def start(monkeypatch, tmp_path):
     monkeypatch.setattr(platform, "_is_docker", lambda: False)
     monkeypatch.setattr(platform, "_DEPLOYMENT_MARKER", tmp_path / "no-marker")
 
-    async def run(target: str | None):
+    async def run(target: str | None, caught: tuple[str, ...] = ()):
         eng = Engine(_project(tmp_path))
         for name in ("_start_isc", "_start_mdns_advertiser", "_start_cloud_agent"):
             monkeypatch.setattr(eng, name, _nothing)
+        for name in caught:
+            monkeypatch.setattr(eng, name, _caught_its_own)
         monkeypatch.setattr(main, "engine", eng)
         the_run = _BreakOne(target)
         monkeypatch.setattr(main, "StartRun", lambda: the_run)
@@ -218,5 +237,35 @@ async def test_a_service_the_room_runs_without_is_kept_and_the_start_goes_on(
         assert f"Engine started with 1 error(s): {name[:1].upper()}{name[1:]}: {BROKE}" in [
             r.getMessage() for r in caplog.records
         ]
+    finally:
+        await _stopped(eng)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("method", "code"), CAUGHT)
+async def test_a_service_that_caught_its_own_failure_is_kept_under_its_own_name(
+        start, caplog, method, code):
+    with caplog.at_level(logging.WARNING, logger="openavc.core.engine"):
+        record, run, eng = await start(None, caught=(method,))
+    try:
+        assert run.reached == list(STAGES)
+        assert (record.phase, record.error) == (READY, None)
+        assert [problem.stage for problem in record.problems] == [code]
+        assert record.problems[0].detail.endswith("Check the server log for the reason.")
+        assert eng.state.get("system.started") is True
+        name = code.replace("_", " ")
+        assert f"Engine started with 1 error(s): {name[:1].upper()}{name[1:]}: did not start" in [
+            r.getMessage() for r in caplog.records
+        ]
+    finally:
+        await _stopped(eng)
+
+
+@pytest.mark.asyncio
+async def test_each_network_service_that_failed_is_kept_and_the_others_still_start(start):
+    record, run, eng = await start(None, caught=("_start_isc", "_start_cloud_agent"))
+    try:
+        assert [problem.stage for problem in record.problems] == ["isc", "cloud_agent"]
+        assert len({problem.detail for problem in record.problems}) == 2
     finally:
         await _stopped(eng)

@@ -42,9 +42,9 @@ import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import type { StartupStatus } from "../api/startupStatus";
 
 const FAILED: StartupStatus = {
-  phase: "failed", version: "0.41.0", error: "Loading the project failed: bad JSON", held: true, retryIn: null,
+  phase: "failed", version: "0.41.0", error: "Loading the project failed: bad JSON", held: true, retryIn: null, problems: [],
 };
-const READY: StartupStatus = { phase: "ready", version: "0.41.0", error: null, held: false, retryIn: null };
+const READY: StartupStatus = { phase: "ready", version: "0.41.0", error: null, held: false, retryIn: null, problems: [] };
 
 const projectLoad = vi.fn(async () => false);
 
@@ -66,6 +66,25 @@ async function reconnect() {
     lifecycle.connect.forEach((h) => h());
   });
 }
+
+describe("useWebSocket on its first connect", () => {
+  it("says what the start went on past", async () => {
+    vi.mocked(askStartupStatus).mockResolvedValueOnce({
+      answered: true,
+      status: {
+        ...READY,
+        problems: [{ stage: "cloud_agent", detail: "The connection to OpenAVC Cloud did not start." }],
+      },
+    });
+    renderHook(() => useWebSocket());
+    await act(async () => lifecycle.connect.forEach((h) => h()));
+
+    const toasts = useToastStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain("The connection to OpenAVC Cloud did not start.");
+    expect(projectLoad).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("useWebSocket after a restart", () => {
   it("shows a failed start's reason, then loads once a start succeeds", async () => {

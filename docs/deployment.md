@@ -676,6 +676,10 @@ The reason stays on the tray and the menu bar through each try, until a start su
 
 `GET /api/startup-status` says which: `held` is `true` while it waits for **Start again**, and `retry_in` is the number of seconds until it tries again (`null` otherwise).
 
+### When part of a start fails
+
+Some parts of a start can fail without stopping it: the cloud connection, the announcement panels use to find the server, Inter-System Communication, the update checks, panel software updates, the start-up backup, the scripts, the driver library or the plugins. OpenAVC starts without that part and keeps running. The Programmer then says which parts did not start, each with a sentence about what is missing, when it opens and again after each restart, until you close the notice. The server log has the reason. `GET /api/startup-status` lists them as `problems`.
+
 The Docker image's own health check asks `/api/startup-status` on the port the server is listening on (the HTTPS port when HTTPS is on), so it follows a port changed in Settings or set with `OPENAVC_PORT`. The container reports healthy only while the server is running, and `docker inspect` shows what the server last said, with the reason when a start failed:
 
 ```bash

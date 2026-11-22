@@ -51,10 +51,13 @@ device manager's record, the plugin loader's status, the script engine's load
 error), the same surface a project change's outcome reads. Every part that
 failed is also named in one warning. Each step that settles a decision or
 converts something on disk before the project loads (``prepare_host``) is
-logged and never fatal, but not named; so is each network service, the
-update checks and panel software updates when it fails to start on its own
-(core/runtime_services.py), and a backup taken at the start that keeps its
-logins (``_seal_the_start_backup``).
+logged and never fatal, but not named. Each network service, the update
+checks and panel software updates catch their own start failure, since a
+settings change starts some of them again later (core/runtime_services.py),
+and answer False: the start keeps that too, each network service under its
+own stage (``_NETWORK_PARTS``), so the record says which one is missing. A
+backup taken at the start that keeps its logins (``_seal_the_start_backup``)
+raises into its stage.
 
 A stage of the stop that raises or overruns is named in one warning too, and
 the stages after it still run (core/stop_stages.py runs each on its own,
@@ -309,6 +312,25 @@ _NETWORK_SERVICES = GoOn(
     "the announcement panels find this server by, or Inter-System "
     "Communication may not be running. Check the server log for the reason.",
 )
+# The parts of the network services, kept apart when one catches its own
+# failure (core/runtime_services.py), so the record says which one is missing.
+_ISC = GoOn(
+    "isc", "starting Inter-System Communication",
+    "Inter-System Communication did not start, so this system is not sharing "
+    "state or commands with other OpenAVC systems. Check the server log for "
+    "the reason.",
+)
+_MDNS_ANNOUNCEMENT = GoOn(
+    "mdns_announcement", "starting the network announcement",
+    "This server is not announcing itself on the network, so panels and the "
+    "panel app cannot find it by searching. Check the server log for the reason.",
+)
+_CLOUD_AGENT = GoOn(
+    "cloud_agent", "connecting to OpenAVC Cloud",
+    "The connection to OpenAVC Cloud did not start, so this system cannot be "
+    "reached or managed from the cloud. Check the server log for the reason.",
+)
+_NETWORK_PARTS = {part.stage: part for part in (_ISC, _MDNS_ANNOUNCEMENT, _CLOUD_AGENT)}
 _PERIODIC_TASKS = GoOn(
     "periodic_tasks", "starting the periodic backup and clean-up",
     "The half-hourly project backup and the clean-up of unanswered panel "
@@ -411,7 +433,8 @@ class EngineLifecycleMixin:
         await run.run("starting live macro and plugin updates", self._bridge_events_to_ws)
         # Save a value a device reports into a config field that asks for it
         await run.go_on(_FILLED_IN_SETTINGS, self.learned_config.start)
-        await run.go_on(_NETWORK_SERVICES, self._start_network_services)
+        for part in await run.go_on(_NETWORK_SERVICES, self._start_network_services) or ():
+            run.kept(_NETWORK_PARTS[part])
         await run.go_on(_PERIODIC_TASKS, self._start_background_tasks)
         # Files staged for a command by an earlier run are gone with it.
         await run.go_on(_STAGED_FILES, self.file_staging.start)
@@ -422,9 +445,11 @@ class EngineLifecycleMixin:
         await run.run("marking the system started", self._announce_started)
         # Start trigger engine after system.started (so startup triggers work)
         await run.run("starting the triggers", self.triggers.start)
-        await run.go_on(_UPDATE_CHECKS, self._start_update_manager)
+        if await run.go_on(_UPDATE_CHECKS, self._start_update_manager) is False:
+            run.kept(_UPDATE_CHECKS)
         # Panel software updates on appliance hardware, through the update manager
-        await run.go_on(_PANEL_SOFTWARE, self._start_panel_software)
+        if await run.go_on(_PANEL_SOFTWARE, self._start_panel_software) is False:
+            run.kept(_PANEL_SOFTWARE)
         if owns_run:
             run.report()
         log.info(

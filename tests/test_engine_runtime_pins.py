@@ -209,8 +209,9 @@ async def test_a_mesh_that_cannot_start_leaves_the_engine_without_one(tmp_path, 
     fake_isc.cls.fail_start = True
 
     with caplog.at_level(logging.ERROR):
-        await eng._start_isc()
+        started = await eng._start_isc()
 
+    assert started is False
     assert eng.isc is None
     assert any("ISC: Failed to start" in r.getMessage() for r in caplog.records)
 
@@ -308,8 +309,9 @@ async def test_an_advertiser_that_cannot_start_leaves_the_engine_without_one(
     built = _fake_advertiser(monkeypatch, fail=True)
 
     with caplog.at_level(logging.ERROR):
-        await eng._start_mdns_advertiser()
+        started = await eng._start_mdns_advertiser()
 
+    assert started is False
     assert len(built) == 1
     assert eng.mdns_advertiser is None
     assert any("mDNS advertiser: failed to start" in r.getMessage() for r in caplog.records)
@@ -363,8 +365,9 @@ async def test_panel_software_that_cannot_start_leaves_the_engine_without_it(
     eng.update_manager = MagicMock()
 
     with caplog.at_level(logging.ERROR):
-        await eng._start_panel_software()
+        started = await eng._start_panel_software()
 
+    assert started is False
     assert eng.panel_software is None
     assert any("Panel software updates failed to start" in r.getMessage() for r in caplog.records)
 
@@ -377,8 +380,10 @@ async def test_a_cloud_pairing_with_no_key_starts_no_agent(tmp_path, monkeypatch
     eng = _engine(tmp_path)
 
     with caplog.at_level(logging.WARNING):
-        await eng._start_cloud_agent()
+        started = await eng._start_cloud_agent()
 
+    # Not paired: nothing failed, so the start keeps no problem for it.
+    assert started is True
     assert eng.cloud_agent is None
     assert any(
         "Cloud agent: enabled but missing system_key or system_id, skipping" in r.getMessage()
@@ -402,8 +407,9 @@ async def test_a_cloud_agent_that_cannot_start_leaves_the_engine_without_one(
     eng = _engine(tmp_path)
 
     with caplog.at_level(logging.ERROR):
-        await eng._start_cloud_agent()
+        started = await eng._start_cloud_agent()
 
+    assert started is False
     assert eng.cloud_agent is None
     assert any("Cloud agent: failed to start" in r.getMessage() for r in caplog.records)
 
@@ -541,3 +547,41 @@ async def test_the_cloud_agent_is_wired_to_every_part_and_connects(tmp_path, mon
         getattr(agent, setter).assert_called_once()
     agent.set_help_requests.assert_called_once_with(eng.help)
     agent.connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_checks_that_cannot_start_leave_the_engine_without_them(
+    tmp_path, monkeypatch, caplog,
+):
+    from openavc.updater import manager as manager_mod
+
+    def failing_manager(*args, **kwargs):
+        raise RuntimeError("no update channel")
+
+    monkeypatch.setattr(manager_mod, "UpdateManager", failing_manager)
+    eng = _engine(tmp_path)
+
+    with caplog.at_level(logging.ERROR):
+        started = await eng._start_update_manager()
+
+    assert started is False
+    assert eng.update_manager is None
+    assert any("Update manager failed to start" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_a_start_backup_that_cannot_be_sealed_reaches_its_stage(tmp_path, monkeypatch):
+    """The seal raises, so the start's own stage keeps the failure on the
+    run-state record (tests/test_start_stage_failures.py drives that)."""
+    from openavc.core import backup_manager
+
+    def failing_seal(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(backup_manager, "seal_logins_in_backup", failing_seal)
+    eng = _engine(tmp_path)
+    eng._logins_backup_at_start = tmp_path / "backup.avc"
+    eng._logins_unsaved_at_start = False
+
+    with pytest.raises(OSError, match="disk full"):
+        await eng._seal_the_start_backup()
