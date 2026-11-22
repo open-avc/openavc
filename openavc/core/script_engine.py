@@ -980,7 +980,7 @@ class ScriptEngine:
         """Run a state handler on the calling thread, which has no loop.
 
         A plain ``def`` runs to completion here; an ``async def`` has nothing
-        to run on and is closed unrun.
+        to run on and is closed unrun, which is recorded as its failure.
         """
         try:
             with script_api.current_script_context(script_id):
@@ -995,6 +995,14 @@ class ScriptEngine:
             return
         if asyncio.iscoroutine(result):
             result.close()  # never awaited — avoid the "coroutine" warning
+            handler_name = getattr(handler, "__name__", "anonymous")
+            msg = (
+                f"'{handler_name}' did not run: '{key}' was set from a thread "
+                f"with no event loop, and an async def handler needs one. A "
+                f"plain def handler runs there."
+            )
+            log.error(f"Script '{script_id}' state handler {msg}")
+            self._schedule_state_error(script_id, handler, key, msg, "")
 
     async def _run_state_handler(
         self,

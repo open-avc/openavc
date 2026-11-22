@@ -8,9 +8,9 @@ stopped halfway, and a Scripts list with nothing wrong on it.
 
 The doors covered here are the ones that reached the log and nothing else: a
 timer's callback, a control's call that was refused before the function ran,
-and an event a script sent past the bus's chain limit. Each one also logs an
-ERROR line in the script category, the line the IDE refreshes its Scripts list
-on.
+an event a script sent past the bus's chain limit, and an ``async def`` state
+handler that had no loop to run on. Each one also logs an ERROR line in the
+script category, the line the IDE refreshes its Scripts list on.
 
 Every script, event and variable here is invented.
 """
@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import textwrap
+import threading
 
 import pytest
 
@@ -365,3 +366,37 @@ async def test_an_emit_outside_any_script_records_nothing(engine, subsystems):
     await events.emit("custom.again")
 
     assert engine.get_runtime_errors() == {}
+
+
+# --- an async state handler with no loop to run on ---------------------------
+
+
+async def test_an_async_state_handler_with_no_loop_is_recorded(engine, subsystems, caplog):
+    """State set from a thread with no event loop runs a plain def handler
+    right there. An async def cannot run there, and was closed with nothing
+    said anywhere."""
+    state, _, _ = subsystems
+    _load(engine, "watcher", """\
+        from openavc import on_state_change, state
+
+        @on_state_change("var.occupied")
+        async def on_occupied(key, old_value, new_value):
+            state.set("var.saw", new_value)
+    """)
+
+    done = threading.Event()
+
+    def writer():
+        state.set("var.occupied", True)
+        done.set()
+
+    threading.Thread(target=writer, daemon=True).start()
+    await asyncio.get_running_loop().run_in_executor(None, done.wait, 5)
+
+    entry = engine.get_runtime_errors()["watcher"]
+    assert entry["handler"] == "on_occupied"
+    assert entry["event"] == "state_change:var.occupied"
+    assert "did not run" in entry["error"]
+    assert "plain def" in entry["error"]
+    assert state.get("var.saw") is None
+    assert _script_errors_logged(caplog)
