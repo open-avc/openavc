@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import * as api from "../../api/restClient";
+import { childRosterStamp, liveChildName } from "../../api/childStateVars";
 import type {
   ChildEntityEntry,
   ChildEntityStateVarDef,
+  ChildEntityTypeSchema,
   DriverParamDef,
 } from "../../api/types";
 import { useConnectionStore } from "../../store/connectionStore";
+import { useSettled } from "./useSettled";
 import { InlineError } from "./InlineError";
 import { ParamCombobox } from "./ParamCombobox";
 import { SearchableSelect } from "./SearchableSelect";
@@ -184,16 +187,35 @@ export function ParamInput({
   const [children, setChildren] = useState<ChildEntityEntry[] | undefined>(
     undefined,
   );
+  // The type's declaration, for its `label_field`: what a project device's
+  // child is called is read from live state, as the Child Entities panel
+  // reads it, since a device reports or changes its names after the fetch.
+  const [childTypeDef, setChildTypeDef] = useState<ChildEntityTypeSchema | undefined>(
+    undefined,
+  );
+  const followsProjectDevice = !!fetchChildType && !!deviceId && !pickers;
+  // A child registering or going, or a label saved in the project, moves
+  // the list itself: fetch again once the burst settles.
+  const rosterStamp = useSettled(
+    useConnectionStore((s) =>
+      followsProjectDevice ? childRosterStamp(s.liveState, deviceId!, fetchChildType!) : "",
+    ),
+    400,
+  );
   useEffect(() => {
     if (!fetchChildType || !live) return;
     let cancelled = false;
     const load = pickers
-      ? pickers.loadChildren(fetchChildType)
-      : api.listChildEntitiesByType(deviceId!, fetchChildType).then((resp) => resp.children);
+      ? pickers.loadChildren(fetchChildType).then((found) => ({ found, schema: undefined }))
+      : api.listChildEntitiesByType(deviceId!, fetchChildType).then((resp) => ({
+          found: resp.children,
+          schema: resp.schema,
+        }));
     load
-      .then((found) => {
+      .then(({ found, schema }) => {
         if (!cancelled) {
           setChildren(found);
+          setChildTypeDef(schema);
         }
       })
       .catch(() => {
@@ -205,7 +227,22 @@ export function ParamInput({
     // `pickers` is read at load time; a new object for the same source must
     // not refetch on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchChildType, deviceId, live]);
+  }, [fetchChildType, deviceId, live, rosterStamp]);
+
+  // Each listed child's name as live state has it now, one string so a tick
+  // that names nothing redraws nothing.
+  const liveNames = useConnectionStore((s) =>
+    followsProjectDevice && type === "child_id" && children
+      ? children
+          .map((c) => liveChildName(c, childTypeDef, s.liveState, deviceId!, fetchChildType!))
+          .join("\u0000")
+      : "",
+  );
+  const nameOf = new Map<string, string>();
+  if (liveNames && children) {
+    const names = liveNames.split("\u0000");
+    children.forEach((c, i) => nameOf.set(c.local_id_padded, names[i] ?? ""));
+  }
 
   // State-sourced options: a device-relative key (`options_state`), resolved
   // against this device, or read from `pickers`.
@@ -417,9 +454,11 @@ export function ParamInput({
           {registered.map((c) => {
             // Project label, else the device-reported name -- settled on the
             // server (drivers/child_ids.child_display_name) so this picker and
-            // the matrix picker cannot disagree about what a child is called.
-            // The stored/sent value is always the id.
-            const name = c.display_name ?? "";
+            // the matrix picker cannot disagree about what a child is called,
+            // and read here from live state in the same order so a name the
+            // device reports while this is open shows at once. The
+            // stored/sent value is always the id.
+            const name = nameOf.get(c.local_id_padded) || c.display_name || "";
             return (
               <option key={c.local_id} value={String(c.local_id)}>
                 {name
