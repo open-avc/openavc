@@ -30,6 +30,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import check_project_emit
 from openavc.core.group_command import reached_nobody
+from openavc.core.macro_text import StepFailed
 from openavc.core.project_loader import MacroStep, reads_as
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.value_resolver import resolve_in_text, resolve_ref
@@ -227,8 +228,9 @@ class MacroSteps:
             )
         if run.stop_on_error:
             # The worded sentence, not the exception: this text is the
-            # run's macro.error, and a calling macro's step error.
-            raise RuntimeError(f"{step_detail}: {error}") from e
+            # run's macro.error, and a calling macro's step error. The
+            # room's sentence travels with it (StepFailed).
+            raise StepFailed(f"{step_detail}: {error}", message) from e
 
     async def _step_reported(
         self, step: dict[str, Any], run: StepRun, i: int, total: int, unreported: Unreported,

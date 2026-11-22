@@ -68,6 +68,20 @@ _ANNOUNCED: dict[str, Callable[[dict[str, Any]], str]] = {
 }
 
 
+class StepFailed(RuntimeError):
+    """A step that failed under ``stop_on_error``, ending its run.
+
+    Its text is the Programmer's: the step's place, then its ``error``.
+    ``message`` is the sentence that step's ``macro.step_error`` gave the room,
+    carried up so the run's ``macro.error``, and a step that failed because of
+    it (a Run Macro step, a conditional whose branch stopped), say the same.
+    """
+
+    def __init__(self, detail: str, message: str) -> None:
+        super().__init__(detail)
+        self.message = message
+
+
 def no_such_macro(macro_id: str) -> str:
     """THE sentence for a press that names a macro the project does not have:
     a control's macro action, a preset's ``macro.execute`` and its
@@ -182,9 +196,12 @@ class StepWording:
 
         A device command step answers with the rule every command door uses,
         so a macro failure and a direct press failure read the same way
-        whichever control ran them. Any other step's exception is the
-        platform's or a plugin's own, and keeps its text.
+        whichever control ran them. A step that failed because a step inside
+        it stopped (``StepFailed``) says what that step said. Any other step's
+        exception is the platform's or a plugin's own, and keeps its text.
         """
+        if isinstance(exc, StepFailed):
+            return str(exc), exc.message
         if step.get("action") == "device.command":
             failure = self.command_failure(
                 str(step.get("device") or ""), str(step.get("command") or ""), exc,

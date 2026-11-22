@@ -94,6 +94,10 @@ async def engine(tmp_path):
             ]},
             {"id": "too_deep", "name": "Too deep", "stop_on_error": True,
              "steps": _conditionals(7)},
+            {"id": "check_then_flash", "name": "Check then flash", "stop_on_error": True,
+             "steps": [{"action": "conditional",
+                        "condition": {"key": "var.always", "operator": "eq", "value": True},
+                        "then_steps": [flash]}]},
         ],
         "ui": {"pages": [{"id": "main", "name": "Main", "elements": [{
             "id": "flash", "type": "button",
@@ -177,6 +181,19 @@ async def test_a_macro_that_calls_one_that_stopped_carries_only_the_sentence(eng
     assert [e["macro_id"] for e in errors] == ["flash_or_stop", "outer"]
     assert len(step_errors) == 2
     _assert_private(errors, step_errors)
+
+
+@pytest.mark.parametrize("macro_id", ["outer", "check_then_flash"])
+async def test_a_step_that_failed_because_a_step_inside_it_did_says_that_step_s_sentence(
+        engine, macro_id):
+    """A Run Macro step whose macro stopped, and a conditional whose branch
+    stopped, fail with the step that failed inside them: the room is told
+    what that step told it, not the Programmer's words for it."""
+    step_errors = _collect(engine, "macro.step_error.*")
+    assert await engine.macros.execute(macro_id) == "failed"
+    assert len(step_errors) == 2
+    assert [e["message"] for e in step_errors] == [FOR_THE_ROOM, FOR_THE_ROOM]
+    assert step_errors[1]["error"].endswith(FOR_THE_PROGRAMMER)
 
 
 async def test_a_group_command_answers_both_readers(engine):
