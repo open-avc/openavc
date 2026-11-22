@@ -291,7 +291,7 @@ class TestSweep:
         async def _on_update(msg):
             sent.append(msg)
 
-        engine._on_update = _on_update
+        engine.on_update = _on_update
         await run.run()
         assert engine.results["10.77.0.5"].alive is True
         first = next(m for m in sent if m["type"] == "discovery.update")
@@ -411,7 +411,7 @@ class TestPortScanHosts:
         async def _on_update(msg):
             sent.append(msg)
 
-        engine._on_update = _on_update
+        engine.on_update = _on_update
         engine._scan_source_ip = "10.77.0.9"
         with patch(f"{PORTS}.scan_host_ports", scan), patch(f"{PORTS}.grab_banners", grab), \
              patch(f"{PORTS}.asyncio.sleep", new_callable=AsyncMock) as sleep:

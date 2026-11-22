@@ -124,7 +124,7 @@ class TestScanWarnings:
         fake_ping = _make_fake_ping(icmp.METHOD_NONE, total=254, errors=254)
 
         events = []
-        self.engine._on_update = AsyncMock(side_effect=lambda m: events.append(m))
+        self.engine.on_update = AsyncMock(side_effect=lambda m: events.append(m))
         self.engine.scan_status.started_at = time.time()
         self.engine.scan_status.scan_id = "test_scan"
 
@@ -179,7 +179,7 @@ class TestListenerWarningsOnEveryEnding:
         async def on_update(message: dict) -> None:
             self.events.append(message)
 
-        self.engine._on_update = on_update
+        self.engine.on_update = on_update
 
     def _assert_ended(self, status: str) -> None:
         outcome = self.engine.outcome()

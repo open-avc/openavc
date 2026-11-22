@@ -30,7 +30,7 @@ def _engine_with_events() -> tuple[DiscoveryEngine, list[dict]]:
     async def on_update(message: dict) -> None:
         events.append(message)
 
-    engine._on_update = on_update
+    engine.on_update = on_update
     return engine, events
 
 

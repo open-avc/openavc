@@ -196,7 +196,7 @@ async def test_an_unproven_host_is_never_announced_mid_scan():
     # A panel cannot un-see a device, so one we might drop must not go out.
     engine = _engine_with("192.168.4.47", mac="aa:bb:cc:dd:ee:ff")
     sent = []
-    engine._on_update = lambda msg: sent.append(msg) or asyncio.sleep(0)
+    engine.on_update = lambda msg: sent.append(msg) or asyncio.sleep(0)
     await engine._emit_device_update(engine.results["192.168.4.47"], "arp_harvest")
     assert sent == []
 
@@ -211,7 +211,7 @@ async def test_a_host_that_earns_its_place_is_announced_at_the_end():
     async def capture(msg):
         sent.append(msg)
 
-    engine._on_update = capture
+    engine.on_update = capture
     await _finish(engine)
 
     announced = [m for m in sent if m.get("type") == "discovery.update"]
@@ -230,7 +230,7 @@ async def test_a_dropped_host_is_never_announced_at_all():
     async def capture(msg):
         sent.append(msg)
 
-    engine._on_update = capture
+    engine.on_update = capture
     await _finish(engine)
 
     assert [m for m in sent if m.get("type") == "discovery.update"] == []

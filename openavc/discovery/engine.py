@@ -262,7 +262,11 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self.scan_status = ScanStatus()
         self._scan_task: asyncio.Task | None = None
         self._scan_lock = asyncio.Lock()
-        self._on_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+        # Where every scan's live updates go (``discovery.phase``,
+        # ``discovery.update``, ``discovery.complete``), whoever starts the
+        # scan: the Discovery tab or the cloud AI. Set once at startup
+        # (``api.discovery.set_discovery_engine``). Unset: a scan sends nothing.
+        self.on_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None
         # Last time intra-phase progress was pushed. The sweep phases update
         # progress per host, which is far too often to put on the wire, so
         # the push is throttled and the timestamp lives here.
@@ -486,7 +490,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self,
         subnets: list[str] | None = None,
         extra_subnets: list[str] | None = None,
-        on_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         timeout: float | None = None,
         ignore_control_interface: bool = False,
     ) -> str:
@@ -501,7 +504,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
                 probe fails at the socket even with explicit subnets. This is
                 the one-off escape hatch the Discovery tab offers for a stale
                 pin; the setting itself is untouched.
-            on_update: Async callback for live WebSocket push.
             timeout: Ceiling on the whole scan, in seconds. ``None`` takes the
                 ceiling from the ``scan_depth`` policy — the normal path, since
                 each phase is separately budgeted from its own workload and the
@@ -521,7 +523,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             )
             policy, total_seconds = self._scan_policy(timeout)
 
-            self._on_update = on_update
             self._scan_ignores_pin = ignore_control_interface
             self._begin_status(scan_id, targets, total_seconds, control_ip)
             self._reset_for_scan(policy, total_seconds)
@@ -1107,9 +1108,9 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         })
 
     async def _emit(self, message: dict[str, Any]) -> None:
-        """Send event to the callback (WebSocket broadcast)."""
-        if self._on_update:
+        """Send one update to ``on_update`` (the WebSocket broadcast)."""
+        if self.on_update:
             try:
-                await self._on_update(message)
+                await self.on_update(message)
             except Exception:  # Catch-all: callback may be a WebSocket broadcast; don't crash scan
                 log.debug("Failed to emit discovery event", exc_info=True)

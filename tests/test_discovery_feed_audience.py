@@ -48,18 +48,19 @@ SCAN_MESSAGES = [
 
 class _AcmeScan:
     """Stands in for the discovery engine. The scan it starts reports a
-    phase, one device and its end through the callback the route hands it,
-    as a real scan does from its own task; a refresh re-matches the one
-    device it holds."""
+    phase, one device and its end through the feed the wiring gave it, as a
+    real scan does from its own task; a refresh re-matches the one device it
+    holds."""
 
     def __init__(self) -> None:
         self.config: dict = {}
         self.results = {FOUND["ip"]: FOUND}
+        self.on_update = None
 
-    async def start_scan(self, *, subnets, extra_subnets, on_update, timeout,
+    async def start_scan(self, *, subnets, extra_subnets, timeout,
                          ignore_control_interface):
         for message in SCAN_MESSAGES:
-            await on_update(message)
+            await self.on_update(message)
         return "scan1"
 
     def get_status(self) -> dict:
@@ -84,7 +85,8 @@ def wired(claimed_engine, access_mode, monkeypatch):
     """The discovery routes on a stand-in scan, broadcasting through the
     test engine the way main.py hands them its engine's broadcast."""
     access_mode("open")
-    monkeypatch.setattr(discovery_api, "_engine", _AcmeScan())
+    monkeypatch.setattr(discovery_api, "_engine", None)
+    discovery_api.set_discovery_engine(_AcmeScan())
     monkeypatch.setattr(discovery_api, "_broadcast_fn", claimed_engine.broadcast_ws)
     return claimed_engine
 

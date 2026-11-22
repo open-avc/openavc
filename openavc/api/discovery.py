@@ -48,9 +48,14 @@ _engine: DiscoveryEngine | None = None
 _broadcast_fn = None  # the engine's WebSocket broadcast, set by main.py
 
 
-def set_discovery_engine(discovery_engine: DiscoveryEngine) -> None:
+def set_discovery_engine(discovery_engine: DiscoveryEngine | None) -> None:
+    """Set the engine the endpoints and the cloud AI's scan tools use, and
+    send every scan's updates through ``_send_to_programmers``, whichever of
+    them starts it."""
     global _engine
     _engine = discovery_engine
+    if discovery_engine is not None:
+        discovery_engine.on_update = _send_to_programmers
 
 
 def set_broadcast_fn(fn) -> None:
@@ -65,8 +70,9 @@ async def _send_to_programmers(message: dict[str, Any]) -> None:
     """Send one ``discovery.*`` update, which reaches the Programmer clients
     and never a panel (its row in ``core.ws_hub.MESSAGE_AUDIENCE``).
 
-    Every update discovery sends goes through here: the scan's live feed and
-    the re-match after a driver change. A device's update carries its whole
+    Every update discovery sends goes through here: the live feed of every
+    scan, whoever started it (``set_discovery_engine``), and the re-match after
+    a driver change. A device's update carries its whole
     record (address, MAC, hostname, serial number, firmware, open ports and
     their banners, SNMP, mDNS and SSDP records), which over REST takes a
     Programmer sign-in; a panel draws none of it.
@@ -283,7 +289,6 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
         scan_id = await engine.start_scan(
             subnets=req.subnets,
             extra_subnets=req.extra_subnets,
-            on_update=_send_to_programmers,
             timeout=req.timeout,
             ignore_control_interface=req.ignore_control_interface,
         )

@@ -276,3 +276,37 @@ async def test_discovery_results_wait_reads_a_timeout_sent_as_text(monkeypatch):
     result = await handler._get_discovery_results({"wait": True, "timeout": "60"})
     assert result["scan_status"] == "complete"
     assert engine.calls == ["status", "status"]  # the wait's poll, then the answer's
+
+
+async def test_a_scan_the_assistant_starts_reaches_an_open_discovery_page(monkeypatch):
+    """A scan the assistant starts sends the same updates as one the Discovery
+    tab starts: its phases, each device it finds and its end, to the same
+    broadcast, so a Discovery page open at the time shows it."""
+    from openavc.discovery.engine import DiscoveryEngine
+
+    sent: list[dict] = []
+
+    async def broadcast(message):
+        sent.append(message)
+
+    engine = DiscoveryEngine()
+    monkeypatch.setattr(discovery_module, "_engine", None)
+    monkeypatch.setattr(discovery_module, "_broadcast_fn", None)
+    discovery_module.set_discovery_engine(engine)
+    discovery_module.set_broadcast_fn(broadcast)
+
+    async def one_phase(subnets):
+        await engine._set_phase(1, "ping_sweep", "Scanning for live hosts...")
+        await engine._on_ping_found("10.77.0.2")
+
+    monkeypatch.setattr(engine, "_scan_pipeline", one_phase)
+
+    result = await _Handler(None)._start_discovery_scan({"subnets": ["10.77.0.0/30"]})
+    assert result["status"] == "running"
+    await engine._scan_task
+
+    types = [m["type"] for m in sent]
+    assert types[0] == "discovery.phase"
+    assert "10.77.0.2" in [m["device"]["ip"] for m in sent if m["type"] == "discovery.update"]
+    assert types[-1] == "discovery.complete"
+    assert sent[-1]["scan_id"] == result["scan_id"]

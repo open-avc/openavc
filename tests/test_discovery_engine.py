@@ -245,7 +245,7 @@ class TestSetPhase:
 
     async def test_emits_phase_event(self):
         events = []
-        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+        self.engine.on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
         await self.engine._set_phase(2, "passive", "Starting listeners...")
         assert len(events) == 1
         assert events[0]["type"] == "discovery.phase"
@@ -262,7 +262,7 @@ class TestEmit:
 
     async def test_emit_calls_callback(self):
         callback = AsyncMock()
-        self.engine._on_update = callback
+        self.engine.on_update = callback
         await self.engine._emit({"type": "test"})
         callback.assert_called_once_with({"type": "test"})
 
@@ -272,7 +272,7 @@ class TestEmit:
 
     async def test_emit_swallows_callback_errors(self):
         callback = AsyncMock(side_effect=Exception("boom"))
-        self.engine._on_update = callback
+        self.engine.on_update = callback
         # Should not raise
         await self.engine._emit({"type": "test"})
 
@@ -286,7 +286,7 @@ class TestEmitDeviceUpdate:
 
     async def test_emits_discovery_update(self):
         events = []
-        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+        self.engine.on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
         device = DiscoveredDevice(ip="10.0.0.1")
         await self.engine._emit_device_update(device, "ping_sweep")
         assert len(events) == 1
@@ -464,7 +464,7 @@ class TestRunScan:
         self.engine.scan_status.scan_id = "test_scan"
 
         events = []
-        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+        self.engine.on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
 
         with patch.object(self.engine, "_scan_pipeline", new_callable=AsyncMock), \
              patch.object(
@@ -485,7 +485,7 @@ class TestRunScan:
         self.engine.scan_status.scan_id = "test_scan"
 
         events = []
-        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+        self.engine.on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
 
         async def slow_pipeline(subnets):
             await asyncio.sleep(10)
@@ -504,7 +504,7 @@ class TestRunScan:
         self.engine.scan_status.scan_id = "test_scan"
 
         events = []
-        self.engine._on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
+        self.engine.on_update = AsyncMock(side_effect=lambda msg: events.append(msg))
 
         with patch.object(self.engine, "_scan_pipeline", new_callable=AsyncMock):
             await self.engine._run_scan(["192.168.1.0/24"], timeout=10.0)
