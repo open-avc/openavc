@@ -92,7 +92,8 @@ CASES: dict[str, dict[str, Any]] = {
         false_send={"send": False, "ir": None},
     ),
     # A null or empty field fills no form (drivers/command_form.py), so an
-    # empty address beside a line sends the line.
+    # empty address beside a line sends the line; one alone sends nothing,
+    # which only the author's doors refuse (test_command_form.py).
     "an_empty_address_is_no_osc_command": cmds(
         a={"address": ""},
         b={"address": "", "args": [{"type": "x"}]},
@@ -489,7 +490,8 @@ CASES.update({
 # And what the breaks of the moved code found unwatched, recorded from the code
 # before the move.
 CASES.update({
-    # an ir: that is empty or false is no way of sending, as the runtime reads it
+    # an ir: that is empty or false is no way of sending, as the runtime reads
+    # it; alone, only the author's doors refuse it (test_command_form.py)
     "an_empty_ir_is_no_form": cmds(
         a={"send": "X\r", "ir": ""},
         b={"ir": False},
@@ -566,8 +568,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                  ('commands.false_send',
                   "Command 'false_send': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' "
                   "(OSC), or 'udp' (a datagram beside the main transport)")],
- 'an_empty_address_is_no_osc_command': [('commands.a', "Command 'a': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)"),
-                                        ('commands.b', "Command 'b': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)")],
+ 'an_empty_address_is_no_osc_command': [],
  'osc_args': [('commands.not_a_list', "Command 'not_a_list': args must be a list"),
               ('commands.items', "Command 'items': args[1] must be a mapping"),
               ('commands.items',
@@ -950,7 +951,7 @@ EXPECTED.update({'a_config_field_name_that_is_not_text': [('commands.a.send',
                          ('commands.spaced',
                           "Command 'spaced': 'udp.port' must be between 1 and 65535, got  65536 ")]})
 
-EXPECTED.update({'an_empty_ir_is_no_form': [('commands.b', "Command 'b': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)")],
+EXPECTED.update({'an_empty_ir_is_no_form': [],
  'decimals_zero': [],
  'every_aid_on_one_param': [('commands.a',
                              "Command 'a' param 'a': pattern: pattern must be a string, got int"),

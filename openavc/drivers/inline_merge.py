@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.inline_protocol import (
     declare_command_params,
     derive_state_vars_from_responses,
@@ -114,11 +115,11 @@ def _own_over_file(
 def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
     """The poll lines a device's own commands add: those the editor flagged
     "poll" are sent on the device's poll_interval to keep status values live
-    (most AV gear doesn't push). A byte-stream command's query is its send
-    string (line ending included); an HTTP or OSC command has no send string,
-    so its name is used (poll() looks the name up)."""
+    (most AV gear doesn't push). A command sent as a line (``command_form``)
+    is polled as its send string (line ending included); any other is polled
+    by its name, which poll() looks up and runs."""
     return [
-        cmd["send"] if isinstance(cmd.get("send"), str) else name
+        cmd["send"] if command_form(cmd) == "raw" and isinstance(cmd["send"], str) else name
         for name, cmd in commands.items()
         if cmd.get("poll")
     ]

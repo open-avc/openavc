@@ -99,7 +99,7 @@ class CommandSection:
         if not isinstance(cmd_def, dict):
             return [f"{where}: must be a dict"]
         forms = declared_forms(cmd_def)
-        errors = _form_errors(where, forms)
+        errors = [] if _left_empty(cmd_def) else _form_errors(where, forms)
         if "osc" in forms:
             errors.extend(osc_args_errors(where, cmd_def.get("args")))
         if "udp" in forms:
@@ -211,6 +211,26 @@ def _literal_or_param(value: Any, params: dict[str, Any]) -> bool:
         return True
     ref = _BARE_PARAM.fullmatch(value)
     return bool(ref) and ref.group(1) in params
+
+
+def left_empty_form_errors(cmd_name: Any, cmd_def: Any) -> list[str]:
+    """A command whose only form is an ``address`` or ``ir:`` left empty.
+
+    Until a null or empty field chose no form (``command_form``), an empty
+    address or IR code was one, so a driver saved with one (the Builder's
+    Address box cleared) passed every door. It sends nothing, so the author's
+    doors refuse it, with the words a command with no form gets, and a door
+    loading the driver names it instead of dropping the file."""
+    if not isinstance(cmd_def, dict) or not _left_empty(cmd_def):
+        return []
+    return _form_errors(f"Command '{cmd_name}'", [])
+
+
+def _left_empty(cmd_def: dict[str, Any]) -> bool:
+    """No form filled, and an address or an IR code written but empty."""
+    return not declared_forms(cmd_def) and any(
+        cmd_def.get(field) is not None for field in ("address", "ir")
+    )
 
 
 def _form_errors(where: str, forms: list[str]) -> list[str]:

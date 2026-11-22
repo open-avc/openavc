@@ -569,9 +569,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                            "Could not generate sample address for command 'mix' "
                                            "(address: '/{alias}/{b}/on')")],
  'osc_command_without_address_skipped': [],
- 'osc_malformed_command_not_a_mapping': ('raises',
-                                         'AttributeError',
-                                         "'str' object has no attribute 'get'"),
+ 'osc_malformed_command_not_a_mapping': [],
  'osc_malformed_default_config_list': ('raises',
                                        'ValueError',
                                        'dictionary update sequence element #0 has length 4; 2 is '

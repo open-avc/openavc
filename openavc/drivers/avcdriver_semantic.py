@@ -60,7 +60,7 @@ from openavc.drivers.child_type_checks import (
     child_type_errors,
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
-from openavc.drivers.command_checks import CommandSection
+from openavc.drivers.command_checks import CommandSection, left_empty_form_errors
 from openavc.drivers.conversion_checks import (
     value_conversion_errors as value_conversion_errors,
     value_conversion_issues,
@@ -455,6 +455,7 @@ class _DefinitionWalk:
         return [
             (self.rule_names, "responses"),
             (self.child_fault_codes, "responses"),
+            (self.commands_left_empty, "commands"),
             (self.line_settings, "default_config"),
             (self.discovery_authored, "discovery"),
             (self.model_problems, ""),
@@ -475,6 +476,14 @@ class _DefinitionWalk:
         for i, rule in enumerate(self.declared.responses):
             errors.ctx = f"responses[{i}]"
             errors.extend(child_fault_code_errors(i, rule))
+
+    def commands_left_empty(self) -> None:
+        """A command whose only form is an address or IR code left empty
+        (command_checks.left_empty_form_errors)."""
+        errors = self.authored
+        for cmd_name, cmd_def in self.declared.commands.items():
+            errors.ctx = f"commands.{cmd_name}"
+            errors.extend(left_empty_form_errors(cmd_name, cmd_def))
 
     def model_problems(self) -> None:
         """What the driver model reads and what a send carries that only the

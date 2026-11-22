@@ -26,6 +26,7 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
+from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.spec import PLACEHOLDER
 from openavc.simulator.driver_sends import command_sample, effective_config, entry_text
@@ -107,11 +108,12 @@ def _probe(pattern: str) -> str:
 def check_osc_command_coverage(
     result: ValidationResult, commands: dict, addresses: OscAddresses, driver_def: dict,
 ) -> None:
-    """Check every OSC command's address is answered by the simulator."""
+    """Check every OSC command's address is answered by the simulator: each
+    command the runtime sends as an OSC message (``command_form``)."""
     for cmd_name, cmd_def in commands.items():
-        address_template = cmd_def.get("address", "")
-        if not address_template:
+        if command_form(cmd_def) != "osc":
             continue
+        address_template = cmd_def["address"]
 
         params = cmd_def.get("params", {})
         sample = command_sample(address_template, params, driver_def)

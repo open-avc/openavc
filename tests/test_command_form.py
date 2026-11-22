@@ -21,17 +21,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from openavc.api.routes.driver_test import _describe_outgoing
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers import command_form as cf
-from openavc.drivers.avcdriver_semantic import validate_driver_definition
+from openavc.drivers.avcdriver_semantic import check_driver_definition, validate_driver_definition
+from openavc.drivers.driver_loader import read_driver_file
 from openavc.drivers.command_outcome import CommandOutcomeError, outcome_of
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.dry_run import capture_command_transport
 from openavc.simulator import driver_sends, inline_device, push_channels, send_coverage
-from openavc.simulator import yaml_auto
+from openavc.simulator import osc_coverage, yaml_auto
+from openavc.simulator.validation_result import ValidationResult
 from openavc.simulator.setting_handlers import write_template
 from openavc.simulator.side_receiver import side_send_blocks
 
@@ -94,6 +97,10 @@ class _Wire:
         self.log.append("raw")
 
 
+# An OSC simulator that answers no address.
+_NO_ADDRESSES = osc_coverage.OscAddresses([], [], UNIT)
+
+
 # ── the owner ──
 
 
@@ -132,10 +139,41 @@ def _form_verdict(errors: list[str]) -> str:
 def test_the_checker_refuses_a_command_that_declares_no_form_or_several(case: dict) -> None:
     definition = copy.deepcopy(UNIT)
     definition["commands"] = {"go": case["block"]}
-    errors = validate_driver_definition(definition)
+    errors = validate_driver_definition(definition, strict=True)
     declared = case["declared"]
     expected = "none" if not declared else ("one" if len(declared) == 1 else "several")
     assert _form_verdict(errors) == expected, errors
+
+
+@pytest.mark.parametrize("block", [
+    {"address": ""}, {"send": "", "address": ""}, {"address": []}, {"ir": ""}, {"ir": False},
+])
+def test_an_address_or_ir_code_left_empty_is_refused_only_at_the_authors_doors(
+    block: dict, tmp_path: Path,
+) -> None:
+    # An empty address or IR code was a form until a null or empty field
+    # chose none, so a driver saved with one (the Builder's Address box
+    # cleared) passed every door: an installed copy keeps loading, named.
+    definition = copy.deepcopy(UNIT)
+    definition["commands"] = {"go": block}
+    no_form = "Command 'go': must have 'send'"
+    assert any(e.startswith(no_form) for e in validate_driver_definition(definition, strict=True))
+    verdict = check_driver_definition(definition)
+    assert not any(e.startswith(no_form) for e in verdict.errors), verdict.errors
+    assert any(e.startswith(no_form) for e in verdict.notices), verdict.notices
+
+    path = tmp_path / "acme_form_unit.avcdriver"
+    path.write_text(yaml.safe_dump(definition), encoding="utf-8")
+    read = read_driver_file(path)
+    assert read.definition is not None, read.reasons
+    assert any(no_form in n for n in read.notices), read.notices
+
+
+@pytest.mark.parametrize("block", [{}, {"send": ""}, {"address": None}, {"udp": {}}])
+def test_a_command_with_no_form_written_is_refused_at_every_door(block: dict) -> None:
+    definition = copy.deepcopy(UNIT)
+    definition["commands"] = {"go": block}
+    assert check_driver_definition(definition).errors
 
 
 def test_the_checker_still_names_a_udp_block_that_is_not_a_mapping() -> None:
@@ -323,6 +361,11 @@ def test_the_simulator_reads_each_command_in_its_form(case: dict) -> None:
 
     assert inline_device._is_http_poll({**block, "poll": True}) == (form == "http")
 
+    unanswered = ValidationResult("acme_form_unit.avcdriver", "acme_form_unit", "yaml")
+    if form != "osc" or isinstance(block.get("address"), str):
+        osc_coverage.check_osc_command_coverage(unanswered, {"go": block}, _NO_ADDRESSES, UNIT)
+        assert bool(unanswered.issues) == (form == "osc")
+
     matcher = push_channels._registration_matcher({"go": block}, "go")
     if form == "http":
         assert matcher is not None
@@ -331,6 +374,15 @@ def test_the_simulator_reads_each_command_in_its_form(case: dict) -> None:
         assert (matcher is not None) == bool(sent)
     else:
         assert matcher is None
+
+
+@pytest.mark.parametrize("case", COMMANDS, ids=_ids(COMMANDS))
+def test_a_devices_own_polled_command_is_polled_in_its_form(case: dict) -> None:
+    from openavc.drivers.inline_merge import _inline_poll_queries
+
+    block = {**case["block"], "poll": True}
+    line = block.get("send") if case["form"] == "raw" else None
+    assert _inline_poll_queries({"go": block}) == [line if isinstance(line, str) else "go"]
 
 
 # ── an HTTP request's own fields ──
