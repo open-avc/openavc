@@ -77,12 +77,10 @@ def inline_suffix(config: Mapping[str, Any], definition: Mapping[str, Any]) -> s
     """What ends a command the device authored: the suffix, else the line
     ending, which is the device's configured delimiter, else the driver's
     (a YAML driver's ``DRIVER_INFO`` carries the definition's), so a command
-    typed in the editor does not need its own \\r. A configured delimiter
-    that is not text is passed over, as the simulator reads it."""
-    delimiter = config.get("delimiter")
-    return command_suffix(config, definition) or (
-        (delimiter if isinstance(delimiter, str) else "") or definition.get("delimiter", "")
-    )
+    typed in the editor does not need its own \\r. A configured suffix or
+    delimiter that is not text is passed over, as the simulator reads it."""
+    suffix, delimiter = command_suffix(config, definition), config.get("delimiter")
+    return _text(suffix) or _text(delimiter) or definition.get("delimiter", "")
 
 
 def framed_send(
@@ -129,9 +127,16 @@ def _framed_file(send: Any, prefix: str, suffix: str) -> Any:
     return f"{prefix}{send}{suffix}"
 
 
-def _framed_authored(send: Any, prefix: str, line_ending: str) -> Any:
+def _text(value: Any) -> str:
+    """``value`` when it is text, else nothing: an affix of a device's own
+    command that is not text is passed over."""
+    return value if isinstance(value, str) else ""
+
+
+def _framed_authored(send: Any, prefix: Any, line_ending: str) -> Any:
     """A device's own command: the prefix unless it already starts with it,
     the line ending unless it already ends with it."""
+    prefix = _text(prefix)
     if not isinstance(send, str):
         return send
     if prefix and not send.startswith(prefix):

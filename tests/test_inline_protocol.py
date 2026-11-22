@@ -16,6 +16,7 @@ from openavc.drivers.inline_protocol import (
     normalize_config_commands,
     normalize_config_responses,
 )
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 # A bare "generic" definition: a transport and nothing else. The protocol is
 # expected to come entirely from the device config.
@@ -418,3 +419,19 @@ def test_a_device_line_ending_that_is_not_text_is_passed_over():
     drv = cls("acme_1", config, state, events)
     assert drv._definition["commands"]["ping"]["send"] == "PING\r"
     assert drv.build_wire("ping") == b"PING\r"
+
+
+@pytest.mark.parametrize("setting", ["command_prefix", "command_suffix"])
+def test_a_device_prefix_or_suffix_that_is_not_text_is_passed_over(setting):
+    # A device's own commands are framed with text only, so the device sets
+    # up, and a simulator built for it answers the line the driver sends.
+    definition = {**GENERIC_DEF, "delimiter": "\r"}
+    own = {setting: 13, "commands": {"ping": "PING"}, "state_variables": {}}
+    cls = create_configurable_driver_class(definition)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    drv = cls("acme_1", {"host": "127.0.0.1", "port": 4000, **own}, state, events)
+    assert drv.build_wire("ping") == b"PING\r"
+    sim = YAMLAutoSimulator("acme_1", config=own, driver_def=definition)
+    assert [h.pattern.pattern for h in sim._command_handlers] == ["^PING$"]
