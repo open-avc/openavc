@@ -116,12 +116,14 @@ def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
     """The poll lines a device's own commands add: those the editor flagged
     "poll" are sent on the device's poll_interval to keep status values live
     (most AV gear doesn't push). A command sent as a line (``command_form``)
-    is polled as its send string (line ending included); any other is polled
-    by its name, which poll() looks up and runs."""
+    is polled as its send string (line ending included); one in another form
+    is polled by its name, which poll() looks up and runs; one with nothing
+    to send (its Send left blank) adds no line."""
+    polled = ((name, cmd, command_form(cmd)) for name, cmd in commands.items() if cmd.get("poll"))
     return [
-        cmd["send"] if command_form(cmd) == "raw" and isinstance(cmd["send"], str) else name
-        for name, cmd in commands.items()
-        if cmd.get("poll")
+        cmd["send"] if form == "raw" and isinstance(cmd["send"], str) else name
+        for name, cmd, form in polled
+        if form is not None
     ]
 
 

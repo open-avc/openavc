@@ -384,7 +384,13 @@ def test_the_simulator_reads_each_command_in_its_form(case: dict) -> None:
 def test_a_devices_own_polled_command_is_polled_in_its_form(case: dict) -> None:
     from openavc.drivers.inline_merge import _inline_poll_queries
 
+    # A command with nothing to send adds no poll line: the editor saves a
+    # row whose Send was left blank, and polling it by name would report it
+    # as not sent every cycle.
     block = {**case["block"], "poll": True}
+    if case["form"] is None:
+        assert _inline_poll_queries({"go": block}) == []
+        return
     line = block.get("send") if case["form"] == "raw" else None
     assert _inline_poll_queries({"go": block}) == [line if isinstance(line, str) else "go"]
 
