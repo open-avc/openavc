@@ -10,10 +10,17 @@ invented receiver so no real product is named.
 
 import copy
 
+import pytest
+
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.drivers.send_framing import framed_commands, framed_send
+from openavc.simulator import send_coverage
+from openavc.simulator.driver_sends import command_sample, effective_config
+from openavc.simulator.inline_device import authored_names, merge_inline_protocol
+from openavc.transport.binary_helpers import encode_escape_sequences
 
 # Invented text-protocol receiver: a constant "!1" packet header and a "\r"
 # terminator wrap every command (the shape of many AV receiver protocols).
@@ -174,3 +181,92 @@ def test_simulator_matches_framed_command():
     unframed = YAMLAutoSimulator(device_id="dev2", config={}, driver_def=definition)
     assert unframed.handle_command(b"PWR01\r") is None
     assert not unframed._state.get("power")
+
+
+# ── The one reading of a command's framing, and the readers that ask it ──
+
+_PLAIN = {k: v for k, v in ACME_RECEIVER.items() if k not in ("command_prefix", "command_suffix")}
+
+#: A file command: the driver file, the device's settings, the command, and
+#: the text the driver frames it as.
+FILE_FRAMINGS = {
+    "the_driver_prefix_and_suffix": (ACME_RECEIVER, {}, {"send": "PWR01"}, "!1PWR01\\r"),
+    "the_device_prefix_over_the_driver_prefix": (
+        ACME_RECEIVER, {"command_prefix": "#"}, {"send": "PWR01"}, "#PWR01\\r"),
+    "a_device_prefix_left_empty_keeps_the_driver_prefix": (
+        ACME_RECEIVER, {"command_prefix": ""}, {"send": "PWR01"}, "!1PWR01\\r"),
+    "a_prefix_set_on_the_device_only": (_PLAIN, {"command_prefix": "#"}, {"send": "PWR01"}, "#PWR01"),
+    "a_suffix_that_is_not_whitespace": (
+        {**ACME_RECEIVER, "command_suffix": ";\\r"}, {}, {"send": "PWR01"}, "!1PWR01;\\r"),
+    "a_send_that_starts_with_the_prefix_takes_it_again": (
+        ACME_RECEIVER, {}, {"send": "!1PWR01"}, "!1!1PWR01\\r"),
+    "a_send_that_ends_with_the_suffix_takes_it_again": (
+        ACME_RECEIVER, {}, {"send": "PWR01\\r"}, "!1PWR01\\r\\r"),
+    "raw_is_as_written": (ACME_RECEIVER, {}, {"send": "PING\\r", "raw": True}, "PING\\r"),
+    "no_prefix_or_suffix_is_as_written": (_PLAIN, {}, {"send": "PWR01\\r"}, "PWR01\\r"),
+    "a_send_that_is_not_text_is_left_with_no_prefix_or_suffix": (_PLAIN, {}, {"send": 123}, 123),
+}
+
+
+@pytest.mark.parametrize(
+    "definition, config, command, framed", FILE_FRAMINGS.values(), ids=list(FILE_FRAMINGS))
+def test_a_file_command_is_framed_whatever_it_starts_or_ends_with(definition, config, command, framed):
+    assert framed_send(definition, config, command) == framed
+
+
+@pytest.mark.parametrize(
+    "definition, config, command, framed",
+    [case for case in FILE_FRAMINGS.values() if isinstance(case[3], str)],
+    ids=[name for name, case in FILE_FRAMINGS.items() if isinstance(case[3], str)])
+def test_the_driver_sends_the_framed_text(definition, config, command, framed):
+    driver = _make_driver({**definition, "commands": {"go": command}},
+                          {"host": "127.0.0.1", "port": 60128, **config})
+    assert driver.build_wire("go") == encode_escape_sequences(framed)
+
+
+@pytest.mark.parametrize(
+    "definition, config, command, framed",
+    [case for case in FILE_FRAMINGS.values() if isinstance(case[3], str)],
+    ids=[name for name, case in FILE_FRAMINGS.items() if isinstance(case[3], str)])
+def test_the_validator_samples_the_line_the_driver_sends(definition, config, command, framed):
+    # The validator knows no device: the device's settings reach it as the
+    # driver's defaults.
+    defaults = {**definition, "default_config": {**definition["default_config"], **config}}
+    driver = _make_driver({**definition, "commands": {"go": command}},
+                          {"host": "127.0.0.1", "port": 60128, **config})
+    line = driver.build_wire("go").decode().strip()
+    template = send_coverage._framed_send(command, defaults, effective_config(defaults))
+    assert command_sample(template, {}, defaults) == line
+
+
+#: A command the device authored: the driver file, the device's settings
+#: (its commands among them), and the text the driver frames it as.
+AUTHORED_FRAMINGS = {
+    "the_prefix_and_the_suffix": (ACME_RECEIVER, {}, "MVLUP", "!1MVLUP\\r"),
+    "a_send_that_starts_with_the_prefix_keeps_one": (ACME_RECEIVER, {}, "!1MVLUP", "!1MVLUP\\r"),
+    "a_send_that_ends_with_the_suffix_keeps_one": (ACME_RECEIVER, {}, "MVLUP\\r", "!1MVLUP\\r"),
+    "the_driver_line_ending_with_no_suffix": (_PLAIN, {}, "MVLUP", "MVLUP\\r"),
+    "the_device_line_ending_over_the_driver_line_ending": (_PLAIN, {"delimiter": "\n"}, "MVLUP", "MVLUP\n"),
+    "the_device_prefix": (_PLAIN, {"command_prefix": "#"}, "MVLUP", "#MVLUP\\r"),
+    "raw_is_as_written": (ACME_RECEIVER, {}, {"send": "MVLUP", "raw": True}, "MVLUP"),
+}
+
+
+@pytest.mark.parametrize(
+    "definition, config, command, framed", AUTHORED_FRAMINGS.values(), ids=list(AUTHORED_FRAMINGS))
+def test_a_device_command_is_framed_once_the_same_way_by_the_driver_and_the_simulator(
+    definition, config, command, framed,
+):
+    block = command if isinstance(command, dict) else {"send": command}
+    assert framed_send(definition, config, block, authored=True) == framed
+    device = {**config, "commands": {"go": command}}
+    driver = _make_driver(definition, {"host": "127.0.0.1", "port": 60128, **device})
+    assert driver._definition["commands"]["go"]["send"] == framed
+    merged, _ = merge_inline_protocol(definition, device)
+    assert merged["commands"]["go"]["send"] == framed
+    assert authored_names(device) == {"go"}
+
+
+def test_a_device_command_with_no_send_is_kept_as_it_is():
+    http = {"method": "GET", "path": "/status"}
+    assert framed_commands(ACME_RECEIVER, {}, {"status": http}) == {"status": http}

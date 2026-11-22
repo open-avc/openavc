@@ -451,7 +451,15 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                              'respond() call in a handler) is sent verbatim, so '
                                              'end it with the delimiter; only the handlers the '
                                              'simulator generates are terminated for you.')],
- 'command_matched_with_the_prefix': [],
+ 'command_matched_with_the_prefix': [('error',
+                                      'reply_framing',
+                                      "1 of 2 simulator replies come back without the '\\\\r\\\\n' "
+                                      'this driver splits incoming bytes on, so the driver never '
+                                      "completes a frame and reads nothing they carry: '@PWR 1' -> "
+                                      "b'PWR 1\\\\r\\\\n'. A reply written by hand (a respond: "
+                                      'template or a respond() call in a handler) is sent '
+                                      'verbatim, so end it with the delimiter; only the handlers '
+                                      'the simulator generates are terminated for you.')],
  'command_number_with_a_spec': [],
  'command_passthrough_skipped': [('info',
                                   'reply_framing',

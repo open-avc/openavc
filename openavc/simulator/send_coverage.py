@@ -29,6 +29,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.send_framing import framed_send
 from openavc.simulator.driver_sends import (
     asked_queries,
     command_sample,
@@ -115,10 +116,10 @@ def check_command_coverage(
 ) -> None:
     """Check every command has a matching handler in the simulator."""
     answers = SimulatorAnswers(sim_handlers, commands)
-    prefix = driver_def.get("command_prefix") or ""
+    config = effective_config(driver_def)
 
     for cmd_name, cmd_def in commands.items():
-        send_template = _framed_send(cmd_def, prefix)
+        send_template = _framed_send(cmd_def, driver_def, config)
         if not send_template:
             continue
         params = cmd_def.get("params", {})
@@ -145,21 +146,15 @@ def check_command_coverage(
         )
 
 
-def _framed_send(cmd_def: dict, prefix: str) -> Any:
-    """A command's send as it goes on the wire.
-
-    A driver-level command_prefix is on the wire ahead of every command (a
-    raw: true command excepted), and the simulator's auto handlers are built
-    from the framed form, so the sample has to be framed too or a
-    hand-written handler that expects the frame never matches it here. A
-    command sent in another form (``command_form``) has no line.
+def _framed_send(cmd_def: dict, driver_def: dict, config: dict) -> Any:
+    """A command's send as it goes on the wire: framed as the driver frames
+    it (``send_framing.framed_send``), with the driver's defaults for the
+    settings no device has given, since the simulator's auto handlers are
+    built from the framed form and a hand-written handler that expects the
+    frame would otherwise never match the sample. A command sent in another
+    form (``command_form``) has no line.
     """
-    send_template = cmd_def.get("send", "") if command_form(cmd_def) == "raw" else ""
-    if not (send_template and prefix):
-        return send_template
-    if cmd_def.get("raw") or send_template.startswith(prefix):
-        return send_template
-    return prefix + send_template
+    return framed_send(driver_def, config, cmd_def) if command_form(cmd_def) == "raw" else ""
 
 
 # ── Queries ──

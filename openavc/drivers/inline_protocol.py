@@ -68,43 +68,27 @@ def _as_list(raw: Any) -> list[Any]:
     return []
 
 
-def normalize_config_commands(
-    raw: Any, line_ending: str = "", prefix: str = "",
-) -> dict[str, Any]:
+def normalize_config_commands(raw: Any) -> dict[str, Any]:
     """Normalize device-config ``commands`` into the canonical command map.
 
     Tolerates the flat ``{name: "raw string"}`` shape (what the legacy Generic
     TCP driver used) by promoting a string value to ``{"send": <string>}``, so
     a migrated config and the friendly editor produce identical runtime
-    behavior.
-
-    ``prefix`` is the driver's ``command_prefix`` and ``line_ending`` its send
-    terminator (``command_suffix``, else the ``delimiter`` config). When set,
-    they wrap every send-style command as ``<prefix><send><line_ending>`` so the
-    author declares a constant packet header / terminator once and never repeats
-    it per row. A command flagged ``raw: true`` is left exactly as written.
-    HTTP/OSC commands (``path`` / ``method`` / ``address``) carry no send string
-    and are left untouched.
+    behavior. Each is a copy, as written: how a device's own command is
+    framed is ``send_framing.framed_commands``.
     """
     out: dict[str, Any] = {}
     for name, val in _as_dict(raw).items():
         if isinstance(val, str):
             cmd: dict[str, Any] = {"send": val}
         elif isinstance(val, dict):
-            cmd = dict(val)  # copy so the framing never mutates config
+            cmd = dict(val)  # a copy, so nothing done to it reaches the config
         else:
             log.warning(
                 "inline command %r has an unsupported shape (%s); skipped",
                 name, type(val).__name__,
             )
             continue
-        send = cmd.get("send")
-        if isinstance(send, str) and not cmd.get("raw"):
-            if prefix and not send.startswith(prefix):
-                send = prefix + send
-            if line_ending and not send.endswith(line_ending):
-                send = send + line_ending
-            cmd["send"] = send
         out[str(name)] = cmd
     return out
 

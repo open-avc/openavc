@@ -55,6 +55,7 @@ from urllib.parse import unquote
 import yaml
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.send_framing import framed_send
 from openavc.drivers.spec import without_null_sections
 from openavc.drivers.usable_number import usable_number
 from openavc.drivers.compiled_protocol import (
@@ -77,7 +78,13 @@ from openavc.simulator.child_roster import (
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
-from openavc.simulator.inline_device import json_body, json_fields, json_polls, response_handlers
+from openavc.simulator.inline_device import (
+    authored_names,
+    json_body,
+    json_fields,
+    json_polls,
+    response_handlers,
+)
 from openavc.simulator.inline_device import merge_inline_protocol as _merge_inline_protocol
 from openavc.simulator.osc_addresses import (
     PushTarget,
@@ -224,6 +231,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         driver_def, self._inline_protocol = _merge_inline_protocol(
             without_null_sections(driver_def), config
         )
+        self._authored_commands = authored_names(config)
         # Before the base, which reads the device's settings from it.
         self.SIMULATOR_INFO = self._build_info(driver_def)
         super().__init__(device_id, config)
@@ -1039,14 +1047,15 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         / ``query_for:``) or, without a declaration, read from its parameter
         names and its own name."""
         state_vars = set(self._driver_def.get("state_variables", {}).keys())
-        # Match the framed form the real driver puts on the wire: a driver-level
-        # command_prefix is prepended to every command (the trailing
-        # command_suffix/terminator is whitespace, already stripped from the
-        # incoming line in _dispatch_command). A raw: true command is unframed.
-        prefix = self._driver_def.get("command_prefix") or ""
+        # Matched in the form the driver frames it, with this device's
+        # settings (send_framing.framed_send); a trailing terminator goes
+        # with the line ending the dispatch strips (send_regex).
+        config = self._instance_config()
 
         for cmd_name, cmd_def in self._driver_def.get("commands", {}).items():
-            wire = self._command_wire(cmd_name, cmd_def, prefix)
+            authored = cmd_name in self._authored_commands
+            template = _framed_send(cmd_def, self._driver_def, config, authored=authored)
+            wire = self._command_wire(cmd_name, template, cmd_def)
             if wire is None:
                 continue
             send_template, params, pattern = wire
@@ -1062,12 +1071,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     @staticmethod
     def _command_wire(
-        cmd_name: str, cmd_def: dict, prefix: str
+        cmd_name: str, send_template: Any, cmd_def: dict
     ) -> tuple[str, Any, re.Pattern] | None:
         """A command's send template as the wire carries it, its params, and
         the pattern that matches it; None for a command this chain cannot
         match (no send, a raw passthrough, a pattern that will not compile)."""
-        send_template = _framed_send(cmd_def, prefix)
         if not send_template:
             return None
         params = cmd_def.get("params", {})
@@ -1660,21 +1668,19 @@ _HANDLER_CHAIN: tuple[_HandlerFamily, ...] = (
 
 # ── Reading a command, and the simulator: section's handler classes ──
 
-def _framed_send(cmd_def: dict, prefix: str) -> Any:
-    """The text a command puts on the wire, framed with the driver's prefix
-    unless it is raw, already starts with it, or is a udp: payload (the side
-    channel never carries the main protocol's prefix); falsy when it sends
-    neither a line nor a datagram (``command_form``)."""
+def _framed_send(cmd_def: dict, definition: dict, config: dict, *, authored: bool = False) -> Any:
+    """The text a command puts on the wire: a line framed as the driver
+    frames it (``send_framing.framed_send``; a command the device authored
+    was framed at the merge), or a udp: payload, which the side channel
+    sends unframed; falsy when it sends neither a line nor a datagram
+    (``command_form``)."""
     form = command_form(cmd_def)
     if form == "udp":
         udp_def = cmd_def["udp"]
         return (udp_def.get("payload") or "") if isinstance(udp_def, dict) else ""
     if form != "raw":
         return ""
-    send_template = cmd_def["send"]
-    if not prefix or cmd_def.get("raw"):
-        return send_template
-    return send_template if send_template.startswith(prefix) else prefix + send_template
+    return cmd_def["send"] if authored else framed_send(definition, config, cmd_def)
 
 
 def _raised_to(value: Any, low: float | None) -> Any:

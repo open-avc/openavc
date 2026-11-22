@@ -19,10 +19,12 @@ The rules worth knowing before changing anything here: the merge reads the
 config through the runtime's own normalizers (``drivers.inline_protocol``,
 which the YAML driver's merge in ``drivers.inline_merge`` reads it through
 too) and puts a line rule into the ``match`` + ``set`` shorthand the reply
-tables read, keeping a JSON row as a driver file writes it. Commands keep
-their ``send`` with no line ending: the simulator matches a line after its
-delimiter is stripped. A config with none of the three is not an inline
-protocol, and the definition is used as it is.
+tables read, keeping a JSON row as a driver file writes it. Its commands
+are framed as the driver frames a command the device authored
+(``send_framing.framed_commands``), so a handler is built from what the
+driver sends; ``authored_names`` says which they are, so they are not
+framed again as file commands. A config with none of the three is not an
+inline protocol, and the definition is used as it is.
 
 It logs as yaml_auto, whose log the validator mutes while it builds a
 simulator.
@@ -45,6 +47,7 @@ from openavc.drivers.inline_protocol import (
     normalize_config_responses,
     normalize_config_state_vars,
 )
+from openavc.drivers.send_framing import framed_commands
 from openavc.simulator.reply_rules import mappings_to_set
 
 logger = logging.getLogger("openavc.simulator.yaml_auto")
@@ -55,7 +58,11 @@ def merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, 
     new dict; the config's commands and state variables win by name, its
     rules follow the file's), and whether there was one to merge."""
     cfg = config or {}
-    norm_cmds = normalize_config_commands(cfg.get("commands"))  # no line-ending
+    norm_cmds = framed_commands(
+        driver_def,
+        {**(driver_def.get("default_config") or {}), **cfg},
+        normalize_config_commands(cfg.get("commands")),
+    )
     canonical = normalize_config_responses(cfg.get("responses"))
     norm_vars = normalize_config_state_vars(cfg.get("state_variables"))
     if not any((norm_cmds, canonical, norm_vars)):
@@ -75,6 +82,12 @@ def merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, 
     if isinstance(cfg.get("delimiter"), str):
         merged["delimiter"] = cfg["delimiter"]
     return merged, True
+
+
+def authored_names(config: dict | None) -> frozenset[str]:
+    """The names of the commands a device's ``config`` authors, which the
+    merge has already framed."""
+    return frozenset(normalize_config_commands((config or {}).get("commands")))
 
 
 def _simulator_rules(canonical: list[dict]) -> list[dict]:

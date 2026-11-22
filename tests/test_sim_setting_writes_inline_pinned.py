@@ -239,7 +239,9 @@ def test_the_inline_protocol_merges_over_the_file_in_its_order():
     assert merged["delimiter"] == "\n"
     assert list(merged["commands"]) == ["keep", "pwr"]
     assert merged["commands"]["keep"] == {"send": "KEEP"}
-    assert merged["commands"]["pwr"]["send"] == "PWR {value} Z{zone}"
+    # Framed as the driver frames a command the device authored: the line
+    # ending is the device's delimiter.
+    assert merged["commands"]["pwr"]["send"] == "PWR {value} Z{zone}\n"
     assert merged["commands"]["pwr"]["params"] == {"value": {"type": "string"}}
     assert merged["responses"][0] == {"match": "FILE", "set": {"power": "file"}}
     assert [sorted(r) for r in merged["responses"][1:]] == [
@@ -462,7 +464,7 @@ def test_a_capture_reads_a_word_then_a_base_then_a_conversion(raw, var_def, expe
 
 
 _BUILD_ORDER = [
-    "_inline_protocol", "SIMULATOR_INFO", "device_id", "config", "_state", "_error_modes",
+    "_inline_protocol", "_authored_commands", "SIMULATOR_INFO", "device_id", "config", "_state", "_error_modes",
     "_active_errors", "_delays", "_state_machines", "_change_listeners", "_protocol_log", "_port",
     "_running", "_network_layer", "_capacity", "_single_client", "_child_entities", "_server",
     "_clients", "_links", "_delimiter", "_line_mode", "_udp_transport", "_last_client_addr",

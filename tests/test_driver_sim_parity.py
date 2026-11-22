@@ -247,12 +247,13 @@ def _zone_amp_def() -> dict:
     }
 
 
-def _make_driver(definition: dict, port: int, device_id: str = "dev1"):
+def _make_driver(definition: dict, port: int, device_id: str = "dev1", **device_config):
     cls = create_configurable_driver_class(definition)
     state = StateStore()
     events = EventBus()
     state.set_event_bus(events)
     config = dict(definition.get("default_config") or {})
+    config.update(device_config)
     config.update({"host": "127.0.0.1", "port": port, "poll_interval": 0})
     return cls(device_id, config, state, events)
 
@@ -609,3 +610,75 @@ def test_query_handler_substitutes_config_placeholders():
     definition["polling"]["queries"] = [{"send": "U{unit_id}R?", "query_for": "route"}]
     sim = YAMLAutoSimulator("acme_matrix", config={}, driver_def=definition)
     assert any(h.pattern.match("U2R?") for h in sim._query_handlers)
+
+
+# ===========================================================================
+# A command's framing: what the driver wraps around a send, the simulator
+# answers
+# ===========================================================================
+
+
+def _framed_def(commands: dict | None = None, **framing) -> dict:
+    """A small terminated protocol with ``framing`` (command_prefix,
+    command_suffix) laid over it, and ``commands`` over its own."""
+    definition = {
+        "id": "acme_widget",
+        "name": "Acme Widget",
+        "manufacturer": "Acme",
+        "category": "utility",
+        "version": "1.0.0",
+        "transport": "tcp",
+        "delimiter": "\r",
+        "default_config": {"host": "", "port": 5100},
+        "config_schema": {
+            "host": {"type": "string", "required": True, "label": "IP Address"},
+            "port": {"type": "integer", "default": 5100, "label": "Port"},
+        },
+        "state_variables": {"power": {"type": "boolean", "label": "Power"}},
+        "commands": {"power_on": {"send": "PWR ON"}, "power_off": {"send": "PWR OFF"}},
+        "responses": [
+            {"match": "^PWR ON$", "set": {"power": True}},
+            {"match": "^PWR OFF$", "set": {"power": False}},
+        ],
+    }
+    definition.update(framing)
+    definition["commands"].update(commands or {})
+    return definition
+
+
+#: A device that authors commands declares its variables too, as a Generic
+#: device does.
+_OWN_VARS = {"state_variables": {"power": "boolean"}}
+
+#: Each case: the driver file, and the device's own settings, which the
+#: driver and its simulated device are both given.
+FRAMINGS = {
+    "a_prefixed_send": (_framed_def(command_prefix="*"), {}),
+    "a_prefix_set_on_the_device_only": (_framed_def(), {"command_prefix": "#"}),
+    "the_device_prefix_over_the_driver_prefix": (
+        _framed_def(command_prefix="*"), {"command_prefix": "#"}),
+    "a_suffix_that_is_not_whitespace": (_framed_def(command_suffix=";\r"), {}),
+    "a_suffix_set_on_the_device_only": (_framed_def(), {"command_suffix": ";\r"}),
+    "a_send_that_starts_with_the_prefix": (
+        _framed_def({"power_on": {"send": "!1PWR ON"}}, command_prefix="!1"), {}),
+    "a_device_command_with_the_device_prefix": (
+        _framed_def(), {"command_prefix": "#", "commands": {"power_on": "PWR ON"}, **_OWN_VARS}),
+    "a_device_command_that_starts_with_the_prefix": (
+        _framed_def(command_prefix="*"), {"commands": {"power_on": "*PWR ON"}, **_OWN_VARS}),
+}
+
+
+@pytest.mark.parametrize("definition, device_config", FRAMINGS.values(), ids=list(FRAMINGS))
+async def test_the_simulator_answers_the_command_as_the_driver_frames_it(definition, device_config):
+    sim = YAMLAutoSimulator(definition["id"], config=dict(device_config), driver_def=definition)
+    await sim.start(0)
+    drv = _make_driver(definition, sim.port, **device_config)
+    try:
+        await drv.connect()
+        await drv.send_command("power_on")
+        await _wait_for(lambda: drv.get_state("power") is True)
+        assert sim.get_state("power") is True
+        _assert_parity(drv, sim, ["power"])
+    finally:
+        await drv.disconnect()
+        await sim.stop()

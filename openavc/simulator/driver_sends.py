@@ -33,6 +33,7 @@ from typing import Any
 from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import derive_config, safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
+from openavc.drivers.send_framing import framed_send
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
 
@@ -198,7 +199,7 @@ def probed_lines(commands: dict, queries: list, driver_def: dict) -> list[str]:
     transport = driver_def.get("transport", "tcp")
     probes = _liveness_probe(driver_def.get("liveness"), config, transport)
     probes += _query_probes(queries, config, transport)
-    probes += _command_probes(commands, driver_def)
+    probes += _command_probes(commands, driver_def, config)
     return probes
 
 
@@ -217,12 +218,13 @@ def _query_probes(queries: list, config: dict, transport: Any) -> list[str]:
     return probes
 
 
-def _command_probes(commands: dict, driver_def: dict) -> list[str]:
+def _command_probes(commands: dict, driver_def: dict, config: dict) -> list[str]:
     """A sample of each command sent as a line (``command_form``) whose
-    ``send`` is text."""
+    ``send`` is text, framed as the driver frames it
+    (``send_framing.framed_send``)."""
     probes: list[str] = []
     for cmd_def in commands.values():
-        send_template = cmd_def.get("send") if command_form(cmd_def) == "raw" else None
+        send_template = framed_send(driver_def, config, cmd_def) if command_form(cmd_def) == "raw" else None
         if not isinstance(send_template, str) or not send_template:
             continue
         sample = command_sample(send_template, cmd_def.get("params", {}), driver_def)

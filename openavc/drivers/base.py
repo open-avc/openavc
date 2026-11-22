@@ -707,10 +707,12 @@ class BaseDriver(
         """Send a raw command string to the device immediately.
 
         Encodes escape sequences (so a typed ``\\r`` becomes a CR) and appends
-        the device's line terminator unless the string already ends with it —
-        matching how saved commands are sent. Used by the device page's
-        "Send raw" box for quick one-offs and diagnostics; works on any
-        byte-stream transport (TCP / serial / UDP), not request/response HTTP.
+        the device's line terminator unless the string already ends with it.
+        Unframed on purpose: no ``command_prefix`` / ``command_suffix``, which
+        frame a saved command (``send_framing.framed_send``), so what was
+        typed is what goes out. Used by the device page's "Send raw" box for
+        quick one-offs and diagnostics; works on any byte-stream transport
+        (TCP / serial / UDP), not request/response HTTP.
         """
         from openavc.transport.binary_helpers import encode_escape_sequences
 

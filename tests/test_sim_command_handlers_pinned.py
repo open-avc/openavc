@@ -81,8 +81,10 @@ def test_the_prefix_frames_every_command_but_raw_and_side_sends():
         "framed": {"send": "!X"},
         "wake": {"udp": {"payload": "WAKE", "magic_packet": False}},
     }, command_prefix="!"))
+    # A send that already starts with the prefix takes it again, as the
+    # driver sends it.
     assert [(v["name"], v["pattern"]) for v in views] == [
-        ("power_on", r"^!PWR ON$"), ("raw_one", r"^RAW$"), ("framed", r"^!X$"), ("wake", r"^WAKE$")]
+        ("power_on", r"^!PWR ON$"), ("raw_one", r"^RAW$"), ("framed", r"^!!X$"), ("wake", r"^WAKE$")]
 
 
 def test_a_command_with_no_send_or_a_passthrough_builds_nothing(caplog):

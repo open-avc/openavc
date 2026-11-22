@@ -354,10 +354,10 @@ def test_the_simulator_reads_each_command_in_its_form(case: dict) -> None:
 
     # The simulator's handlers are built from a line or a datagram's payload;
     # the validator samples lines only.
-    assert (yaml_auto._framed_send(block, "") or None) == (sent or payload)
-    assert (send_coverage._framed_send(block, "") or None) == (sent or None)
+    assert (yaml_auto._framed_send(block, {}, {}) or None) == (sent or payload)
+    assert (send_coverage._framed_send(block, {}, {}) or None) == (sent or None)
 
-    probes = driver_sends._command_probes({"go": block}, UNIT)
+    probes = driver_sends._command_probes({"go": block}, UNIT, {})
     assert bool(probes) == (form == "raw" and isinstance(sent, str) and bool(sent))
 
     blocks = side_send_blocks({"commands": {"go": block}})

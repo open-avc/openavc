@@ -562,7 +562,9 @@ def _describe_outgoing(
 
     Used by the test panel so authors can see which placeholders resolved to
     which values — the same string the runtime substitutes, not the raw
-    template. Written in the form the runtime sends the command in
+    template, and without the ``command_prefix`` / ``command_suffix`` frame
+    on purpose (``send_framing.framed_send`` frames what is sent). Written in
+    the form the runtime sends the command in
     (``command_form``); a line on an HTTP device is its line, which the HTTP
     connection reads as a request, and an IR code or a datagram is not
     summarised.
@@ -587,7 +589,8 @@ async def _test_raw(body: TestCommandRequest) -> dict:
     """Legacy raw-bytes test path — open transport, send command_string, wait.
 
     No auth, no on_connect. Used when a user types a one-off probe in the
-    raw command field without selecting a defined command.
+    raw command field without selecting a defined command; sent as typed, so
+    unframed on purpose (no ``command_prefix`` / ``command_suffix``).
     """
     if not body.command_string:
         raise HTTPException(

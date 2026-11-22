@@ -24,10 +24,10 @@ The rules worth knowing before changing anything here:
   state seeding read the live instance, so a per-device protocol must never
   be written to the class. The state variables are seeded again so the
   device's own appear on the device card before the first reply.
-* **The device's commands are framed once, here**, with the prefix and the
-  suffix, else the line ending (``send_framing``'s ``command_prefix`` and
-  ``inline_suffix``), and their names are kept (``_inline_command_names``,
-  which ``send_framing`` reads) so a send does not frame them again. Their
+* **The device's commands are framed once, here**, as ``send_framing``
+  frames a command the device authored (``framed_commands``), and their
+  names are kept (``_inline_command_names``, which ``send_framing`` reads)
+  so a send does not frame them again. Their
   ``{placeholder}`` tokens become declared params so the Send Command card
   prompts for them; a token naming a config field is left to the config.
 * **What a device declares is worked out by one function** (``own_commands``),
@@ -58,21 +58,19 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
     normalize_ir_codes,
 )
-from openavc.drivers.send_framing import command_prefix, inline_suffix
+from openavc.drivers.send_framing import framed_commands
 from openavc.drivers.yaml_driver_info import build_commands_meta
 
 
 def own_commands(
-    definition: dict[str, Any], driver_info: dict[str, Any], config: dict[str, Any],
+    definition: dict[str, Any], config: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """The commands a device's ``config`` authors over its driver: its own
-    commands, framed with the prefix and the suffix (else the line ending)
-    and given a param for each ``{placeholder}`` that names no config field,
-    and its IR codes. Both empty for a device that authors none."""
-    commands = normalize_config_commands(
-        config.get("commands"),
-        inline_suffix(config, driver_info, definition),
-        prefix=command_prefix(config, definition),
+    commands, framed once (``send_framing.framed_commands``) and given a
+    param for each ``{placeholder}`` that names no config field, and its IR
+    codes. Both empty for a device that authors none."""
+    commands = framed_commands(
+        definition, config, normalize_config_commands(config.get("commands")),
     )
     # config_keys are excluded: a {host} token resolves from config, not
     # a prompt.
@@ -90,7 +88,7 @@ def declared_commands(driver_class: Any, config: dict[str, Any]) -> dict[str, An
     naming any of them is not a param. A Python driver's are its class's: it
     builds any others itself once it runs."""
     info = getattr(driver_class, "DRIVER_INFO", None) or {}
-    merged = _own_over_file(driver_class, info, config) if _merges_own_protocol(driver_class) else None
+    merged = _own_over_file(driver_class, config) if _merges_own_protocol(driver_class) else None
     return merged if merged is not None else (info.get("commands") or {})
 
 
@@ -100,13 +98,11 @@ def _merges_own_protocol(driver_class: Any) -> bool:
     return isinstance(driver_class, type) and issubclass(driver_class, InlineMerge)
 
 
-def _own_over_file(
-    driver_class: Any, info: dict[str, Any], config: dict[str, Any],
-) -> dict[str, Any] | None:
+def _own_over_file(driver_class: Any, config: dict[str, Any]) -> dict[str, Any] | None:
     """The file's commands with the device's own over them, as the running
     driver's ``DRIVER_INFO`` holds them; None when the device authors none."""
     definition = getattr(driver_class, "_definition", None) or {}
-    own, ir = own_commands(definition, info, config)
+    own, ir = own_commands(definition, config)
     if not own and not ir:
         return None
     return build_commands_meta({**(definition.get("commands") or {}), **own, **ir})
@@ -142,9 +138,7 @@ class InlineMerge:
         ``state_variables`` / ``ir_codes`` over the file definition, into a
         per-instance ``_definition`` and ``DRIVER_INFO``; a no-op when the
         device authors none of them."""
-        norm_commands, ir_commands = own_commands(
-            self._definition, self.DRIVER_INFO, self.config,
-        )
+        norm_commands, ir_commands = own_commands(self._definition, self.config)
         # File commands (not in this set) are the ones send_command frames.
         self._inline_command_names: set[str] = set(norm_commands)
         norm_responses = normalize_config_responses(self.config.get("responses"))
