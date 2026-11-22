@@ -33,6 +33,8 @@ interface DiscoveryState {
   message: string;
   /** Scan ID */
   scanId: string;
+  /** The time limit the running scan works to, in seconds (0 when not known) */
+  budgetSeconds: number;
   /** Dynamic port labels from baseline + driver hints + community catalog */
   portLabels: Record<string, string>;
   /** The drivers that declare each port (port -> driver ids) */
@@ -50,6 +52,10 @@ interface DiscoveryState {
   setStatus: (status: DiscoveryState["status"]) => void;
   /** Set scan ID */
   setScanId: (id: string) => void;
+  /** Set the running scan's time limit */
+  setBudgetSeconds: (seconds: number) => void;
+  /** A scan began: started here, in another Programmer, or by the assistant */
+  scanStarted: (scanId: string, budgetSeconds: number) => void;
   /** Set port labels, and the drivers behind each port, from API */
   setPortLabels: (labels: Record<string, string>, portDrivers?: Record<string, string[]>) => void;
   /** Set environment warnings from API/WS */
@@ -65,6 +71,7 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
   progress: 0,
   message: "",
   scanId: "",
+  budgetSeconds: 0,
   portLabels: {},
   portDrivers: {},
   warnings: [],
@@ -86,6 +93,12 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
 
   setScanId: (scanId) => set({ scanId }),
 
+  setBudgetSeconds: (budgetSeconds) => set({ budgetSeconds }),
+
+  // The last scan's progress and warnings go with it.
+  scanStarted: (scanId, budgetSeconds) =>
+    set({ status: "running", scanId, budgetSeconds, phase: "", progress: 0, message: "", warnings: [] }),
+
   setPortLabels: (labels, portDrivers) =>
     set({ portLabels: labels, portDrivers: portDrivers ?? {} }),
 
@@ -99,6 +112,7 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
       progress: 0,
       message: "",
       scanId: "",
+      budgetSeconds: 0,
       portLabels: {},
       portDrivers: {},
       warnings: [],
@@ -111,11 +125,18 @@ function applyWarnings(store: DiscoveryStore, warnings: unknown): void {
   if (Array.isArray(warnings)) store.setWarnings(warnings as string[]);
 }
 
-/** Apply one ``discovery.*`` WebSocket message: a scan moved on a phase,
- *  found a device, or ended. Any other type is left alone. */
+/** Apply one ``discovery.*`` WebSocket message: a scan began (whoever
+ *  started it), moved on a phase, found a device, or ended. Any other type is
+ *  left alone. */
 export function applyDiscoveryMessage(msg: Record<string, unknown>): void {
   const store = useDiscoveryStore.getState();
   switch (msg.type) {
+    case "discovery.started":
+      store.scanStarted(
+        typeof msg.scan_id === "string" ? msg.scan_id : "",
+        typeof msg.budget_seconds === "number" ? msg.budget_seconds : 0,
+      );
+      return;
     case "discovery.update":
       if (!msg.device) return;
       store.upsertDevice(msg.device as DiscoveredDevice);

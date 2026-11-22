@@ -247,8 +247,9 @@ export function DiscoveryPanel() {
   // Ceiling per depth, from the server's budget policy — never hard-coded
   // here, or the two would drift.
   const [depthBudgets, setDepthBudgets] = useState<Record<string, number>>({});
-  // Ceiling the running scan is actually working to.
-  const [scanBudget, setScanBudget] = useState(0);
+  // Ceiling the running scan is actually working to, wherever it was started.
+  const scanBudget = useDiscoveryStore((s) => s.budgetSeconds);
+  const setScanBudget = useDiscoveryStore((s) => s.setBudgetSeconds);
 
   // The adapter chosen in Settings > Network > Reach devices through, or ""
   // for every connected adapter.
@@ -387,7 +388,7 @@ export function DiscoveryPanel() {
       setStatus("idle");
       showError(parseApiError(e));
     }
-  }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings]);
+  }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings, setScanBudget]);
 
   // One-off escape hatch for a stale control-interface pin: scan the subnets
   // of the adapters actually present, WITHOUT clearing or bypassing the pin
@@ -412,7 +413,7 @@ export function DiscoveryPanel() {
       setStatus("idle");
       showError(parseApiError(e));
     }
-  }, [adapterSubnets, extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings]);
+  }, [adapterSubnets, extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings, setScanBudget]);
 
   const handleStopScan = useCallback(async () => {
     await api.discoveryStopScan();

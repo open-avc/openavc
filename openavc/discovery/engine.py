@@ -526,6 +526,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             self._scan_ignores_pin = ignore_control_interface
             self._begin_status(scan_id, targets, total_seconds, control_ip)
             self._reset_for_scan(policy, total_seconds)
+            await self._emit(self.scan_status.started_event())
 
             self._scan_task = asyncio.create_task(
                 self._run_scan(targets, total_seconds)

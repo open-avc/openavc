@@ -280,8 +280,8 @@ async def test_discovery_results_wait_reads_a_timeout_sent_as_text(monkeypatch):
 
 async def test_a_scan_the_assistant_starts_reaches_an_open_discovery_page(monkeypatch):
     """A scan the assistant starts sends the same updates as one the Discovery
-    tab starts: its phases, each device it finds and its end, to the same
-    broadcast, so a Discovery page open at the time shows it."""
+    tab starts: that it began, its phases, each device it finds and its end,
+    to the same broadcast, so a Discovery page open at the time shows it."""
     from openavc.discovery.engine import DiscoveryEngine
 
     sent: list[dict] = []
@@ -306,7 +306,15 @@ async def test_a_scan_the_assistant_starts_reaches_an_open_discovery_page(monkey
     await engine._scan_task
 
     types = [m["type"] for m in sent]
-    assert types[0] == "discovery.phase"
+    # The start first, so a page that did not start the scan shows it running.
+    assert sent[0] == {
+        "type": "discovery.started",
+        "scan_id": result["scan_id"],
+        "subnets": ["10.77.0.0/30"],
+        "started_at": engine.scan_status.started_at,
+        "budget_seconds": round(engine.scan_status.budget_seconds, 2),
+    }
+    assert types[1] == "discovery.phase"
     assert "10.77.0.2" in [m["device"]["ip"] for m in sent if m["type"] == "discovery.update"]
     assert types[-1] == "discovery.complete"
     assert sent[-1]["scan_id"] == result["scan_id"]

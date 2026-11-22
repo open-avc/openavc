@@ -116,6 +116,7 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     # A Discovery scan: each device's whole record (address, MAC, serial
     # number, firmware, open ports), which over REST takes a Programmer
     # sign-in.
+    "discovery.started": _PROGRAMMER_ONLY,
     "discovery.phase": _PROGRAMMER_ONLY,
     "discovery.update": _PROGRAMMER_ONLY,
     "discovery.complete": _PROGRAMMER_ONLY,

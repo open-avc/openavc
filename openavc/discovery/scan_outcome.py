@@ -86,6 +86,19 @@ class ScanStatus:
             "phase_budgets": dict(self.phase_budgets),
         }
 
+    def started_event(self) -> dict[str, Any]:
+        """``discovery.started``: a scan began, whoever started it (the
+        Discovery tab in any Programmer, or the cloud AI). Sent before its
+        first phase, so every open Discovery page shows it running, with the
+        time limit it works to."""
+        return {
+            "type": "discovery.started",
+            "scan_id": self.scan_id,
+            "subnets": list(self.subnets),
+            "started_at": self.started_at,
+            "budget_seconds": round(self.budget_seconds, 2),
+        }
+
 
 def _display_order(device: DiscoveredDevice) -> tuple:
     state = device.identification.state.value if device.identification else "unknown"
