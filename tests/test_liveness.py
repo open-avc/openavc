@@ -776,9 +776,11 @@ async def test_an_answer_every_other_poll_never_drops(answering_server) -> None:
     drv = _build(_acme_polled(), _connect_config(port, max_missed_polls=2))
     await drv.connect()
     try:
-        await asyncio.sleep(_SILENCE_INTERVAL * 9)
+        # Seven polls hold three unanswered ones, a drop at two missed polls
+        # if the count never reset. Counted, not slept for: a busy runner
+        # polls late.
+        assert await _until(lambda: state["queries"] >= 7, _SILENCE_INTERVAL * 60)
         assert drv.get_state("connected") is True
-        assert state["queries"] >= 6
     finally:
         await drv.disconnect()
 
