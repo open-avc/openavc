@@ -2,30 +2,15 @@
 OpenAVC EventBus — async pub/sub event system.
 
 The nervous system of OpenAVC. Everything that happens is an event:
-state changes, device connections, UI interactions, scheduled tasks, etc.
+state changes, device connections, UI interactions, macro runs, etc.
 
-Event types follow a dotted namespace convention:
-    state.changed              — any state change
-    state.changed.<key>        — specific key changed
-    device.connected.<id>      — device came online
-    device.disconnected.<id>   — transport-level loss (TCP socket closed,
-                                 serial port gone, watchdog dry-poll trip)
-    device.error.<id>          — protocol/parse/command failure on an
-                                 otherwise-live connection (payload:
-                                 {device_id, error}; an exception's error
-                                 is core/device_errors.device_error_text)
-    ui.press.<element_id>      — button pressed
-    ui.release.<element_id>    — button released
-    ui.change.<element_id>     — slider/select changed
-    ui.page.<page_id>          — page navigation
-    system.started             — engine started
-    system.stopping            — engine shutting down
-    system.project.reloaded    — project reloaded (the platform's alone:
-                                 check_project_emit)
-    macro.started.<macro_id>   — macro execution began
-    macro.completed.<macro_id> — macro finished
-    schedule.<schedule_id>     — scheduled event fired
-    custom.<anything>          — user-defined events
+Event names follow a dotted namespace convention. Every name the platform
+sends is in one of two tables below, and nowhere else: ``EVENTS``, the ones a
+project listens for (the script editor's completions are generated from it and
+the scripting docs list it), and ``PLATFORM_FEEDS``, the ones the platform
+sends for its own screens and services. tests/test_event_catalog.py holds both
+to every emit in the code, so a name nothing sends cannot be listed and a new
+emit cannot be left off.
 
 device.disconnected vs device.error
 -----------------------------------
@@ -57,7 +42,7 @@ import asyncio
 import contextvars
 import uuid
 from fnmatch import fnmatch, fnmatchcase
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from openavc.core.ws_hub import PANEL, PROGRAMMER, event_reach
 from openavc.utils.logger import get_logger
@@ -111,6 +96,116 @@ def check_event_emit(event: Any, payload: Any) -> str | None:
     return None
 
 
+# --- The events a project hears ------------------------------------------------
+#
+# THE list of event names, by family: what a script's `@on_event`, an event
+# trigger or an outside listener can be told, written with `<...>` where the
+# sender puts an id. `script_api_gen` renders `EVENTS` into the script editor's
+# completions; docs/scripting-guide.md and docs/scripting-api-reference.md list
+# the same names, which tests/test_event_catalog.py checks, along with every
+# emit in the code against the two tables.
+
+
+class EventFamily(NamedTuple):
+    """One family of events: its name, with ``<...>`` for the sender's id,
+    and what it means, in the words the script editor shows."""
+
+    name: str
+    description: str
+
+
+EVENTS: tuple[EventFamily, ...] = (
+    EventFamily("ui.press.<element_id>", "A button was pressed"),
+    EventFamily("ui.release.<element_id>", "A button was released"),
+    EventFamily("ui.hold.<element_id>", "A button was held past its hold time"),
+    EventFamily("ui.toggle_off.<element_id>", "A toggle button was turned off"),
+    EventFamily("ui.change.<element_id>", "A slider or select changed value"),
+    EventFamily("ui.select.<element_id>", "A list row was selected"),
+    EventFamily("ui.route.<element_id>", "A matrix route was made"),
+    EventFamily("ui.audio_route.<element_id>", "An audio-breakaway route was made"),
+    EventFamily("ui.mute_route.<element_id>", "A matrix output was muted or unmuted"),
+    EventFamily(
+        "ui.audio_mute_route.<element_id>",
+        "An audio-breakaway output was muted or unmuted",
+    ),
+    EventFamily("ui.submit.<element_id>", "A text input or keypad was submitted"),
+    EventFamily("ui.page.<page_id>", "A panel went to this page"),
+    EventFamily("device.connected.<device_id>", "The device connected"),
+    EventFamily("device.disconnected.<device_id>", "The device's connection was lost"),
+    EventFamily(
+        "device.error.<device_id>",
+        "A command or poll failed while the device stayed connected",
+    ),
+    EventFamily("macro.started.<macro_id>", "The macro started"),
+    EventFamily("macro.completed.<macro_id>", "The macro finished"),
+    EventFamily("macro.cancelled.<macro_id>", "The macro was cancelled"),
+    EventFamily(
+        "macro.step_error.<macro_id>",
+        "A step of the macro failed, whether or not the macro stopped there",
+    ),
+    EventFamily(
+        "macro.error.<macro_id>",
+        "The macro stopped because a step failed (Stop on Error)",
+    ),
+    EventFamily(
+        "macro.skipped.<macro_id>",
+        "The macro did not start: its Overlap or Cooldown setting refused the run",
+    ),
+    EventFamily("system.started", "The system started. Comes once per server start"),
+    EventFamily("system.stopping", "The system is shutting down"),
+    EventFamily("system.project.reloaded", "The project was saved or reloaded"),
+    EventFamily("help.requested", "A macro's Ask for Help step asked for help"),
+    EventFamily("help.acknowledged", "Someone acknowledged the help request in the cloud"),
+    EventFamily("isc.peer_connected", "Another OpenAVC instance connected"),
+    EventFamily("isc.peer_disconnected", "Another OpenAVC instance disconnected"),
+    EventFamily("isc.<instance_id>.<event>", "An event sent by another OpenAVC instance"),
+    EventFamily("plugin.<plugin_id>.<event>", "An event sent by a plugin"),
+    EventFamily("custom.<anything>", "Your own event, sent by an Emit Event step or events.emit()"),
+)
+
+#: What the platform sends for its own screens and services, and does not
+#: offer a project. A script still hears one it names; none is a way to
+#: build a space. A state change has `@on_state_change` instead.
+PLATFORM_FEEDS: tuple[str, ...] = (
+    "state.changed",
+    "state.changed.<key>",
+    "macro.progress.<macro_id>",
+    "trigger.fired",
+    "trigger.skipped",
+    "trigger.pending",
+    "trigger.queued",
+    "trigger.completed",
+    "script.error",
+    "plugin.started",
+    "plugin.stopped",
+    "plugin.error",
+    "plugin.missing",
+    "plugin.auto_disabled",
+    "plugin.<plugin_id>.action.<action_id>",
+    "simulation.stopped",
+    "simulation.crashed",
+    "device.orphaned",
+    "device.pending_settings_applied",
+    "log.plugin",
+    "ai.device_command",
+    "cloud.command",
+    "cloud.config_push",
+    "cloud.diagnostic",
+    "cloud.restart",
+    "cloud.software_update",
+    "cloud.panel_software_update",
+    "cloud.alert_rules_update",
+)
+
+
+def event_pattern(name: str) -> str:
+    """A family's name as the pattern that hears all of it: each ``<...>``
+    becomes ``*``, the way ``@on_event`` and an event trigger match."""
+    parts = ("*" if part.startswith("<") and part.endswith(">") else part
+             for part in name.split("."))
+    return ".".join(parts)
+
+
 # --- The platform's own events -----------------------------------------------
 #
 # THE rule for the event doors a project reaches: a macro's Emit Event step, a
@@ -130,11 +225,12 @@ def check_event_emit(event: Any, payload: Any) -> str | None:
 
 PLATFORM_EVENT_PREFIX = "system."
 
-#: The `system.` events the platform sends today. Listening for one of these
-#: is how a project hears the platform; listening for any other `system.` name
-#: hears nothing, since no project can send one. Pinned against every emit in
-#: the code by tests/test_project_event_doors.py.
-PLATFORM_EVENTS = frozenset({"system.started", "system.stopping", "system.project.reloaded"})
+#: The `system.` events the platform sends today, as `EVENTS` lists them.
+#: Listening for one of these is how a project hears the platform; listening
+#: for any other `system.` name hears nothing, since no project can send one.
+#: Pinned against every emit in the code by tests/test_project_event_doors.py.
+PLATFORM_EVENTS = frozenset(
+    family.name for family in EVENTS if family.name.startswith(PLATFORM_EVENT_PREFIX))
 
 
 def is_platform_event(event: Any) -> bool:

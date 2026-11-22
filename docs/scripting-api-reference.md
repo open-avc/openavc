@@ -324,6 +324,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `ui.hold.<element_id>` | `element_id` | Button held past threshold |
 | `ui.toggle_off.<element_id>` | `element_id` | Toggle button turned off |
 | `ui.change.<element_id>` | `element_id`, `value` | Slider or select value changed |
+| `ui.select.<element_id>` | `element_id`, `value` | List row selected |
 | `ui.route.<element_id>` | `element_id`, `input`, `output` | Video route changed |
 | `ui.audio_route.<element_id>` | `element_id`, `input`, `output` | Audio-breakaway route changed |
 | `ui.mute_route.<element_id>` | `element_id`, `output`, `mute` | Output mute changed via matrix |
@@ -338,10 +339,16 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `macro.cancelled.<macro_id>` | `macro_id`, `name` | Macro was cancelled |
 | `macro.step_error.<macro_id>` | `macro_id`, `call_chain`, `step_index`, `total_steps`, `action`, `device`, `group`, `command`, `error`, `message`, `description` | A step failed. Fires whether or not the macro stops there — subscribe to this, not `macro.error`, to react to a failure |
 | `macro.error.<macro_id>` | `macro_id`, `name`, `error`, `message` | The macro stopped because a step failed. Only fires when the macro has **Stop on Error** set; without it the run continues and ends on `macro.completed` |
+| `macro.skipped.<macro_id>` | `macro_id`, `name`, `reason` | The macro did not start: its own Overlap or Cooldown setting refused the run |
 | `system.started` | (none) | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | (none) | System shutting down |
 | `system.project.reloaded` | (none) | The project was saved or reloaded, by any change, including the ones the system saves on its own (a setup action, a queued device setting, a value a device fills in, a plugin's own settings). Not fired for a save a handler of this event makes while it runs, or while the system shuts down |
-| `isc.*.<event>` | `source_instance`, ... | Event from a remote instance |
+| `help.requested` | `help_id`, `message`, `severity`, `at` | An **Ask for Help** step raised a help request |
+| `help.acknowledged` | `help_id`, `acknowledged_by`, `acknowledged_at` | Someone acknowledged the help request in the cloud |
+| `isc.peer_connected` | `instance_id`, `name` | Another instance connected |
+| `isc.peer_disconnected` | `instance_id`, `name` | Another instance disconnected |
+| `isc.<instance_id>.<event>` | `source_instance`, ... | Event from a remote instance |
+| `plugin.<plugin_id>.<event>` | (plugin-defined) | Event sent by a plugin |
 | `custom.<anything>` | (user-defined) | User-defined events. Fired by a macro's **Emit Event** step, by the same action on a control, or by `events.emit()` |
 
 > **Note on schedules:** Scheduled actions are handled by triggers that directly execute macros, not by events. To run a script on a schedule, create a macro with an "Emit Event" step that fires a custom event, handle that event in your script with `@on_event`, and add a schedule trigger to the macro.
