@@ -17,10 +17,12 @@ The rules worth knowing before changing anything here:
   values>}`` runs it only while the device's own state allows (a unit any
   message wakes from standby is left there), and ``polling.when_state`` holds
   the whole poll the same way. The entry's is judged when it expands, the
-  poll's when the poll starts, and both again just before each line goes
-  (``_line_gate_shut``), once any write under way has finished, so the reply
-  to the line before it is read first.
-  An OSC start-up ``each_child`` line is not judged again.
+  poll's when the poll starts, and both again just before each line goes,
+  once any write under way has finished, so the reply to the line before it
+  is read first. That last judgment is one step every line the driver sends
+  on its own takes, the liveness probe included: ``_line_verdict`` waits for
+  the line's slot, then judges, and each sender says what a shut gate does
+  to the rest (the table in its docstring).
 * **OSC start-up sends entries of its own too**
   (``start_up_and_poll._osc_start_up_message``: a string, ``{send}``, and the
   ``{address, args}`` message only start-up takes), so a new entry form,
@@ -88,6 +90,7 @@ class QueryEntries:
     get_state: Callable[[str], Any]
     list_children: Callable[[str], list[Any]]
     _safe_substitute: Callable[[str, dict[str, Any]], str]
+    _pace_line: Callable[..., Any]
 
     # Whether the last poll was held back by polling.when_state, so the log
     # says once when the poll pauses and once when it resumes.
@@ -218,6 +221,39 @@ class QueryEntries:
             f"{wanted}, and the device reports {reported}"
         )
 
+    async def _line_verdict(
+        self,
+        gates: dict[str, Any] | None,
+        entry: Any,
+        *,
+        quiet: bool = False,
+        floor: float = 0.0,
+    ) -> str | None:
+        """THE step every line a YAML driver sends on its own takes just
+        before it goes: wait for its slot (``_pace_line``; ``floor`` is the
+        gap a link the driver does not space keeps after it), then judge its
+        ``when_state`` gates again (``_line_gate_shut``). The verdict is
+        ``"poll"`` when ``polling.when_state`` holds the poll, ``"entry"``
+        when this entry's own gate has shut, else None, and each sender
+        says in one line what it does with it:
+
+        ======================  ===========  ============  ===================
+        sender                  gates        "entry"       "poll"
+        ======================  ===========  ============  ===================
+        start-up (any link)     entry's      skips line    (not judged)
+        OSC reply-address asks  poll's, log  (no entry)    stops asking
+        the poll                both, log    skips line    ends the cycle
+        a follow-up round       both         skips line    ends the round
+        a read-back round       poll's       (no entry)    ends the round
+        the liveness probe      poll's       (no entry)    holds the probe
+        ======================  ===========  ============  ===================
+
+        "log" is the poll's paused / resumed line, which only the poll and
+        the asks standing in for it say (``quiet`` leaves it to them).
+        """
+        await self._pace_line(floor)
+        return await self._line_gate_shut(gates, entry, quiet=quiet)
+
     async def _line_gate_shut(
         self, gates: dict[str, Any] | None, entry: Any, *, quiet: bool = False,
     ) -> str | None:
@@ -281,10 +317,11 @@ class QueryEntries:
     async def _liveness_held(self) -> bool:
         """``polling.when_state`` holds the poll back, so it holds the
         probe back too: a unit that any message would wake is left in
-        standby. Judged as a poll line is (_line_gate_shut), after a command
-        sent just before has had its answer read, and without the poll's own
-        paused/resumed log, which is the poll loop's."""
+        standby. The probe is one of the driver's own lines: it waits for
+        its slot, then is judged as a poll line is (_line_verdict), after a
+        command sent just before has had its answer read, and without the
+        poll's own paused/resumed log, which is the poll loop's. Nothing
+        yields between the verdict and the probe going out."""
         polling = self._definition.get("polling")
-        if not isinstance(polling, dict):
-            return False
-        return await self._line_gate_shut(polling, None, quiet=True) == "poll"
+        gates = polling if isinstance(polling, dict) else None
+        return await self._line_verdict(gates, None, quiet=True) == "poll"

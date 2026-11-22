@@ -199,7 +199,7 @@ async def test_a_line_whose_own_gate_is_shut_is_skipped_and_the_round_goes_on() 
     cap.sent.clear()
     drv.state.set("device.dev1.standby", False)
 
-    async def standby_meanwhile() -> None:
+    async def standby_meanwhile(*_gap: float) -> None:
         drv.state.set("device.dev1.standby", True)
 
     drv._pace_line = standby_meanwhile
@@ -224,7 +224,7 @@ async def test_a_poll_gate_that_shuts_mid_round_ends_it_even_if_it_opens_again()
     drv = _driver(_with(LINE_UNIT, polling={"queries": [], "when_state": {"standby": False}}), cap)
     standby = iter([True, False, False])
 
-    async def gate_moves() -> None:
+    async def gate_moves(*_gap: float) -> None:
         drv.state.set("device.dev1.standby", next(standby))
 
     drv._pace_line = gate_moves
@@ -252,7 +252,7 @@ async def test_a_cancelled_round_leaves_no_hold() -> None:
     drv = _driver(LINE_UNIT, cap)
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall  # the round waits for its slot
@@ -270,7 +270,7 @@ async def test_dropping_the_follow_ups_cancels_them_and_forgets_every_hold() -> 
     drv = _driver(LINE_UNIT, Capture())
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall
@@ -483,7 +483,7 @@ async def test_the_first_read_back_keeps_a_line_gap_from_the_command(monkeypatch
     async def sleep(seconds: float) -> None:
         slept.append(seconds)
 
-    async def no_pace() -> None:
+    async def no_pace(*_gap: float) -> None:
         return None
 
     drv._pace_line = no_pace
@@ -535,7 +535,7 @@ async def test_dropping_the_read_backs_cancels_them_and_forgets_the_waiting() ->
     drv = _driver(LINE_UNIT, Capture())
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall
@@ -556,7 +556,7 @@ async def test_a_dropped_follow_up_leaves_the_next_connections_hold_alone() -> N
     drv = _driver(LINE_UNIT, Capture())
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall
@@ -580,7 +580,7 @@ async def test_a_dropped_read_back_leaves_the_next_connections_waiting_alone() -
     drv = _driver(LINE_UNIT, Capture())
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall
@@ -621,7 +621,7 @@ async def test_a_read_back_sent_meanwhile_does_not_end_the_next_ones_wait() -> N
     (first,) = drv._read_back_tasks
     await asyncio.wait_for(sending.wait(), 1.0)
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall  # the second round waits for its slot
@@ -641,7 +641,7 @@ async def test_closing_the_session_drops_both_kinds_of_round() -> None:
     drv = _driver(LINE_UNIT, Capture())
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall
@@ -943,7 +943,7 @@ async def test_a_poll_gate_that_shuts_mid_read_back_ends_it_even_if_it_opens_aga
     drv = _driver(unit, cap)
     standby = iter([True, False, False])
 
-    async def gate_moves() -> None:
+    async def gate_moves(*_gap: float) -> None:
         drv.state.set("device.dev1.standby", next(standby))
 
     drv._pace_line = gate_moves
@@ -974,7 +974,7 @@ async def test_dropping_the_read_backs_forgets_the_waiting_at_once() -> None:
     drv = _driver(LINE_UNIT, Capture())
     gate = asyncio.Event()
 
-    async def stall() -> None:
+    async def stall(*_gap: float) -> None:
         await gate.wait()
 
     drv._pace_line = stall

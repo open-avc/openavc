@@ -7,7 +7,7 @@ The rules worth knowing before changing anything here:
 * **Each round is its own task**, tracked so the connection's close cancels
   it (``_drop_follow_ups`` / ``_drop_read_backs``, from ``_close_session``).
   Its lines are paced like a poll's and judged against the gates again just
-  before they go (``_pace_line``, ``_line_gate_shut``), and nothing goes out
+  before they go (``_line_verdict``), and nothing goes out
   while ``polling.when_state`` holds the poll: a notice or a command that put
   a unit in standby is not followed by a query that wakes it.
 * **One follow-up round at a time per rule and routed child.** While one is
@@ -120,10 +120,9 @@ class Rereads:
     _definition: dict[str, Any]
     _effective_transport: Callable[[], str]
     _line_gap: Callable[[], float]
-    _pace_line: Callable[[], Any]
     _link_open: Callable[[], bool]
     _expand_query: Callable[[Any], list[str]]
-    _line_gate_shut: Callable[..., Any]
+    _line_verdict: Callable[..., Any]
     _dispatch_query: Callable[[str], Any]
     _raw_bytes: Callable[[Any, str], bytes]
     _read_path: Callable[[str], Any]
@@ -292,8 +291,8 @@ class Rereads:
         after the wait, which is when a reply may have taken it off)."""
         if not self._link_open():
             return True
-        await self._pace_line()
-        gate = await self._line_gate_shut(polling, entry, quiet=True)
+        # The poll's gate ends the round; the entry's skips this line.
+        gate = await self._line_verdict(polling, entry, quiet=True)
         if gate == "poll":
             return True
         if not gate and self._still_reads(reads, line):
@@ -471,8 +470,8 @@ class Rereads:
         for key, (kind, what) in sends:
             if not self._link_open():
                 return
-            await self._pace_line()
-            if await self._line_gate_shut(polling, None, quiet=True) == "poll":
+            # The poll's gate ends the round (a read-back judges no entry).
+            if await self._line_verdict(polling, None, quiet=True) == "poll":
                 log.debug(
                     f"[{self.device_id}] read_back after '{command}' not "
                     f"sent: polling.when_state holds the poll"

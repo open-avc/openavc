@@ -16,11 +16,13 @@ The rules worth knowing before changing anything here:
   against the credential (``http_credential``); a read-back's is not.
 * **Spacing** is ``_pace_line``'s, for every line the driver sends on its
   own: start-up, the poll, a rule's follow-ups and a command's read-backs
-  (``rereads``). It spaces TCP and serial lines by ``DEFAULT_LINE_GAP_S``
-  (``spec.py`` says why that value) when no ``inter_command_delay`` is set;
-  with one, the transport waits that long after every write instead. A
-  connection preview turns it off (``_pace_lines``): it records what would be
-  sent and must not sit out the gaps.
+  (``rereads``), and the liveness probe, each through ``_line_verdict``
+  (``query_entries``), which judges the line's gates once its wait is over.
+  It spaces TCP and serial lines by ``DEFAULT_LINE_GAP_S`` (``spec.py`` says
+  why that value) when no ``inter_command_delay`` is set; with one, the
+  transport waits that long after every write instead. A connection preview
+  turns it off (``_pace_lines``): it records what would be sent and must not
+  sit out the gaps.
 * **The first poll skips what start-up just asked.** Every start-up line
   that went out is noted in ``_start_up_lines``; a connect that polls hands
   them to the first poll, which follows at once, as lines not to send again.
@@ -37,8 +39,9 @@ The rules worth knowing before changing anything here:
   way to read a value, so state fills in at once. A pattern with wildcards
   is a match, not an address, and is skipped; the ask is held back by
   ``polling.when_state`` as the poll is (any message wakes a unit in
-  standby), and is spaced 5 ms apart unless an ``inter_command_delay``
-  spaces it.
+  standby), and is spaced ``OSC_ASK_GAP_S`` apart unless an
+  ``inter_command_delay`` spaces it; the first poll line keeps that gap from
+  the last ask.
 
 ``StartUpAndPoll`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object; it answers ``BaseDriver``'s ``poll``. The device
@@ -48,7 +51,6 @@ transport that records (``drivers/dry_run.py``).
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Callable
 
 from openavc.core.device_errors import device_error_text
@@ -78,6 +80,11 @@ _TRANSPORT_FAILURES = (ConnectionError, TimeoutError, OSError)
 # A pattern character that makes an OSC reply address a match, not an address.
 _OSC_WILDCARDS = "*?["
 
+# Seconds between OSC start-up's asks of every reply address when no
+# inter_command_delay spaces them: a desk may declare hundreds, and every ask
+# draws an answer.
+OSC_ASK_GAP_S = 0.005
+
 
 def _osc_message(address: str, args: list[Any] | None = None) -> bytes:
     from openavc.transport.osc_codec import osc_encode_message
@@ -106,7 +113,7 @@ class StartUpAndPoll:
     _osc_responses: list[Any]
     _expand_query: Callable[[Any], list[str]]
     _query_enabled: Callable[[dict[str, Any]], bool]
-    _line_gate_shut: Callable[..., Any]
+    _line_verdict: Callable[..., Any]
     _poll_gate_shut: Callable[[dict[str, Any]], bool]
     _send_command: Callable[..., Any]
     _process_http_response: Callable[..., Any]
@@ -142,44 +149,51 @@ class StartUpAndPoll:
 
     # --- spacing ---
 
-    def _line_gap(self) -> float:
-        """Seconds _pace_line() keeps between two lines, 0 for no pacing.
+    def _line_gap(self, floor: float = 0.0) -> float:
+        """Seconds _pace_line() keeps after a line, 0 for no pacing.
 
-        Only a tcp or serial link with no ``inter_command_delay`` is paced
-        here. With a delay set, the transport already waits that long after
-        every write; datagram and HTTP links are not paced by this.
+        A tcp or serial link with no ``inter_command_delay`` is spaced
+        ``DEFAULT_LINE_GAP_S``, any other link with none by ``floor`` (OSC
+        start-up's asks pass ``OSC_ASK_GAP_S``; every other line none). With
+        a delay set, the transport already waits that long after every
+        write, and a connection preview waits for nothing.
         """
         if not self._pace_lines:
-            return 0.0
-        if self._effective_transport() not in LINE_GAP_TRANSPORTS:
             return 0.0
         try:
             if float(self.config.get("inter_command_delay") or 0) > 0:
                 return 0.0
         except (TypeError, ValueError):
             pass
-        return DEFAULT_LINE_GAP_S
+        if self._effective_transport() in LINE_GAP_TRANSPORTS:
+            return DEFAULT_LINE_GAP_S
+        return floor
 
-    async def _pace_line(self) -> None:
-        """Wait until the next on_connect or poll line may go.
+    async def _pace_line(self, floor: float = 0.0) -> None:
+        """Wait until the next line the driver sends on its own may go.
 
         The wait sits here, between sends, never inside the transport's send
         lock: a command somebody presses meanwhile goes straight out, behind
         at most the one line being written, never behind the rest of a poll.
-        The spacing runs from the previous line whichever of the two sent it,
-        so the last start-up line and the first poll line are spaced as well.
-        A response rule's follow-up queries (_send_follow_ups) can go out
-        while a poll is under way; each sender waits again after its sleep
-        until the slot is its own, so the two never share one.
+        The spacing runs from the previous line whichever sender sent it, so
+        the last start-up line and the first poll line are spaced as well,
+        and so are the last OSC ask and the first poll line, which keeps no
+        gap of its own. A response rule's follow-up queries can go out while
+        a poll is under way; each sender waits again after its sleep until
+        the slot is its own, so the two never share one.
+
+        Only ``_line_verdict`` calls this, which judges the line's gates once
+        the wait is over.
         """
-        gap = self._line_gap()
-        if gap <= 0:
+        if not self._pace_lines:
             return
         wait = self._next_line_at - pacing_clock()
         while wait > 0:
             await sleep_at_least(wait)
             wait = self._next_line_at - pacing_clock()
-        self._next_line_at = pacing_clock() + gap
+        gap = self._line_gap(floor)
+        if gap > 0:
+            self._next_line_at = pacing_clock() + gap
 
     # --- start-up ---
 
@@ -208,18 +222,16 @@ class StartUpAndPoll:
                 await self._send_start_up_line(raw, query)
 
     async def _run_osc_on_connect(self, on_connect: list[Any]) -> None:
-        delay = self.config.get("inter_command_delay", 0)
         for item in on_connect:
             await self._send_osc_start_up_item(item)
-        await self._ask_osc_reply_addresses(delay)
+        await self._ask_osc_reply_addresses()
 
     async def _send_start_up_line(self, raw: Any, query: str) -> None:
         """One start-up line of a byte-stream or HTTP driver."""
         try:
-            await self._pace_line()
-            # A step's when_state gate is judged again once the step before
-            # it has been answered.
-            if await self._line_gate_shut(None, raw):
+            # Start-up judges only the entry's own gate: a shut one skips
+            # this line, and start-up goes on.
+            if await self._line_verdict(None, raw):
                 return
             await self._dispatch_query(query)
             self._start_up_lines.add(query)
@@ -234,11 +246,14 @@ class StartUpAndPoll:
         try:
             if read_query_entry(item, osc_form=True).form == EACH_CHILD:
                 for expanded in self._expand_query(item):
+                    # As on any other link: a shut entry gate skips the line.
+                    if await self._line_verdict(None, item):
+                        continue
                     await self.transport.send(_osc_message(self._osc_address(expanded)))
                     self._start_up_lines.add(expanded)
                 return
             built = self._osc_start_up_message(item)
-            if built is None or await self._line_gate_shut(None, item):
+            if built is None or await self._line_verdict(None, item):
                 return
             data, line = built
             await self.transport.send(data)
@@ -264,19 +279,19 @@ class StartUpAndPoll:
         args = self._build_osc_args(item.get("args", []), self.config)
         return _osc_message(address, args), line
 
-    async def _ask_osc_reply_addresses(self, delay: Any) -> None:
+    async def _ask_osc_reply_addresses(self) -> None:
         """Ask every OSC reply address once, with no arguments."""
         polling = self._definition.get("polling") or {}
         for addr_pattern, *_rest in self._osc_responses:
             if any(c in addr_pattern for c in _OSC_WILDCARDS):
                 continue
-            if await self._line_gate_shut(polling, None):
+            # Held by the poll's gate as the poll is, and said in its log:
+            # the asks stop.
+            if await self._line_verdict(polling, None, floor=OSC_ASK_GAP_S) == "poll":
                 break
             try:
                 await self.transport.send(_osc_message(self._osc_address(addr_pattern)))
                 self._start_up_lines.add(addr_pattern)
-                if not delay:
-                    await asyncio.sleep(0.005)
             except Exception as e:
                 log.warning(f"[{self.device_id}] OSC initial query failed: {e}")
 
@@ -382,9 +397,9 @@ class StartUpAndPoll:
         """Send one poll line, unless a gate shut since the cycle began (a
         reply to an earlier line, Enter Standby's answer say, and every line
         sent after it would undo it): the gate that shut, else None."""
-        if not is_osc:
-            await self._pace_line()
-        gate = await self._line_gate_shut(polling, raw_query)
+        # A shut entry gate skips this line; the poll's ends the cycle
+        # (_poll_entry).
+        gate = await self._line_verdict(polling, raw_query)
         if gate:
             return gate
         if is_osc:

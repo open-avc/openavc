@@ -24,7 +24,9 @@ The rules worth knowing before changing anything here:
 * **The probe** follows ``polling.queries``' conventions: on OSC an address,
   ``{config}`` filled, with its ``args``; on any other link a raw line,
   ``{config}`` filled, escape-decoded and inside the ``send_frame`` header,
-  without ``command_prefix`` / ``command_suffix`` (``send_framing``).
+  without ``command_prefix`` / ``command_suffix`` (``send_framing``). It is
+  spaced from the line before it as a poll line is, and judged against
+  ``polling.when_state`` once that wait is over (``_liveness_held``).
 * **Any reply answers it**, a poll reply or a push as well as a direct
   answer, unless ``expect`` narrows it to frames that match (searched in a
   permissive text decode, so an OSC packet's leading address matches too). An

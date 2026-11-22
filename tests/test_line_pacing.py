@@ -91,7 +91,6 @@ def wire_log(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     clock = _Clock()
     recorder = _RecordingAsyncio(clock, log)
     monkeypatch.setattr(liveness_block, "asyncio", recorder)
-    monkeypatch.setattr(start_up_and_poll, "asyncio", recorder)
     monkeypatch.setattr(rereads, "time", clock)
     # The line gap is measured and slept through the pacing helpers.
     monkeypatch.setattr(start_up_and_poll, "pacing_clock", clock.monotonic)
@@ -192,6 +191,62 @@ async def test_a_connection_preview_records_the_lines_without_pausing(wire_log):
     assert not [entry for entry in wire_log if entry[0] == "pause"]
 
 
+async def _probe(driver: Any) -> None:
+    """One liveness probe as the watchdog sends it: asked whether the
+    device's state holds it, then sent and answered."""
+    if await driver._liveness_held():
+        return
+    probe = asyncio.ensure_future(driver._liveness_probe())
+    await _real_sleep(0)
+    driver._liveness_note_data(b"PONG\r")
+    await probe
+
+
+@pytest.mark.parametrize("polling", [{"queries": ["A?\\r"]}, None])
+async def test_the_liveness_probe_keeps_the_gap_from_the_line_before_it(polling, wire_log):
+    driver = _driver(_acme(polling=polling, liveness={"send": "PING\\r"}), wire_log)
+    await (driver.poll() if polling else driver._run_on_connect())
+    await _probe(driver)
+    assert wire_log[-2:] == [GAP, ("send", b"PING\r")]
+
+
+async def test_a_probe_whose_gate_shuts_while_it_waits_for_its_slot_is_held(
+    wire_log, monkeypatch,
+):
+    definition = _acme(
+        state_variables={"standby": {"type": "boolean", "label": "Standby"}},
+        polling={"queries": ["A?\\r"], "when_state": {"standby": False}},
+        liveness={"send": "PING\\r"},
+    )
+    driver = _driver(definition, wire_log)
+    driver.set_state("standby", False)
+    await driver.poll()
+
+    wait = start_up_and_poll.sleep_at_least  # the fixture's fake-clock pause
+
+    async def standby_meanwhile(seconds: float) -> None:
+        driver.set_state("standby", True)
+        await wait(seconds)
+
+    monkeypatch.setattr(start_up_and_poll, "sleep_at_least", standby_meanwhile)
+    await _probe(driver)
+    assert ("send", b"PING\r") not in wire_log
+
+
+async def test_an_osc_connection_preview_records_the_state_queries_without_pausing(wire_log):
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    definition = _acme_osc(
+        on_connect=["/xremote"],
+        responses=[{"address": f"/ch/0{n}/fader", "mappings": []} for n in (1, 2)],
+    )
+    cls = create_configurable_driver_class(definition)
+    preview = await preview_connect(cls("acme1", {"host": "127.0.0.1", "port": 5000}, state, events))
+    assert preview.available
+    assert not [entry for entry in wire_log if entry[0] == "pause"]
+
+
 # --- no doubled start-up delay ---------------------------------------------
 
 
@@ -225,19 +280,28 @@ async def test_osc_start_up_does_not_wait_on_top_of_the_transport(wire_log):
 async def test_osc_state_queries_at_start_up_keep_their_floor_only_without_a_delay(
     delay, pauses, wire_log,
 ):
+    """The asks go 5 ms apart, and the first poll line keeps that gap from
+    the last one; neither the start-up item before them nor the poll's
+    own lines keep one."""
     driver = _driver(
         _acme_osc(
             on_connect=["/xremote"],
-            responses=[{"address": "/ch/01/fader", "mappings": []}],
+            responses=[{"address": f"/ch/0{n}/fader", "mappings": []} for n in (1, 2)],
+            polling={"queries": ["/status", "/meters"]},
         ),
         wire_log,
         inter_command_delay=delay,
     )
     await driver._run_on_connect()
+    await driver.poll()
     assert wire_log == [
         ("send", osc_encode_message("/xremote")),
         ("send", osc_encode_message("/ch/01/fader")),
         *pauses,
+        ("send", osc_encode_message("/ch/02/fader")),
+        *pauses,
+        ("send", osc_encode_message("/status")),
+        ("send", osc_encode_message("/meters")),
     ]
 
 
