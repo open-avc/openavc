@@ -18,6 +18,7 @@ const FAILED = {
   handler: "on_press",
   event: "ui.press.select_pc",
   error: "division by zero",
+  marksLine: true,
 };
 
 function renderTree(overrides: Partial<Parameters<typeof ScriptFileTree>[0]> = {}) {
@@ -63,6 +64,33 @@ describe("script runtime failures on the list", () => {
     expect(row.getAttribute("title")).toContain("on_press");
     expect(row.getAttribute("title")).toContain("ui.press.select_pc");
     expect(row.getAttribute("title")).toContain("division by zero");
+  });
+
+  it("points into the script when the editor has a line to show", () => {
+    renderTree({ runtimeErrors: { router: FAILED } });
+    expect(screen.getByText("Failed once while running").getAttribute("title")).toBe(
+      "on_press failed on ui.press.select_pc: division by zero. Open the script to see where.",
+    );
+  });
+
+  it("does not send anyone into the script for a call refused before it ran", () => {
+    renderTree({
+      runtimeErrors: {
+        router: {
+          count: 1,
+          handler: "play_film",
+          event: "script.call.play_film",
+          error: "No script function named 'play_film' in script 'router'. Check the function is defined in an enabled script and is not an event handler.",
+          marksLine: false,
+        },
+      },
+    });
+    const title = screen.getByText("Failed once while running").getAttribute("title") ?? "";
+    expect(title).toBe(
+      "play_film failed on script.call.play_film: No script function named 'play_film' in script 'router'. " +
+        "Check the function is defined in an enabled script and is not an event handler.",
+    );
+    expect(title).not.toContain("..");
   });
 
   it("leaves every other script alone", () => {

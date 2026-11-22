@@ -320,9 +320,11 @@ async def get_script_errors() -> dict[str, Any]:
     out and, if `running` is still true, a thread of it is STILL GOING and
     only a restart will clear it -- which is the state nothing used to report
     anywhere, while the damage surfaced as devices flapping; a `runtime` entry
-    means the script loaded fine and then threw while doing its job, which
-    reached the raw log and nothing else -- the integrator saw a dead button
-    and a scripts view with nothing wrong on it.
+    means the script loaded fine and then failed while doing its job (threw,
+    timed out, was called by a control in a way it could not answer, or sent
+    an event the bus dropped), which reached the raw log and nothing else --
+    the integrator saw a dead button and a scripts view with nothing wrong on
+    it.
     """
     engine = _get_engine()
     if not engine.scripts:

@@ -22,10 +22,11 @@ import traceback
 from contextvars import ContextVar
 from typing import Any, Callable, TYPE_CHECKING
 
-from openavc.core import script_runs
+from openavc.core import script_failures, script_runs
 from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import check_project_emit
 from openavc.core.isc import ISCRemoteError
+from openavc.core.script_failures import ScriptFailure
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -359,7 +360,10 @@ class _EventProxy:
         refused = check_project_emit(event)
         if refused:
             raise ValueError(refused)
-        await self._bus.emit(event, payload)
+        if await self._bus.emit(event, payload) is False:
+            script_failures.report_dropped_emit(
+                _current_script.get(), self._bus.dropped_sentence(event),
+            )
 
 
 class _MacroProxy:
@@ -696,17 +700,18 @@ async def delay(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
-async def _emit_timer_error(
-    timer_id: str, handler_name: str, error: str, tb: str,
-) -> None:
-    """Emit ``script.error`` for a timer callback failure; never raises."""
+async def _report_timer_failure(timer_id: str, failure: ScriptFailure) -> None:
+    """Record a timer callback's failure against its script, then emit
+    ``script.error``; never raises."""
+    script_failures.report(failure)
     try:
         await events.emit("script.error", {
-            "script_id": _timer_owners.get(timer_id) or "",
-            "handler": handler_name,
+            "script_id": failure.script_id or "",
+            "handler": failure.handler,
+            "event": failure.event,
             "timer_id": timer_id,
-            "error": error,
-            "traceback": tb,
+            "error": failure.error,
+            "traceback": failure.traceback,
         })
     except Exception:  # Catch-all: error event emission must not raise
         pass
@@ -717,8 +722,9 @@ async def _run_timer_callback(
 ) -> None:
     """Run one timer callback with the same protections event handlers get:
     it is bounded by the handler timeout, a plain ``def`` runs on its script's
-    worker thread rather than on the loop, and any failure is re-emitted as
-    ``script.error`` instead of vanishing into the log.
+    worker thread rather than on the loop, and any failure is recorded against
+    its script and emitted as ``script.error`` instead of vanishing into the
+    log.
 
     Runs under the owning script's id, so a timer the callback starts belongs
     to that script too and goes with it on a reload.
@@ -727,6 +733,7 @@ async def _run_timer_callback(
 
     handler_name = getattr(callback, "__name__", "anonymous")
     owner = _timer_owners.get(timer_id)
+    failed = functools.partial(ScriptFailure, owner, handler_name, f"{kind}() timer")
     try:
         with current_script_context(owner):
             await script_runs.run_script_code(
@@ -736,19 +743,17 @@ async def _run_timer_callback(
         raise
     except script_runs.ScriptRunRefused as exc:
         _log.error(f"{kind}() callback '{handler_name}' (timer {timer_id}): {exc}")
-        await _emit_timer_error(timer_id, handler_name, str(exc), "")
+        await _report_timer_failure(timer_id, failed(str(exc)))
     except script_runs.HandlerTimedOut:
         msg = (
             f"{kind}() callback '{handler_name}' timed out after "
             f"{ScriptEngine.HANDLER_TIMEOUT}s (timer {timer_id})"
         )
         _log.error(msg)
-        await _emit_timer_error(timer_id, handler_name, msg, "")
+        await _report_timer_failure(timer_id, failed(msg))
     except Exception as exc:  # Catch-all: isolates user callback errors from timer
         _log.exception(f"Error in {kind}() timer {timer_id}")
-        await _emit_timer_error(
-            timer_id, handler_name, str(exc), traceback.format_exc()
-        )
+        await _report_timer_failure(timer_id, failed(str(exc), traceback.format_exc()))
 
 
 @_leashed

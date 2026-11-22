@@ -235,12 +235,16 @@ class EventBus:
         # pattern -> list of (handler_id, handler_fn, once_flag)
         self._handlers: dict[str, list[tuple[str, Callable, bool]]] = {}
 
-    async def emit(self, event: str, payload: dict[str, Any] | None = None) -> None:
+    async def emit(self, event: str, payload: dict[str, Any] | None = None) -> bool:
         """
         Emit an event. All matching handlers are called concurrently.
 
         Handlers that raise exceptions are caught and logged — one bad handler
         never prevents others from running. This is critical for system reliability.
+
+        Returns False when the event was dropped at ``MAX_EMIT_DEPTH`` and True
+        otherwise, handlers or none. A caller that answers to someone for the
+        emit (a script's ``events.emit``) reads it; the rest ignore it.
         """
         depth = _emit_depth.get()
         if depth >= self.MAX_EMIT_DEPTH:
@@ -248,13 +252,13 @@ class EventBus:
                 f"Event '{event}' dropped — max emit depth ({self.MAX_EMIT_DEPTH}) "
                 f"reached. Possible recursive event chain."
             )
-            return
+            return False
 
         payload = payload or {}
         matching = self._find_handlers(event)
 
         if not matching:
-            return
+            return True
 
         log.debug(f"Event: {event} -> {len(matching)} handler(s)")
 
@@ -281,6 +285,15 @@ class EventBus:
                     log.error(f"Event handler error during '{event}': {r}")
         finally:
             _emit_depth.reset(token)
+        return True
+
+    def dropped_sentence(self, event: str) -> str:
+        """Why ``emit`` returned False for ``event``, for whoever sent it."""
+        return (
+            f"Event '{event}' was not sent: a chain of events, each sent by a "
+            f"handler of the one before, stops after {self.MAX_EMIT_DEPTH}. "
+            f"Look for handlers that send each other's events in a loop."
+        )
 
     def on(self, event_pattern: str, handler: Callable) -> str:
         """

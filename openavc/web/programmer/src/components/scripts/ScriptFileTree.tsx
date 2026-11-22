@@ -6,6 +6,7 @@ import { CopyButton } from "../shared/CopyButton";
 import { filesFromDataTransfer, type DroppedFile } from "../shared/dropFiles";
 import { groupUiFiles } from "./customUiFiles";
 import type { IssueBadge } from "./scriptLint";
+import { runtimeErrorTitle, type RuntimeErrorRow } from "./scriptRuntimeErrors";
 
 interface ScriptFileTreeProps {
   scripts: ScriptConfig[];
@@ -26,10 +27,7 @@ interface ScriptFileTreeProps {
   /** Scripts that loaded fine and then threw while running. On the LIST for
    *  the same reason as the rest: a handler that raises leaves a dead button
    *  and, until this, a scripts view with nothing wrong on it. */
-  runtimeErrors?: Record<
-    string,
-    { count: number; handler: string; event: string; error: string }
-  >;
+  runtimeErrors?: Record<string, RuntimeErrorRow>;
   onSelectScript: (id: string) => void;
   onSelectDriver: (id: string) => void;
   onSelectUiFile: (path: string) => void;
@@ -307,14 +305,7 @@ export function ScriptFileTree({
                             Load timed out and was stopped
                           </div>
                         ) : runtimeErrors[s.id] ? (
-                          <div
-                            style={errorDescStyle}
-                            title={
-                              `${runtimeErrors[s.id].handler} failed on ` +
-                              `${runtimeErrors[s.id].event}: ${runtimeErrors[s.id].error}. ` +
-                              "Open the script to see where."
-                            }
-                          >
+                          <div style={errorDescStyle} title={runtimeErrorTitle(runtimeErrors[s.id])}>
                             {runtimeErrors[s.id].count === 1
                               ? "Failed once while running"
                               : `Failed ${runtimeErrors[s.id].count} times while running`}

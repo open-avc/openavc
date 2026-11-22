@@ -24,7 +24,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
-import { describeStoredError, extractScriptRuntimeErrors, latestScriptErrorId, markerFromStoredError } from "../components/scripts/scriptRuntimeErrors";
+import { extractScriptRuntimeErrors, latestScriptErrorId, markerFromStoredError, toRuntimeErrorRows } from "../components/scripts/scriptRuntimeErrors";
 import { issueBadge, useScriptLint, type IssueBadge } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
@@ -175,20 +175,12 @@ export function ScriptView() {
   }, [selectedId, selectedType, scripts, driverReloadErrors, scriptErrorId, scriptRuntimeErrors]);
 
   // The list rows want the same readable error the editor marker gets, and
-  // nothing else the record carries -- so the tree is handed the sentence
-  // rather than the traceback to work it out from.
-  const runtimeErrorRows = useMemo(() => {
-    const rows: Record<string, { count: number; handler: string; event: string; error: string }> = {};
-    for (const [id, record] of Object.entries(scriptRuntimeErrors)) {
-      rows[id] = {
-        count: record.count,
-        handler: record.handler,
-        event: record.event,
-        error: describeStoredError(record),
-      };
-    }
-    return rows;
-  }, [scriptRuntimeErrors]);
+  // whether the editor has a line to mark -- so the tree is handed the
+  // sentence rather than the traceback to work it out from.
+  const runtimeErrorRows = useMemo(
+    () => toRuntimeErrorRows(scriptRuntimeErrors, scripts),
+    [scriptRuntimeErrors, scripts],
+  );
 
   // Handlers waiting for an event nothing in this project emits, and timers
   // that stop at the script's next edit. Asked of the platform rather than

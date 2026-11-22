@@ -54,7 +54,7 @@ Each run of a handler gets 30 seconds. An async handler still running then is st
 
 When the server stops or restarts, an `@on_state_change` handler that is still running gets a few seconds to finish, so a persisted variable it sets is saved. If it is still running after that, the server stops without waiting for it.
 
-The same rules apply to `after()`/`every()` timer callbacks and to functions a control calls. A handler or callback that fails or times out raises a `script.error` event rather than failing silently.
+The same rules apply to `after()`/`every()` timer callbacks and to functions a control calls. A handler or callback that fails or times out is reported on the script's row in the Scripts list (see **Script errors** under [Tips](#tips)).
 
 ```python
 # Fine: quick, synchronous reaction
@@ -301,6 +301,8 @@ await events.emit("custom.room_ready", {"room": "auditorium"})
 ```
 
 A name starting with `system.` is OpenAVC's own, and `events.emit()` raises an error for one. The script editor marks that line, and an `@on_event` for a `system.` name OpenAVC never sends, with the `custom.` name to use.
+
+A chain of events, each sent by a handler of the one before, stops after four. The fifth is not sent and the handler carries on past the `events.emit()` line. It is counted on the script's row in the Scripts list, and the editor marks the line that sent it. Two handlers that send each other's events are the usual cause.
 
 #### Handlers with no emitter
 
@@ -610,7 +612,7 @@ The timer is started at the top of the script, below the function it calls. It s
 ## Tips
 
 - **Use `async def` for any handler that talks to a device or waits**, with `await` on the command or delay. A plain `def` handler runs on its script's own thread: it may block, up to the 30-second limit, but cannot `await`.
-- **Script errors**: if a handler throws an unhandled exception, the error is logged, a `script.error` event is sent to the Programmer's WebSocket connections (never a panel's) with `script_id`, `handler`, `event`, `error`, and `traceback` fields, and the script's row in the Scripts list says how many times it has failed since it last loaded. Open the script and the editor marks the line that raised. The system continues running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
+- **Script errors**: a handler, timer callback or control's function that throws or times out is counted on the script's row in the Scripts list, and hovering the row shows the last failure. So is a control's call refused before the function runs (no such function, two scripts defining it, or parameters it does not take), on each script it names, and an event dropped at the chain limit. Open the script and the editor marks the line that raised or sent it. Each failure is also logged and, except a dropped event, sent to the Programmer's WebSocket connections (never a panel's) as a `script.error` event with `script_id`, `handler`, `event`, `error`, and `traceback` fields. The system keeps running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
 - **Hot reload**: click **Save & Reload Script** in the Code view to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).

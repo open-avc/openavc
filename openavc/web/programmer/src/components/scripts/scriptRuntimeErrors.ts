@@ -84,6 +84,47 @@ export function markerFromStoredError(
   return { line, message: `${record.handler}: ${describeStoredError(record)}` };
 }
 
+/** A script's last failure as the Scripts list shows it. */
+export interface RuntimeErrorRow {
+  count: number;
+  handler: string;
+  event: string;
+  /** The readable error (`describeStoredError`). */
+  error: string;
+  /** Whether the editor marks a line in the script for it. A timeout, or a
+   *  control's call refused before the function ran, has no line to mark. */
+  marksLine: boolean;
+}
+
+/** The row's hover text: what failed, on what, and where to look when the
+ *  editor has a line to show. */
+export function runtimeErrorTitle(row: RuntimeErrorRow): string {
+  const error = row.error.trimEnd();
+  const sentence = /[.!?]$/.test(error) ? error : `${error}.`;
+  const where = row.marksLine ? " Open the script to see where." : "";
+  return `${row.handler} failed on ${row.event}: ${sentence}${where}`;
+}
+
+/** The Scripts list's rows, from the server's records: the readable error,
+ *  and whether the editor has a line in that script's file to mark. */
+export function toRuntimeErrorRows(
+  records: Record<string, StoredRuntimeError>,
+  scripts: { id: string; file: string }[],
+): Record<string, RuntimeErrorRow> {
+  const fileOf = new Map(scripts.map((s) => [s.id, s.file]));
+  const rows: Record<string, RuntimeErrorRow> = {};
+  for (const [id, record] of Object.entries(records)) {
+    rows[id] = {
+      count: record.count,
+      handler: record.handler,
+      event: record.event,
+      error: describeStoredError(record),
+      marksLine: markerFromStoredError(record, fileOf.get(id) || id) !== null,
+    };
+  }
+  return rows;
+}
+
 /** Does a traceback frame's path point at this script's file? The record is
  *  written server-side, so the path is absolute and in the server's own
  *  separator; the project only knows the file's name. */

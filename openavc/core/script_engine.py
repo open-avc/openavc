@@ -25,9 +25,9 @@ import types
 from collections.abc import Coroutine
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Any, Callable, NoReturn, TYPE_CHECKING
 
-from openavc.core import script_api, script_runs
+from openavc.core import script_api, script_failures, script_runs
 # Defined beside the runner; importable from here, where they always were.
 from openavc.core.script_runs import HandlerTimedOut
 from openavc.core.script_runs import run_within_handler_limit as run_within_handler_limit
@@ -158,10 +158,11 @@ class ScriptEngine:
         # restart cleared it.
         self._abandoned_loads: dict[str, dict[str, Any]] = {}
         # script_id -> {"count", "handler", "event", "error", "traceback", "at"}
-        # for failures AFTER the script loaded: a handler that threw, one that
-        # timed out, a function a control called. A load error means the script
-        # is not running; one of these means it IS running and does not work,
-        # which is the state that used to reach the raw log and nowhere else.
+        # for failures AFTER the script loaded, from every door that runs its
+        # code (_record_runtime_error lists them). A load error means the
+        # script is not running; one of these means it IS running and does not
+        # work, which is the state that used to reach the raw log and nowhere
+        # else.
         self._runtime_errors: dict[str, dict[str, Any]] = {}
 
     def install(self) -> None:
@@ -173,6 +174,10 @@ class ScriptEngine:
         naming the loop a call from another thread is handed to.
         """
         script_api.configure(self.devices, self.state, self.events, self.macro_engine)
+        script_failures.bind(lambda failure: self._record_runtime_error(
+            failure.script_id, failure.handler, failure.event, failure.error,
+            failure.traceback,
+        ))
         try:
             script_runs.bind_loop(asyncio.get_running_loop())
         except RuntimeError:
@@ -257,7 +262,16 @@ class ScriptEngine:
         time it fires, so the hundredth occurrence says nothing the first did
         not, and the count is what tells an integrator the button is dead
         rather than flaky.
+
+        THE record every door that runs a loaded script's code reports to: an
+        event or state handler, a control's call, refused or raised, and,
+        through ``script_failures`` (bound by ``install``), a timer callback
+        and an ``events.emit`` the bus dropped. Only a loaded script is recorded: one
+        that is not has no row to show it on, and the record would outlive
+        its next load.
         """
+        if script_id not in self._loaded_modules:
+            return
         record = self._runtime_errors.setdefault(script_id, {"count": 0})
         record["count"] += 1
         record["handler"] = handler
@@ -682,11 +696,12 @@ class ScriptEngine:
         sentence, because the press path turns one into a message on the glass.
         The three that are the author's to fix -- no such function, two scripts
         defining it, arguments that do not fit the signature -- are caught
-        BEFORE anything runs, so a mistyped name never half-runs a room. What
-        happens once the function is running gets the handler treatment as
-        well: logged, and a ``script.error`` event so the IDE's script surface
-        shows it beside every other script failure, while the glass reads
-        ``COULD_NOT_FINISH`` (or the sentence a ``PanelMessage`` carries).
+        BEFORE anything runs, so a mistyped name never half-runs a room, and
+        are recorded against each loaded script they name (``_refuse_call``).
+        What happens once the function is running gets the handler treatment
+        as well: logged, recorded, and a ``script.error`` event, while the
+        glass reads ``COULD_NOT_FINISH`` (or the sentence a ``PanelMessage``
+        carries).
 
         Runs the way a handler does (``_wrap_event_handler``): a plain ``def``
         on the script's worker thread, an ``async def`` on the loop, both
@@ -697,16 +712,16 @@ class ScriptEngine:
         matches = self.find_callable(name, script)
         if not matches:
             where = f" in script '{script}'" if script else ""
-            raise ScriptCallError(
+            await self._refuse_call(name, [script] if script else [], (
                 f"No script function named '{name}'{where}. Check the function "
                 f"is defined in an enabled script and is not an event handler."
-            )
+            ))
         if len(matches) > 1:
-            scripts = ", ".join(sorted(script_id for script_id, _fn in matches))
-            raise ScriptCallError(
-                f"More than one script defines '{name}' ({scripts}). Rename one "
-                f"of them so this control can only mean one function."
-            )
+            scripts = sorted(script_id for script_id, _fn in matches)
+            await self._refuse_call(name, scripts, (
+                f"More than one script defines '{name}' ({', '.join(scripts)}). "
+                f"Rename one of them so this control can only mean one function."
+            ))
 
         script_id, fn = matches[0]
         try:
@@ -715,10 +730,10 @@ class ScriptEngine:
             wanted = describe_parameters(fn)["params"]
             takes = ", ".join(str(entry["name"]) for entry in wanted) or "no arguments"
             given = ", ".join(sorted(params)) or "none"
-            raise ScriptCallError(
+            await self._refuse_call(name, [script_id], (
                 f"'{name}' cannot be called with those parameters: {exc}. "
                 f"It takes {takes}; this control passed {given}."
-            ) from exc
+            ), exc)
 
         with script_api.current_script_context(script_id):
             try:
@@ -752,6 +767,24 @@ class ScriptEngine:
                     traceback.format_exc(),
                 )
                 raise ScriptCallError(COULD_NOT_FINISH) from exc
+
+    async def _refuse_call(
+        self,
+        name: str,
+        script_ids: list[str],
+        sentence: str,
+        cause: BaseException | None = None,
+    ) -> NoReturn:
+        """Refuse a control's call before the function runs, and record it
+        against each loaded script it names: the place the fix goes, whether
+        that is the control or the script."""
+        log.error(f"Control's call to script function '{name}' refused: {sentence}")
+        for script_id in script_ids:
+            if script_id in self._loaded_modules:
+                await self._emit_script_error(
+                    script_id, name, f"script.call.{name}", sentence, "",
+                )
+        raise ScriptCallError(sentence) from cause
 
     async def _emit_script_error(
         self, script_id: str, handler: str, event: str, error: str, tb: str,

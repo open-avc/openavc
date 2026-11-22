@@ -292,7 +292,7 @@ Cancel all active timers at once. Returns the number of timers cancelled.
 count = cancel_all_timers()
 ```
 
-Timer callbacks get the same protections as event handlers: every callback is bounded by the handler timeout, and a callback that fails or times out emits a `script.error` event (`script_id`, `handler`, `timer_id`, `error`, `traceback`) instead of failing silently. A plain `def` callback runs on its script's own thread, so it may block, up to that limit (see the [Scripting Guide](scripting-guide.md#synchronous-vs-asynchronous-handlers)).
+Timer callbacks get the same protections as event handlers: every callback is bounded by the handler timeout, and a callback that fails or times out is counted on its script's row in the Scripts list and emits a `script.error` event (`script_id`, `handler`, `event` (`every() timer` or `after() timer`), `timer_id`, `error`, `traceback`). A plain `def` callback runs on its script's own thread, so it may block, up to that limit (see the [Scripting Guide](scripting-guide.md#synchronous-vs-asynchronous-handlers)).
 
 ---
 
