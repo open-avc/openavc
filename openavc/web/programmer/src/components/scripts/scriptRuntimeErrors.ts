@@ -1,30 +1,8 @@
-// Pure extraction of inline editor error markers from the log ring, split out
-// of ScriptView so it's unit-testable (the ScriptView memo just calls it, and
-// re-runs it reactively when a new script-error entry arrives).
+// A script's failures as the Scripts view shows them: the row in the list and
+// the editor's mark, both from the server's record (`GET /api/scripts/errors`),
+// split out of ScriptView so they are unit-testable.
 import type { LogEntry } from "../../store/logStore";
 import type { RuntimeError } from "./ScriptEditor";
-
-/**
- * Editor markers for the selected script: ERROR-level, script-category log
- * entries whose message names the script (by id or file) and carries a
- * `line N` location. The message is trimmed to its first line for the marker.
- */
-export function extractScriptRuntimeErrors(
-  entries: LogEntry[],
-  selectedId: string,
-  scriptFile: string,
-): RuntimeError[] {
-  const errors: RuntimeError[] = [];
-  for (const entry of entries) {
-    if (entry.level !== "ERROR" || entry.category !== "script") continue;
-    if (!entry.message.includes(selectedId) && !entry.message.includes(scriptFile)) continue;
-    const lineMatch = entry.message.match(/line (\d+)/);
-    if (lineMatch) {
-      errors.push({ line: parseInt(lineMatch[1], 10), message: entry.message.split("\n")[0] });
-    }
-  }
-  return errors;
-}
 
 /** The shape the server keeps for a script that failed while running. */
 export interface StoredRuntimeError {
@@ -56,11 +34,10 @@ export function describeStoredError(record: StoredRuntimeError): string {
  * An editor marker for the last failure the SERVER recorded, from its stored
  * traceback.
  *
- * The log-ring extraction above only ever sees what is still in the buffer and
- * what happens to carry a `line N`, so a handler that threw before the IDE was
- * opened -- or long enough ago to have rolled out of the ring -- left the
- * editor unmarked. The server's record does not expire, so this is the marker
- * that is there at 9am for the failure that happened at 3.
+ * The record is the only place a script's line is to be had: a log line
+ * carries the failure's sentence and never its traceback. It does not expire
+ * either, so this is the marker that is there at 9am for the failure that
+ * happened at 3.
  *
  * Takes the DEEPEST frame in the script's own file: a handler that fails
  * inside a helper it called has frames for both, and the line worth opening
@@ -82,6 +59,26 @@ export function markerFromStoredError(
   }
   if (line === null) return null;
   return { line, message: `${record.handler}: ${describeStoredError(record)}` };
+}
+
+/**
+ * An editor marker for a script that did not load, from the server's load
+ * error (`GET /api/scripts/errors`, and a reload's answer).
+ *
+ * Python words a syntax, indentation or tab error as what is wrong followed by
+ * `(<file>, line N)`, and the sentence before it can name another line ("after
+ * function definition on line 1"), so the line is read from that ending alone.
+ * Returns null for a load error with no such ending: a top-level line that
+ * raised, whose message carries no line.
+ */
+export function markerFromLoadError(
+  error: string | undefined,
+  scriptFile: string,
+): RuntimeError | null {
+  if (!error || !scriptFile) return null;
+  const where = error.match(/\(([^()]+), line (\d+)\)\s*$/);
+  if (!where || !fileMatches(where[1], scriptFile)) return null;
+  return { line: parseInt(where[2], 10), message: `This script did not load: ${error}` };
 }
 
 /** A script's last failure as the Scripts list shows it. */
@@ -125,8 +122,8 @@ export function toRuntimeErrorRows(
   return rows;
 }
 
-/** Does a traceback frame's path point at this script's file? The record is
- *  written server-side, so the path is absolute and in the server's own
+/** Does a path the server wrote (a traceback frame's, or a load error's) point
+ *  at this script's file? It may be absolute and in the server's own
  *  separator; the project only knows the file's name. */
 function fileMatches(framePath: string, scriptFile: string): boolean {
   const base = (p: string) => p.split(/[\\/]/).pop() ?? p;
@@ -137,7 +134,7 @@ function fileMatches(framePath: string, scriptFile: string): boolean {
  * The id of the most recent ERROR-level script-category log entry, or 0 when
  * there is none. A primitive (never a new object → no React 19 crash) that
  * changes only when a new script error is logged — the narrow useLogStore
- * subscription ScriptView uses to re-run the marker memo, instead of
+ * subscription useScriptErrorsRefresh re-asks the record on, instead of
  * subscribing to the whole rapidly-updating logEntries array.
  */
 export function latestScriptErrorId(entries: LogEntry[]): number {

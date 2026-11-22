@@ -24,7 +24,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
-import { extractScriptRuntimeErrors, latestScriptErrorId, markerFromStoredError, toRuntimeErrorRows } from "../components/scripts/scriptRuntimeErrors";
+import { markerFromLoadError, markerFromStoredError, toRuntimeErrorRows } from "../components/scripts/scriptRuntimeErrors";
 import { useScriptErrorsRefresh } from "../components/scripts/useScriptErrorsRefresh";
 import { issueBadge, useScriptLint, type IssueBadge } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
@@ -144,34 +144,26 @@ export function ScriptView() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 
-  // Narrow subscription to the (rapidly-updating) log store: just the id of the
-  // most recent script error. A primitive, so it re-renders this view only when
-  // a new script error is logged — not on every log line — and re-runs the
-  // marker memo below then, which a plain getState() read never did.
-  const scriptErrorId = useLogStore((s) => latestScriptErrorId(s.logEntries));
-
   // A script going bad while this view is open marks its row without anyone
   // reaching for Reload: the server's script.error message, or the failure's
   // log line, re-asks the record.
   useScriptErrorsRefresh(refreshScriptErrors);
 
-  // Extract runtime errors from log entries for the selected item.
+  // The editor's marks for the selected item. A script's come from the
+  // server's records: the line its load error names, and the line its last
+  // failure's traceback reached in the script's own file. A log line carries
+  // no traceback to read one from.
   const runtimeErrors = useMemo((): RuntimeError[] => {
     if (!selectedId) return [];
     if (selectedType === "ui") return [];
     if (selectedType === "driver") return driverReloadErrors;
     const scriptFile = scripts.find((s) => s.id === selectedId)?.file ?? selectedId;
-    const fromLog = extractScriptRuntimeErrors(
-      useLogStore.getState().logEntries, selectedId, scriptFile,
-    );
-    // The server's record covers what the log ring no longer holds -- a handler
-    // that threw before this IDE was opened leaves no log line here at all.
-    // Only add it when the log has not already marked that line.
-    const stored = markerFromStoredError(scriptRuntimeErrors[selectedId], scriptFile);
-    if (stored && !fromLog.some((e) => e.line === stored.line)) fromLog.push(stored);
-    return fromLog;
-    // scriptErrorId is the reactive trigger: a new script error bumps it, re-running this memo.
-  }, [selectedId, selectedType, scripts, driverReloadErrors, scriptErrorId, scriptRuntimeErrors]);
+    const marks = [
+      markerFromLoadError(scriptLoadErrors[selectedId], scriptFile),
+      markerFromStoredError(scriptRuntimeErrors[selectedId], scriptFile),
+    ];
+    return marks.filter((mark): mark is RuntimeError => mark !== null);
+  }, [selectedId, selectedType, scripts, driverReloadErrors, scriptLoadErrors, scriptRuntimeErrors]);
 
   // The list rows want the same readable error the editor marker gets, and
   // whether the editor has a line to mark -- so the tree is handed the

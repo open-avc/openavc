@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runtimeErrorTitle, toRuntimeErrorRows, type StoredRuntimeError } from "./scriptRuntimeErrors";
+import { markerFromLoadError, runtimeErrorTitle, toRuntimeErrorRows, type StoredRuntimeError } from "./scriptRuntimeErrors";
 
 // The Scripts list's row for a script that failed while running. Some failures
 // leave a line in the script to open (a handler that raised, an event sent past
@@ -54,5 +54,34 @@ describe("the Scripts list's runtime-error rows", () => {
   it("does not mark a trace that runs only through other files", () => {
     const elsewhere = { ...RAISED, traceback: RAISED.traceback.replace("poller.py", "helpers.py") };
     expect(toRuntimeErrorRows({ poller: elsewhere }, SCRIPTS).poller.marksLine).toBe(false);
+  });
+});
+
+// A script that did not load: the editor marks the line Python named, from
+// the server's load error (`GET /api/scripts/errors`, and a reload's answer),
+// worded the way Python words it.
+describe("the editor's mark for a script that did not load", () => {
+  it("marks the line a syntax error names", () => {
+    expect(markerFromLoadError("invalid syntax (poller.py, line 2)", "poller.py")).toEqual({
+      line: 2,
+      message: "This script did not load: invalid syntax (poller.py, line 2)",
+    });
+  });
+
+  it("marks the line at the end, not another line the sentence names", () => {
+    const error = "expected an indented block after function definition on line 1 (poller.py, line 2)";
+    expect(markerFromLoadError(error, "poller.py")?.line).toBe(2);
+  });
+
+  it("marks nothing for a load error that names no line", () => {
+    expect(markerFromLoadError("name 'lectern' is not defined", "poller.py")).toBeNull();
+  });
+
+  it("marks nothing for a line in another file", () => {
+    expect(markerFromLoadError("invalid syntax (helpers.py, line 4)", "poller.py")).toBeNull();
+  });
+
+  it("marks nothing when the script loaded", () => {
+    expect(markerFromLoadError(undefined, "poller.py")).toBeNull();
   });
 });

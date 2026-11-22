@@ -1,18 +1,21 @@
 """Regression tests for the script editor's runtime-error markers (ScriptView).
 
-The inline error markers exist to surface script runtime errors in the editor,
-but the memo that built them read the log store via getState() and left
-logEntries out of its dependency array, so it never recomputed when a new error
-was logged — the markers were stale and integrators debugged blind. The memo now
-subscribes to a narrow primitive (latestScriptErrorId — the id of the most
-recent script error, which changes only when a new one is logged, so the view
-doesn't re-render on every log line) and depends on it.
+The inline error markers exist to surface script runtime errors in the editor.
+They once went stale: the memo that built them read the log store via
+getState() and never recomputed when a new error was logged, so integrators
+debugged blind. The mark now comes from the server's record of the script's
+last failure (``GET /api/scripts/errors``, its traceback), and the view
+re-asks that record while it is open (``useScriptErrorsRefresh``): on the
+server's ``script.error`` message, and on a narrow primitive from the log store
+(latestScriptErrorId, the id of the most recent script error, which changes
+only when a new one is logged, so the view does not re-render on every line).
 
 Two layers: the harness bundles the extracted pure helpers (scriptRuntimeErrors)
-with the esbuild in openavc/web/programmer/node_modules and checks the marker extraction
-and the reactive-trigger selector; source-level checks pin ScriptView.tsx to the
-subscription + dependency so the staleness can't silently return. Skips when the
-Node toolchain or esbuild is absent rather than failing the Python-only CI gate.
+with the esbuild in openavc/web/programmer/node_modules and checks the stored
+marker, the row's readable error and the log selector; source-level checks pin
+ScriptView.tsx to the re-ask and the memo to the record, so the staleness
+cannot silently return. Skips when the Node toolchain or esbuild is absent
+rather than failing the Python-only CI gate.
 """
 from __future__ import annotations
 
@@ -78,17 +81,10 @@ def helper_results() -> dict:
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
-    "m309_extract_matches_by_id",
-    "m309_extract_matches_by_file",
-    "m309_extract_filters_non_error",
-    "m309_extract_filters_other_script",
-    "m309_extract_needs_line_number",
-    "m309_extract_message_first_line",
     "m309_latest_id_returns_last_script_error",
     "m309_latest_id_zero_when_none",
-    # The server's own record of a runtime failure, which outlives the log ring
-    # the extraction above reads: a handler that threw before this IDE was
-    # opened leaves no log line here to mark.
+    # The server's own record of a runtime failure, the only place a script's
+    # line is to be had: a log line carries the sentence, never the traceback.
     "stored_marker_takes_the_line_in_this_file",
     "stored_marker_takes_the_deepest_frame",
     "stored_marker_matches_a_windows_path",
@@ -111,20 +107,31 @@ def test_script_runtime_error_helper(helper_results: dict, scenario: str) -> Non
 
 # --- Source pins for the reactivity fix (the actual bug) -----------------------
 
-def test_scriptview_subscribes_to_latest_script_error_id() -> None:
+REFRESH_HOOK = SCRIPT_VIEW.parents[1] / "components" / "scripts" / "useScriptErrorsRefresh.ts"
+
+
+def test_scriptview_reasks_the_record_while_open() -> None:
     src = SCRIPT_VIEW.read_text(encoding="utf-8")
-    assert "latestScriptErrorId(s.logEntries)" in src and "useLogStore((s) =>" in src, (
-        "ScriptView must subscribe to a narrow primitive derived from the log store "
-        "so the marker memo re-runs when a new script error is logged"
+    assert "useScriptErrorsRefresh(refreshScriptErrors)" in src, (
+        "ScriptView must re-ask the server's record of script failures while it "
+        "is open, or a failure after it opened never marks the editor"
+    )
+    hook = REFRESH_HOOK.read_text(encoding="utf-8")
+    assert "latestScriptErrorId(s.logEntries)" in hook and "useLogStore((s) =>" in hook, (
+        "the re-ask must follow a narrow primitive derived from the log store, "
+        "not the whole log"
+    )
+    assert "useScriptErrorsStore((s) => s.heard)" in hook, (
+        "the re-ask must follow the server's script.error message too"
     )
 
 
-def test_runtime_errors_memo_depends_on_the_subscription() -> None:
+def test_runtime_errors_memo_depends_on_the_record() -> None:
     src = SCRIPT_VIEW.read_text(encoding="utf-8")
     match = re.search(r"const runtimeErrors = useMemo\(.*?\}, \[(.*?)\]\);", src, re.DOTALL)
     assert match, "could not find the runtimeErrors memo in ScriptView"
     deps = match.group(1)
-    assert "scriptErrorId" in deps, (
-        "the runtimeErrors memo must depend on the log-store subscription "
+    assert "scriptRuntimeErrors" in deps, (
+        "the runtimeErrors memo must depend on the server's record it reads "
         f"(deps were: {deps!r})"
     )
