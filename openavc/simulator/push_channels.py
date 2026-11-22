@@ -37,6 +37,7 @@ import socket
 from typing import Any
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.http_commands import request_target
 from openavc.drivers.compiled_protocol import apply_send_frame, safe_substitute
 from openavc.simulator.state_replies import map_key
 from openavc.transport.frame_parsers import write_frame
@@ -623,7 +624,7 @@ def _registration_matcher(commands: dict, cmd_name: Any) -> re.Pattern | None:
     cmd = commands.get(cmd_name) if isinstance(cmd_name, str) else None
     form = command_form(cmd)
     if form == "http":
-        template = f"{str(cmd.get('method') or 'GET').upper()} {cmd.get('path') or '/'}"
+        template = " ".join(request_target(cmd))
     elif form == "raw":
         template = str(cmd["send"])
     else:

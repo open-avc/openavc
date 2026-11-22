@@ -142,7 +142,10 @@ def test_the_checker_refuses_a_command_that_declares_no_form_or_several(case: di
     errors = validate_driver_definition(definition, strict=True)
     declared = case["declared"]
     expected = "none" if not declared else ("one" if len(declared) == 1 else "several")
-    assert _form_verdict(errors) == expected, errors
+    if expected == "none" and cf.left_empty(case["block"]):
+        expected = "left empty"
+        assert any(": is empty, so the command sends nothing" in e for e in errors), errors
+    assert _form_verdict(errors) == ("one" if expected == "left empty" else expected), errors
 
 
 @pytest.mark.parametrize("block", [
@@ -156,10 +159,11 @@ def test_an_address_or_ir_code_left_empty_is_refused_only_at_the_authors_doors(
     # cleared) passed every door: an installed copy keeps loading, named.
     definition = copy.deepcopy(UNIT)
     definition["commands"] = {"go": block}
-    no_form = "Command 'go': must have 'send'"
+    field = "ir" if "ir" in block else "address"
+    no_form = f"commands.go.{field}: is empty, so the command sends nothing"
     assert any(e.startswith(no_form) for e in validate_driver_definition(definition, strict=True))
     verdict = check_driver_definition(definition)
-    assert not any(e.startswith(no_form) for e in verdict.errors), verdict.errors
+    assert not any("must have 'send'" in e for e in verdict.errors), verdict.errors
     assert any(e.startswith(no_form) for e in verdict.notices), verdict.notices
 
     path = tmp_path / "acme_form_unit.avcdriver"

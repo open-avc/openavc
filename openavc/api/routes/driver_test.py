@@ -50,6 +50,7 @@ from openavc.drivers.contract_events import (
 from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.dry_run import display_text
+from openavc.drivers.http_commands import request_target
 from openavc.drivers.reply_guard import rule_failure_sentence
 from openavc.drivers.send_shape import osc_arg_tag, osc_arg_text
 from openavc.core.device_config import (
@@ -566,33 +567,20 @@ def _describe_outgoing(
     connection reads as a request, and an IR code or a datagram is not
     summarised.
     """
-    summary = _SUMMARIES.get(command_form(cmd_def))
-    return summary(cmd_def, {**config, **params}) if summary else ""
-
-
-def _osc_summary(cmd_def: dict[str, Any], values: dict[str, Any]) -> str:
-    """An OSC message: its address, and each argument's type and value as
-    the encoder reads them (send_shape), not the raw template."""
-    args = ", ".join(
-        f"{osc_arg_tag(a)}={safe_substitute(osc_arg_text(a), values)}"
-        for a in cmd_def.get("args") or [] if isinstance(a, dict)
-    )
-    address = safe_substitute(str(cmd_def["address"]), values)
-    return f"OSC {address}" + (f" [{args}]" if args else "")
-
-
-def _http_summary(cmd_def: dict[str, Any], values: dict[str, Any]) -> str:
-    """An HTTP request: its method and path, GET and the root when null or empty."""
-    method = str(cmd_def.get("method") or "GET").upper()
-    return f"{method} {safe_substitute(str(cmd_def.get('path') or '/'), values)}"
-
-
-def _line_summary(cmd_def: dict[str, Any], values: dict[str, Any]) -> str:
-    """A line of the device's protocol, filled."""
-    return safe_substitute(str(cmd_def["send"]), values)
-
-
-_SUMMARIES = {"osc": _osc_summary, "http": _http_summary, "raw": _line_summary}
+    values = {**config, **params}
+    form = command_form(cmd_def)
+    if form == "osc":
+        # Each arg's type and value as the encoder reads them (send_shape).
+        args = ", ".join(
+            f"{osc_arg_tag(a)}={safe_substitute(osc_arg_text(a), values)}"
+            for a in cmd_def.get("args") or [] if isinstance(a, dict)
+        )
+        address = safe_substitute(str(cmd_def["address"]), values)
+        return f"OSC {address}" + (f" [{args}]" if args else "")
+    if form == "http":
+        method, path = request_target(cmd_def)
+        return f"{method} {safe_substitute(path, values)}"
+    return safe_substitute(str(cmd_def["send"]), values) if form == "raw" else ""
 
 
 async def _test_raw(body: TestCommandRequest) -> dict:

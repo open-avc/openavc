@@ -48,7 +48,7 @@ from openavc.drivers.declared_names import (
     did_you_mean,
     substitution_names,
 )
-from openavc.drivers.command_form import command_form, declared_forms
+from openavc.drivers.command_form import command_form, declared_forms, left_empty
 from openavc.drivers.param_aid_checks import param_aid_errors
 from openavc.drivers.send_shape import osc_args_errors
 from openavc.drivers.spec import (
@@ -99,7 +99,9 @@ class CommandSection:
         if not isinstance(cmd_def, dict):
             return [f"{where}: must be a dict"]
         forms = declared_forms(cmd_def)
-        errors = [] if _left_empty(cmd_def) else _form_errors(where, forms)
+        # An address or IR code left empty is the driver model's problem
+        # (command_form.left_empty_forms), refused at the author's doors only.
+        errors = [] if left_empty(cmd_def) else _form_errors(where, forms)
         if "osc" in forms:
             errors.extend(osc_args_errors(where, cmd_def.get("args")))
         if "udp" in forms:
@@ -211,30 +213,6 @@ def _literal_or_param(value: Any, params: dict[str, Any]) -> bool:
         return True
     ref = _BARE_PARAM.fullmatch(value)
     return bool(ref) and ref.group(1) in params
-
-
-def left_empty_form_issues(commands: dict[Any, Any]) -> list[tuple[str, str]]:
-    """Each command whose only form is an ``address`` or ``ir:`` left empty,
-    at its place.
-
-    Until a null or empty field chose no form (``command_form``), an empty
-    address or IR code was one, so a driver saved with one (the Builder's
-    Address box cleared) passed every door. It sends nothing, so the author's
-    doors refuse it, with the words a command with no form gets, and a door
-    loading the driver names it instead of dropping the file."""
-    return [
-        (f"commands.{name}", message)
-        for name, cmd_def in commands.items()
-        if isinstance(cmd_def, dict) and _left_empty(cmd_def)
-        for message in _form_errors(f"Command '{name}'", [])
-    ]
-
-
-def _left_empty(cmd_def: dict[str, Any]) -> bool:
-    """No form filled, and an address or an IR code written but empty."""
-    return not declared_forms(cmd_def) and any(
-        cmd_def.get(field) is not None for field in ("address", "ir")
-    )
 
 
 def _form_errors(where: str, forms: list[str]) -> list[str]:

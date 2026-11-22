@@ -40,6 +40,13 @@ from openavc.utils.logger import get_logger
 log = get_logger("openavc.drivers.configurable")
 
 
+def request_target(req_def: dict[str, Any], method: str = "GET") -> tuple[str, str]:
+    """A request's method, upper case, and its path as written: ``method``
+    and the root when it names none (a null or empty field names none, as
+    ``command_form`` reads it)."""
+    return str(req_def.get("method") or method).upper(), str(req_def.get("path") or "/")
+
+
 def body_parts(text: str) -> tuple[Any, bytes | None]:
     """A filled-in body as (JSON, raw content): the JSON when it parses, else
     the text as raw content."""
@@ -92,16 +99,16 @@ class HttpCommands:
         setting's ``write``, filled from ``all_params``; the answer, unread.
 
         GET when ``req_def`` names no method and the root when it names no
-        path (a null or empty field names none, as ``command_form`` reads
-        it); ``where`` names its fields in a warning and ``name`` names it in
-        the log.
+        path (``request_target``); ``where`` names its fields in a warning
+        and ``name`` names it in the log.
         """
         headers = self._build_http_headers(req_def.get("headers"), all_params)
-        path = self._substitute_for_wire(f"{where}.path", req_def.get("path") or "/", all_params)
+        method, path = request_target(req_def)
+        path = self._substitute_for_wire(f"{where}.path", path, all_params)
         json_body, content = self._http_body(name, where, req_def.get("body"), all_params)
         query_params = self._http_query(req_def.get("query_params"), all_params)
         return await self.transport.request(
-            str(req_def.get("method") or "GET").upper(), path, params=query_params,
+            method, path, params=query_params,
             json_body=json_body, content=content, headers=headers,
         )
 

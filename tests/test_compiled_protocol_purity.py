@@ -162,6 +162,7 @@ def test_the_reread_queries_stay_within_the_protocol_closure():
     # library (yaml included).
     loaded = _openavc_modules_loaded("openavc.simulator.reread_queries")
     allowed = ALLOWED | {
+        "openavc.drivers.command_form",
         "openavc.drivers.driver_model",
         "openavc.drivers.query_entry",
         "openavc.drivers.framing_checks",

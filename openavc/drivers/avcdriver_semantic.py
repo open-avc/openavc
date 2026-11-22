@@ -60,7 +60,7 @@ from openavc.drivers.child_type_checks import (
     child_type_errors,
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
-from openavc.drivers.command_checks import CommandSection, left_empty_form_issues
+from openavc.drivers.command_checks import CommandSection
 from openavc.drivers.conversion_checks import (
     value_conversion_errors as value_conversion_errors,
     value_conversion_issues,
@@ -478,13 +478,11 @@ class _DefinitionWalk:
 
     def model_problems(self) -> None:
         """What the driver model reads and what a send carries that only the
-        author's doors refuse (``driver_model``, ``authored_send_issues``,
-        ``left_empty_form_issues``)."""
+        author's doors refuse (``driver_model``, ``authored_send_issues``)."""
         errors = self.authored
         for problem in self.model.problems:
             errors.at(problem.place, f"{problem.place}: {problem.words}")
         errors.at_each(authored_send_issues(self.driver_def))
-        errors.at_each(left_empty_form_issues(self.declared.commands))
 
     def line_settings(self) -> None:
         """Each serial line setting default_config holds, read by the

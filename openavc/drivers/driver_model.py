@@ -28,8 +28,10 @@ What it holds so far:
   filter stated.
 * ``problems`` also holds the fields of a push listener's frame parser the
   frame table refuses where push does not refuse them at every door
-  (``framing_checks.push_frame_field_issues``), and an ``auth:`` timeout of 0
-  or less, which every reader takes as the default (``auth_block``).
+  (``framing_checks.push_frame_field_issues``), an ``auth:`` timeout of 0
+  or less, which every reader takes as the default (``auth_block``), and a
+  command whose only form is an address or IR code left empty, which sends
+  nothing (``command_form.left_empty_forms``).
 
 The rules worth knowing before changing anything here:
 
@@ -48,7 +50,7 @@ The rules worth knowing before changing anything here:
   rule reads through the model yet has no member here.
 
 Pure: the standard library, ``spec`` and the leaves it composes (``query_entry``,
-``framing_checks``, ``auth_block``), with
+``framing_checks``, ``auth_block``, ``command_form``), with
 absolute ``openavc.`` imports (``tests/test_avcdriver_semantic_purity.py``).
 Vendored with the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 """
@@ -60,6 +62,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.auth_block import TIMEOUT_NOT_POSITIVE, auth_problems
+from openavc.drivers.command_form import FORM_LEFT_EMPTY, left_empty_forms
 from openavc.drivers.framing_checks import push_frame_field_issues
 from openavc.drivers.query_entry import OSC_MESSAGE, QueryEntry, read_query_entry
 
@@ -158,6 +161,9 @@ def read_driver(definition: Mapping[str, Any], kind: str = YAML) -> DriverModel:
     ) + tuple(
         ModelProblem(place, TIMEOUT_NOT_POSITIVE, words)
         for place, words in auth_problems(definition.get("auth"))
+    ) + tuple(
+        ModelProblem(place, FORM_LEFT_EMPTY, words)
+        for place, words in left_empty_forms(definition.get("commands"))
     )
     return DriverModel(YAML, definition, WireModel(queries), problems)
 
