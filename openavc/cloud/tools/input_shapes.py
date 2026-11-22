@@ -22,6 +22,7 @@ here; inside an input, a null is refused unless the declared type admits it.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from openavc.cloud.tool_declarations import TOOLS
@@ -95,17 +96,23 @@ def _type_problem(path: str, shape: dict[str, Any], value: Any) -> str | None:
     return None
 
 
+def _first(problems: Iterable[str | None]) -> str | None:
+    """The first problem of several, checked in order."""
+    return next((problem for problem in problems if problem), None)
+
+
 def _item_problem(path: str, shape: dict[str, Any], items: list) -> str | None:
-    item_shape = shape.get("items")
-    if not item_shape:
+    if not shape.get("items"):
         return None
-    for position, item in enumerate(items, start=1):
-        if _type_problem("item", item_shape, item):
-            return f"{path} must be {_shape_words(shape)}: item {position} is {json_kind(item)}."
-        problem = _inside(f"{path} item {position}", item_shape, item, item=True)
-        if problem:
-            return problem
-    return None
+    return _first(
+        _one_item(path, shape, position, item) for position, item in enumerate(items, start=1)
+    )
+
+
+def _one_item(path: str, shape: dict[str, Any], position: int, item: Any) -> str | None:
+    if _type_problem("item", shape["items"], item):
+        return f"{path} must be {_shape_words(shape)}: item {position} is {json_kind(item)}."
+    return _inside(f"{path} item {position}", shape["items"], item, item=True)
 
 
 def _inside(path: str, shape: dict[str, Any], value: Any, *, item: bool = False) -> str | None:
@@ -117,26 +124,51 @@ def _inside(path: str, shape: dict[str, Any], value: Any, *, item: bool = False)
     if not isinstance(value, dict):
         return None
     prefix = f"{path}: " if item else f"{path}."
-    for name, sub_shape in (shape.get("properties") or {}).items():
-        if name in value:
-            problem = _problem(f"{prefix}{name}", sub_shape, value[name])
-            if problem:
-                return problem
-    for name in shape.get("required") or ():
-        if name not in value:
-            return f"{prefix}{name} is required."
+    return (
+        _fields_problem(prefix, shape, value)
+        or _missing_problem(prefix, shape.get("required") or (), value)
+        or _free_problem(prefix, shape, value)
+    )
+
+
+def _fields_problem(prefix: str, shape: dict[str, Any], value: dict) -> str | None:
+    """The first named field of the wrong shape."""
+    fields = shape.get("properties") or {}
+    return _first(
+        _problem(f"{prefix}{name}", fields[name], value[name]) for name in fields if name in value
+    )
+
+
+def _missing_problem(prefix: str, required: Iterable[str], value: dict) -> str | None:
+    """The first required field left out."""
+    missing = next((name for name in required if name not in value), None)
+    return None if missing is None else f"{prefix}{missing} is required."
+
+
+def _free_problem(prefix: str, shape: dict[str, Any], value: dict) -> str | None:
+    """The first freely keyed value of the wrong shape."""
     free = shape.get("additionalProperties")
-    if isinstance(free, dict):
-        for key, sub_value in value.items():
-            if key not in (shape.get("properties") or {}):
-                problem = _problem(f"{prefix}{key}", free, sub_value)
-                if problem:
-                    return problem
-    return None
+    if not isinstance(free, dict):
+        return None
+    named = shape.get("properties") or {}
+    return _first(
+        _problem(f"{prefix}{key}", free, sub_value)
+        for key, sub_value in value.items() if key not in named
+    )
 
 
 def _problem(path: str, shape: dict[str, Any], value: Any) -> str | None:
     return _type_problem(path, shape, value) or _inside(path, shape, value)
+
+
+def _sent_problem(inputs: dict[str, dict[str, Any]], tool_input: dict) -> str | None:
+    """The first declared input of the wrong shape, in the order sent. A
+    null sent as one of the tool's inputs is the tool's own call."""
+    return _first(
+        _problem(str(name), inputs[str(name)], value)
+        for name, value in tool_input.items()
+        if str(name) in inputs and value is not None
+    )
 
 
 def input_problem(tool_name: str, tool_input: Any) -> str | None:
@@ -147,14 +179,4 @@ def input_problem(tool_name: str, tool_input: Any) -> str | None:
     tool = TOOLS.get(tool_name)
     if tool is None:
         return None
-    for name, value in tool_input.items():
-        shape = tool.inputs.get(str(name))
-        if shape is None or value is None:
-            continue
-        problem = _problem(str(name), shape, value)
-        if problem:
-            return problem
-    for name in tool.required:
-        if name not in tool_input:
-            return f"{name} is required."
-    return None
+    return _sent_problem(tool.inputs, tool_input) or _missing_problem("", tool.required, tool_input)
