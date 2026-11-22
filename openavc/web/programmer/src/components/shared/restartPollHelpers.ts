@@ -2,15 +2,6 @@
 // addresses it waits at and the cert-error heuristic are unit-testable
 // without React. The wait itself is restartWait.ts.
 
-/**
- * The health-probe URL for a given server origin: `/api/health` at the
- * server root. The Updates page's wait reads it; the restart dialog asks the
- * server's status instead (`statusProbeUrl`).
- */
-export function healthProbeUrl(origin: string): string {
-  return new URL("/api/health", origin).toString();
-}
-
 /** Where the page is: its origin, and the path prefix its own requests go
  *  through there (the cloud's remote access, `api/base.ts`; "" direct). */
 export interface PageAt {

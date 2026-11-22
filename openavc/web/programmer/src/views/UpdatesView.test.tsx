@@ -6,13 +6,14 @@ import { render, screen, waitFor, act, fireEvent } from "@testing-library/react"
 // two-minute watchdog called it slow. Session tokens live in server memory, so
 // the restart being waited on invalidates this browser's token and the
 // Programmer WebSocket comes back refused -- and that socket's snapshot was
-// the dialog's only completion signal. The fix polls /api/health, which needs
-// no credential.
+// the dialog's only completion signal. The dialog asks the server's startup
+// status, which needs no credential, names the version that started, and
+// says why a start failed.
 //
 // Note what these tests deliberately do NOT do: they never move the mocked
 // live state off "restarting"/0.24.1. That keeps the WebSocket completion path
 // permanently silent, so anything that closes the dialog here can only be the
-// health poll. A test that also updated the store would pass with the poll
+// status poll. A test that also updated the store would pass with the poll
 // deleted.
 
 const liveState: Record<string, unknown> = {};
@@ -45,18 +46,45 @@ vi.mock("../api/restClient", () => ({
 import { UpdatesView } from "./UpdatesView";
 import * as api from "../api/restClient";
 
-/** Serve /api/health with a given version; everything else 404s. */
-function stubHealth(version: string) {
+/** The server's answers: its startup status (`status`; a release too old
+ *  to name its version there answers only `ready`), and /api/health's
+ *  version. A status that is a function is asked again on every poll. */
+function stubServer(
+  status: Record<string, unknown> | (() => Record<string, unknown>),
+  healthVersion = "",
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/health")) {
-        return new Response(JSON.stringify({ status: "healthy", version }), { status: 200 });
+      if (url.includes("/api/startup-status")) {
+        const body = typeof status === "function" ? status() : status;
+        return new Response(JSON.stringify(body), { status: 200 });
+      }
+      if (url.includes("/api/health") && healthVersion) {
+        return new Response(JSON.stringify({ status: "healthy", version: healthVersion }), { status: 200 });
       }
       return new Response("", { status: 404 });
     }),
   );
+}
+
+/** A server that started, on `version`. */
+function ready(version: string) {
+  return { phase: "ready", ready: true, version, error: null, problems: [], held: false, retry_in: null };
+}
+
+/** A start that failed with `error`. */
+function failed(error: string, extra: Record<string, unknown> = {}) {
+  return {
+    phase: "failed", ready: false, version: "0.25.0", error, problems: [],
+    held: false, retry_in: null, ...extra,
+  };
+}
+
+/** Serve a ready server on `version`, as every test before the failed start did. */
+function stubHealth(version: string) {
+  stubServer(ready(version));
 }
 
 beforeEach(() => {
@@ -80,7 +108,7 @@ describe("UpdatesView progress dialog", () => {
     expect(await screen.findByText("Restarting server")).toBeInTheDocument();
   });
 
-  it("closes itself once /api/health reports the new version", async () => {
+  it("closes itself once the server reports the new version", async () => {
     // Server is back, on the new version, but the WebSocket never reconnects
     // (the live state below stays "restarting"/0.24.1 for the whole test).
     stubHealth("0.25.0");
@@ -95,8 +123,8 @@ describe("UpdatesView progress dialog", () => {
     expect(showSuccess).toHaveBeenCalledWith("Updated to v0.25.0");
   });
 
-  it("stays open while health still reports the old version", async () => {
-    // The server answers /api/health before it restarts too. Treating that as
+  it("stays open while the server still reports the old version", async () => {
+    // The server answers its status before it restarts too. Treating that as
     // completion would close the dialog with a false success.
     stubHealth("0.24.1");
     render(<UpdatesView />);
@@ -144,6 +172,58 @@ describe("UpdatesView progress dialog", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
 
     expect(showSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("says why the new version could not start, and what happens next", async () => {
+    stubServer(failed("The project file could not be read.", { held: true }));
+    render(<UpdatesView />);
+    expect(await screen.findByText("Restarting server")).toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+
+    expect(await screen.findByText("OpenAVC could not start")).toBeInTheDocument();
+    expect(screen.getByText("The project file could not be read.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Fix the problem, then open the server's page and press Start again."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Do not close this window/)).not.toBeInTheDocument();
+    expect(showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("says a failed start is tried again, and settles when a later start succeeds", async () => {
+    let answer: Record<string, unknown> = failed("Port 8080 is in use.", { retry_in: 5 });
+    stubServer(() => answer);
+    render(<UpdatesView />);
+    expect(await screen.findByText("Restarting server")).toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(await screen.findByText("Port 8080 is in use.")).toBeInTheDocument();
+    expect(screen.getByText("Trying again in 5 seconds.")).toBeInTheDocument();
+
+    answer = { phase: "starting", ready: false, version: "0.25.0", error: null, problems: [], held: false, retry_in: null };
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.queryByText("OpenAVC could not start")).not.toBeInTheDocument();
+    expect(screen.getByText("Starting again...")).toBeInTheDocument();
+
+    answer = ready("0.25.0");
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Updated to v0.25.0");
+    });
+  });
+
+  it("reads the version from /api/health on a release too old to name it in its status", async () => {
+    // A rollback to an older release: its status says only that it is ready.
+    stubServer({ ready: true, error: null }, "0.24.0");
+    liveState["system.version"] = "0.25.0";
+    render(<UpdatesView />);
+    expect(await screen.findByText("Restarting server")).toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+
+    await waitFor(() => {
+      expect(showSuccess).toHaveBeenCalledWith("Rolled back to v0.24.0");
+    });
   });
 });
 

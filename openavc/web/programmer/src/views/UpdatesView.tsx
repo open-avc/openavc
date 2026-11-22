@@ -7,17 +7,33 @@ import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api/restClient";
-import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
+import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay, restartHeard } from "./updatesHelpers";
 import { cardStyle, sectionTitle } from "./updatesStyles";
 import { PanelSoftwareSection } from "./PanelSoftwareSection";
 import { UpdateWarnings, hasUpdateWarning } from "./UpdateWarnings";
-import { healthProbeUrl } from "../components/shared/restartPollHelpers";
+import { landingUrl } from "../components/shared/restartPollHelpers";
+import { FailedStart } from "../components/shared/RestartProgressDialog";
+import { askStartupStatus, type StartupStatus } from "../api/startupStatus";
+import { BASE, getTunnelPrefix } from "../api/base";
 import { parseApiError } from "../api/errors";
 
-// How often to ask /api/health whether the server is back on a new version.
-// Fast enough that the dialog closes promptly after a swap, slow enough that a
-// server rebinding its port isn't hammered while it starts.
+// How often to ask the server's startup status whether it is back on a new
+// version. Fast enough that the dialog closes promptly after a swap, slow
+// enough that a server rebinding its port isn't hammered while it starts.
 const HEALTH_POLL_INTERVAL_MS = 2000;
+
+/** The running version from /api/health: what a release too old to name its
+ *  version in its startup status says (a rollback to one). "" when it does
+ *  not answer. */
+async function versionFromHealth(): Promise<string> {
+  try {
+    const res = await fetch(`${BASE}/health`, { cache: "no-store" });
+    if (!res.ok) return "";
+    return String((await res.json())?.version ?? "");
+  } catch {
+    return "";
+  }
+}
 
 const btnStyle: React.CSSProperties = {
   display: "inline-flex",
@@ -76,6 +92,11 @@ export function UpdatesView() {
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [watchdogTripped, setWatchdogTripped] = useState(false);
+  // A start of the new version that failed, as the server says it, and a
+  // start under way after one: shown in the progress dialog while the wait
+  // goes on, so a start that follows still settles it.
+  const [startFailure, setStartFailure] = useState<StartupStatus | null>(null);
+  const [startingAgain, setStartingAgain] = useState(false);
   const prevVersionRef = useRef<string>("");
   const prevStatusRef = useRef<string>("");
   // Which action this view started, so the completion toast can tell a
@@ -133,22 +154,37 @@ export function UpdatesView() {
   // Completion detection that does NOT depend on the WebSocket. See
   // healthProbeOutcome: the restart being waited on invalidates this browser's
   // session token, so the Programmer socket reconnects refused and its
-  // snapshot never arrives. /api/health carries no credential and reports the
-  // running version, which is the fact this dialog needs.
+  // snapshot never arrives. The startup status carries no credential, reports
+  // the running version, and says why a start failed, while the server
+  // retries it, holds for Start again or rolls the update back.
   useEffect(() => {
     if (!showProgressModal) return;
     let cancelled = false;
+    let failedBefore = false;
+    setStartFailure(null);
+    setStartingAgain(false);
     const timer = window.setInterval(async () => {
-      let probed = "";
-      try {
-        const res = await fetch(healthProbeUrl(window.location.origin), { cache: "no-store" });
-        if (!res.ok) return;
-        probed = String((await res.json())?.version ?? "");
-      } catch {
-        // Server is mid-restart and not answering yet. Keep polling; the
-        // watchdog below is the backstop if it never comes back.
+      const { status } = await askStartupStatus(`${BASE}/startup-status`, { cache: "no-store" });
+      if (cancelled) return;
+      const heard = restartHeard(status);
+      if (heard.kind === "failed") {
+        failedBefore = true;
+        setStartingAgain(false);
+        setStartFailure(heard.status);
         return;
       }
+      if (heard.kind === "starting") {
+        if (failedBefore) {
+          setStartFailure(null);
+          setStartingAgain(true);
+        }
+        return;
+      }
+      // Not answering yet: the server is between processes. Keep asking;
+      // the watchdog below is the backstop if it never comes back.
+      if (heard.kind === "unheard") return;
+      setStartingAgain(false);
+      const probed = heard.version ?? (await versionFromHealth());
       if (cancelled || !probed) return;
       const outcome = healthProbeOutcome(startVersionRef.current, probed, actionRef.current);
       if (outcome === "updated" || outcome === "rolled_back") {
@@ -575,7 +611,19 @@ export function UpdatesView() {
               </div>
             )}
 
-            {watchdogTripped && updateStatus !== "error" ? (
+            {startFailure && updateStatus !== "error" ? (
+              <FailedStart
+                failure={{
+                  status: startFailure,
+                  page: landingUrl(
+                    "/programmer/",
+                    window.location.origin,
+                    { origin: window.location.origin, prefix: getTunnelPrefix() },
+                  ),
+                }}
+                onClose={() => setShowProgressModal(false)}
+              />
+            ) : watchdogTripped && updateStatus !== "error" ? (
               <div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
                   This is taking longer than expected. The server may still be coming back up.
@@ -591,7 +639,7 @@ export function UpdatesView() {
               </div>
             ) : (
               <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-                Do not close this window or power off the system.
+                {startingAgain ? "Starting again..." : "Do not close this window or power off the system."}
               </div>
             )}
 

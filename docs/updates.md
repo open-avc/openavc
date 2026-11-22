@@ -37,6 +37,8 @@ On Windows, the downloaded installer's digital signature is checked before it ru
 
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
+If the new version cannot start, the progress dialog says why and what happens next: either OpenAVC tries again by itself, or it waits on its own page for you to fix the problem and press **Start again**. The dialog keeps waiting, so it still closes when a later start succeeds. This holds for an update from a version later than v0.40.0.
+
 On Windows, the OpenAVC icon by the clock closes while the installer runs and comes back when the update is done. If the icon had been quit before the update, it stays closed. This holds for an update onto v0.40.0 or later. After a rollback to an earlier version, the icon comes back at the next sign-in, or from Start menu > **OpenAVC Tray**.
 
 On macOS, the OpenAVC menu bar item restarts on the new version when an update or rollback is applied. If it had been quit, it stays closed. This holds for an update from a version later than v0.40.0; after an update from v0.40.0 or earlier, the menu bar item runs the new version from the next sign-in, or after quitting it and opening OpenAVC from Applications.

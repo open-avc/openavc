@@ -2,6 +2,7 @@
 // logic (toast direction, completion detection, history labels) is
 // unit-testable outside React.
 
+import type { StartupStatus } from "../api/startupStatus";
 import { compareVersions } from "../api/versionRule";
 
 /** True when version `a` is older than `b`, by the version rule: a release
@@ -75,8 +76,8 @@ export function updateCompletionOutcome(
  * server" until the watchdog called it slow, and the only way to learn it had
  * worked was to reload and sign in again.
  *
- * `/api/health` needs no credential and reports the running version, which is
- * exactly the fact being waited on. A changed version means the swap
+ * The server's startup status needs no credential and reports the running
+ * version, which is exactly the fact being waited on. A changed version means the swap
  * happened; direction is decided by the same rule the WS path uses.
  */
 export function healthProbeOutcome(
@@ -86,6 +87,24 @@ export function healthProbeOutcome(
 ): CompletionOutcome {
   if (!startVersion || !probedVersion || sameVersion(probedVersion, startVersion)) return null;
   return updateCompletionOutcome(startVersion, "", probedVersion, "", action);
+}
+
+/** What one answer of the server's startup status, while an install's
+ *  restart is waited on, means for the dialog: ready, with the version that
+ *  started (null from a release too old to name it there, which /api/health
+ *  still names); a start that failed, to say why; a start under way; or
+ *  nothing heard (the server between processes). */
+export type RestartHeard =
+  | { kind: "ready"; version: string | null }
+  | { kind: "failed"; status: StartupStatus }
+  | { kind: "starting" }
+  | { kind: "unheard" };
+
+export function restartHeard(status: StartupStatus | null): RestartHeard {
+  if (!status) return { kind: "unheard" };
+  if (status.phase === "ready") return { kind: "ready", version: status.version || null };
+  if (status.phase === "failed") return { kind: "failed", status };
+  return { kind: "starting" };
 }
 
 export interface HistoryEntryLike {

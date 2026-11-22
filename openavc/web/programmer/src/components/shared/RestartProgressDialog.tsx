@@ -21,7 +21,7 @@ type Phase =
 
 /** A failed start the dialog shows: its reason, and where to open the
  *  server's page to press Start again. */
-interface Failure {
+export interface Failure {
   status: StartupStatus;
   page: string;
 }
@@ -314,8 +314,10 @@ function nextStep(status: StartupStatus): string | null {
 }
 
 /** A start that failed: the server's reason and what happens next. The
- *  wait goes on behind it, so a start that follows still reconnects. */
-function FailedStart({ failure, onClose }: { failure: Failure; onClose: () => void }) {
+ *  wait goes on behind it, so a start that follows still reconnects. The
+ *  Updates page's install dialog says a new version's failed start with it
+ *  too. */
+export function FailedStart({ failure, onClose }: { failure: Failure; onClose: () => void }) {
   const next = nextStep(failure.status);
   return (
     <div data-testid="restart-start-failed">
