@@ -16,7 +16,7 @@ import { X } from "lucide-react";
 import {
   getTheme, createTheme, updateTheme, deleteTheme, importTheme,
   ThemeExistsError,
-  type ThemeDefinition, type ThemeSummary,
+  type ThemeDefinition, type ThemeMode, type ThemeSummary,
 } from "../../api/restClient";
 import type { ProjectConfig } from "../../api/types";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
@@ -38,6 +38,13 @@ import { blankThemeId } from "../../views/ui-builder/builderTheme";
 
 // --- Main component ---
 
+/** A theme a file action chose: its id, and the server's light or dark answer
+ *  for one the action's save just made (the list may not hold it yet). */
+interface ChosenTheme {
+  id: string;
+  mode?: ThemeMode;
+}
+
 export interface ThemeStudioProps {
   open: boolean;
   onClose: () => void;
@@ -45,7 +52,8 @@ export interface ThemeStudioProps {
   project: ProjectConfig;
   currentThemeId: string;
   themeOverrides: Record<string, unknown>;
-  onChangeTheme: (themeId: string) => void;
+  /** Choose a theme; `mode` is the server's light or dark answer for one a save just made. */
+  onChangeTheme: (themeId: string, mode?: ThemeMode) => void;
   /** Called to clear project-level theme_overrides after save (they're now baked in). */
   onClearOverrides: () => void;
   onRefreshThemes: () => void;
@@ -171,9 +179,9 @@ export function ThemeStudio({
 
   /** Choose the theme a file action made or left for. Its load keeps the
    *  action's line (the effect above), which the Builder runs at once. */
-  const chooseForAction = (id: string) => {
-    if (id !== currentThemeId) chosenByAction.current = id;
-    onChangeTheme(id);
+  const chooseForAction = (chosen: ChosenTheme) => {
+    if (chosen.id !== currentThemeId) chosenByAction.current = chosen.id;
+    onChangeTheme(chosen.id, chosen.mode);
   };
 
   const clearOverrides = () => {
@@ -213,9 +221,9 @@ export function ThemeStudio({
     return attempt({
       failure: orStepFailed("Save"),
       work: () => createTheme(themeFile(working, { id, name, author: "Custom", preview_colors: previewColors(working.variables) })),
-      done: () => {
+      done: (saved) => {
         // Choosing a theme clears the project's overrides in the same edit.
-        chooseForAction(id);
+        chooseForAction({ id, mode: saved.mode });
         onRefreshThemes();
         return `Saved as "${name}"`;
       },
@@ -238,7 +246,7 @@ export function ThemeStudio({
       failure: orStepFailed("Delete"),
       work: () => deleteTheme(working.id),
       done: () => {
-        chooseForAction(afterDelete);
+        chooseForAction({ id: afterDelete });
         onRefreshThemes();
         return `Deleted "${working.name}"`;
       },
@@ -252,11 +260,11 @@ export function ThemeStudio({
       work: async () => {
         const source = await getTheme(sourceId);
         const copy = duplicateOf(sourceId, sourceName, takenIds());
-        await createTheme(themeFile(source, { ...copy, author: "Custom" }));
-        return copy;
+        const { mode } = await createTheme(themeFile(source, { ...copy, author: "Custom" }));
+        return { ...copy, mode };
       },
       done: (copy) => {
-        chooseForAction(copy.id);
+        chooseForAction(copy);
         onRefreshThemes();
         return `Duplicated as "${copy.name}"`;
       },
@@ -275,8 +283,8 @@ export function ThemeStudio({
   };
 
   /** An import the server took: chosen, and said. */
-  const chooseImported = (result: { theme_id: string; name: string }) => {
-    chooseForAction(result.theme_id);
+  const chooseImported = (result: { theme_id: string; name: string; mode: ThemeMode }) => {
+    chooseForAction({ id: result.theme_id, mode: result.mode });
     onRefreshThemes();
     return `Imported "${result.name}"`;
   };
@@ -323,11 +331,11 @@ export function ThemeStudio({
       work: async () => {
         const parsed = JSON.parse(await file.text()) as ThemeDefinition;
         const kept = keptBeside(id, parsed.name, takenIds());
-        await createTheme(themeFile(parsed, kept));
-        return kept;
+        const { mode } = await createTheme(themeFile(parsed, kept));
+        return { ...kept, mode };
       },
       done: (kept) => {
-        chooseForAction(kept.id);
+        chooseForAction(kept);
         onRefreshThemes();
         return `Imported as "${kept.name}"`;
       },

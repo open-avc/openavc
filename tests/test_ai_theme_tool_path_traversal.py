@@ -9,7 +9,7 @@ Windows backslash still escapes).
 
 These tests drive the AI tools directly and assert traversal/absolute theme
 ids are rejected (no file content leaked, nothing persisted), and that the
-shared REST guard ``_safe_theme_path`` rejects the same — while a real built-in
+shared guard, the theme rule's ``theme_file``, rejects the same — while a real built-in
 theme still loads.
 """
 
@@ -18,10 +18,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
-
 from openavc.api import rest
-from openavc.api.themes import _safe_theme_path
+from openavc.core.themes import ThemeRefused, theme_file
 from openavc.cloud.ai_tool_handler import AIToolHandler
 
 
@@ -87,12 +85,11 @@ async def test_ai_apply_theme_rejects_traversal(theme_handler):
     assert engine.project.ui.settings.theme_id == "dark-default"
 
 
-def test_rest_safe_theme_path_guard(tmp_path):
+def test_the_theme_file_guard(tmp_path):
     # Valid slug resolves inside the dir.
-    assert _safe_theme_path(tmp_path, "dark-default") == (tmp_path / "dark-default.json").resolve()
-    # Relative traversal and absolute paths are rejected with 400.
-    with pytest.raises(HTTPException) as exc:
-        _safe_theme_path(tmp_path, "../cloud")
-    assert exc.value.status_code == 400
-    with pytest.raises(HTTPException):
-        _safe_theme_path(tmp_path, str(tmp_path.parent / "cloud"))
+    assert theme_file(tmp_path, "dark-default") == (tmp_path / "dark-default.json").resolve()
+    # Relative traversal and absolute paths are refused (a 400 at the REST door).
+    with pytest.raises(ThemeRefused):
+        theme_file(tmp_path, "../cloud")
+    with pytest.raises(ThemeRefused):
+        theme_file(tmp_path, str(tmp_path.parent / "cloud"))

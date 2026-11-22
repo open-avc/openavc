@@ -14,21 +14,20 @@
  */
 import { useCallback } from "react";
 import type { ProjectConfig, UIPage, UISettings } from "../../api/types";
-import { isLightColor } from "../../components/ui-builder/colorUtils";
+import { PROJECT_VALUES } from "../../api/projectValues.gen";
+import type { ThemeMode } from "../../api/systemClient";
 import { showSuccess } from "../../store/toastStore";
 import type { ThemeDefaults, ThemeSummary } from "./builderTheme";
 import { projectEdit, type EditRun, type ProjectEdit } from "./useEditRun";
 
 /**
  * The light or dark treatment a project falls back on when its theme cannot
- * be found: from the theme's panel background, and only when that cannot be
- * read, from its id. A light theme whose id lacks "light" is still light.
+ * be found: the one the server's theme rule gave the theme, as the server's
+ * answer to the save that made it (`given`) or in the list (its `mode`), and
+ * the project schema's default for a theme the list lacks.
  */
-function themeFallbackMode(themes: ThemeSummary[], id: string): "light" | "dark" {
-  const bg = themes.find((t) => t.id === id)?.variables?.panel_bg;
-  const light = typeof bg === "string" ? isLightColor(bg) : null;
-  if (light !== null) return light ? "light" : "dark";
-  return id.includes("light") || id === "minimal" ? "light" : "dark";
+function themeFallbackMode(themes: ThemeSummary[], id: string, given?: ThemeMode): string {
+  return given ?? themes.find((t) => t.id === id)?.mode ?? PROJECT_VALUES.UISettings.theme.default;
 }
 
 /** The pages with each control's style overrides removed wherever its type's
@@ -49,9 +48,9 @@ function withoutThemeStyles(pages: UIPage[], defaults: ThemeDefaults): UIPage[] 
   }));
 }
 
-function chooseTheme(project: ProjectConfig, themes: ThemeSummary[], id: string): ProjectEdit {
+function chooseTheme(project: ProjectConfig, themes: ThemeSummary[], id: string, mode?: ThemeMode): ProjectEdit {
   const settings = project.ui.settings;
-  const theme = themeFallbackMode(themes, id);
+  const theme = themeFallbackMode(themes, id, mode);
   return projectEdit(project, {
     settings: { ...settings, theme_id: id, theme, accent_color: "", font_family: "", theme_overrides: {} },
   }, "Change theme");
@@ -74,7 +73,8 @@ function saveSettings(project: ProjectConfig, settings: UISettings): ProjectEdit
 }
 
 export interface PanelEdits {
-  chooseTheme: (id: string) => void;
+  /** Choose a theme; `mode` is the server's answer for one a save just made, which the list may not hold yet. */
+  chooseTheme: (id: string, mode?: ThemeMode) => void;
   clearOverrides: () => void;
   resetStyles: () => void;
   saveStylesheet: (css: string) => void;
@@ -93,8 +93,8 @@ interface ThemeRead {
  *  page's handler did; nothing reads the others' identity. */
 export function usePanelEdits(project: ProjectConfig | null, run: EditRun, theme: ThemeRead): PanelEdits {
   const { themes, defaults } = theme;
-  const choose = useCallback((id: string) => {
-    if (project) run.commit(chooseTheme(project, themes, id));
+  const choose = useCallback((id: string, mode?: ThemeMode) => {
+    if (project) run.commit(chooseTheme(project, themes, id, mode));
   }, [project, themes, run]);
   const clearOverrides = useCallback(() => {
     if (project) run.join(clearThemeOverrides(project));

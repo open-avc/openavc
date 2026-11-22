@@ -65,7 +65,9 @@ beforeEach(() => {
   calls.length = 0;
   getTheme.mockImplementation(logged("getTheme", async (id: string) => themeById(id)));
   updateTheme.mockImplementation(logged("updateTheme", async () => ({ status: "ok" })));
-  createTheme.mockImplementation(logged("createTheme", async () => ({ status: "ok", theme_id: "x" })));
+  // A light answer, so a test can see the server's light or dark reach the choice
+  // (the list does not hold a theme the save just made).
+  createTheme.mockImplementation(logged("createTheme", async () => ({ status: "ok", theme_id: "x", mode: "light" })));
   deleteTheme.mockImplementation(logged("deleteTheme", async () => ({ status: "ok" })));
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -158,7 +160,7 @@ describe("Save as Custom", () => {
       id: "dark-custom", name: "Dark (Custom)", author: "Custom", preview_colors: ["#010101"],
     })));
     expect(calls).toEqual(["createTheme", "changeTheme", "refreshThemes"]);
-    expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-custom");
+    expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-custom", "light");
     expect(cb.onThemeSaved).not.toHaveBeenCalled();
   });
 
@@ -204,7 +206,7 @@ describe("Delete", () => {
     await screen.findByText('Deleted "Sample"');
     expect(deleteTheme).toHaveBeenCalledExactlyOnceWith("studio-sample");
     expect(calls).toEqual(["deleteTheme", "changeTheme", "refreshThemes"]);
-    expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-default");
+    expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-default", undefined);
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
@@ -218,7 +220,7 @@ describe("Delete", () => {
     expect(question).toHaveTextContent("Pages still set to this theme will fall back to Light Modern.");
     fireEvent.click(within(question).getByRole("button", { name: "Delete" }));
     await screen.findByText('Deleted "Sample"');
-    expect(cb.onChangeTheme).toHaveBeenCalledExactlyOnceWith("light-modern");
+    expect(cb.onChangeTheme).toHaveBeenCalledExactlyOnceWith("light-modern", undefined);
   });
 
   it("does nothing when the question is cancelled", async () => {
@@ -263,7 +265,7 @@ describe("Duplicate, from the picker", () => {
     expect(getTheme).toHaveBeenLastCalledWith("dark");
     expect(sentTo(createTheme)).toBe(json(sent(builtinTheme(), { id: "dark-copy", name: "Dark (Copy)", author: "Custom" })));
     expect(calls).toEqual(["getTheme", "createTheme", "changeTheme", "refreshThemes"]);
-    expect(cb.onChangeTheme).toHaveBeenCalledExactlyOnceWith("dark-copy");
+    expect(cb.onChangeTheme).toHaveBeenCalledExactlyOnceWith("dark-copy", "light");
   });
 
   it.each([
@@ -398,7 +400,7 @@ describe("Import", () => {
     delete expected._source;
     expect(sentTo(createTheme)).toBe(json(expected));
     expect(calls).toEqual(["createTheme", "changeTheme", "refreshThemes"]);
-    expect(cb.onChangeTheme).toHaveBeenCalledWith(id);
+    expect(cb.onChangeTheme).toHaveBeenCalledWith(id, "light");
   });
 
   it("numbers a kept import past the colliding id even when the theme list does not have it yet", async () => {

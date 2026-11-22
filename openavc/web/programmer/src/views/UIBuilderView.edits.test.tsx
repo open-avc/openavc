@@ -315,7 +315,7 @@ describe("structural edits", () => {
     expect(ui().settings.theme_overrides).toEqual({ accent: "#123456" });
   });
 
-  it("changes the theme, choosing light or dark from its background and clearing the old theme's tuning", async () => {
+  it("changes the theme, taking light or dark from the theme list and clearing the old theme's tuning", async () => {
     await renderPage(UIBuilderView);
     call(() => props().onThemeChange("paper"));
     expect(undoLog()).toEqual([["Change theme", "settings"]]);
@@ -325,27 +325,31 @@ describe("structural edits", () => {
     expect(ui().settings.theme_overrides).toEqual({});
     call(() => props().onThemeChange("dark-default"));
     expect(ui().settings.theme).toBe("dark");
-    // No background to read: the id says.
-    call(() => props().onThemeChange("light-ish"));
-    expect(ui().settings.theme).toBe("light");
     call(() => props().onThemeChange("minimal"));
     expect(ui().settings.theme).toBe("light");
+    // A theme the list lacks: the project schema's default.
     call(() => props().onThemeChange("unknown-theme"));
     expect(ui().settings.theme).toBe("dark");
   });
 
-  it("goes by the id when the theme's background is not a colour it can read", async () => {
+  it("records the treatment the list gives, never one read from the theme's colours", async () => {
     const { api, THEMES } = await import("../test/uiBuilderHarness");
     api.listThemes.mockResolvedValue([
       ...THEMES,
-      { ...THEMES[0], id: "light-sky", variables: { panel_bg: "sky gradient" } },
-      { ...THEMES[0], id: "night", variables: { panel_bg: "night gradient" } },
+      { ...THEMES[0], id: "light-sky", variables: { panel_bg: "#000000" }, mode: "light" },
+      { ...THEMES[0], id: "night", variables: { panel_bg: "#ffffff" }, mode: "dark" },
     ]);
     await renderPage(UIBuilderView);
     call(() => props().onThemeChange("light-sky"));
     expect(ui().settings.theme).toBe("light");
     call(() => props().onThemeChange("night"));
     expect(ui().settings.theme).toBe("dark");
+  });
+
+  it("records the server's answer for a theme a save just made, which the list does not hold yet", async () => {
+    await drawn();
+    call(() => seen.ThemeStudio.onChangeTheme("paper-copy", "light"));
+    expect(ui().settings).toMatchObject({ theme_id: "paper-copy", theme: "light" });
   });
 
   it("hands the Properties panel no theme changer while the Theme Studio is open", async () => {

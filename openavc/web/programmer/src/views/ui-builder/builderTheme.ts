@@ -24,23 +24,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { blankDrawn } from "../../api/projectValues";
 import { PROJECT_VALUES } from "../../api/projectValues.gen";
+import { THEME_VALUES } from "../../api/themeValues.gen";
 import { getTunnelPrefix, listThemes } from "../../api/restClient";
+import type { ThemeSummary } from "../../api/systemClient";
 import type { UISettings } from "../../api/types";
 import { CSS_VAR_FALLBACKS } from "../../components/ui-builder/colorUtils";
 import { showError } from "../../store/toastStore";
 
 export type ThemeDefaults = Record<string, Record<string, unknown>>;
 
-export interface ThemeSummary {
-  id: string;
-  name: string;
-  version: string;
-  author: string;
-  description: string;
-  preview_colors: string[];
-  variables: Record<string, unknown>;
-  source: string;
-}
+export type { ThemeSummary };
 
 interface ThemeFile {
   variables?: Record<string, unknown>;
@@ -122,8 +115,8 @@ function fillBaseline(out: ThemeDefaults, vars: Record<string, unknown>) {
 }
 
 /** The font the panel's stylesheet draws (panel.css, its body) when neither the
- *  theme nor the project names one. */
-export const PANEL_FONT = "'Inter', system-ui, -apple-system, sans-serif";
+ *  theme nor the project names one: the theme rule's fallback for font_family. */
+export const PANEL_FONT = THEME_VALUES.variables.find((v) => v.name === "font_family")!.fallback;
 
 /** What the panel draws for a blank Accent Color and a blank Font Family. */
 export interface BlankLook {

@@ -7,6 +7,7 @@ from typing import Any
 from openavc.cloud.tools import apply_tool_edit
 from openavc.core.asset_references import asset_users
 from openavc.core.device_logins import SAVED_LOGIN
+from openavc.core.themes import ThemeRefused, all_themes, find_theme, project_themes_dir, theme_mode
 from openavc.drivers.registry import get_driver_class
 from openavc.utils.log_redaction import (
     MIN_SECRET_LEN,
@@ -18,7 +19,6 @@ from openavc.utils.log_redaction import (
 )
 from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
-from openavc.utils.paths import safe_path_within
 
 log = get_logger(__name__)
 
@@ -293,8 +293,6 @@ class SystemToolsMixin:
         }
 
     async def _list_themes(self, input: dict) -> Any:
-        from openavc.api.themes import _list_all_themes
-
         engine = self._get_engine()
         active_theme = None
         if engine and engine.project:
@@ -303,7 +301,6 @@ class SystemToolsMixin:
                 # The theme the panel draws, a project with no theme id included.
                 active_theme = settings.drawn_theme_id()
 
-        themes = _list_all_themes()
         return [
             {
                 "id": t["id"],
@@ -312,74 +309,53 @@ class SystemToolsMixin:
                 "source": t.get("_source", "custom"),
                 "active": t["id"] == active_theme if active_theme else False,
             }
-            for t in themes
+            for t in all_themes(self._custom_themes_dir())
         ]
 
-    async def _get_theme(self, input: dict) -> Any:
-        from openavc.api.themes import BUILTIN_THEMES_DIR, _custom_themes_dir, _load_theme
+    def _custom_themes_dir(self) -> Path | None:
+        """The custom themes folder of the running project, or None without one."""
+        engine = self._get_engine()
+        project_path = getattr(engine, "project_path", None) if engine else None
+        if not project_path:
+            return None
+        try:
+            return project_themes_dir(project_path)
+        except OSError:
+            log.debug("No custom themes folder for %s", project_path, exc_info=True)
+            return None
 
+    def _find_theme(self, input: dict) -> dict:
+        """The theme ``theme_id`` names, looked up where the panel looks, or an error."""
         theme_id = input.get("theme_id", "")
         if not theme_id:
             return {"error": "theme_id is required"}
-
-        # Reject a theme_id that escapes the themes dir (../, absolute, or a
-        # Windows backslash jump) — otherwise it reads arbitrary .json files
-        # (e.g. cloud.json, the system key) and returns them to the cloud AI.
-        builtin_path = safe_path_within(BUILTIN_THEMES_DIR, f"{theme_id}.json")
-        if builtin_path is None:
-            return {"error": "Invalid theme id"}
-        if builtin_path.exists():
-            theme = _load_theme(builtin_path)
-            theme["_source"] = "builtin"
-            return theme
-
         try:
-            custom_path = safe_path_within(_custom_themes_dir(), f"{theme_id}.json")
-            if custom_path and custom_path.exists():
-                theme = _load_theme(custom_path)
-                theme["_source"] = "custom"
-                return theme
-        except Exception:
-            log.debug("Failed to load custom theme '%s'", theme_id, exc_info=True)
+            theme = find_theme(theme_id, self._custom_themes_dir())
+        except ThemeRefused as refused:
+            return {"error": str(refused)}
+        if theme is None:
+            return {"error": f"Theme '{theme_id}' not found"}
+        return theme
 
-        return {"error": f"Theme '{theme_id}' not found"}
+    async def _get_theme(self, input: dict) -> Any:
+        return self._find_theme(input)
 
     async def _apply_theme(self, input: dict) -> Any:
-        from openavc.api.themes import BUILTIN_THEMES_DIR, _custom_themes_dir
-
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"error": "No project loaded"}
 
-        theme_id = input.get("theme_id", "")
-        if not theme_id:
-            return {"error": "theme_id is required"}
-
-        # Reject a traversal theme_id before probing the filesystem or
-        # persisting it as the active theme.
-        builtin_path = safe_path_within(BUILTIN_THEMES_DIR, f"{theme_id}.json")
-        if builtin_path is None:
-            return {"error": "Invalid theme id"}
-
-        # Verify theme exists
-        builtin = builtin_path.exists()
-        try:
-            custom_path = safe_path_within(_custom_themes_dir(), f"{theme_id}.json")
-            custom = bool(custom_path) and custom_path.exists()
-        except Exception:
-            log.debug("Failed to check custom themes directory", exc_info=True)
-            custom = False
-
-        if not builtin and not custom:
-            return {"error": f"Theme '{theme_id}' not found"}
+        theme = self._find_theme(input)
+        if "error" in theme:
+            return theme
+        theme_id = input["theme_id"]
+        mode = theme_mode(theme)
 
         # UI-section change: the apply pushes the new ui.definition to
         # connected panels — no other subsystem is touched.
         def mutate(project):
             project.ui.settings.theme_id = theme_id
-            project.ui.settings.theme = (
-                "light" if ("light" in theme_id or theme_id == "minimal") else "dark"
-            )
+            project.ui.settings.theme = mode
 
         await apply_tool_edit(engine, mutate)
 

@@ -38,15 +38,13 @@
 
 import { basePath } from './base_path.js';
 import { applyStyle } from './paint.js';
+import { THEME_VALUES } from './theme_values.gen.js';
 
-// The theme a frame is told about when it opens.
-const THEME_VARIABLES = [
-    '--panel-bg', '--panel-text', '--panel-accent',
-    '--panel-button-bg', '--panel-button-text', '--panel-button-border',
-    '--panel-surface', '--panel-surface-border',
-    '--panel-danger', '--panel-success', '--panel-warning',
-    '--panel-border-radius',
-];
+// The theme a frame is told about when it opens: every theme variable's custom
+// property (the theme rule's table, openavc/core/themes.py).
+const THEME_VARIABLES = THEME_VALUES.variables
+    .map(variable => variable.css_property)
+    .filter(Boolean);
 
 const NO_GRANT = Object.freeze({ devices: [], variables: [], macros: false, navigate: false });
 

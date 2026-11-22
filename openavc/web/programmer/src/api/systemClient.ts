@@ -210,6 +210,8 @@ export interface ThemeSummary {
    *  per-card previews (font + button colors + surface) without per-card fetches. */
   variables: Record<string, unknown>;
   source: string;
+  /** The light or dark treatment the server's theme rule gives this theme. */
+  mode: ThemeMode;
 }
 
 export interface ThemeDefinition {
@@ -233,7 +235,10 @@ export async function getTheme(themeId: string): Promise<ThemeDefinition> {
   return request<ThemeDefinition>(`/themes/${themeId}`);
 }
 
-export async function createTheme(data: ThemeDefinition): Promise<{ status: string; theme_id: string }> {
+/** The light or dark treatment the server's theme rule gives a theme. */
+export type ThemeMode = "light" | "dark";
+
+export async function createTheme(data: ThemeDefinition): Promise<{ status: string; theme_id: string; mode: ThemeMode }> {
   return request("/themes", {
     method: "POST",
     body: JSON.stringify(data),
@@ -263,7 +268,7 @@ export class ThemeExistsError extends Error {
 export async function importTheme(
   file: File,
   overwrite = false,
-): Promise<{ status: string; theme_id: string; name: string }> {
+): Promise<{ status: string; theme_id: string; name: string; mode: ThemeMode }> {
   const formData = new FormData();
   formData.append("file", file);
   const url = `${BASE}/themes/import${overwrite ? "?overwrite=true" : ""}`;

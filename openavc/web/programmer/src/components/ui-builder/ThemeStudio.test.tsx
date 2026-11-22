@@ -37,7 +37,7 @@ describe("Theme Studio import", () => {
     }
     fetchFn.mockResolvedValue({
       ok: true, status: 200,
-      json: async () => ({ status: "imported", theme_id: "imported", name: "Imported" }),
+      json: async () => ({ status: "imported", theme_id: "imported", name: "Imported", mode: "light" }),
     });
     vi.stubGlobal("fetch", fetchFn);
     const onChangeTheme = vi.fn();
@@ -50,7 +50,7 @@ describe("Theme Studio import", () => {
       new File([JSON.stringify({ ...theme, id: "imported" })], "imported.avctheme"));
     if (overwrite) await user.click(await screen.findByRole("button", { name: "Overwrite" }));
     await screen.findByText('Imported "Imported"');
-    expect(onChangeTheme).toHaveBeenCalledExactlyOnceWith("imported");
+    expect(onChangeTheme).toHaveBeenCalledExactlyOnceWith("imported", "light");
     expect(onRefreshThemes).toHaveBeenCalledOnce();
   });
 });

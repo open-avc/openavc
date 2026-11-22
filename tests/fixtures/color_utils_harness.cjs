@@ -8,10 +8,12 @@ const fs = require("fs");
 const path = require("path");
 
 const colorUtilsPath = process.argv[2];
-const src = fs.readFileSync(colorUtilsPath, "utf8");
-
 const esbuild = require("esbuild");
-const { code } = esbuild.transformSync(src, { loader: "ts", format: "cjs" });
+// Bundled, not transpiled alone: colorUtils.ts reads the generated theme table.
+const { outputFiles } = esbuild.buildSync({
+  entryPoints: [colorUtilsPath], bundle: true, format: "cjs", platform: "node", write: false,
+});
+const code = outputFiles[0].text;
 const moduleObj = { exports: {} };
 const fn = new Function("exports", "require", "module", "__filename", "__dirname", code);
 fn(moduleObj.exports, require, moduleObj, colorUtilsPath, path.dirname(colorUtilsPath));
@@ -85,26 +87,10 @@ results.derive_surface_border = {
   pass: /^#[0-9a-f]{6}$/i.test(C.deriveSurfaceBorder("#2a2a4a")),
   detail: C.deriveSurfaceBorder("#2a2a4a"),
 };
-// Effective fallback map mirrors :root in panel-elements.css.
+// The fallback map is the theme rule's table (themeValues.gen.ts).
 results.css_var_fallbacks = {
   pass: C.CSS_VAR_FALLBACKS.panel_bg === "#1a1a2e" && C.CSS_VAR_FALLBACKS.accent === "#2196F3",
   detail: C.CSS_VAR_FALLBACKS.panel_bg,
-};
-
-// isLightColor classifies a theme's panel background by luminance, so the
-// light/dark fallback mode is derived from the actual color, not the theme id.
-results.l053_is_light = {
-  pass:
-    C.isLightColor("#f5f5f5") === true &&   // light-modern panel_bg
-    C.isLightColor("#1a1a2e") === false &&  // dark-default panel_bg
-    C.isLightColor("transparent") === null && // unparseable → caller falls back
-    C.isLightColor("not-a-color") === null,
-  detail: [
-    C.isLightColor("#f5f5f5"),
-    C.isLightColor("#1a1a2e"),
-    C.isLightColor("transparent"),
-    C.isLightColor("not-a-color"),
-  ],
 };
 
 process.stdout.write(JSON.stringify(results));

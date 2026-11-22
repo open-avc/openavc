@@ -1,0 +1,31 @@
+{
+  "about": "Colours read as the panel reads them (web/panel/modules/lit.js rgbChannels and relativeLuminance). tests/test_theme_rule.py runs every one through openavc/core/themes.py and through lit.js and holds the two equal: the light or dark treatment of a theme is decided on the server from the colour the panel would read.",
+  "colours": [
+    "#fff",
+    "#FAFAFA",
+    "#fafafa80",
+    "#abcd",
+    "#1a1a2e",
+    " #F5F5F5 ",
+    "#12345",
+    "#ggg",
+    "rgb(250, 250, 250)",
+    "rgba(10,10,10,0.5)",
+    "rgb(100% 100% 100% / 50%)",
+    "rgb(50%, 0, 100%)",
+    "rgb(12.5, 300, -4)",
+    "rgb(2.5, 3.5, 0.49)",
+    "rgb(12abc, 0, 0)",
+    "rgb(.5e2, 1e999, -1e999)",
+    "rgb(1, 2)",
+    "rgb(a, b, c)",
+    "RGB(255,255,255)",
+    "white",
+    "hsl(0, 0%, 100%)",
+    "transparent",
+    "sky gradient",
+    "",
+    5,
+    null
+  ]
+}

@@ -31,6 +31,7 @@
 import { assetUrl, basePath } from './base_path.js';
 import { drawFadedPicture, gradientCss } from './paint.js';
 import { chosenWord, themeIdOf } from './project_values.js';
+import { THEME_VALUES } from './theme_values.gen.js';
 
 // How long the first draw waits for the theme before going ahead without it.
 // The fetch is same-origin and answers in milliseconds; this only exists so a
@@ -39,26 +40,15 @@ import { chosenWord, themeIdOf } from './project_values.js';
 // first anyway -- and repaints when the theme finally lands.
 export const FIRST_THEME_WAIT_MS = 1000;
 
-// Theme variables and the custom properties they become. The last four
-// (accent_hover, button_border, surface, surface_border) aren't consumed by
-// any rule in panel-elements.css today, but are exposed so theme authors and
-// user CSS can reference them via var(--panel-*). Hover derives from
-// accent/button via CSS filter (no *_hover token). Active button bg derives
-// from --panel-accent in CSS (no separate token).
-const CSS_VARIABLES = {
-    panel_bg: '--panel-bg',
-    panel_text: '--panel-text',
-    accent: '--panel-accent',
-    button_bg: '--panel-button-bg',
-    button_text: '--panel-button-text',
-    button_border: '--panel-button-border',
-    danger: '--panel-danger',
-    success: '--panel-success',
-    warning: '--panel-warning',
-    surface: '--panel-surface',
-    surface_border: '--panel-surface-border',
-    border_radius: '--panel-border-radius',
-};
+// Theme variables and the custom properties they become, from the theme
+// rule's table (openavc/core/themes.py). Hover and the active button's colour
+// derive from these in CSS; a few are used by no rule in panel-elements.css
+// and are there for theme authors and user CSS, through var(--panel-*).
+const CSS_VARIABLES = Object.fromEntries(
+    THEME_VALUES.variables
+        .filter(variable => variable.css_property)
+        .map(variable => [variable.name, variable.css_property]),
+);
 
 /** A theme from the server, or null when there is none to be had. */
 function fetchTheme(themeId) {

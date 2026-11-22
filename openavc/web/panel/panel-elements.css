@@ -32,6 +32,8 @@
  */
 
 /* Default theme variables (overridden by active theme on the panel or builder canvas).
+   They are the theme rule's fallbacks (openavc/core/themes.py), and a test holds
+   the two equal: change a value there and regenerate, then here.
    Hover/pressed states are derived from these via CSS filter() — no separate
    *_hover token (touch panels don't hover). Active button bg derives from
    --panel-accent so customizing the accent updates active button styling. */

@@ -8,14 +8,18 @@ Themes are flat JSON files; built-in themes remain application resources.
 
 from __future__ import annotations
 
-import re
 import shutil
 import zipfile
 from pathlib import Path
 
+from openavc.core.themes import ID_PATTERN
 from openavc.utils.paths import safe_path_within
 
-_FILENAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\.json")
+
+def _is_theme_filename(name: str) -> bool:
+    """A theme's file name: its id (the theme rule's) and ``.json``."""
+    stem, dot, suffix = name.rpartition(".")
+    return bool(dot) and suffix == "json" and ID_PATTERN.fullmatch(stem) is not None
 
 
 def zip_entries(themes_dir: Path) -> list[tuple[str, Path]]:
@@ -25,7 +29,7 @@ def zip_entries(themes_dir: Path) -> list[tuple[str, Path]]:
     return [
         (f"themes/{f.name}", f)
         for f in sorted(themes_dir.iterdir())
-        if _FILENAME.fullmatch(f.name) and f.is_file() and not f.is_symlink()
+        if _is_theme_filename(f.name) and f.is_file() and not f.is_symlink()
     ]
 
 
@@ -42,7 +46,7 @@ def extract_from_zip(zf: zipfile.ZipFile, destination: Path) -> None:
         if not name.startswith("themes/"):
             continue
         filename = name[len("themes/"):]
-        if not _FILENAME.fullmatch(filename):
+        if not _is_theme_filename(filename):
             continue
         target = safe_path_within(destination, filename)
         if target is None:

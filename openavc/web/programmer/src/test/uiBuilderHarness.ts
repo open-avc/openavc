@@ -22,10 +22,10 @@ export { api, commands, mounts, seen, toast, ws };
 // --- The invented project ---
 
 export const THEMES = [
-  { id: "dark-default", name: "Dark", version: "1", author: "", description: "", preview_colors: [], variables: { panel_bg: "#101010" }, source: "builtin" },
-  { id: "paper", name: "Paper", version: "1", author: "", description: "", preview_colors: [], variables: { panel_bg: "#fafafa" }, source: "builtin" },
-  { id: "light-ish", name: "No bg", version: "1", author: "", description: "", preview_colors: [], variables: {}, source: "builtin" },
-  { id: "minimal", name: "Minimal", version: "1", author: "", description: "", preview_colors: [], variables: {}, source: "builtin" },
+  { id: "dark-default", name: "Dark", version: "1", author: "", description: "", preview_colors: [], variables: { panel_bg: "#101010" }, source: "builtin", mode: "dark" },
+  { id: "paper", name: "Paper", version: "1", author: "", description: "", preview_colors: [], variables: { panel_bg: "#fafafa" }, source: "builtin", mode: "light" },
+  { id: "light-ish", name: "No bg", version: "1", author: "", description: "", preview_colors: [], variables: {}, source: "builtin", mode: "light" },
+  { id: "minimal", name: "Minimal", version: "1", author: "", description: "", preview_colors: [], variables: {}, source: "builtin", mode: "light" },
 ];
 
 export function el(id: string, type: string, over: Partial<UIElement> = {}): UIElement {

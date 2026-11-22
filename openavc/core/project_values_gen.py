@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import json
 import typing
-from pathlib import Path
 from typing import Any
 
 import annotated_types
@@ -39,6 +38,7 @@ from pydantic.fields import FieldInfo
 from pydantic.types import AllowInfNan
 
 from openavc.core.project_loader import OneOf, ProjectConfig, UISettings, blank_rule
+from openavc.utils.generated import write_artifacts
 
 TS_ARTIFACT = "openavc/web/programmer/src/api/projectValues.gen.ts"
 PANEL_ARTIFACT = "openavc/web/panel/modules/project_values.gen.js"
@@ -293,13 +293,7 @@ def render(artifact: str) -> str:
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parents[2]
-    for artifact in ARTIFACTS:
-        path = repo_root / artifact
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(artifact), encoding="utf-8", newline="\n")
-        print(f"wrote {artifact}")
-    return 0
+    return write_artifacts(ARTIFACTS, render)
 
 
 if __name__ == "__main__":

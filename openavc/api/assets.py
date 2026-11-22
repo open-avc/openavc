@@ -341,14 +341,16 @@ def _installed_themes() -> list[dict[str, Any]]:
     A theme's ``page_defaults.background_image`` resolves through the same
     ``assets://`` path an element's does, so an asset only a theme names is
     still an asset in use -- and losing it takes the background off every page
-    running that theme rather than one. Asked of ``api.themes``' own reader
-    rather than re-globbing the two directories here: a second answer to "which
-    themes exist" is how one door would come to disagree with the other.
+    running that theme rather than one. Asked of the theme rule's lookup
+    (``core/themes.py``) rather than re-globbing the two directories here: a
+    second answer to "which themes exist" is how one door would come to
+    disagree with the other.
     """
-    from openavc.api.themes import _list_all_themes
+    from openavc.api.themes import _custom_themes_dir
+    from openavc.core.themes import all_themes
 
     try:
-        return _list_all_themes()
+        return all_themes(_custom_themes_dir())
     except Exception:
         # Deliberately everything, including the HTTPException that reader
         # raises when the themes module has no engine: whether themes can be

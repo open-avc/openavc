@@ -63,7 +63,7 @@ export function builtinTheme(): ThemeDefinition {
 function summary(t: ThemeDefinition, source: string): ThemeSummary {
   return {
     id: t.id, name: t.name, version: t.version, author: t.author, description: t.description,
-    preview_colors: t.preview_colors, variables: t.variables, source,
+    preview_colors: t.preview_colors, variables: t.variables, source, mode: "dark",
   };
 }
 

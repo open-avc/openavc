@@ -78,7 +78,6 @@ SCENARIOS = [
     "h036_levels",
     "derive_surface_border",
     "css_var_fallbacks",
-    "l053_is_light",
 ]
 
 

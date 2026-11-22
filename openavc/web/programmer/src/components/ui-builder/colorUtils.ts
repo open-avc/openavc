@@ -5,6 +5,8 @@
 // renderer. The contrast checker and the color picker both rely on parseColor so
 // a valid CSS color the panel renders fine is never misread as "not a color".
 
+import { THEME_VALUES } from "../../api/themeValues.gen";
+
 export interface Rgba { r: number; g: number; b: number; a: number; }
 
 export function clamp255(n: number): number {
@@ -113,16 +115,6 @@ export function adjustHex(hex: string, amount: number): string {
   return `#${adjusted.map((c) => clamp255(c).toString(16).padStart(2, "0")).join("")}`;
 }
 
-// Classify a CSS color as a light or dark surface by WCAG relative luminance.
-// Returns null when the value can't be parsed, so a caller can fall back to a
-// heuristic. Used to derive a theme's light/dark mode from its actual panel
-// background instead of guessing from the theme id.
-export function isLightColor(value: string): boolean | null {
-  const c = parseColor(value);
-  if (!c) return null;
-  return relativeLuminance(c.r, c.g, c.b) > 0.5;
-}
-
 export function deriveSurfaceBorder(surface: string): string {
   const rgb = parseColor(surface);
   if (!rgb) return surface;
@@ -130,19 +122,9 @@ export function deriveSurfaceBorder(surface: string): string {
   return adjustHex(surface, lum < 0.5 ? 0.2 : -0.15);
 }
 
-// Effective CSS-variable fallbacks (mirrors :root in panel-elements.css). Used so
-// a cleared theme/element color shows the value the panel actually renders rather
-// than a misleading blank/black field.
-export const CSS_VAR_FALLBACKS: Record<string, string> = {
-  panel_bg: "#1a1a2e",
-  panel_text: "#ffffff",
-  accent: "#2196F3",
-  button_bg: "#424242",
-  button_text: "#cccccc",
-  button_border: "#555555",
-  danger: "#F44336",
-  success: "#4CAF50",
-  warning: "#FF9800",
-  surface: "#2a2a4a",
-  surface_border: "#3a3a5c",
-};
+// What the panel draws for each colour variable a theme leaves out (the theme
+// rule's table, themeValues.gen.ts). Used so a cleared theme/element colour shows
+// the value the panel actually renders rather than a misleading blank/black field.
+export const CSS_VAR_FALLBACKS: Record<string, string> = Object.fromEntries(
+  THEME_VALUES.variables.filter((v) => v.kind === "color").map((v) => [v.name, v.fallback]),
+);
