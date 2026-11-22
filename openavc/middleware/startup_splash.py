@@ -30,7 +30,9 @@ or address a restart moves it to. A page from the internet may not.
 The HTTP listener comes up before the engine (``openavc.main`` starts the
 engine in the background so a browser gets an answer at once). Until the
 start has finished, the rest of the API answers 503 (the engine has no
-project yet), and every other path gets the splash page itself, which polls
+project yet), the panel's own files are served (``panel_file``: an open
+panel redraws, and asks for its icons, while the server starts), and every
+other path gets the splash page itself, which polls
 ``/api/startup-status`` and reloads once the engine is ready or shows the
 error that stopped it, then keeps asking, so a start the service manager makes
 afterwards reaches a screen already showing the failure. Its Start again
@@ -487,5 +489,21 @@ async def _before_the_start_finishes(request: Request, call_next):
     # Block API routes during startup (engine.project is None, etc.)
     if path.startswith("/api/"):
         return JSONResponse({"detail": "Server is starting up"}, status_code=503)
+    if panel_file(path):
+        return await call_next(request)
     # Serve splash page for all UI routes
     return HTMLResponse(_STARTUP_PAGE, status_code=503)
+
+
+# The panel's page: the one /panel path that waits for the start.
+_PANEL_PAGES = ("/panel/", "/panel/index.html")
+
+
+def panel_file(path: str) -> bool:
+    """Whether ``path`` is one of the panel's own files (its icon sheet, its
+    scripts, its stylesheets), served before the start has finished. They are
+    files on disk and need no engine, and a panel left open across a restart
+    asks for them again while it redraws with its socket down: the starting
+    page in place of its icon sheet left it with no icons once the server
+    was ready, until someone reloaded it. The page itself still waits."""
+    return path.startswith("/panel/") and path not in _PANEL_PAGES
