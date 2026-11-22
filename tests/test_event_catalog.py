@@ -80,6 +80,10 @@ for _tree in MODULES:
             CALLS.setdefault(callee, []).append((_node, _scopes))
 
 
+def _target_names(node: ast.Assign) -> set[str]:
+    return {t.id for t in node.targets if isinstance(t, ast.Name)}
+
+
 def _assigned(scope: ast.AST, name: str) -> list[ast.AST]:
     """The values ``name`` is assigned in ``scope``, outside nested functions."""
     values: list[ast.AST] = []
@@ -88,28 +92,31 @@ def _assigned(scope: ast.AST, name: str) -> list[ast.AST]:
         node = nodes.pop()
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             continue
-        if isinstance(node, ast.Assign) and any(
-            isinstance(t, ast.Name) and t.id == name for t in node.targets
-        ):
+        if isinstance(node, ast.Assign) and name in _target_names(node):
             values.append(node.value)
         nodes.extend(ast.iter_child_nodes(node))
     return values
 
 
+def _positional(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """A function's positional parameters, as a caller passes them."""
+    params = [a.arg for a in (*func.args.posonlyargs, *func.args.args)]
+    return params[1:] if params[:1] in (["self"], ["cls"]) else params
+
+
 def _argument_for(call: ast.Call, func: ast.FunctionDef | ast.AsyncFunctionDef, name: str):
     """What ``call`` passes for ``func``'s parameter ``name``, or None."""
-    for keyword in call.keywords:
-        if keyword.arg == name:
-            return keyword.value
-    params = [a.arg for a in (*func.args.posonlyargs, *func.args.args)]
-    if params and params[0] in ("self", "cls"):
-        params = params[1:]
+    by_keyword = [k.value for k in call.keywords if k.arg == name]
+    if by_keyword:
+        return by_keyword[0]
+    params = _positional(func)
     if name not in params:
         return None
     index = params.index(name)
-    if any(isinstance(a, ast.Starred) for a in call.args[: index + 1]):
+    passed = call.args[: index + 1]
+    if len(passed) <= index or any(isinstance(a, ast.Starred) for a in passed):
         return None
-    return call.args[index] if index < len(call.args) else None
+    return call.args[index]
 
 
 def _passed_for(name: str, scopes: Scopes, depth: int) -> set[str]:
@@ -170,21 +177,25 @@ def _values(node: ast.AST, scopes: Scopes, depth: int = 0) -> set[str]:
     return {ANY}
 
 
+def _is_emit(node: ast.AST) -> bool:
+    """``<anything>.emit(<name>, ...)``."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "emit"
+        and bool(node.args)
+    )
+
+
 def _sent() -> dict[str, list[str]]:
     """Every readable name the package emits, as a glob, and where."""
     sent: dict[str, list[str]] = {}
     for tree in MODULES:
-        for node, scopes in _walk(tree):
-            if not (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "emit"
-                and node.args
-            ):
-                continue
-            for glob in _values(node.args[0], scopes):
-                if glob != ANY:  # passed through from whoever named it
-                    sent.setdefault(glob, []).append(f"{tree.path}:{node.lineno}")
+        emits = ((node, scopes) for node, scopes in _walk(tree) if _is_emit(node))
+        for node, scopes in emits:
+            # A name that is not readable is passed through from whoever named it.
+            for glob in _values(node.args[0], scopes) - {ANY}:
+                sent.setdefault(glob, []).append(f"{tree.path}:{node.lineno}")
     return sent
 
 

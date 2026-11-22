@@ -7,6 +7,7 @@ import {
   getCachedPluginScriptApi,
 } from "./pluginScriptApiCache";
 import { scriptCompletions, type CompletionKind, type ScriptCompletion } from "./scriptCompletions";
+import { scriptMarkers } from "./scriptDiagnostics";
 
 export interface RuntimeError {
   line: number;
@@ -300,23 +301,23 @@ function monacoKind(monaco: any, kind: CompletionKind): number {
 
 /** A script completion as the Monaco item that inserts it at `range`. */
 function toMonacoItem(monaco: any, c: ScriptCompletion, range: unknown) {
+  const rules = monaco.languages.CompletionItemInsertTextRule;
   return {
     label: c.label,
     kind: monacoKind(monaco, c.kind),
     insertText: c.insertText,
-    ...(c.snippet
-      ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet }
-      : {}),
-    ...(c.detail !== undefined ? { detail: c.detail } : {}),
-    ...(c.documentation !== undefined ? { documentation: { value: c.documentation } } : {}),
+    insertTextRules: c.snippet ? rules.InsertAsSnippet : rules.None,
+    detail: c.detail,
+    documentation: markdown(c.documentation),
     range,
   };
 }
 
-/**
- * Scan the editor content for state.get("var.X") and state.set("var.X", ...)
- * calls and flag any var.X where X is not a defined project variable.
- */
+function markdown(text: string | undefined) {
+  return text === undefined ? undefined : { value: text };
+}
+
+/** Mark undefined variables, the script's runtime errors and its lint warnings. */
 function runDiagnostics(
   editor: any,
   monaco: any,
@@ -326,85 +327,7 @@ function runDiagnostics(
 ) {
   const model = editor.getModel();
   if (!model) return;
-
-  const content = model.getValue();
-  const markers: any[] = [];
-
-  // Match state.get("var.xxx") and state.set("var.xxx", ...) patterns
-  const pattern = /state\.(get|set)\(\s*["']var\.([a-zA-Z0-9_]+)["']/g;
-  let match;
-
-  while ((match = pattern.exec(content)) !== null) {
-    const varId = match[2];
-    if (!knownVarIds.includes(varId)) {
-      // Find the position of the var.xxx string
-      const startOffset = match.index + match[0].indexOf(`var.${varId}`);
-      const endOffset = startOffset + `var.${varId}`.length;
-      const startPos = model.getPositionAt(startOffset);
-      const endPos = model.getPositionAt(endOffset);
-
-      markers.push({
-        severity: monaco.MarkerSeverity.Warning,
-        message: `Variable "${varId}" is not defined in this project. Create it in the Project view or in a macro's Set Variable step.`,
-        startLineNumber: startPos.lineNumber,
-        startColumn: startPos.column,
-        endLineNumber: endPos.lineNumber,
-        endColumn: endPos.column,
-      });
-    }
-  }
-
-  // Also check @on_state_change("var.xxx") patterns
-  const decoratorPattern = /@on_state_change\(\s*["']var\.([a-zA-Z0-9_]+)["']/g;
-  while ((match = decoratorPattern.exec(content)) !== null) {
-    const varId = match[1];
-    if (!knownVarIds.includes(varId)) {
-      const startOffset = match.index + match[0].indexOf(`var.${varId}`);
-      const endOffset = startOffset + `var.${varId}`.length;
-      const startPos = model.getPositionAt(startOffset);
-      const endPos = model.getPositionAt(endOffset);
-
-      markers.push({
-        severity: monaco.MarkerSeverity.Warning,
-        message: `Variable "${varId}" is not defined in this project. Create it in the Project view or in a macro's Set Variable step.`,
-        startLineNumber: startPos.lineNumber,
-        startColumn: startPos.column,
-        endLineNumber: endPos.lineNumber,
-        endColumn: endPos.column,
-      });
-    }
-  }
-
-  // Add runtime error markers
-  for (const err of runtimeErrors) {
-    if (err.line >= 1 && err.line <= model.getLineCount()) {
-      markers.push({
-        severity: monaco.MarkerSeverity.Error,
-        message: err.message,
-        startLineNumber: err.line,
-        startColumn: 1,
-        endLineNumber: err.line,
-        endColumn: model.getLineLength(err.line) + 1,
-      });
-    }
-  }
-
-  // Handlers nothing can reach. A warning and not an error on purpose: the
-  // handler is written correctly, and the macro or control that will fire it
-  // may simply not exist yet -- building the listener first is a normal order
-  // to work in. The line is the decorator's, which is the line to change.
-  for (const warning of lintWarnings) {
-    if (warning.line >= 1 && warning.line <= model.getLineCount()) {
-      markers.push({
-        severity: monaco.MarkerSeverity.Warning,
-        message: warning.message,
-        startLineNumber: warning.line,
-        startColumn: 1,
-        endLineNumber: warning.line,
-        endColumn: model.getLineLength(warning.line) + 1,
-      });
-    }
-  }
-
+  const severity = { warning: monaco.MarkerSeverity.Warning, error: monaco.MarkerSeverity.Error };
+  const markers = scriptMarkers(model, severity, knownVarIds, runtimeErrors, lintWarnings);
   monaco.editor.setModelMarkers(model, "openavc", markers);
 }
