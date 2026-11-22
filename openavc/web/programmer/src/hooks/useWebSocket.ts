@@ -7,6 +7,7 @@ import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
+import { useScriptErrorsStore } from "../store/scriptErrorsStore";
 import { applyDiscoveryMessage } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { usePanelDevicesStore } from "../store/panelDevicesStore";
@@ -233,6 +234,12 @@ export function useWebSocket() {
           message: msg.message as string,
           device: (msg.device as string) ?? "",
         });
+      }
+
+      // A script failed while running, and the server has recorded it. The
+      // Scripts view re-asks the record on this (useScriptErrorsRefresh).
+      if (msg.type === "script.error") {
+        useScriptErrorsStore.getState().bump();
       }
 
       if (msg.type === "log.history" && Array.isArray(msg.entries)) {

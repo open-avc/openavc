@@ -25,6 +25,7 @@ import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
 import { extractScriptRuntimeErrors, latestScriptErrorId, markerFromStoredError, toRuntimeErrorRows } from "../components/scripts/scriptRuntimeErrors";
+import { useScriptErrorsRefresh } from "../components/scripts/useScriptErrorsRefresh";
 import { issueBadge, useScriptLint, type IssueBadge } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
@@ -149,12 +150,10 @@ export function ScriptView() {
   // marker memo below then, which a plain getState() read never did.
   const scriptErrorId = useLogStore((s) => latestScriptErrorId(s.logEntries));
 
-  // The same trigger re-asks the server. The log line and the server's record
-  // are written by the same failure, so a script going bad while this view is
-  // open marks its row without anyone reaching for Reload.
-  useEffect(() => {
-    if (scriptErrorId) refreshScriptErrors();
-  }, [scriptErrorId, refreshScriptErrors]);
+  // A script going bad while this view is open marks its row without anyone
+  // reaching for Reload: the server's script.error message, or the failure's
+  // log line, re-asks the record.
+  useScriptErrorsRefresh(refreshScriptErrors);
 
   // Extract runtime errors from log entries for the selected item.
   const runtimeErrors = useMemo((): RuntimeError[] => {
