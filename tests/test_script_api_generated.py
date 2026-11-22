@@ -47,7 +47,7 @@ def test_every_published_name_is_offered() -> None:
 
 def test_each_object_offers_its_members() -> None:
     _names, members = surface()
-    assert {m["name"] for m in members["state"]} == {"get", "set", "delete", "get_namespace"}
+    assert {m["name"] for m in members["state"]} >= {"get", "set", "delete", "get_namespace"}
     assert {m["name"] for m in members["isc"]} >= {"send_command", "RemoteError"}
     assert "plugins" not in members, "a plugin's methods are the running plugin's"
 

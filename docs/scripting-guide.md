@@ -522,10 +522,16 @@ log.info(f"Cancelled {count} timers")
 | `macro.cancelled.<macro_id>` | Macro was cancelled |
 | `macro.step_error.<macro_id>` | A step failed (payload includes `error` and a readable `message`). Fires whether or not the macro stops there, so this is the one to listen for |
 | `macro.error.<macro_id>` | The macro stopped because a step failed (payload includes `error` and the failed step's readable `message`). Only fires on a macro with **Stop on Error** set — otherwise the run continues past the failure and ends on `macro.completed` |
+| `macro.skipped.<macro_id>` | The macro did not start: its own Overlap or Cooldown setting refused the run (payload includes `reason`) |
 | `system.started` | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | System shutting down |
 | `system.project.reloaded` | The project was saved or reloaded: an edit, an import, a cloud push, or a change the system saves on its own (a device setup action's settings, a setting queued for an offline device or cleared once the device takes it, a value a device fills in, a plugin's own settings). A save your handler makes while it runs does not fire it again, and it is not fired while the system shuts down |
-| `isc.*.<event>` | Event from a remote OpenAVC instance |
+| `help.requested` | An **Ask for Help** step raised a help request (payload includes `help_id`, `message`, `severity`) |
+| `help.acknowledged` | Someone acknowledged the help request in the cloud (payload includes `help_id`, `acknowledged_by`) |
+| `isc.peer_connected` | Another OpenAVC instance connected (payload includes `instance_id`, `name`) |
+| `isc.peer_disconnected` | Another OpenAVC instance disconnected (payload includes `instance_id`, `name`) |
+| `isc.<instance_id>.<event>` | Event from a remote OpenAVC instance |
+| `plugin.<plugin_id>.<event>` | Event sent by a plugin |
 | `custom.<anything>` | User-defined events |
 
 > **`device.disconnected` vs `device.error`.** These two are complementary, not interchangeable. `device.disconnected` fires when the transport itself fails — the TCP socket drops, the serial port unplugs, the poll watchdog trips on a connectionless transport. The device's `connected` state flips to `False` at the same moment. `device.error` fires when a command or poll completes against a live transport but the protocol layer fails: a command the device rejects, a decode error, an HTTP 5xx, a malformed response, a driver's response rule that fails while reading a reply (once for each rule). The connection is presumed alive; only that operation went wrong. A command OpenAVC refuses before sending anything (a parameter out of range, missing or of the wrong type, a command the driver does not have, a device that is offline) fires no event: whoever sent it gets the refusal. If the same exception is both (e.g. a TCP write fails because the socket just died), only `device.disconnected` fires — the transport callback owns that path.

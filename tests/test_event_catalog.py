@@ -36,7 +36,7 @@ PACKAGE = REPO / "openavc"
 #: script's events.emit().
 NAMED_BY_THE_PROJECT = "custom.<anything>"
 
-DOCS = ("docs/scripting-api-reference.md",)
+DOCS = ("docs/scripting-guide.md", "docs/scripting-api-reference.md")
 
 ANY = "*"
 MAX_DEPTH = 6

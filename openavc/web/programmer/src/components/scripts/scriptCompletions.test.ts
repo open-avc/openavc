@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PluginScriptMethod } from "../../api/pluginClient";
+import { SCRIPT_API, SCRIPT_EVENTS } from "../../api/scriptApi.gen";
 import type { ProjectConfig } from "../../api/types";
 import { scriptCompletions, type ScriptCompletion } from "./scriptCompletions";
 
@@ -44,11 +45,9 @@ function member(text: string, label: string): ScriptCompletion {
 
 describe("script editor completions", () => {
   it("offers every name a script can import", () => {
-    expect(labels("from openavc import ")).toEqual([
-      "Event", "PanelMessage", "after", "cancel_all_timers", "cancel_timer", "compare",
-      "delay", "devices", "events", "every", "isc", "log", "macros", "on_event",
-      "on_state_change", "plugins", "state",
-    ]);
+    const imports = labels("from openavc import ");
+    expect(imports).toEqual(SCRIPT_API.map((n) => n.name));
+    expect(imports).toContain("cancel_all_timers");
   });
 
   it("offers state.delete", () => {
@@ -83,8 +82,9 @@ describe("script editor completions", () => {
   });
 
   it("gives an event its meaning", () => {
+    const family = SCRIPT_EVENTS.find((f) => f.name === "device.error.<device_id>")!;
     expect(member('@on_event("', "device.error.proj1").detail).toBe(
-      "Projector: A command or poll failed while the device stayed connected",
+      `Projector: ${family.description}`,
     );
   });
 

@@ -9,6 +9,13 @@ ScriptEngine calls configure() to wire proxies to real subsystem instances.
 The names themselves reach `openavc` through that package's own lazy
 `__getattr__` (see openavc/__init__.py) — this module is not published into
 sys.modules under a second name.
+
+With `openavc.__all__`, this module is the scripting API's one statement of
+itself: what each name and each object's public member takes, returns and
+whether it is awaited is read from here (`core/script_api_gen.py`, which
+renders the script editor's completions), never restated. A public member
+added to a proxy needs its words in `core/script_api_help.py`, the one thing
+the code cannot say; `tests/test_script_api_generated.py` fails without them.
 """
 
 from __future__ import annotations
