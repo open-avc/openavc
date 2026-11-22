@@ -16,6 +16,13 @@ export function scanHasEnded(status: string): boolean {
   return status === "complete" || status === "partial" || status === "cancelled";
 }
 
+/** A scan that began, from its ``discovery.started`` message. */
+export interface StartedScan {
+  scanId: string;
+  /** The time limit it works to, in seconds */
+  budgetSeconds: number;
+}
+
 interface DiscoveryState {
   /** Discovered devices keyed by IP */
   devices: Record<string, DiscoveredDevice>;
@@ -55,7 +62,7 @@ interface DiscoveryState {
   /** Set the running scan's time limit */
   setBudgetSeconds: (seconds: number) => void;
   /** A scan began: started here, in another Programmer, or by the assistant */
-  scanStarted: (scanId: string, budgetSeconds: number) => void;
+  scanStarted: (scan: StartedScan) => void;
   /** Set port labels, and the drivers behind each port, from API */
   setPortLabels: (labels: Record<string, string>, portDrivers?: Record<string, string[]>) => void;
   /** Set environment warnings from API/WS */
@@ -96,7 +103,7 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
   setBudgetSeconds: (budgetSeconds) => set({ budgetSeconds }),
 
   // The last scan's progress and warnings go with it.
-  scanStarted: (scanId, budgetSeconds) =>
+  scanStarted: ({ scanId, budgetSeconds }) =>
     set({ status: "running", scanId, budgetSeconds, phase: "", progress: 0, message: "", warnings: [] }),
 
   setPortLabels: (labels, portDrivers) =>
@@ -120,43 +127,55 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
 }));
 
 type DiscoveryStore = ReturnType<typeof useDiscoveryStore.getState>;
+type DiscoveryMessage = Record<string, unknown>;
+
+/** A message field that should be text: "" when it is not. */
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** A message field that should be a number: 0 when it is not. */
+function count(value: unknown): number {
+  return typeof value === "number" ? value : 0;
+}
 
 function applyWarnings(store: DiscoveryStore, warnings: unknown): void {
   if (Array.isArray(warnings)) store.setWarnings(warnings as string[]);
 }
 
+function applyStart(store: DiscoveryStore, msg: DiscoveryMessage): void {
+  store.scanStarted({ scanId: text(msg.scan_id), budgetSeconds: count(msg.budget_seconds) });
+}
+
+function applyDeviceUpdate(store: DiscoveryStore, msg: DiscoveryMessage): void {
+  if (!msg.device) return;
+  store.upsertDevice(msg.device as DiscoveredDevice);
+  if (typeof msg.progress === "number") store.setPhase(text(msg.phase), msg.progress, "");
+}
+
+function applyPhase(store: DiscoveryStore, msg: DiscoveryMessage): void {
+  store.setPhase(text(msg.phase), count(msg.progress), text(msg.message));
+  applyWarnings(store, msg.warnings);
+}
+
+// "partial" when it ran out of time or errored (the results are real but the
+// sweep didn't finish); "cancelled" when someone pressed Stop.
+function applyEnd(store: DiscoveryStore, msg: DiscoveryMessage): void {
+  store.setStatus(finishedScanStatus(msg.status));
+  applyWarnings(store, msg.warnings);
+}
+
+const DISCOVERY_MESSAGES = new Map<unknown, (store: DiscoveryStore, msg: DiscoveryMessage) => void>([
+  ["discovery.started", applyStart],
+  ["discovery.update", applyDeviceUpdate],
+  ["discovery.phase", applyPhase],
+  ["discovery.complete", applyEnd],
+]);
+
 /** Apply one ``discovery.*`` WebSocket message: a scan began (whoever
  *  started it), moved on a phase, found a device, or ended. Any other type is
  *  left alone. */
-export function applyDiscoveryMessage(msg: Record<string, unknown>): void {
-  const store = useDiscoveryStore.getState();
-  switch (msg.type) {
-    case "discovery.started":
-      store.scanStarted(
-        typeof msg.scan_id === "string" ? msg.scan_id : "",
-        typeof msg.budget_seconds === "number" ? msg.budget_seconds : 0,
-      );
-      return;
-    case "discovery.update":
-      if (!msg.device) return;
-      store.upsertDevice(msg.device as DiscoveredDevice);
-      if (typeof msg.progress === "number") {
-        store.setPhase((msg.phase as string) ?? "", msg.progress, "");
-      }
-      return;
-    case "discovery.phase":
-      store.setPhase(
-        (msg.phase as string) ?? "",
-        (msg.progress as number) ?? 0,
-        (msg.message as string) ?? "",
-      );
-      applyWarnings(store, msg.warnings);
-      return;
-    case "discovery.complete":
-      // "partial" when it ran out of time or errored (the results are real
-      // but the sweep didn't finish); "cancelled" when someone pressed Stop.
-      store.setStatus(finishedScanStatus(msg.status));
-      applyWarnings(store, msg.warnings);
-      return;
-  }
+export function applyDiscoveryMessage(msg: DiscoveryMessage): void {
+  const apply = DISCOVERY_MESSAGES.get(msg.type);
+  if (apply) apply(useDiscoveryStore.getState(), msg);
 }
