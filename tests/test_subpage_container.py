@@ -88,6 +88,7 @@ SCENARIOS = [
     "container_without_default_receives_first_switch",
     "stale_memory_falls_back_to_default",
     "cycle_draws_empty_instead_of_overflowing",
+    "twin_instances_live_and_switch_together",
     "fallback_skips_subpages_on_the_glass",
 ]
 

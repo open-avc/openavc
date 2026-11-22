@@ -85,6 +85,7 @@ SCENARIOS = [
     "state_at_draw_time_lands",
     "no_bridge_frame_listens_for_nothing",
     "edit_mode_stays_live",
+    "non_http_override_and_binding_refused",
     "ui_override_switches_the_source",
     "override_beats_binding_beats_static",
     "override_clear_puts_the_element_url_back",

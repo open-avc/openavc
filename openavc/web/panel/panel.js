@@ -64,6 +64,7 @@ import {
 import { installSessionBridge } from './modules/session.js';
 import { EVALUATORS, RENDERERS } from './modules/dispatch.js';
 import { Surface, Surfaces, takeAway } from './modules/surface.js';
+import { isEmbeddableUrl } from './modules/frames.js';
 
 // The Programmer's sign-in, carried on every /api request and the socket
 // when the IDE embeds this panel; installed before anything fetches.
@@ -320,6 +321,9 @@ class PanelApp {
             holds: (el) => this._textEditor.holds(el),
             setLabelText: (node, text, path) => this._setLabelText(node, text, path),
             redraw: (elementId) => this._redrawElement(elementId),
+            // The url override mounts or switches a web element's frame.
+            // url 覆盖借由它挂载或切换 web 元素的帧。
+            mountWeb: (wrapper, url) => this._mountWebInto(wrapper, url),
         };
     }
 
@@ -1442,7 +1446,7 @@ class PanelApp {
         // Every control is in the map: a macro or script can override any of
         // them (ui.<id>.*), and the same entry is where the unavailable marks,
         // a running macro's busy state and a press's failure claim find it.
-        if (el && element.id) this.elementMap[element.id] = { el, elementDef: element };
+        if (el && element.id) this.elementMap[element.id] = { el, elementDef: element, id: element.id };
         return el;
     }
 
@@ -2294,9 +2298,7 @@ class PanelApp {
         // 页面会永久积累每个被切走的子项的清理回调。
         child._hostUnregister = hostSurface.onEnd(() => {
             child.end();
-            if (this._surfaces.containers.get(containerDef.id) === child) {
-                this._surfaces.containers.delete(containerDef.id);
-            }
+            this._surfaces.removeContainer(containerDef.id, child);
         });
 
         this._surfaces.drawInContainer(containerDef.id, child, () => {
@@ -2318,29 +2320,49 @@ class PanelApp {
                 console.warn('Sub-page cycle:', containerDef.id, '->', target.id);
             }
         });
-        if (target) this._subpageShown.set(containerDef.id, target.id);
+        // The memory records SWITCHES only. The default is read fresh from
+        // the element on every draw, so changing a container's default takes
+        // effect without a switch ever happening -- which is what
+        // "the page to show before any switch" promises.
+        // 记忆只记录切换。默认页每次绘制都从元素重读，因此改容器的默认页
+        // 无需发生任何切换即可生效——这正是"default_page 是任何切换之前
+        // 显示的页面"的承诺。
         return child;
     }
 
     /**
-     * Draw one sub-page's elements into its host. The sub-page is designed
-     * like any page, so its elements place by percentage onto whatever holds
-     * them -- the container box here, the screen for a page. `fill` stretches
-     * them onto the box; `contain` sizes an inner box to the glass's aspect,
+     * Draw one sub-page's content into its host. A sub-page is designed like
+     * any page -- including the custom kind: `render_mode: "custom"` hands
+     * the box to the author's markup through the same frame a full-screen
+     * custom page uses, sized to the container instead. Element sub-pages
+     * place by percentage onto whatever holds them; `fill` stretches them
+     * onto the box, `contain` sizes an inner box to the glass's aspect,
      * centred, so a differently-shaped container letterboxes rather than
      * warps. Masters never draw here: a sub-page is content, the frame around
      * it belongs to the host page.
      *
-     * 把一个子页面的元素绘制进容器。子页面与普通页面同样设计，其元素按百分比
-     * 定位到承载物上——这里是容器框，页面上则是整屏。fill 直接拉伸到容器框；
-     * contain 以玻璃纵横比取内框并居中，形状不同的容器留边而不变形。master
-     * 元素绝不在此绘制：子页面是内容，周围的框架属于宿主页面。
+     * 把一个子页面的内容绘制进容器。子页面与普通页面同样设计——包括 custom
+     * 一类：render_mode 为 "custom" 时，盒子交给作者自己的标记，走与整屏
+     * custom 页相同的帧，只是尺寸适配容器。元素类子页面按百分比定位到承载物
+     * 上；fill 直接拉伸，contain 以玻璃纵横比取内框并居中。master 元素绝不
+     * 在此绘制：子页面是内容，周围的框架属于宿主页面。
      */
     _drawSubpageContent(subPage, surface, host, fit) {
         const wrap = document.createElement('div');
         wrap.className = `subpage-content subpage-content-${fit}`;
         host.appendChild(wrap);
         if (fit === 'contain') this._fitSubpage(wrap, surface);
+
+        // A custom sub-page is the author's own markup filling the box, via
+        // the exact path a full-screen custom page takes (which validates the
+        // file and draws a placeholder for a bad one).
+        // custom 子页面即充满盒子的作者标记，走与整屏 custom 页完全相同的
+        // 路径（其会校验文件，坏文件画占位框）。
+        if (isCustomPage(subPage)) {
+            const frame = this._renderCustomPageFrame(subPage);
+            if (frame) wrap.appendChild(frame);
+            return null;
+        }
 
         const layout = selectLayout(subPage, viewportOrientation());
         // A tile wall's grid follows the arrangement it is drawn in: the
@@ -2398,39 +2420,86 @@ class PanelApp {
      * 任何事——广播会到达每个面板，只有宿主页正在显示的面板才有东西可切。
      */
     showSubpage(containerId, pageId) {
-        const current = this._surfaces.containers.get(containerId);
-        if (!current) return;
+        const instances = this._surfaces.containers.get(containerId) || [];
+        if (!instances.length) return;
         const pages = this.uiDef?.pages || [];
         const target = pages.find((p) => p.id === pageId);
         if (!target || !isSubPage(target)) {
             console.warn('ui.subpage: target is not a sub-page:', pageId);
             return;
         }
-        if (current.pageId === pageId) return;
         // The memory goes down first: the new surface's draw reads it, and a
-        // redraw racing the switch restores the page asked for. The replaced
-        // child then stops listening to its old host, or the page accumulates
-        // one cleanup per switch forever.
-        // 先写记忆：新 Surface 的绘制会读它，与切换赛跑的重绘也能恢复到目标页。
-        // 被替换的子项随即解除对旧宿主的监听，否则页面会随切换次数永久积累
-        // 清理回调。
+        // redraw racing the switch restores the page asked for. Every live
+        // instance switches -- the same sub-page can sit in two containers,
+        // and its controls were drawn twice, so one frame naming the id moves
+        // both. The replaced child stops listening to its old host, or the
+        // page accumulates one cleanup per switch forever. When every
+        // instance refused the page, the record goes back to what it was: a
+        // refused page must not surface later as a container's selection.
+        // 先写记忆：新 Surface 的绘制会读它，与切换赛跑的重绘也能恢复到目标
+        // 页。所有存活实例一起切换——同一子页面可显示在两个容器里，其控件被
+        // 画了两份，所以指名该 id 的一帧要同时移动两者。被替换的子项随即解除
+        // 对旧宿主的监听，否则页面会随切换次数永久积累清理回调。若所有实例
+        // 都拒绝了目标页，记忆回到原值——被拒绝的页面不得事后冒充容器的
+        // 选择。
+        const remembered = this._subpageShown.get(containerId);
+        let switched = 0;
+        let alreadyShowing = false;
         this._subpageShown.set(containerId, pageId);
-        current.end();
-        if (current._hostUnregister) current._hostUnregister();
-        if (this._surfaces.containers.get(containerId) === current) {
-            this._surfaces.containers.delete(containerId);
+        for (const current of [...instances]) {
+            if (current.pageId === pageId) {
+                alreadyShowing = true;
+                continue;
+            }
+            // Per instance: two copies of a container can hang on different
+            // chains (one direct on the page, one inside another sub-page),
+            // and a legal switch on one is a cycle on the other.
+            // 按实例检查：同一容器的两份副本可能挂在不同的链上（一份直接在
+            // 页面上，一份在另一个子页面里），对一份合法的切换对另一份是环。
+            const mounted = new Set();
+            for (let ancestor = current.hostSurface; ancestor; ancestor = ancestor.hostSurface) {
+                if (ancestor.pageId) mounted.add(ancestor.pageId);
+            }
+            if (mounted.has(pageId)) {
+                console.warn('ui.subpage: target is already mounted above an instance:', pageId);
+                continue;
+            }
+            current.end();
+            if (current._hostUnregister) current._hostUnregister();
+            this._surfaces.removeContainer(containerId, current);
+            const host = current.host;
+            if (host) host.textContent = '';
+            // Seed the draw chain with what this instance is mounted under:
+            // the chain is empty outside a draw, and a nested container's
+            // default inside the switched page could otherwise re-mount a
+            // page this switch is already placing.
+            // 以本实例的挂载栈预置绘制链：绘制之外链为空，否则被切页面内嵌
+            // 容器的默认页可能再次挂载本次正在放置的页面。
+            const base = this._subpageChain.length;
+            switched += 1;
+            this._subpageChain.push(...mounted);
+            try {
+                // Re-open with what the container's element says -- the same
+                // defaults a fresh draw would take (以元素所言重新打开——与
+                // 全新绘制同样的默认).
+                this._startSubpage(
+                    current.containerDef,
+                    host,
+                    current.hostSurface,
+                    current.containerDef.default_page || '',
+                    current.containerDef.subpage_fit === 'contain' ? 'contain' : 'fill',
+                );
+            } finally {
+                this._subpageChain.length = base;
+            }
         }
-        const host = current.host;
-        if (host) host.textContent = '';
-        // Re-open with what the container's element says -- the same defaults a
-        // fresh draw would take (以元素所言重新打开——与全新绘制同样的默认).
-        this._startSubpage(
-            current.containerDef,
-            host,
-            current.hostSurface,
-            current.containerDef.default_page || '',
-            current.containerDef.subpage_fit === 'contain' ? 'contain' : 'fill',
-        );
+        if (switched === 0 && !alreadyShowing) {
+            // Every instance refused: the requested page was never shown, so
+            // the record goes back rather than naming a refused page.
+            // 所有实例都拒绝：目标页从未显示，记忆回到原值而非指名被拒页。
+            if (remembered === undefined) this._subpageShown.delete(containerId);
+            else this._subpageShown.set(containerId, remembered);
+        }
         this.evaluateAllBindings();
     }
 
@@ -2581,16 +2650,81 @@ class PanelApp {
      * 脚本能移动的全部。
      */
     renderWebElement(element) {
-        // http(s) or there is no frame. javascript:, data: and relative paths
-        // either breach the sandbox's spirit or would draw from the panel's own
-        // origin, which the sandbox exists to keep out.
-        // 必须是 http(s)，否则不画帧。javascript:/data: 与相对路径要么破坏
-        // 沙箱本意，要么会画到面板自身源上——而沙箱正是为了把它们挡在外面。
-        const url = String(element.url || '').trim();
-        if (!/^https?:\/\/\S+$/.test(url)) {
-            return framePlaceholder(this._frameHost(), element, { styleType: 'web', label: 'Web page (no URL chosen)' });
+        // The wrapper is the element's node for its whole life: bindings,
+        // overrides and visible_when hold it, and the frame inside it mounts,
+        // switches and unmounts as the resolved url changes. A web element
+        // whose url lives only in its binding is controllable before the
+        // first usable value arrives -- the placeholder gives way the moment
+        // one does, with no redraw needed.
+        // 包装器是元素终生的节点：绑定、覆盖与 visible_when 都持有它，内部的
+        // 帧随解析出的 url 挂载、切换与卸载。url 只存在于绑定里的 web 元素在
+        // 首个可用值到来前同样受控——那一刻占位内容自行让位，无需重绘。
+        const binding = element.bindings?.show?.value;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'panel-element panel-web';
+        wrapper.dataset.elementId = element.id;
+        // The url override's draw gates on this, and masters do not walk the
+        // draw tree that writes it -- so the renderer writes its own.
+        // url 覆盖的 draw 以此门控，而 master 元素不走写入它的绘制树——
+        // 渲染器自行写入。
+        wrapper.dataset.elementType = 'web';
+        wrapper._webElement = element;
+        applyStyle(wrapper, this.theme.styleFor(element.type, element.style));
+        this._mountWebInto(wrapper, this._resolveWebUrl(element, binding));
+        if (binding) {
+            this.bindings.push({
+                type: 'web_url',
+                element: wrapper,
+                elementDef: element,
+                binding,
+            });
         }
+        return wrapper;
+    }
 
+    /** The url a web element shows right now: the bound key's value when it
+     *  is an embeddable http(s) string, else the element's own. One rule for
+     *  every source -- a non-http(s) scheme is as good as no url at all.
+     *  web 元素当前应显示的 url：绑定键持有可嵌入的 http(s) 字符串时用键值，
+     *  否则用元素自带的。所有来源同一规则——非 http(s) 的 scheme 等同于
+     *  没有 url。 */
+    _resolveWebUrl(element, binding) {
+        const bound = binding && typeof this.state[binding.key] === 'string'
+            ? this.state[binding.key].trim() : '';
+        if (isEmbeddableUrl(bound)) return bound;
+        return String(element.url || '').trim();
+    }
+
+    /** Mount the sandboxed frame into a web element's wrapper, or draw the
+     *  placeholder when there is nothing embeddable. One door for the first
+     *  draw, a binding's answer and the url override, so all three keep the
+     *  same rules and the same node. Setting the url the frame already shows
+     *  is a no-reload no-op.
+     *  把沙箱帧挂载进 web 元素的包装器，无可嵌内容时画占位框。首次绘制、
+     *  绑定的答案与 url 覆盖共用这扇门，三者共享规则与节点。重复设置帧已
+     *  显示的 url 是无重载的空操作。 */
+    _mountWebInto(wrapper, url) {
+        url = String(url || '').trim();
+        if (wrapper._webSrc === url) return;
+        wrapper._webSrc = url;
+        // The frame it replaces is disposed, not merely detached: its
+        // surface-end callback would otherwise retain one detached frame per
+        // url change until the page went.
+        // 被替换的帧是被"释放"而非仅仅脱附：否则其 surface-end 回调会在页面
+        // 存续期间按 url 切换次数积累脱附帧。
+        const previous = wrapper._webFrameNode && wrapper._webFrameNode._panelFrame;
+        if (previous && previous.dispose) previous.dispose();
+        wrapper.textContent = '';
+        const element = wrapper._webElement;
+        if (!isEmbeddableUrl(url)) {
+            const note = document.createElement('div');
+            note.className = 'web-placeholder';
+            note.textContent = 'Web page (no URL chosen)';
+            wrapper.appendChild(note);
+            wrapper._pluginIframe = undefined;
+            wrapper._webFrameNode = undefined;
+            return;
+        }
         const frame = drawFrame(this._frameHost(), element, {
             className: 'panel-web',
             styleType: 'web',
@@ -2617,43 +2751,31 @@ class PanelApp {
             who: `web page '${element.id}'`,
         });
         // The url override's draw gates on this, and masters do not walk the
-        // draw tree that writes it -- so the renderer writes its own.
-        // url 覆盖的 draw 以此门控，而 master 元素不走写入它的绘制树——
-        // 渲染器自行写入。
+        // draw tree that writes it -- so the mount writes its own, on the
+        // frame the override will reach through the wrapper.
+        // url 覆盖的 draw 以此门控，而 master 元素不走写入它的绘制树——挂载
+        // 时自行写入，写到覆盖经包装器可达的那个帧上。
         frame.dataset.elementType = 'web';
-
-        if (element.bindings?.show?.value) {
-            this.bindings.push({
-                type: 'web_url',
-                element: frame,
-                elementDef: element,
-                binding: element.bindings.show.value,
-                // The frame starts on element.url; the binding's key takes
-                // over the moment it holds a usable string.
-                // 帧从 element.url 起步；绑定键一旦持有可用字符串即接管。
-                defaultUrl: url,
-            });
-        }
-        return frame;
+        wrapper.appendChild(frame);
+        wrapper._pluginIframe = frame._pluginIframe;
+        wrapper._webFrameNode = frame;
     }
 
-    /** The url binding's evaluator: the bound key's string switches the page,
-     *  falling back to the element's own while the key holds nothing usable.
-     *  The first evaluation is skipped only when it names the url the frame
-     *  already loaded -- a redraw mid-session must still land on the state's
-     *  answer.
-     *  url 绑定的求值器：绑定键的字符串切换页面，键中没有可用值时回落到
-     *  元素自带的 url。仅当首次求值所指即帧已加载的 url 时跳过——会话中途的
-     *  重绘仍须落到状态键的答案上。 */
+    /** The url binding's evaluator: re-resolve the whole url and mount or
+     *  switch. A usable string mounts or switches the frame; an empty or
+     *  non-http(s) one falls back to the element's own, and with neither the
+     *  placeholder shows again.
+     *  url 绑定的求值器：重新解析整个 url 并挂载或切换。可用字符串挂载或
+     *  切换帧；空或非 http(s) 回落到元素自带；两者皆无则重新显示占位框。 */
     evaluateWebUrl(b) {
-        const raw = this.state[b.binding.key];
-        const next = (typeof raw === 'string' && raw.trim()) ? raw.trim() : b.defaultUrl;
-        if (!next || b._lastUrl === next) return;
-        const first = b._lastUrl === undefined;
-        b._lastUrl = next;
-        if (first && next === b.defaultUrl) return;
-        const iframe = b.element && b.element._pluginIframe;
-        if (iframe) iframe.src = next;
+        // An active ui.<id>.url override owns this element's url: the binding
+        // yields, or a binding change would reload a frame the override pass
+        // immediately replaces back, losing the page's in-frame session.
+        // 激活中的 ui.<id>.url 覆盖拥有该元素的 url：绑定此时让位，否则绑定
+        // 变化会重载一个马上会被覆盖改回的帧，丢掉页面内的会话状态。
+        const overrideKey = `ui.${b.elementDef.id}.url`;
+        if (this.state[overrideKey] !== undefined && this.state[overrideKey] !== null) return;
+        this._mountWebInto(b.element, this._resolveWebUrl(b.elementDef, b.binding));
     }
 
     /** Is the person actually in this frame right now?
@@ -2737,7 +2859,9 @@ class PanelApp {
 
     // Send state update to plugin iframes
     _notifyPluginIframes(key, value) {
-        pushToFrames(this._surfaces.everyControl(), key, value);
+        // Every mounted copy of a bridged frame is told, not the one
+        // survivor an id-keyed merge keeps (每个已挂载副本都要被告知).
+        pushToFrames(this._surfaces.everyControlEntries(), key, value);
     }
 
     // --- Bindings ---
@@ -2834,7 +2958,12 @@ class PanelApp {
 
     /** Draw every control's ui.<id>.* overrides from current state (modules/overrides.js). */
     evaluateUiOverrides() {
-        this._overrides.apply(this._surfaces.everyControl());
+        // One entry per INSTANCE: an update reaches every mounted copy of a
+        // control (a ui.<id>.url key moves both frames of a sub-page shown
+        // twice).
+        // 每实例一条：更新抵达控件的每个已挂载副本（ui.<id>.url 同时移动
+        // 同一子页面两份副本的两个帧）。
+        this._overrides.apply(this._surfaces.everyControlEntries());
     }
 
     /** Show or hide a control by its visible_when (modules/visibility.js). */

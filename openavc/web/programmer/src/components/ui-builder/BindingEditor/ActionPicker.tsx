@@ -626,7 +626,12 @@ function SubpageConfig({
         <label style={labelStyle}>Container</label>
         <SearchableSelect
           value={String(value?.container || "")}
-          onChange={(container) => onChange({ action: "ui.subpage", container })}
+          // Changing the container keeps the chosen sub-page, the same way
+          // the sub-page picker keeps the container -- either alone is a
+          // half-written action the runtime then ignores.
+          // 换容器保留已选子页面，与子页面选择器保留容器同理——只填一半的
+          // 动作会被运行时忽略。
+          onChange={(container) => onChange({ action: "ui.subpage", container, page: value?.page })}
           groups={containersByPage}
           placeholder="Select container..."
           searchPlaceholder="Search containers..."

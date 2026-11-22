@@ -102,11 +102,13 @@ export class Surfaces {
     constructor() {
         this.page = new Surface();
         this.overlays = [];
-        // The open sub-page containers, by element id. A container can sit on
-        // the page or inside an overlay; its surface ends when its host's
-        // does (the renderer registered that) or when it switches sub-page.
-        // 打开的子页面容器，按元素 id。容器可在页面或弹窗内；其 Surface 随宿主
-        // 结束（渲染器已注册）或切换子页面时结束。
+        // The open sub-page containers, by element id -- a LIST per id, since
+        // the same sub-page can show in two containers and a sub-page shown
+        // twice draws its own containers twice: each instance is a surface of
+        // its own, and one ending takes only itself off the list.
+        // 打开的子页面容器，按元素 id——每个 id 对应一个列表：同一子页面可
+        // 显示在两个容器里，其内部的容器也随之画两份，每个实例都有自己的
+        // Surface，一个结束只从列表里移除它自己。
         this.containers = new Map();
         this._drawingOverlay = null;
         this._drawingContainer = null;
@@ -143,15 +145,32 @@ export class Surfaces {
         // Registered before the draw and left afterwards: the entry stays in
         // the map for as long as the surface shows, ending only when its host
         // ends or the container switches sub-page (the panel owns both).
-        // 在绘制前登记并在绘制后保留：只要该 Surface 还在显示，条目就留在映射
-        // 中，直到宿主结束或容器切换子页面（两者都由面板负责）。
-        this.containers.set(containerId, surface);
+        // 在绘制前登记并在绘制后保留：只要该 Surface 还在显示，条目就留在
+        // 映射中，直到宿主结束或容器切换子页面（两者都由面板负责）。
+        const list = this.containers.get(containerId) || [];
+        list.push(surface);
+        this.containers.set(containerId, list);
         try { return draw(); } finally { this._drawingContainer = was; }
+    }
+
+    /** Take one container instance off its list, by identity: a switch
+     *  replaces its own, a host end takes only what ended, and a twin on
+     *  another host stays live.
+     *  按同一性从列表移除一个容器实例：切换只替换它自己，宿主结束只带走
+     *  结束的那个，另一宿主上的孪生实例照常存活。 */
+    removeContainer(containerId, surface) {
+        const list = this.containers.get(containerId);
+        if (!list) return;
+        const next = list.filter((s) => s !== surface);
+        if (next.length === list.length) return;
+        if (next.length) this.containers.set(containerId, next);
+        else this.containers.delete(containerId);
     }
 
     /** Every binding on screen: the page's, then each overlay's, oldest first, then each container's. */
     everyBinding() {
-        const containerBindings = [...this.containers.values()].flatMap((surface) => surface.bindings);
+        const containerBindings = [...this.containers.values()].flat()
+            .flatMap((surface) => surface.bindings);
         if (!this.overlays.length) return [...this.page.bindings, ...containerBindings];
         return [this.page, ...this.overlays].flatMap((surface) => surface.bindings).concat(containerBindings);
     }
@@ -159,7 +178,21 @@ export class Surfaces {
     /** Every control on screen, by element id; an overlay's over the page's, a container's over both. */
     everyControl() {
         const maps = [this.page.elementMap, ...this.overlays.map((surface) => surface.elementMap)];
-        return Object.assign({}, ...maps, ...[...this.containers.values()].map((surface) => surface.elementMap));
+        return Object.assign({}, ...maps, ...[...this.containers.values()].flat()
+            .map((surface) => surface.elementMap));
+    }
+
+    /** Every control entry on screen, one per INSTANCE: the same sub-page in
+     *  two containers yields two entries with one id, and it is how an update
+     *  that must reach every mounted copy (a ui.<id>.url override) walks.
+     *  屏幕上每个控件条目，每实例一条：同一子页面在两个容器里产生两条同 id
+     *  条目；必须抵达每个已挂载副本的更新（如 ui.<id>.url 覆盖）由此遍历。 */
+    everyControlEntries() {
+        const list = [];
+        for (const surface of [this.page, ...this.overlays, ...[...this.containers.values()].flat()]) {
+            list.push(...Object.values(surface.elementMap));
+        }
+        return list;
     }
 }
 

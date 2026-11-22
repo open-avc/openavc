@@ -39,6 +39,29 @@
 import { basePath } from './base_path.js';
 import { applyStyle } from './paint.js';
 
+/**
+ * A URL a web element may show: http(s) only. javascript:, data: and
+ * relative paths either breach the sandbox's spirit or would draw from the
+ * panel's own origin -- the rule the renderer's static url keeps, so a
+ * binding or a runtime override cannot sneak a scheme past it.
+ * web 元素可显示的 url：仅 http(s)。javascript:/data: 与相对路径要么破坏
+ * 沙箱本意，要么会画到面板自身源上——与渲染器对静态 url 的规则一致，
+ * 绑定与运行时覆盖无法绕过。
+ */
+export function isEmbeddableUrl(url) {
+    // Parsed, not just pattern-matched: "https://?" matches a loose regex but
+    // names no host, and the browser would blank the frame over it. An
+    // absolute http(s) URL with a host is the whole contract.
+    // 用解析而非仅模式匹配："https://?" 能骗过宽松正则却没有主机名，浏览器
+    // 会因此画出空帧。带主机的绝对 http(s) URL 是全部契约。
+    try {
+        const parsed = new URL(String(url || '').trim());
+        return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && !!parsed.hostname;
+    } catch {
+        return false;
+    }
+}
+
 // The theme a frame is told about when it opens.
 const THEME_VARIABLES = [
     '--panel-bg', '--panel-text', '--panel-accent',
@@ -224,6 +247,12 @@ class PanelFrame {
         this._stops = [];
         this.stopped = false;
         this.node = this._drawBox();
+        // The frame hands its own stop handle back, so whoever replaces it
+        // (a url switch rebuilding the box) can dispose it: its surface-end
+        // callback must not retain a detached frame forever.
+        // 帧交回自己的停止句柄，替换它的一方（url 切换重建盒子）得以释放：
+        // 其 surface-end 回调不能永久保留已脱离的帧。
+        this._hostUnregister = null;
         // Is the page actually there? Registered before the frame is in the
         // document, so the answer cannot arrive before something is listening.
         if (source.fileLabel) this._checkFile();
@@ -239,14 +268,28 @@ class PanelFrame {
         this.iframe.addEventListener('load', () => this.open());
         if (!this.source.noBridge) this._listen();
         applyStyle(this.node, host.themedStyle(source.styleType, element.style));
-        // It stops when the surface it is drawn on ends.
-        host.onEnd(() => this._stop());
+        // It stops when the surface it is drawn on ends, and its replace-er
+        // can dispose it sooner (谁替换它谁就能提前释放).
+        this._hostUnregister = host.onEnd(() => this._stop());
     }
 
     /** Stop listening and stop waiting to hear about the file, once. */
     _stop() {
         this.stopped = true;
         for (const stop of this._stops.splice(0)) stop();
+    }
+
+    /** Everything _stop does, plus leaving the surface's end list -- the way
+     *  a replaced frame stops before its nodes go away, so the surface does
+     *  not retain one detached frame per url change.
+     *  _stop 的全部动作，外加从 surface 的结束列表除名——被替换的帧在其节点
+     *  离场前就此停止，surface 不会因 url 切换而积累脱附帧。 */
+    dispose() {
+        if (this._hostUnregister) {
+            this._hostUnregister();
+            this._hostUnregister = null;
+        }
+        this._stop();
     }
 
     _drawBox() {
@@ -275,6 +318,7 @@ class PanelFrame {
         el.style.overflow = 'hidden';
         el.appendChild(iframe);
         this.iframe = iframe;
+        el._panelFrame = this;
         return el;
     }
 
@@ -290,7 +334,15 @@ class PanelFrame {
     /** The element map entry, and what the panel and its tests read off the node. */
     _register() {
         const el = this.node;
-        this.host.register(this.element.id, { el, elementDef: this.element });
+        // A no-bridge frame does not take the element map entry: the web
+        // element's own wrapper stays the registered node (stable across
+        // mounts and switches), and the remote page has no state filter to
+        // serve anyway.
+        // 无桥帧不占用元素映射条目：web 元素的包装器保持为登记节点（跨挂载
+        // 与切换稳定），远程页面也没有需要服务的状态过滤。
+        if (!this.source.noBridge) {
+            this.host.register(this.element.id, { el, elementDef: this.element });
+        }
         el._pluginIframe = this.iframe;
         el._pluginConfig = this.source.config;
         // The grant this element was placed with, and the namespace it owns

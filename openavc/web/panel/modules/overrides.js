@@ -26,6 +26,7 @@
 
 import { labelSpan, nameAfterWords } from './words.js';
 import { richText } from './label.js';
+import { isEmbeddableUrl } from './frames.js';
 
 /** Words that came from no authored field: an override's own. */
 const NO_SOURCE = null;
@@ -103,17 +104,20 @@ export const OVERRIDES = [
             url: elementDef?.type === 'web' ? String(elementDef.url || '') : undefined,
         }),
         putBack: (el, base, ui, elementDef) => {
-            if (elementDef?.type !== 'web' || !base?.url) return false;
-            const iframe = el._pluginIframe;
-            if (!iframe) return false;
-            iframe.src = base.url;
+            if (elementDef?.type !== 'web') return false;
+            // Back to the element's own url; the redraw after a clear
+            // re-asserts a binding's answer over it.
+            // 回到元素自身的 url；清除后的重绘会在其上重新确认绑定的答案。
+            ui.mountWeb(el, elementDef?.url || '');
             return true;
         },
-        draw: (el, value) => {
+        draw: (el, value, base, ui) => {
             if (el.dataset.elementType !== 'web') return false;
-            const iframe = el._pluginIframe;
-            if (!iframe) return false;
-            iframe.src = String(value);
+            // The same rule the static url keeps: a scheme the sandbox refuses
+            // is not applied, and the frame keeps showing what it showed.
+            // 与静态 url 同一规则：沙箱不允许的 scheme 不应用，帧保持原样。
+            if (!isEmbeddableUrl(value)) return false;
+            ui.mountWeb(el, String(value).trim());
             return true;
         },
     },
@@ -189,16 +193,30 @@ export class UiOverrides {
         this._drawn = new WeakMap();
     }
 
-    /** Draw every control's overrides from current state, putting back what a cleared one covered. */
-    apply(elementMap) {
+    /** Draw every control's overrides from current state, putting back what a
+     *  cleared one covered. One entry per INSTANCE: a control mounted twice
+     *  (the same sub-page in two containers) is updated on both copies by one
+     *  key, and each keeps its own snapshot of what it was drawn with.
+     *  从当前状态绘制所有控件的覆盖，并放回被清除键覆盖的内容。每实例一条：
+     *  挂载两份的控件（同一子页面显示在两个容器）由一个键同时更新两份，且
+     *  各自保留自己被绘制时的快照。 */
+    apply(entries) {
         const state = this._host.state();
-        for (const [elementId, entry] of Object.entries(elementMap)) {
+        for (const entry of entries) {
             const el = entry.el;
             if (!el || !el.style) continue;
+            const elementId = entry.id || el.dataset.elementId;
             const prefix = `ui.${elementId}.`;
             const values = OVERRIDES.map((o) => state[prefix + o.name]);
             this._applyTo(elementId, entry, values);
         }
+    }
+
+    /** The url override's way to mount or switch a web element's frame; the
+     *  host owns the machinery, the override owns the rule.
+     *  url 覆盖挂载或切换 web 元素帧的入口：机制归宿主，规则归覆盖。 */
+    mountWeb(wrapper, url) {
+        this._host.mountWeb(wrapper, url);
     }
 
     _applyTo(elementId, entry, values) {

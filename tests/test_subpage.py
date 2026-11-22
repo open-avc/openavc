@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from openavc.core.macro_validation import validate_macro
-from openavc.core.project_loader import ProjectConfig, load_project
+from openavc.core.project_loader import MacroConfig, ProjectConfig, UIElement, load_project
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.page_references import reference_findings
 
@@ -279,3 +279,44 @@ async def test_a_switch_with_an_id_missing_sends_nothing(tmp_path) -> None:
     # are not (按下事件本身是预期内的；切换自身的事件与帧不应出现).
     assert not any(e.startswith("ui.subpage.") for e in events)
     assert frames == []
+
+# --- Page delete: switches naming dead containers go too -----------------------
+
+
+def test_a_page_delete_drops_switches_naming_its_containers() -> None:
+    """Deleting the page that held a container drops the switches naming it,
+    even when their sub-page survives -- the same project the Builder's page
+    delete leaves (删除持有容器的页面时，指名该容器的切换动作一并删除——即使
+    其子页面还在；与 Builder 删页产出相同的项目).
+
+    The AI's scrubber runs AFTER the page is gone, so its rule is phrased in
+    the post-deletion state: a switch whose container no longer exists is dead
+    weight, dropped whole. A switch naming a container that survives stays.
+    AI 清理器在页面已删除之后运行，其规则以删除后状态表述：容器已不存在的
+    切换是死重，整个删除；容器仍存活的切换保留。
+    """
+    from openavc.cloud.tools.ui_rewrites import scrub_page_references
+
+    project = _project()
+    # The survivor lives on a page the delete does not take (幸存容器所在的
+    # 页面不被删除).
+    next(p for p in project.ui.pages if p.id == "media_sub").elements.append(
+        UIElement.model_validate({"id": "survivor_box", "type": "subpage_container", "default_page": "media_sub"})
+    )
+    project.macros.append(MacroConfig.model_validate({
+        "id": "m_switch", "name": "Switch",
+        "steps": [
+            {"action": "ui.subpage", "container": "cam_box", "page": "media_sub"},
+            {"action": "ui.subpage", "container": "survivor_box", "page": "media_sub"},
+        ],
+        "triggers": [],
+    }))
+    # The AI's flow: the page is already gone when the scrubber runs.
+    # AI 的流程：清理器运行时页面已被删除。
+    project.ui.pages = [p for p in project.ui.pages if p.id != "main"]
+    scrub_page_references(project, "main")
+
+    kept = [(s.container, s.page) for s in project.macros[0].steps]
+    assert ("survivor_box", "media_sub") in kept
+    assert ("cam_box", "media_sub") not in kept
+

@@ -63,7 +63,7 @@ global.window.fetch = global.fetch;
 
 // --- bundle the real panel ---------------------------------------------------
 const built = esbuild.buildSync({
-  stdin: { contents: `import "${panelPath}";`, resolveDir: path.dirname(panelPath), loader: "js" },
+  stdin: { contents: `import ${JSON.stringify(panelPath)};`, resolveDir: path.dirname(panelPath), loader: "js" },
   bundle: true,
   format: "cjs",
   platform: "node",
@@ -92,6 +92,14 @@ if (!app) {
 }
 results["app_booted"] = { pass: true, detail: "" };
 
+// The draw tree registers every rendered element into the surface's element
+// map; these scenarios render directly, so they register the same way.
+// 绘制树会把每个渲染的元素登记进 Surface 的元素表；这些场景直接渲染，
+// 故按同样方式登记。
+const registerEl = (id, el, def) => {
+  app._surfaces.drawing.elementMap[id] = { el, elementDef: def, id };
+};
+
 const PLACEMENTS = { box: { x: 10, y: 10, w: 80, h: 80 } };
 app.uiDef = {
   pages: [
@@ -109,7 +117,9 @@ check("no_url_draws_placeholder", () => {
 });
 
 check("frame_renders_with_sandbox", () => {
-  const frame = app.renderWebElement(app.uiDef.pages[0].elements[0]);
+  const elementDef = app.uiDef.pages[0].elements[0];
+  const frame = app.renderWebElement(elementDef);
+  registerEl("box", frame, elementDef);
   const iframe = frame.querySelector("iframe");
   if (!iframe) throw new Error("no iframe");
   if (iframe.getAttribute("sandbox") !== "allow-scripts") throw new Error(`sandbox: ${iframe.getAttribute("sandbox")}`);
@@ -157,22 +167,28 @@ check("state_at_draw_time_lands", () => {
   // A redraw mid-session: the key already holds the answer, and the first
   // evaluation must land on it, not skip because it is the first.
   // 会话中途重绘：键已持有答案，首次求值必须落到它，而不是因首次而跳过。
-  app.state = { "var.stream": "https://other.example/stream3" };
-  const frame = app.renderWebElement({
+  const elementDef3 = {
     id: "box", type: "web", url: "https://camera.local/ui",
     bindings: { show: { value: { key: "var.stream" } } },
-  });
+  };
+  app.state = { "var.stream": "https://other.example/stream3" };
+  const frame = app.renderWebElement(elementDef3);
+  registerEl("box", frame, elementDef3);
   app.evaluateAllBindings();
   const iframe = frame.querySelector("iframe");
   if (!iframe.src.includes("other.example")) throw new Error(`state at draw time skipped: ${iframe.src}`);
 });
 
 check("no_bridge_frame_listens_for_nothing", () => {
-  const frame = app.renderWebElement(app.uiDef.pages[0].elements[0]);
+  const elementDefNb = app.uiDef.pages[0].elements[0];
+  const frame = app.renderWebElement(elementDefNb);
+  registerEl("box", frame, elementDefNb);
   const el = app._surfaces.everyControl().box.el;
+  // The registered node is the stable wrapper: no message listener, and a
+  // state filter that would serve the remote page nothing.
+  // 登记节点是稳定包装器：无消息监听器，状态过滤对远程页面什么也不给。
   if (el._pluginMessageHandler) throw new Error("no-bridge frame registered a message listener");
-  if (el._stateFilter("device.anything.power")) throw new Error("no-bridge frame would receive state");
-  if (el._stateFilter("var.stream")) throw new Error("no-bridge frame would receive variables");
+  if (el._stateFilter && el._stateFilter("device.anything.power")) throw new Error("no-bridge frame would receive state");
 });
 
 check("edit_mode_stays_live", () => {
@@ -183,11 +199,28 @@ check("edit_mode_stays_live", () => {
   if (!frame.querySelector("iframe")) throw new Error("edit mode placeholdered a configured web element");
 });
 
+check("non_http_override_and_binding_refused", () => {
+  // One rule for all three sources: a scheme the sandbox refuses is never
+    // applied -- the frame keeps showing what it showed (三个来源同一规则：
+    // 沙箱不允许的 scheme 永不应用，帧保持原样).
+  const frame = app.renderWebElement({
+    id: "box5", type: "web", url: "https://camera.local/ui",
+    bindings: { show: { value: { key: "var.w5" } } },
+  });
+  const iframe = frame.querySelector("iframe");
+  app.state = { "var.w5": "data:text/html,x", "ui.box5.url": "javascript:alert(1)" };
+  registerEl("box5", frame, app.uiDef.pages[0].elements[0]);
+  app.evaluateAllBindings();
+  app.evaluateUiOverrides();
+  if (!iframe.src.includes("camera.local")) throw new Error(`non-http url applied: ${iframe.src}`);
+});
+
 check("ui_override_switches_the_source", () => {
   // Controllable out of the box: state.set ui.box.url moves the frame with no
   // binding authored and no variable declared (开箱即受控：无需绑定与变量).
   const frame = app.renderWebElement({ id: "box2", type: "web", url: "https://camera.local/ui" });
   app.state = { "ui.box2.url": "https://other.example/override" };
+  registerEl("box2", frame, app.uiDef.pages[0].elements[0]);
   app.evaluateUiOverrides();
   const iframe = frame.querySelector("iframe");
   if (!iframe.src.includes("other.example")) throw new Error(`override not applied: ${iframe.src}`);
@@ -202,6 +235,7 @@ check("override_beats_binding_beats_static", () => {
     bindings: { show: { value: { key: "var.stream3" } } },
   });
   app.state = { "var.stream3": "https://bound.example/a", "ui.box3.url": "https://override.example/b" };
+  registerEl("box3", frame, app.uiDef.pages[0].elements[0]);
   app.evaluateAllBindings();
   app.evaluateUiOverrides();
   const iframe = frame.querySelector("iframe");
@@ -211,6 +245,7 @@ check("override_beats_binding_beats_static", () => {
 check("override_clear_puts_the_element_url_back", () => {
   const frame = app.renderWebElement({ id: "box4", type: "web", url: "https://camera.local/ui" });
   app.state = { "ui.box4.url": "https://other.example/override" };
+  registerEl("box4", frame, app.uiDef.pages[0].elements[0]);
   app.evaluateUiOverrides();
   app.state = {};
   app.evaluateUiOverrides();

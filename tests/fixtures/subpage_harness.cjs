@@ -74,7 +74,7 @@ global.window.fetch = global.fetch;
 // --- bundle the real panel ---------------------------------------------------
 const built = esbuild.buildSync({
   stdin: {
-    contents: `import "${panelPath}";`,
+    contents: `import ${JSON.stringify(panelPath)};`,
     resolveDir: path.dirname(panelPath),
     loader: "js",
   },
@@ -106,6 +106,13 @@ if (!app) {
   process.exit(0);
 }
 results["app_booted"] = { pass: true, detail: "" };
+
+// The registry maps an element id to a LIST of live instances (the same
+// sub-page can show in two containers) -- helper for the single-instance
+// assertions the older scenarios make.
+// 注册表把元素 id 映射到存活实例列表——为旧场景的单实例断言提供辅助。
+const firstInstance = (id) => (app._surfaces.containers.get(id) || [])[0];
+const instanceCount = (id) => (app._surfaces.containers.get(id) || []).length;
 
 // One host page with the container, two sub-pages with one control each.
 // 宿主页带一个容器，两个子页面各有一个控件。
@@ -141,30 +148,30 @@ check("initial_draw_shows_default", () => {
   if (!host) throw new Error("no .subpage-host in the container frame");
   if (!host.querySelector('[data-element-id="lbl_a"]')) throw new Error("default sub-page's label not drawn");
   if (host.querySelector('[data-element-id="lbl_b"]')) throw new Error("wrong sub-page drawn");
-  const surface = app._surfaces.containers.get("box");
-  if (!surface) throw new Error("container surface not registered");
+  if (instanceCount("box") !== 1) throw new Error(`container not registered once: ${instanceCount("box")}`);
+  const surface = firstInstance("box");
   if (surface.pageId !== "sub_a") throw new Error(`surface shows ${surface.pageId}, expected sub_a`);
 });
 
 check("switch_frame_swaps_content", () => {
   app.showSubpage("box", "sub_b");
-  const host = app._surfaces.containers.get("box").host;
+  const host = firstInstance("box").host;
   if (!host.querySelector('[data-element-id="lbl_b"]')) throw new Error("switched sub-page not drawn");
   if (host.querySelector('[data-element-id="lbl_a"]')) throw new Error("previous sub-page still shown");
-  if (app._surfaces.containers.get("box").pageId !== "sub_b") throw new Error("surface pageId not updated");
+  if (firstInstance("box").pageId !== "sub_b") throw new Error("surface pageId not updated");
   if (app._subpageShown.get("box") !== "sub_b") throw new Error("memory not updated");
 });
 
 check("switch_to_a_regular_page_is_refused", () => {
-  const before = app._surfaces.containers.get("box").pageId;
+  const before = firstInstance("box").pageId;
   app.showSubpage("box", "main");
-  if (app._surfaces.containers.get("box").pageId !== before) throw new Error("regular page accepted as a sub-page");
+  if (firstInstance("box").pageId !== before) throw new Error("regular page accepted as a sub-page");
 });
 
 check("switch_to_unknown_id_is_ignored", () => {
-  const before = app._surfaces.containers.get("box").pageId;
+  const before = firstInstance("box").pageId;
   app.showSubpage("box", "ghost");
-  if (app._surfaces.containers.get("box").pageId !== before) throw new Error("unknown id accepted");
+  if (firstInstance("box").pageId !== before) throw new Error("unknown id accepted");
 });
 
 check("navigation_to_a_subpage_does_nothing", () => {
@@ -174,10 +181,10 @@ check("navigation_to_a_subpage_does_nothing", () => {
 });
 
 check("host_surface_end_takes_the_container_down", () => {
-  const surface = app._surfaces.containers.get("box");
+  const surface = firstInstance("box");
   if (!surface) throw new Error("container gone before its host ended");
   surface.hostSurface.end();
-  if (app._surfaces.containers.has("box")) throw new Error("container entry survived its host");
+  if (instanceCount("box") !== 0) throw new Error("container entry survived its host");
 });
 
 check("switch_outside_a_draw_lives_on_the_original_host", () => {
@@ -192,15 +199,15 @@ check("switch_outside_a_draw_lives_on_the_original_host", () => {
   const pageSurface = new (app._surfaces.page.constructor)("main");
   app._surfaces.page = pageSurface;
   const frame = app.renderSubpageContainer(app.uiDef.pages[0].elements[0]);
-  const surface = app._surfaces.containers.get("box");
+  const surface = firstInstance("box");
   app.showSubpage("box", "sub_a");
-  const next = app._surfaces.containers.get("box");
-  if (!next || next === surface) throw new Error("switch did not replace the surface");
+  const list = app._surfaces.containers.get("box") || [];
+  if (list.length !== 1 || list[0] === surface) throw new Error("switch did not replace the surface");
   // Ending the page surface must end BOTH the replaced surface (already ended)
   // and the live one, and clear the map.
   // 结束页面 Surface 必须同时清掉被替换的（已结束）与存活的条目。
   pageSurface.end();
-  if (app._surfaces.containers.has("box")) throw new Error("entry survived its original host after a switch");
+  if (instanceCount("box") !== 0) throw new Error("entry survived its original host after a switch");
   if (frame.parentElement) throw new Error("frame unexpectedly attached");
 });
 
@@ -212,11 +219,11 @@ check("container_without_default_receives_first_switch", () => {
   const pageSurface = new (app._surfaces.page.constructor)("main");
   app._surfaces.page = pageSurface;
   const frame = app.renderSubpageContainer({ id: "bare_box", type: "subpage_container" });
-  const entry = app._surfaces.containers.get("bare_box");
-  if (!entry) throw new Error("empty container not registered");
-  if (entry.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("drew something with no target");
+  if (instanceCount("bare_box") !== 1) throw new Error("empty container not registered");
+  const bare = firstInstance("bare_box");
+  if (bare.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("drew something with no target");
   app.showSubpage("bare_box", "sub_a");
-  const after = app._surfaces.containers.get("bare_box");
+  const after = firstInstance("bare_box");
   if (!after || after.pageId !== "sub_a") throw new Error("first switch did not land");
   if (!after.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("first switch drew nothing");
   if (frame.parentElement) throw new Error("frame unexpectedly attached");
@@ -231,7 +238,7 @@ check("stale_memory_falls_back_to_default", () => {
   app._surfaces.page = pageSurface;
   app._subpageShown.set("box", "ghost_sub");
   app.renderSubpageContainer(app.uiDef.pages[0].elements[0]);
-  const entry = app._surfaces.containers.get("box");
+  const entry = firstInstance("box");
   if (!entry || entry.pageId !== "sub_a") throw new Error(`stale memory not recovered: ${entry && entry.pageId}`);
   if (!entry.host.querySelector('[data-element-id="lbl_a"]')) throw new Error("default not drawn after stale memory");
   pageSurface.end();
@@ -267,6 +274,63 @@ check("cycle_draws_empty_instead_of_overflowing", () => {
   if (inner.querySelector('[data-element-id="inner_box"]')) throw new Error("cycle recursed");
   if (frame.parentElement) throw new Error("frame unexpectedly attached");
   pageSurface.end();
+});
+
+check("twin_instances_live_and_switch_together", () => {
+  // The same sub-page shown in two containers draws the sub-page's own
+  // containers TWICE, and each instance is a surface of its own: ending one
+  // takes only itself off the registry, and a switch moves both.
+  // 同一子页面显示在两个容器里时，其内部的容器会画两份，每个实例都有自己的
+  // Surface：结束一个只移除它自己，切换则两者一起动。
+  const pageSurface = new (app._surfaces.page.constructor)("main");
+  app._surfaces.page = pageSurface;
+  app.uiDef = {
+    pages: [
+      { id: "main", name: "Main",
+        elements: [
+          { id: "twin_a", type: "subpage_container", default_page: "sub_twin" },
+          { id: "twin_b", type: "subpage_container", default_page: "sub_twin" },
+        ],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: PLACEMENTS, hidden: [] }] },
+      { id: "sub_twin", name: "Twin", page_type: "subpage",
+        elements: [{ id: "inner", type: "subpage_container", default_page: "sub_leaf" }],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: PLACEMENTS, hidden: [] }] },
+      { id: "sub_leaf", name: "Leaf", page_type: "subpage",
+        elements: [{ id: "leaf_lbl", type: "label", text: "leaf" }],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: PLACEMENTS, hidden: [] }] },
+      { id: "sub_other", name: "Other", page_type: "subpage", elements: [],
+        layouts: [{ id: "landscape", orientation: "landscape", primary: true, placements: PLACEMENTS, hidden: [] }] },
+    ],
+    settings: {},
+  };
+  app.renderSubpageContainer(app.uiDef.pages[0].elements[0]);
+  app.renderSubpageContainer(app.uiDef.pages[0].elements[1]);
+  if (instanceCount("inner") !== 2) throw new Error(`inner drawn once, not twice: ${instanceCount("inner")}`);
+  // The ancestor guard: sub_twin is already mounted above both instances, and
+  // a switch to it is refused (祖先守卫：sub_twin 已在两实例上方，切换被拒).
+  app.showSubpage("inner", "sub_twin");
+  for (const s of app._surfaces.containers.get("inner") || []) {
+    if (s.pageId !== "sub_leaf") throw new Error("ancestor switch was not refused");
+  }
+  // One switch frame moves every LIVE instance -- asserted while both are
+  // still up, so an implementation that drops or replaces only one cannot
+  // pass (一帧切换全部存活实例——在两者都在场时断言，只切换一份的实现
+  // 无法蒙混过关).
+  app.showSubpage("inner", "sub_other");
+  for (const s of app._surfaces.containers.get("inner") || []) {
+    if (s.pageId !== "sub_other") throw new Error(`an instance stayed on ${s.pageId}`);
+  }
+  if (instanceCount("inner") !== 2) throw new Error(`an instance was dropped by the switch: ${instanceCount("inner")}`);
+  // Ending the first instance's frame surface takes only IT off the list, and
+  // its twin stays on the switched page (结束第一个实例的帧 Surface 只移除它
+  // 自己，孪生实例保持在切换后的页面).
+  const [first] = app._surfaces.containers.get("inner");
+  first.end();
+  app._surfaces.removeContainer("inner", first);
+  if (instanceCount("inner") !== 1) throw new Error("ending one instance took its twin too");
+  if (firstInstance("inner").pageId !== "sub_other") throw new Error("survivor left the switched page");
+  pageSurface.end();
+  if (instanceCount("inner") !== 0) throw new Error("instances survived their host");
 });
 
 check("fallback_skips_subpages_on_the_glass", () => {
