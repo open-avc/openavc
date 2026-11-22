@@ -251,6 +251,13 @@ AUTHORED_FRAMINGS = {
     "the_device_line_ending_when_the_driver_names_none": (
         _NO_LINE_ENDING, {"delimiter": "\n"}, "MVLUP", "MVLUP\n"),
     "cr_when_neither_names_one": (_NO_LINE_ENDING, {}, "MVLUP", "MVLUP\r"),
+    # Typed with escapes (\r as two characters) where the line ending is the
+    # real character, or the other way round: the same bytes, so one ending.
+    "a_typed_escape_ending_keeps_one": (
+        _NO_LINE_ENDING, {"delimiter": "\r\n"}, "MVLUP\\r\\n", "MVLUP\\r\\n"),
+    "a_typed_real_ending_keeps_one": (_PLAIN, {}, "MVLUP\r", "MVLUP\r"),
+    "a_typed_escape_prefix_keeps_one": (
+        _PLAIN, {"command_prefix": "\x02"}, "\\x02MVLUP", "\\x02MVLUP\\r"),
     "the_device_prefix": (_PLAIN, {"command_prefix": "#"}, "MVLUP", "#MVLUP\\r"),
     "raw_is_as_written": (ACME_RECEIVER, {}, {"send": "MVLUP", "raw": True}, "MVLUP"),
 }

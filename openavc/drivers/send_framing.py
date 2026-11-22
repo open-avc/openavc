@@ -137,13 +137,16 @@ def _text(value: Any) -> str:
 
 def _framed_authored(send: Any, prefix: Any, line_ending: str) -> Any:
     """A device's own command: the prefix unless it already starts with it,
-    the line ending unless it already ends with it."""
+    the line ending unless it already ends with it, each compared as the
+    bytes it sends, so a ``\\r`` typed as two characters is the CR the line
+    ending holds."""
     prefix = _text(prefix)
     if not isinstance(send, str):
         return send
-    if prefix and not send.startswith(prefix):
+    sent = _safe_encode_escapes(send)
+    if prefix and not sent.startswith(_safe_encode_escapes(prefix)):
         send = prefix + send
-    if line_ending and not send.endswith(line_ending):
+    if line_ending and not sent.endswith(_safe_encode_escapes(line_ending)):
         send = send + line_ending
     return send
 
