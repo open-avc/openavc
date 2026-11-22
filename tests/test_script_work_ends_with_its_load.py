@@ -69,6 +69,15 @@ def _end_the_load(engine, script_dir, cfg: dict, how: str) -> None:
         assert engine.reload_script(cfg)["status"] == "reloaded"
 
 
+async def _until_started(state) -> None:
+    """Wait for the handler to mark its start: a run asked for but not yet
+    begun when the load ends is dropped, so a fixed pause proves nothing (on
+    Windows a 10 ms sleep can come back before a plain def reaches its thread)."""
+    async with asyncio.timeout(5):
+        while state.get("var.started") is not True:
+            await asyncio.sleep(0.005)
+
+
 def _ticker(name: str) -> str:
     return (
         f"def tick_{name}():\n"
@@ -83,6 +92,7 @@ _ARMS_LATE = {
         {ticker}
         @on_event("custom.arm")
         async def arm(event):
+            state.set("var.started", True)
             await delay(0.3)
             every(0.01, tick_old)
             state.set("var.armed", True)
@@ -94,6 +104,7 @@ _ARMS_LATE = {
         {ticker}
         @on_event("custom.arm")
         def arm(event):
+            state.set("var.started", True)
             time.sleep(0.3)
             every(0.01, tick_old)
             state.set("var.armed", True)
@@ -113,7 +124,7 @@ async def test_a_timer_asked_for_after_the_load_ended_is_not_started(
     assert engine.get_load_errors() == {}
 
     emit = asyncio.create_task(events.emit("custom.arm", {}))
-    await asyncio.sleep(0.01)  # the handler is in its wait, well short of its end
+    await _until_started(state)  # the handler is in its wait, well short of its end
     _end_the_load(engine, script_dir, cfg, how)
     await emit
     await asyncio.sleep(0.15)
@@ -165,12 +176,13 @@ async def test_a_handler_queued_before_the_load_ended_is_not_run(
 async def test_a_failure_of_the_old_version_after_a_reload_is_not_put_on_the_new_one(
     engine, subsystems, script_dir
 ):
-    _, events, _ = subsystems
+    state, events, _ = subsystems
     cfg = _write(script_dir, "fixed", """\
-        from openavc import on_event, delay
+        from openavc import on_event, delay, state
 
         @on_event("custom.arm")
         async def arm(event):
+            state.set("var.started", True)
             await delay(0.3)
             raise RuntimeError("the old version failed")
     """)
@@ -178,7 +190,7 @@ async def test_a_failure_of_the_old_version_after_a_reload_is_not_put_on_the_new
     assert engine.get_load_errors() == {}
 
     emit = asyncio.create_task(events.emit("custom.arm", {}))
-    await asyncio.sleep(0.01)
+    await _until_started(state)
     _end_the_load(engine, script_dir, cfg, "reload")
     await emit
 
