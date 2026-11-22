@@ -7,16 +7,23 @@ that run a script's code are the engine's own and record there directly. Two
 are the script API's: a timer's callback, and an ``events.emit`` the bus
 dropped at its chain limit. They report through here, bound to the engine by
 ``ScriptEngine.install``, so a failure at either reaches the same record.
+
+A failure names the load of the script that failed (its ``LoadedScript``), not
+its id: an old version's run that fails after an edit was saved is not put on
+the new version's row.
 """
 
 from __future__ import annotations
 
 import traceback
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from openavc.utils.log_buffer import USER_SCRIPT_NAMESPACE
 from openavc.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from openavc.core.script_engine import LoadedScript
 
 log = get_logger(__name__)
 
@@ -27,7 +34,7 @@ _SCRIPT_MODULES = f"{USER_SCRIPT_NAMESPACE}."
 class ScriptFailure:
     """One failure of a script's code, as the record keeps it."""
 
-    script_id: str | None
+    script: LoadedScript | None
     handler: str
     event: str
     error: str
@@ -46,11 +53,11 @@ def bind(record: Callable[[ScriptFailure], None]) -> None:
 def report(failure: ScriptFailure) -> None:
     """Record a failure against the script that owns it. A failure no script
     owns has no row to show on and is left to the log."""
-    if _record is not None and failure.script_id:
+    if _record is not None and failure.script is not None:
         _record(failure)
 
 
-def report_dropped_emit(script_id: str | None, sentence: str) -> None:
+def report_dropped_emit(script: LoadedScript | None, sentence: str) -> None:
     """Report an ``events.emit`` the bus dropped, against the sending script.
 
     Not raised into the script: the event is lost either way, and the lines
@@ -59,7 +66,7 @@ def report_dropped_emit(script_id: str | None, sentence: str) -> None:
     An emit a timer ran for the script (``after(0, events.emit, ...)``) has no
     such line, and is named by the call itself.
     """
-    if not script_id:
+    if script is None:
         return
     frames = _script_frames()
     handler = frames[-1].name if frames else "events.emit"
@@ -67,8 +74,8 @@ def report_dropped_emit(script_id: str | None, sentence: str) -> None:
         "Traceback (most recent call last):\n" + "".join(frames.format())
         if frames else ""
     )
-    log.error(f"Script '{script_id}' {handler}: {sentence}")
-    report(ScriptFailure(script_id, handler, "events.emit", sentence, trace))
+    log.error(f"Script '{script.script_id}' {handler}: {sentence}")
+    report(ScriptFailure(script, handler, "events.emit", sentence, trace))
 
 
 def _script_frames() -> traceback.StackSummary:

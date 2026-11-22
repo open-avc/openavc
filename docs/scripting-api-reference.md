@@ -286,7 +286,7 @@ cancelled = cancel_timer(timer_id)
 
 ### cancel_all_timers() -> int
 
-Cancel all active timers at once. Returns the number of timers cancelled.
+Cancel every timer the calling script started with `after()` or `every()`. Other scripts' timers keep running. Returns the number of timers cancelled.
 
 ```python
 count = cancel_all_timers()

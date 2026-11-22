@@ -239,7 +239,9 @@ def _what_runs(eng) -> dict:
         "group g1": eng.macros._groups.members("g1"),
         "triggers": sorted(triggers._triggers),
         "trigger listeners": len(triggers._state_sub_ids),
-        "scripts": {sid: sorted(names) for sid, names in eng.scripts._handler_names.items()},
+        "scripts": {
+            sid: sorted(loaded.handler_names) for sid, loaded in eng.scripts._scripts.items()
+        },
         "mesh": eng.isc.settings.get("shared_state_patterns"),
         "project name": eng.state.get("system.project_name"),
         "project file": eng.project_path.read_bytes(),

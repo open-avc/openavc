@@ -481,7 +481,7 @@ cancel_timer(timer_id)
 
 ### cancel_all_timers()
 
-Cancel all active timers at once. Returns the number of timers cancelled. Useful for cleanup when stopping a script or switching modes.
+Cancel every timer this script started with `after()` or `every()`. Other scripts' timers keep running. Returns the number of timers cancelled. Useful for cleanup when the script switches modes.
 
 ```python
 count = cancel_all_timers()
@@ -620,7 +620,7 @@ The timer is started at the top of the script, below the function it calls. It s
 - **Use `async def` for any handler that talks to a device or waits**, with `await` on the command or delay. A plain `def` handler runs on its script's own thread: it may block, up to the 30-second limit, but cannot `await`.
 - **Script errors**: a handler, timer callback or control's function that throws or times out is counted on the script's row in the Scripts list, and hovering the row shows the last failure. So is a control's call refused before the function runs (no such function, two scripts defining it, or parameters it does not take), on each script it names, and an event dropped at the chain limit. Open the script and the editor marks the line that raised or sent it. Each failure is also logged and, except a dropped event, sent to the Programmer's WebSocket connections (never a panel's) as a `script.error` event with `script_id`, `handler`, `event`, `error`, and `traceback` fields. The system keeps running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
-- **Hot reload**: click **Save & Reload Script** in the Code view to reload a script without restarting the server.
+- **Hot reload**: click **Save & Reload Script** in the Code view to reload a script without restarting the server. Saving, disabling or deleting a script stops the version that was running: a handler of it still running at that moment finishes, but a timer it starts after that does not run, and a handler that had not started yet does not run either.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).
 - **Never block inside an `async def`**: use `await delay()` instead of `time.sleep()`. A blocking call there freezes the entire system. Blocking calls belong in a plain `def`.
 - **Nothing at the top level should loop.** Code outside a handler runs once, when the script loads, and it gets 10 seconds. Past that the load is abandoned and the script does not run. Work that repeats belongs in `every()`. A loop that calls into the platform is stopped at its next call, so fixing the script and clicking Run clears it; a loop that calls nothing at all cannot be stopped and keeps a core busy until the server restarts, which is slow enough to make healthy devices look like they are dropping offline. The Scripts list says which one you have.

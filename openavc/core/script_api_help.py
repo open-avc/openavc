@@ -50,8 +50,8 @@ HELP: dict[str, Help] = {
         'timer_id = after(5, macros.start, "all_off")',
     ),
     "cancel_all_timers": Help(
-        "Cancel every timer started by after() or every(). Returns how many were "
-        "cancelled.",
+        "Cancel every timer this script started with after() or every(). Other "
+        "scripts' timers keep running. Returns how many were cancelled.",
         "count = cancel_all_timers()",
     ),
     "cancel_timer": Help(

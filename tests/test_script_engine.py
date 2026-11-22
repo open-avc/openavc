@@ -3,6 +3,7 @@
 import asyncio
 import textwrap
 import threading
+import types
 
 import pytest
 
@@ -10,7 +11,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.core.device_manager import DeviceManager
 from openavc.core import script_api
-from openavc.core.script_engine import ScriptEngine
+from openavc.core.script_engine import LoadedScript, ScriptEngine
 
 
 @pytest.fixture
@@ -160,12 +161,14 @@ async def test_unload_removes_handlers(engine, subsystems, script_dir):
     """)
 
     engine.load_scripts([{"id": "unload", "file": "unload.py", "enabled": True}])
-    assert len(engine._event_handler_ids) == 1
-    assert len(engine._state_sub_ids) == 1
+    loaded = engine._scripts["unload"]
+    assert len(loaded.event_handler_ids) == 1
+    assert len(loaded.state_sub_ids) == 1
 
     engine.unload_all()
-    assert len(engine._event_handler_ids) == 0
-    assert len(engine._state_sub_ids) == 0
+    assert engine._scripts == {}
+    assert engine.handler_count() == 0
+    assert loaded.unloaded
 
 
 async def test_reload_scripts(engine, subsystems, script_dir):
@@ -594,7 +597,10 @@ def _ticker_source(version: str, *, then_raise: bool = False) -> str:
 
 
 def _timers_owned_by(script_id: str) -> list[str]:
-    return [t for t, owner in script_api._timer_owners.items() if owner == script_id]
+    return [
+        t for t, owner in script_api._timer_owners.items()
+        if getattr(owner, "script_id", None) == script_id
+    ]
 
 
 async def test_a_timer_started_at_the_top_of_a_script_survives_its_reload(
@@ -721,8 +727,8 @@ async def test_reload_script_leaves_peers_running(engine, subsystems, script_dir
     await asyncio.sleep(0.05)
     assert state.get("var.b_out") == "b:2"
     # b kept its single subscription; a was swapped, not duplicated.
-    assert len(engine._state_sub_ids["b"]) == 1
-    assert len(engine._state_sub_ids["a"]) == 1
+    assert len(engine._scripts["b"].state_sub_ids) == 1
+    assert len(engine._scripts["a"].state_sub_ids) == 1
 
 
 async def test_reload_script_preserves_old_on_failure(engine, subsystems, script_dir):
@@ -764,22 +770,24 @@ async def test_reload_script_preserves_old_on_failure(engine, subsystems, script
 
 async def test_cancel_script_timers_is_scoped():
     """cancel_script_timers only cancels the owning script's timers."""
-    script_api.cancel_all_timers()  # clean slate
+    script_api.stop_all_timers()  # clean slate
+    alpha = LoadedScript("alpha", types.ModuleType("alpha"))
+    beta = LoadedScript("beta", types.ModuleType("beta"))
 
-    with script_api.current_script_context("alpha"):
+    with script_api.current_script_context(alpha):
         t_alpha = script_api.every(100, lambda: None)
-    with script_api.current_script_context("beta"):
+    with script_api.current_script_context(beta):
         t_beta = script_api.every(100, lambda: None)
 
-    assert script_api._timer_owners.get(t_alpha) == "alpha"
-    assert script_api._timer_owners.get(t_beta) == "beta"
+    assert script_api._timer_owners.get(t_alpha) is alpha
+    assert script_api._timer_owners.get(t_beta) is beta
 
-    cancelled = script_api.cancel_script_timers("alpha")
+    cancelled = script_api.cancel_script_timers(alpha)
     assert cancelled == 1
     assert t_alpha not in script_api._active_timers
     assert t_beta in script_api._active_timers  # beta untouched
 
-    script_api.cancel_all_timers()
+    script_api.stop_all_timers()
 
 
 # --- Macro call chain survives the script boundary ---

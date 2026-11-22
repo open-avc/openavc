@@ -8,10 +8,16 @@ runs on the event loop, bounded by the handler limit. One written as a plain
 ``requests.get`` against a host that is down, a long loop) holds up only its
 own script rather than every device command, panel and Programmer at once:
 
-- **One worker thread per script, one run at a time, in the order they were
-  asked for.** Two presses run in the order they were pressed, a state handler
-  sees the changes in the order they happened, and a slow run delays only the
-  script it belongs to.
+- **One worker thread per loaded script, one run at a time, in the order they
+  were asked for.** Two presses run in the order they were pressed, a state
+  handler sees the changes in the order they happened, and a slow run delays
+  only the script it belongs to. The lane is keyed by the script's record
+  (``script_engine.LoadedScript``), never its id, so a reloaded script's new
+  version gets a lane of its own.
+- **Nothing of an unloaded script starts.** A run asked for after the record
+  was unloaded (a state handler queued by a change just before an edit was
+  saved) is not run, and no lane is made for it; a run already going finishes
+  under its own limit.
 - **Every script-API call made off the loop runs on the loop**, and the calling
   thread waits for it (:func:`call_on_loop`). The state store, the bus, the
   device manager and the timers all assume the loop's thread: a ``state.set``
@@ -42,9 +48,12 @@ import contextvars
 import inspect
 import queue
 import threading
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from openavc.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from openavc.core.script_engine import LoadedScript
 
 log = get_logger(__name__)
 
@@ -96,7 +105,7 @@ async def run_within_handler_limit(awaitable: Any, limit: float) -> None:
 
 
 async def run_script_code(
-    script_id: str | None,
+    script: LoadedScript | None,
     fn: Callable,
     args: tuple = (),
     kwargs: dict[str, Any] | None = None,
@@ -107,8 +116,11 @@ async def run_script_code(
     An ``async def`` runs on the loop. Anything else runs on the script's
     worker thread; if it hands back a coroutine (``lambda: devices.send(...)``
     as a timer callback does), that is awaited on the loop in the time left.
-    Raises :class:`HandlerTimedOut` when the limit stops it.
+    Raises :class:`HandlerTimedOut` when the limit stops it. A run of a script
+    that has been unloaded since it was asked for is not run at all.
     """
+    if _load_ended(script, fn):
+        return
     kwargs = kwargs or {}
     loop = asyncio.get_running_loop()
     # With no live loop named yet (the engine was installed from sync code),
@@ -116,16 +128,27 @@ async def run_script_code(
     # to: an async handler's asyncio.to_thread, a thread the script started.
     # A live one is never replaced, so a handler run by some other loop (a
     # plugin's own, writing state directly) cannot take the hand-off with it.
-    bound = _loop
-    if bound is None or bound.is_closed() or not bound.is_running():
+    if not _is_live(_loop):
         bind_loop(loop)
     if inspect.iscoroutinefunction(fn):
         await run_within_handler_limit(fn(*args, **kwargs), limit)
         return
     deadline = loop.time() + limit
-    result = await _run_plain(script_id, fn, args, kwargs, limit)
+    result = await _run_plain(script, fn, args, kwargs, limit)
     if asyncio.iscoroutine(result):
         await run_within_handler_limit(result, max(0.0, deadline - loop.time()))
+
+
+def _load_ended(script: LoadedScript | None, fn: Callable) -> bool:
+    """Whether *script* was unloaded before this run of *fn* began, which
+    leaves it unrun (said in the log). Work outside any script always runs."""
+    if script is None or not script.unloaded:
+        return False
+    log.debug(
+        f"Script '{script.script_id}': '{getattr(fn, '__name__', fn)}' not run, "
+        f"the script was unloaded before it began"
+    )
+    return True
 
 
 # --- The hand-off back to the loop ---
@@ -140,6 +163,11 @@ def bind_loop(loop: asyncio.AbstractEventLoop) -> None:
     _loop = loop
 
 
+def _is_live(loop: asyncio.AbstractEventLoop | None) -> bool:
+    """Whether *loop* is one that is running, to hand calls to."""
+    return loop is not None and not loop.is_closed() and loop.is_running()
+
+
 def mark_load_thread() -> None:
     """Mark the calling thread as a script's top-level load (never hands off)."""
     _thread_role.load = True
@@ -149,7 +177,7 @@ def hand_off_loop() -> asyncio.AbstractEventLoop | None:
     """The loop a script-API call on this thread must run on, or None to run
     it right here: on the loop itself, on a load thread, or with no loop."""
     loop = _loop
-    if loop is None or loop.is_closed() or not loop.is_running():
+    if not _is_live(loop):
         return None
     try:
         if asyncio.get_running_loop() is loop:
@@ -269,8 +297,8 @@ class _Lane:
 
     __slots__ = ("script_id", "loop", "lock", "worker", "closed", "stuck")
 
-    def __init__(self, script_id: str | None, loop: asyncio.AbstractEventLoop):
-        self.script_id = script_id
+    def __init__(self, script: LoadedScript | None, loop: asyncio.AbstractEventLoop):
+        self.script_id = script.script_id if script is not None else None
         self.loop = loop
         self.lock = asyncio.Lock()  # FIFO: runs start in the order they arrived
         self.worker: _Worker | None = None
@@ -278,7 +306,7 @@ class _Lane:
         self.stuck: list[threading.Thread] = []
 
 
-_lanes: dict[str | None, _Lane] = {}
+_lanes: dict[LoadedScript | None, _Lane] = {}
 
 
 def _consume(task: asyncio.Task) -> None:
@@ -288,12 +316,12 @@ def _consume(task: asyncio.Task) -> None:
 
 
 async def _run_plain(
-    script_id: str | None, fn: Callable, args: tuple, kwargs: dict, limit: float,
+    script: LoadedScript | None, fn: Callable, args: tuple, kwargs: dict, limit: float,
 ) -> Any:
     loop = asyncio.get_running_loop()
-    lane = _lanes.get(script_id)
+    lane = _lanes.get(script)
     if lane is None or lane.loop is not loop:
-        lane = _lanes[script_id] = _Lane(script_id, loop)
+        lane = _lanes[script] = _Lane(script, loop)
     # The run is its own task, and whoever asked for it awaits it shielded.
     # Cancelling the asker (a timer cancelled from inside its own callback,
     # the emit that fired a handler) must not cut the run short: inline, the
@@ -347,13 +375,13 @@ def _abandon(lane: _Lane, worker: _Worker) -> None:
     )
 
 
-def close_script(script_id: str | None) -> None:
+def close_script(script: LoadedScript | None) -> None:
     """The script is being unloaded: run nothing more of its plain code.
 
     A run already going finishes under its own limit, the way an async
     handler's task does; runs still waiting their turn are dropped.
     """
-    lane = _lanes.pop(script_id, None)
+    lane = _lanes.pop(script, None)
     if lane is None:
         return
     lane.closed = True
@@ -364,5 +392,5 @@ def close_script(script_id: str | None) -> None:
 
 def close_all() -> None:
     """Close every script's lane (a whole-project unload)."""
-    for script_id in list(_lanes):
-        close_script(script_id)
+    for script in list(_lanes):
+        close_script(script)

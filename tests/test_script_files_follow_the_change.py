@@ -89,7 +89,7 @@ def _what_holds(eng) -> dict:
     return {
         "records": [s.id for s in eng.project.scripts],
         "on disk": [s["id"] for s in json.loads(eng.project_path.read_text())["scripts"]],
-        "running": sorted(eng.scripts._handler_names),
+        "running": sorted(eng.scripts._scripts),
         "files": sorted(p.name for p in _scripts(eng).iterdir()),
     }
 

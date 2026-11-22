@@ -122,6 +122,77 @@ class ScriptCallError(Exception):
 COULD_NOT_FINISH = "This control couldn't finish. Contact support."
 
 
+class LoadedScript:
+    """One load of one script: THE record of what a loaded script started.
+
+    A load begins when the script's file is imported and ends once, at its
+    unload: an edit saved (the new version is a load of its own), the script
+    disabled or removed, or the project reloaded. What the script starts
+    belongs to the load, never to the script's id, so the two versions either
+    side of a reload are never taken for each other:
+
+    - its handlers: the event handlers and state subscriptions registered here;
+    - its timers: ``script_api`` gives each ``after()``/``every()`` the load
+      running when it was asked for;
+    - its worker lane: ``script_runs`` keys a plain ``def``'s lane by it;
+    - its runs: its top-level code and every handler, called function and
+      timer callback run with it as the current script
+      (``script_api.current_script_context``);
+    - its last failure, kept by ``ScriptEngine._record_runtime_error``.
+
+    Once unloaded it starts nothing more. A run already going finishes under
+    its own limit, but a timer it asks for is not started and a run that had
+    not begun (a handler queued by a change just before) is not run. A failure
+    it meets is logged and kept off the next load's row.
+    """
+
+    __slots__ = (
+        "script_id", "module", "event_handler_ids", "state_sub_ids",
+        "handler_names", "runtime_error", "unloaded",
+    )
+
+    def __init__(self, script_id: str, module: types.ModuleType):
+        self.script_id = script_id
+        self.module = module
+        self.event_handler_ids: list[str] = []
+        self.state_sub_ids: list[str] = []
+        # Names this script registered as an event/state handler. Kept because
+        # a handler is exactly what a button must NOT be offered: it takes an
+        # Event the bus supplies, so a control calling it by name could only
+        # ever get the arguments wrong.
+        self.handler_names: set[str] = set()
+        # {"count", "handler", "event", "error", "traceback", "at"} for
+        # failures AFTER the script loaded, from every door that runs its code
+        # (ScriptEngine._record_runtime_error lists them). A load error means
+        # the script is not running; one of these means it IS running and does
+        # not work.
+        self.runtime_error: dict[str, Any] | None = None
+        self.unloaded = False
+
+    def handler_count(self) -> int:
+        """Its registered handlers, event and state."""
+        return len(self.event_handler_ids) + len(self.state_sub_ids)
+
+    def offered(self, name: str) -> Callable | None:
+        """The function a control naming *name* runs here, or None.
+
+        A function a control can call is a plain function the script defines:
+        not private, not imported from somewhere else, and not one of its own
+        handlers.
+        """
+        if name.startswith("_") or name in self.handler_names:
+            return None
+        fn = getattr(self.module, name, None)
+        if inspect.isfunction(fn) and fn.__module__ == self.module.__name__:
+            return fn
+        return None
+
+    def callable_functions(self) -> dict[str, Callable]:
+        """Every function :meth:`offered` here, by name, in name order."""
+        names = [name for name, _fn in inspect.getmembers(self.module, inspect.isfunction)]
+        return {name: fn for name in names if (fn := self.offered(name)) is not None}
+
+
 
 class ScriptEngine:
     """Loads user scripts, registers their decorated handlers, supports hot-reload."""
@@ -141,29 +212,18 @@ class ScriptEngine:
         self.project_dir = project_dir
         self.scripts_dir = project_dir / "scripts"
 
-        # Tracking for unregistration on reload — keyed by script_id so a
-        # single script can be torn down without disturbing its peers.
-        self._event_handler_ids: dict[str, list[str]] = {}  # script_id -> handler ids
-        self._state_sub_ids: dict[str, list[str]] = {}      # script_id -> sub ids
-        self._loaded_modules: dict[str, str] = {}  # script_id -> module_name
+        # script_id -> the loaded script's record (LoadedScript): what it
+        # registered and started and its last failure, so one script can be
+        # torn down without disturbing its peers.
+        self._scripts: dict[str, LoadedScript] = {}
+        # The two below are about an id with no loaded script, so they are
+        # kept beside the records rather than in one.
         self._load_errors: dict[str, str] = {}  # script_id -> error message
-        # script_id -> names this script registered as an event/state handler.
-        # Kept because a handler is exactly what a button must NOT be offered:
-        # it takes an Event the bus supplies, so a control calling it by name
-        # could only ever get the arguments wrong.
-        self._handler_names: dict[str, set[str]] = {}
         # script_id -> {"attempts", "threads", "since"} for loads that timed
         # out. Abandoning a load thread does not stop it, so this is what lets
         # anything downstream say a runaway exists -- nothing did, and only a
         # restart cleared it.
         self._abandoned_loads: dict[str, dict[str, Any]] = {}
-        # script_id -> {"count", "handler", "event", "error", "traceback", "at"}
-        # for failures AFTER the script loaded, from every door that runs its
-        # code (_record_runtime_error lists them). A load error means the
-        # script is not running; one of these means it IS running and does not
-        # work, which is the state that used to reach the raw log and nowhere
-        # else.
-        self._runtime_errors: dict[str, dict[str, Any]] = {}
 
     def install(self) -> None:
         """Wire the script-API proxies to the real subsystems.
@@ -175,7 +235,7 @@ class ScriptEngine:
         """
         script_api.configure(self.devices, self.state, self.events, self.macro_engine)
         script_failures.bind(lambda failure: self._record_runtime_error(
-            failure.script_id, failure.handler, failure.event, failure.error,
+            failure.script, failure.handler, failure.event, failure.error,
             failure.traceback,
         ))
         try:
@@ -196,7 +256,6 @@ class ScriptEngine:
         """
         handler_count = 0
         self._load_errors.clear()
-        self._runtime_errors.clear()
         for script_cfg in scripts:
             if not script_cfg.get("enabled", True):
                 log.info(f"Script '{script_cfg['id']}' is disabled, skipping")
@@ -251,7 +310,7 @@ class ScriptEngine:
         return dict(self._load_errors)
 
     def _record_runtime_error(
-        self, script_id: str, handler: str, event: str, error: str, tb: str,
+        self, script: LoadedScript, handler: str, event: str, error: str, tb: str,
     ) -> None:
         """Remember that a loaded script failed while running.
 
@@ -266,13 +325,16 @@ class ScriptEngine:
         THE record every door that runs a loaded script's code reports to: an
         event or state handler, a control's call, refused or raised, and,
         through ``script_failures`` (bound by ``install``), a timer callback
-        and an ``events.emit`` the bus dropped. Only a loaded script is recorded: one
-        that is not has no row to show it on, and the record would outlive
-        its next load.
+        and an ``events.emit`` the bus dropped. Only the load that is running
+        is recorded: a script that is not loaded has no row to show it on, and
+        a version an edit has replaced, failing in a run still going at the
+        swap, must not mark the version that replaced it.
         """
-        if script_id not in self._loaded_modules:
+        if self._scripts.get(script.script_id) is not script:
             return
-        record = self._runtime_errors.setdefault(script_id, {"count": 0})
+        if script.runtime_error is None:
+            script.runtime_error = {"count": 0}
+        record = script.runtime_error
         record["count"] += 1
         record["handler"] = handler
         record["event"] = event
@@ -289,15 +351,14 @@ class ScriptEngine:
         they open the view.
         """
         return {
-            script_id: dict(record)
-            for script_id, record in self._runtime_errors.items()
+            script_id: dict(script.runtime_error)
+            for script_id, script in self._scripts.items()
+            if script.runtime_error
         }
 
     def handler_count(self) -> int:
         """Total registered handlers across all loaded scripts (event + state)."""
-        return sum(len(ids) for ids in self._event_handler_ids.values()) + sum(
-            len(ids) for ids in self._state_sub_ids.values()
-        )
+        return sum(script.handler_count() for script in self._scripts.values())
 
     # Timeout for script top-level execution (seconds)
     SCRIPT_LOAD_TIMEOUT = 10
@@ -312,14 +373,14 @@ class ScriptEngine:
 
     def _load_single_script(self, script_id: str, script_path: Path) -> int:
         """Import a single script file and register its handlers/timers."""
-        event_handlers, state_handlers, module = self._import_script(
+        script, event_handlers, state_handlers = self._import_script(
             script_id, script_path
         )
-        return self._register_script(script_id, module, event_handlers, state_handlers)
+        return self._register_script(script, event_handlers, state_handlers)
 
     def _import_script(
         self, script_id: str, script_path: Path
-    ) -> tuple[list, list, types.ModuleType]:
+    ) -> tuple[LoadedScript, list, list]:
         """Phase 1 of loading: execute the script's top-level code and drain its
         decorated handlers, WITHOUT registering anything on the bus yet.
 
@@ -346,18 +407,21 @@ class ScriptEngine:
 
         module = types.ModuleType(module_name)
         module.__file__ = str(script_path)
+        script = LoadedScript(script_id, module)
 
         try:
-            self._exec_with_timeout(script_id, code, module)
+            self._exec_with_timeout(script, code)
+            event_handlers, state_handlers = script_api.drain_pending()
+            self._check_event_handler_signatures(event_handlers)
         except BaseException:
             # A failed/timed-out import must not leave its timers parked to be
-            # materialized later.
+            # materialized later, and is a load that has ended: a thread its
+            # top-level code started gets nothing more of it.
+            script.unloaded = True
             script_api.discard_pending_timers()
             raise
 
-        event_handlers, state_handlers = script_api.drain_pending()
-        self._check_event_handler_signatures(event_handlers)
-        return event_handlers, state_handlers, module
+        return script, event_handlers, state_handlers
 
     @staticmethod
     def _check_event_handler_signatures(event_handlers: list) -> None:
@@ -393,9 +457,7 @@ class ScriptEngine:
                 "`event.payload`. These do not: " + "; ".join(bad)
             )
 
-    def _exec_with_timeout(
-        self, script_id: str, code: Any, module: types.ModuleType
-    ) -> None:
+    def _exec_with_timeout(self, script: LoadedScript, code: Any) -> None:
         """Run a script's top-level code in a daemon thread bounded by a timeout.
 
         The thread isolates the event loop from an infinite loop in module-level
@@ -410,7 +472,11 @@ class ScriptEngine:
         platform — the loop body of every runaway that can do harm. One that
         touches nothing cannot be stopped at all (Python cannot kill a thread),
         so it is recorded instead and reported by ``get_abandoned_loads``.
+
+        The code runs as *script*, so a timer it starts is this load's, and its
+        ``cancel_all_timers()`` reaches no further than this load's own.
         """
+        script_id = script.script_id
         box: dict[str, BaseException] = {}
         done = threading.Event()
 
@@ -419,7 +485,8 @@ class ScriptEngine:
             # script-API calls must run here rather than be handed to it.
             script_runs.mark_load_thread()
             try:
-                exec(code, module.__dict__)
+                with script_api.current_script_context(script):
+                    exec(code, script.module.__dict__)
             except script_api.ScriptLoadAbandoned:
                 log.info(
                     f"Abandoned load thread for script '{script_id}' unwound "
@@ -516,98 +583,71 @@ class ScriptEngine:
 
     def _register_script(
         self,
-        script_id: str,
-        module: types.ModuleType,
+        script: LoadedScript,
         event_handlers: list,
         state_handlers: list,
     ) -> int:
-        """Phase 2 of loading: publish the module and register its handlers and
-        any timers it created at top level. Tracks everything under
-        ``script_id`` so the script can later be torn down on its own."""
-        sys.modules[module.__name__] = module
-        self._loaded_modules[script_id] = module.__name__
-        event_ids = self._event_handler_ids.setdefault(script_id, [])
-        state_ids = self._state_sub_ids.setdefault(script_id, [])
-        names = self._handler_names.setdefault(script_id, set())
+        """Phase 2 of loading: publish the load, in place of whichever was
+        loaded under its id, and register its handlers and any timers it
+        created at top level. Everything is kept on the record, so the script
+        can later be torn down on its own."""
+        self.unload_script(script.script_id)
+        sys.modules[script.module.__name__] = script.module
+        self._scripts[script.script_id] = script
         for _pattern, handler in (*event_handlers, *state_handlers):
             handler_name = getattr(handler, "__name__", "")
             if handler_name:
-                names.add(handler_name)
-        count = 0
+                script.handler_names.add(handler_name)
 
         for pattern, handler in event_handlers:
-            wrapped = self._wrap_event_handler(handler, script_id)
-            event_ids.append(self.events.on(pattern, wrapped))
-            count += 1
+            wrapped = self._wrap_event_handler(handler, script)
+            script.event_handler_ids.append(self.events.on(pattern, wrapped))
 
         for pattern, handler in state_handlers:
-            wrapped = self._wrap_state_handler(handler, script_id)
-            state_ids.append(self.state.subscribe(pattern, wrapped))
-            count += 1
+            wrapped = self._wrap_state_handler(handler, script)
+            script.state_sub_ids.append(self.state.subscribe(pattern, wrapped))
 
         # Materialize any timers the script registered at top level. They were
-        # parked during the off-loop exec; create them on the loop now and
-        # attribute them to this script so a per-script reload can cancel them.
-        script_api.materialize_pending_timers(script_id)
+        # parked during the off-loop exec; create them on the loop now as this
+        # load's, so a per-script reload can cancel them.
+        script_api.materialize_pending_timers(script)
 
-        return count
+        return script.handler_count()
 
     def unload_all(self) -> None:
-        """Unregister every script's handlers, timers, and modules."""
-        count = 0
-        for ids in self._event_handler_ids.values():
-            for hid in ids:
-                self.events.off(hid)
-                count += 1
-        for ids in self._state_sub_ids.values():
-            for sid in ids:
-                self.state.unsubscribe(sid)
-                count += 1
-
-        # Remove script modules from sys.modules
-        for module_name in self._loaded_modules.values():
-            sys.modules.pop(module_name, None)
-
-        self._event_handler_ids.clear()
-        self._state_sub_ids.clear()
-        self._loaded_modules.clear()
-        self._handler_names.clear()
-        self._runtime_errors.clear()
+        """Unload every script, then cancel any timer started outside one."""
+        count = sum(self.unload_script(script_id) for script_id in list(self._scripts))
         script_runs.close_all()
-
-        # Cancel all dynamic timers
-        timer_count = script_api.cancel_all_timers()
+        timer_count = script_api.stop_all_timers()
         if timer_count:
-            log.info(f"Cancelled {timer_count} active timer(s)")
-
+            log.info(f"Cancelled {timer_count} timer(s) started outside any script")
         if count:
             log.info(f"Unloaded {count} handler(s)")
 
     def unload_script(self, script_id: str) -> int:
-        """Unregister a single script's handlers, subscriptions, timers, and
-        module — leaving every other script untouched. Returns the handler
-        count removed."""
-        count = 0
-        for hid in self._event_handler_ids.pop(script_id, []):
+        """End a script's load: unregister its handlers, subscriptions, timers
+        and module, and start nothing more it asks for, leaving every other
+        script untouched. Returns the handler count removed.
+
+        Its failures go with it, being no longer registered to fail again. A
+        single-script reload comes through here between importing the new
+        version and registering it, so a successful reload starts clean while a
+        failed one keeps the record of the version still running.
+        """
+        script = self._scripts.pop(script_id, None)
+        if script is None:
+            return 0
+        # First: a run of it still going asks for nothing more from here on.
+        script.unloaded = True
+        for hid in script.event_handler_ids:
             self.events.off(hid)
-            count += 1
-        for sid in self._state_sub_ids.pop(script_id, []):
+        for sid in script.state_sub_ids:
             self.state.unsubscribe(sid)
-            count += 1
+        sys.modules.pop(script.module.__name__, None)
 
-        module_name = self._loaded_modules.pop(script_id, None)
-        if module_name:
-            sys.modules.pop(module_name, None)
-        self._handler_names.pop(script_id, None)
-        # Whatever this version failed at, it is no longer registered to fail
-        # again. A single-script reload comes through here between importing
-        # the new version and registering it, so a successful reload starts
-        # clean while a failed one keeps the record of the version still
-        # running.
-        self._runtime_errors.pop(script_id, None)
-
-        script_runs.close_script(script_id)
-        timer_count = script_api.cancel_script_timers(script_id)
+        script_runs.close_script(script)
+        timer_count = script_api.cancel_script_timers(script)
+        count = script.handler_count()
         if count or timer_count:
             log.info(
                 f"Unloaded script '{script_id}' "
@@ -634,27 +674,16 @@ class ScriptEngine:
         signature rather than typed from memory, the same way a device
         command's are picked from the driver.
         """
-        results: list[dict[str, Any]] = []
-        for script_id, module_name in self._loaded_modules.items():
-            module = sys.modules.get(module_name)
-            if not module:
-                continue
-            handlers = self._handler_names.get(script_id, set())
-            for name, obj in inspect.getmembers(module, inspect.isfunction):
-                # Skip private, dunder, and imported stdlib functions
-                if name.startswith("_"):
-                    continue
-                if getattr(obj, "__module__", "") != module_name:
-                    continue
-                if name in handlers:
-                    continue
-                results.append({
-                    "script": script_id,
-                    "function": name,
-                    "doc": (inspect.getdoc(obj) or "")[:200],
-                    **describe_parameters(obj),
-                })
-        return results
+        return [
+            {
+                "script": script_id,
+                "function": name,
+                "doc": (inspect.getdoc(fn) or "")[:200],
+                **describe_parameters(fn),
+            }
+            for script_id, script in self._scripts.items()
+            for name, fn in script.callable_functions().items()
+        ]
 
     def find_callable(self, name: str, script: str = "") -> list[tuple[str, Callable]]:
         """Every loaded function of this name, as (script_id, function).
@@ -664,20 +693,11 @@ class ScriptEngine:
         problem, and ``script`` narrows it when the control recorded one.
         """
         found: list[tuple[str, Callable]] = []
-        for script_id, module_name in self._loaded_modules.items():
+        for script_id, loaded in self._scripts.items():
             if script and script_id != script:
                 continue
-            module = sys.modules.get(module_name)
-            if not module:
-                continue
-            if name in self._handler_names.get(script_id, set()):
-                continue
-            fn = getattr(module, name, None)
-            if (
-                inspect.isfunction(fn)
-                and not name.startswith("_")
-                and getattr(fn, "__module__", "") == module_name
-            ):
+            fn = loaded.offered(name)
+            if fn is not None:
                 found.append((script_id, fn))
         return found
 
@@ -724,6 +744,7 @@ class ScriptEngine:
             ))
 
         script_id, fn = matches[0]
+        loaded = self._scripts[script_id]
         try:
             inspect.signature(fn).bind(**params)
         except TypeError as exc:
@@ -735,10 +756,10 @@ class ScriptEngine:
                 f"It takes {takes}; this control passed {given}."
             ), exc)
 
-        with script_api.current_script_context(script_id):
+        with script_api.current_script_context(loaded):
             try:
                 await script_runs.run_script_code(
-                    script_id, fn, (), params, self.HANDLER_TIMEOUT,
+                    loaded, fn, (), params, self.HANDLER_TIMEOUT,
                 )
             except script_api.PanelMessage as exc:
                 # The author refusing in the room's words, on purpose: not a
@@ -752,18 +773,18 @@ class ScriptEngine:
                     f"{self.HANDLER_TIMEOUT}s"
                 )
                 log.error(msg)
-                await self._emit_script_error(script_id, name, f"script.call.{name}", msg, "")
+                await self._emit_script_error(loaded, name, f"script.call.{name}", msg, "")
                 raise ScriptCallError(COULD_NOT_FINISH) from exc
             except script_runs.ScriptRunRefused as exc:
                 log.error(f"Script '{script_id}' function '{name}': {exc}")
                 await self._emit_script_error(
-                    script_id, name, f"script.call.{name}", str(exc), "",
+                    loaded, name, f"script.call.{name}", str(exc), "",
                 )
                 raise ScriptCallError(COULD_NOT_FINISH) from exc
             except Exception as exc:  # Catch-all: isolates user script errors from engine
                 log.exception(f"Error in script '{script_id}' function '{name}'")
                 await self._emit_script_error(
-                    script_id, name, f"script.call.{name}", str(exc),
+                    loaded, name, f"script.call.{name}", str(exc),
                     traceback.format_exc(),
                 )
                 raise ScriptCallError(COULD_NOT_FINISH) from exc
@@ -780,14 +801,15 @@ class ScriptEngine:
         that is the control or the script."""
         log.error(f"Control's call to script function '{name}' refused: {sentence}")
         for script_id in script_ids:
-            if script_id in self._loaded_modules:
+            loaded = self._scripts.get(script_id)
+            if loaded is not None:
                 await self._emit_script_error(
-                    script_id, name, f"script.call.{name}", sentence, "",
+                    loaded, name, f"script.call.{name}", sentence, "",
                 )
         raise ScriptCallError(sentence) from cause
 
     async def _emit_script_error(
-        self, script_id: str, handler: str, event: str, error: str, tb: str,
+        self, script: LoadedScript, handler: str, event: str, error: str, tb: str,
     ) -> None:
         """Record a script failure, report it on the bus, and never fail doing it.
 
@@ -795,10 +817,10 @@ class ScriptEngine:
         the event reaches whoever happens to be listening, the record answers
         the scripts view whenever it is next asked.
         """
-        self._record_runtime_error(script_id, handler, event, error, tb)
+        self._record_runtime_error(script, handler, event, error, tb)
         try:
             await self.events.emit("script.error", {
-                "script_id": script_id,
+                "script_id": script.script_id,
                 "handler": handler,
                 "event": event,
                 "error": error,
@@ -826,7 +848,7 @@ class ScriptEngine:
         """
         script_id = script_cfg["id"]
         self._load_errors.pop(script_id, None)
-        was_loaded = script_id in self._loaded_modules
+        was_loaded = script_id in self._scripts
 
         if not script_cfg.get("enabled", True):
             self.unload_script(script_id)
@@ -842,7 +864,7 @@ class ScriptEngine:
 
         # Phase 1: import the new version without disturbing the running one.
         try:
-            event_handlers, state_handlers, module = self._import_script(
+            script, event_handlers, state_handlers = self._import_script(
                 script_id, script_path
             )
         except Exception as exc:  # Catch-all: user scripts can raise anything
@@ -855,13 +877,12 @@ class ScriptEngine:
             }
 
         # Phase 2: import succeeded — swap the old version out for the new.
-        self.unload_script(script_id)
-        count = self._register_script(script_id, module, event_handlers, state_handlers)
+        count = self._register_script(script, event_handlers, state_handlers)
         log.info(f"Reloaded script '{script_id}' — {count} handler(s)")
         return {"status": "reloaded", "handlers": count}
 
     def _wrap_event_handler(
-        self, handler: Callable, script_id: str
+        self, handler: Callable, script: LoadedScript
     ) -> Callable:
         """Wrap an event handler with error protection.
 
@@ -872,12 +893,14 @@ class ScriptEngine:
         holds up this script and nothing else; the emit still waits for it,
         the way it waits for an ``async def``.
         """
+        script_id = script.script_id
+
         async def wrapped(event: str, payload: dict[str, Any]) -> None:
-            with script_api.current_script_context(script_id):
+            with script_api.current_script_context(script):
                 try:
                     from openavc.core.script_api import Event
                     await script_runs.run_script_code(
-                        script_id, handler, (Event(event, payload),), None,
+                        script, handler, (Event(event, payload),), None,
                         self.HANDLER_TIMEOUT,
                     )
                 except script_runs.ScriptRunRefused as exc:
@@ -887,7 +910,7 @@ class ScriptEngine:
                         f"'{event}': {exc}"
                     )
                     await self._emit_script_error(
-                        script_id, handler_name, event, str(exc), ""
+                        script, handler_name, event, str(exc), ""
                     )
                 except HandlerTimedOut:
                     handler_name = getattr(handler, "__name__", "anonymous")
@@ -897,7 +920,7 @@ class ScriptEngine:
                     )
                     log.error(msg)
                     await self._emit_script_error(
-                        script_id, handler_name, event, msg, ""
+                        script, handler_name, event, msg, ""
                     )
                 except Exception as exc:  # Catch-all: isolates user script errors from engine
                     handler_name = getattr(handler, "__name__", "anonymous")
@@ -906,7 +929,7 @@ class ScriptEngine:
                         f"for '{event}'"
                     )
                     await self._emit_script_error(
-                        script_id, handler_name, event, str(exc),
+                        script, handler_name, event, str(exc),
                         traceback.format_exc(),
                     )
 
@@ -915,7 +938,7 @@ class ScriptEngine:
         return wrapped
 
     def _wrap_state_handler(
-        self, handler: Callable, script_id: str
+        self, handler: Callable, script: LoadedScript
     ) -> Callable:
         """Wrap a state-change handler with error protection.
 
@@ -931,6 +954,7 @@ class ScriptEngine:
         to the state store as a coroutine, so the store holds the task and a
         stop waits for a handler still running (StateStore.flush_pending_events).
         """
+        script_id = script.script_id
 
         def wrapped(
             key: str, old_value: Any, new_value: Any, source: str,
@@ -941,7 +965,7 @@ class ScriptEngine:
                 # Written from a thread with no loop (a sync caller, a plugin's
                 # own thread): run it right here, as before there was a runner.
                 self._run_state_handler_here(
-                    handler, script_id, key, old_value, new_value
+                    handler, script, key, old_value, new_value
                 )
                 return None
 
@@ -958,11 +982,11 @@ class ScriptEngine:
                     f"recursive state-change loop."
                 )
                 log.warning(msg)
-                self._schedule_state_error(script_id, handler, key, msg, "")
+                self._schedule_state_error(script, handler, key, msg, "")
                 return None
 
             return self._run_state_handler(
-                handler, (key, old_value, new_value), depth + 1, script_id, key,
+                handler, (key, old_value, new_value), depth + 1, script, key,
             )
 
         wrapped.__name__ = getattr(handler, "__name__", "anonymous")
@@ -972,7 +996,7 @@ class ScriptEngine:
     def _run_state_handler_here(
         self,
         handler: Callable,
-        script_id: str,
+        script: LoadedScript,
         key: str,
         old_value: Any,
         new_value: Any,
@@ -982,15 +1006,16 @@ class ScriptEngine:
         A plain ``def`` runs to completion here; an ``async def`` has nothing
         to run on and is closed unrun, which is recorded as its failure.
         """
+        script_id = script.script_id
         try:
-            with script_api.current_script_context(script_id):
+            with script_api.current_script_context(script):
                 result = handler(key, old_value, new_value)
         except Exception as exc:  # Catch-all: isolates a sync handler's error
             log.exception(
                 f"Error in script '{script_id}' state handler for '{key}'"
             )
             self._schedule_state_error(
-                script_id, handler, key, str(exc), traceback.format_exc()
+                script, handler, key, str(exc), traceback.format_exc()
             )
             return
         if asyncio.iscoroutine(result):
@@ -1002,14 +1027,14 @@ class ScriptEngine:
                 f"plain def handler runs there."
             )
             log.error(f"Script '{script_id}' state handler {msg}")
-            self._schedule_state_error(script_id, handler, key, msg, "")
+            self._schedule_state_error(script, handler, key, msg, "")
 
     async def _run_state_handler(
         self,
         handler: Callable,
         args: tuple,
         depth: int,
-        script_id: str,
+        script: LoadedScript,
         key: str,
     ) -> None:
         """Run one @on_state_change handler under the limit, surfacing errors.
@@ -1021,12 +1046,13 @@ class ScriptEngine:
         re-emitted as ``script.error``, honouring the documented guarantee
         that handler errors surface.
         """
+        script_id = script.script_id
         depth_token = _state_handler_depth.set(depth)
         handler_name = getattr(handler, "__name__", "anonymous")
         try:
-            with script_api.current_script_context(script_id):
+            with script_api.current_script_context(script):
                 await script_runs.run_script_code(
-                    script_id, handler, args, None, self.HANDLER_TIMEOUT,
+                    script, handler, args, None, self.HANDLER_TIMEOUT,
                 )
         except asyncio.CancelledError:
             raise
@@ -1035,26 +1061,26 @@ class ScriptEngine:
                 f"Script '{script_id}' state handler '{handler_name}' for "
                 f"'{key}': {exc}"
             )
-            await self._emit_state_error_async(script_id, handler_name, key, str(exc), "")
+            await self._emit_state_error_async(script, handler_name, key, str(exc), "")
         except HandlerTimedOut:
             msg = (
                 f"Script '{script_id}' state handler '{handler_name}' timed out "
                 f"after {self.HANDLER_TIMEOUT}s for '{key}'"
             )
             log.error(msg)
-            await self._emit_state_error_async(script_id, handler_name, key, msg, "")
+            await self._emit_state_error_async(script, handler_name, key, msg, "")
         except Exception as exc:  # Catch-all: isolates user script errors
             log.exception(
                 f"Error in script '{script_id}' state handler for '{key}'"
             )
             await self._emit_state_error_async(
-                script_id, handler_name, key, str(exc), traceback.format_exc()
+                script, handler_name, key, str(exc), traceback.format_exc()
             )
         finally:
             _state_handler_depth.reset(depth_token)
 
     def _schedule_state_error(
-        self, script_id: str, handler: Callable, key: str, error: str, tb: str
+        self, script: LoadedScript, handler: Callable, key: str, error: str, tb: str
     ) -> None:
         """Schedule a state-handler ``script.error`` emit from a sync context.
 
@@ -1068,17 +1094,17 @@ class ScriptEngine:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             self._record_runtime_error(
-                script_id, handler_name, f"state_change:{key}", error, tb
+                script, handler_name, f"state_change:{key}", error, tb
             )
             return  # no loop — nothing to emit on
         loop.create_task(
-            self._emit_state_error_async(script_id, handler_name, key, error, tb)
+            self._emit_state_error_async(script, handler_name, key, error, tb)
         )
 
     async def _emit_state_error_async(
-        self, script_id: str, handler_name: str, key: str, error: str, tb: str
+        self, script: LoadedScript, handler_name: str, key: str, error: str, tb: str
     ) -> None:
         """Record and emit ``script.error`` for a state handler; never raises."""
         await self._emit_script_error(
-            script_id, handler_name, f"state_change:{key}", error, tb
+            script, handler_name, f"state_change:{key}", error, tb
         )

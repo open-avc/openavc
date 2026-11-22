@@ -146,7 +146,10 @@ async def test_every_template_loads(generated, subsystems, tmp_path):
 
 def _timers_of(script_id: str) -> list[str]:
     """The live timers a script started (the timer table is the process's)."""
-    return [t for t, owner in script_api._timer_owners.items() if owner == script_id]
+    return [
+        t for t, owner in script_api._timer_owners.items()
+        if getattr(owner, "script_id", None) == script_id
+    ]
 
 
 def _template(generated: dict, name: str) -> str:

@@ -61,7 +61,9 @@ def _load(scripts: ScriptEngine, project_dir, code: str) -> None:
     )
     scripts.load_scripts([{"id": "auto_off", "file": "auto_off.py", "enabled": True}])
     # A timer-only script registers no handlers, so its timer is the proof it loaded.
-    assert "auto_off" in script_api._timer_owners.values()
+    assert "auto_off" in [
+        getattr(owner, "script_id", None) for owner in script_api._timer_owners.values()
+    ]
 
 
 async def _wait_for(predicate, timeout: float = 2.0) -> bool:

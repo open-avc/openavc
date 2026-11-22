@@ -101,7 +101,7 @@ timer_id = every(30.0, poll_sensor)
 # Cancel a specific timer
 cancel_timer(timer_id)
 
-# Cancel all timers at once
+# Cancel every timer this script started (other scripts' timers keep running)
 cancel_all_timers()
 
 # Async delay inside a handler (pauses current handler)

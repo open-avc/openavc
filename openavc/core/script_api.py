@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from openavc.core.device_manager import DeviceManager
     from openavc.core.event_bus import EventBus
     from openavc.core.macro_engine import MacroEngine
+    from openavc.core.script_engine import LoadedScript
     from openavc.core.state_store import StateStore
 
 # Named for the module it is, like every other logger in the tree. It used to be
@@ -614,17 +615,21 @@ plugins = _PluginsProxy()
 
 # --- Current-script context ---
 
-# Set by ScriptEngine around each handler invocation (and during load) so the
-# timer functions below can attribute a timer to the script that created it.
-# This is what lets a single script be hot-reloaded without disturbing every
-# other script's timers.
-_current_script: ContextVar[str | None] = ContextVar("openavc_current_script", default=None)
+# The load of the script whose code is running: set by ScriptEngine around its
+# top-level code and each handler, called function and timer callback, and
+# carried by the context into the tasks and worker threads a run hands off to.
+# A timer is attributed to it, which is what lets one script be reloaded
+# without disturbing another's timers, and what refuses a timer asked for by
+# the old version once a reload or unload has ended it.
+_current_script: ContextVar[LoadedScript | None] = ContextVar(
+    "openavc_current_script", default=None,
+)
 
 
 @contextlib.contextmanager
-def current_script_context(script_id: str | None):
-    """Bind the current script id for the duration of a handler/timer call."""
-    token = _current_script.set(script_id)
+def current_script_context(script: LoadedScript | None):
+    """Bind the running script's load for the duration of a call."""
+    token = _current_script.set(script)
     try:
         yield
     finally:
@@ -638,8 +643,10 @@ _active_timers: dict[str, asyncio.Task] = {}
 # running event loop, so they can't be scheduled immediately. They're parked
 # here and materialized onto the loop by ScriptEngine once load completes.
 _pending_timers: dict[str, Callable[[], Any]] = {}
-# timer_id -> owning script_id (for per-script cancellation on reload).
-_timer_owners: dict[str, str | None] = {}
+# timer_id -> the load of the script that started it (None: started outside
+# any script), parked or running; what a reload, an unload and a script's own
+# cancel_all_timers() cancel by.
+_timer_owners: dict[str, LoadedScript | None] = {}
 _timer_counter = 0
 
 
@@ -660,21 +667,33 @@ def _register_timer(timer_id: str, coro_factory: Callable[[], Any]) -> None:
 
     A handler's ``after``/``every`` call reaches here on the event loop thread
     (a plain ``def``'s is handed over by ``_leashed``), so it schedules
-    immediately and is attributed to the current script. Top-level
-    ``after``/``every`` calls run in the load worker thread (no running loop),
-    so they're parked in ``_pending_timers`` for ``materialize_pending_timers``
-    to schedule on the loop after the script finishes importing.
+    immediately. Top-level ``after``/``every`` calls run in the load worker
+    thread (no running loop), so they're parked in ``_pending_timers`` for
+    ``materialize_pending_timers`` to schedule on the loop after the script
+    finishes importing. Either way the timer is the running script's.
+
+    A script whose load has ended (an edit saved, the script disabled or
+    removed) while a handler of it was still running gets no timer: the id is
+    returned so the handler's next line runs, and nothing is scheduled.
     """
+    owner = _current_script.get()
+    if owner is not None and owner.unloaded:
+        _log.warning(
+            f"Script '{owner.script_id}': timer {timer_id} not started, because "
+            f"the script was reloaded or unloaded while the code that asked for "
+            f"it was still running"
+        )
+        return
+    _timer_owners[timer_id] = owner
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         _pending_timers[timer_id] = coro_factory
         return
     _active_timers[timer_id] = asyncio.ensure_future(coro_factory())
-    _timer_owners[timer_id] = _current_script.get()
 
 
-def materialize_pending_timers(script_id: str | None) -> int:
+def materialize_pending_timers(script: LoadedScript | None) -> int:
     """Schedule timers deferred during a script's load onto the running loop.
 
     Called by ScriptEngine on the loop thread right after a script imports, so
@@ -691,13 +710,15 @@ def materialize_pending_timers(script_id: str | None) -> int:
         except RuntimeError:
             # No running loop (sync test harness) — nothing to schedule on.
             continue
-        _timer_owners[timer_id] = script_id
+        _timer_owners[timer_id] = script
         count += 1
     return count
 
 
 def discard_pending_timers() -> None:
     """Drop any timers parked during a load that failed (so they never run)."""
+    for timer_id in _pending_timers:
+        _timer_owners.pop(timer_id, None)
     _pending_timers.clear()
 
 
@@ -713,7 +734,7 @@ async def _report_timer_failure(timer_id: str, failure: ScriptFailure) -> None:
     script_failures.report(failure)
     try:
         await events.emit("script.error", {
-            "script_id": failure.script_id or "",
+            "script_id": failure.script.script_id if failure.script else "",
             "handler": failure.handler,
             "event": failure.event,
             "timer_id": timer_id,
@@ -733,8 +754,8 @@ async def _run_timer_callback(
     its script and emitted as ``script.error`` instead of vanishing into the
     log.
 
-    Runs under the owning script's id, so a timer the callback starts belongs
-    to that script too and goes with it on a reload.
+    Runs as the load that started the timer, so a timer the callback starts
+    belongs to that load too and goes with it on a reload.
     """
     from openavc.core.script_engine import ScriptEngine
 
@@ -820,28 +841,35 @@ def cancel_timer(timer_id: str) -> bool:
 
 @_leashed
 def cancel_all_timers() -> int:
-    """Cancel all active and pending timers. Returns count cancelled."""
-    count = 0
-    for timer_id in list(_pending_timers):
-        if cancel_timer(timer_id):
-            count += 1
-    for timer_id in list(_active_timers):
-        if cancel_timer(timer_id):
-            count += 1
-    return count
+    """Cancel every timer the calling script started. Returns count cancelled.
+
+    The caller's own, never another script's: one script switching modes
+    must not stop the timers the rest of the room runs on. Called at the top
+    of a script, that is the timers this load has started so far, never those
+    of the version still running while it imports.
+    """
+    return cancel_script_timers(_current_script.get())
 
 
-def cancel_script_timers(script_id: str) -> int:
-    """Cancel only the timers owned by *script_id*. Returns count cancelled.
+def cancel_script_timers(script: LoadedScript | None) -> int:
+    """Cancel only the timers *script* started. Returns count cancelled.
 
     Used by per-script hot-reload so reloading one script leaves every other
     script's timers (and their ``every()`` phase) running untouched.
     """
-    count = 0
-    for timer_id, owner in list(_timer_owners.items()):
-        if owner == script_id and cancel_timer(timer_id):
-            count += 1
-    return count
+    owned = [timer_id for timer_id, owner in _timer_owners.items() if owner is script]
+    return sum(1 for timer_id in owned if cancel_timer(timer_id))
+
+
+def stop_all_timers() -> int:
+    """Cancel every timer, whoever started it. Returns count cancelled.
+
+    The whole-project unload's sweep, after each script's own timers went
+    with it: what is left was started outside any script (a thread a script
+    started itself carries no script). Not offered to scripts.
+    """
+    timer_ids = [*_pending_timers, *_active_timers]
+    return sum(1 for timer_id in timer_ids if cancel_timer(timer_id))
 
 
 # --- Configuration ---

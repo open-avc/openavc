@@ -74,7 +74,7 @@ export const SCRIPT_API: ScriptApiName[] = [
     "awaited": false,
     "insertText": "cancel_all_timers()",
     "decorator": "",
-    "summary": "Cancel every timer started by after() or every(). Returns how many were cancelled.",
+    "summary": "Cancel every timer this script started with after() or every(). Other scripts' timers keep running. Returns how many were cancelled.",
     "example": "count = cancel_all_timers()"
   },
   {
