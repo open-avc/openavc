@@ -130,6 +130,17 @@ class _Project:
     page_ids: set[str]
     device_ids: set[str]
     macro_ids: set[str]
+    # The sub-pages (pages of type "subpage") and the sub-page containers
+    # (elements of type "subpage_container"), or None for "no opinion" -- the
+    # same contract the other lookups keep. A sub-page is not directly
+    # navigable, and a container's default page must be a sub-page, so both
+    # sets turn "navigates to a page that exists" into a sharper answer.
+    # 子页面（page_type 为 "subpage" 的页面）与子页面容器（type 为
+    # "subpage_container" 的元素）集合，None 表示"不发表意见"——与其他查找
+    # 同一契约。子页面不可直接导航，容器的默认页必须是子页面，这两个集合把
+    # "导航到不存在的页面"细化为更准确的答案。
+    subpage_ids: set[str] | None = None
+    container_ids: set[str] | None = None
     device_commands: Callable[[str], set[str] | None] | None = None
     plugin_elements: Callable[[str], set[str] | None] | None = None
     undeclared_property: Callable[[str], set[str] | None] | None = None
@@ -366,10 +377,24 @@ def _navigation_finding(
 ) -> Finding | None:
     """A move to a page that does not exist, said the same wherever it is written.
 
-    A target that is not a name says nothing.
+    A target that is not a name says nothing. A sub-page exists but is not a
+    destination: it draws only inside a sub-page container, so navigating to
+    it is named separately rather than read as a dangling id.
+    目标是子页面时单独说明：子页面只绘制在子页面容器内，不是导航目的地，
+    而不是笼统地报"页面不存在"。
     """
     target = _named(target)
-    if target is None or _reachable(target, project.page_ids):
+    if target is None:
+        return None
+    if project.subpage_ids is not None and target in project.subpage_ids:
+        return at.finding(
+            "dangling_reference",
+            f"navigates to page '{target}', which is a sub-page. Sub-pages "
+            f"are shown inside a sub-page container element, never "
+            f"navigated to directly.",
+            key,
+        )
+    if _reachable(target, project.page_ids):
         return None
     return at.finding(
         "dangling_reference",
@@ -502,6 +527,8 @@ def reference_findings(
     page_ids: set[str],
     device_ids: set[str],
     macro_ids: set[str],
+    subpage_ids: set[str] | None = None,
+    container_ids: set[str] | None = None,
     device_commands: Callable[[str], set[str] | None] | None = None,
     plugin_elements: Callable[[str], set[str] | None] | None = None,
     undeclared_property: Callable[[str], set[str] | None] | None = None,
@@ -536,6 +563,7 @@ def reference_findings(
     """
     project = _Project(
         page_ids=page_ids, device_ids=device_ids, macro_ids=macro_ids,
+        subpage_ids=subpage_ids, container_ids=container_ids,
         device_commands=device_commands, plugin_elements=plugin_elements,
         undeclared_property=undeclared_property, unknown_child_id=unknown_child_id,
         missing_params=missing_params, required_sentence=required_sentence,
@@ -759,6 +787,39 @@ def _page_nav_findings(control: _Control, project: _Project) -> list[Finding]:
     ))
 
 
+def _subpage_container_findings(control: _Control, project: _Project) -> list[Finding]:
+    """The default page a sub-page container opens with, when it is not a sub-page.
+
+    A container with no ``default_page`` shows its last sub-page per panel and
+    starts empty, which is the author's call. A default that names a regular
+    page or nothing at all, though, draws an empty box until a ``ui.subpage``
+    arrives -- worth saying at review time rather than on the glass.
+    容器的 default_page 不是子页面时的发现项。未设置 default_page 是作者自己的
+    选择（面板各自记忆上次显示的子页面）；但指向普通页面或指向不存在的 id 会让
+    容器一直空着，直到某个 ui.subpage 到来——这类问题应在评审时说，而不是在
+    玻璃上空一块。
+    """
+    if control.what != "subpage_container" or project.subpage_ids is None:
+        return []
+    default_page = _named(control.dump.get("default_page"))
+    if default_page is None or default_page in project.subpage_ids:
+        return []
+    if default_page in project.page_ids:
+        return [control.finding(
+            "dangling_reference",
+            f"opens with page '{default_page}', which is not a sub-page "
+            f"(page_type 'subpage'), so the container cannot show it. "
+            f"The sub-pages are: {_listed(project.subpage_ids)}.",
+            "default_page",
+        )]
+    return [control.finding(
+        "dangling_reference",
+        f"opens with sub-page '{default_page}', which does not exist. "
+        f"The sub-pages are: {_listed(project.subpage_ids)}.",
+        "default_page",
+    )]
+
+
 def _control_grant_findings(control: _Control, project: _Project) -> list[Finding]:
     return _grant_findings(control, control.dump.get("grant"), "it", project)
 
@@ -807,6 +868,7 @@ _ELEMENT_CHECKS: tuple[Callable[[_Control, _Project], list[Finding]], ...] = (
     _plugin_findings,
     _shown_file_findings,
     _page_nav_findings,
+    _subpage_container_findings,
     _control_grant_findings,
     _state_key_findings,
     _do_findings,
@@ -857,6 +919,48 @@ def _navigate_findings(
 ) -> list[Finding]:
     moved = _navigation_finding(site, action.get("page"), project, "page")
     return _found(moved)
+
+
+def _subpage_show_findings(
+    action: Mapping[str, Any], site: _Site, project: _Project,
+) -> list[Finding]:
+    """A ``ui.subpage`` that names a container or sub-page this project does not have.
+
+    Each id is judged against its own kind: ``container`` must be a
+    ``subpage_container`` element, ``page`` must be a sub-page. A regular page
+    named here is the wrong action picked, and the wording says so -- the fix
+    is a different action, not a new page.
+    ``ui.subpage` 引用了本项目没有的容器或子页面。两个 id 各对其类判断：
+    container 必须是 subpage_container 元素，page 必须是子页面。在这里填普通
+    页面意味着选错了动作，措辞直接说明——修法是换动作，不是建新页面。
+    """
+    container = _named(action.get("container"))
+    page = _named(action.get("page"))
+    findings: list[Finding] = []
+    if project.container_ids is not None and container is not None and container not in project.container_ids:
+        findings.append(site.finding(
+            "dangling_reference",
+            f"shows a sub-page in container '{container}', which is not a "
+            f"sub-page container element in this project.",
+            "container",
+        ))
+    if project.subpage_ids is not None and page is not None and page not in project.subpage_ids:
+        if page in project.page_ids:
+            findings.append(site.finding(
+                "dangling_reference",
+                f"shows page '{page}', which is not a sub-page "
+                f"(page_type 'subpage'). A regular page cannot be shown in a "
+                f"container; the sub-pages are: {_listed(project.subpage_ids)}.",
+                "page",
+            ))
+        else:
+            findings.append(site.finding(
+                "dangling_reference",
+                f"shows sub-page '{page}', which does not exist. "
+                f"The sub-pages are: {_listed(project.subpage_ids)}.",
+                "page",
+            ))
+    return findings
 
 
 def _macro_findings(
@@ -969,6 +1073,7 @@ _ACTION_CHECKS: dict[
     str, Callable[[Mapping[str, Any], _Site, _Project], list[Finding]],
 ] = {
     "ui.navigate": _navigate_findings,
+    "ui.subpage": _subpage_show_findings,
     "macro": _macro_findings,
     "device.command": _command_findings,
     "value_map": _value_map_findings,

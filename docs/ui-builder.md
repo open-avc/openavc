@@ -114,6 +114,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **Select** | Dropdown selector | Input selection, preset recall |
 | **Status LED** | Colored indicator mapped to state values | Projector warming, system active, mute indicator |
 | **Page Nav** | Button that navigates to another page, and lights up while that page is showing | "Advanced", "Lighting", "Camera", a row of tabs |
+| **Sub-page Container** | A window onto a sub-page: shows one sub-page's controls inside its box, and buttons switch which sub-page it shows | One page with a fixed frame whose content area swaps between "Cast", "Camera", "Lighting" screens |
 | **Text Input** | Text entry field | IP address entry, room name |
 | **Image** | A picture, which can change with a state | Logo, floor plan, a background that changes with the season |
 | **Camera Preset** | Camera preset button with optional thumbnail | PTZ camera preset recall |
@@ -126,6 +127,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
 | **Matrix** | Routing: a wall of destination tiles, a list of dropdowns, or a crosspoint grid | Video/audio switcher routing |
 | **Custom Control** | A page you wrote yourself, running inside the element's box | Seating map, rack diagram, a control nothing else covers |
+| **Web Page** | A device's or any web page, embedded in a sandboxed frame; a binding can switch the URL | A camera's own control page, a switcher's routing UI, a dashboard |
 
 ## Custom Controls
 
@@ -208,6 +210,33 @@ Navigate to an overlay the same way as any page (page_nav target or button navig
 Opening an overlay that is already open does nothing, so one close always takes it down. Closing an overlay drops anything its keypads, dropdowns and text fields had not sent yet, such as digits still waiting out a keypad's **Send Delay**.
 
 Overlay/sidebar properties (width, height, position, backdrop, animation) are editable in the properties panel when the overlay page is selected and no element is selected.
+
+## Sub-pages & the Sub-page Container
+
+A **Sub-page** is a page designed like any other, but it is not a destination: it never takes the whole screen, is not in `$back` history, and a Page Nav or Navigate action aimed at it does nothing. It only draws inside a **Sub-page Container** element.
+
+The pattern this serves: one host page with a fixed frame -- a title, a row of buttons, the room's master elements -- and a large content area that swaps between several screens at the tap of a button. Without sub-pages that is either several full pages duplicating the frame, or every mode stacked on one page with `visible_when` groups.
+
+To build one:
+
+1. Click the **+** dropdown and add a **Sub-page** page (its tab shows a picture-in-picture mark). Design it like any page; its controls place by percentage.
+2. On the host page, drop a **Sub-page Container** and set its **Default Sub-page**. The container shows that sub-page when the page is drawn, and each panel remembers the last one shown per container.
+3. Add buttons on the host page with a **Show Sub-page** action, picking the container and the sub-page. Pressing one switches the container's content on every panel showing that page -- the same room-wide behavior a Navigate action has.
+
+The **Fit** setting decides how the sub-page fills the container: **Fill** stretches its percentage coordinates onto the box; **Contain** keeps the screen's shape and letterboxes the rest, so a wide sub-page in a tall box is centered, not warped. A sub-page's own controls bind state and run actions exactly as they would on a full page, and its timers and bindings end when the host page goes or the container switches. Master elements never draw inside a container -- a sub-page is content, and the frame around it belongs to the host page.
+
+Deleting a page cleans up after itself: a nav aimed at it is cleared, and a sub-page switch that would have shown it is removed.
+
+## The Web Page element
+
+A **Web Page** element embeds an http(s) URL in a sandboxed frame -- the same frame machinery a custom control and a plugin run in. It exists for the control surfaces device vendors already built: a camera's own PTZ page, a switcher's routing UI, a DSP's zone editor. The vendor wrote the page and maintains it; the panel hosts it.
+
+- **The target site must allow being embedded.** A page that sends `X-Frame-Options` or a `frame-ancestors` policy refuses, and the frame draws blank -- most public sites refuse, device WebUIs and self-hosted dashboards usually allow. Open the URL in a browser tab first; nothing in the Builder can check it for you.
+- **The frame has no bridge.** The embedded page receives nothing from the room (no state, no device access, no events) and its buttons reach nothing in OpenAVC. It is display-and-switch: bind the **Value** card to a state key (say `var.camera_stream`) and any macro or script that sets that key switches the page (`state.set var.camera_stream = "https://camera.local/stream3"`). Create the variable on the spot with the picker's **+ New Variable** row at the bottom of the list, or ahead of time on the Variables page.
+- **Sandbox opt-ins** let a page that needs them submit forms, open dialogs or pop-ups, or keep its own origin (so its cookies and storage work). They are the same whitelist a plugin's declaration is filtered against; everything else is refused on load.
+- The element has no `grant` and no availability marking -- remote content reaches nothing, and a blank frame cannot be told apart from a slow one.
+
+Two-way data (the page reacting to room state, or sending commands back) is what the [custom control](custom-controls.md) is for: its markup runs with a message bridge, and it can wrap whatever third-party page you embed.
 
 ## Bindings
 

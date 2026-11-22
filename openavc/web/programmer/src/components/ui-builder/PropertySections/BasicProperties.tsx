@@ -160,11 +160,13 @@ const TYPE_FIELDS: Record<string, (props: SectionProps) => React.JSX.Element> = 
   level_meter: LevelMeterFields,
   fader: FaderFields,
   group: GroupFields,
+  subpage_container: SubpageContainerFields,
   clock: ClockFields,
   list: ListFields,
   matrix: MatrixFields,
   keypad: KeypadFields,
   custom: CustomFields,
+  web: WebFields,
   plugin: PluginFields,
   select: SelectFields,
 };
@@ -291,6 +293,70 @@ function LabelTextFields({ element, onChange }: SectionProps) {
 }
 
 /** A page nav: where it goes, and whether it lights up there. */
+/**
+ * The web element's fields: where the frame points, and which sandbox
+ * opt-ins the author ticked.
+ *
+ * The URL must be http(s) -- javascript:, data: and relative paths would
+ * breach the sandbox's spirit or draw from the panel's own origin, so the
+ * editor refuses them rather than writing a url the renderer will blank out.
+ * The sandbox tokens are the same whitelist a plugin's declaration is
+ * filtered against server-side (core/plugin_extensions.py); anything off it
+ * is dropped on load, so a stale checkbox degrades to a logged no-op.
+ * web 元素的字段：帧指向哪里，作者勾选了哪些沙箱选项。
+ * URL 必须是 http(s)——javascript:/data: 与相对路径要么破坏沙箱本意，要么
+ * 画到面板自身源上，因此编辑器直接拒绝，不写入渲染器会置空的 url。沙箱
+ * token 与插件声明在服务端过滤的白名单相同（core/plugin_extensions.py）；
+ * 名单外的加载时被剔除，过期的复选框退化为一条日志。
+ */
+const WEB_SANDBOX_TOKENS: { token: string; label: string; hint: string }[] = [
+  { token: "allow-forms", label: "Forms", hint: "Let the page submit forms (logins, device settings)" },
+  { token: "allow-modals", label: "Dialogs", hint: "Let the page open alert/confirm dialogs" },
+  { token: "allow-popups", label: "Pop-ups", hint: "Let the page open new tabs or windows" },
+  { token: "allow-same-origin", label: "Own origin", hint: "Keep the page's own origin, so its cookies and storage work. Only for pages you trust" },
+];
+
+function WebFields({ element, onChange }: FieldProps) {
+  const url = element.url || "";
+  const badScheme = !!url && !/^https?:\/\/\S+$/.test(url.trim());
+  const ticked = element.sandbox_permissions || [];
+  return (
+    <>
+      <FieldRow label="URL">
+        <input
+          value={url}
+          onChange={(e) => onChange({ url: e.target.value || undefined })}
+          placeholder="https://device.local/page"
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      {badScheme && (
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--danger, #e5484d)" }}>
+          The URL must start with http:// or https:// — the frame refuses anything else.
+        </div>
+      )}
+      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+        Sandbox opt-ins (the page runs in a sandboxed frame with scripts on; the target site must also allow being embedded).
+      </div>
+      {WEB_SANDBOX_TOKENS.map(({ token, label, hint }) => (
+        <CheckboxRow
+          key={token}
+          label={label}
+          checked={ticked.includes(token)}
+          onToggle={(on) => {
+            const next = on
+              ? [...ticked, token]
+              : ticked.filter((t) => t !== token);
+            onChange({ sandbox_permissions: next.length > 0 ? next : undefined });
+          }}
+        >
+          {hint}
+        </CheckboxRow>
+      ))}
+    </>
+  );
+}
+
 function PageNavFields({ element, pages, onChange }: SectionProps) {
   return (
     <>
@@ -314,6 +380,49 @@ function PageNavFields({ element, pages, onChange }: SectionProps) {
       >
         Light up while its page is showing
       </CheckboxRow>
+    </>
+  );
+}
+
+/**
+ * The sub-page a container opens with, and how it fills the box. The picker
+ * offers sub-pages ONLY -- a regular page cannot be shown in a container, and
+ * a picker that offered one would author an opening the review then warns
+ * about. Empty is allowed: the container starts blank until a button's
+ * "Show Sub-page" action names it.
+ * 容器初始显示的子页面，以及它如何填满容器框。选择器只提供子页面——普通
+ * 页面无法在容器中显示，若提供反而会编排出评审随后警告的初始页。允许为空：
+ * 容器先留空，直到某个按钮的"显示子页面"动作指名它。
+ */
+function SubpageContainerFields({ element, pages, onChange }: SectionProps) {
+  const subpages = pages.filter((p) => (p.page_type ?? "page") === "subpage");
+  return (
+    <>
+      <FieldRow label="Default Sub-page">
+        <SearchableSelect
+          value={element.default_page || ""}
+          onChange={(default_page) => onChange({ default_page: default_page || undefined })}
+          groups={[
+            { options: subpages.map((p) => ({ value: p.id, label: p.name || p.id, hint: p.id })) },
+          ]}
+          placeholder="None (starts empty)..."
+          searchPlaceholder="Search sub-pages..."
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Fit">
+        <select
+          value={element.subpage_fit || "fill"}
+          onChange={(e) => {
+            const fit = e.target.value;
+            onChange({ subpage_fit: fit === "fill" ? undefined : (fit as "contain") });
+          }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        >
+          <option value="fill">Fill (stretch to the box)</option>
+          <option value="contain">Contain (keep shape, letterbox)</option>
+        </select>
+      </FieldRow>
     </>
   );
 }

@@ -57,8 +57,10 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "matrix", label: "Matrix", category: "data", description: "Audio/video routing crosspoint grid or dropdown list" },
   { type: "list", label: "List", category: "controls", description: "Scrollable list of items (sources, presets, zones)" },
   { type: "page_nav", label: "Page Nav", category: "navigation", description: "Button that navigates to another page or overlay" },
+  { type: "subpage_container", label: "Sub-page Container", category: "navigation", description: "A window onto a sub-page; buttons on this page switch which sub-page it shows" },
   { type: "camera_preset", label: "Camera Preset", category: "navigation", description: "Button to recall a PTZ camera preset position" },
   { type: "custom", label: "Custom Control", category: "display", description: "Your own HTML/CSS/JS, running in its own box on the page" },
+  { type: "web", label: "Web Page", category: "display", description: "A device's or any web page, embedded in a sandboxed frame; a binding can switch the URL" },
 ];
 
 // --- Screen presets ---
@@ -235,12 +237,12 @@ export function takenElementIds(pages: UIPage[], reservedIds: string[]): Set<str
 
 export function addPage(
   pages: UIPage[],
-  pageType: "page" | "overlay" | "sidebar" = "page",
+  pageType: "page" | "overlay" | "sidebar" | "subpage" = "page",
 ): UIPage[] {
   const ids = new Set(pages.map((p) => p.id));
   const names = new Set(pages.map((p) => p.name));
   const prefix = pageType === "page" ? "page" : pageType;
-  const label = pageType === "page" ? "Page" : pageType === "overlay" ? "Overlay" : "Sidebar";
+  const label = pageType === "page" ? "Page" : pageType === "overlay" ? "Overlay" : pageType === "sidebar" ? "Sidebar" : "Sub-page";
   const [id, counter] = firstFree(ids, (n) => `${prefix}_${n}`);
   const [name] = firstFree(names, (n) => `${label} ${n}`, counter);
 
@@ -249,7 +251,7 @@ export function addPage(
     name,
     // An overlay is a smaller canvas, so it gets a coarser ruler -- the old
     // 4x4 overlay grid's spacing, the same way a page gets the old 12x8's.
-    snap: pageType === "page"
+    snap: pageType === "page" || pageType === "subpage"
       ? { enabled: true, ...{ x: 100 / 12, y: 100 / 8 } }
       : { enabled: true, x: 25, y: 25 },
     elements: [],
@@ -279,6 +281,13 @@ export function addPage(
       dismiss_on_backdrop: true,
       animation: "slide-left",
     };
+  } else if (pageType === "subpage") {
+    // A sub-page is designed on the full canvas like a regular page -- its
+    // elements place by percentage onto whatever container shows it -- but it
+    // is not a navigation destination, and it opens no overlay box of its own.
+    // 子页面与普通页面一样在全画布上设计——其元素按百分比定位到显示它的容器
+    // 上——但它不是导航目的地，也没有自己的弹窗框。
+    newPage.page_type = "subpage";
   }
 
   return [...pages, newPage];

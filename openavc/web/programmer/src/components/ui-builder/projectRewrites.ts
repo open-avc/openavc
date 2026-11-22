@@ -281,51 +281,67 @@ export function renameElement(
 
 // --- Deleting a page ---
 
-/** Whether an action is a move to the page being deleted. */
-function isMoveTo(action: unknown, pageId: string): boolean {
+/** Whether an action is a move to the page being deleted: a `ui.navigate` to
+ *  it, or a `ui.subpage` that would show it (a sub-page deleted with its
+ *  page), or a `ui.subpage` whose container lived on it -- the switch's
+ *  target is gone either way, and what would be left names nothing the panel
+ *  draws.
+ *  动作是否指向被删除的页面：导航到它、会显示它的 ui.subpage（子页面随页
+ *  面一起删除），或其容器原在这页上的 ui.subpage——无论哪种，切换的目标都
+ *  没了，留下的部分指向面板不会绘制的东西。 */
+function isMoveTo(action: unknown, pageId: string, survivingContainers?: ReadonlySet<string> | undefined): boolean {
   if (!action || typeof action !== "object") return false;
   const a = action as Record<string, unknown>;
+  if (a.action === "ui.subpage") {
+    if (a.page === pageId) return true;
+    // A container that did not survive the deletion: the switch is dead
+    // weight either way, dropped whole -- the same rule the AI's page delete
+    // keeps, so the two scrubbers leave the same project.
+    // 删除后已不存在的容器：切换无论如何都是死重，整个删除——与 AI 删页
+    // 保持同一规则，两个清理器产出相同的项目。
+    if (survivingContainers && typeof a.container === "string" && a.container && !survivingContainers.has(a.container)) return true;
+  }
   return a.action === "ui.navigate" && a.page === pageId;
 }
 
 /** A list of actions without its moves to the deleted page, and what each one
  *  left carries cleaned the same way: the same list when nothing changed.
  *  Whatever is not an action is kept. */
-function actionsWithoutMoves(actions: unknown[], pageId: string): unknown[] {
-  const kept = filterPreserve(actions, (a) => !isMoveTo(a, pageId));
-  return mapPreserve(kept, (a) => actionWithoutMoves(a, pageId));
+function actionsWithoutMoves(actions: unknown[], pageId: string, survivingContainers?: ReadonlySet<string>): unknown[] {
+  const kept = filterPreserve(actions, (a) => !isMoveTo(a, pageId, survivingContainers));
+  return mapPreserve(kept, (a) => actionWithoutMoves(a, pageId, survivingContainers));
 }
 
 /** An action that is not itself a move to the deleted page, with the moves
  *  dropped from what it carries: its off and long press actions (each removed
  *  when it was one) and a value_map's options (an option that was one is
  *  removed). The same action when it carried none. */
-function actionWithoutMoves(action: unknown, pageId: string): unknown {
+function actionWithoutMoves(action: unknown, pageId: string, survivingContainers?: ReadonlySet<string>): unknown {
   if (!isPlainObject(action)) return action;
   let next = action;
   for (const field of NESTED_ACTION_FIELDS) {
     const carried = own(next, field);
     if (carried === undefined) continue;
-    if (isMoveTo(carried, pageId)) {
+    if (isMoveTo(carried, pageId, survivingContainers)) {
       next = { ...next };
       delete next[field];
     } else {
-      next = withField(next, field, (c) => actionWithoutMoves(c, pageId));
+      next = withField(next, field, (c) => actionWithoutMoves(c, pageId, survivingContainers));
     }
   }
   if (next.action === "value_map" && isPlainObject(next.map)) {
-    next = withField(next, "map", (m) => mapWithoutMoves(m as Record<string, unknown>, pageId));
+    next = withField(next, "map", (m) => mapWithoutMoves(m as Record<string, unknown>, pageId, survivingContainers));
   }
   return next;
 }
 
 /** A value_map's options without those that move to the deleted page. */
-function mapWithoutMoves(map: Record<string, unknown>, pageId: string): Record<string, unknown> {
+function mapWithoutMoves(map: Record<string, unknown>, pageId: string, survivingContainers?: ReadonlySet<string>): Record<string, unknown> {
   let changed = false;
   const next: Record<string, unknown> = {};
   for (const [option, action] of Object.entries(map)) {
-    if (isMoveTo(action, pageId)) { changed = true; continue; }
-    const kept = actionWithoutMoves(action, pageId);
+    if (isMoveTo(action, pageId, survivingContainers)) { changed = true; continue; }
+    const kept = actionWithoutMoves(action, pageId, survivingContainers);
     if (kept !== action) changed = true;
     next[option] = kept;
   }
@@ -335,24 +351,44 @@ function mapWithoutMoves(map: Record<string, unknown>, pageId: string): Record<s
 /** One action slot without its moves to the deleted page: the same value when
  *  it held none, undefined when it held nothing else. A slot holds a list or,
  *  in an older project, one action; a list keeps whatever else it holds. */
-function slotWithoutMoves(raw: unknown, pageId: string): unknown {
-  if (!Array.isArray(raw)) return isMoveTo(raw, pageId) ? undefined : actionWithoutMoves(raw, pageId);
-  const kept = actionsWithoutMoves(raw, pageId);
+function slotWithoutMoves(raw: unknown, pageId: string, survivingContainers?: ReadonlySet<string>): unknown {
+  if (!Array.isArray(raw)) return isMoveTo(raw, pageId, survivingContainers) ? undefined : actionWithoutMoves(raw, pageId, survivingContainers);
+  const kept = actionsWithoutMoves(raw, pageId, survivingContainers);
   if (kept === raw) return raw;
+  // A removed FIRST press action carried the slot's press mode (pressOf
+  // reads it off the first entry): hand mode and repeat interval to the next
+  // survivor, or a hold button quietly becomes a tap.
+  // 被移除的首位按压动作携带该槽位的按压模式（pressOf 从首条读取）：把模式
+  // 与重复间隔交给下一个幸存者，否则 hold 按钮悄然变成 tap。
+  if (
+    kept.length > 0 &&
+    Array.isArray(raw) &&
+    isPlainObject(raw[0]) &&
+    kept[0] !== raw[0] &&
+    typeof (raw[0] as Record<string, unknown>).mode === "string" &&
+    isPlainObject(kept[0])
+  ) {
+    const removed = raw[0] as Record<string, unknown>;
+    const survivor = kept[0] as Record<string, unknown>;
+    if (!survivor.mode) survivor.mode = removed.mode;
+    if (removed.hold_repeat_ms !== undefined && survivor.hold_repeat_ms === undefined) {
+      survivor.hold_repeat_ms = removed.hold_repeat_ms;
+    }
+  }
   return kept.length > 0 ? kept : undefined;
 }
 
 /** An element's `do` slots without their moves to the deleted page, every
  *  slot the map holds (the panel runs whichever interaction it is sent), a
  *  slot left empty removed. */
-function withoutMovesTo<T extends UIElement | MasterElement>(el: T, pageId: string): T {
+function withoutMovesTo<T extends UIElement | MasterElement>(el: T, pageId: string, survivingContainers?: ReadonlySet<string>): T {
   const bindings = el.bindings as Record<string, unknown> | undefined;
   const doMap = bindings?.do as Record<string, unknown> | undefined;
   if (!doMap || typeof doMap !== "object") return el;
   const nextDo: Record<string, unknown> = { ...doMap };
   let changed = false;
   for (const slot of Object.keys(doMap)) {
-    const kept = slotWithoutMoves(nextDo[slot], pageId);
+    const kept = slotWithoutMoves(nextDo[slot], pageId, survivingContainers);
     if (Object.is(kept, nextDo[slot])) continue;
     changed = true;
     if (kept === undefined) delete nextDo[slot];
@@ -368,48 +404,56 @@ function withoutMovesTo<T extends UIElement | MasterElement>(el: T, pageId: stri
  *  a row made to do nothing; taking the route away would hand the row to the
  *  matrix's own route instead. Only a list of rows is written; a generated
  *  axis has no route of its own. */
-function rowsWithoutMoves<T extends UIElement | MasterElement>(el: T, pageId: string): T {
+function rowsWithoutMoves<T extends UIElement | MasterElement>(el: T, pageId: string, survivingContainers?: ReadonlySet<string>): T {
   if (el.type !== "matrix") return el;
   const record = el as unknown as Record<string, unknown>;
   return withField(record, "matrix_config", (config) => {
     if (!isPlainObject(config) || !Array.isArray(config.destinations)) return config;
     return withField(config, "destinations", (rows) => mapPreserve(rows as unknown[], (row) => (
       isPlainObject(row) && Array.isArray(row.route)
-        ? withField(row, "route", (route) => actionsWithoutMoves(route as unknown[], pageId))
+        ? withField(row, "route", (route) => actionsWithoutMoves(route as unknown[], pageId, survivingContainers))
         : row
     )));
   }) as unknown as T;
 }
 
-/** A control with what pointed at the deleted page cleared. */
-function controlWithoutPage<T extends UIElement | MasterElement>(el: T, pageId: string): T {
-  const untargeted = el.type === "page_nav" && el.target_page === pageId
-    ? { ...el, target_page: "" }
-    : el;
-  return rowsWithoutMoves(withoutMovesTo(untargeted, pageId), pageId);
+/** A control with what pointed at the deleted page cleared: a nav's target,
+ *  and a container's default when the page deleted was the sub-page it opened
+ *  with (the container then starts empty, like one never given a default).
+ *  清除控件上指向被删除页面的东西：导航的目标页，以及容器在删除页恰是其
+ *  初始子页面时的 default_page（容器随后从空白开始，如同从未设置过默认页）。 */
+function controlWithoutPage<T extends UIElement | MasterElement>(el: T, pageId: string, survivingContainers?: ReadonlySet<string>): T {
+  let untargeted = el;
+  if (el.type === "page_nav" && el.target_page === pageId) {
+    untargeted = { ...el, target_page: "" };
+  }
+  if (el.type === "subpage_container" && (el as UIElement).default_page === pageId) {
+    untargeted = { ...untargeted, default_page: "" };
+  }
+  return rowsWithoutMoves(withoutMovesTo(untargeted, pageId, survivingContainers), pageId, survivingContainers);
 }
 
 /** The pages without the deleted one, each control's links to it cleared.
  *  Every page and element list comes back new. */
-export function removePage(pages: UIPage[], pageId: string): UIPage[] {
+export function removePage(pages: UIPage[], pageId: string, survivingContainers?: ReadonlySet<string>): UIPage[] {
   return pages
     .filter((p) => p.id !== pageId)
     .map((p) => ({
       ...p,
-      elements: p.elements.map((el) => controlWithoutPage(el, pageId)),
+      elements: p.elements.map((el) => controlWithoutPage(el, pageId, survivingContainers)),
     }));
 }
 
 /** A master without the deleted page in its page list (one left with no page
  *  shows on every page, "*"), and its links to the page cleared as a
  *  control's are. */
-function masterWithoutPage(m: MasterElement, pageId: string): MasterElement {
+function masterWithoutPage(m: MasterElement, pageId: string, survivingContainers?: ReadonlySet<string>): MasterElement {
   let next = m;
   if (Array.isArray(m.pages)) {
     const kept = filterPreserve(m.pages, (pid) => pid !== pageId);
     if (kept !== m.pages) next = { ...m, pages: kept.length > 0 ? kept : "*" };
   }
-  return controlWithoutPage(next, pageId);
+  return controlWithoutPage(next, pageId, survivingContainers);
 }
 
 /** A trigger's conditions without those that matched on the deleted page
@@ -420,14 +464,14 @@ function conditionsWithoutPage(conditions: TriggerCondition[], pageId: string): 
 
 /** Macro steps without those that move to the deleted page, their branches
  *  included. */
-function stepsWithoutPage(steps: MacroStep[], pageId: string): MacroStep[] {
-  const kept = filterPreserve(steps, (step) => !isMoveTo(step, pageId));
-  const branch = (s: MacroStep[]) => stepsWithoutPage(s, pageId);
+function stepsWithoutPage(steps: MacroStep[], pageId: string, survivingContainers?: ReadonlySet<string>): MacroStep[] {
+  const kept = filterPreserve(steps, (step) => !isMoveTo(step as unknown as Record<string, unknown>, pageId, survivingContainers));
+  const branch = (s: MacroStep[]) => stepsWithoutPage(s, pageId, survivingContainers);
   return mapPreserve(kept, (step) => withField(withField(step, "then_steps", branch), "else_steps", branch));
 }
 
-function macroWithoutPage(macro: MacroConfig, pageId: string): MacroConfig {
-  const next = withField(macro, "steps", (steps) => stepsWithoutPage(steps, pageId));
+function macroWithoutPage(macro: MacroConfig, pageId: string, survivingContainers?: ReadonlySet<string>): MacroConfig {
+  const next = withField(macro, "steps", (steps) => stepsWithoutPage(steps, pageId, survivingContainers));
   return withField(next, "triggers", (triggers) => mapPreserve(
     triggers,
     (t) => withField(t, "conditions", (cs) => conditionsWithoutPage(cs, pageId)),
@@ -450,9 +494,24 @@ export function removePageAndScrubRefs(
   masterElements: MasterElement[];
   macros: MacroConfig[];
 } {
+  // The containers that SURVIVE the deletion (the other pages' and the
+  // masters'): a switch naming a container outside this set is dropped whole,
+  // even when its sub-page survives -- the same post-state rule the AI's page
+  // delete keeps, so the two scrubbers leave the same project.
+  // 删除后仍然存活的容器（其余页面与 master 的）：指名集合之外容器的切换
+  // 动作整个删除——即使其子页面还在。与 AI 删页同一"删除后状态"规则，两个
+  // 清理器产出相同的项目。
+  const survivingContainers = new Set(
+    [
+      ...pages.filter((p) => p.id !== pageId).flatMap((p) => p.elements ?? []),
+      ...masterElements,
+    ]
+      .filter((el) => el.type === "subpage_container")
+      .map((el) => el.id),
+  );
   return {
-    pages: removePage(pages, pageId),
-    masterElements: mapPreserve(masterElements, (m) => masterWithoutPage(m, pageId)),
-    macros: mapPreserve(macros, (m) => macroWithoutPage(m, pageId)),
+    pages: removePage(pages, pageId, survivingContainers),
+    masterElements: mapPreserve(masterElements, (m) => masterWithoutPage(m, pageId, survivingContainers)),
+    macros: mapPreserve(macros, (m) => macroWithoutPage(m, pageId, survivingContainers)),
   };
 }

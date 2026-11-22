@@ -29,14 +29,30 @@ def scrub_page_references(project: Any, page_id: str) -> None:
 
     The page itself is already gone from ``project.ui.pages``.
     """
+    # The containers that SURVIVE the deletion: a ui.subpage switch naming a
+    # container outside this set is dropped whole, even when its sub-page
+    # survives -- the same post-state rule the Builder's page delete keeps, so
+    # the two scrubbers leave the same project.
+    # 删除后仍然存活的容器：指名集合之外容器的 ui.subpage 切换整个删除——
+    # 即使其子页面还在。与 Builder 删页同一"删除后状态"规则，两个清理器
+    # 产出相同的项目。
+    container_ids = {
+        e.id
+        for page in project.ui.pages
+        for e in (page.elements or [])
+        if getattr(e, "type", "") == "subpage_container"
+    } | {
+        m.id for m in (project.ui.master_elements or [])
+        if getattr(m, "type", "") == "subpage_container"
+    }
     for master in project.ui.master_elements:
         _master_without_page(master, page_id)
-        _control_without_page(master, page_id)
+        _control_without_page(master, page_id, container_ids)
     for page in project.ui.pages:
         for el in page.elements:
-            _control_without_page(el, page_id)
+            _control_without_page(el, page_id, container_ids)
     for macro in project.macros:
-        _macro_without_page(macro, page_id)
+        _macro_without_page(macro, page_id, container_ids)
     _idle_page_without(project.ui, page_id)
     for group in project.ui.page_groups:
         _group_without_page(group, page_id)
@@ -51,14 +67,21 @@ def _master_without_page(master: Any, page_id: str) -> None:
         master.pages = remaining if remaining else "*"
 
 
-def _control_without_page(el: Any, page_id: str) -> None:
+def _control_without_page(el: Any, page_id: str, container_ids: frozenset[str]) -> None:
     if el.type == "page_nav" and el.target_page == page_id:
         el.target_page = ""
-    _without_moves_to(el, page_id)
-    _rows_without_moves(el, page_id)
+    # A container whose default was the deleted sub-page starts empty, like
+    # one never given a default -- the same repair the Builder's page delete
+    # makes, since the two scrubbers must leave the same project.
+    # 初始子页面恰是被删除子页面的容器从空白开始，如同从未设置过默认页——
+    # 与 Builder 删除页面的修复一致，两个清理器必须产出相同的项目。
+    if el.type == "subpage_container" and getattr(el, "default_page", None) == page_id:
+        el.default_page = ""
+    _without_moves_to(el, page_id, container_ids)
+    _rows_without_moves(el, page_id, container_ids)
 
 
-def _without_moves_to(el: Any, page_id: str) -> None:
+def _without_moves_to(el: Any, page_id: str, container_ids: frozenset[str]) -> None:
     """A control's ``do`` slots without their moves to the page, every slot and
     either shape (an array, or the legacy single object); a slot left empty is
     removed. One spelling to look for: the binding action is ``ui.navigate``,
@@ -69,73 +92,86 @@ def _without_moves_to(el: Any, page_id: str) -> None:
         return
     for slot in list(do_map.keys()):
         raw = do_map[slot]
-        kept = _slot_without_moves(raw, page_id)
+        kept = _slot_without_moves(raw, page_id, container_ids)
         if kept is _DROP:
             del do_map[slot]
         elif kept is not raw:
             do_map[slot] = kept
 
 
-def _slot_without_moves(raw: Any, page_id: str) -> Any:
+def _slot_without_moves(raw: Any, page_id: str, container_ids: frozenset[str]) -> Any:
     """One slot without its moves to the page: ``raw`` itself when nothing in
     it moves there, ``_DROP`` when nothing else is left. What each action kept
-    carries is cleaned in place."""
+    carries is cleaned in place. A removed FIRST press action carried the
+    slot's press mode (pressOf reads it off the first entry): that mode and
+    its repeat interval go to the next survivor, or a hold button quietly
+    becomes a tap.
+    被移除的首位按压动作携带该槽位的按压模式（pressOf 从首条读取）：模式与
+    重复间隔交给下一个幸存者，否则 hold 按钮悄然变成 tap。"""
     if isinstance(raw, list):
-        kept = _actions_without_moves(raw, page_id)
+        kept = _actions_without_moves(raw, page_id, container_ids)
+        if kept is not raw and kept and isinstance(raw[0], dict) and kept[0] is not raw[0]:
+            removed = raw[0]
+            survivor = kept[0]
+            if isinstance(survivor, dict):
+                if isinstance(removed.get("mode"), str) and not survivor.get("mode"):
+                    survivor["mode"] = removed["mode"]
+                if removed.get("hold_repeat_ms") is not None and survivor.get("hold_repeat_ms") is None:
+                    survivor["hold_repeat_ms"] = removed["hold_repeat_ms"]
         if kept is raw:
             return raw
         return kept if kept else _DROP
-    if _moves_to(raw, page_id):
+    if _moves_to(raw, page_id, container_ids):
         return _DROP
-    _carried_without_moves(raw, page_id)
+    _carried_without_moves(raw, page_id, container_ids)
     return raw
 
 
-def _actions_without_moves(actions: list, page_id: str) -> list:
+def _actions_without_moves(actions: list, page_id: str, container_ids: frozenset[str]) -> list:
     """A list of actions without its moves to the page, ``actions`` itself
     when it held none; what each action kept carries is cleaned in place.
     Whatever is not an action is kept."""
-    kept = [a for a in actions if not _moves_to(a, page_id)]
+    kept = [a for a in actions if not _moves_to(a, page_id, container_ids)]
     for action in kept:
-        _carried_without_moves(action, page_id)
+        _carried_without_moves(action, page_id, container_ids)
     return actions if len(kept) == len(actions) else kept
 
 
-def _carried_without_moves(action: Any, page_id: str) -> None:
+def _carried_without_moves(action: Any, page_id: str, container_ids: frozenset[str]) -> None:
     """The moves to the page dropped from what an action carries: its off and
     long press actions, then a value_map's options."""
     if isinstance(action, dict):
-        _nested_without_moves(action, page_id)
-        _options_without_moves(action, page_id)
+        _nested_without_moves(action, page_id, container_ids)
+        _options_without_moves(action, page_id, container_ids)
 
 
-def _nested_without_moves(action: dict, page_id: str) -> None:
+def _nested_without_moves(action: dict, page_id: str, container_ids: frozenset[str]) -> None:
     """Its off and long press actions, each removed when it moved to the page."""
     for field in _NESTED_ACTION_FIELDS:
-        if _moves_to(action.get(field), page_id):
+        if _moves_to(action.get(field), page_id, container_ids):
             del action[field]
         else:
-            _carried_without_moves(action.get(field), page_id)
+            _carried_without_moves(action.get(field), page_id, container_ids)
 
 
-def _options_without_moves(action: dict, page_id: str) -> None:
+def _options_without_moves(action: dict, page_id: str, container_ids: frozenset[str]) -> None:
     """A value_map's options, each one that moved to the page removed."""
     mapped = action.get("map") if action.get("action") == "value_map" else None
     if not isinstance(mapped, dict):
         return
-    for option in [o for o, a in mapped.items() if _moves_to(a, page_id)]:
+    for option in [o for o, a in mapped.items() if _moves_to(a, page_id, container_ids)]:
         del mapped[option]
     for option_action in mapped.values():
-        _carried_without_moves(option_action, page_id)
+        _carried_without_moves(option_action, page_id, container_ids)
 
 
-def _rows_without_moves(el: Any, page_id: str) -> None:
+def _rows_without_moves(el: Any, page_id: str, container_ids: frozenset[str]) -> None:
     """A matrix's rows without their own route's moves to the page. A row whose
     route held nothing else keeps an empty one, which the panel reads as a row
     made to do nothing; taking the route away would hand the row to the
     matrix's own route instead."""
     for row in _routed_rows(el):
-        row["route"] = _actions_without_moves(row["route"], page_id)
+        row["route"] = _actions_without_moves(row["route"], page_id, container_ids)
 
 
 def _routed_rows(el: Any) -> list:
@@ -148,20 +184,29 @@ def _routed_rows(el: Any) -> list:
     return [row for row in rows if isinstance(row, dict) and isinstance(row.get("route"), list)]
 
 
-def _moves_to(action: Any, page_id: str) -> bool:
+def _moves_to(action: Any, page_id: str, container_ids: frozenset[str]) -> bool:
+    # A ui.subpage is a move when it would show the deleted page, or when its
+    # container did not survive the deletion -- the switch is dead weight
+    # either way, dropped whole.
+    # 会显示被删页面的 ui.subpage 算指向它；容器未在删除后存活的切换同样是
+    # 死重，整个删除。
+    if isinstance(action, dict) and action.get("action") == "ui.subpage":
+        container = action.get("container")
+        if container and container not in container_ids:
+            return True
     return (
         isinstance(action, dict)
-        and action.get("action") == "ui.navigate"
+        and action.get("action") in ("ui.navigate", "ui.subpage")
         and action.get("page") == page_id
     )
 
 
-def _macro_without_page(macro: Any, page_id: str) -> None:
+def _macro_without_page(macro: Any, page_id: str, container_ids: frozenset[str]) -> None:
     """The macro's steps without those that move to the page, its branches
     included, and each trigger's conditions without those that matched on the
     page being the current one, whatever their operator."""
     if macro.steps:
-        macro.steps = _steps_without_page(macro.steps, page_id)
+        macro.steps = _steps_without_page(macro.steps, page_id, container_ids)
     for trigger in macro.triggers or []:
         if trigger.conditions:
             trigger.conditions = [
@@ -169,23 +214,30 @@ def _macro_without_page(macro: Any, page_id: str) -> None:
             ]
 
 
-def _steps_without_page(steps: list, page_id: str) -> list:
+def _steps_without_page(steps: list, page_id: str, container_ids: frozenset[str]) -> list:
     """Steps without those that move to the page, ``steps`` itself when none
     did; each branch kept is cleaned in place."""
-    kept = [step for step in steps if not _step_moves_to(step, page_id)]
+    kept = [step for step in steps if not _step_moves_to(step, page_id, container_ids)]
     for step in kept:
-        _branches_without_page(step, page_id)
+        _branches_without_page(step, page_id, container_ids)
     return steps if len(kept) == len(steps) else kept
 
 
-def _step_moves_to(step: Any, page_id: str) -> bool:
-    return getattr(step, "action", None) == "ui.navigate" and getattr(step, "page", None) == page_id
+def _step_moves_to(step: Any, page_id: str, container_ids: frozenset[str]) -> bool:
+    if getattr(step, "action", None) == "ui.subpage":
+        container = getattr(step, "container", None)
+        if container and container not in container_ids:
+            return True
+    return (
+        getattr(step, "action", None) in ("ui.navigate", "ui.subpage")
+        and getattr(step, "page", None) == page_id
+    )
 
 
-def _branches_without_page(step: Any, page_id: str) -> None:
+def _branches_without_page(step: Any, page_id: str, container_ids: frozenset[str]) -> None:
     for branch in ("then_steps", "else_steps"):
         if getattr(step, branch, None):
-            setattr(step, branch, _steps_without_page(getattr(step, branch), page_id))
+            setattr(step, branch, _steps_without_page(getattr(step, branch), page_id, container_ids))
 
 
 def _matches_current_page(condition: Any, page_id: str) -> bool:
@@ -202,6 +254,14 @@ def _group_without_page(group: Any, page_id: str) -> None:
 
 def _idle_page_without(ui: Any, page_id: str) -> None:
     """An idle page that was the deleted one falls to the first page left, or
-    to none when no page is."""
+    to none when no page is. The idle return is a page move, so the fallback
+    skips sub-pages -- the same repair the Builder's page delete makes, since
+    the two scrubbers must leave the same project.
+    空闲返回是页面切换，回落跳过子页面——与 Builder 删除页面的修复一致，
+    两个清理器必须产出相同的项目。"""
     if ui.settings.idle_page == page_id:
-        ui.settings.idle_page = ui.pages[0].id if ui.pages else ""
+        regular = next(
+            (p for p in ui.pages if getattr(p, "page_type", "page") != "subpage"),
+            None,
+        )
+        ui.settings.idle_page = regular.id if regular is not None else ""

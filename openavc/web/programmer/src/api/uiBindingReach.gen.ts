@@ -64,6 +64,12 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
   "status_led": [
     "look"
   ],
+  "subpage_container": [
+    "look"
+  ],
+  "web": [
+    "value"
+  ],
   "text_input": [
     "value"
   ]
@@ -92,7 +98,7 @@ export const STATE_ICON_TYPES: string[] = ["button", "camera_preset", "page_nav"
  * `button_image`): artwork on a button or camera preset, the picture itself on
  * an image. Anywhere else one is stored and never seen.
  */
-export const STATE_IMAGE_TYPES: string[] = ["button", "camera_preset", "group", "image"];
+export const STATE_IMAGE_TYPES: string[] = ["button", "camera_preset", "group", "image", "subpage_container"];
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;
@@ -255,6 +261,15 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
   "status_led": [
     "label"
   ],
+  "subpage_container": [
+    "default_page",
+    "subpage_fit"
+  ],
+  "web": [
+    "grant",
+    "sandbox_permissions",
+    "url"
+  ],
   "text_input": [
     "label",
     "placeholder"
@@ -308,7 +323,7 @@ export const NAVIGATION_SENTINELS = new Set(["$back", "$dismiss"]);
  * runs at all. Which is why it is generated rather than typed here: a fifth
  * copy of a closed set is how `navigate` outlived `ui.navigate`.
  */
-export const DISPATCHED_ACTIONS: string[] = ["device.command", "event.emit", "macro", "script.call", "state.set", "ui.navigate", "value_map"];
+export const DISPATCHED_ACTIONS: string[] = ["device.command", "event.emit", "macro", "script.call", "state.set", "ui.navigate", "ui.subpage", "value_map"];
 
 /**
  * Macro steps that are NOT binding actions.

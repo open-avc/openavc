@@ -103,6 +103,14 @@ export function pageGroups(
     label: p.name || p.id,
     hint: p.id,
   });
+  // Sub-pages are in neither group, on purpose: this picker serves navigation,
+  // and a sub-page cannot be navigated to -- it draws only inside a sub-page
+  // container. The pickers that DO choose sub-pages (the container's default
+  // and the Show Sub-page action) list them from their own sub-page-only
+  // filters, not from here.
+  // 子页面不进任何一组，是刻意的：本选择器服务导航，而子页面不可导航——
+  // 只绘制在子页面容器内。真正选择子页面的选择器（容器默认页与 Show Sub-page
+  // 动作）各自用只含子页面的过滤来列，不走这里。
   const regular = pages.filter((p) => (p.page_type ?? "page") === "page");
   const overlay = pages.filter((p) => {
     const t = p.page_type ?? "page";

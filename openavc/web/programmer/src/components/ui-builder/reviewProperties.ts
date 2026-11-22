@@ -38,6 +38,7 @@ const INERT_WITHOUT: Record<string, [string, string | null, string]> = {
   label: ["text", "value", "the string to draw, or a show.value binding"],
   select: ["options", "items", "[{label, value}, ...] for the list of choices"],
   custom: ["custom_file", null, "a page in the project's ui/ folder, e.g. 'room_map/index.html'"],
+  web: ["url", "value", "an http(s) URL to embed"],
 };
 
 /**

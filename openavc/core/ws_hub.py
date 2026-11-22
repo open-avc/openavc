@@ -77,6 +77,11 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     # What a panel draws, and the page it shows.
     "ui.definition": _EVERYONE,
     "ui.navigate": _EVERYONE,
+    # A sub-page container showing a different sub-page, same audience as
+    # ui.navigate: every panel showing a page that holds the container moves.
+    # 子页面容器切换子页面，受众与 ui.navigate 相同：显示着含该容器页面的
+    # 面板一起切换。
+    "ui.subpage": _EVERYONE,
     "ui.files": _EVERYONE,
     # The project's revision after a save, and a project replaced outright.
     "project.reloaded": _EVERYONE,

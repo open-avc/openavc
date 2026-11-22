@@ -39,6 +39,29 @@
 import { basePath } from './base_path.js';
 import { applyStyle } from './paint.js';
 
+/**
+ * A URL a web element may show: http(s) only. javascript:, data: and
+ * relative paths either breach the sandbox's spirit or would draw from the
+ * panel's own origin -- the rule the renderer's static url keeps, so a
+ * binding or a runtime override cannot sneak a scheme past it.
+ * web 元素可显示的 url：仅 http(s)。javascript:/data: 与相对路径要么破坏
+ * 沙箱本意，要么会画到面板自身源上——与渲染器对静态 url 的规则一致，
+ * 绑定与运行时覆盖无法绕过。
+ */
+export function isEmbeddableUrl(url) {
+    // Parsed, not just pattern-matched: "https://?" matches a loose regex but
+    // names no host, and the browser would blank the frame over it. An
+    // absolute http(s) URL with a host is the whole contract.
+    // 用解析而非仅模式匹配："https://?" 能骗过宽松正则却没有主机名，浏览器
+    // 会因此画出空帧。带主机的绝对 http(s) URL 是全部契约。
+    try {
+        const parsed = new URL(String(url || '').trim());
+        return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && !!parsed.hostname;
+    } catch {
+        return false;
+    }
+}
+
 // The theme a frame is told about when it opens.
 const THEME_VARIABLES = [
     '--panel-bg', '--panel-text', '--panel-accent',
@@ -218,27 +241,55 @@ class PanelFrame {
         this.host = host;
         this.element = element;
         this.source = source;
-        this.who = source.pluginId ? `plugin '${source.pluginId}'` : `custom control '${element.id}'`;
+        this.who = source.pluginId ? `plugin '${source.pluginId}'`
+            : (source.who || `custom control '${element.id}'`);
         // What stops this frame: its listener and its status waiter.
         this._stops = [];
         this.stopped = false;
         this.node = this._drawBox();
+        // The frame hands its own stop handle back, so whoever replaces it
+        // (a url switch rebuilding the box) can dispose it: its surface-end
+        // callback must not retain a detached frame forever.
+        // 帧交回自己的停止句柄，替换它的一方（url 切换重建盒子）得以释放：
+        // 其 surface-end 回调不能永久保留已脱离的帧。
+        this._hostUnregister = null;
         // Is the page actually there? Registered before the frame is in the
         // document, so the answer cannot arrive before something is listening.
         if (source.fileLabel) this._checkFile();
         this.loading = this._drawLoading();
         this._register();
+        // A frame with no bridge (a `web` element showing somebody else's page)
+        // gets nothing and listens for nothing: no opening message, no state
+        // pushes, no actions -- the remote page is display-only, and the
+        // sandbox is the whole of its reach.
+        // 无桥的帧（显示他人页面的 web 元素）什么都不收、什么都不听：无开场
+        // 消息、无状态推送、无动作——远程页面仅用于显示，沙箱就是它的全部
+        // 能力边界。
         this.iframe.addEventListener('load', () => this.open());
-        this._listen();
+        if (!this.source.noBridge) this._listen();
         applyStyle(this.node, host.themedStyle(source.styleType, element.style));
-        // It stops when the surface it is drawn on ends.
-        host.onEnd(() => this._stop());
+        // It stops when the surface it is drawn on ends, and its replace-er
+        // can dispose it sooner (谁替换它谁就能提前释放).
+        this._hostUnregister = host.onEnd(() => this._stop());
     }
 
     /** Stop listening and stop waiting to hear about the file, once. */
     _stop() {
         this.stopped = true;
         for (const stop of this._stops.splice(0)) stop();
+    }
+
+    /** Everything _stop does, plus leaving the surface's end list -- the way
+     *  a replaced frame stops before its nodes go away, so the surface does
+     *  not retain one detached frame per url change.
+     *  _stop 的全部动作，外加从 surface 的结束列表除名——被替换的帧在其节点
+     *  离场前就此停止，surface 不会因 url 切换而积累脱附帧。 */
+    dispose() {
+        if (this._hostUnregister) {
+            this._hostUnregister();
+            this._hostUnregister = null;
+        }
+        this._stop();
     }
 
     _drawBox() {
@@ -267,6 +318,7 @@ class PanelFrame {
         el.style.overflow = 'hidden';
         el.appendChild(iframe);
         this.iframe = iframe;
+        el._panelFrame = this;
         return el;
     }
 
@@ -282,7 +334,15 @@ class PanelFrame {
     /** The element map entry, and what the panel and its tests read off the node. */
     _register() {
         const el = this.node;
-        this.host.register(this.element.id, { el, elementDef: this.element });
+        // A no-bridge frame does not take the element map entry: the web
+        // element's own wrapper stays the registered node (stable across
+        // mounts and switches), and the remote page has no state filter to
+        // serve anyway.
+        // 无桥帧不占用元素映射条目：web 元素的包装器保持为登记节点（跨挂载
+        // 与切换稳定），远程页面也没有需要服务的状态过滤。
+        if (!this.source.noBridge) {
+            this.host.register(this.element.id, { el, elementDef: this.element });
+        }
         el._pluginIframe = this.iframe;
         el._pluginConfig = this.source.config;
         // The grant this element was placed with, and the namespace it owns
@@ -290,8 +350,13 @@ class PanelFrame {
         // control). Every check reads these off the node rather than
         // re-deriving them, so the opening snapshot, the live pushes and the
         // bridge cannot end up answering differently.
-        el._grant = grantOf(this.element);
-        el._ownNamespace = this.source.ownNamespace;
+        // A no-bridge frame carries NO grant whatever a hand-edited file says:
+        // the remote page reaches nothing, so the grant is refused at the door
+        // rather than interpreted -- otherwise a state push would cross it.
+        // 无桥帧一律不带 grant，无论手改文件写了什么：远程页面什么都到不了，
+        // grant 在门口即被拒绝而非被解释——否则状态推送会越过它。
+        el._grant = this.source.noBridge ? NO_GRANT : grantOf(this.element);
+        el._ownNamespace = this.source.noBridge ? null : this.source.ownNamespace;
         this.stateFilter = (key) => mayRead(el._grant, el._ownNamespace, key);
         el._stateFilter = this.stateFilter;
     }
@@ -378,6 +443,9 @@ class PanelFrame {
      *  wall panels outlive the token lifetime by design). */
     async open() {
         this.loading.remove();
+        // No bridge, nothing to say: the load is the whole conversation.
+        // 无桥则无话可说：加载本身即是全部对话。
+        if (this.source.noBridge) return;
         const themeVars = {};
         const root = document.documentElement;
         for (const prop of THEME_VARIABLES) {

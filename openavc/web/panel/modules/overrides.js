@@ -26,6 +26,7 @@
 
 import { labelSpan, nameAfterWords } from './words.js';
 import { richText } from './label.js';
+import { isEmbeddableUrl } from './frames.js';
 
 /** Words that came from no authored field: an override's own. */
 const NO_SOURCE = null;
@@ -43,7 +44,7 @@ function styleOverride(property) {
 }
 
 /**
- * The five, in the order they are put back and drawn. `capture` is what a
+ * The six, in the order they are put back and drawn. `capture` is what a
  * row keeps of the control as first drawn, which is all its `putBack` reads;
  * `draw` answers whether it drew anything: a control with no words to
  * replace takes no label.
@@ -77,6 +78,46 @@ export const OVERRIDES = [
         },
         draw: (el, value) => {
             el.style.display = (value === false || value === 'false') ? 'none' : '';
+            return true;
+        },
+    },
+    {
+        name: 'url',
+        // Web element only: the page its frame shows. This is what makes a
+        // web element controllable out of the box -- state.set ui.<id>.url
+        // works with no binding authored and no variable declared, the same
+        // standing start every other override gives a control.
+        // 仅 web 元素：其帧显示的页面。这让 web 元素开箱即受控——
+        // state.set ui.<id>.url 无需创作绑定、无需声明变量，与其他覆盖字段
+        // 给控件的"从零起点"一致。
+        //
+        // The entry runs on every control, so it gates: `draw` reads the
+        // node's element type (draw receives no elementDef; the draw tree
+        // writes it), and capture/putBack read elementDef's. A cleared key
+        // puts the element's own url back and lets the redraw re-assert a
+        // binding's answer, so override > binding > static.
+        // 该条目会作用于每个控件，因此需要门控：draw 读节点的元素类型
+        // （draw 不收 elementDef，绘制树会写入），capture/putBack 读
+        // elementDef 的。键被清除时先放回元素自身的 url，再由重绘重新确认
+        // 绑定的答案——优先级 override > binding > static。
+        capture: (el, elementDef) => ({
+            url: elementDef?.type === 'web' ? String(elementDef.url || '') : undefined,
+        }),
+        putBack: (el, base, ui, elementDef) => {
+            if (elementDef?.type !== 'web') return false;
+            // Back to the element's own url; the redraw after a clear
+            // re-asserts a binding's answer over it.
+            // 回到元素自身的 url；清除后的重绘会在其上重新确认绑定的答案。
+            ui.mountWeb(el, elementDef?.url || '');
+            return true;
+        },
+        draw: (el, value, base, ui) => {
+            if (el.dataset.elementType !== 'web') return false;
+            // The same rule the static url keeps: a scheme the sandbox refuses
+            // is not applied, and the frame keeps showing what it showed.
+            // 与静态 url 同一规则：沙箱不允许的 scheme 不应用，帧保持原样。
+            if (!isEmbeddableUrl(value)) return false;
+            ui.mountWeb(el, String(value).trim());
             return true;
         },
     },
@@ -152,16 +193,30 @@ export class UiOverrides {
         this._drawn = new WeakMap();
     }
 
-    /** Draw every control's overrides from current state, putting back what a cleared one covered. */
-    apply(elementMap) {
+    /** Draw every control's overrides from current state, putting back what a
+     *  cleared one covered. One entry per INSTANCE: a control mounted twice
+     *  (the same sub-page in two containers) is updated on both copies by one
+     *  key, and each keeps its own snapshot of what it was drawn with.
+     *  从当前状态绘制所有控件的覆盖，并放回被清除键覆盖的内容。每实例一条：
+     *  挂载两份的控件（同一子页面显示在两个容器）由一个键同时更新两份，且
+     *  各自保留自己被绘制时的快照。 */
+    apply(entries) {
         const state = this._host.state();
-        for (const [elementId, entry] of Object.entries(elementMap)) {
+        for (const entry of entries) {
             const el = entry.el;
             if (!el || !el.style) continue;
+            const elementId = entry.id || el.dataset.elementId;
             const prefix = `ui.${elementId}.`;
             const values = OVERRIDES.map((o) => state[prefix + o.name]);
             this._applyTo(elementId, entry, values);
         }
+    }
+
+    /** The url override's way to mount or switch a web element's frame; the
+     *  host owns the machinery, the override owns the rule.
+     *  url 覆盖挂载或切换 web 元素帧的入口：机制归宿主，规则归覆盖。 */
+    mountWeb(wrapper, url) {
+        this._host.mountWeb(wrapper, url);
     }
 
     _applyTo(elementId, entry, values) {

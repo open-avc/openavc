@@ -460,6 +460,32 @@ class MacroSteps:
         else:
             log.warning("ui.navigate step fired but no broadcast_ws is wired — no panels notified")
 
+    async def _show_subpage(self, step: dict[str, Any], _run: StepRun, _path: StepPath) -> None:
+        # Show a sub-page inside a sub-page container. Same spelling as the
+        # binding action and the WS frame ("ui.subpage"), and the same broadcast
+        # semantics as ui.navigate: a room's panels switch together, and a
+        # macro has no "the panel that pressed".
+        # 在子页面容器内显示子页面。与绑定动作、WS 帧同一拼写（"ui.subpage"），
+        # 广播语义同 ui.navigate：房间里的面板一起切换，宏没有"按下它的那一个
+        # 面板"的概念。
+        container = step.get("container", "")
+        page = step.get("page", "")
+        if not container or not page:
+            raise ValueError(
+                "ui.subpage step requires both a 'container' (sub-page container "
+                "element id) and a 'page' (sub-page id) value"
+            )
+        log.debug(f"  Macro step: ui.subpage -> container {container}, page {page}")
+        await self.events.emit(f"ui.subpage.{container}")
+        if self._broadcast_ws is not None:
+            await self._broadcast_ws({
+                "type": "ui.subpage",
+                "container_id": container,
+                "page_id": page,
+            })
+        else:
+            log.warning("ui.subpage step fired but no broadcast_ws is wired — no panels notified")
+
     async def _request_help(self, step: dict[str, Any], run: StepRun, _path: StepPath) -> None:
         # The message resolves $var. and $trigger. -- and unlike every
         # other macro parameter it resolves them INSIDE the sentence,
@@ -585,6 +611,7 @@ class MacroSteps:
         "conditional": "_conditional",
         "wait_until": "_wait_until",
         "ui.navigate": "_navigate",
+        "ui.subpage": "_show_subpage",
         "help.request": "_request_help",
         "help.clear": "_clear_help",
     }

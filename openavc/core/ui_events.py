@@ -49,7 +49,7 @@ log = get_logger(__name__)
 #: indistinguishable, from the room, from a dead device.
 DISPATCHED_ACTIONS = frozenset({
     "device.command", "event.emit", "macro", "script.call", "state.set",
-    "ui.navigate", "value_map",
+    "ui.navigate", "ui.subpage", "value_map",
 })
 
 
@@ -506,6 +506,29 @@ class UIEventRuntime:
                         "page_id": page_id,
                     })
                 record(page=page_id)
+
+        elif action == "ui.subpage":
+            # Show a sub-page inside a sub-page container element. One spelling
+            # on purpose, like ui.navigate above: the binding action, the macro
+            # step and the WS frame are all "ui.subpage", so the same move is
+            # written the same way wherever you author it. Broadcast to every
+            # panel, for the same reason ui.navigate is: a room's panels move
+            # together, and a macro has no "the one panel that pressed".
+            # 在子页面容器元素内显示子页面。与上面的 ui.navigate 一样刻意使用
+            # 单一拼写：绑定动作、宏步骤与 WS 帧统一叫 "ui.subpage"，无论在哪
+            # 里编写都写法一致。广播到所有面板，理由同 ui.navigate：房间里的
+            # 面板一起切换，而宏没有"按下它的那一个面板"的概念。
+            container_id = action_def.get("container", "")
+            subpage_id = action_def.get("page", "")
+            if container_id and subpage_id:
+                if not dry_run:
+                    await engine.events.emit(f"ui.subpage.{container_id}")
+                    await engine.broadcast_ws({
+                        "type": "ui.subpage",
+                        "container_id": container_id,
+                        "page_id": subpage_id,
+                    })
+                record(container=container_id, page=subpage_id)
 
         elif action == "script.call":
             # Calls the function. It used to emit `script.call.<name>` and

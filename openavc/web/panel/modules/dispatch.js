@@ -44,10 +44,12 @@ export const RENDERERS = new Map([
     ['level_meter', (app, element) => app.renderLevelMeter(element)],
     ['fader', (app, element) => app.renderFader(element)],
     ['group', (app, element) => app.renderGroup(element)],
+    ['subpage_container', (app, element) => app.renderSubpageContainer(element)],
     ['clock', (app, element) => app.renderClock(element)],
     ['keypad', (app, element) => app.renderKeypad(element)],
     ['plugin', (app, element) => app.renderPluginElement(element)],
     ['custom', (app, element) => app.renderCustomElement(element)],
+    ['web', (app, element) => app.renderWebElement(element)],
 ]);
 
 export const EVALUATORS = new Map([
@@ -70,4 +72,5 @@ export const EVALUATORS = new Map([
     ['matrix_routes', (app, b) => app.evaluateMatrixRoutes(b)],
     ['list_items', (app, b) => app.evaluateListItems(b)],
     ['list_selected', (app, b) => app.evaluateListSelected(b)],
+    ['web_url', (app, b) => app.evaluateWebUrl(b)],
 ]);

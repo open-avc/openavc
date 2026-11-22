@@ -55,6 +55,17 @@ function isRegularPage(page) {
     return pageTypeOf(page) === 'page';
 }
 
+/**
+ * A sub-page: designed like any page, but it is not a destination -- it draws
+ * only inside a sub-page container element, so navigation to it does nothing
+ * and it names no history, no `$back` walk and no idle page.
+ * 子页面：与普通页面一样设计，但它不是目的地——只绘制在子页面容器元素内，
+ * 导航到它不产生任何效果，也不进入历史、$back 栈与空闲页。
+ */
+export function isSubPage(page) {
+    return pageTypeOf(page) === 'subpage';
+}
+
 /** The page drawn when the current one names nothing: the first regular page, else the first. */
 export function fallbackPage(pages) {
     return pages.find(isRegularPage) || pages[0];
