@@ -5,8 +5,8 @@ import { useConnectionStore } from "../../store/connectionStore";
 import {
   ensurePluginScriptApiLoaded,
   getCachedPluginScriptApi,
-  groupByPlugin,
 } from "./pluginScriptApiCache";
+import { scriptCompletions, type CompletionKind, type ScriptCompletion } from "./scriptCompletions";
 
 export interface RuntimeError {
   line: number;
@@ -65,441 +65,18 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
           endLineNumber: position.lineNumber,
           endColumn: position.column,
         });
-
-        const suggestions: any[] = [];
         const range = {
           startLineNumber: position.lineNumber,
           startColumn: position.column,
           endLineNumber: position.lineNumber,
           endColumn: position.column,
         };
-
-        // Import completions
-        if (textUntilPosition.match(/from openavc import\s/)) {
-          const imports = [
-            "on_event", "on_state_change", "devices", "state",
-            "events", "macros", "log", "isc", "plugins",
-            "after", "every", "cancel_timer", "delay", "Event",
-            "compare", "PanelMessage",
-          ];
-          for (const item of imports) {
-            suggestions.push({
-              label: item,
-              kind: monaco.languages.CompletionItemKind.Module,
-              insertText: item,
-              range,
-            });
-          }
-        }
-
-        // devices.* completions
-        if (textUntilPosition.match(/devices\.\s*$/)) {
-          suggestions.push(
-            {
-              label: "send",
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: 'send("${1:device_id}", "${2:command}")',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "(device_id: str, command: str, params?: dict) -> None",
-              documentation: { value: 'Send a command to a device.\n\n```python\nawait devices.send("projector1", "power_on")\nawait devices.send("switcher", "set_input", {"input": "hdmi1"})\n```' },
-              range,
-            },
-            {
-              label: "list",
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: "list()",
-              detail: "() -> list[str]",
-              documentation: { value: 'Return a list of all configured device IDs.\n\n```python\nfor dev_id in devices.list():\n    log.info(f"Device: {dev_id}")\n```' },
-              range,
-            }
-          );
-        }
-
-        // state.* completions
-        if (textUntilPosition.match(/state\.\s*$/)) {
-          suggestions.push(
-            {
-              label: "get",
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: 'get("${1:key}")',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "(key: str) -> str | int | float | bool | None",
-              documentation: { value: 'Read a value from shared state. Returns None if the key doesn\'t exist.\n\n```python\nvolume = state.get("var.volume")\nis_on = state.get("device.projector1.power")\n```' },
-              range,
-            },
-            {
-              label: "set",
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: 'set("${1:key}", ${2:value})',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "(key: str, value: str | int | float | bool | None) -> None",
-              documentation: { value: 'Set a value in shared state. Visible to all UIs, scripts, and macros.\n\n```python\nstate.set("var.room_active", True)\nstate.set("var.current_source", "HDMI 1")\n```' },
-              range,
-            },
-            {
-              label: "get_namespace",
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: 'get_namespace("${1:prefix}")',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "(prefix: str) -> dict[str, Any]",
-              documentation: { value: 'Get all state keys matching a prefix as a dict.\n\n```python\nproj = state.get_namespace("device.projector1.")\n```' },
-              range,
-            }
-          );
-        }
-
-        // macros.* completions
-        if (textUntilPosition.match(/macros\.\s*$/)) {
-          suggestions.push({
-            label: "execute",
-            kind: monaco.languages.CompletionItemKind.Method,
-            insertText: 'execute("${1:macro_id}")',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            detail: "(macro_id: str) -> None",
-            documentation: { value: 'Run a macro by its ID and wait for its last step. The wait counts toward the 30 second limit on a handler or timer, so use start for a long macro.\n\n```python\nawait macros.execute("macro_system_on")\n```' },
-            range,
-          }, {
-            label: "start",
-            kind: monaco.languages.CompletionItemKind.Method,
-            insertText: 'start("${1:macro_id}")',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            detail: "(macro_id: str) -> None",
-            documentation: { value: 'Start a macro by its ID and continue at once, without waiting (no await). It runs to its last step however long it takes.\n\n```python\nmacros.start("macro_system_off")\n```' },
-            range,
-          });
-        }
-
-        // events.* completions
-        if (textUntilPosition.match(/events\.\s*$/)) {
-          suggestions.push({
-            label: "emit",
-            kind: monaco.languages.CompletionItemKind.Method,
-            insertText: 'emit("${1:event_name}")',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            detail: "(event: str, payload?: dict) -> None",
-            documentation: { value: 'Fire a named event. Other scripts and triggers listening will be notified.\n\n```python\nawait events.emit("custom.source_changed", {"source": "hdmi1"})\n```' },
-            range,
-          });
-        }
-
-        // log.* completions
-        if (textUntilPosition.match(/log\.\s*$/)) {
-          const logLevels = [
-            { level: "info", desc: "Informational message" },
-            { level: "warning", desc: "Warning (displayed in orange)" },
-            { level: "error", desc: "Error (displayed in red)" },
-            { level: "debug", desc: "Debug message (verbose)" },
-          ];
-          for (const { level, desc } of logLevels) {
-            suggestions.push({
-              label: level,
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: `${level}(f"$\{1:message}")`,
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: `(message: str) -> None`,
-              documentation: { value: `${desc}.\n\n\`\`\`python\nlog.${level}("Something happened")\n\`\`\`` },
-              range,
-            });
-          }
-        }
-
-        // isc.* completions
-        if (textUntilPosition.match(/isc\.\s*$/)) {
-          const iscMembers: {
-            label: string;
-            insertText: string;
-            detail: string;
-            doc: string;
-            example: string;
-            isClass?: boolean;
-          }[] = [
-            {
-              label: "send_to",
-              insertText: 'send_to("${1:instance_id}", "${2:event}")',
-              detail: "(instance_id: str, event: str, payload?: dict) -> None",
-              doc: "Send an event to one remote instance.",
-              example: 'await isc.send_to("lobby-instance-id", "custom.all_off", {"zone": "building"})',
-            },
-            {
-              label: "broadcast",
-              insertText: 'broadcast("${1:event}")',
-              detail: "(event: str, payload?: dict) -> None",
-              doc: "Send an event to every connected instance.",
-              example: 'await isc.broadcast("custom.fire_alarm", {"zone": "all"})',
-            },
-            {
-              label: "send_command",
-              insertText: 'send_command("${1:instance_id}", "${2:device_id}", "${3:command}")',
-              detail: "(instance_id: str, device_id: str, command: str, params?: dict) -> Any",
-              doc:
-                "Run a device command on a remote instance's equipment. That instance " +
-                "must allow the command in its `allowed_remote_commands` allowlist. " +
-                "Raises `isc.RemoteError` if it refuses, `ConnectionError` if it can't " +
-                "be reached, `TimeoutError` if it doesn't answer.",
-              example: 'await isc.send_command("lobby-instance-id", "display1", "power_off")',
-            },
-            {
-              label: "get_instances",
-              insertText: "get_instances()",
-              detail: "() -> list[dict]",
-              doc: "List discovered and connected peer instances. Not awaited.",
-              example:
-                'for peer in isc.get_instances():\n    log.info(f"{peer[\'name\']} connected={peer[\'connected\']}")',
-            },
-            {
-              label: "RemoteError",
-              insertText: "RemoteError",
-              detail: "exception",
-              doc:
-                "Raised by `send_command` when the peer answered and refused: its " +
-                "allowlist denied the command, it is already running as many remote " +
-                "commands as it accepts, or its device reported a fault. The fix is on " +
-                "that instance, not this one.",
-              example:
-                'try:\n    await isc.send_command("lobby-instance-id", "display1", "power_off")\nexcept isc.RemoteError as e:\n    log.warning(f"The lobby refused it: {e}")',
-              isClass: true,
-            },
-          ];
-          for (const m of iscMembers) {
-            suggestions.push({
-              label: m.label,
-              kind: m.isClass
-                ? monaco.languages.CompletionItemKind.Class
-                : monaco.languages.CompletionItemKind.Method,
-              insertText: m.insertText,
-              ...(m.insertText.includes("${")
-                ? {
-                    insertTextRules:
-                      monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                  }
-                : {}),
-              detail: m.detail,
-              documentation: { value: `${m.doc}\n\n\`\`\`python\n${m.example}\n\`\`\`` },
-              range,
-            });
-          }
-        }
-
-        // plugins.* — list installed plugin ids that have script methods
-        if (textUntilPosition.match(/plugins\.\s*$/)) {
-          const grouped = groupByPlugin(getCachedPluginScriptApi());
-          for (const [pluginId, info] of grouped) {
-            suggestions.push({
-              label: pluginId,
-              kind: monaco.languages.CompletionItemKind.Module,
-              insertText: pluginId,
-              detail: info.plugin_name,
-              documentation: {
-                value: `Plugin: **${info.plugin_name}**\n\nMethods:\n${info.methods
-                  .map((m) => `- \`${m.method}\`${m.sync ? "" : " (async)"}`)
-                  .join("\n")}`,
-              },
-              range,
-            });
-          }
-        }
-
-        // plugins.<plugin_id>.* — list registered methods for that plugin
-        const pluginMatch = textUntilPosition.match(/plugins\.([a-z][a-zA-Z0-9_]*)\.\s*$/);
-        if (pluginMatch) {
-          const pluginId = pluginMatch[1];
-          const grouped = groupByPlugin(getCachedPluginScriptApi());
-          const info = grouped.get(pluginId);
-          if (info) {
-            for (const m of info.methods) {
-              suggestions.push({
-                label: m.method,
-                kind: monaco.languages.CompletionItemKind.Method,
-                insertText: `${m.method}($0)`,
-                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                detail: m.sync ? `${info.plugin_name} (sync)` : `${info.plugin_name} (async)`,
-                documentation: {
-                  value: m.doc
-                    ? `${m.doc}\n\n${m.sync ? "Call directly." : "Must be `await`ed."}`
-                    : m.sync
-                      ? "Call directly."
-                      : "Must be `await`ed.",
-                },
-                range,
-              });
-            }
-          }
-        }
-
-        // Dynamic device ID completions
-        if (textUntilPosition.match(/devices\.send\(\s*["']\s*$/)) {
-          const project = useProjectStore.getState().project;
-          if (project) {
-            for (const d of project.devices) {
-              suggestions.push({
-                label: d.id,
-                kind: monaco.languages.CompletionItemKind.Value,
-                insertText: d.id,
-                detail: d.name,
-                range,
-              });
-            }
-          }
-        }
-
-        // Dynamic macro ID completions
-        if (textUntilPosition.match(/macros\.(execute|start)\(\s*["']\s*$/)) {
-          const project = useProjectStore.getState().project;
-          if (project) {
-            for (const m of project.macros) {
-              suggestions.push({
-                label: m.id,
-                kind: monaco.languages.CompletionItemKind.Value,
-                insertText: m.id,
-                detail: m.name,
-                range,
-              });
-            }
-          }
-        }
-
-        // Dynamic state key completions — project variables, device state, ui overrides, system, plugin
-        if (textUntilPosition.match(/state\.(get|set)\(\s*["']\s*$/) ||
-            textUntilPosition.match(/@on_state_change\(\s*["']\s*$/)) {
-          const project = useProjectStore.getState().project;
-          if (project) {
-            for (const v of project.variables) {
-              suggestions.push({
-                label: `var.${v.id}`,
-                kind: monaco.languages.CompletionItemKind.Variable,
-                insertText: `var.${v.id}`,
-                detail: `${v.label} (${v.type})`,
-                range,
-              });
-            }
-            // UI override keys
-            const overrideProps = ["label", "visible", "bg_color", "text_color", "opacity"];
-            for (const page of project.ui?.pages ?? []) {
-              for (const el of page.elements ?? []) {
-                for (const prop of overrideProps) {
-                  suggestions.push({
-                    label: `ui.${el.id}.${prop}`,
-                    kind: monaco.languages.CompletionItemKind.Variable,
-                    insertText: `ui.${el.id}.${prop}`,
-                    detail: `${el.label || el.type}: ${prop}`,
-                    range,
-                  });
-                }
-              }
-            }
-          }
-          // Device state, system, and plugin keys from live state
-          const liveState = useConnectionStore.getState().liveState;
-          for (const key of Object.keys(liveState)) {
-            if (key.startsWith("device.") || key.startsWith("system.") || key.startsWith("plugin.")) {
-              suggestions.push({
-                label: key,
-                kind: monaco.languages.CompletionItemKind.Variable,
-                insertText: key,
-                range,
-              });
-            }
-          }
-          // `device.<id>.asleep` is only in live state while a device is
-          // asleep, so offer it for every device the project has.
-          if (project) {
-            for (const d of project.devices) {
-              const key = `device.${d.id}.asleep`;
-              if (key in liveState) continue;
-              suggestions.push({
-                label: key,
-                kind: monaco.languages.CompletionItemKind.Variable,
-                insertText: key,
-                detail: `${d.name}: asleep`,
-                range,
-              });
-            }
-          }
-        }
-
-        // Dynamic event pattern completions
-        if (textUntilPosition.match(/@on_event\(\s*["']\s*$/)) {
-          const project = useProjectStore.getState().project;
-          if (project) {
-            // UI element events
-            for (const page of project.ui?.pages ?? []) {
-              for (const el of page.elements ?? []) {
-                if (["button", "page_nav", "camera_preset"].includes(el.type)) {
-                  suggestions.push({
-                    label: `ui.press.${el.id}`,
-                    kind: monaco.languages.CompletionItemKind.Event,
-                    insertText: `ui.press.${el.id}`,
-                    detail: `Button press: ${el.label || el.type}`,
-                    range,
-                  });
-                }
-                if (["slider", "select", "text_input"].includes(el.type)) {
-                  suggestions.push({
-                    label: `ui.change.${el.id}`,
-                    kind: monaco.languages.CompletionItemKind.Event,
-                    insertText: `ui.change.${el.id}`,
-                    detail: `Value change: ${el.label || el.type}`,
-                    range,
-                  });
-                }
-              }
-            }
-            // Device connection events
-            for (const d of project.devices) {
-              suggestions.push(
-                {
-                  label: `device.connected.${d.id}`,
-                  kind: monaco.languages.CompletionItemKind.Event,
-                  insertText: `device.connected.${d.id}`,
-                  detail: `${d.name} connected`,
-                  range,
-                },
-                {
-                  label: `device.disconnected.${d.id}`,
-                  kind: monaco.languages.CompletionItemKind.Event,
-                  insertText: `device.disconnected.${d.id}`,
-                  detail: `${d.name} disconnected`,
-                  range,
-                },
-              );
-            }
-          }
-          // Common event patterns
-          for (const pattern of ["custom.*", "system.startup", "system.shutdown", "schedule.*"]) {
-            suggestions.push({
-              label: pattern,
-              kind: monaco.languages.CompletionItemKind.Event,
-              insertText: pattern,
-              range,
-            });
-          }
-        }
-
-        // Decorator completions
-        if (textUntilPosition.match(/@\s*$/)) {
-          suggestions.push(
-            {
-              label: "on_event",
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'on_event("${1:event_pattern}")\nasync def ${2:handler}(event):\n    ${0}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "Event handler decorator (pattern: str)",
-              documentation: { value: 'Register a function to run when an event fires. Supports glob patterns.\n\n```python\n@on_event("ui.press.btn_power")\nasync def handle(event):\n    log.info("Power pressed")\n```' },
-              range,
-            },
-            {
-              label: "on_state_change",
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'on_state_change("${1:key_pattern}")\ndef ${2:handler}(key, old_value, new_value):\n    ${0}',
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: "State change handler decorator (key: str)",
-              documentation: { value: 'Register a function to run when a state key changes.\n\n```python\n@on_state_change("var.volume")\ndef on_vol(key, old_value, new_value):\n    log.info(f"Volume: {new_value}")\n```' },
-              range,
-            }
-          );
-        }
-
-        return { suggestions };
+        const completions = scriptCompletions(textUntilPosition, {
+          project: useProjectStore.getState().project,
+          liveState: useConnectionStore.getState().liveState,
+          pluginMethods: getCachedPluginScriptApi(),
+        });
+        return { suggestions: completions.map((c) => toMonacoItem(monaco, c, range)) };
       },
     });
 
@@ -703,6 +280,37 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
       }}
     />
   );
+}
+
+/** Monaco's kind for each kind of script completion. */
+function monacoKind(monaco: any, kind: CompletionKind): number {
+  const kinds = monaco.languages.CompletionItemKind;
+  const table: Record<CompletionKind, number> = {
+    module: kinds.Module,
+    function: kinds.Function,
+    method: kinds.Method,
+    class: kinds.Class,
+    value: kinds.Value,
+    variable: kinds.Variable,
+    event: kinds.Event,
+    snippet: kinds.Snippet,
+  };
+  return table[kind];
+}
+
+/** A script completion as the Monaco item that inserts it at `range`. */
+function toMonacoItem(monaco: any, c: ScriptCompletion, range: unknown) {
+  return {
+    label: c.label,
+    kind: monacoKind(monaco, c.kind),
+    insertText: c.insertText,
+    ...(c.snippet
+      ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet }
+      : {}),
+    ...(c.detail !== undefined ? { detail: c.detail } : {}),
+    ...(c.documentation !== undefined ? { documentation: { value: c.documentation } } : {}),
+    range,
+  };
 }
 
 /**
