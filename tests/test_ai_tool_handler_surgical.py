@@ -2545,7 +2545,7 @@ async def test_get_state_history_validates_count(handler, mock_agent):
     await _drain()
     payload = _get_result_payload(mock_agent)
     assert payload["success"] is False
-    assert "integer" in payload["error"]
+    assert payload["error"] == "count must be a whole number, not a string."
 
     # count=0 -> empty list, NOT the whole history ([-0:] slice bug)
     msg = _make_tool_call_msg("get_state_history", {"count": 0})
@@ -2555,14 +2555,21 @@ async def test_get_state_history_validates_count(handler, mock_agent):
     assert payload["success"] is True
     assert payload["result"] == []
 
-    # Numeric strings / floats coerce instead of crashing
-    for count in ("2", 2.7):
+    # A whole number sent with a point is still a whole number; text or a
+    # fraction is refused by name before the tool runs, never a crash.
+    msg = _make_tool_call_msg("get_state_history", {"count": 2.0})
+    await handler.handle(msg)
+    await _drain()
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is True
+    assert len(payload["result"]) == 2
+    for count, sent in (("2", "a string"), (2.7, "2.7")):
         msg = _make_tool_call_msg("get_state_history", {"count": count})
         await handler.handle(msg)
         await _drain()
         payload = _get_result_payload(mock_agent)
-        assert payload["success"] is True
-        assert len(payload["result"]) == 2
+        assert payload["success"] is False
+        assert payload["error"] == f"count must be a whole number, not {sent}."
 
 
 # --- Audit fixes: parent guards, rounding, layout validation, delete scrub ---

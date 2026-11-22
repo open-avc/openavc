@@ -2,10 +2,11 @@
 OpenAVC Cloud — AI tool call handler.
 
 Handles AI_TOOL_CALL messages from the cloud platform: looks the tool up in
-``TOOLS`` (every tool the cloud may call, and whether it runs under the
-project lock), runs it as a background task, and sends the result back as an
-AI_TOOL_RESULT. An input field of the wrong JSON type is refused by name
-before the tool runs (``cloud/tools/input_shapes.py``). A tool that returned
+``TOOLS`` (``cloud/tool_declarations.py``: every tool the cloud may call,
+whether it runs under the project lock, and what it takes), runs it as a
+background task, and sends the result back as an AI_TOOL_RESULT. An input of
+the wrong shape, or a required one left out, is refused by name before the
+tool runs (``cloud/tools/input_shapes.py``). A tool that returned
 an error or raised is answered as a failure, and what a raised exception may
 say is ``describe_tool_failure``'s call, because the answer is kept in the
 cloud chat history. The tools
@@ -37,6 +38,7 @@ from openavc.cloud.tools.project_tools import ProjectToolsMixin
 from openavc.cloud.tools.script_tools import ScriptToolsMixin
 from openavc.cloud.tools.system_tools import SystemToolsMixin
 from openavc.cloud.tools.ui_tools import UIToolsMixin
+from openavc.cloud.tool_declarations import LOCKED, READ, TOOLS
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -169,124 +171,6 @@ def _is_worded_os_error(exc: Exception) -> bool:
     return isinstance(exc, OSError) and getattr(exc, "errno", None) in _WORDED_ERRNOS
 
 
-# How a tool runs. LOCKED is the default: the tool runs under the project lock,
-# so two tools never interleave on engine.project, and the conversation's one
-# pre-AI backup is made under it before the first LOCKED tool. Tools that reach
-# a device (send to it, test its connection, start a scan) or write state are
-# LOCKED too, and so are review_ui and review_custom_ui, which only read: one needless backup was preferred to two
-# reviews that run differently. READ is a tool that only reads; it runs beside
-# any other, without the lock. UNLOCKED is execute_macro alone: it waits on a
-# macro run for tens of seconds and never changes engine.project, so holding
-# the lock would block project edits. READ and UNLOCKED run the same way;
-# _READ_ONLY_TOOLS keeps them apart. A name missing from TOOLS is answered
-# "Unknown tool".
-READ, UNLOCKED, LOCKED = "read", "unlocked", "locked"
-
-#: Every tool the cloud may call, and how it runs. Tool ``x`` is the handler's
-#: method ``_x``, defined in one of the mixins.
-TOOLS: dict[str, str] = {
-    # Reading / Searching
-    "get_project_summary": READ,
-    "get_project_state": READ,
-    "get_state_value": READ,
-    "get_state_history": READ,
-    "list_devices": READ,
-    "get_device_info": READ,
-    "list_drivers": READ,
-    "search_community_drivers": READ,
-    "get_community_driver_detail": READ,
-    "find_driver_for_device": READ,
-    "get_installed_drivers": READ,
-    "get_driver_definition": READ,
-    "get_script_source": READ,
-    "get_script_health": READ,
-    "get_logs": READ,
-    "list_triggers": READ,
-    "get_macro": READ,
-    "get_ui_page": READ,
-    # Writing / Creating
-    "update_project_metadata": LOCKED,
-    "update_device": LOCKED,
-    "delete_device": LOCKED,
-    "add_device": LOCKED,
-    "add_device_group": LOCKED,
-    "update_device_group": LOCKED,
-    "delete_device_group": LOCKED,
-    "add_variable": LOCKED,
-    "update_variable": LOCKED,
-    "delete_variable": LOCKED,
-    "add_macro": LOCKED,
-    "update_macro": LOCKED,
-    "delete_macro": LOCKED,
-    "add_ui_page": LOCKED,
-    "update_ui_page": LOCKED,
-    "delete_ui_page": LOCKED,
-    "add_ui_elements": LOCKED,
-    "update_ui_element": LOCKED,
-    "delete_ui_elements": LOCKED,
-    "add_master_element": LOCKED,
-    "update_master_element": LOCKED,
-    "delete_master_element": LOCKED,
-    "install_community_driver": LOCKED,
-    "create_driver_definition": LOCKED,
-    "update_driver_definition": LOCKED,
-    "create_script": LOCKED,
-    "update_script_source": LOCKED,
-    "delete_script": LOCKED,
-    # Plugins
-    "list_plugins": READ,
-    "browse_community_plugins": READ,
-    "install_plugin": LOCKED,
-    "uninstall_plugin": LOCKED,
-    "enable_plugin": LOCKED,
-    "disable_plugin": LOCKED,
-    "get_plugin_config": READ,
-    "update_plugin_config": LOCKED,
-    # Discovery
-    "start_discovery_scan": LOCKED,
-    "get_discovery_results": READ,
-    # Themes
-    "list_themes": READ,
-    "get_theme": READ,
-    "apply_theme": LOCKED,
-    # Assets
-    "list_assets": READ,
-    "delete_asset": LOCKED,
-    # ISC
-    "get_isc_status": READ,
-    "list_isc_peers": READ,
-    "send_isc_command": LOCKED,
-    # Device settings
-    "get_device_settings": READ,
-    "set_device_setting": LOCKED,
-    # Custom UI: the project's own ui/ folder, and the stylesheet that
-    # restyles the built-in controls. The three writers are LOCKED, so they
-    # ride the one-time pre-AI backup that already covers ui/.
-    "list_ui_files": READ,
-    "read_ui_file": READ,
-    "write_ui_file": LOCKED,
-    "delete_ui_file": LOCKED,
-    "get_project_stylesheet": READ,
-    "set_project_stylesheet": LOCKED,
-    "review_custom_ui": LOCKED,
-    # UI simulation
-    "simulate_ui_action": LOCKED,
-    "review_ui": LOCKED,
-    # Impact checking
-    "check_references": READ,
-    # Async / Waiting
-    "wait": READ,
-    # Actions
-    "send_device_command": LOCKED,
-    "test_device_connection": LOCKED,
-    "test_driver_command": LOCKED,
-    "execute_macro": UNLOCKED,
-    "cancel_macro": LOCKED,
-    "set_state_value": LOCKED,
-    "test_trigger": LOCKED,
-}
-
-
 class AIToolHandler(
     ProjectToolsMixin,
     DeviceToolsMixin,
@@ -311,8 +195,8 @@ class AIToolHandler(
 
     # From TOOLS: the tools that change nothing, and every tool that runs
     # without the project lock (what _execute_tool asks).
-    _READ_ONLY_TOOLS: set[str] = {name for name, run in TOOLS.items() if run == READ}
-    _CONCURRENT_SAFE_TOOLS: set[str] = {name for name, run in TOOLS.items() if run != LOCKED}
+    _READ_ONLY_TOOLS: set[str] = {name for name, tool in TOOLS.items() if tool.run == READ}
+    _CONCURRENT_SAFE_TOOLS: set[str] = {name for name, tool in TOOLS.items() if tool.run != LOCKED}
 
     # Idle timeout before resetting the AI backup flag (seconds)
     _AI_BACKUP_IDLE_TIMEOUT = 300  # 5 minutes
@@ -380,7 +264,7 @@ class AIToolHandler(
         # A field of the wrong JSON type is answered by name before the tool
         # (or the lock and the pre-AI backup) is reached: inside the tool it
         # fails with Python's own error, which the cloud is not told.
-        problem = input_problem(tool_input)
+        problem = input_problem(tool_name, tool_input)
         if problem:
             await self._send_result(request_id, False, result={"error": problem}, error=problem)
             return

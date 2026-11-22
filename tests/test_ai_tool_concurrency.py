@@ -46,8 +46,8 @@ async def test_mutating_tools_serialize():
     # "add_device" is a project-mutating (non-concurrent-safe) tool name, so
     # both calls must contend on the project lock and run one at a time.
     await asyncio.gather(
-        handler._execute_tool("r1", "add_device", t.run, {}),
-        handler._execute_tool("r2", "add_device", t.run, {}),
+        handler._execute_tool("r1", "add_device", t.run, {"id": "d1", "driver": "acme_widget"}),
+        handler._execute_tool("r2", "add_device", t.run, {"id": "d1", "driver": "acme_widget"}),
     )
     assert t.max_active == 1  # never overlapped -> serialized
 
@@ -70,8 +70,8 @@ async def test_execute_macro_does_not_block_project_edits():
     # project, so it must run concurrently with a project edit, not hold the
     # lock and block it.
     await asyncio.gather(
-        handler._execute_tool("r1", "execute_macro", t.run, {}),
-        handler._execute_tool("r2", "add_device", t.run, {}),
+        handler._execute_tool("r1", "execute_macro", t.run, {"macro_id": "m1"}),
+        handler._execute_tool("r2", "add_device", t.run, {"id": "d1", "driver": "acme_widget"}),
     )
     assert t.max_active == 2
 
@@ -87,7 +87,7 @@ async def test_handle_tracks_task_and_shutdown_cancels():
 
     handler._tools["add_device"] = hang  # swap in a hanging handler
 
-    msg = {"payload": {"request_id": "r1", "tool_name": "add_device", "tool_input": {}}}
+    msg = {"payload": {"request_id": "r1", "tool_name": "add_device", "tool_input": {"id": "d1", "driver": "acme_widget"}}}
     await handler.handle(msg)
     await asyncio.wait_for(started.wait(), timeout=1.0)
 

@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from openavc.cloud.ai_tool_handler import TOOL_FAILED, AIToolHandler, describe_tool_failure
+from openavc.cloud.tool_declarations import TOOLS
 from openavc.cloud.tools.macro_tools import _validate_variable
 from openavc.cloud.tools.ui_bindings import _validate_action, normalize_bindings, validate_bindings
 from openavc.core.ui_events import DISPATCHED_ACTIONS
@@ -746,34 +747,6 @@ class TestDescribeToolFailure:
 # ===== which tools exist, and how each runs =====
 
 
-ALL_TOOLS = {
-    "get_project_summary", "get_project_state", "get_state_value", "get_state_history",
-    "list_devices", "get_device_info", "list_drivers", "search_community_drivers",
-    "get_community_driver_detail", "find_driver_for_device", "get_installed_drivers",
-    "get_driver_definition", "get_script_source", "get_script_health", "get_logs",
-    "list_triggers", "get_macro", "get_ui_page",
-    "update_project_metadata", "update_device", "delete_device", "add_device",
-    "add_device_group", "update_device_group", "delete_device_group",
-    "add_variable", "update_variable", "delete_variable",
-    "add_macro", "update_macro", "delete_macro",
-    "add_ui_page", "update_ui_page", "delete_ui_page",
-    "add_ui_elements", "update_ui_element", "delete_ui_elements",
-    "add_master_element", "update_master_element", "delete_master_element",
-    "install_community_driver", "create_driver_definition", "update_driver_definition",
-    "create_script", "update_script_source", "delete_script",
-    "list_plugins", "browse_community_plugins", "install_plugin", "uninstall_plugin",
-    "enable_plugin", "disable_plugin", "get_plugin_config", "update_plugin_config",
-    "start_discovery_scan", "get_discovery_results",
-    "list_themes", "get_theme", "apply_theme",
-    "list_assets", "delete_asset",
-    "get_isc_status", "list_isc_peers", "send_isc_command",
-    "get_device_settings", "set_device_setting",
-    "list_ui_files", "read_ui_file", "write_ui_file", "delete_ui_file",
-    "get_project_stylesheet", "set_project_stylesheet", "review_custom_ui",
-    "simulate_ui_action", "review_ui", "check_references", "wait",
-    "send_device_command", "test_device_connection", "test_driver_command",
-    "execute_macro", "cancel_macro", "set_state_value", "test_trigger",
-}
 
 READ_ONLY = {
     "get_project_summary", "get_project_state", "get_state_value",
@@ -799,8 +772,7 @@ def _handler(project_path=None):
 
 class TestToolTable:
     def test_every_tool(self):
-        assert set(_handler()._tools) == ALL_TOOLS
-        assert len(ALL_TOOLS) == 84
+        assert list(_handler()._tools) == list(TOOLS)
 
     def test_each_tool_is_the_method_of_its_name(self):
         handler = _handler()
@@ -840,8 +812,11 @@ class TestToolTable:
         backup.assert_not_called()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("name", ["review_ui", "simulate_ui_action", "test_device_connection", "not_listed"])
-    async def test_every_other_tool_takes_the_lock_and_the_backup(self, tmp_path, name):
+    @pytest.mark.parametrize(("name", "tool_input"), [
+        ("review_ui", {}), ("simulate_ui_action", {"action": "press"}),
+        ("test_device_connection", {"device_id": "d1"}), ("not_listed", {}),
+    ])
+    async def test_every_other_tool_takes_the_lock_and_the_backup(self, tmp_path, name, tool_input):
         handler = _handler(project_path=tmp_path / "project.avc")
         seen = []
 
@@ -850,7 +825,7 @@ class TestToolTable:
             return {}
 
         with patch("openavc.core.backup_manager.create_backup") as backup:
-            await handler._execute_tool("r", name, tool, {})
+            await handler._execute_tool("r", name, tool, tool_input)
         assert seen == [True]
         backup.assert_called_once()
 

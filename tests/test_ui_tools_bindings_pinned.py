@@ -164,13 +164,11 @@ async def test_a_new_master_refuses_a_bad_binding_after_its_id_is_checked():
 
 
 @pytest.mark.asyncio
-async def test_a_new_master_leaves_a_binding_that_is_not_an_object_to_the_model():
+async def test_a_new_master_with_a_binding_that_is_not_an_object_is_refused_before_the_door():
     engine = await _engine()
     sent = await _send(engine, "add_master_element", {"id": "m2", "type": "button", "bindings": "oops"})
-    # Not a door's refusal: the model raises, and the dispatcher words it.
     assert sent["success"] is False
-    assert sent["result"] is None
-    assert sent["error"] == "bindings: Input should be a valid dictionary"
+    assert sent["error"] == "bindings must be an object, not a string."
     assert [m.id for m in engine.project.ui.master_elements] == ["m1"]
 
 
@@ -188,14 +186,14 @@ async def test_a_new_master_stores_one_action_as_a_list():
 
 
 @pytest.mark.asyncio
-async def test_an_element_update_refuses_a_binding_that_is_not_an_object_itself():
+async def test_an_element_update_refuses_a_binding_that_is_not_an_object_before_the_door():
     engine = await _engine()
     assert _error(await _send(engine, "update_ui_element", {
         "element_id": "x1", "bindings": "oops",
-    })) == "Element 'x1': 'bindings' must be an object, got str"
+    })) == "bindings must be an object, not a string."
     assert _error(await _send(engine, "update_ui_element", {
         "element_id": "x1", "bindings": ["a"],
-    })) == "Element 'x1': 'bindings' must be an object, got list"
+    })) == "bindings must be an object, not an array."
 
 
 @pytest.mark.asyncio
@@ -228,22 +226,22 @@ async def test_an_element_update_stores_one_action_as_a_list():
 
 
 @pytest.mark.asyncio
-async def test_a_master_update_refuses_a_binding_that_is_not_an_object_itself():
+async def test_a_master_update_refuses_a_binding_that_is_not_an_object_before_the_door():
     engine = await _engine()
     assert _error(await _send(engine, "update_master_element", {
         "element_id": "m1", "bindings": "oops",
-    })) == "Master element 'm1': 'bindings' must be an object, got str"
+    })) == "bindings must be an object, not a string."
 
 
 @pytest.mark.asyncio
 async def test_a_master_update_checks_bindings_before_its_placements():
     engine = await _engine()
     assert _error(await _send(engine, "update_master_element", {
-        "element_id": "m1", "bindings": BAD, "placements": "x",
+        "element_id": "m1", "bindings": BAD, "placements": {"portrait": dict(BOX)},
     })) == f"Master element 'm1': {REFUSED}"
     assert _error(await _send(engine, "update_master_element", {
         "element_id": "m1", "bindings": LISTED, "placements": "x",
-    })) == "Master element 'm1': 'placements' must be an object keyed by orientation"
+    })) == "placements must be an object, not a string."
     assert _error(await _send(engine, "update_master_element", {
         "element_id": "m1", "bindings": BAD, "placement": dict(BOX),
     })).startswith("Master element 'm1': use 'placements' keyed by orientation")

@@ -1,10 +1,10 @@
-"""A tool input field sent as the wrong JSON type is refused before the tool runs.
+"""A tool input sent as the wrong JSON type is refused before the tool runs.
 
-The cloud's tool definitions declare each field's type, and nothing enforces
-it on the way here. Each case below reached a tool and failed inside it with
-Python's own error, which the cloud was told only as the fixed sentence; it is
-now answered with the field and the shape it must have, and the tool is never
-called.
+Each tool's declaration (``cloud/tool_declarations.py``) says what it takes,
+and nothing enforced it on the way here. Each case below reached a tool and
+failed inside it with Python's own error, which the cloud was told only as
+the fixed sentence; it is now answered with the input and the shape it must
+have, and the tool is never called.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ WRONG = [
     ("add_device", {"id": "d9", "driver": ["acme"]}, "driver must be a string, not an array."),
     ("set_device_setting", {"device_id": "d", "setting_key": ["k"]}, "setting_key must be a string, not an array."),
     ("add_variable", {"id": "v", "type": {"t": 1}}, "type must be a string, not an object."),
-    ("update_ui_element", {"page_id": "p", "element_id": "e", "parent": ["c"]}, "parent must be a string, not an array."),
+    ("update_ui_element", {"element_id": "e", "parent": ["c"]}, "parent must be a string or null, not an array."),
     ("get_state_value", {"key": 5}, "key must be a string, not a number."),
     ("set_state_value", {"key": ["var.x"]}, "key must be a string, not an array."),
     ("get_logs", {"level": 5}, "level must be a string, not a number."),
@@ -60,7 +60,7 @@ WRONG = [
     ("update_device", {"device_id": "d", "config": "x"}, "config must be an object, not a string."),
     ("add_device", {"id": "d9", "config": ["a"]}, "config must be an object, not an array."),
     ("create_driver_definition", {"definition": "x"}, "definition must be an object, not a string."),
-    ("update_ui_element", {"page_id": "p", "element_id": "e", "placement": 5}, "placement must be an object, not a number."),
+    ("update_ui_element", {"element_id": "e", "placement": 5}, "placement must be an object, not a number."),
     ("update_ui_page", {"page_id": "p", "snap": ["a"]}, "snap must be an object, not an array."),
     ("update_ui_page", {"page_id": "p", "overlay": "x"}, "overlay must be an object, not a string."),
     ("update_ui_page", {"page_id": "p", "background": 5}, "background must be an object, not a number."),
@@ -82,14 +82,22 @@ async def test_a_wrong_typed_field_is_answered_by_name_and_the_tool_never_runs(t
     tool_fn.assert_not_awaited()
 
 
-@pytest.mark.parametrize("tool_input", [
-    {"device_id": "projector1", "config": None},  # null is the tool's own call (update_device keeps the config)
-    {"page_id": "p", "element_id": "e", "parent": None},  # null brings an element out of its container
-    {"id": "g", "device_ids": ["a", "b"], "elements": [{"id": "b1"}]},
-    {"value": ["any", {"shape": 1}], "default": 5, "params": {"level": 3}},  # fields not in the table
+@pytest.mark.parametrize(("tool", "tool_input"), [
+    ("update_device", {"device_id": "projector1", "config": None}),  # null is the tool's own call (update_device keeps the config)
+    ("update_ui_element", {"element_id": "e", "parent": None}),  # null brings an element out of its container
+    ("add_device_group", {"id": "g", "device_ids": ["a", "b"]}),
+    ("add_ui_elements", {"page_id": "p", "elements": [{"id": "b1", "placement": {"x": 2, "y": 2}}]}),
+    ("set_state_value", {"key": "var.x", "value": ["any", {"shape": 1}]}),  # any value at all
+    ("set_state_value", {"key": "var.x", "value": None}),  # a required input sent as null was sent
+    ("update_variable", {"id": "v", "default": 5}),
+    ("send_device_command", {"device_id": "d", "command": "c", "params": {"level": 3}}),
+    ("update_device", {"device_id": "d", "layout_id": 3}),  # an input the tool does not declare
+    ("check_references", {"type": "page", "id": "p1"}),  # an allowed value is the tool's own check
+    ("get_state_history", {"count": 5.0}),  # a whole number sent with a point
+    ("update_master_element", {"element_id": "m1", "pages": ["main"], "placements": {"portrait": {"x": 1}}}),
 ])
-async def test_a_field_of_the_right_shape_or_null_reaches_the_tool(tool_input):
-    payload, tool_fn = await _answer(_handler(), "update_device", tool_input)
+async def test_an_input_of_the_right_shape_or_null_reaches_the_tool(tool, tool_input):
+    payload, tool_fn = await _answer(_handler(), tool, tool_input)
 
     assert payload["success"] is True
     tool_fn.assert_awaited_once_with(tool_input)
@@ -103,6 +111,58 @@ async def test_an_input_that_is_not_an_object_is_refused(tool_input, kind):
     tool_fn.assert_not_awaited()
 
 
-def test_every_id_field_is_text_whatever_its_name():
-    assert input_problem({"layout_id": 3}) == "layout_id must be a string, not a number."
-    assert input_problem({"element_ids": ["a"]}) is None
+def test_a_tool_checks_what_it_declares_and_nothing_else():
+    assert input_problem("update_ui_element", {"element_id": "e", "layout_id": 3}) == (
+        "layout_id must be a string, not a number."
+    )
+    assert input_problem("update_device", {"device_id": "d", "layout_id": 3}) is None
+    assert input_problem("no_such_tool", {"anything": 3}) is None
+
+
+@pytest.mark.parametrize(("tool", "tool_input", "sentence"), [
+    ("get_macro", {}, "macro_id is required."),
+    ("set_state_value", {"key": "var.x"}, "value is required."),
+    ("get_state_history", {"count": 5.5}, "count must be a whole number, not 5.5."),
+    ("get_state_history", {"count": True}, "count must be a whole number, not a boolean."),
+    ("test_driver_command", {"host": "h", "command_string": "c", "port": [23]},
+     "port must be a whole number or a string, not an array."),
+    ("add_master_element", {"id": "m1", "type": "button", "pages": 5},
+     "pages must be a string or an array of strings, not a number."),
+    # A wrong shape is answered before a required input left out.
+    ("send_device_command", {"command": 5}, "command must be a string, not a number."),
+])
+def test_what_a_call_is_refused_for(tool, tool_input, sentence):
+    assert input_problem(tool, tool_input) == sentence
+
+
+# --- Inside an input: the boxes ---
+
+# A box that was not an object, or a coordinate that was not a number, reached
+# the door and failed inside it (a TypeError from the page review, a
+# ValidationError from the box's model), which the cloud was told only as the
+# fixed sentence.
+BOXES = [
+    ("update_master_element", {"element_id": "m1", "placements": {"portrait": "raw"}},
+     "placements.portrait must be an object, not a string."),
+    ("add_master_element", {"id": "m1", "type": "button", "placements": {"landscape": [1, 2]}},
+     "placements.landscape must be an object, not an array."),
+    ("update_master_element", {"element_id": "m1", "placements": {"landscape": {"x": "abc"}}},
+     "placements.landscape.x must be a number, not a string."),
+    ("update_ui_page", {"page_id": "p", "layouts": [{"id": "primary", "placements": {"b1": 5}}]},
+     "layouts item 1: placements.b1 must be an object, not a number."),
+    ("add_ui_page", {"id": "p2", "name": "P", "layouts": [{"placements": {"b1": {"w": True}}}]},
+     "layouts item 1: placements.b1.w must be a number, not a boolean."),
+    ("update_ui_element", {"element_id": "e", "placement": {"x": "abc"}},
+     "placement.x must be a number, not a string."),
+]
+
+
+@pytest.mark.parametrize(("tool", "tool_input", "sentence"), BOXES)
+async def test_a_box_of_the_wrong_shape_is_answered_by_name_and_the_tool_never_runs(
+    tool, tool_input, sentence,
+):
+    payload, tool_fn = await _answer(_handler(), tool, tool_input)
+
+    assert payload["success"] is False
+    assert payload["error"] == sentence
+    tool_fn.assert_not_awaited()

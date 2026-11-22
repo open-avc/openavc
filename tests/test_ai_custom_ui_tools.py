@@ -357,13 +357,13 @@ async def test_an_image_cannot_be_written_as_text(handler, mock_engine, mock_age
 
 
 @pytest.mark.asyncio
-async def test_content_that_is_not_text_says_a_write_replaces_the_whole_file(
+async def test_content_that_is_not_text_is_refused_by_name(
     handler, mock_engine, mock_agent,
 ):
     payload = await _run(handler, mock_engine, mock_agent, "write_ui_file", {
         "path": ENTRY, "content": {"html": "<div/>"},
     })
-    assert "whole file" in _error(payload)
+    assert _error(payload) == "content must be a string, not an object."
 
 
 @pytest.mark.asyncio
@@ -486,7 +486,7 @@ async def test_a_stylesheet_sent_as_something_other_than_text_is_refused(
     payload = await _run(handler, mock_engine, mock_agent, "set_project_stylesheet", {
         "css": {"button": {"color": "red"}},
     })
-    assert "whole stylesheet" in _error(payload)
+    assert _error(payload) == "css must be a string, not an object."
 
 
 # --- Reviewing on demand ---------------------------------------------------

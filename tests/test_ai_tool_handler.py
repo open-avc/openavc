@@ -666,7 +666,7 @@ class TestToolResultErrorSignaling:
         async def _err_tool(_input):
             return {"error": "Device 'x' not found"}
 
-        await handler._execute_tool("req-err", "add_device", _err_tool, {})
+        await handler._execute_tool("req-err", "add_device", _err_tool, {"id": "d1", "driver": "acme_widget"})
 
         payload = mock_agent.send_message.call_args[0][1]
         assert payload["success"] is False
@@ -678,7 +678,7 @@ class TestToolResultErrorSignaling:
         async def _ok_tool(_input):
             return {"status": "created", "id": "d1"}
 
-        await handler._execute_tool("req-ok", "add_device", _ok_tool, {})
+        await handler._execute_tool("req-ok", "add_device", _ok_tool, {"id": "d1", "driver": "acme_widget"})
 
         payload = mock_agent.send_message.call_args[0][1]
         assert payload["success"] is True
@@ -850,7 +850,9 @@ class TestToolExceptionFriendlyError:
         async def _raise_tool(_input):
             raise ConnectionRefusedError(111, "Connection refused")
 
-        await handler._execute_tool("req-x", "send_device_command", _raise_tool, {})
+        await handler._execute_tool(
+            "req-x", "send_device_command", _raise_tool, {"device_id": "d1", "command": "power_on"},
+        )
 
         payload = mock_agent.send_message.call_args[0][1]
         assert payload["success"] is False
