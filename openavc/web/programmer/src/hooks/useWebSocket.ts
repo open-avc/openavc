@@ -24,6 +24,19 @@ import { startFailureNotice } from "./startFailureNotice";
 // trigger.fired message.
 const TRIGGER_FIRED_FLASH_MS = 1500;
 
+// Messages that only tell a store something changed on the server, by type.
+const CHANGE_NOTICES = new Map<string, () => void>([
+  // A file in the project's ui/ folder changed somewhere else — the AI,
+  // another session, a drop on a second browser. The store's counter rides
+  // on every custom control's URL in the design canvas, so bumping it here
+  // redraws them against what is now on disk. Our own writes bump it
+  // directly and simply arrive here a second time, which is harmless.
+  ["ui.files", () => useUiFilesStore.getState().bump()],
+  // A script failed while running, and the server has recorded it. The
+  // Scripts view re-asks the record on this (useScriptErrorsRefresh).
+  ["script.error", () => useScriptErrorsStore.getState().bump()],
+]);
+
 // The project was just replaced by a refetch. Drop the UI Builder's undo
 // history only if the refetch moved a section those entries would overwrite,
 // and say so when it does.
@@ -209,14 +222,7 @@ export function useWebSocket() {
         useConnectionStore.getState().applyStateDelete(msg.keys as string[]);
       }
 
-      // A file in the project's ui/ folder changed somewhere else — the AI,
-      // another session, a drop on a second browser. The store's counter rides
-      // on every custom control's URL in the design canvas, so bumping it here
-      // redraws them against what is now on disk. Our own writes bump it
-      // directly and simply arrive here a second time, which is harmless.
-      if (msg.type === "ui.files") {
-        useUiFilesStore.getState().bump();
-      }
+      CHANGE_NOTICES.get(msg.type as string)?.();
 
       // Project was modified: by this tab through a dedicated endpoint, by
       // another session, the AI, a fleet push. projectReload.ts decides which.
@@ -234,12 +240,6 @@ export function useWebSocket() {
           message: msg.message as string,
           device: (msg.device as string) ?? "",
         });
-      }
-
-      // A script failed while running, and the server has recorded it. The
-      // Scripts view re-asks the record on this (useScriptErrorsRefresh).
-      if (msg.type === "script.error") {
-        useScriptErrorsStore.getState().bump();
       }
 
       if (msg.type === "log.history" && Array.isArray(msg.entries)) {
