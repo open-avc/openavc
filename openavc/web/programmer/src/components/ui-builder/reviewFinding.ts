@@ -8,8 +8,9 @@
  * which Validate reads too), and the words a sentence is built from. A new kind
  * of finding is a new member of `ReviewFinding.kind`.
  *
- * Mirrors the shared head of openavc/ui/page_review.py: `Finding`, `Container`,
- * `Seat`, `page_container`, `_show`, `_article` and `_joined`.
+ * Mirrors `Finding` in openavc/ui/review_finding.py and the shared head of
+ * openavc/ui/page_review.py: `Container`, `Seat`, `page_container`, `_show`,
+ * `_article` and `_joined`.
  */
 
 import type { UIElement } from "../../api/types";
@@ -44,7 +45,8 @@ export interface ReviewFinding {
     | "matrix_lock_unbacked"
     | "custom_page_elements_not_drawn"
     | "custom_page_without_a_file"
-    | "covers_master";
+    | "covers_master"
+    | "unknown_icon";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an

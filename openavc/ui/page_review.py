@@ -82,6 +82,8 @@ from openavc.ui.page_geometry import (
     primary_layout,
     resolved_placements,
 )
+from openavc.ui.review_finding import Finding
+from openavc.ui.review_icons import unknown_icon_findings
 
 # --- The finger rule -------------------------------------------------------
 #
@@ -333,27 +335,6 @@ _OVERLAP_NAMED = 3
 #: Percentages are stored to four decimals, so a box is out of its parent only
 #: past this. Mirrors BOUNDS_EPSILON in the Builder.
 _BOUNDS_EPSILON = 0.0001
-
-
-@dataclass(frozen=True)
-class Finding:
-    """One thing that will not draw the way it was written.
-
-    ``kind`` groups them for a caller that wants to count or filter; ``message``
-    is the whole finding in one self-contained sentence, because the consumer
-    that matters reads prose and acts on it. ``key`` is what makes a finding the
-    same finding across two arrangements of one page -- an element can collide
-    with three different neighbours, and all three are worth saying once.
-    """
-
-    element_id: str
-    kind: str
-    message: str
-    key: tuple = ()
-
-    def __post_init__(self) -> None:
-        if not self.key:
-            object.__setattr__(self, "key", (self.kind, self.element_id))
 
 
 @dataclass(frozen=True)
@@ -2714,6 +2695,17 @@ def range_review(
 
 # --- One element, wherever it is drawn -------------------------------------
 
+def icon_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """An icon name the panel draws nothing for (ui/review_icons.py), where this
+    type draws it: its own icon, and a look's per-state icons."""
+    el_type = str(element.get("type", ""))
+    return unknown_icon_findings(
+        element,
+        own="icon" in HONORED_PROPERTIES.get(el_type, frozenset()),
+        per_state=el_type in STATE_ICON_TYPES,
+    )
+
+
 #: The checks an element gets on its own, before any box is measured, in the
 #: order they report. A page and a master element both run this list, so a new
 #: check is one entry here.
@@ -2724,6 +2716,7 @@ _ELEMENT_CHECKS: tuple[Callable[[Mapping[str, Any]], list[Finding]], ...] = (
     content_findings,
     keypad_findings,
     matrix_findings,
+    icon_findings,
 )
 
 

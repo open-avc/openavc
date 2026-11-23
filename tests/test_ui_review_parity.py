@@ -487,6 +487,50 @@ CASES["binding_reach"] = _project([
     ),
 ])
 
+# An icon the panel has no picture for: its own, the style's over its own, and
+# a state's in each of the look's two forms. The rest come back clean: a sprite
+# name, an old Lucide name the panel draws as its new one, an uploaded picture,
+# an empty icon, none, and a good style icon over a bad own one it never draws.
+CASES["icon_names"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "icon_unknown", "type": "button", "label": "Power", "icon": "powr"},
+            {"id": "icon_style_unknown", "type": "button", "label": "Mute",
+             "icon": "volume-x", "style": {"icon": "volume-xx"}},
+            {"id": "nav_state_unknown", "type": "page_nav", "label": "Video",
+             "target_page": "main",
+             "bindings": {"show": {"look": {"key": "device.acme.mute", "states": {
+                 "true": {"icon": "volume-xx"}, "false": {"icon": "speakr"},
+                 "unknown": {"icon": "house"}}}}}},
+            {"id": "btn_binary_unknown", "type": "button", "label": "Mic",
+             "bindings": {"show": {"look": {"key": "device.acme.mic", "condition": {"equals": True},
+                                            "style_active": {"icon": "mic-of"},
+                                            "style_inactive": {"icon": "mic"}}}}},
+            {"id": "icon_sprite", "type": "button", "label": "Home", "icon": "house"},
+            {"id": "icon_old_name", "type": "page_nav", "label": "Home", "target_page": "main",
+             "icon": "home"},
+            {"id": "icon_uploaded", "type": "button", "label": "Logo", "icon": "assets://logo.png"},
+            {"id": "icon_empty", "type": "button", "label": "Plain", "icon": ""},
+            {"id": "icon_none", "type": "camera_preset", "label": "Wide", "preset_number": 1},
+            {"id": "icon_style_wins", "type": "button", "label": "Lamp",
+             "icon": "lamp-on", "style": {"icon": "lamp"}},
+        ],
+        [_landscape({
+            "icon_unknown": _pct_box(0, 0, 20, 12),
+            "icon_style_unknown": _pct_box(25, 0, 20, 12),
+            "nav_state_unknown": _pct_box(50, 0, 20, 12),
+            "btn_binary_unknown": _pct_box(75, 0, 20, 12),
+            "icon_sprite": _pct_box(0, 20, 20, 12),
+            "icon_old_name": _pct_box(25, 20, 20, 12),
+            "icon_uploaded": _pct_box(50, 20, 20, 12),
+            "icon_empty": _pct_box(75, 20, 20, 12),
+            "icon_none": _pct_box(0, 40, 20, 12),
+            "icon_style_wins": _pct_box(25, 40, 20, 12),
+        })],
+    ),
+])
+
 # The other half of the binding vocabulary: the ACTION a do binding names.
 #
 # `navigate` is not invented for this corpus -- it is the spelling the AI prompt
@@ -1837,6 +1881,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "custom_page_elements_not_drawn",
         "custom_page_without_a_file",
         "covers_master",
+        "unknown_icon",
     }
 
 
@@ -1895,6 +1940,9 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "hidden_ctl",                          # a custom page paints its masters on top
         "p_btn_ok", "p_wall_ok",               # sized for the shape they are drawn in
         "p_led",                               # 44px of height a portrait screen has
+        "icon_sprite", "icon_old_name",        # icons the panel draws, by new and old name
+        "icon_uploaded", "icon_empty",         # a picture of the author's own, and no icon
+        "icon_none", "icon_style_wins",        # none at all, and a good style icon over its own
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

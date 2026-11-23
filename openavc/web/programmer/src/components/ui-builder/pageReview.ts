@@ -51,6 +51,7 @@ import {
   overlapFindings,
   type OverlapPair,
 } from "./reviewGeometry";
+import { iconFindings } from "./reviewIcons";
 import { buriedMasterFindings, noBoxFinding, type DrawnPage } from "./reviewMasters";
 import { matrixFindings } from "./reviewMatrix";
 import { contentFindings, keypadFindings, propertyFindings } from "./reviewProperties";
@@ -107,6 +108,7 @@ const ELEMENT_CHECKS: readonly ((el: UIElement) => ReviewFinding[])[] = [
   contentFindings,
   keypadFindings,
   matrixFindings,
+  iconFindings,
 ];
 
 /** Its type first (an unknown one draws nothing), then each of ELEMENT_CHECKS. */

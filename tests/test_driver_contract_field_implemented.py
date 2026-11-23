@@ -114,6 +114,9 @@ NOT_AN_IMPLEMENTATION = frozenset({
     # the runtime. The chain reads `type`, `label` and `value` keys of its own.
     "openavc/core/project_migration.py",
     "openavc/core/layout_migration.py",
+    # Every icon name the panel draws, generated from its sprite: a list of
+    # words, among them Lucide icons named `regex`, `type` and `list`.
+    "openavc/ui/panel_icon_names.py",
     # The PANEL-authoring generators. They render the control minimums, the
     # binding-reach table and the authoring guide, none of which is a driver
     # contract field -- and they talk about a page's `columns`, `rows` and
@@ -134,6 +137,9 @@ RUNTIME_ROOTS = ("openavc",)
 
 FRONTEND_ROOT = "openavc/web/programmer/src"
 GENERATED_TYPES = "types.gen.ts"
+# Generated lists of words that edit nothing: the panel's icon names, which
+# include Lucide icons named `regex`, `type` and `list`.
+NOT_AN_EDITOR = frozenset({GENERATED_TYPES, "spriteIconNames.ts"})
 
 # Opt-out keys are "<block>.<field>", or a bare field name for a top-level
 # driver field, so an entry excuses one position and not every same-named
@@ -470,7 +476,7 @@ def _frontend_source() -> tuple[str, ...]:
     paths = [
         path
         for path in sorted((REPO_ROOT / FRONTEND_ROOT).rglob("*.ts*"))
-        if path.name != GENERATED_TYPES
+        if path.name not in NOT_AN_EDITOR
     ]
     assert len(paths) > 100, "IDE source went missing — the search is wrong"
     return tuple(path.read_text(encoding="utf-8") for path in paths)

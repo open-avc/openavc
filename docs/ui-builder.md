@@ -97,6 +97,7 @@ An orange badge in the corner of an element says something about it will not dra
 - **Smaller than a finger** - the physical size it works out to on a real panel, for controls you actually touch.
 - **A keypad that sends too soon, or never** - a **Send Delay** under 1500 ms, which can send a code before it is finished, or the Phone layout with **Send without Enter** off, which has no way to send.
 - **A binding this control does not use** - every element accepts the same binding slots, but each type only reads some of them. A Status LED reads Appearance for its color but has nowhere to put words, so per-state label text set on one never appears. The badge names the slots that control really reads.
+- **An icon the panel does not have** - an icon name, the control's own or one an Appearance state sets, that is not in the panel's icon set. The canvas may still show it, but the panel draws no icon there. Pick one from the icon picker instead.
 
 Sizes are worked out against a 1280x800 reference panel, which is what the percentages mean in pixels. Everything here is advice: nothing is blocked, and a control you deliberately made small stays where you put it.
 
