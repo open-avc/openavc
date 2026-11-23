@@ -8,7 +8,7 @@
 import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
 import { assetUrl, basePath } from './modules/base_path.js';
 import { ASK_AGAIN_SOON, NOT_READY_CLOSE, SHOW_SERVER_PAGE, STARTING_RETRY_MS, afterNotReady } from './modules/not_ready.js';
-import { lookPictures, pickLook, withTwoStateWords } from './modules/looks.js';
+import { lookPictures, mapColor, pickLook, withTwoStateWords } from './modules/looks.js';
 import {
     applyStyle, clearStateColours, dropFadedBackground, updateImageTint,
 } from './modules/paint.js';
@@ -23,7 +23,6 @@ import { ListControl, rowsFromState, showListSelection } from './modules/list.js
 import { GaugeControl } from './modules/gauge.js';
 import { LevelMeterControl } from './modules/meter.js';
 import { nothingToShow } from './modules/readings.js';
-import { pickKey } from './modules/compare.js';
 import { ClockControl, ClockTicker } from './modules/clock.js';
 import { KeypadControl } from './modules/keypad.js';
 import { TextEditor } from './modules/text_edit.js';
@@ -2727,11 +2726,7 @@ class PanelApp {
         const noReading = nothingToShow(value, offline);
         const colorMap = binding.map || {};
         const defaultColor = binding.default || '#9E9E9E';
-        // The colour's key is picked as every map on the panel picks one: the
-        // exact key, then one apart from case, then one the reading equals as
-        // a boolean or number, so a key 'on' lights for a device reporting ON.
-        const key = noReading ? null : pickKey(Object.keys(colorMap), value);
-        const color = (key !== null && colorMap[key]) || defaultColor;
+        const color = noReading ? defaultColor : mapColor(colorMap, value, defaultColor);
 
         element.style.backgroundColor = color;
         element.style.color = color;

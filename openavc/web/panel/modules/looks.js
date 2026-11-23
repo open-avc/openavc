@@ -36,6 +36,17 @@ export function pickLook(binding, stateValue) {
 }
 
 /**
+ * The colour a look's `map` (a status LED's colours) gives `stateValue`: the
+ * entry under the key the value picks (compare.js `pickKey`, as a state is
+ * picked, so a key `on` lights for a reading of `ON` or `true`), or
+ * `fallback` when it picks none.
+ */
+export function mapColor(map, stateValue, fallback) {
+    const key = pickKey(Object.keys(map), stateValue);
+    return (key !== null && map[key]) || fallback;
+}
+
+/**
  * A look with `states`: the state the value picks (compare.js `pickKey`: the
  * exact name, then one apart from case, then one the value equals as a
  * boolean or number, so a state `on` takes a reading of `ON` or `true`). No
