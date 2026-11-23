@@ -250,15 +250,18 @@ SCENARIOS = [
     "access_the_admin_password_approves_from_the_panel",
     "access_the_designer_and_the_preview_skip_the_check_in",
     # A panel opened through Remote Access says when that session has ended,
-    # and stops reconnecting.
+    # and stops reconnecting. Which answers and closes mean that is
+    # tests/fixtures/remote_session_ended_cases.json, which the Programmer's
+    # remoteSessionEnded.test.ts runs too.
     "remote_session_the_clouds_refusals_end_it",
     "remote_session_other_answers_leave_it_standing",
+    "remote_session_the_case_files_closes",
+    "remote_session_the_clouds_close_ends_it_at_once",
     "remote_session_a_drop_asks_once_and_stops_reconnecting",
     "remote_session_a_drop_that_is_not_the_end_reconnects",
     # The screens a refused or turned-off connection shows, the check-in's
     # pace and its unusable answers, the admin password's refusals, and every
     # server address under the path the panel was opened at.
-    "remote_session_the_systems_json_with_a_charset_is_its_own_answer",
     "reconnect_backs_off_counts_its_attempts_and_starts_over",
     "reconnect_a_server_not_ready_keeps_the_panel_down",
     "reconnect_a_failed_start_shows_the_servers_page",

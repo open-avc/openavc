@@ -182,7 +182,9 @@ export function hasRemoteSessionEnded(): boolean {
  * session that was closed or timed out, a 401 for an access token that is
  * missing or expired, and a 403 saying remote access ended when the account
  * lost it. Its other 403 (a request outside the session's scope) and its 502
- * (the system is not connected) leave the session standing.
+ * (the system is not connected) leave the session standing. The same rule as
+ * the panel's isEndedRemoteSession (openavc/web/panel/modules/access.js); both
+ * are tested on the same cases, tests/fixtures/remote_session_ended_cases.json.
  */
 export async function isEndedRemoteSession(res: Response): Promise<boolean> {
   if (!inRemoteSession()) return false;
@@ -196,7 +198,24 @@ export async function isEndedRemoteSession(res: Response): Promise<boolean> {
   }
 }
 
-function endRemoteSession(): void {
+/**
+ * The close code the cloud ends a Remote Access session's sockets with, the
+ * wire contract's `session_ended` code. Only the cloud sends it: the system's
+ * own close codes pass through the tunnel as they are, and none of them is
+ * this one. The same code as the panel's REMOTE_SESSION_ENDED_CLOSE
+ * (openavc/web/panel/modules/access.js); both are tested on the same cases,
+ * tests/fixtures/remote_session_ended_cases.json.
+ */
+export const REMOTE_SESSION_ENDED_CLOSE = 4004;
+
+/** True when this tab's socket closed because the Remote Access session it
+ * came through ended: the cloud's own code says so, with no question asked. */
+export function isEndedRemoteClose(code: number): boolean {
+  return inRemoteSession() && code === REMOTE_SESSION_ENDED_CLOSE;
+}
+
+/** This tab's Remote Access session is gone: say so once. */
+export function endRemoteSession(): void {
   if (remoteSessionEnded) return;
   remoteSessionEnded = true;
   window.dispatchEvent(new CustomEvent(REMOTE_SESSION_ENDED_EVENT));

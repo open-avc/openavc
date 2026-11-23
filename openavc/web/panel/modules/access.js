@@ -28,6 +28,14 @@ import { basePath } from './base_path.js';
  *  as 1006, which looks exactly like a dropped network. */
 export const NOT_APPROVED_CLOSE = 4010;
 
+/** The close code the cloud ends a Remote Access session's sockets with, the
+ *  wire contract's `session_ended` code. Only the cloud sends it: the system's
+ *  own close codes pass through the tunnel as they are, and none of them is
+ *  this one. The same code as the Programmer's REMOTE_SESSION_ENDED_CLOSE
+ *  (openavc/web/programmer/src/api/auth.ts); both are tested on the same
+ *  cases, tests/fixtures/remote_session_ended_cases.json. */
+export const REMOTE_SESSION_ENDED_CLOSE = 4004;
+
 // How often a waiting panel asks whether it has been approved, and how often
 // a denied one, or one the system had no room for, asks again.
 const POLL_MS = 3000;
@@ -405,6 +413,8 @@ export class PanelAccess {
      * missing or expired, and a 403 saying remote access ended when the
      * account lost it. Its other 403 (a request outside the session's scope)
      * and its 502 (the system is not connected) leave the session standing.
+     * Both copies are tested on the same cases,
+     * tests/fixtures/remote_session_ended_cases.json.
      */
     async isEndedRemoteSession(res) {
         if (!inRemoteSession()) return false;
@@ -412,6 +422,13 @@ export class PanelAccess {
         if ((res.headers.get('content-type') || '').includes('json')) return false;
         if (res.status !== 403) return true;
         return (await res.text()).startsWith('Remote access ended');
+    }
+
+    /** True when the panel's socket closed because the Remote Access session
+     *  it came through ended: the cloud's own code says so, with no question
+     *  asked. The same rule as isEndedRemoteClose in the Programmer. */
+    isEndedRemoteClose(code) {
+        return inRemoteSession() && code === REMOTE_SESSION_ENDED_CLOSE;
     }
 
     /** The session this page came through is gone: say so in place of the

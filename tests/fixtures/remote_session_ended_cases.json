@@ -1,0 +1,36 @@
+{
+  "$comment": "When a page opened through Remote Access (/tunnel/<id>/panel/ or /tunnel/<id>/programmer/) has lost its session. Read by the panel's (web/panel/modules/access.js) and the Programmer's (web/programmer/src/api/auth.ts) isEndedRemoteSession and isEndedRemoteClose, through the panel harness's remote_session scenarios and remoteSessionEnded.test.ts. Each cloud answer is written word for word as the cloud's tunnel sends it. 'answers' are replies to a request made inside the session: the system answers every error as JSON, and the cloud refuses a request for a session that is gone with bare text (a 404 once it was closed or timed out, a 401 for an access token missing or expired, a 403 starting 'Remote access ended' when its access ended mid-session). 'closes' are how the page's own socket closed: the cloud closes an ended session's sockets with the wire contract's session_ended code (ws_close_codes). Every case is asked inside a Remote Access session; on the system's own address nothing here ends anything. A case added here runs in both pages' suites.",
+  "answers": [
+    {"name": "the cloud's 404 for a session that was closed or timed out", "status": 404, "content_type": "", "body": "Remote access ended. Open a new session from the portal.", "ended": true},
+    {"name": "the cloud's 401 for an access token missing or expired", "status": 401, "content_type": "", "body": "Remote access ended. Open a new session from the portal.", "ended": true},
+    {"name": "the cloud's 403 for a session whose access ended mid-session", "status": 403, "content_type": "", "body": "Remote access ended. Open a new session from the portal.", "ended": true},
+    {"name": "an older cloud's 404 for a session that is gone", "status": 404, "content_type": "", "body": "Tunnel not found or not active", "ended": true},
+    {"name": "an older cloud's 401 for an access token that expired", "status": 401, "content_type": "", "body": "Unauthorized — invalid or missing tunnel access token", "ended": true},
+    {"name": "a bare-text refusal marked as plain text", "status": 404, "content_type": "text/plain; charset=utf-8", "body": "Remote access ended. Open a new session from the portal.", "ended": true},
+    {"name": "the system's own 401, which asks for its password", "status": 401, "content_type": "application/json", "body": "{\"detail\":\"Authentication required\"}", "ended": false},
+    {"name": "the system's own 404, only a missing thing", "status": 404, "content_type": "application/json", "body": "{\"detail\":\"Not Found\"}", "ended": false},
+    {"name": "the system's own 401 as JSON with a charset, whatever it says", "status": 401, "content_type": "application/json; charset=utf-8", "body": "Remote access ended. Open a new session from the portal.", "ended": false},
+    {"name": "the system's own 403 as JSON with a charset, whatever it says", "status": 403, "content_type": "application/json; charset=utf-8", "body": "Remote access ended. Open a new session from the portal.", "ended": false},
+    {"name": "the system's own 404 as JSON with a charset, whatever it says", "status": 404, "content_type": "application/json; charset=utf-8", "body": "Remote access ended. Open a new session from the portal.", "ended": false},
+    {"name": "the cloud's 403 for a change a panel session may not make", "status": 403, "content_type": "", "body": "This remote session is for the touch panel and cannot change the system's configuration.", "ended": false},
+    {"name": "the cloud's 403 for a Programmer page a panel session may not open", "status": 403, "content_type": "", "body": "This remote session is for the touch panel. Programming access is not enabled for your organization.", "ended": false},
+    {"name": "the cloud's 403 for remote video the plan does not include", "status": 403, "content_type": "", "body": "Remote video is not included in this plan. This stream still plays on panels in the space.", "ended": false},
+    {"name": "the cloud's 403 for a request another page made", "status": 403, "content_type": "", "body": "Forbidden", "ended": false},
+    {"name": "the cloud's 502 while the system is not connected", "status": 502, "content_type": "", "body": "Agent not connected to tunnel", "ended": false},
+    {"name": "the cloud's 503 while its tunnel service is unavailable", "status": 503, "content_type": "", "body": "Tunnel service unavailable", "ended": false},
+    {"name": "the cloud's 504 for a request the system did not answer in time", "status": 504, "content_type": "", "body": "Tunnel request timed out", "ended": false},
+    {"name": "the system answering", "status": 200, "content_type": "application/json", "body": "{\"access\":\"open\"}", "ended": false}
+  ],
+  "closes": [
+    {"name": "the cloud ended the session", "code": 4004, "reason": "Remote access ended", "ended": true},
+    {"name": "the cloud's code with no reason: the code says it", "code": 4004, "reason": "", "ended": true},
+    {"name": "a plain close, which the page asks about", "code": 1000, "reason": "", "ended": false},
+    {"name": "a socket that dropped", "code": 1006, "reason": "", "ended": false},
+    {"name": "the system could not open the socket on its own server", "code": 1014, "reason": "", "ended": false},
+    {"name": "the system's credential refusal", "code": 4001, "reason": "Authentication is no longer valid. Reconnect to authenticate again.", "ended": false},
+    {"name": "the system's panel refusal", "code": 4010, "reason": "Panel not approved", "ended": false},
+    {"name": "the system's interface switched off", "code": 4013, "reason": "This interface is disabled by the product settings.", "ended": false},
+    {"name": "the system's Preview sign-in refusal", "code": 4014, "reason": "Authentication is no longer valid. Reconnect to authenticate again.", "ended": false},
+    {"name": "the system is not ready yet", "code": 4503, "reason": "starting", "ended": false}
+  ]
+}

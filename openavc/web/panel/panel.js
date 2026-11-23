@@ -545,9 +545,10 @@ class PanelApp {
         if (retryEl) retryEl.textContent = '';
     }
 
-    /** What a closed socket means: a refusal with a reason says so in place
-     *  of the panel; a device not approved asks again before connecting; a
-     *  server not ready for it shows its page or is asked again soon
+    /** What a closed socket means: a Remote Access session the cloud ended
+     *  says so and stops; a refusal with a reason says so in place of the
+     *  panel; a device not approved asks again before connecting; a server
+     *  not ready for it shows its page or is asked again soon
      *  (modules/not_ready.js); and anything else reconnects, a little later
      *  each time. */
     _socketClosed(event) {
@@ -556,6 +557,10 @@ class PanelApp {
         this.setConnectionStatus(false);
         this._endAllHolds();
         this.macroRuns.forgetRuns();
+        if (this.access.isEndedRemoteClose(code)) {
+            this.access.showRemoteSessionEnded();
+            return;
+        }
         if (this.access.showRefusal(code)) return;
         if (code === NOT_APPROVED_CLOSE) {
             // The server took the handshake and then refused this device:

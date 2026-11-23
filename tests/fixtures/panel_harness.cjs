@@ -601,6 +601,19 @@ const PENDING_ANSWER = {
 // What the cloud answers, as bare text, for a session that is gone.
 const REMOTE_ACCESS_ENDED = 'Remote access ended. Open a new session from the portal.';
 
+// Which answers and closes mean a Remote Access session ended: one case file,
+// which the Programmer's remoteSessionEnded.test.ts runs through its own copy
+// of the rule.
+const REMOTE_SESSION_CASES = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'remote_session_ended_cases.json'), 'utf8'));
+
+/** A reply shaped as a case of the case file says. */
+function replyFor(c) {
+    const res = reply(c.status, c.body, false);
+    res.headers = new window.Headers(c.content_type ? { 'content-type': c.content_type } : {});
+    return res;
+}
+
 /** An answer shaped like fetch's. `json` marks it as the system's own: its
  *  API answers every error as JSON, and the cloud's refusals are bare text. */
 function reply(status, body, json) {
@@ -658,12 +671,12 @@ function remoteRig(answer) {
 
 /** Drop `app`'s socket with `code`, and return the reconnect delays the close
  *  scheduled (none run). */
-function dropSocket(app, code) {
+function dropSocket(app, code, reason = '') {
     const scheduled = [];
     const realSetTimeout = window.setTimeout;
     window.setTimeout = (fn, ms) => { scheduled.push(ms); return 0; };
     try {
-        app.ws.onclose({ code });
+        app.ws.onclose({ code, reason });
     } finally {
         window.setTimeout = realSetTimeout;
     }
@@ -4886,42 +4899,84 @@ const tests = {
 
     // --- Remote Access: a session that ended says so ------------------------
 
-    // The cloud's answers for a session that is gone: a 404 once it was closed
-    // or timed out, a 401 for an access token that expired, and a 403 saying
-    // remote access ended. The Programmer reads the same three the same way.
+    // Every answer in the case file the cloud gives a session that is gone
+    // ends it: a 404 once it was closed or timed out, a 401 for an access
+    // token missing or expired, and a 403 saying remote access ended.
     async remote_session_the_clouds_refusals_end_it() {
         const app = mkApp();
         await atPath('/tunnel/t1/panel/', async () => {
-            for (const status of [404, 401, 403]) {
-                assert(await app.access.isEndedRemoteSession(reply(status, REMOTE_ACCESS_ENDED)),
-                    `the cloud's bare-text ${status} ends the session`);
+            for (const c of REMOTE_SESSION_CASES.answers.filter((c) => c.ended)) {
+                assert(await app.access.isEndedRemoteSession(replyFor(c)), `${c.name} ends the session`);
             }
         });
     },
 
-    // Everything else leaves the session standing: the system's own errors,
-    // the cloud's 403 for a request outside the session's scope, its 502
-    // while the system is not connected, and any answer at all on a panel
-    // opened on the system's own address.
+    // Every other answer in the case file leaves the session standing: the
+    // system's own errors, JSON whatever else its content type says, the
+    // cloud's 403 for a request outside the session's scope, its 502 while
+    // the system is not connected; and any answer at all on a panel opened on
+    // the system's own address.
     async remote_session_other_answers_leave_it_standing() {
         const app = mkApp();
         await atPath('/tunnel/t1/panel/', async () => {
-            for (const [status, body, json] of [
-                [401, '{"detail":"Authentication required"}', true],
-                [404, '{"detail":"Not Found"}', true],
-                [403, 'This remote session is for the touch panel and cannot change '
-                    + "the system's configuration.", false],
-                [502, 'Agent not connected to tunnel', false],
-                [200, '{"access":"open"}', true],
-            ]) {
-                assert(!(await app.access.isEndedRemoteSession(reply(status, body, json))),
-                    `${status} "${body}" leaves the session standing`);
+            for (const c of REMOTE_SESSION_CASES.answers.filter((c) => !c.ended)) {
+                assert(!(await app.access.isEndedRemoteSession(replyFor(c))),
+                    `${c.name} leaves the session standing`);
             }
         });
         await atPath('/panel/', async () => {
-            assert(!(await app.access.isEndedRemoteSession(reply(404, REMOTE_ACCESS_ENDED))),
-                "a panel on the system's own address has no remote session to end");
+            for (const c of REMOTE_SESSION_CASES.answers.filter((c) => c.ended)) {
+                assert(!(await app.access.isEndedRemoteSession(replyFor(c))),
+                    `on the system's own address, ${c.name} ends nothing`);
+            }
         });
+    },
+
+    // How the panel's socket closed, by the case file: the cloud's own code
+    // for an ended session says so, and no other code does; on the system's
+    // own address no code does.
+    async remote_session_the_case_files_closes() {
+        const app = mkApp();
+        await atPath('/tunnel/t1/panel/', async () => {
+            for (const c of REMOTE_SESSION_CASES.closes) {
+                assert(app.access.isEndedRemoteClose(c.code) === c.ended,
+                    `${c.name} (${c.code}): ${c.ended ? 'ended' : 'not by itself'}`);
+            }
+        });
+        await atPath('/panel/', async () => {
+            for (const c of REMOTE_SESSION_CASES.closes) {
+                assert(app.access.isEndedRemoteClose(c.code) === false,
+                    `on the system's own address, ${c.code} ends nothing`);
+            }
+        });
+    },
+
+    // The cloud's close for an ended session puts the sentence in place of
+    // the panel at once: nothing is asked and nothing is scheduled, and the
+    // reconnect a caller makes opens nothing.
+    async remote_session_the_clouds_close_ends_it_at_once() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(200, '{"access":"open"}', true));
+        const app = mkApp();
+        const closing = REMOTE_SESSION_CASES.closes.find((c) => c.ended);
+        try {
+            await atPath('/tunnel/t1/panel/', async () => {
+                app.connect();
+                served(app);
+                const scheduled = dropSocket(app, closing.code, closing.reason);
+                assert(scheduled.length === 0, `nothing scheduled, got ${JSON.stringify(scheduled)}`);
+                assert(rig.fetched.length === 0, `nothing asked, got ${JSON.stringify(rig.fetched)}`);
+                const overlay = document.getElementById('panel-access-overlay');
+                assert(overlay && overlay.dataset.status === 'ended', 'the ended screen is up');
+                assert(!document.getElementById('offline-overlay').classList.contains('visible'),
+                    'the offline overlay is not shown over it');
+                app.connect();
+                assert(rig.sockets === 1, 'a reconnect opens nothing');
+            });
+        } finally {
+            resetAfterDrop(app);
+            rig.restore();
+        }
     },
 
     // A dropped socket under Remote Access asks the panel's check-in once.
@@ -5008,19 +5063,6 @@ const tests = {
             for (const app of apps) resetAfterDrop(app);
             rig.restore();
         }
-    },
-
-    // The system's own answer is JSON whatever else its content type says
-    // (a charset), and never reads as the cloud ending the session.
-    async remote_session_the_systems_json_with_a_charset_is_its_own_answer() {
-        const app = mkApp();
-        await atPath('/tunnel/t1/panel/', async () => {
-            for (const status of [401, 403, 404]) {
-                const res = reply(status, REMOTE_ACCESS_ENDED);
-                res.headers = new window.Headers({ 'content-type': 'application/json; charset=utf-8' });
-                assert(!(await app.access.isEndedRemoteSession(res)), `${status} JSON with a charset stands`);
-            }
-        });
     },
 
     // A dropped socket reconnects a little later each time, up to 30 s, and

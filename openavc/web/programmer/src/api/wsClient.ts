@@ -1,8 +1,10 @@
 import {
+  endRemoteSession,
   getAuthSubprotocols,
   hasRemoteSessionEnded,
   hasSession,
   inRemoteSession,
+  isEndedRemoteClose,
   requestSignIn,
 } from "./auth";
 import { BASE } from "./base";
@@ -119,8 +121,15 @@ function retryWhenReady(close: SocketClose): void {
  *  from a server that accepts first; it is unambiguous, so bounce to login
  *  immediately. The panel's own refusal, 4010, is accepted then closed so
  *  panel.js can read it; it never reaches this client, which connects as the
- *  programmer. */
+ *  programmer.
+ *
+ *  The cloud's code for a Remote Access session it ended (isEndedRemoteClose):
+ *  the session is over, so say so and stop; no reconnect can bring it back. */
 function handledClose(close: SocketClose): boolean {
+  if (isEndedRemoteClose(close.code)) {
+    endRemoteSession();
+    return true;
+  }
   if (close.code === NOT_READY_CLOSE) {
     retryWhenReady(close);
     return true;
