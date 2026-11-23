@@ -61,3 +61,12 @@ describe("a roster beside a fixed source", () => {
     });
   });
 });
+
+describe("a count_from roster whose field is not picked yet", () => {
+  it("keeps the followed count when the field is picked", () => {
+    expect(instancesForSource("count_from", { count_from: "", count_from_state: "n" }, ["f"])).toStrictEqual({
+      count_from: "f",
+      count_from_state: "n",
+    });
+  });
+});

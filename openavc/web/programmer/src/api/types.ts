@@ -817,11 +817,12 @@ export interface ChildEntityInstances {
 }
 
 /** The state variable a roster follows once the device reports a count:
- *  `count_from_state` beside `count_from` only, as the platform reads it. */
+ *  `count_from_state` beside `count_from` only, as the platform reads it (by
+ *  the key, so a `count_from` whose field is not picked yet still follows). */
 export function followedState(
   inst: Pick<ChildEntityInstances, "count_from" | "count_from_state"> | undefined,
 ): string | undefined {
-  return inst?.count_from ? inst.count_from_state : undefined;
+  return inst?.count_from !== undefined ? inst.count_from_state : undefined;
 }
 
 export interface ChildEntityTypeSchema {
