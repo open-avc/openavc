@@ -318,7 +318,7 @@ _OWN_TOKEN_ALLOWED = {
 
 def test_no_reader_writes_a_placeholder_token_of_its_own() -> None:
     found = sorted(
-        str(path.relative_to(ROOT))
+        path.relative_to(ROOT).as_posix()
         for path in ROOT.rglob("*.py")
         if _OWN_TOKEN.search(path.read_text(encoding="utf-8"))
     )
