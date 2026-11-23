@@ -99,12 +99,15 @@ def report_refused(script: LoadedScript | None, call: str, sentence: str) -> Non
     Not raised into the script: the event or the write is lost either way, and
     the lines after the call run as they always have. The script's line is
     read on the calling thread (:func:`script_line`), and the record is then
-    made on the loop: a plain ``def`` handler calls from its worker thread.
+    made on the loop: a plain ``def`` handler calls from its worker thread. A
+    call no script owns (from a thread the script started itself) has no row,
+    and is logged only.
     """
+    where = script_line(call)
+    owner = f"Script '{script.script_id}'" if script is not None else "A script's"
+    log.error(f"{owner} {where.handler}: {sentence}")
     if script is None:
         return
-    where = script_line(call)
-    log.error(f"Script '{script.script_id}' {where.handler}: {sentence}")
     failure = ScriptFailure(script, where.handler, call, sentence, where.traceback)
     loop = script_runs.hand_off_loop()
     if loop is None:

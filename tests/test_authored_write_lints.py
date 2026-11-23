@@ -146,3 +146,62 @@ def test_a_set_variable_on_a_device_key_is_a_warning_nothing_refuses():
 ])
 def test_any_other_set_variable_is_clean(key, value):
     assert macro_issues([_step(key, value)], []) == []
+
+
+# --- through the editor's doors ------------------------------------------------
+
+
+@pytest.fixture
+def http(tmp_path):
+    from unittest.mock import MagicMock
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from openavc.api.rest import router, set_engine
+    from openavc.core.event_bus import EventBus
+    from openavc.core.macro_engine import MacroEngine
+    from openavc.core.project_loader import ProjectConfig, ProjectMeta
+    from openavc.core.state_store import StateStore
+
+    state = StateStore()
+    engine = MagicMock()
+    engine.macros = MacroEngine(state, EventBus(), MagicMock())
+    engine.project_path = tmp_path / "project.avc"
+    (tmp_path / "scripts").mkdir()
+    engine.project = ProjectConfig(project=ProjectMeta(id="p", name="P"))
+    app = FastAPI()
+    app.include_router(router)
+    set_engine(engine)
+    yield TestClient(app, raise_server_exceptions=False)
+    set_engine(None)
+
+
+def test_the_macro_editors_door_carries_the_warning_and_the_refusal(http):
+    reply = http.post("/api/macros/validate", json={"macros": [{
+        "id": "room_off",
+        "steps": [_step("device.acme_widget.power"), _step("system.version", "1.0")],
+        "triggers": [],
+    }]})
+
+    assert reply.status_code == 200, reply.text
+    issues = reply.json()["macros"]["room_off"]["issues"]
+    assert [(i["index"], i.get("warning"), i.get("refused")) for i in issues] == [
+        (0, True, None), (1, None, "platform_key"),
+    ]
+
+
+def test_the_script_editors_door_carries_each_write_kind(http):
+    source = textwrap.dedent("""\
+        from openavc import state
+        state.set("device.acme_widget.power", "on")
+        state.set("system.version", "1.0")
+        state.set("var.rows", [1, 2])
+    """)
+    reply = http.post("/api/scripts/validate", json={"scripts": [{"id": "room", "source": source}]})
+
+    assert reply.status_code == 200, reply.text
+    issues = reply.json()["scripts"]["room"]["issues"]
+    assert [(i["kind"], i["line"]) for i in issues] == [
+        ("device_key", 2), ("platform_key", 3), ("not_one_value", 4),
+    ]

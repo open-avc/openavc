@@ -342,3 +342,34 @@ async def test_a_set_variable_still_writes_a_device_key(macros, subsystems):
 
     assert await macros.execute("fake_feedback") == "completed"
     assert state.get("device.acme_widget.power") == "on"
+
+
+async def test_a_refusal_no_script_owns_is_still_logged(scripts, subsystems, caplog):
+    """A thread the script starts itself carries no running script, so there
+    is no row to record on; the refusal still reaches the log, as the dropped
+    list it replaces did."""
+    state, events, _ = subsystems
+    _load(scripts, "spawner", """\
+        import threading
+        from openavc import on_event, state
+
+        def work():
+            state.set("system.version", "1.0")
+            state.set("var.worked", True)
+
+        @on_event("custom.spawn")
+        async def spawn(event):
+            threading.Thread(target=work).start()
+    """)
+    state.set("system.version", "9.9.9", source="system")
+
+    with caplog.at_level("ERROR"):
+        await events.emit("custom.spawn")
+        await _wait_for(lambda: state.get("var.worked") is True)
+
+    assert state.get("system.version") == "9.9.9"
+    assert any(
+        _platform_sentence("system.version") in record.getMessage()
+        and "work" in record.getMessage()
+        for record in caplog.records
+    ), [r.getMessage() for r in caplog.records]
