@@ -283,7 +283,7 @@ The Response setting only changes how the control feels. The value sent to the d
 
 #### Shown decimals (labels, gauges, sliders, faders)
 
-Every element that draws a number offers **Shown decimals**, which sets how many decimal places the readout uses.
+Every element that draws a number offers **Shown decimals**, which sets how many decimal places the readout uses, from 0 to 20.
 
 Reach for it whenever a panel shows a raw reading. Devices report measurements at full machine precision, so an amplifier reporting 0.06 amps often sends `0.06000000238418579`, and a label bound straight to that value prints all of it. Setting **Shown decimals** to 2 draws `0.06 A` instead.
 
@@ -593,7 +593,7 @@ Click the gear icon in the UI Builder toolbar to open Panel Settings:
 - **Accent Color**: primary color used for buttons and highlights. Leave it blank to use the theme's accent, which the field then shows.
 - **Font Family**: the panel's font. **Theme font** uses the theme's, named beside it.
 - **Lock Code**: optional PIN of up to 6 digits, required when the panel opens and after its idle timeout
-- **Idle Timeout**: seconds of inactivity before the panel returns to the idle page
+- **Idle Timeout**: seconds of inactivity before the panel returns to the idle page, up to 86400 (one day); 0 turns it off
 - **Idle Page**: which page to display when the idle timeout triggers
 - **Show a message when a control fails**: on unless you turn it off
 
@@ -927,7 +927,7 @@ Add visual polish to your panel with page transitions and element animations. Co
 | `scale` | Elements grow from small to full size |
 | `stagger` | Elements animate in one after another with a delay |
 
-**Transition duration** (in ms) controls the speed of page transitions. **Stagger delay** (in ms) sets the interval between each element when using the stagger animation. Lower values make elements appear faster in sequence. **Stagger style** picks how each element animates in as the stagger sweeps across the page: fade, fade up, or scale.
+**Transition duration** (50 to 1000 ms) controls the speed of page transitions. **Stagger delay** (10 to 200 ms) sets the interval between each element when using the stagger animation. Lower values make elements appear faster in sequence. **Stagger style** picks how each element animates in as the stagger sweeps across the page: fade, fade up, or scale.
 
 ## Theme Studio
 
