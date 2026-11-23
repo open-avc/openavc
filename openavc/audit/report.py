@@ -302,14 +302,33 @@ class PlacedFile:
     redacted: bool
 
 
-def _redact_file(raw: bytes, redactor: "Redactor") -> tuple[bytes, bool]:
-    """A driver file the catalog does not publish, redacted as text."""
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw, False
+def _redact_file(name: str, raw: bytes, redactor: "Redactor") -> tuple[bytes, bool]:
+    """A driver file the catalog does not publish, redacted as text: a
+    Python driver read in the encoding its coding line names
+    (drivers/python_source.py), any other file as UTF-8, and a file neither
+    reads as text redacted byte for byte as Latin-1, so whatever its
+    encoding a secret in it is masked."""
+    from openavc.drivers.python_source import (
+        SourceDecodeError, SourceEncodeError, decode_python_source, encode_python_source,
+    )
+
+    if name.endswith(".py"):
+        try:
+            text = decode_python_source(raw, name)
+            cleaned = redactor.text(text)
+            return (encode_python_source(cleaned), True) if cleaned != text else (raw, False)
+        except (SourceDecodeError, SourceEncodeError, UnicodeEncodeError):
+            pass
+    else:
+        try:
+            text = raw.decode("utf-8")
+            cleaned = redactor.text(text)
+            return (cleaned.encode("utf-8"), True) if cleaned != text else (raw, False)
+        except UnicodeDecodeError:
+            pass
+    text = raw.decode("latin-1")
     cleaned = redactor.text(text)
-    return (cleaned.encode("utf-8"), True) if cleaned != text else (raw, False)
+    return (cleaned.encode("latin-1", errors="replace"), True) if cleaned != text else (raw, False)
 
 
 def place_files(
@@ -336,7 +355,7 @@ def place_files(
     placed: list[PlacedFile] = []
     for name, raw in sorted(file_contents.items()):
         # The catalog's own bytes are public: never changed.
-        data, redacted = (raw, False) if name in published else _redact_file(raw, redactor)
+        data, redacted = (raw, False) if name in published else _redact_file(name, raw, redactor)
         path = f"driver/{name}"
         if path in used and used[path] != data:
             path = f"driver/run-{run + 1}/{name}"

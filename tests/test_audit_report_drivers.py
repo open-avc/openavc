@@ -754,3 +754,30 @@ def test_the_timeline_says_a_probe_was_judged_on_the_port_s_greeting():
     [line] = [line for line in text.splitlines() if "TCP port 23" in line]
     assert "the port's greeting" in line and "no connection of its own" in line
     assert "sent" not in line and "(matched)" in line
+
+def test_a_driver_file_in_another_encoding_is_redacted_too():
+    """A file the catalog does not publish is redacted whatever its
+    encoding: a Python driver by the coding line it names, any other file
+    byte for byte as Latin-1, so a secret in it never reaches the zip."""
+    from openavc.audit.redaction import Redaction
+    from openavc.audit.report import place_files
+
+    redactor = Redactor([Redaction("hunter22")])
+    latin_py = (
+        "# -*- coding: latin-1 -*-\n"
+        "# Café réseau, password hunter22\n"
+        "PASSWORD = 'hunter22'\n"
+    ).encode("latin-1")
+    odd_yaml = b"# \xff\xfe vendor bytes\npassword: hunter22\n"
+    placed = {p.name: p for p in place_files(
+        None, {"acme_old.py": latin_py, "acme_old.avcdriver": odd_yaml}, redactor,
+    )}
+
+    py = placed["acme_old.py"]
+    assert py.redacted is True
+    assert b"hunter22" not in py.data
+    assert py.data.decode("latin-1").startswith("# -*- coding: latin-1 -*-\n# Café réseau")
+    yaml = placed["acme_old.avcdriver"]
+    assert yaml.redacted is True
+    assert b"hunter22" not in yaml.data
+    assert yaml.data.startswith(b"# \xff\xfe vendor bytes\n")
