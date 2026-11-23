@@ -14,7 +14,11 @@ copy (``_save_project_at_start``); a move or a backup that cannot finish
 changes nothing. That backup holds the file as it was, logins in the clear,
 only until the move is done: once every save that moved logins has
 succeeded, it keeps the file with the marker in each one's place and the
-logins sealed beside it (``_seal_the_start_backup``).
+logins sealed beside it (``_seal_the_start_backup``). Every older backup of
+the project is sealed the same way at each start (``_seal_older_backups``):
+one an earlier version took holds the logins in the clear, and would until
+newer backups rotate it out. The pre-update zips a rollback restores are not
+project backups and are left as they are.
 
 Mixed into Engine (core/engine.py). From the engine it reads the project and
 its path, ``resolved_device_config``, the product hardware
@@ -259,25 +263,45 @@ class ProjectLoginsMixin:
         as it was otherwise (``backup_manager.seal_logins_in_backup``). A save
         that failed leaves it as it is, and so does a login in it other than
         the one saved here, which the move kept the saved one over
-        (``held_as_saved``). Run once the plugins' half of the move has run,
-        or failed, as a stage the start goes on past, which keeps a failure
-        on the run-state record."""
+        (``held_as_saved``). Then every older backup of the project
+        (``_seal_older_backups``). Run once the plugins' half of the move has
+        run, or failed, as a stage the start goes on past, which keeps a
+        failure on the run-state record."""
         backup, self._logins_backup_at_start = self._logins_backup_at_start, None
-        if backup is None or self._logins_unsaved_at_start:
+        if self._logins_unsaved_at_start:
             return
         from openavc.core.backup_manager import seal_logins_in_backup
 
         built_in = {d.id for d in self.project.devices if self.installed_equipment.matches(d)}
-        await asyncio.to_thread(
-            seal_logins_in_backup, backup,
-            functools.partial(self._moved_if_saved, skip=built_in.__contains__),
-        )
+        skip = built_in.__contains__
+        if backup is not None:
+            await asyncio.to_thread(
+                seal_logins_in_backup, backup, functools.partial(self._moved_if_saved, skip=skip),
+            )
+        await asyncio.to_thread(self._seal_older_backups, skip)
 
-    def _moved_if_saved(self, raw: dict, *, skip) -> dict:
-        """``raw`` (the start backup's project file) with its logins moved,
-        or ``raw`` itself while one of them is not the one saved here."""
+    def _seal_older_backups(self, skip) -> None:
+        """Each project backup still holding logins in the clear that are
+        all saved here, sealed as the start backup is. One holding a login
+        other than the saved one is left as it is: it is the one place that
+        value is left. A backup that cannot be read or written is skipped."""
+        from openavc.core.backup_manager import list_backups, seal_logins_in_backup
+
+        move = functools.partial(self._moved_if_saved, skip=skip, quiet=True)
+        for info in list_backups(self.project_path):
+            if info.format != "zip":
+                continue
+            try:
+                seal_logins_in_backup(self.project_path.parent / info.filename, move)
+            except Exception:
+                log.exception(f"Could not seal the logins in backup {info.filename}")
+
+    def _moved_if_saved(self, raw: dict, *, skip, quiet: bool = False) -> dict:
+        """``raw`` (a backup's project file) with its logins moved, or
+        ``raw`` itself while one of them is not the one saved here."""
         if not held_as_saved(raw, self.device_logins, skip=skip):
-            log.warning("The backup taken before the logins moved keeps them: one is not the login saved here")
+            if not quiet:
+                log.warning("The backup taken before the logins moved keeps them: one is not the login saved here")
             return raw
         return move_logins(raw, self.device_logins, typed=False, skip=skip)
 

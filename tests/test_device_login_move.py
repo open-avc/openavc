@@ -381,6 +381,38 @@ async def test_a_start_backup_holding_a_login_other_than_the_saved_one_keeps_it(
         assert json.loads(zf.read("project.avc"))["connections"]["proj1"]["password"] == "Typed-Into-The-File"
 
 
+async def test_older_backups_holding_logins_saved_here_are_sealed_at_start(engine, data, monkeypatch):
+    """A backup an earlier version took (an auto-backup, Before AI changes)
+    holds the project's logins in the clear. Once those logins are saved
+    here, a start seals them in it, as it does its own start backup. One
+    holding a login other than the saved one stays the one place that value
+    is left, and the pre-update zips a rollback restores are not touched."""
+    from openavc.core.backup_manager import create_backup
+
+    DeviceLogins(data).save("proj1", DRIVER, {"password": "Hunter2-Acme"})
+    _write(engine.project_path, _document("Hunter2-Acme"))
+    same = create_backup(engine.project_path, "Auto backup")
+    _write(engine.project_path, _document("Some-Other-Pass"))
+    other = create_backup(engine.project_path, "Before AI changes")
+    other_before = other.read_bytes()
+    (data / "backups").mkdir()
+    pre_update = data / "backups" / "pre-update-v0.39.0-20261101-000000.zip"
+    with zipfile.ZipFile(pre_update, "w") as zf:
+        zf.writestr("projects/project.avc", json.dumps(_document("Hunter2-Acme")))
+    pre_update_before = pre_update.read_bytes()
+    _write(engine.project_path, _document(SAVED_LOGIN))
+
+    await _start_until_loaded(engine, monkeypatch)
+    await engine._move_logins_at_start()
+    await engine._seal_the_start_backup()
+
+    with zipfile.ZipFile(same) as zf:
+        assert json.loads(zf.read("project.avc"))["connections"]["proj1"]["password"] == SAVED_LOGIN
+        assert "device_logins.json" in zf.namelist()
+    assert other.read_bytes() == other_before
+    assert pre_update.read_bytes() == pre_update_before
+
+
 async def test_a_start_with_nothing_to_move_rewrites_nothing(engine, data, monkeypatch):
     _write(engine.project_path, _document(SAVED_LOGIN))
     before = engine.project_path.read_bytes()
