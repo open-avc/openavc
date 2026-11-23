@@ -373,18 +373,23 @@ def test_the_platform_writes_its_own_keys_without_the_door():
         assert "check_state_write" not in source, rel
 
 
-def test_authored_writers_are_not_held_to_the_door_either():
-    """A macro step, a UI binding and a script write in-process, deliberately.
+def test_a_script_and_a_set_variable_step_ask_the_authored_rule_not_the_door():
+    """A script's state writes and a macro's Set Variable step are held to
+    ``check_authored_write``: the doors' refusals of a platform key and of a
+    value that is not flat, without the doors' namespace check, so a key off
+    the namespaces is stored as it always was for automation.
 
-    The door is for a remote caller that needs a reason handed back. An
-    integrator's own automation is trusted the same way a driver is, so
-    closing the namespace at the door takes nothing away from a project that
-    legitimately drives a system.* key.
+    A control's Set Variable action (``ui_events.py``) and the macro engine
+    itself are held to neither.
     """
-    for rel in (("core", "macro_engine.py"), ("core", "macro_steps.py"),
-                ("core", "ui_events.py"), ("core", "script_api.py")):
+    for rel in (("core", "macro_steps.py"), ("core", "script_api.py")):
+        source = (_SERVER.joinpath(*rel)).read_text(encoding="utf-8")
+        assert "check_authored_write" in source, rel
+        assert "check_state_write" not in source, rel
+    for rel in (("core", "macro_engine.py"), ("core", "ui_events.py")):
         source = (_SERVER.joinpath(*rel)).read_text(encoding="utf-8")
         assert "check_state_write" not in source, rel
+        assert "check_authored_write" not in source, rel
 
 
 def test_isc_own_writer_does_not_go_through_the_door():

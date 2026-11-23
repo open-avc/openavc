@@ -33,6 +33,7 @@ from openavc.core.group_command import reached_nobody
 from openavc.core.macro_text import StepFailed
 from openavc.core.project_loader import MacroStep, reads_as
 from openavc.core.saved_params import saved_kwargs
+from openavc.core.state_store import check_authored_write
 from openavc.core.value_resolver import resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
 
@@ -181,11 +182,12 @@ class MacroSteps:
             except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
                 await self._step_raised(step, run, i, total, e)
             else:
-                # A step that handled its own failure and carried on. Only
-                # group.command does this: it fans out and reports per device
-                # rather than raising, so a group that reached nobody used to
-                # end the macro on `completed` with nothing said anywhere.
-                # It still does not raise, so stop_on_error is unchanged.
+                # A step that handled its own failure and carried on:
+                # group.command, which fans out and reports per device rather
+                # than raising (a group that reached nobody used to end the
+                # macro on `completed` with nothing said anywhere), and a Set
+                # Variable the authored-writer rule refused. Neither raises,
+                # so stop_on_error is unchanged.
                 if unreported is not None and run.macro_id:
                     await self._step_reported(step, run, i, total, unreported)
         return len(run.failures)
@@ -256,9 +258,10 @@ class MacroSteps:
         from it.
 
         Returns ``None``, or ``(error, message)`` for a failure the step
-        handled itself instead of raising -- only ``group.command`` does that,
-        and only when the command reached no device at all. The caller turns it
-        into the same ``macro.step_error`` frame a raise would have produced.
+        handled itself instead of raising: ``group.command`` when the command
+        reached no device at all, and ``state.set`` when its write is refused.
+        The caller turns it into the same ``macro.step_error`` frame a raise
+        would have produced.
         """
         action = step.get("action", "")
         skip_if = step.get("skip_if")
@@ -367,11 +370,21 @@ class MacroSteps:
         log.debug(f"  Macro step: delay {seconds}s")
         await asyncio.sleep(seconds)
 
-    async def _state_set(self, step: dict[str, Any], run: StepRun, _path: StepPath) -> None:
+    async def _state_set(
+        self, step: dict[str, Any], run: StepRun, _path: StepPath,
+    ) -> Unreported | None:
+        """Write the step's value, unless the authored-writer rule refuses it
+        (``state_store.check_authored_write``). A refused write is handed back,
+        not raised: it is counted and announced, and the run carries on even
+        under ``stop_on_error``, so the power-offs after it still go out."""
         key = step.get("key", "")
         value = self._resolve_value(step.get("value"), run.context)
+        refused = check_authored_write(key, value)
+        if refused:
+            return self._wording.failure(step, ValueError(refused))
         log.debug(f"  Macro step: state.set {key} = {value!r}")
         self.state.set(key, value, source="macro")
+        return None
 
     async def _call_macro(self, step: dict[str, Any], run: StepRun, _path: StepPath) -> None:
         sub_macro_id = step.get("macro", "")

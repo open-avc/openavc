@@ -397,7 +397,7 @@ export const SCRIPT_API_MEMBERS: Record<string, ScriptApiName[]> = {
       "awaited": false,
       "insertText": "delete(\"${1:key}\")",
       "decorator": "",
-      "summary": "Remove a key, so it reads as not set. `state.set(key, None)` keeps the key with no value.",
+      "summary": "Remove a key, so it reads as not set. `state.set(key, None)` keeps the key with no value. A `system.` or `isc.` key cannot be removed.",
       "example": "state.delete(\"var.last_error\")"
     },
     {
@@ -430,7 +430,7 @@ export const SCRIPT_API_MEMBERS: Record<string, ScriptApiName[]> = {
       "awaited": false,
       "insertText": "set(\"${1:key}\", ${2:value})",
       "decorator": "",
-      "summary": "Set a state value. Panels, macros and other scripts see it at once.",
+      "summary": "Set a state value: text, a number, True or False, or None. Panels, macros and other scripts see it at once. A `system.` or `isc.` key belongs to OpenAVC and a list is not one value, so either is refused and shown on the script's row. A `device.` value lasts until the device's next report.",
       "example": "state.set(\"var.room_active\", True)\nstate.set(\"var.current_source\", \"HDMI 1\")"
     }
   ]

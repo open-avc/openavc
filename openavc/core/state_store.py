@@ -160,8 +160,8 @@ VALID_KEY_PREFIXES = ("device.", "var.", "ui.", "system.", "isc.", "plugin.")
 # guards, or pollute ISC mesh state) are rejected.
 PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
 
-# A namespace nothing outside this process may write, and why. Something else
-# owns every key under these prefixes, so a door write lands, reports success,
+# A namespace no door and no authored writer may write, and why. Something
+# else owns every key under these prefixes, so a write lands, reports success,
 # and then either disappears at the owner's next update or — worse — never
 # does. Telling a caller "OK" for a write that will be discarded is bad; telling
 # it "OK" for one that quietly replaces a fact the rest of the system reports is
@@ -173,16 +173,17 @@ PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
 # schedule (update progress, cloud status, help requests), and the ones set at
 # startup have no refresh to correct them — a write stands until the server
 # restarts, and every panel label and cloud report bound to that key repeats it.
+# The platform reads some of them back, too: a request whose
+# ``system.help_state`` was overwritten while it went out never reads
+# "unreachable" (``core/help_requests.py``).
 #
 # Both owners write through ``StateStore.set`` directly (``source="isc"`` /
-# ``source="system"``), which is a different path from the doors below, and so
-# are the authored writers — a macro step, a UI binding's ``state.set``, a
-# script — so refusing here costs the mesh, the platform and an integrator's own
-# automation nothing. ``device.*`` has the same owned shape and is deliberately
-# NOT here: a driver owns those keys, but poking one by hand is how an
-# integrator tests a binding against gear that is not on the bench yet, and
-# taking that away is a separate decision from closing a namespace nobody can
-# use at all.
+# ``source="system"``), so refusing these costs the mesh and the platform
+# nothing. ``device.*`` has the same owned shape and is deliberately NOT here: a
+# driver owns those keys, but poking one by hand is how an integrator tests a
+# binding against gear that is not on the bench yet; the script check and the
+# macro lint say that the device's next report replaces the value
+# (``DEVICE_WRITE_NOTE``).
 DOOR_READONLY_PREFIXES = {
     "isc.": (
         "'{key}' mirrors state received from another OpenAVC system, so a "
@@ -200,6 +201,52 @@ DOOR_READONLY_PREFIXES = {
     ),
 }
 
+#: What the script check and the macro lint say about a write to a device's
+#: key, which is taken: the driver owns it and its next report replaces it.
+DEVICE_WRITE_NOTE = (
+    "'{key}' is reported by the device, so its next report replaces this value. "
+    "To change the device, send it a command; to keep a value of your own, use "
+    "a 'var.' key."
+)
+
+DEVICE_PREFIX = "device."
+
+
+def platform_key_sentence(key: str) -> str | None:
+    """Why ``key`` cannot be written, when OpenAVC owns it; None otherwise."""
+    for prefix, reason in DOOR_READONLY_PREFIXES.items():
+        if key.startswith(prefix):
+            return reason.format(key=key)
+    return None
+
+
+def flat_value_sentence(value: Any) -> str | None:
+    """Why ``value`` cannot be stored, when it is not a flat primitive."""
+    if is_flat_primitive(value):
+        return None
+    return (
+        f"State values must be a flat primitive (string, number, boolean, "
+        f"or null) — got {type(value).__name__}. Store structured data "
+        f"under multiple keys, or as a JSON string."
+    )
+
+
+def check_authored_write(key: str, value: Any) -> str | None:
+    """THE rule for an authored writer: a script's ``state.set`` and
+    ``state.delete``, and a macro's Set Variable step.
+
+    Any key but the platform's own (``DOOR_READONLY_PREFIXES``), and a flat
+    value. Returns the sentence the doors give for the same refusal, or None
+    when the write is allowed. The writer reports a refusal where its author
+    looks (the script's row, the macro's run) and carries on: a refused write
+    halfway through a shutdown macro must not skip the power-offs after it.
+
+    Narrower than the doors in one way, deliberately: a key outside
+    ``VALID_KEY_PREFIXES`` is stored, as it always has been for automation,
+    with a debug line from ``StateStore.set``.
+    """
+    return platform_key_sentence(key) or flat_value_sentence(value)
+
 
 def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | None:
     """One policy for every remote door into the state store.
@@ -213,14 +260,13 @@ def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | Non
     ``panel=True`` marks the one unauthenticated door (panel WebSocket
     clients), which is held to ``PANEL_WRITABLE_PREFIXES``.
 
-    A namespace in ``DOOR_READONLY_PREFIXES`` is refused for every door,
-    authenticated or not: something else owns the value, so the write would be
-    silently undone — or, where nothing refreshes the key, silently kept as a
-    lie — rather than rejected.
+    Past the namespace checks it is :func:`check_authored_write`, the rule a
+    script and a macro step are held to, so a write a door refuses for its key
+    or its value is refused in the same words wherever it was written.
 
     This is a pre-flight check, not the enforcement point. ``set()`` still
-    drops a non-primitive on its own — that backstop covers in-process writers
-    (drivers, scripts, macros) that have no door to report through. What the
+    drops a non-primitive on its own — that backstop covers the platform's own
+    writers (drivers, plugins) that have no door to report through. What the
     doors need on top of it is a *reason* to hand back: without one they'd
     answer "success" for a write the store silently discarded.
     """
@@ -234,17 +280,7 @@ def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | Non
             return f"Panel clients can only set keys under: {names}"
         return f"State key '{key}' must start with one of: {names}"
 
-    for prefix, reason in DOOR_READONLY_PREFIXES.items():
-        if key.startswith(prefix):
-            return reason.format(key=key)
-
-    if not is_flat_primitive(value):
-        return (
-            f"State values must be a flat primitive (string, number, boolean, "
-            f"or null) — got {type(value).__name__}. Store structured data "
-            f"under multiple keys, or as a JSON string."
-        )
-    return None
+    return check_authored_write(key, value)
 
 
 class StateStore:

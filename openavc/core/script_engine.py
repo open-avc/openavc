@@ -162,7 +162,8 @@ class LoadedScript:
         # ever get the arguments wrong.
         self.handler_names: set[str] = set()
         # {"count", "handler", "event", "error", "traceback", "at"} for
-        # failures AFTER the script loaded, from every door that runs its code
+        # failures of a script that loaded (a write refused at its top level
+        # included), from every door that runs its code
         # (ScriptEngine._record_runtime_error lists them). A load error means
         # the script is not running; one of these means it IS running and does
         # not work.
@@ -325,12 +326,15 @@ class ScriptEngine:
         THE record every door that runs a loaded script's code reports to: an
         event or state handler, a control's call, refused or raised, and,
         through ``script_failures`` (bound by ``install``), a timer callback
-        and an ``events.emit`` the bus dropped. Only the load that is running
-        is recorded: a script that is not loaded has no row to show it on, and
-        a version an edit has replaced, failing in a run still going at the
-        swap, must not mark the version that replaced it.
+        an ``events.emit`` the bus dropped and a state write the authored-writer
+        rule refused. Only a load that is running, or still running its top
+        level, is recorded: a version an edit has replaced, failing in a run
+        still going at the swap, must not mark the version that replaced it. A
+        load's top level runs before it is published, so a write it refused is
+        kept on it and shows once it is; a load that then fails is a load error
+        and its record goes with it.
         """
-        if self._scripts.get(script.script_id) is not script:
+        if script.unloaded:
             return
         if script.runtime_error is None:
             script.runtime_error = {"count": 0}

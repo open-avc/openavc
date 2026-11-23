@@ -34,6 +34,7 @@ from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import check_project_emit
 from openavc.core.isc import ISCRemoteError
 from openavc.core.script_failures import ScriptFailure
+from openavc.core.state_store import check_authored_write, platform_key_sentence
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -315,6 +316,26 @@ class _DeviceProxy:
         return self._manager.list_devices()
 
 
+def _refused_write(call: str, sentence: str | None) -> bool:
+    """Whether a write was refused, reporting it against the running script.
+
+    The script's line is read here, on the thread the script runs on, before
+    the record is handed to the loop: a plain ``def`` handler's frames are on
+    its worker thread, and the loop's stack holds none of them.
+    """
+    if sentence is None:
+        return False
+    _report_refused_write(_current_script.get(), call, sentence, script_failures.script_line(call))
+    return True
+
+
+@_leashed
+def _report_refused_write(
+    script: LoadedScript | None, call: str, sentence: str, line: script_failures.ScriptLine,
+) -> None:
+    script_failures.report_refused(script, call, sentence, line)
+
+
 class _StateProxy:
     """Proxy to StateStore. Lets scripts do state.get/set/subscribe."""
 
@@ -330,14 +351,26 @@ class _StateProxy:
             return default
         return self._store.get(key, default)
 
-    @_leashed
     def set(self, key: str, value: Any, source: str = "script") -> None:
+        """Write a value, unless the authored-writer rule refuses it
+        (``state_store.check_authored_write``): then it is reported on the
+        script's row and the script carries on."""
+        if not _refused_write("state.set", check_authored_write(key, value)):
+            self._set(key, value, source)
+
+    def delete(self, key: str) -> None:
+        """Remove a key, unless it is the platform's own; refused as ``set`` is."""
+        if not _refused_write("state.delete", platform_key_sentence(key)):
+            self._delete(key)
+
+    @_leashed
+    def _set(self, key: str, value: Any, source: str) -> None:
         if self._store is None:
             raise RuntimeError("Script API not configured — state proxy not bound")
         self._store.set(key, value, source=source)
 
     @_leashed
-    def delete(self, key: str) -> None:
+    def _delete(self, key: str) -> None:
         if self._store is None:
             raise RuntimeError("Script API not configured — state proxy not bound")
         self._store.delete(key)

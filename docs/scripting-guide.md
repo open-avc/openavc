@@ -253,7 +253,12 @@ state.delete("var.temp_countdown")
 
 All state values are flat primitives: `str`, `int`, `float`, `bool`, or `None`. No nested objects.
 
-State key namespaces: `device.<id>.*` (device state), `var.*` (user variables), `ui.*` (UI state), `system.*` (system info), `plugin.<id>.*` (plugin state), `isc.*` (remote instances). Scripts can read any key, and write `var.*` keys and the `ui.*` overrides below.
+State key namespaces: `device.<id>.*` (device state), `var.*` (user variables), `ui.*` (UI state), `system.*` (system info), `plugin.<id>.*` (plugin state), `isc.*` (remote instances). Scripts can read any key, and write any key except two:
+
+- `system.*` and `isc.*` keys belong to OpenAVC and to other OpenAVC systems. A `state.set` or `state.delete` on one is refused: the value is not written, the reason shows on the script's row in the Scripts list, and the script carries on with its next line. The same happens to a value that is not a single value, such as a list.
+- A `device.*` key can be written, but the device's next report replaces the value. To change the device, send it a command. Writing one by hand is a way to try a control's binding before the device is connected.
+
+The script editor marks each of these lines as you type.
 
 #### Controlling UI Elements from Scripts
 

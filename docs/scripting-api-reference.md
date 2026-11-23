@@ -121,20 +121,20 @@ Read and write the reactive state store. All values are flat primitives (`str`, 
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `state.get(key, default=None)` | `Any` | Read a state value. |
-| `state.set(key, value, source="script")` | `None` | Write a state value. Triggers change notifications. |
-| `state.delete(key)` | `None` | Remove a key entirely (unlike `set(key, None)` which keeps the key). |
+| `state.set(key, value, source="script")` | `None` | Write a state value. Triggers change notifications. A `system.*` or `isc.*` key, or a value that is not a single value (a list), is refused and reported on the script's row; the script carries on. |
+| `state.delete(key)` | `None` | Remove a key entirely (unlike `set(key, None)` which keeps the key). A `system.*` or `isc.*` key is refused, as with `set`. |
 | `state.get_namespace(prefix)` | `dict` | Read all keys under a prefix (e.g., `"device.projector_main."`). |
 
 ### State Key Namespaces
 
 | Prefix | Example | Who Writes |
 |--------|---------|------------|
-| `device.<id>.*` | `device.projector_main.power` | Drivers (read-only for scripts) |
+| `device.<id>.*` | `device.projector_main.power` | Drivers. A script may write one, but the device's next report replaces it |
 | `var.*` | `var.room_active` | Scripts, macros, UI |
 | `ui.<id>.*` | `ui.btn_power.label` | Scripts (UI element overrides) |
-| `system.*` | `system.version` | System (read-only) |
+| `system.*` | `system.version` | OpenAVC only: a script's write is refused |
 | `plugin.<id>.*` | `plugin.mqtt.connected` | Plugins |
-| `isc.<peer_id>.*` | `isc.lobby.device.proj1.power` | ISC (remote state) |
+| `isc.<peer_id>.*` | `isc.lobby.device.proj1.power` | Other OpenAVC systems only (Inter-System): a script's write is refused |
 
 ### UI Element Overrides
 
