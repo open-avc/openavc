@@ -36,6 +36,24 @@ function statusToStep(status: string): UpdateStep | null {
   return map[status] ?? null;
 }
 
+/** The updater's values as the page reads them: the live state key, else the
+ *  status read on load, else `none`; `none` alone while the product firmware
+ *  carries updates. */
+function readUpdater(liveState: Record<string, unknown>, status: UpdateStatus | null) {
+  const firmwareManaged = status?.update_owner === "firmware";
+  const owned = (key: string, onLoad: unknown, none: string) =>
+    firmwareManaged ? none : String(liveState["system." + key] ?? onLoad ?? none);
+  return {
+    firmwareManaged,
+    updateStatus: owned("update_status", undefined, "idle"),
+    updateError: owned("update_error", undefined, ""),
+    updateAvailable: owned("update_available", undefined, ""),
+    stagedVersion: owned("update_staged_version", status?.staged_version, ""),
+    // What an Install installs, as the updater decides it.
+    installTarget: owned("update_install_version", status?.install_version, ""),
+  };
+}
+
 export function UpdatesView() {
   const liveState = useConnectionStore((s) => s.liveState);
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -44,6 +62,10 @@ export function UpdatesView() {
   const [history, setHistory] = useState<UpdateHistoryEntry[]>([]);
   const [checking, setChecking] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
+  // The version the Install button named when it was pressed, which the
+  // progress dialog's title keeps: the one the updater publishes moves on once
+  // the update applies. An update started anywhere else has none.
+  const [installingVersion, setInstallingVersion] = useState("");
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [watchdogTripped, setWatchdogTripped] = useState(false);
   const prevVersionRef = useRef<string>("");
@@ -66,14 +88,11 @@ export function UpdatesView() {
     api.getUpdateHistory().then(setHistory).catch(console.error);
   }, []);
 
-  const firmwareManaged = status?.update_owner === "firmware";
-
   // Track live update state
-  const updateStatus = firmwareManaged ? "idle" : String(liveState["system.update_status"] ?? "idle");
+  const {
+    firmwareManaged, updateStatus, updateError, updateAvailable, stagedVersion, installTarget,
+  } = readUpdater(liveState, status);
   const updateProgress = Number(liveState["system.update_progress"] ?? 0);
-  const updateError = firmwareManaged ? "" : String(liveState["system.update_error"] ?? "");
-  const updateAvailable = firmwareManaged ? "" : String(liveState["system.update_available"] ?? "");
-  const stagedVersion = firmwareManaged ? "" : String(liveState["system.update_staged_version"] ?? status?.staged_version ?? "");
   const currentVersion = String(liveState["system.version"] ?? status?.current_version ?? "");
 
   // Show progress modal when update is in progress
@@ -86,11 +105,16 @@ export function UpdatesView() {
     setShowProgressModal(true);
   }, [updateStatus, currentVersion]);
 
+  const closeProgress = useCallback(() => {
+    setShowProgressModal(false);
+    setInstallingVersion("");
+  }, []);
+
   const resolveCompletion = useCallback((rolledBack: boolean, version: string) => {
     if (resolvedRef.current) return;
     resolvedRef.current = true;
     showSuccess(rolledBack ? "Rolled back to v" + version : "Updated to v" + version);
-    setShowProgressModal(false);
+    closeProgress();
     actionRef.current = null;
     startVersionRef.current = "";
     // Best-effort: after a restart this browser's session token is gone, so
@@ -98,7 +122,7 @@ export function UpdatesView() {
     // outcome and not an error worth logging.
     api.getUpdateStatus().then(setStatus).catch(() => {});
     api.getUpdateHistory().then(setHistory).catch(() => {});
-  }, []);
+  }, [closeProgress]);
 
   // Completion detection that does NOT depend on the WebSocket (see
   // useInstallRestartWait), which also keeps a failed start to show.
@@ -128,7 +152,7 @@ export function UpdatesView() {
     if (outcome === "same_version_restart") {
       if (!showProgressModal || resolvedRef.current) return;
       resolvedRef.current = true;
-      setShowProgressModal(false);
+      closeProgress();
       actionRef.current = null;
       startVersionRef.current = "";
       showError(
@@ -141,14 +165,14 @@ export function UpdatesView() {
     }
     // Shared with the health poll, so whichever notices first reports it once.
     resolveCompletion(outcome === "rolled_back", currentVersion);
-  }, [currentVersion, updateStatus, showProgressModal, resolveCompletion]);
+  }, [currentVersion, updateStatus, showProgressModal, resolveCompletion, closeProgress]);
 
   // Detect error state
   useEffect(() => {
     if (updateStatus === "error" && updateError) {
-      setShowProgressModal(false);
+      closeProgress();
     }
-  }, [updateStatus, updateError]);
+  }, [updateStatus, updateError, closeProgress]);
 
   // Watchdog: if nothing moves (no status/progress change) for two minutes
   // while the modal is up — e.g. the server never comes back after the
@@ -189,20 +213,24 @@ export function UpdatesView() {
     actionRef.current = "update";
     startVersionRef.current = currentVersion;
     resolvedRef.current = false;
+    setInstallingVersion(installTarget);
     try {
       const result = await api.applyUpdate();
       if (!result.success) {
         actionRef.current = null;
+        setInstallingVersion("");
         showError(result.error ?? "Update failed");
       }
     } catch (e) {
       actionRef.current = null;
+      setInstallingVersion("");
       showError("Failed to start update: " + parseApiError(e));
     }
   };
 
   const handleRollback = useCallback(async () => {
     setShowRollbackConfirm(false);
+    setInstallingVersion("");
     actionRef.current = "rollback";
     startVersionRef.current = currentVersion;
     resolvedRef.current = false;
@@ -225,9 +253,6 @@ export function UpdatesView() {
   const hasUpdate = !!updateAvailable;
   const hasStaged = !!stagedVersion;
   const hasWarning = hasUpdateWarning(status);
-  // apply_update consumes a cloud-staged update before checking GitHub, so
-  // the staged version is what an Install actually installs.
-  const installTarget = stagedVersion || updateAvailable;
 
   return (
     <ViewContainer title="System Updates">
@@ -361,7 +386,7 @@ export function UpdatesView() {
             <span>{checking ? "Checking..." : "Check for Updates"}</span>
           </button>
 
-          {(hasUpdate || hasStaged) && canSelfUpdate && (
+          {(hasUpdate || hasStaged) && canSelfUpdate && installTarget && (
             <button
               style={primaryBtn}
               onClick={handleApply}
@@ -483,7 +508,7 @@ export function UpdatesView() {
           }}
         >
             <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, marginBottom: "var(--space-lg)" }}>
-              {installTarget ? "Installing OpenAVC v" + installTarget : "Updating OpenAVC"}
+              {installingVersion ? "Installing OpenAVC v" + installingVersion : "Updating OpenAVC"}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", marginBottom: "var(--space-lg)" }}>
@@ -529,7 +554,7 @@ export function UpdatesView() {
               startingAgain={startingAgain}
               watchdogTripped={watchdogTripped}
               errored={updateStatus === "error"}
-              onClose={() => setShowProgressModal(false)}
+              onClose={closeProgress}
             />
 
             {/* Error in modal */}
@@ -538,7 +563,7 @@ export function UpdatesView() {
                 <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)", marginBottom: "var(--space-sm)" }}>
                   {updateError || "An error occurred during the update."}
                 </div>
-                <button style={secondaryBtn} onClick={() => setShowProgressModal(false)}>
+                <button style={secondaryBtn} onClick={closeProgress}>
                   Close
                 </button>
               </div>

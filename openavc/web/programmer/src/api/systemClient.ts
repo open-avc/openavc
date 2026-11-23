@@ -81,6 +81,9 @@ export interface UpdateStatus {
   update_error: string;
   /** Version of a cloud-staged update awaiting manual install ("" if none). */
   staged_version?: string;
+  /** The version an Install installs: the staged one while one waits, else
+   *  the release the last check found ("" if neither). */
+  install_version?: string;
   /** Version of an update the pre-start helper could not apply ("" if none). */
   deferred_version?: string;
   /** How many times that update has been attempted (0 if none). */

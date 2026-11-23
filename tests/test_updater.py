@@ -940,7 +940,8 @@ class TestUpdateManager:
         assert mgr.get_staged_update() is None
 
     async def test_apply_update_consumes_staged_update(self, tmp_path):
-        """apply_update routes to apply_cloud_update with staged params and clears."""
+        """apply_update routes to apply_cloud_update with the staged params; the
+        record is cleared by the install once it applies."""
         mock_state = MagicMock()
         mock_state.get = MagicMock(return_value="")
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
@@ -963,8 +964,6 @@ class TestUpdateManager:
         assert captured["target_version"] == "9.9.9"
         assert captured["update_url"] == "https://example.com/openavc-9.9.9.tar.gz"
         assert captured["checksum_sha256"] == "sha256hex"
-        # Staged marker is consumed.
-        assert mgr.get_staged_update() is None
 
 
 class TestDeferredUpdateIsVisible:

@@ -431,14 +431,16 @@ async def test_command_handler_uses_cloud_url():
 
 @pytest.mark.asyncio
 async def test_command_handler_falls_back_to_github():
-    """When update_url is empty, handler falls back to check_for_updates + apply_update."""
+    """When update_url is empty, handler checks GitHub and installs the release it found."""
     agent = MockAgent()
     events = MockEventBus()
     devices = MockDeviceManager()
     update_manager = AsyncMock()
     update_manager.busy_refusal = MagicMock(return_value=None)
-    update_manager.check_for_updates = AsyncMock(return_value={"update_available": True})
-    update_manager.apply_update = AsyncMock(return_value={
+    update_manager.check_for_updates = AsyncMock(return_value={
+        "update_available": True, "available_version": "1.0.0",
+    })
+    update_manager.apply_checked_update = AsyncMock(return_value={
         "success": True,
         "message": "Update to v1.0.0 started",
     })
@@ -463,7 +465,8 @@ async def test_command_handler_falls_back_to_github():
     update_manager.apply_cloud_update.assert_not_called()
     # GitHub path should have been used
     update_manager.check_for_updates.assert_called_once()
-    update_manager.apply_update.assert_called_once()
+    update_manager.apply_checked_update.assert_awaited_once_with("1.0.0")
+    update_manager.apply_update.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -608,8 +611,10 @@ async def test_a_refused_update_answers_with_the_updaters_instructions(update_ur
     update_manager = AsyncMock()
     update_manager.busy_refusal = MagicMock(return_value=None)
     update_manager.apply_cloud_update = AsyncMock(return_value=refusal)
-    update_manager.check_for_updates = AsyncMock(return_value={"update_available": True})
-    update_manager.apply_update = AsyncMock(return_value=refusal)
+    update_manager.check_for_updates = AsyncMock(return_value={
+        "update_available": True, "available_version": "1.0.0",
+    })
+    update_manager.apply_checked_update = AsyncMock(return_value=refusal)
     handler = CommandHandler(agent, MockDeviceManager(), MockEventBus(), update_manager=update_manager)
 
     msg = {

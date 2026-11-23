@@ -309,17 +309,18 @@ async def test_staging_while_an_update_runs_leaves_the_run_in_flight(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_a_target_still_staged_after_a_push_waits_at_the_next_start(tmp_path):
-    """A push does not clear the staged record yet, so a newer staged target
-    is the run at the next start; the pushed run's end is the history's."""
+async def test_a_push_that_applies_drops_the_staged_target(tmp_path):
+    """A staged target is gone once another update applies, a newer one too,
+    so the next start reads back the push, ended as its history row."""
     mgr = _start(tmp_path, "0.41.0")
     with patch("openavc.updater.manager.__version__", "0.41.0"):
         mgr.stage_update("0.43.0", URL, "ab" * 32)
     await _apply_cloud(mgr, tmp_path)
     assert (_run_file(tmp_path)["target"], _run_file(tmp_path)["source"]) == ("0.42.0", "pushed")
+    assert not (tmp_path / "staged-update.json").exists()
 
     run = _start(tmp_path, "0.42.0").run_record.run
-    assert (run.target, run.step) == ("0.43.0", "waiting")
+    assert (run.target, run.source, run.step, run.end) == ("0.42.0", "pushed", "restarting", "success")
     assert (_history(tmp_path)[0]["to_version"], _history(tmp_path)[0]["status"]) == ("0.42.0", "success")
 
 

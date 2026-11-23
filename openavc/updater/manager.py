@@ -3,6 +3,13 @@ Update manager - orchestrates the full update lifecycle.
 
 Coordinates: check -> backup -> download -> verify -> apply -> restart.
 Manages state keys for UI binding and progress tracking.
+
+THE answer to what an Install installs (``_install_version``): the target the
+cloud staged while one waits, else the release the last check found,
+published as ``system.update_install_version`` for the Updates page's button.
+The maintenance window and an update the cloud sends with no download link
+install the release their own check found instead (``apply_checked_update``).
+Every update that applies drops a staged target (``_apply_artifact``).
 """
 
 from __future__ import annotations
@@ -121,6 +128,7 @@ class UpdateManager:
             self._set_state(
                 "system.update_staged_version", staged.get("target_version", "")
             )
+        self._publish_install_version(staged)
         self.run_record.read_at_start(staged, self._history)
 
         # An update update-helper.sh could not apply and set aside to retry.
@@ -520,6 +528,7 @@ class UpdateManager:
             if touch_status:
                 self._set_state("system.update_status", "idle")
 
+        self._publish_install_version(self.get_staged_update())
         if result is None:
             self._set_state("system.update_available", "")
             error = self._checker.last_error
@@ -562,39 +571,70 @@ class UpdateManager:
 
         return response
 
-    async def apply_update(self) -> dict[str, Any]:
-        """Download and apply an available update.
+    def _install_version(self, staged: dict[str, Any] | None) -> str:
+        """THE answer to what an Install (``apply_update``) installs now, given
+        the staged record read (``get_staged_update``): the target the cloud
+        staged while one waits, else the release the last check found; "" when
+        there is neither."""
+        if staged:
+            return str(staged["target_version"])
+        release = self._checker.last_result
+        return release.version if release else ""
 
-        This is the full update flow: backup -> download -> verify -> apply -> restart.
-        For non-self-updating deployments, returns instructions instead.
-        If the cloud has staged an update (auto_restart=False) we route through
-        apply_cloud_update with that staged URL instead of querying GitHub.
-        """
+    def _publish_install_version(self, staged: dict[str, Any] | None) -> None:
+        """Publish what an Install installs (``system.update_install_version``),
+        the version the Updates page names on its Install button."""
+        self._set_state("system.update_install_version", self._install_version(staged))
+
+    def _apply_refusal(self) -> dict[str, Any] | None:
+        """Why no update may start now: the product firmware carries them, or
+        one is in flight. None when one may."""
         if self._firmware_host:
             return self._firmware_host.refusal()
-        busy = self.busy_refusal()
-        if busy:
-            return busy
+        return self.busy_refusal()
 
-        # Prefer a cloud-staged update if one is pending — covers the
-        # auto_restart=False case where the cloud pushed a target_version
-        # without applying it immediately (A63).
+    async def apply_update(self) -> dict[str, Any]:
+        """Install what an Install installs (``_install_version``, published
+        for the Updates page): the target the cloud staged while one waits
+        (``auto_restart=False``), from the cloud's URL; else the release the
+        last check found.
+
+        The full flow: backup -> download -> verify -> apply -> restart. For
+        non-self-updating deployments, returns instructions instead. A failed
+        install keeps the staged target, so it can be tried again.
+        """
+        refusal = self._apply_refusal()
+        if refusal:
+            return refusal
         staged = self.get_staged_update()
         if staged:
-            result = await self.apply_cloud_update(
+            return await self.apply_cloud_update(
                 staged["target_version"],
                 staged["update_url"],
                 staged.get("checksum_sha256"),
                 rollback=bool(staged.get("rollback")),
             )
-            # Clear the staged record only after a successful apply. A transient
-            # failure (network blip during download) must keep it so the
-            # operator's queued update can retry instead of silently vanishing.
-            if result.get("success"):
-                self.clear_staged_update()
-            return result
+        return await self._install_checked(self._checker.last_result)
 
+    async def apply_checked_update(self, version: str) -> dict[str, Any]:
+        """Install ``version``, the release a check just found, whatever the
+        cloud has staged: the maintenance window's door and an update the
+        cloud sends with no download link, each of which checks first.
+        Refused when the last check found another release since."""
+        refusal = self._apply_refusal()
+        if refusal:
+            return refusal
         release = self._checker.last_result
+        if release is None or not same_version(release.version, version):
+            return {
+                "success": False,
+                "error": f"v{version} is no longer the newest release this system finds. Try the update again.",
+            }
+        return await self._install_checked(release)
+
+    async def _install_checked(self, release: ReleaseInfo | None) -> dict[str, Any]:
+        """Install ``release``, found by the update check, from its GitHub
+        release files."""
         if release is None:
             return {"success": False, "error": "No update available. Run check first."}
 
@@ -629,23 +669,7 @@ class UpdateManager:
                                  backup_path=backup_path)
 
             # Step 4: Apply (platform-specific)
-            self._step("applying")
-            if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
-                await asyncio.to_thread(self._apply_windows, artifact_path, release.version)
-            elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
-                                           DeploymentType.MACOS_APP,
-                                           DeploymentType.ANDROID_APPLIANCE):
-                self._apply_linux(artifact_path, release.version)
-
-            # Step 5: Record success and restart
-            # Record as "pending" — confirmed on next startup when the new
-            # version actually runs (avoids false "success" if restart fails)
-            self._add_history_entry(__version__, release.version, "pending")
-
-            self._step("restarting")
-            log.info("Update to v%s applied, restarting...", release.version)
-            self._end_process("update")
-
+            await self._apply_artifact(artifact_path, release.version, "update")
             return {"success": True, "message": f"Update to v{release.version} started"}
 
         except asyncio.CancelledError:
@@ -735,21 +759,7 @@ class UpdateManager:
             write_pending_marker(self._data_dir, __version__, target_version,
                                  backup_path=backup_path)
 
-            # Step 5: Apply (platform-specific)
-            self._step("applying")
-            if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
-                await asyncio.to_thread(self._apply_windows, artifact_path, target_version)
-            elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
-                                           DeploymentType.MACOS_APP,
-                                           DeploymentType.ANDROID_APPLIANCE):
-                self._apply_linux(artifact_path, target_version)
-
-            self._add_history_entry(__version__, target_version, "pending")
-
-            self._step("restarting")
-            log.info("Update to v%s applied (cloud URL), restarting...", target_version)
-            self._end_process("cloud update")
-
+            await self._apply_artifact(artifact_path, target_version, "cloud update")
             return {"success": True, "message": f"Update to v{target_version} started"}
 
         except asyncio.CancelledError:
@@ -761,6 +771,25 @@ class UpdateManager:
             self._cleanup_failed_apply(target_version, error_msg)
             return {"success": False, "error": error_msg}
 
+    async def _apply_artifact(self, artifact_path: Path, to_version: str, source: str) -> None:
+        """An update's last steps, its file downloaded and verified: apply it
+        the way this install type does, record it "pending" (confirmed at the
+        next start, when the new version runs), drop a staged target (this
+        update installs it, or replaces it), and end the process."""
+        self._step("applying")
+        if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
+            await asyncio.to_thread(self._apply_windows, artifact_path, to_version)
+        elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
+                                       DeploymentType.MACOS_APP,
+                                       DeploymentType.ANDROID_APPLIANCE):
+            self._apply_linux(artifact_path, to_version)
+
+        self._add_history_entry(__version__, to_version, "pending")
+        self.clear_staged_update()
+        self._step("restarting")
+        log.info("Update to v%s applied (%s), restarting...", to_version, source)
+        self._end_process(source)
+
     def _cloud_update_refusal(
         self, target_version: str, update_url: str, rollback: bool,
     ) -> dict[str, Any] | None:
@@ -771,11 +800,9 @@ class UpdateManager:
         or downgraded URL can't steer the download to an attacker: defense in
         depth on the transport, since the checksum is already fail-closed.
         """
-        if self._firmware_host:
-            return self._firmware_host.refusal()
-        busy = self.busy_refusal()
-        if busy:
-            return busy
+        refusal = self._apply_refusal()
+        if refusal:
+            return refusal
         if not updates_itself(self._deployment_type):
             return self_update_refusal(self._deployment_type, target_version)
         from urllib.parse import urlparse
@@ -840,10 +867,11 @@ class UpdateManager:
         """Persist a cloud-staged update so it can be applied manually later (A63).
 
         Called when the cloud sends ``software_update`` with
-        ``auto_restart=False``. The next call to ``apply_update`` uses this
-        target instead of polling GitHub. A rollback keeps its mark, so the
-        record is read as one. Refused while an update or rollback is in
-        flight (``busy_refusal``, returned); None otherwise.
+        ``auto_restart=False``. An Install (``apply_update``) installs this
+        target until it is cleared: installed, or replaced by another update
+        that applies. A rollback keeps its mark, so the record is read as one.
+        Refused while an update or rollback is in flight (``busy_refusal``,
+        returned); None otherwise.
         """
         if self._firmware_host:
             raise PermissionError(self._firmware_host.guidance)
@@ -863,6 +891,7 @@ class UpdateManager:
                 json.dumps(payload, indent=2), encoding="utf-8"
             )
             self._set_state("system.update_staged_version", target_version)
+            self._publish_install_version(payload)
             self.run_record.stage(update_run.UpdateRun(
                 target_version, update_run.STAGED, update_run.WAITING, rollback=rollback,
                 update_url=update_url, checksum_sha256=checksum_sha256,
@@ -903,7 +932,8 @@ class UpdateManager:
         return data
 
     def clear_staged_update(self) -> None:
-        """Remove the staged-update marker (called after apply)."""
+        """Remove the staged-update marker: once any update applies, before a
+        rollback, and when it no longer moves this system."""
         if self._firmware_host:
             return
         try:
@@ -911,6 +941,7 @@ class UpdateManager:
         except OSError:
             log.exception("Failed to clear staged-update marker")
         self._set_state("system.update_staged_version", "")
+        self._publish_install_version(None)
         self.run_record.drop_waiting()
 
     @staticmethod
@@ -1115,8 +1146,8 @@ class UpdateManager:
             log.warning("Pre-rollback backup failed: %s", e)
 
         # Drop any cloud-staged update before rolling back: it targets the very
-        # version we're abandoning, and would otherwise be re-applied by the
-        # next apply_update() (which prefers a staged record).
+        # version we're abandoning, and an Install would otherwise install it
+        # again (it installs a staged target while one waits).
         self.clear_staged_update()
 
         self._step("applying")
@@ -1179,6 +1210,7 @@ class UpdateManager:
             "update_progress": self._state.get("system.update_progress", 0) if self._state else 0,
             "update_error": self._state.get("system.update_error", "") if self._state else "",
             "staged_version": staged.get("target_version", "") if staged else "",
+            "install_version": self._install_version(staged),
             "deferred_version": deferred["to_version"] if deferred else "",
             "deferred_attempts": deferred["attempts"] if deferred else 0,
             "deferred_reason": deferred["reason"] if deferred else "",
@@ -1391,7 +1423,7 @@ class UpdateManager:
                     continue
 
                 log.info("Maintenance window: applying update")
-                await self.apply_update()
+                await self.apply_checked_update(result["available_version"])
                 return  # Update applied (or failed), stop the loop
 
         except asyncio.CancelledError:

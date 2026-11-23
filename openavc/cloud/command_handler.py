@@ -521,7 +521,7 @@ class CommandHandler:
 
     async def _install_software_update(self, request_id: str, payload: dict[str, Any]) -> None:
         """From the cloud's URL when it sent one; otherwise the newest release
-        GitHub offers, checked for here."""
+        GitHub offers, checked for here and installed whatever is staged."""
         update_url = payload["update_url"]
         if update_url:
             apply_result = await self._update_manager.apply_cloud_update(
@@ -539,7 +539,9 @@ class CommandHandler:
             if not check_result.get("update_available"):
                 await self._send_result(request_id, True, result="System is already up to date.")
                 return
-            apply_result = await self._update_manager.apply_update()
+            apply_result = await self._update_manager.apply_checked_update(
+                check_result["available_version"],
+            )
         await self._send_apply_result(request_id, apply_result)
 
     async def _send_apply_result(self, request_id: str, apply_result: dict[str, Any]) -> None:

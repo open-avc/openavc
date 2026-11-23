@@ -399,6 +399,55 @@ describe("UpdatesView failed check", () => {
   });
 });
 
+describe("UpdatesView Install", () => {
+  beforeEach(() => {
+    liveState["system.update_status"] = "idle";
+    statusWith({});
+  });
+
+  it("names the version the updater says an Install installs", async () => {
+    // Not its own pick from the two versions on the page: the updater's.
+    liveState["system.update_available"] = "0.25.0";
+    liveState["system.update_staged_version"] = "0.26.0";
+    liveState["system.update_install_version"] = "0.25.0";
+    render(<UpdatesView />);
+    expect(await screen.findByRole("button", { name: "Install v0.25.0" })).toBeInTheDocument();
+  });
+
+  it("reads it from the status until the live value arrives", async () => {
+    statusWith({ staged_version: "0.26.0", install_version: "0.26.0" });
+    render(<UpdatesView />);
+    expect(await screen.findByRole("button", { name: "Install v0.26.0" })).toBeInTheDocument();
+  });
+
+  it("keeps the version Install named in the progress dialog's title", async () => {
+    stubHealth("0.24.1");
+    liveState["system.update_staged_version"] = "0.26.0";
+    liveState["system.update_install_version"] = "0.26.0";
+    const { rerender } = render(<UpdatesView />);
+    const install = await screen.findByRole("button", { name: "Install v0.26.0" });
+    await act(async () => { fireEvent.click(install); });
+
+    // The update applies: the staged version is dropped, and an Install
+    // would now install the release the last check found.
+    liveState["system.update_status"] = "restarting";
+    liveState["system.update_staged_version"] = "";
+    liveState["system.update_install_version"] = "0.25.0";
+    rerender(<UpdatesView />);
+
+    expect(await screen.findByText("Installing OpenAVC v0.26.0")).toBeInTheDocument();
+  });
+
+  it("titles an update started anywhere else without a version", async () => {
+    stubHealth("0.24.1");
+    liveState["system.update_status"] = "restarting";
+    liveState["system.update_available"] = "0.26.0";
+    liveState["system.update_install_version"] = "0.26.0";
+    render(<UpdatesView />);
+    expect(await screen.findByText("Updating OpenAVC")).toBeInTheDocument();
+  });
+});
+
 describe("UpdatesView firmware ownership", () => {
   beforeEach(() => {
     liveState["system.update_status"] = "idle";
