@@ -14544,6 +14544,52 @@ Object.assign(tests, {
     },
 });
 
+// --- A state with no icon, after one with an icon --------------------------
+//
+// The mute button the Builder invites: Muted names an icon and Unmuted names
+// none, on a control with no icon of its own. Once unmuted it shows its words
+// alone, wherever the icon stood, and so does a control whose device went away.
+
+Object.assign(tests, {
+    a_state_with_no_icon_takes_the_last_states_icon_away() {
+        const look = { key: 'device.d.m', states: {
+            muted: { label: 'Muted', icon: 'volume-x', bg_color: '#ff0000' },
+            unmuted: { label: 'Unmuted' },
+        } };
+        const up = { 'device.d.connected': true, 'device.d.m': 'muted' };
+        const face = (node) => ({
+            icons: node.querySelectorAll(':scope > svg, :scope > img').length,
+            span: !!node.querySelector(':scope > .panel-label-span'),
+            text: node.textContent,
+            layout: `${node.style.flexDirection}|${node.style.gap}`,
+            layer: !!node.querySelector(':scope > .panel-button-image-layer'),
+        });
+        const rows = [
+            ['left', { type: 'button', label: 'Own' }],
+            ['top', { type: 'button', label: 'Own', icon_position: 'top' }],
+            ['center', { type: 'button', label: 'Own', icon_position: 'center' }],
+            ['picture', { type: 'button', label: 'Own', display_mode: 'image_text', button_image: '/p.png', image_blend_mode: 'mask' }],
+            ['nav', { type: 'page_nav', label: 'Own', target_page: 'elsewhere' }],
+        ];
+        const wrong = [];
+        for (const [name, def] of rows) {
+            const m = levelMount({ id: name, ...def, bindings: { show: { look } } }, { state: up });
+            const muted = face(m.node());
+            if (muted.icons !== 1) wrong.push(`${name}: muted drew ${muted.icons} icons, not 1`);
+            m.set('device.d.m', 'unmuted');
+            const after = face(m.node());
+            const want = { icons: 0, span: false, text: 'Unmuted', layout: '|', layer: muted.layer };
+            if (JSON.stringify(after) !== JSON.stringify(want)) wrong.push(`${name}: unmuted ${JSON.stringify(after)}`);
+            if (name === 'nav') continue;
+            m.set('device.d.m', 'muted');
+            m.set('device.d.connected', false);
+            const away = face(m.node());
+            if (away.icons !== 0 || away.span || away.text !== 'Own') wrong.push(`${name}: away ${JSON.stringify(away)}`);
+        }
+        assert(wrong.length === 0, wrong.join(' ;; '));
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

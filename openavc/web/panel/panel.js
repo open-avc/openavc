@@ -2387,9 +2387,9 @@ class PanelApp {
     /**
      * Draw again the icon a look names, else the control's own, beside the
      * words: drawIcon (modules/words.js) rebuilds the icon and text layout from the
-     * words on the control, so they are written first, and draws nothing on a
-     * control with no icon. With no look (`appearance` null) the control's own
-     * definition is drawn as it is.
+     * words on the control, so they are written first, and takes the last
+     * state's icon away when neither names one. With no look (`appearance`
+     * null) the control's own definition is drawn as it is.
      */
     _drawLookIcon(element, elementDef, appearance) {
         drawIcon(element, appearance ? this._withLookIcon(elementDef, appearance) : elementDef);

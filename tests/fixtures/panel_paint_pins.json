@@ -160,11 +160,11 @@
     ],
     "multi_image_mode": [
       "position: relative; isolation: isolate; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); background-image: none; | text=\"\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"\" | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(255, 0, 0); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: relative; isolation: isolate; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; color: rgb(0, 0, 255); background-image: none; | text=\"\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00] | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: currentcolor; mask-image: url(\"/b.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
+      "position: relative; isolation: isolate; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: none; | text=\"\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: currentcolor; mask-image: url(\"/b.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "multi_no_own_label": [
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-size: cover; background-position: center; background-repeat: no-repeat; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; | text=\"A\" |  | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-size: cover; background-position: center; background-repeat: no-repeat; background-color: rgb(255, 0, 0); gap: 0.4286rem; | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "legacy_words": [
       "border-width: 0px; border-color: transparent; box-shadow: none; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: transparent; background-image: none; | text=\"On!\" | svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"On!\" | src=null | class=\"panel-element panel-button\" aria-current=null",
@@ -172,7 +172,7 @@
     ],
     "legacy_state_icon": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; | text=\"Own\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"Own\" | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; | text=\"Own\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" |  | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "legacy_style_label": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(255, 0, 0); | text=\"From style\" |  | src=null | class=\"panel-element panel-button\" aria-current=null",
@@ -195,37 +195,37 @@
       "background-color: transparent; border-width: 0px; border-color: transparent; box-shadow: none; gap: 0.4286rem; position: relative; left: 5%; top: 5%; width: 20%; height: 10%; background-image: none; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"Own\" | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
     ],
     "offline_suppressed": [
-      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-image: url(\"/p.png\"); | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
+      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); | text=\"\" |  | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-image: url(\"/p.png\"); | text=\"\" |  | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
     ],
     "offline_no_label": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"\" |  | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
     ],
     "offline_label_zero": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"\" |  | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
     ],
     "multi_icon_only_no_icon": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(255, 0, 0); | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; | text=\"\" |  | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "state_label_null": [
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(0, 255, 0); | text=\"Own\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(0, 255, 0); | text=\"Own\" |  | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(255, 0, 0); gap: 0.4286rem; | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "offline_retints_a_state_layer": [
-      "background-color: rgb(255, 0, 0); position: relative; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-image: none; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00] | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(255, 0, 0); mask-image: url(\"/c.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "background-color: rgb(18, 52, 86); position: relative; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00] | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/c.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
+      "background-color: rgb(255, 0, 0); position: relative; left: 5%; top: 5%; width: 20%; height: 10%; background-image: none; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(255, 0, 0); mask-image: url(\"/c.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "background-color: rgb(18, 52, 86); position: relative; left: 5%; top: 5%; width: 20%; height: 10%; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/c.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
     ],
     "state_artwork_layer_goes": [
-      "position: relative; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; color: rgb(0, 0, 255); background-image: none; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00] | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-image: url(\"/b.png\"); background-color: currentcolor; background-size: cover; background-position: center; background-repeat: no-repeat; background-blend-mode: multiply; | src=null | class=\"panel-element panel-button\" aria-current=null",
-      "position: relative; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; isolation: isolate; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
+      "position: relative; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: none; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-image: url(\"/b.png\"); background-color: currentcolor; background-size: cover; background-position: center; background-repeat: no-repeat; background-blend-mode: multiply; | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: relative; left: 5%; top: 5%; width: 20%; height: 10%; isolation: isolate; background-color: rgb(255, 0, 0); gap: 0.4286rem; | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "nav_lit_icon": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-page-nav nav-current\" aria-current=page",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"Go\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-page-nav nav-current\" aria-current=page",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-page-nav nav-current\" aria-current=page"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"Go\" |  | src=null | class=\"panel-element panel-page-nav nav-current\" aria-current=page",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); gap: 0.4286rem; | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-page-nav nav-current\" aria-current=page"
     ],
     "nav_unlit_own_icon": [
       "--el-accent: #00ffff; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); | text=\"elsewhere\" | svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"elsewhere\" | src=null | class=\"panel-element panel-page-nav\" aria-current=null",
@@ -236,7 +236,7 @@
     ],
     "offline_nav": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-page-nav nav-current\" aria-current=page",
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"Go\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-page-nav nav-current device-offline\" aria-current=page"
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"Go\" |  | src=null | class=\"panel-element panel-page-nav nav-current device-offline\" aria-current=page"
     ],
     "toggle_words_icon": [
       "gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" | svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"Own\" | src=null | class=\"panel-element panel-button\" aria-current=null",

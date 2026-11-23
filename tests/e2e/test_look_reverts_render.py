@@ -178,3 +178,60 @@ def test_a_themed_element_returns_to_its_theme_colour(panel_page) -> None:
     seen = _walk(panel_page, "camera_preset", extra, [1, 2], theme)
     assert seen[0] == "rgb(255, 0, 0)", f"active: {seen[0]}"
     assert seen[1] == "rgb(42, 42, 74)", f"inactive: {seen[1]}, not the theme's colour"
+
+
+# The words and the icon on a control after each value of KEY: how many icons
+# are drawn in it, and how far the words sit from its middle, in px.
+ICON_PROBE_JS = r"""
+([extra, values]) => {
+  const app = window.__openavcPanel;
+  app.editMode = false;
+  app.theme.elementDefaults = {};
+  const box = document.getElementById('box');
+  box.innerHTML = '';
+  app.bindings = [];
+  app.elementMap = {};
+  app.state = {};
+  const node = app.renderElement(Object.assign({ id: 'probe', type: 'button' }, extra));
+  node.classList.add('panel-element');
+  node.style.position = 'absolute';
+  node.style.left = '0px'; node.style.top = '0px';
+  node.style.width = '100%'; node.style.height = '100%';
+  box.appendChild(node);
+  const seen = [];
+  for (const v of values) {
+    app.state['__KEY__'] = v;
+    app.evaluateAllBindings(['__KEY__']);
+    const icons = [...node.children].filter((c) => c.localName === 'svg' || c.localName === 'img').length;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const words = [...range.getClientRects()].filter((r) => r.width > 0);
+    const text = words.length ? words[words.length - 1] : null;
+    const own = node.getBoundingClientRect();
+    const off = text ? Math.round(Math.abs((text.left + text.right) / 2 - (own.left + own.right) / 2)) : null;
+    seen.push({ icons, words: node.textContent, off });
+  }
+  return seen;
+}
+""".replace("__KEY__", KEY)
+
+
+def test_a_state_with_no_icon_takes_the_last_states_icon_away(panel_page) -> None:
+    """The mute button the Builder invites: Muted names an icon, Unmuted names
+    none, and the button has none of its own. Unmuted, it shows its words alone
+    and in the middle, where a button never given an icon draws them."""
+    look = {"bindings": {"show": {"look": {"key": KEY, "states": {
+        "muted": {"label": "Muted", "icon": "volume-x", "bg_color": "#ff0000"},
+        "unmuted": {"label": "Unmuted"},
+    }}}}}
+    plain = panel_page.evaluate(ICON_PROBE_JS, [{"label": "Unmuted"}, [None]])[0]
+    for position in ("left", "top", "center"):
+        seen = panel_page.evaluate(
+            ICON_PROBE_JS, [{"label": "Own", "icon_position": position, **look}, ["muted", "unmuted"]],
+        )
+        assert seen[0]["icons"] == 1, f"{position}: muted draws {seen[0]['icons']} icons"
+        assert seen[1]["icons"] == 0, f"{position}: unmuted still draws the muted icon"
+        assert seen[1]["words"] == "Unmuted", f"{position}: unmuted reads {seen[1]['words']!r}"
+        assert seen[1]["off"] == plain["off"], (
+            f"{position}: the words sit {seen[1]['off']}px from the middle, not {plain['off']}px"
+        )

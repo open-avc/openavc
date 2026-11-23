@@ -122,11 +122,12 @@ function sizeInRem(node, size) {
  * Draw the icon a control names beside its words, from the words already on
  * it: on the side it names (`left` unless it says otherwise), above or below
  * them, or alone in the middle (`center`). The style's icon settings win over
- * the control's own. A control with no icon is left as it is.
+ * the control's own. A control that names no icon shows its words alone, so
+ * an icon a look's last state drew is taken away (`dropIcon`).
  */
 export function drawIcon(el, element) {
     const icon = element.style?.icon || element.icon;
-    if (!namesIcon(icon)) return;
+    if (!namesIcon(icon)) return dropIcon(el);
     const { position, size, color } = iconSettings(element);
 
     // The picture layer is a child of its own and goes back first; the words
@@ -146,6 +147,21 @@ export function drawIcon(el, element) {
     textSpan.className = LABEL_SPAN;
     textSpan.textContent = words;
     placeBeside(el, iconEl, textSpan, position);
+}
+
+/**
+ * Take a control's icon layout back to plain words: the icon goes, the words
+ * in its span stay as text, and a picture layer stays where it is. A control
+ * drawn without an icon has nothing to take back.
+ */
+function dropIcon(el) {
+    const icons = Array.from(el.children).filter((n) => n.localName === 'svg' || n.localName === 'img');
+    const span = labelSpan(el);
+    if (!icons.length && !span) return;
+    icons.forEach((n) => n.remove());
+    if (span) span.replaceWith(document.createTextNode(span.textContent));
+    el.style.flexDirection = '';
+    el.style.gap = '';
 }
 
 /** Where an icon goes, how big, and its colour. */

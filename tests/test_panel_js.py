@@ -516,6 +516,8 @@ SCENARIOS = [
     "a_null_state_label_draws_no_words",
     # An icon that is not text draws no icon, and the page still draws.
     "an_icon_that_is_not_text_draws_no_icon",
+    # A look state with no icon takes the last state's icon away.
+    "a_state_with_no_icon_takes_the_last_states_icon_away",
 ]
 
 
