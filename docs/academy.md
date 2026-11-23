@@ -12,6 +12,8 @@
 
 **Basic Scripting** introduces Python project scripts through a zone-level controller. Calculate different targets from one request, apply per-zone limits, combine reported readings and diagnose failed requests. The lessons explain Python as you use it, with a community driver and the built-in Simulator. Complete seven practical checkpoints and all eight scenarios in the retryable knowledge check to earn a certificate of completion. No previous Python experience is required.
 
+**OpenAVC Cloud** teaches you to operate and support systems remotely, whether you manage your organization's spaces or support customers. OpenAVC runs your control system locally; Cloud is an optional addition. Pair a supplied practice system, investigate status, respond to help requests and alerts, back up and recover a project, manage team access, and plan deployments and updates. Complete seven practical checkpoints and pass the eight-question knowledge check at 80% or better to earn a certificate of completion. Retries are unlimited.
+
 [How certification works](https://academy.openavc.com/mod/page/view.php?id=87) has the pass marks, attempt limits and what the certificate shows.
 
 ## Which one first
@@ -20,8 +22,9 @@
 - Already built [your first space](tutorial-first-space.md) from this site: go straight to Associate. Foundations is short, and it fills in what the tutorial skips, so it is worth a look when you have an hour.
 - Comfortable adding devices in the Programmer and ready to author drivers: take Drivers.
 - Comfortable opening projects, adding devices and using the Simulator: take Basic Scripting to add calculations and combined feedback to your projects. Many common control jobs can still use macros without scripting.
+- Ready to manage or support systems through Cloud: take OpenAVC Cloud. Familiarity with the Foundations installation, import and simulation steps is enough; programming experience and Associate completion are not required. Use your own practice installation and Cloud account.
 
-Advanced Scripting and Cloud do not yet have courses. The [Scripting Guide](scripting-guide.md) and [classroom tutorial](tutorial-classroom.md) provide further scripting examples; [Creating Drivers](creating-drivers.md) is the driver-authoring reference.
+Advanced Scripting does not yet have a course. The [Scripting Guide](scripting-guide.md) and [classroom tutorial](tutorial-classroom.md) provide further scripting examples; [Creating Drivers](creating-drivers.md) is the driver-authoring reference.
 
 ## What you need
 
