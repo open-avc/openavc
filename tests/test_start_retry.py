@@ -328,6 +328,20 @@ def test_start_again_from_a_page_that_is_not_openavc_s_is_refused(door):
     door.started.assert_not_awaited()
 
 
+def test_start_again_while_an_update_is_being_installed_says_so(door):
+    sentence = "An update to v9.9.9 is being installed. OpenAVC restarts by itself when it is done."
+    record = _failed()
+    engine = _engine()
+    engine.update_manager = SimpleNamespace(restart_refusal=lambda: sentence)
+    restart.accept_restarts(engine, record)
+
+    reply = _client(record).post(START_AGAIN_PATH, headers={START_AGAIN_HEADER: "1"})
+
+    assert reply.status_code == 409
+    assert reply.json() == {"detail": sentence}
+    door.started.assert_not_awaited()
+
+
 def test_start_again_pressed_twice_is_one_restart(door):
     client = _client(door.arm(_failed()))
     assert client.post(START_AGAIN_PATH, headers={START_AGAIN_HEADER: "1"}).status_code == 202

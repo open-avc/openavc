@@ -190,6 +190,18 @@ describe("RestartProgressDialog waits on what the server says", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("says an update is being installed, and waits for nothing", async () => {
+    vi.mocked(api.restartSystem).mockRejectedValueOnce(
+      new ApiError(503, JSON.stringify({
+        detail: "An update to v9.9.9 is being installed. OpenAVC restarts by itself when it is done.",
+      })),
+    );
+    open();
+    await runFor(5000);
+    expect(screen.getByText(/An update to v9.9.9 is being installed/)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("waits through a restart already under way", async () => {
     vi.mocked(api.restartSystem).mockRejectedValueOnce(
       new ApiError(409, JSON.stringify({ detail: "A restart is already under way." })),

@@ -529,6 +529,12 @@ class CommandHandler:
                 rollback=payload["rollback"],
             )
         else:
+            # Refused before the check: a check that finds nothing would
+            # answer "up to date" while an update is being installed.
+            busy = self._update_manager.busy_refusal()
+            if busy:
+                await self._send_apply_result(request_id, busy)
+                return
             check_result = await self._update_manager.check_for_updates()
             if not check_result.get("update_available"):
                 await self._send_result(request_id, True, result="System is already up to date.")

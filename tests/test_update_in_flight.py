@@ -271,6 +271,41 @@ async def test_a_restart_while_a_rollback_backs_up_is_refused(door, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_a_failed_update_whose_history_cannot_be_written_still_ends_its_run(door, tmp_path):
+    mgr = _manager(tmp_path, LINUX)
+    mgr._download_update = AsyncMock(side_effect=OSError("connection reset"))
+    mgr._add_history_entry = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("disk"))
+    door.engine.update_manager = mgr
+
+    with pytest.raises(RuntimeError):
+        await _update(mgr)
+
+    assert not mgr.update_in_progress
+    assert restart.request_exit("graceful", "api").accepted
+    await _the_exit()
+
+
+@pytest.mark.asyncio
+async def test_the_cloud_sending_an_update_with_no_address_while_one_runs_is_refused(door, tmp_path):
+    """Refused before the check, which could otherwise answer "up to date"."""
+    mgr = _manager(tmp_path, LINUX)
+    downloading, go = _hold_the_download(mgr, tmp_path)
+    updating = asyncio.create_task(_update(mgr))
+    await downloading.wait()
+    mgr._checker.check = AsyncMock(return_value=None)
+    agent, handler = _handler(mgr)
+
+    await _send(handler, _software_update("9.10.0", url=""))
+
+    [(_type, result)] = agent.sent
+    assert (result["success"], result["error"]) == (False, f"{INSTALLING} {TRY_AGAIN}")
+    mgr._checker.check.assert_not_awaited()
+    go.set()
+    assert (await updating)["success"] is True
+    await _the_exit()
+
+
+@pytest.mark.asyncio
 async def test_a_restart_after_an_update_failed_is_accepted(door, tmp_path):
     mgr = _manager(tmp_path, LINUX)
     mgr._download_update = AsyncMock(side_effect=OSError("connection reset"))

@@ -436,6 +436,7 @@ async def test_command_handler_falls_back_to_github():
     events = MockEventBus()
     devices = MockDeviceManager()
     update_manager = AsyncMock()
+    update_manager.busy_refusal = MagicMock(return_value=None)
     update_manager.check_for_updates = AsyncMock(return_value={"update_available": True})
     update_manager.apply_update = AsyncMock(return_value={
         "success": True,
@@ -472,6 +473,7 @@ async def test_command_handler_no_url_no_update_available():
     events = MockEventBus()
     devices = MockDeviceManager()
     update_manager = AsyncMock()
+    update_manager.busy_refusal = MagicMock(return_value=None)
     update_manager.check_for_updates = AsyncMock(return_value={"update_available": False})
 
     handler = CommandHandler(agent, devices, events, update_manager=update_manager)
@@ -604,6 +606,7 @@ async def test_a_refused_update_answers_with_the_updaters_instructions(update_ur
         "instructions": "Update this install with its own package manager.",
     }
     update_manager = AsyncMock()
+    update_manager.busy_refusal = MagicMock(return_value=None)
     update_manager.apply_cloud_update = AsyncMock(return_value=refusal)
     update_manager.check_for_updates = AsyncMock(return_value={"update_available": True})
     update_manager.apply_update = AsyncMock(return_value=refusal)

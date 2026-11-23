@@ -580,7 +580,8 @@ def test_a_restart_while_an_update_is_being_installed_is_refused(client, exits):
     sentence = "An update to v9.9.9 is being installed. OpenAVC restarts by itself when it is done."
     engine.update_manager = SimpleNamespace(restart_refusal=lambda: sentence)
     resp = c.post("/api/system/restart")
-    assert resp.status_code == 409
+    # Not 409, which the Programmer reads as a restart already on its way.
+    assert resp.status_code == 503
     assert resp.json()["detail"] == sentence
     assert exits == []
 

@@ -1019,6 +1019,8 @@ class UpdateManager:
         failure in history, and surfaces the error in state.
         """
         from openavc.updater.rollback import clear_pending_marker
+        # First, so the run is never left in flight by a step below.
+        self.run_record.fail(error_msg)
         try:
             clear_pending_marker(self._data_dir)
         except OSError:
@@ -1027,7 +1029,6 @@ class UpdateManager:
         self._set_state("system.update_status", "error")
         self._set_state("system.update_error", error_msg)
         self._add_history_entry(__version__, to_version, "failed", error_msg)
-        self.run_record.fail(error_msg)
 
     def _end_process(self, source: str, last=None) -> None:
         """End the process for the update or rollback just applied, through
@@ -1144,9 +1145,9 @@ class UpdateManager:
         return {"success": True, "message": "Rollback initiated, server will restart"}
 
     def _rollback_failed(self, error: str) -> None:
+        self.run_record.fail(error)
         self._set_state("system.update_status", "error")
         self._set_state("system.update_error", error)
-        self.run_record.fail(error)
 
     def get_status(self) -> dict[str, Any]:
         """Get current update status."""

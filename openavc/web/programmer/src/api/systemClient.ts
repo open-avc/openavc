@@ -508,7 +508,8 @@ export interface RestartResult {
  *
  *  The server answers, then begins its stop 2 s later (graceful) or at once
  *  (hard). It refuses an unknown mode (400), a restart while one is already
- *  under way (409) and one before it is up (503). Service managers (NSSM /
+ *  under way (409), and one before it is up or while an update is being
+ *  installed (503, its sentence shown). Service managers (NSSM /
  *  systemd / Docker) bring the process back; dev mode spawns a detached
  *  replacement. The restart dialog then asks the server's status where it
  *  comes back (components/shared/restartWait.ts). */
