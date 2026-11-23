@@ -158,6 +158,20 @@ def test_the_validator_announces_the_simulators_own_start_value(tmp_path, var_de
     ]
 
 
+def test_an_unreadable_min_is_announced_as_zero_and_named_once(tmp_path, caplog):
+    """A min written as text is refused by the contract's check, which the
+    command line runs first; the validator then announces the simulator's 0,
+    and the seed rule names the min once."""
+    from openavc.simulator.validate import validate_yaml_driver
+
+    caplog.set_level("WARNING")
+    result = validate_yaml_driver(_yaml_driver(tmp_path, "{type: integer, label: Gain, min: low}"))
+    coverage = [i.message for i in result.issues if i.check == "state_coverage"]
+    assert coverage == ["'gain' will use auto-gen default 0. Add to simulator.initial_state to override."]
+    named = [r.getMessage() for r in caplog.records if "non-numeric 'min'" in r.getMessage()]
+    assert named == ["state variable declares a non-numeric 'min' 'low'; defaulting to 0"]
+
+
 @pytest.mark.parametrize("declared, tag", [
     ("float", "f"), ("number", "f"), ("integer", "i"), ("boolean", "i"), ("string", "s"),
     # A reply mapping's type the strict check refuses still loads; it goes
