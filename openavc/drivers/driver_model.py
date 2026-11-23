@@ -173,26 +173,26 @@ def read_driver(definition: Mapping[str, Any], kind: str = YAML) -> DriverModel:
     if kind == PYTHON:
         return DriverModel(PYTHON, definition, None, ())
     queries = tuple(_query_lines(definition))
-    problems = tuple(
+    return DriverModel(YAML, definition, WireModel(queries), _problems(definition, queries))
+
+
+def _problems(definition: Mapping[str, Any], queries: tuple[QueryLine, ...]) -> tuple[ModelProblem, ...]:
+    """What the author's doors refuse, in the order they are said: the query
+    entries', then each leaf's, each a ``(place, words)`` under its code."""
+    found = [
         ModelProblem(line.place, line.entry.problem.code, line.entry.problem.words)
         for line in queries if line.entry.problem is not None
-    ) + tuple(
-        ModelProblem(place, FRAME_FIELD, words)
-        for place, words in push_frame_field_issues(definition)
-    ) + tuple(
-        ModelProblem(place, TIMEOUT_NOT_POSITIVE, words)
-        for place, words in auth_problems(definition.get("auth"))
-    ) + tuple(
-        ModelProblem(place, FORM_LEFT_EMPTY, words)
-        for place, words in left_empty_forms(definition.get("commands"))
-    ) + tuple(
-        ModelProblem(place, PLACEHOLDER_NAME, _PLACEHOLDER_NAME_WORDS)
-        for place in _unfillable_names(definition)
-    ) + tuple(
-        ModelProblem(place, NOT_TEXT, words)
-        for place, words in reply_map_problems(definition)
+    ]
+    sources = (
+        (FRAME_FIELD, push_frame_field_issues(definition)),
+        (TIMEOUT_NOT_POSITIVE, auth_problems(definition.get("auth"))),
+        (FORM_LEFT_EMPTY, left_empty_forms(definition.get("commands"))),
+        (PLACEHOLDER_NAME, ((place, _PLACEHOLDER_NAME_WORDS) for place in _unfillable_names(definition))),
+        (NOT_TEXT, reply_map_problems(definition)),
     )
-    return DriverModel(YAML, definition, WireModel(queries), problems)
+    for code, issues in sources:
+        found += [ModelProblem(place, code, words) for place, words in issues]
+    return tuple(found)
 
 
 def query_lines(

@@ -64,18 +64,31 @@ def _value_specs(
 ) -> Iterator[tuple[str, Any, Mapping[str, Any], Any]]:
     """Each value spec a rule writes through: its map's place, the spec, the
     variables it is typed by and the name it writes."""
-    mappings = rule.get("mappings")
-    for j, mapping in enumerate(mappings if isinstance(mappings, list) else ()):
-        if isinstance(mapping, Mapping):
-            yield f"{place}.mappings[{j}].map", mapping, state_vars, mapping.get("state")
+    yield from _mapping_specs(place, rule.get("mappings"), state_vars)
     if rule.get("json"):
         # A text rule's set: takes no map (refused as such where it is checked).
-        for name, spec in _mapping(rule.get("set")).items():
-            yield f"{place}.set.{name}.map", spec, state_vars, name
+        yield from _named_specs(f"{place}.set", rule.get("set"), state_vars)
     for where, entry in _child_entries(place, rule):
         variables = {**CHILD_RESERVED_PROP_SCHEMA, **_child_variables(child_types, entry.get("type"))}
-        for prop, spec in _mapping(entry.get("state")).items():
-            yield f"{where}.state.{prop}.map", spec, variables, prop
+        yield from _named_specs(f"{where}.state", entry.get("state"), variables)
+
+
+def _mapping_specs(
+    place: str, mappings: Any, state_vars: Mapping[str, Any],
+) -> Iterator[tuple[str, Any, Mapping[str, Any], Any]]:
+    """A ``mappings:`` list's entries, each naming the variable it writes."""
+    listed = enumerate(mappings) if isinstance(mappings, list) else ()
+    for j, mapping in listed:
+        name = mapping.get("state") if isinstance(mapping, Mapping) else None
+        yield f"{place}.mappings[{j}].map", mapping, state_vars, name
+
+
+def _named_specs(
+    place: str, specs: Any, variables: Mapping[str, Any],
+) -> Iterator[tuple[str, Any, Mapping[str, Any], Any]]:
+    """A ``set:`` or a child's ``state:``: each value spec under the name it writes."""
+    for name, spec in _mapping(specs).items():
+        yield f"{place}.{name}.map", spec, variables, name
 
 
 def _child_entries(place: str, rule: Mapping[str, Any]) -> Iterator[tuple[str, Mapping[str, Any]]]:
@@ -104,12 +117,24 @@ def _map_problems(place: str, spec: Any, declared: Any) -> Iterator[tuple[str, s
     value_map = spec.get("map") if isinstance(spec, Mapping) else None
     if not isinstance(value_map, Mapping):
         return
-    holds_text = (spec.get("type") or declared or _UNTYPED) in _TEXT_TYPES
+    holds_text = _holds_text(spec, declared)
     for key, value in value_map.items():
-        if not isinstance(key, str):
-            yield place, f"key '{key}' is not text. {NOT_TEXT}"
-        if holds_text and value is not None and not isinstance(value, str):
-            yield place, f"value '{value}' for '{key}' is not text. {NOT_TEXT}"
+        yield from ((place, words) for words in _entry_words(key, value, holds_text))
+
+
+def _holds_text(spec: Mapping[str, Any], declared: Any) -> bool:
+    """Whether what a spec writes is text: its own type, else its variable's."""
+    return (spec.get("type") or declared or _UNTYPED) in _TEXT_TYPES
+
+
+def _entry_words(key: Any, value: Any, holds_text: bool) -> list[str]:
+    """What one map entry says: its key when YAML did not read it as text,
+    then its value when that holds text and YAML read a boolean or number
+    (null writes no value)."""
+    words = [] if isinstance(key, str) else [f"key '{key}' is not text. {NOT_TEXT}"]
+    if holds_text and not isinstance(value, (str, type(None))):
+        words.append(f"value '{value}' for '{key}' is not text. {NOT_TEXT}")
+    return words
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

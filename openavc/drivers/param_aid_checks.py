@@ -135,12 +135,15 @@ def _map_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> list[s
     if not isinstance(value_map, dict) or not value_map:
         return [f"{at}: map must be a non-empty mapping of value -> wire value"]
     wrong = [(k, v) for k, v in value_map.items() if not (_is_wire_scalar(k) and _is_wire_scalar(v))]
-    if not wrong:
-        return []
-    key, word = wrong[0]
+    return [_wrong_pair_words(at, *wrong[0])] if wrong else []
+
+
+def _wrong_pair_words(at: str, key: Any, word: Any) -> str:
+    """What a map pair that is not two scalars says: a word YAML read as a
+    boolean is to be quoted; anything else is no pair at all."""
     if isinstance(word, bool) and _is_wire_scalar(key):
-        return [f"{at}: map word for '{key}' is not text. {NOT_TEXT}"]
-    return [f"{at}: map entries must be scalar value -> wire value pairs"]
+        return f"{at}: map word for '{key}' is not text. {NOT_TEXT}"
+    return f"{at}: map entries must be scalar value -> wire value pairs"
 
 
 def _is_wire_scalar(value: Any) -> bool:

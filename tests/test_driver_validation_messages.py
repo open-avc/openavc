@@ -1236,6 +1236,17 @@ def _modules_an_author_check_loads() -> list[Path]:
     return loaded
 
 
+def _dashed_prose(node: Any) -> bool:
+    """A string literal with an em dash in it. A dash alone is no punctuation
+    in a sentence: it is the glyph a monitor shows for no reading
+    (core/monitors, which the map lookup every value map asks reads numbers
+    through)."""
+    import ast
+
+    text = node.value if isinstance(node, ast.Constant) else None
+    return isinstance(text, str) and "\u2014" in text and text.strip() != "\u2014"
+
+
 def test_every_message_an_author_check_can_show_reads_plainly():
     """The corpus reaches only some rules, so read every string the modules
     behind the author's checks build: any literal that is not a docstring is
@@ -1260,17 +1271,10 @@ def test_every_message_an_author_check_can_show_reads_plainly():
             and isinstance(node.body[0], ast.Expr)
             and isinstance(node.body[0].value, ast.Constant)
         }
-        # A dash alone is no punctuation in a sentence: it is the glyph a
-        # monitor shows for no reading (core/monitors, which the map lookup
-        # every value map asks reads numbers through).
         dashed += [
             f"{path.relative_to(_ROOT).as_posix()}:{node.lineno}: {node.value!r}"
             for node in ast.walk(tree)
-            if isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and "\u2014" in node.value
-            and node.value.strip() != "\u2014"
-            and id(node) not in docstrings
+            if _dashed_prose(node) and id(node) not in docstrings
         ]
     assert dashed == []
 
