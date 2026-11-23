@@ -279,9 +279,11 @@ class _DeviceProxy:
 
     def __init__(self):
         self._manager: DeviceManager | None = None
+        # The running project: what names a device that no driver runs.
+        self._project_provider: Callable[[], Any] | None = None
 
-    def _bind(self, manager: DeviceManager) -> None:
-        self._manager = manager
+    def _bind(self, manager: DeviceManager, project_provider: Callable | None = None) -> None:
+        self._manager, self._project_provider = manager, project_provider
 
     @_leashed_async
     async def send(
@@ -299,9 +301,10 @@ class _DeviceProxy:
             # Deferred, as every core door into the API's wording is.
             from openavc.api.error_messages import script_command_error
 
+            provider = self._project_provider
             worded = script_command_error(
                 exc, device_id, command, state=manager.state,
-                driver=manager.get_driver(device_id),
+                project=provider() if provider else None, driver=manager.get_driver(device_id),
             )
             if worded is exc:
                 raise
@@ -873,9 +876,10 @@ def configure(
     event_bus: EventBus,
     macro_engine: MacroEngine | None = None,
     isc_manager: Any = None,
+    project_provider: Callable | None = None,
 ) -> None:
     """Wire proxy objects to real subsystem instances. Called by ScriptEngine."""
-    devices._bind(device_manager)
+    devices._bind(device_manager, project_provider)
     state._bind(state_store)
     events._bind(event_bus)
     if macro_engine is not None:

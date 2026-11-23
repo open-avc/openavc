@@ -29,7 +29,6 @@ from openavc.core import script_api
 from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
-from openavc.core.script_engine import ScriptEngine
 from openavc.drivers.base import BaseDriver, CommandParamError, CommandRefusedError, UnknownCommandError
 from openavc.drivers.udp_side import WakeAddressError
 
@@ -108,7 +107,12 @@ async def engine(tmp_path):
     path.write_text(json.dumps({
         "openavc_version": "0.13.0",
         "project": {"id": "test", "name": "Test"},
-        "devices": [{"id": "acme1", "name": "Lobby Widget", "driver": "acme_widget"}],
+        "devices": [
+            {"id": "acme1", "name": "Lobby Widget", "driver": "acme_widget"},
+            # In the project with no driver running it (disabled, or waiting
+            # for its driver): the manager does not have it.
+            {"id": "acme2", "name": "Hall Widget", "driver": "acme_widget"},
+        ],
         "ui": {"pages": [{"id": "main", "name": "Main", "elements": [
             {"id": "flash_script", "type": "button", "bindings": {"do": {"press": [
                 {"action": "script.call", "function": "flash"},
@@ -121,6 +125,12 @@ async def engine(tmp_path):
             ]}}},
             {"id": "typo_script", "type": "button", "bindings": {"do": {"press": [
                 {"action": "script.call", "function": "flash_typo"},
+            ]}}},
+            {"id": "hall", "type": "button", "bindings": {"do": {"press": [
+                {"action": "device.command", "device": "acme2", "command": "flash_led"},
+            ]}}},
+            {"id": "hall_script", "type": "button", "bindings": {"do": {"press": [
+                {"action": "script.call", "function": "flash_hall"},
             ]}}},
         ]}]},
     }))
@@ -142,13 +152,16 @@ async def engine(tmp_path):
 
         async def flash_typo():
             await devices.send("acme1", "flsh_led")
+
+        async def flash_hall():
+            await devices.send("acme2", "flash_led")
     """))
     result = Engine(str(path))
     result.project = load_project(path)
-    se = ScriptEngine(result.state, result.events, result.devices, tmp_path)
-    se.install()
-    se.load_scripts([{"id": "room", "file": "room.py", "enabled": True}])
-    result.scripts = se
+    # The engine's own wiring, so what the script door is handed is what a
+    # running system hands it.
+    result._make_script_engine()
+    result.scripts.load_scripts([{"id": "room", "file": "room.py", "enabled": True}])
     driver = _AcmeDriver("acme1", {}, result.state, result.events)
     await driver.connect()
     result.devices._devices["acme1"] = driver
@@ -320,3 +333,12 @@ async def test_a_script_button_tells_the_room_what_a_direct_button_does(engine):
     called = await engine.handle_ui_event("press", "typo_script")
     assert called[0]["error"] == pressed[0]["error"]
     assert called[0]["error"] == "Command 'flsh_led' not found on device 'acme1'"
+
+
+async def test_a_script_button_names_a_device_with_no_driver_running_as_a_direct_one_does(engine):
+    """A device in the project that no driver runs is named from the project
+    by a button that sends to it, and by one whose script does."""
+    pressed = await engine.handle_ui_event("press", "hall")
+    called = await engine.handle_ui_event("press", "hall_script")
+    assert pressed[0]["error"] == "Hall Widget is unavailable. Contact support."
+    assert called[0]["error"] == pressed[0]["error"]

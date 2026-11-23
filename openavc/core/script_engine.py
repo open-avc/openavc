@@ -205,11 +205,15 @@ class ScriptEngine:
         devices: DeviceManager,
         project_dir: Path,
         macro_engine: MacroEngine | None = None,
+        *,
+        project_provider: Callable[[], Any] | None = None,
     ):
         self.state = state
         self.events = events
         self.devices = devices
         self.macro_engine = macro_engine
+        # The running project, handed on to the script API (``configure``).
+        self.project_provider = project_provider
         self.project_dir = project_dir
         self.scripts_dir = project_dir / "scripts"
 
@@ -234,7 +238,10 @@ class ScriptEngine:
         the proxies to live objects, which is what makes them usable, and
         naming the loop a call from another thread is handed to.
         """
-        script_api.configure(self.devices, self.state, self.events, self.macro_engine)
+        script_api.configure(
+            self.devices, self.state, self.events, self.macro_engine,
+            project_provider=self.project_provider,
+        )
         script_failures.bind(lambda failure: self._record_runtime_error(
             failure.script, failure.handler, failure.event, failure.error,
             failure.traceback,

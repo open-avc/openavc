@@ -580,7 +580,10 @@ class EngineLifecycleMixin:
 
     def _make_script_engine(self) -> None:
         project_dir = self.project_path.parent
-        self.scripts = ScriptEngine(self.state, self.events, self.devices, project_dir, self.macros)
+        self.scripts = ScriptEngine(
+            self.state, self.events, self.devices, project_dir, self.macros,
+            project_provider=lambda: self.project,
+        )
         self.scripts.install()
 
     def _load_scripts_at_start(self) -> None:
