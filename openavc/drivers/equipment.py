@@ -45,6 +45,8 @@ log = get_logger(__name__)
 COMPLETION_WAIT_DEFAULT = 5
 COMPLETION_WAIT_MAX = 600
 _RESULT_POLL_S = 0.1
+# The parameter kinds a value is checked against as a device setting's is.
+_SETTING_CHECKED_KINDS = (*NUMERIC_TYPES, "boolean", "enum")
 # A reply body that is not JSON, told apart from a JSON ``null``.
 _UNREADABLE = object()
 
@@ -560,7 +562,7 @@ class EquipmentDriver(BaseDriver):
                 value = coerce_child_local_id(child, value)
                 if value is None:
                     raise ValueError(f"'{command}': '{key}' is not a valid channel ID")
-            elif kind in NUMERIC_TYPES or kind in ("boolean", "enum"):
+            elif kind in _SETTING_CHECKED_KINDS:
                 value = validate_device_setting_value(key, rule, value)
                 if kind == "enum":
                     choices = [item.get("value") if isinstance(item, dict) else item

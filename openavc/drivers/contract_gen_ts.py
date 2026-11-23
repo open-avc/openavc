@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import textwrap
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from openavc.drivers import serial_line, spec, ts_type_check
 
@@ -735,21 +735,29 @@ def _column_ts(values: list[Any]) -> str:
     return " | ".join(kinds)
 
 
-def traits_table(
-    table: dict[str, Any], interface: str, name: str, row_doc: str, table_doc: str,
-) -> str:
+class TraitsTable(NamedTuple):
+    """A spec table of NamedTuple rows and how its TypeScript is named."""
+
+    table: dict[str, Any]
+    interface: str
+    name: str
+    row_doc: str
+    table_doc: str
+
+
+def traits_table(spec_table: TraitsTable) -> str:
     """A spec table of NamedTuple rows as an interface (one member per column,
     typed by what its cells hold) and a constant with one row per key."""
-    rows = list(table.values())
+    rows = list(spec_table.table.values())
     columns = type(rows[0])._fields
-    out = _doc_block(row_doc, "")
-    out += f"export interface {interface} {{\n"
+    out = _doc_block(spec_table.row_doc, "")
+    out += f"export interface {spec_table.interface} {{\n"
     for column in columns:
         out += f"  readonly {column}: {_column_ts([getattr(row, column) for row in rows])};\n"
     out += "}\n\n"
-    out += _doc_block(table_doc, "")
-    out += f"export const {name}: Readonly<Record<string, {interface}>> = {{\n"
-    for key, row in table.items():
+    out += _doc_block(spec_table.table_doc, "")
+    out += f"export const {spec_table.name}: Readonly<Record<string, {spec_table.interface}>> = {{\n"
+    for key, row in spec_table.table.items():
         cells = ", ".join(f"{column}: {_ts_value(getattr(row, column))}" for column in columns)
         out += f"  {key}: {{ {cells} }},\n"
     out += "};\n"
@@ -759,20 +767,20 @@ def traits_table(
 def _transport_traits() -> str:
     """Emit THE transport table (spec.TRANSPORT_TRAITS), one row per
     transport and one column per question, for transportTraits.ts."""
-    return traits_table(
+    return traits_table(TraitsTable(
         spec.TRANSPORT_TRAITS, "TransportTraits", "TRANSPORT_TRAITS",
         "What one transport is and can do: a row of TRANSPORT_TRAITS "
         "(drivers/spec.py TransportTraits, where each column is explained).",
         "What each transport is and can do, one row per transport "
         "(drivers/spec.py TRANSPORT_TRAITS). Ask a column through "
         "transportTraits.ts rather than listing transports by hand.",
-    )
+    ))
 
 
 def value_type_traits_ts(accessor: str) -> str:
     """Emit THE value type table (spec.VALUE_TYPE_TRAITS), one row per value
     type, for the accessor module named."""
-    return traits_table(
+    return traits_table(TraitsTable(
         spec.VALUE_TYPE_TRAITS, "ValueTypeTraits", "VALUE_TYPE_TRAITS",
         "What one value type is and how each reader treats it: a row of "
         "VALUE_TYPE_TRAITS (drivers/spec.py ValueTypeTraits, where each column "
@@ -781,7 +789,7 @@ def value_type_traits_ts(accessor: str) -> str:
         "a device setting is, one row per type (drivers/spec.py "
         f"VALUE_TYPE_TRAITS). Ask a column through {accessor} rather than "
         "listing types by hand.",
-    )
+    ))
 
 
 def _send_forms() -> str:

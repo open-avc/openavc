@@ -16,7 +16,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from openavc.drivers.spec import transport_traits, value_type_traits
+from openavc.drivers.spec import ValueTypeTraits, transport_traits, value_type_traits
 
 
 def main():
@@ -481,6 +481,14 @@ _REALISTIC_BY_NAME: dict[str, str] = {
 }
 
 
+def _declared_traits(var_name: str, var_type: object) -> ValueTypeTraits:
+    """The value type table's row for a variable, or a refusal naming it."""
+    try:
+        return value_type_traits(var_type)
+    except ValueError as refused:
+        raise ValueError(f"state variable {var_name!r}: {refused}") from None
+
+
 def _initial_value_for(var_name: str, var_def: dict) -> str:
     """Pick a plausible starting value for a declared state variable.
 
@@ -492,10 +500,7 @@ def _initial_value_for(var_name: str, var_def: dict) -> str:
     then tells you not to use.
     """
     var_type = var_def.get("type", "string")
-    try:
-        traits = value_type_traits(var_type)
-    except ValueError as refused:
-        raise ValueError(f"state variable {var_name!r}: {refused}") from None
+    traits = _declared_traits(var_name, var_type)
 
     if var_type == "enum":
         values = var_def.get("values")
