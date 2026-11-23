@@ -9,14 +9,15 @@ Every device carries:
   during the scan. This is the audit trail behind the UI's "Why?"
   reveal and the data plumbing for future catalog-growth telemetry.
 - ``identified_by``: the driver it was identified as, named as the engine
-  read it when it matched (``DiscoveryEngine._identify``).
+  read it when it matched (``DiscoveryEngine.identify``).
 
-THE rule for what a scanned device is called is ``scanned_device_name``:
-the heading of its Discovery card, the name its sort reads and the name
-it is added to the project with (``api/discovery._discovered_device_name``).
-Every record carries it as ``name``, with the identifying driver's maker
-where the scan read none, so the REST results, the live feed and the
-assistant's results all say the same.
+THE rule for what a found device is identified as and called is
+``identity_of``: its name (the heading of its Discovery card, the name its
+sort reads, the name it is added to the project with), the maker, model and
+category shown for it. Every record carries it (``to_dict``), so the REST
+results, the live feed, the export, the assistant's results and the Device
+Audit's network check all say the same; the add asks it for the name
+(``api/discovery._discovered_device_name``).
 """
 
 from __future__ import annotations
@@ -138,7 +139,7 @@ class IdentificationMatch:
     that said what the device is was a ``cross_vendor`` one, a protocol
     many makers' equipment speaks, whichever driver leads (one an
     enrichment signal put ahead of it included). It names the device
-    (``scanned_device_name``) and is not sent itself.
+    (``identity_of``) and is not sent itself.
 
     ``evidence`` is the part of the device's log that fed this result:
     the fingerprint records that matched for ``identified``, the best
@@ -247,25 +248,53 @@ def _maker_and_model(manufacturer: str | None, model: str) -> str:
     return model
 
 
-def scanned_device_name(device: "DiscoveredDevice", driver_name: str | None = None) -> str:
-    """What a scanned device is called: its card's heading, the name its sort
-    reads, and the name it is added to the project with.
+@dataclass(frozen=True)
+class DeviceIdentity:
+    """What a found device is called and shown as: ``name`` (its card's
+    heading, the name its sort reads and the name it is added with), the
+    ``manufacturer``, ``model`` and ``category`` shown for it."""
 
-    A device identified as a driver is called by the driver's name, which
-    stays put while the model string a scan reads can change from one scan
-    to the next. One identified only through a fingerprint many makers share
-    keeps the maker and model it reported, the driver's name taking over
-    only when it reported no model. A device nobody identified is called by
-    its maker and model, else ``driver_name`` (the driver it is being added
-    with), else the name it gave itself (a factory default is common there,
-    so it comes late), else its maker.
+    name: str
+    manufacturer: str | None
+    model: str | None
+    category: str | None
+
+
+def identity_of(device: "DiscoveredDevice", adding_with: str | None = None) -> DeviceIdentity:
+    """What ``device`` is called and shown as, from what the scan read and
+    the driver its match identified it as (``identified_by``).
+
+    The name: a device identified as a driver is called by the driver's name,
+    which stays put while the model string a scan reads can change from one
+    scan to the next. One identified only through a fingerprint many makers
+    share keeps the maker and model it reported, the driver's name taking
+    over only when it reported no model. A device nobody identified is called
+    by its maker and model, else ``adding_with`` (the name of the driver it
+    is being added with), else the name it gave itself (a factory default is
+    common there, so it comes late), else its maker.
+
+    The maker is the one the scan read, else the identifying driver's, unless
+    that driver was identified through a fingerprint many makers share (its
+    maker is a protocol's, "Generic" and the like). The model and category
+    are as the scan holds them.
     """
+    by = device.identified_by
+    return DeviceIdentity(
+        name=_name_of(device, adding_with),
+        manufacturer=device.manufacturer or (by.maker() if by is not None else None),
+        model=device.model,
+        category=device.category,
+    )
+
+
+def _name_of(device: "DiscoveredDevice", adding_with: str | None) -> str:
+    """``identity_of``'s name."""
     by = device.identified_by
     if by is not None and not by.cross_vendor:
         return by.name
     if device.model:
         return _maker_and_model(device.manufacturer, device.model)
-    named = by.name if by is not None else driver_name
+    named = by.name if by is not None else adding_with
     return named or _self_named(device)
 
 
@@ -326,25 +355,18 @@ class DiscoveredDevice:
     # check reached it.
     port_probes: dict[int, dict[str, Any]] = field(default_factory=dict)
 
-    def shown_manufacturer(self) -> str | None:
-        """The maker the scan read, else the identifying driver's, unless
-        that driver was identified through a fingerprint many makers share
-        (its maker is a protocol's, "Generic" and the like)."""
-        by = self.identified_by
-        return self.manufacturer or (by.maker() if by is not None else None)
-
     def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON API response. ``name`` is what the device is
-        called (``scanned_device_name``) and ``manufacturer`` the maker
-        shown for it (``shown_manufacturer``); ``model`` is as the scan
-        read it."""
+        """Serialize for JSON API response. ``name``, ``manufacturer``,
+        ``model`` and ``category`` are the device's identity
+        (``identity_of``)."""
+        identity = identity_of(self)
         return {
             "ip": self.ip,
-            "name": scanned_device_name(self),
+            "name": identity.name,
             "mac": self.mac,
             "hostname": self.hostname,
-            "manufacturer": self.shown_manufacturer(),
-            "model": self.model,
+            "manufacturer": identity.manufacturer,
+            "model": identity.model,
             "device_name": self.device_name,
             "firmware": self.firmware,
             "serial_number": self.serial_number,
@@ -354,7 +376,7 @@ class DiscoveredDevice:
             "mdns_services": self.mdns_services,
             "ssdp_info": self.ssdp_info,
             "snmp_info": self.snmp_info,
-            "category": self.category,
+            "category": identity.category,
             "alive": self.alive,
             "identification": (
                 self.identification.to_dict() if self.identification else None

@@ -103,7 +103,7 @@ def driver_profiles(drivers: list[dict[str, Any]]) -> dict[str, DriverProfile]:
 
 class DriverNames:
     """What each driver a scan reads is called, so an identified device is
-    named by the driver that identified it (``result.scanned_device_name``).
+    named by the driver that identified it (``result.identity_of``).
 
     Built from the same copies the signal index is (``driver_copies``): a
     driver only the community catalog lists names a device as an installed

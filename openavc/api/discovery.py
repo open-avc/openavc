@@ -19,7 +19,7 @@ from openavc.core.required_config import (
     required_sentence,
 )
 from openavc.discovery.engine import DiscoveryEngine, ScanBlocked
-from openavc.discovery.result import DiscoveredDevice, scanned_device_name
+from openavc.discovery.result import DiscoveredDevice, identity_of
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
     get_driver_class,
@@ -463,15 +463,15 @@ def _sanitize_add_device_config(config: dict[str, Any]) -> dict[str, Any]:
 
 def _discovered_device_name(discovered: DiscoveredDevice | None, driver_id: str) -> str:
     """The name a device added from a scan gets in the project: the name its
-    card shows (``result.scanned_device_name``), with the driver it is added
-    with standing in where a device nobody identified read no model. With no
-    scan record, the driver's name."""
+    card shows (``result.identity_of``), with the driver it is added with
+    standing in where a device nobody identified read no model. With no scan
+    record, the driver's name."""
     cls = get_driver_class(driver_id)
     driver_name = (getattr(cls, "DRIVER_INFO", {}) or {}).get("name") if cls else None
     named = driver_name.strip() if isinstance(driver_name, str) and driver_name.strip() else None
     if discovered is None:
         return named or driver_id
-    return scanned_device_name(discovered, named or driver_id)
+    return identity_of(discovered, adding_with=named or driver_id).name
 
 
 # The setting a driver keeps a device's MAC address in, by name, the way
@@ -728,19 +728,22 @@ async def export_results() -> str:
     for d in devices:
         ident = d.get("identification") or {}
         state = ident.get("state", "unknown")
-        name = d.get("model") or d.get("device_name") or "Unknown"
-        mfg = d.get("manufacturer") or ""
-        cat = d.get("category") or ""
 
-        lines.append(f"  {d['ip']:<16} {state:>10}  {mfg + ' ' if mfg else ''}{name}")
+        # Headed by what the device is called, with the maker and model shown
+        # for it below, as its card is (``result.identity_of``).
+        lines.append(f"  {d['ip']:<16} {state:>10}  {d['name']}")
 
         details: list[str] = []
+        if d.get("manufacturer"):
+            details.append(f"Manufacturer: {d['manufacturer']}")
+        if d.get("model"):
+            details.append(f"Model: {d['model']}")
         if d.get("mac"):
             details.append(f"MAC: {d['mac']}")
         if d.get("hostname"):
             details.append(f"Hostname: {d['hostname']}")
-        if cat:
-            details.append(f"Category: {cat}")
+        if d.get("category"):
+            details.append(f"Category: {d['category']}")
         if d.get("firmware"):
             details.append(f"Firmware: {d['firmware']}")
         if d.get("serial_number"):

@@ -302,3 +302,114 @@ async def test_the_assistants_results_carry_the_cards_name(restore_discovery_eng
     answer = await SystemToolsMixin._get_discovery_results(MagicMock(), {})
 
     assert [d["name"] for d in answer["devices"]] == ["Acme Media Player"]
+
+
+# --- the export names it as the card does ---
+
+
+async def _exported(discovery: DiscoveryEngine, ip: str) -> list[str]:
+    """The export's lines for the device at ``ip``: its heading line, then
+    its detail lines."""
+    from openavc.api import discovery as discovery_api
+
+    discovery_api.set_discovery_engine(discovery)
+    lines = (await discovery_api.export_results()).splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip().startswith(ip))
+    end = next((i for i in range(start + 1, len(lines)) if not lines[i].startswith("    ")), len(lines))
+    return lines[start:end]
+
+
+async def test_the_export_heads_an_identified_device_by_its_cards_name(restore_discovery_engine):
+    discovery = _engine([_PLAYER])
+    record = _record(discovery, _announcing(_PLAYER_SERVICE, model="ACX200BRD"))
+
+    heading, *details = await _exported(discovery, record["ip"])
+
+    assert heading.endswith("  Acme Media Player")
+    assert "    Manufacturer: Acme" in details
+    assert "    Model: ACX200BRD" in details
+
+
+@pytest.mark.parametrize(
+    ("scanned", "expected"),
+    [
+        ({"manufacturer": "Acme", "model": "WX-100"}, "Acme WX-100"),
+        ({"manufacturer": "Acme", "model": "Acme WX-100"}, "Acme WX-100"),
+        ({"manufacturer": "Acme", "device_name": "Lobby amp"}, "Lobby amp"),
+        ({}, "Unknown Device"),
+    ],
+)
+async def test_the_export_heads_an_unidentified_device_by_its_cards_name(
+    scanned, expected, restore_discovery_engine,
+):
+    discovery = _engine([_PLAYER])
+    record = _record(discovery, DiscoveredDevice(ip="192.0.2.81", **scanned))
+
+    heading, *_ = await _exported(discovery, record["ip"])
+
+    assert record["name"] == expected
+    assert heading.endswith(f"  {expected}")
+
+
+# --- the audit's network check names it as the card does ---
+
+
+def _network_check(discovery: DiscoveryEngine, device_info: dict, *evidence):
+    """A network check whose observations are ``device_info`` and
+    ``evidence``, its verdict reached: the device record it would show."""
+    from openavc.audit.footprint import NetworkCheck
+
+    check = NetworkCheck(discovery, "192.0.2.90", "192.0.2.90", source_ip="")
+    check._build_evidence()
+    device = check.footprint.device
+    for key, value in device_info.items():
+        setattr(device, key, value)
+    device.evidence_log.extend(evidence)
+    check._verdict()
+    return check
+
+
+def test_the_audit_names_an_identified_device_as_its_card_does():
+    discovery = _engine([_PLAYER])
+    scanned = _record(discovery, _announcing(_PLAYER_SERVICE, model="ACX200BRD"))
+
+    check = _network_check(discovery, {"model": "ACX200BRD"}, evidence_mdns(_PLAYER_SERVICE))
+    audited = check.footprint.device.to_dict()
+
+    assert check.footprint.verdict["identification"]["driver_id"] == "acme_player_heading"
+    for key in ("name", "manufacturer", "model", "category"):
+        assert audited[key] == scanned[key], key
+    assert audited["name"] == "Acme Media Player"
+
+
+def test_the_audit_names_a_shared_protocol_device_by_what_it_reported():
+    discovery = _engine([_SHARED])
+
+    check = _network_check(discovery, {"model": "PX-500"}, evidence_mdns(_SHARED_SERVICE))
+    audited = check.footprint.device.to_dict()
+
+    assert audited["name"] == "PX-500"
+    assert audited["manufacturer"] is None
+
+
+async def test_the_audit_report_says_only_what_the_device_reported():
+    """The card shows the identifying driver's maker where the device named
+    none; the report's "What the device reported" never does."""
+    from openavc.audit.report import build_report
+    from openavc.audit.session import AuditManager, AuditOptions, AuditTarget
+
+    discovery = _engine([_PLAYER])
+    check = _network_check(discovery, {"model": "ACX200BRD"}, evidence_mdns(_PLAYER_SERVICE))
+    assert check.footprint.device.to_dict()["manufacturer"] == "Acme"
+    manager = AuditManager(None)
+    session = await manager.start(
+        AuditTarget(address="192.0.2.90", ip="192.0.2.90"), AuditOptions(),
+    )
+    session.footprint = check.footprint
+    try:
+        reported = build_report(session)["device"]["reported"]
+    finally:
+        await manager.shutdown()
+
+    assert reported["manufacturer"] is None
+    assert reported["model"] == "ACX200BRD"

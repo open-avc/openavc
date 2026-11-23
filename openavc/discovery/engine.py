@@ -82,6 +82,7 @@ from openavc.discovery.result import (
     DeviceState,
     DiscoveredDevice,
     Evidence,
+    IdentificationMatch,
     merge_device_info,
 )
 from openavc.discovery import scan_budget as budgeting
@@ -450,7 +451,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         update without a rescan.
         """
         for device in self.results.values():
-            self._identify(device)
+            self.identify(device)
         return self.get_results()
 
     def is_scanning(self) -> bool:
@@ -468,13 +469,17 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self.results.clear()
         self.scan_status = ScanStatus()
 
-    def _identify(self, device: DiscoveredDevice) -> None:
-        """The device's identification from its evidence, the driver it names
-        (which the device's record is named by), and its driver's category
-        when it has none."""
-        device.identification = self.tier_matcher.match(device.evidence_log)
-        device.identified_by = self._driver_names.identifying(device.identification)
+    def identify(self, device: DiscoveredDevice) -> IdentificationMatch:
+        """THE door a found device is identified through: its identification
+        from its evidence, the driver it names (which the device's identity
+        is resolved from, ``result.identity_of``), and its driver's category
+        when it has none. The scan's match, the re-match after a driver change
+        and the Device Audit's network check all ask it."""
+        match = self.tier_matcher.match(device.evidence_log)
+        device.identification = match
+        device.identified_by = self._driver_names.identifying(match)
         self._fill_category_from_match(device)
+        return match
 
     def _fill_category_from_match(self, device: DiscoveredDevice) -> None:
         """An identified device takes its driver's category when it has none.
@@ -969,7 +974,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             # A project device's driver connected to this one: the identification
             # when no fingerprint answered (the scan left that port alone).
             device.evidence_log.extend(connected.get(device.ip, []))
-            self._identify(device)
+            self.identify(device)
             device.port_probes = self._guard.record(device.ip)
             await self._emit_device_update(device, "driver_match")
             await self._update_intra_progress((i + 1) / total)

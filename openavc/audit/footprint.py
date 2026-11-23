@@ -1219,10 +1219,11 @@ class NetworkCheck:
 
     def _verdict(self) -> None:
         fp = self.footprint
-        match = self.discovery.tier_matcher.match(fp.evidence)
+        # Identified, and so named, through the scan's own door: the record
+        # reads as the device's Discovery card would.
+        assert fp.device is not None, "the evidence is built first"
+        match = self.discovery.identify(fp.device)
         explanation = explain_matches(fp.evidence, self.discovery.signal_index)
-        if fp.device is not None:
-            fp.device.identification = match
 
         named = [d for d in [match.driver_id, *match.candidates, *match.alternatives] if d]
         named.extend(d for d in explanation.drivers() if d not in named)

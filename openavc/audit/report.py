@@ -277,6 +277,7 @@ from openavc.utils.boolean_words import value_text
 
 if TYPE_CHECKING:
     from openavc.audit.session import AuditSession
+    from openavc.discovery.result import DiscoveredDevice
 
 log = logging.getLogger("audit.report")
 
@@ -380,15 +381,17 @@ def place_driver_files(session: "AuditSession", redactor: "Redactor") -> list[Pl
     return placed
 
 
-def _reported(device: dict[str, Any], ssdp: dict[str, Any]) -> dict[str, Any]:
-    """The identity the network check heard, each part as the device gave it.
+def _reported(device: DiscoveredDevice | None, ssdp: dict[str, Any]) -> dict[str, Any]:
+    """The identity the network check heard, each part as the device gave it:
+    read off the record itself, never its shown identity, which can add the
+    identifying driver's maker (``result.identity_of``).
 
     ``model_number`` is the SSDP description's modelNumber, kept apart from
     ``model`` (its modelName, which is what a driver's SSDP ``model:`` filter
     reads); null when the description gave none or the model already holds it.
     """
     out = {
-        key: device.get(key)
+        key: getattr(device, key, None)
         for key in ("manufacturer", "model", "firmware", "serial_number",
                     "device_name", "hostname", "mac")
     }
@@ -502,7 +505,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
     footprint = footprint_of(session)
     fp = footprint.to_dict() if footprint is not None else {}
     complete = session.footprint is not None
-    device = fp.get("device") or {}
+    reported = _reported(getattr(footprint, "device", None), fp.get("ssdp") or {})
     tester = dict(getattr(session, "tester", None) or {})
     tester.pop("leave_out_serial", None)
 
@@ -542,8 +545,8 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         },
         "device": {
             "entered": _entered(getattr(session, "device_entered", None) or {}),
-            "reported": _reported(device, fp.get("ssdp") or {}),
-            "reported_sources": identity_sources(fp, _reported(device, fp.get("ssdp") or {})),
+            "reported": reported,
+            "reported_sources": identity_sources(fp, reported),
         },
         "catalog": (fp.get("verdict") or {}).get("catalog", {}),
         "footprint": raw_footprint,
