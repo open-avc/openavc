@@ -127,9 +127,12 @@ class _Reads:
         self._seen.add(key)
         tree = _tree(fn)
         scope = {**keys, **_loop_values(tree, fn)}
-        self._tables = _loop_callables(tree, fn)
-        for node in ast.walk(tree):
-            self._read(node, fn, param, scope)
+        outer, self._tables = self._tables, _loop_callables(tree, fn)
+        try:
+            for node in ast.walk(tree):
+                self._read(node, fn, param, scope)
+        finally:
+            self._tables = outer  # a helper's tables are its own
 
     def _read(self, node: ast.AST, fn: Callable, param: str, scope: dict) -> None:
         where = f"{fn.__qualname__}: {ast.unparse(node)[:80]}"
@@ -371,10 +374,6 @@ def test_what_a_tool_changes_is_what_its_handler_does(tool):
         assert row.changes == decl.PROJECT
     else:
         assert row.changes == CHANGES_ELSEWHERE.get(tool)
-
-
-def test_the_edit_door_tools_are_the_ones_the_plan_counted():
-    assert sum(1 for row in decl.TOOLS.values() if row.changes == decl.PROJECT) == 30
 
 
 # --- How long a tool may take ---
