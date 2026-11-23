@@ -29,9 +29,15 @@ export interface IdentificationMatch {
 
 export interface DiscoveredDevice {
   ip: string;
+  /** What the device is called: its card's heading, the name the sort reads
+   *  and the name it is added with, decided by the server. An identified
+   *  device is called by its driver's name. */
+  name: string;
   mac: string | null;
   hostname: string | null;
+  /** The maker the scan read, else the identifying driver's. */
   manufacturer: string | null;
+  /** The model string as the scan read it. */
   model: string | null;
   device_name: string | null;
   firmware: string | null;

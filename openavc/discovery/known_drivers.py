@@ -1,6 +1,6 @@
 """Which drivers a Discovery scan identifies devices with: one copy of each
 driver, installed or from the community catalog, and the tables built from
-those copies (the signal index, each driver's category and profile).
+those copies (the signal index, each driver's category, profile and name).
 
 The rules worth knowing before changing anything here:
 
@@ -26,6 +26,7 @@ import logging
 from typing import Any
 
 from openavc.discovery.hints import DiscoveryHint, build_signal_index
+from openavc.discovery.result import DeviceState, IdentificationMatch, IdentifyingDriver
 from openavc.discovery.tier_matcher import DriverProfile, SignalIndex
 from openavc.utils.version_rule import read_version
 
@@ -98,6 +99,40 @@ def driver_profiles(drivers: list[dict[str, Any]]) -> dict[str, DriverProfile]:
     """driver id -> what it says about its equipment, which the matcher asks
     only to break a tie."""
     return {str(d["id"]): DriverProfile.of(d) for d in drivers if d.get("id")}
+
+
+class DriverNames:
+    """What each driver a scan reads is called, so an identified device is
+    named by the driver that identified it (``result.scanned_device_name``).
+
+    Built from the same copies the signal index is (``driver_copies``): a
+    driver only the community catalog lists names a device as an installed
+    one does.
+    """
+
+    def __init__(self, names: dict[str, tuple[str, str]]) -> None:
+        self._names = names
+
+    @classmethod
+    def of(cls, drivers: list[dict[str, Any]]) -> DriverNames:
+        """driver id -> (its name, its maker) for every driver that names itself."""
+        return cls({
+            str(d["id"]): (d["name"].strip(), str(d.get("manufacturer") or "").strip())
+            for d in drivers
+            if d.get("id") and isinstance(d.get("name"), str) and d["name"].strip()
+        })
+
+    def identifying(self, match: IdentificationMatch | None) -> IdentifyingDriver | None:
+        """The driver ``match`` identified a device as, or None when it names
+        none (possible, unknown) or that driver has no name."""
+        if match is None or match.state != DeviceState.IDENTIFIED or not match.driver_id:
+            return None
+        named = self._names.get(match.driver_id)
+        if named is None:
+            return None
+        return IdentifyingDriver(
+            name=named[0], manufacturer=named[1], cross_vendor=match.cross_vendor,
+        )
 
 
 def signal_index_from(

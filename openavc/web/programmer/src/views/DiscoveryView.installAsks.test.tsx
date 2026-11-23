@@ -80,6 +80,7 @@ import { useDriverBuilderStore } from "../store/driverBuilderStore";
 
 const SCANNED = {
   ip: "10.0.0.9",
+  name: "Acme Vault",
   mac: null,
   hostname: null,
   manufacturer: "Acme",

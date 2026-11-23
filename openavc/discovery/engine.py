@@ -61,6 +61,7 @@ from openavc.discovery.sweep_phase import HostSweep
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.hints import DiscoveryHint, load_discovery_hints
 from openavc.discovery.known_drivers import (
+    DriverNames,
     driver_categories,
     driver_copies,
     driver_profiles,
@@ -233,6 +234,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         # catalog copy, whichever the signal index uses). An identified device
         # with no category takes its driver's; see _fill_category_from_match.
         self._driver_categories: dict[str, str] = {}
+        # What each of those drivers calls an identified device.
+        self._driver_names = DriverNames({})
         # Driver-supplied Python discovery companions
         # ({driver_id: async probe}). Populated by
         # load_discovery_companions_from_dirs().
@@ -399,6 +402,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         drivers = installed + catalog
         self._driver_categories = driver_categories(drivers)
         profiles = driver_profiles(drivers)
+        self._driver_names = DriverNames.of(drivers)
 
         all_hints = installed_hints + community_hints
         self.discovery_hints = all_hints
@@ -465,9 +469,11 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self.scan_status = ScanStatus()
 
     def _identify(self, device: DiscoveredDevice) -> None:
-        """The device's identification from its evidence, and its driver's
-        category when it has none."""
+        """The device's identification from its evidence, the driver it names
+        (which the device's record is named by), and its driver's category
+        when it has none."""
         device.identification = self.tier_matcher.match(device.evidence_log)
+        device.identified_by = self._driver_names.identifying(device.identification)
         self._fill_category_from_match(device)
 
     def _fill_category_from_match(self, device: DiscoveredDevice) -> None:

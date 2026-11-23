@@ -8,12 +8,21 @@ Every device carries:
 - An ``evidence_log`` of ``Evidence`` records, one per signal observed
   during the scan. This is the audit trail behind the UI's "Why?"
   reveal and the data plumbing for future catalog-growth telemetry.
+- ``identified_by``: the driver it was identified as, named as the engine
+  read it when it matched (``DiscoveryEngine._identify``).
+
+THE rule for what a scanned device is called is ``scanned_device_name``:
+the heading of its Discovery card, the name its sort reads and the name
+it is added to the project with (``api/discovery._discovered_device_name``).
+Every record carries it as ``name``, with the identifying driver's maker
+where the scan read none, so the REST results, the live feed and the
+assistant's results all say the same.
 """
 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
 
@@ -125,6 +134,12 @@ class IdentificationMatch:
     - ``unknown``: ``driver_id`` is None; ``candidates`` is empty;
       ``reason`` explains why nothing matched.
 
+    ``cross_vendor`` (``identified`` only) is True when the fingerprint
+    that said what the device is was a ``cross_vendor`` one, a protocol
+    many makers' equipment speaks, whichever driver leads (one an
+    enrichment signal put ahead of it included). It names the device
+    (``scanned_device_name``) and is not sent itself.
+
     ``evidence`` is the part of the device's log that fed this result:
     the fingerprint records that matched for ``identified``, the best
     match's first (plus the enrichment records when a cross-vendor match
@@ -143,6 +158,7 @@ class IdentificationMatch:
     source: str = ""
     reason: str = ""
     evidence: list[Evidence] = field(default_factory=list)
+    cross_vendor: bool = False
 
     @classmethod
     def identified(
@@ -159,6 +175,11 @@ class IdentificationMatch:
             alternatives=list(alternatives or []),
             evidence=list(evidence or []),
         )
+
+    def through_a_shared_protocol(self) -> "IdentificationMatch":
+        """This identification, marked as said by a ``cross_vendor``
+        fingerprint (``cross_vendor``)."""
+        return replace(self, cross_vendor=True)
 
     @classmethod
     def possible(
@@ -196,6 +217,64 @@ class IdentificationMatch:
             "reason": self.reason,
             "evidence": [e.to_dict() for e in self.evidence],
         }
+
+
+@dataclass(frozen=True)
+class IdentifyingDriver:
+    """The driver a device was identified as, as the scan names the device
+    by it: the driver's name and maker, and whether the fingerprint that
+    identified it is one many makers' equipment shares (``cross_vendor``),
+    which says what protocol the device speaks rather than what it is."""
+
+    name: str
+    manufacturer: str = ""
+    cross_vendor: bool = False
+
+    def maker(self) -> str | None:
+        """The device's maker as this driver says it, or None: a driver
+        identified through a shared fingerprint names a protocol's maker
+        ("Generic" and the like), not the device's."""
+        if self.cross_vendor:
+            return None
+        return self.manufacturer or None
+
+
+def _maker_and_model(manufacturer: str | None, model: str) -> str:
+    """The model, with its maker in front unless the model already says it."""
+    maker = manufacturer or ""
+    if maker and maker.lower() not in model.lower():
+        return f"{maker} {model}"
+    return model
+
+
+def scanned_device_name(device: "DiscoveredDevice", driver_name: str | None = None) -> str:
+    """What a scanned device is called: its card's heading, the name its sort
+    reads, and the name it is added to the project with.
+
+    A device identified as a driver is called by the driver's name, which
+    stays put while the model string a scan reads can change from one scan
+    to the next. One identified only through a fingerprint many makers share
+    keeps the maker and model it reported, the driver's name taking over
+    only when it reported no model. A device nobody identified is called by
+    its maker and model, else ``driver_name`` (the driver it is being added
+    with), else the name it gave itself (a factory default is common there,
+    so it comes late), else its maker.
+    """
+    by = device.identified_by
+    if by is not None and not by.cross_vendor:
+        return by.name
+    if device.model:
+        return _maker_and_model(device.manufacturer, device.model)
+    named = by.name if by is not None else driver_name
+    return named or _self_named(device)
+
+
+def _self_named(device: "DiscoveredDevice") -> str:
+    """A device's name with no model and no driver to go by: the name it gave
+    itself, else its maker's."""
+    if device.device_name:
+        return device.device_name
+    return f"{device.manufacturer} Device" if device.manufacturer else "Unknown Device"
 
 
 @dataclass
@@ -237,6 +316,9 @@ class DiscoveredDevice:
     # Deterministic identification result + per-device evidence log.
     identification: IdentificationMatch | None = None
     evidence_log: list[Evidence] = field(default_factory=list)
+    # The driver ``identification`` names, set beside it on every match
+    # (None when it names none), so the record's name follows the match.
+    identified_by: IdentifyingDriver | None = None
 
     # What each port received from the scan's identification checks, by port
     # (``port_guard.PortGuard.record``): a port a connected project device
@@ -244,13 +326,24 @@ class DiscoveredDevice:
     # check reached it.
     port_probes: dict[int, dict[str, Any]] = field(default_factory=dict)
 
+    def shown_manufacturer(self) -> str | None:
+        """The maker the scan read, else the identifying driver's, unless
+        that driver was identified through a fingerprint many makers share
+        (its maker is a protocol's, "Generic" and the like)."""
+        by = self.identified_by
+        return self.manufacturer or (by.maker() if by is not None else None)
+
     def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSON API response."""
+        """Serialize for JSON API response. ``name`` is what the device is
+        called (``scanned_device_name``) and ``manufacturer`` the maker
+        shown for it (``shown_manufacturer``); ``model`` is as the scan
+        read it."""
         return {
             "ip": self.ip,
+            "name": scanned_device_name(self),
             "mac": self.mac,
             "hostname": self.hostname,
-            "manufacturer": self.manufacturer,
+            "manufacturer": self.shown_manufacturer(),
             "model": self.model,
             "device_name": self.device_name,
             "firmware": self.firmware,

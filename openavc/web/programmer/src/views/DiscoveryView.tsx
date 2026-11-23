@@ -40,7 +40,7 @@ import {
   mergePortLabels,
   openPortLabel,
   projectDeviceAtAddress,
-  scannedDeviceName,
+  compareScannedNames,
   snmpCommunityField,
 } from "./discoveryViewHelpers";
 import { describeEvidence, EvidenceList, portProbeLines } from "./discoveryEvidence";
@@ -500,16 +500,13 @@ export function DiscoveryPanel() {
 
     const stateRank = (s: string | undefined) =>
       s === "identified" ? 0 : s === "possible" ? 1 : 2;
-    const nameOf = (d: api.DiscoveredDevice) =>
-      (d.model || d.device_name || d.manufacturer || d.ip).toLowerCase();
-
     list.sort((a, b) => {
       switch (sortBy) {
         case "state": {
           const sa = stateRank(a.identification?.state);
           const sb = stateRank(b.identification?.state);
           if (sa !== sb) return sa - sb;
-          return nameOf(a).localeCompare(nameOf(b));
+          return compareScannedNames(a, b);
         }
         case "ip":
           return a.ip.split(".").map(Number).reduce((s, n, i) => s + n * (256 ** (3 - i)), 0)
@@ -1022,12 +1019,9 @@ function DeviceCard({
   const state: DeviceState = ident?.state ?? "unknown";
   const tone = stateTone(state);
 
-  const displayName = scannedDeviceName(
-    device,
-    state === "identified" && ident?.driver_id
-      ? driverNameLookup.get(ident.driver_id)?.name
-      : undefined,
-  );
+  // What the server calls the device: an identified one by its driver's
+  // name, the name Add to Project gives it too.
+  const displayName = device.name;
 
   // A banner is raw bytes off the wire, and the protocol chatter around it
   // was never text (see the banner helpers). Keep the ports whose greeting
@@ -1394,7 +1388,9 @@ function DriverAddRow({
   const [setupText, setSetupText] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [driverInfoForSetup, setDriverInfoForSetup] = useState<DriverInfo | null>(null);
-  const [addedDeviceId, setAddedDeviceId] = useState<string | null>(null);
+  // The device the add made, as the server named it, while its settings
+  // dialog is open.
+  const [added, setAdded] = useState<{ id: string; name: string } | null>(null);
   const devices = useProjectStore((s) => s.project?.devices);
 
   // What the scan cannot supply: a required setting the driver has no default
@@ -1494,7 +1490,7 @@ function DriverAddRow({
         driver_id: driverId,
         ...(config ? { config } : {}),
       });
-      setAddedDeviceId(result.device_id);
+      setAdded({ id: result.device_id, name: result.name });
       const di = installedDrivers.find((d) => d.id === driverId);
       if (di && hasDriverSetupSettings(di)) {
         setDriverInfoForSetup(di);
@@ -1600,14 +1596,14 @@ function DriverAddRow({
         </div>
       )}
 
-      {driverInfoForSetup && addedDeviceId && (
+      {driverInfoForSetup && added && (
         <DeviceSettingsSetupDialog
-          deviceId={addedDeviceId}
+          deviceId={added.id}
           driverInfo={driverInfoForSetup}
           existingDeviceIds={(devices ?? []).map((d) => d.id)}
           onClose={() => {
             setDriverInfoForSetup(null);
-            onDeviceAdded({ name: driverName, deviceId: addedDeviceId });
+            onDeviceAdded({ name: added.name, deviceId: added.id });
           }}
         />
       )}

@@ -854,7 +854,7 @@ class TierMatcher:
                 source=best_source,
                 alternatives=matched[1:],
                 evidence=strong_evidence,
-            )
+            ).through_a_shared_protocol()
 
         lead, trail = self._place_peers(peers, evidence_log)
         offered = [*lead, *matched, *trail]
@@ -866,7 +866,7 @@ class TierMatcher:
             source=soft_source if lead else best_source,
             alternatives=offered[1:],
             evidence=[*strong_evidence, *soft_evidence],
-        )
+        ).through_a_shared_protocol()
 
     def _collect_soft_signal_results(
         self, evidence_log: list[Evidence],

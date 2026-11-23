@@ -53,6 +53,7 @@ import { useDiscoveryStore } from "../store/discoveryStore";
 
 const SCANNED = {
   ip: "10.0.0.5",
+  name: "Acme Widget Pro",
   mac: null,
   hostname: null,
   manufacturer: "Acme",
@@ -125,12 +126,17 @@ describe("a scanned device's card", () => {
     expect(screen.queryByText("None identified")).toBeNull();
   });
 
-  it("is headed by the name Add to Project gives the device", async () => {
-    // Maker and model, as the server names the device it adds, not the name
-    // of the driver it was identified as.
-    mocks.results = { ...mocks.results, devices: [{ ...SCANNED, model: "WP-3000" }] };
-    render(<DiscoveryPanel />);
-    expect(await screen.findByText("Acme WP-3000")).toBeTruthy();
+  it("is headed by the name the server gives the device, the model on its Model line", async () => {
+    // An identified device is called by its driver's name, which the server
+    // sends as `name` and Add to Project names the device too; the model
+    // string the scan read is shown as it is, never as the heading.
+    mocks.results = {
+      ...mocks.results,
+      devices: [{ ...SCANNED, name: "Acme Widget Pro", model: "WP3K-BRD" }],
+    };
+    await openCard();
+    expect(screen.queryByText("Acme WP3K-BRD")).toBeNull();
+    expect(screen.getByText("WP3K-BRD")).toBeTruthy();
   });
 });
 

@@ -61,6 +61,7 @@ import { useDiscoveryStore } from "../store/discoveryStore";
 function ghost(ip: string) {
   return {
     ip,
+    name: "Unknown Device",
     mac: null,
     hostname: ip,
     manufacturer: null,

@@ -52,6 +52,7 @@ import * as api from "../api/restClient";
 function host(ip: string) {
   return {
     ip,
+    name: "Unknown Device",
     mac: null,
     hostname: ip,
     manufacturer: null,

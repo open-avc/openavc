@@ -19,6 +19,7 @@ from openavc.core.required_config import (
     required_sentence,
 )
 from openavc.discovery.engine import DiscoveryEngine, ScanBlocked
+from openavc.discovery.result import DiscoveredDevice, scanned_device_name
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
     get_driver_class,
@@ -460,26 +461,17 @@ def _sanitize_add_device_config(config: dict[str, Any]) -> dict[str, Any]:
     return clean
 
 
-def _discovered_device_name(discovered: Any, driver_id: str) -> str:
-    """The name a device added from a scan gets in the project.
-
-    Its maker and model as the scan read them, else its driver's name, so
-    devices added side by side read alike whatever each scan managed to
-    read. The name a device gave itself comes last: a factory default
-    ("DeviceName") is common there.
-    """
-    if discovered is not None and discovered.model:
-        maker = discovered.manufacturer or ""
-        if maker and maker.lower() not in discovered.model.lower():
-            return f"{maker} {discovered.model}"
-        return discovered.model
+def _discovered_device_name(discovered: DiscoveredDevice | None, driver_id: str) -> str:
+    """The name a device added from a scan gets in the project: the name its
+    card shows (``result.scanned_device_name``), with the driver it is added
+    with standing in where a device nobody identified read no model. With no
+    scan record, the driver's name."""
     cls = get_driver_class(driver_id)
     driver_name = (getattr(cls, "DRIVER_INFO", {}) or {}).get("name") if cls else None
-    if isinstance(driver_name, str) and driver_name.strip():
-        return driver_name.strip()
-    if discovered is not None and discovered.device_name:
-        return discovered.device_name
-    return driver_id
+    named = driver_name.strip() if isinstance(driver_name, str) and driver_name.strip() else None
+    if discovered is None:
+        return named or driver_id
+    return scanned_device_name(discovered, named or driver_id)
 
 
 # The setting a driver keeps a device's MAC address in, by name, the way

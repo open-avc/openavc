@@ -814,15 +814,9 @@ def wol_discovery_driver():
 
 
 def _scanned(ip: str, mac: str | None):
-    from unittest.mock import MagicMock
+    from openavc.discovery.result import DiscoveredDevice
 
-    found = MagicMock()
-    found.mac = mac
-    found.model = None
-    found.device_name = None
-    found.manufacturer = "Acme"
-    found.open_ports = []
-    return found
+    return DiscoveredDevice(ip=ip, mac=mac, manufacturer="Acme")
 
 
 async def test_a_scanned_mac_fills_the_mac_setting(

@@ -66,6 +66,7 @@ import { useDiscoveryStore } from "../store/discoveryStore";
 
 const SCANNED = {
   ip: "10.0.0.9",
+  name: "Acme Amp",
   mac: null,
   hostname: null,
   manufacturer: "Acme",
