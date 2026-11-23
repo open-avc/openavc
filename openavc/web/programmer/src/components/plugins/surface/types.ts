@@ -23,12 +23,16 @@ export interface SurfaceLayout {
   // (plugin serves ext/network/scan + ext/network/test and reads a
   // top-level network_decks config array).
   network?: boolean;
+  // A routing matrix: rows (destinations) and columns (sources) from the
+  // state keys these patterns match; each row's route key (`{row}` filled
+  // in) names the source routed to it, compared with each column's value in
+  // the `route_match` mode (the matrix route rule's, matrixModel.ts).
   rows_label?: string;
   columns_label?: string;
   rows_state_pattern?: string;
   columns_state_pattern?: string;
-  cell_type?: string;
-  cell_state_pattern?: string;
+  route_state_pattern?: string;
+  route_match?: string;
   presets?: boolean;
   // Device-backed surfaces (declared by the plugin): the editor renders only
   // real units (connected hardware or virtual units). With none present, a

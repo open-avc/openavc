@@ -1,28 +1,28 @@
-"""Regression tests for the plugin routing matrix (SurfaceConfigurator).
+"""The plugin routing matrix (SurfaceConfigurator's crosspoint grid).
 
-The crosspoint matrix had two value-handling defects and two interaction
-defects:
+What it decides, and the defects each check keeps fixed:
 
-- ``getCellState`` used JS ``Boolean()`` on state values. State values are
-  flat primitives and plugins report route status as strings — the Dante
-  plugin writes ``"none"`` for an unsubscribed channel — so every unrouted
-  crosspoint rendered as routed and the first click sent ``unroute`` to
-  actually-unrouted hardware. Cells now go through an explicit truthy set.
-- Row/column enumeration derived a prefix via ``pattern.replace('*', '')``
-  + ``startsWith``, which only works for a trailing wildcard; a mid-string
-  pattern silently produced an empty matrix. ``*`` now matches anywhere.
-- An empty press-binding array counted as an assigned button (``[]`` is
-  truthy) — assignment checks now use ``press?.length``.
-- A rapid double-click re-read stale liveState and emitted the same
-  route/unroute twice — cells are now disabled while their context action
-  is in flight.
+- Whether a crosspoint is routed: its row's route key (``route_state_pattern``
+  with ``{row}`` filled in) names the source its column's value names,
+  compared by the matrix's route rule (the Builder's ``matrixRouteMatches``)
+  in the layout's ``route_match`` mode, exact when it names none. The matrix
+  used to read one key per crosspoint, which the plugins publish none of, so
+  every routed cell drew unrouted and a click on one routed it again.
+- Row/column enumeration: ``*`` matches anywhere in the pattern; a prefix
+  derivation that only worked for a trailing wildcard silently produced an
+  empty matrix for a mid-string pattern.
+- An empty press-binding array is not an assigned button (``[]`` is truthy);
+  assignment checks use ``press?.length``.
+- A rapid double-click must not emit the same route/unroute twice: a cell is
+  disabled while its context action is in flight.
 
 Two layers: the harness bundles the real ``routingMatrixHelpers.ts`` with
 the esbuild in ``openavc/web/programmer/node_modules`` (skips when the Node
 toolchain is absent), and source-level checks pin the surface editors to
 the fixed shapes. Those checks read ``surface/RoutingMatrix.tsx`` for the
 crosspoint ones and the whole ``surface/`` directory for the assignment
-shape, which several editors draw.
+shape, which several editors draw. The click itself is driven in
+``surface/RoutingMatrix.test.tsx``.
 """
 from __future__ import annotations
 
@@ -104,21 +104,21 @@ def helper_results() -> dict:
 
 
 SCENARIOS = [
-    # The live defect: Dante's "none" must read unrouted.
-    "none_is_unrouted",
-    "false_string_unrouted",
-    "zero_string_unrouted",
-    "empty_string_unrouted",
-    "off_unrouted",
-    "case_and_space_insensitive",
-    "connected_routed",
-    "one_string_routed",
-    "bool_true_routed",
-    "bool_false_unrouted",
-    "one_number_routed",
-    "zero_number_unrouted",
-    "null_unrouted",
-    "undefined_unrouted",
+    # The layout's mode, else the one that never lights a shared number.
+    "default_mode_is_exact",
+    "exact_mode_read",
+    "port_mode_read",
+    "no_mode_is_default",
+    "unknown_mode_is_default",
+    "inherited_name_is_no_mode",
+    "non_text_mode_is_default",
+    # A crosspoint read from its row's route key and its column's label.
+    "routed_by_its_label",
+    "shared_number_is_another_source",
+    "shared_number_matches_in_port_mode",
+    "routed_to_nothing",
+    "no_route_key_never_routed",
+    "unpublished_row_never_routed",
     # Wildcard enumeration.
     "trailing_wildcard",
     "mid_string_wildcard",
@@ -138,15 +138,21 @@ def test_helper_scenarios(helper_results: dict, scenario: str) -> None:
 # ── Source-level pins ──────────────────────────────────────────────────────
 
 
-def test_cell_state_goes_through_explicit_truthiness() -> None:
+def test_a_crosspoint_is_read_from_its_rows_route_key() -> None:
     src = MATRIX_TSX.read_text(encoding="utf-8")
-    assert "isCellRouted(liveState[key])" in src
-    # The crosspoint read specifically; plugin flags documented as booleans
-    # (connected, preset_dirty, …) legitimately use Boolean().
-    assert "Boolean(liveState[key])" not in src, (
-        "crosspoint state must not use JS Boolean() coercion — string route "
-        "status like Dante's 'none' reads as routed"
-    )
+    assert "crosspointRouted(" in src
+    # The per-crosspoint key it used to read, which no plugin publishes.
+    assert "cell_state_pattern" not in src
+
+
+def test_the_crosspoint_rule_is_the_matrix_route_rule() -> None:
+    """The helpers compare through the Builder's copy of the route rule,
+    which tests/test_matrix_route_parity.py holds to the server's; a
+    comparison of their own would be a fourth copy nothing holds."""
+    src = HELPERS_TS.read_text(encoding="utf-8")
+    assert 'from "../ui-builder/matrixModel"' in src
+    assert "matrixRouteMatches(" in src
+    assert "toLowerCase" not in src and "UNROUTED" not in src
 
 
 def test_matrix_axes_use_wildcard_matcher() -> None:

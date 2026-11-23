@@ -3,12 +3,13 @@
  *
  * Sources and destinations come from the state keys the plugin publishes, so
  * rows and columns appear as the system discovers them and a cell is a
- * crosspoint to route rather than a control to configure.
+ * crosspoint to route rather than a control to configure. A cell is routed
+ * when its row's route key names its column's source (`crosspointRouted`).
  */
 import { useState } from "react";
 import { Trash2, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../../store/connectionStore";
-import { isCellRouted, matchStateKeys } from "../routingMatrixHelpers";
+import { crosspointRouted, matchStateKeys, routeMatchMode } from "../routingMatrixHelpers";
 import * as api from "../../../api/restClient";
 import { useAnchoredPanel } from "../../shared/AnchoredPanel";
 import type { SurfaceLayout } from "./types";
@@ -35,25 +36,30 @@ export function RoutingMatrix({
   const presetPanel = useAnchoredPanel<HTMLButtonElement, HTMLDivElement>({ width: "intrinsic" });
   const presetDropdownOpen = presetPanel.open;
 
-  // Get row/column labels from state ('*' matches anywhere in the pattern)
+  // Rows and columns from state ('*' matches anywhere in the pattern); a
+  // column's own value is the name its source is routed by.
   const stateKeys = Object.keys(liveState);
   const rowNames = matchStateKeys(stateKeys, layout.rows_state_pattern ?? "").map(
     (m) => m.name,
   );
-  const colNames = matchStateKeys(stateKeys, layout.columns_state_pattern ?? "").map(
-    (m) => m.name,
-  );
+  const columns = matchStateKeys(stateKeys, layout.columns_state_pattern ?? "");
+  const colNames = columns.map((m) => m.name);
+  const columnLabels = new Map(columns.map((m) => [m.name, liveState[m.key]]));
+  const routeMode = routeMatchMode(layout.route_match);
 
-  const getCellState = (row: string, col: string): boolean => {
-    const pattern = layout.cell_state_pattern ?? "";
-    const key = pattern.replace("{row}", row).replace("{col}", col);
-    return isCellRouted(liveState[key]);
-  };
+  const getCellState = (row: string, col: string): boolean =>
+    crosspointRouted(
+      layout.route_state_pattern,
+      routeMode,
+      (key) => liveState[key],
+      row,
+      columnLabels.get(col),
+    );
 
   const handleCellClick = async (row: string, col: string) => {
     // One action per cell at a time: the toggle direction is derived from
-    // liveState, which only updates when the plugin pushes new crosspoint
-    // state — a rapid second click would re-read the pre-click state and
+    // liveState, which only updates when the plugin pushes the row's new
+    // route — a rapid second click would re-read the pre-click state and
     // send the same route/unroute again.
     const cellKey = `${row}|${col}`;
     if (pendingCells.has(cellKey)) return;

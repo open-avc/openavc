@@ -1,21 +1,43 @@
 // React-free helpers for the plugin routing matrix (SurfaceConfigurator).
+import {
+  MATRIX_ROUTE_MATCH_MODES,
+  matrixRouteMatches,
+  type MatrixRouteMatchMode,
+} from "../ui-builder/matrixModel";
+
+/** The mode a layout that names none, or one this release does not know, is
+ *  compared in: the one that never lights a crosspoint from a shared number.
+ *  `SURFACE_ROUTE_MATCH_DEFAULT` in core/plugin_extension_rules.py, held to it
+ *  by tests/test_plugin_extension_rules.py. */
+export const SURFACE_ROUTE_MATCH_DEFAULT: MatrixRouteMatchMode = "exact";
+
+/** The mode a layout's `route_match` names, or the default. */
+export function routeMatchMode(declared: unknown): MatrixRouteMatchMode {
+  return typeof declared === "string" && Object.prototype.hasOwnProperty.call(MATRIX_ROUTE_MATCH_MODES, declared)
+    ? (declared as MatrixRouteMatchMode)
+    : SURFACE_ROUTE_MATCH_DEFAULT;
+}
 
 /**
- * Crosspoint truthiness. State values are flat primitives and plugins
- * commonly report route status as a string — the Dante plugin writes
- * "none" when a channel is unsubscribed — so JS Boolean() coercion reads
- * unrouted cells as routed and the first click sends the wrong action to
- * routing hardware. A cell is routed when the value is boolean true, a
- * nonzero number, or a string that isn't a conventional "off" word.
+ * Whether a crosspoint is routed: the source its row's route key names is
+ * the one its column's label names.
+ *
+ * Each destination (a row) carries one route key, `route_state_pattern` with
+ * `{row}` filled in, whose value names the source routed to it; each source
+ * (a column) is named by the value of its own key. The two are compared by
+ * the matrix's route rule (`matrixRouteMatches`, the Builder's copy of
+ * ui/matrix_model.py's) in the layout's mode. A layout that names no route
+ * key reads every crosspoint as unrouted.
  */
-const UNROUTED_STRINGS = new Set(["", "false", "0", "none", "off", "no"]);
-
-export function isCellRouted(value: unknown): boolean {
-  if (typeof value === "string") {
-    return !UNROUTED_STRINGS.has(value.trim().toLowerCase());
-  }
-  if (typeof value === "number") return value !== 0;
-  return value === true;
+export function crosspointRouted(
+  routeStatePattern: string | undefined,
+  mode: MatrixRouteMatchMode,
+  read: (key: string) => unknown,
+  row: string,
+  columnLabel: unknown,
+): boolean {
+  if (!routeStatePattern) return false;
+  return matrixRouteMatches(read(routeStatePattern.replace("{row}", row)), columnLabel, mode);
 }
 
 export interface StatePatternMatch {
