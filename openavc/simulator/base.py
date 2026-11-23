@@ -507,7 +507,11 @@ class BaseSimulator(ABC):
         controls = self.SIMULATOR_INFO.get("controls")
         if controls:
             info["controls"] = controls
-        info["push_state"] = getattr(self, "_push_state", False)
+        # A YAML simulator works this out from its simulator: section; a
+        # Python one pushes in its own code and declares it.
+        info["push_state"] = bool(
+            getattr(self, "_push_state", False) or self.SIMULATOR_INFO.get("push_state")
+        )
         kind = self.capacity_kind
         info["capacity"] = (
             {**self._capacity.to_info(), "kind": kind} if kind is not None else None
