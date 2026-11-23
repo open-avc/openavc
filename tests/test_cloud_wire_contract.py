@@ -364,10 +364,17 @@ def test_a_close_code_is_passed_on_when_a_close_frame_may_carry_it(code, sent):
     assert protocol.ws_close_code(code) == sent
 
 
-def test_the_codes_this_instance_sends_are_the_vocabulary():
+def test_the_codes_either_end_sends_of_its_own_are_the_vocabulary():
+    # This instance's two, and the one the cloud closes an ended Remote Access
+    # session's sockets with, which this instance only passes on.
+    from openavc.cloud.wire_tables import VOCABULARIES
+
+    ended = [e.value for e in VOCABULARIES["ws_close_codes"] if "session_ended" in e.flags]
+    assert len(ended) == 1
     assert set(protocol.vocabulary("ws_close_codes")) == {
-        protocol.WS_CLOSE_NORMAL, protocol.WS_CLOSE_LOCAL_UNREACHABLE,
+        protocol.WS_CLOSE_NORMAL, protocol.WS_CLOSE_LOCAL_UNREACHABLE, *ended,
     }
+    assert protocol.ws_close_code(ended[0]) == ended[0]
 
 
 @pytest.mark.parametrize("code,usable", [

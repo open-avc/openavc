@@ -814,6 +814,12 @@ VOCABULARIES: dict[str, tuple[Entry, ...]] = {
         Entry(1000, "A normal close: the far end closed with no code of its own.", since=FIRST_CONTRACT_RELEASE),
         Entry(1014, "This instance could not open the socket on its own server, or that "
                     "socket dropped with no close frame.", since=FIRST_CONTRACT_RELEASE),
+        Entry(4004, "The cloud ended the Remote Access session this socket came through: "
+                    "closed in the portal, timed out, or its access taken away. The browser's "
+                    "socket closes with it too, whichever way the session ended, and a panel "
+                    "or Programmer page opened through the session reads it as the session "
+                    "over. This instance passes it on like any other code.",
+              since="0.41.0", flags=frozenset({"session_ended"})),
     ),
     "certificate_names": (
         Entry("*.{label}.{zone}", "Every host name under this system's label.", since="0.23.0"),

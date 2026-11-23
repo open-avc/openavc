@@ -3749,6 +3749,14 @@
         "value": 1014,
         "since": "0.41.0",
         "description": "This instance could not open the socket on its own server, or that socket dropped with no close frame."
+      },
+      {
+        "value": 4004,
+        "since": "0.41.0",
+        "description": "The cloud ended the Remote Access session this socket came through: closed in the portal, timed out, or its access taken away. The browser's socket closes with it too, whichever way the session ended, and a panel or Programmer page opened through the session reads it as the session over. This instance passes it on like any other code.",
+        "flags": [
+          "session_ended"
+        ]
       }
     ],
     "certificate_names": [
