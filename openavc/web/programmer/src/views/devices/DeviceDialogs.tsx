@@ -11,6 +11,7 @@ import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
 import { matchesSearch } from "../../components/shared/searchWords";
+import { dialsAnAddress } from "../../components/shared/transportTraits";
 import { LineSettingSelect } from "../../components/shared/LineSettingSelect";
 import { SERIAL_LINE_SETTINGS, type SerialLineKey } from "../../api/types.gen";
 import { holdsTypedLogin, keepSavedLogins, SAVED_LOGIN, withoutSavedLogins } from "./deviceLogins";
@@ -326,8 +327,6 @@ export function ConfigFieldInputs({
 // they aren't rendered twice. Non-serial drivers don't render this at all —
 // their connection UI is unchanged.
 
-const NETWORK_TRANSPORTS = ["tcp", "udp", "http", "osc"];
-
 export function driverSerialCapable(d: DriverInfo | undefined): boolean {
   if (!d) return false;
   const t = (d.transport || "").toLowerCase();
@@ -356,18 +355,20 @@ export function hiddenRawConfigKeys(driverInfo: DriverInfo | undefined): Set<str
   return new Set(["ir_codes"]);
 }
 
+// Whether the driver can reach its device at an IP address: its own
+// transport or one it lists dials an address (transportTraits.ts).
 function driverNetworkCapable(d: DriverInfo | undefined): boolean {
   if (!d) return false;
-  const t = (d.transport || "").toLowerCase();
-  const ts = (d.transports || []).map((x) => String(x).toLowerCase());
-  return NETWORK_TRANSPORTS.includes(t) || ts.some((x) => NETWORK_TRANSPORTS.includes(x));
+  return dialsAnAddress(d.transport) || (d.transports || []).some(dialsAnAddress);
 }
 
+// The transport a device on Network (IP) is saved with: the driver's own when
+// it dials an address, else the first it lists that does.
 export function primaryNetworkTransport(d: DriverInfo | undefined): string {
   const t = (d?.transport || "").toLowerCase();
-  if (NETWORK_TRANSPORTS.includes(t)) return t;
+  if (dialsAnAddress(t)) return t;
   const ts = (d?.transports || []).map((x) => String(x).toLowerCase());
-  return ts.find((x) => NETWORK_TRANSPORTS.includes(x)) || "tcp";
+  return ts.find(dialsAnAddress) || "tcp";
 }
 
 type ConnMode = ConnectionMode;

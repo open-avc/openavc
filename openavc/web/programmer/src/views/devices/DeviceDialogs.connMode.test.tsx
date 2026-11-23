@@ -73,3 +73,63 @@ describe("Add Device's connection picker, serial-first driver", () => {
     expect(screen.getByPlaceholderText("5000")).toHaveValue(5000);
   });
 });
+
+// A driver that dials its device over SSH, or takes a serial line: the
+// network side is SSH, which dials an address like TCP does.
+const mixer = {
+  id: "acme_mixer",
+  name: "Acme Mixer",
+  manufacturer: "Acme",
+  category: "audio",
+  transport: "ssh",
+  transports: ["ssh", "serial"],
+  commands: {},
+  default_config: { host: "", port: 22, username: "admin" },
+  config_schema: {
+    host: { type: "string", required: true, label: "IP Address" },
+    port: { type: "integer", default: 22, label: "Port" },
+    username: { type: "string", default: "admin", label: "Username" },
+    password: { type: "string", secret: true, label: "Password" },
+  },
+} as unknown as DriverInfo;
+
+describe("Add Device's connection picker, SSH or serial driver", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.listDrivers).mockResolvedValue([mixer]);
+    useProjectStore.setState({
+      project: { devices: [], connections: {} } as never,
+      update,
+      save: vi.fn(() => Promise.resolve()),
+    });
+  });
+
+  async function pickMixer() {
+    render(<AddDeviceDialog onClose={() => {}} />);
+    await userEvent.click(screen.getByPlaceholderText("Search drivers..."));
+    await userEvent.click(await screen.findByText("Acme Mixer"));
+  }
+
+  it("offers Network (IP) and opens on it", async () => {
+    await pickMixer();
+    expect(screen.getByRole("button", { name: "Network (IP)" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("192.168.1.100")).toBeInTheDocument();
+  });
+
+  it("saves the device on SSH at the address and port given", async () => {
+    await pickMixer();
+    await userEvent.click(screen.getByRole("button", { name: "Direct serial" }));
+    await userEvent.click(screen.getByRole("button", { name: "Network (IP)" }));
+    await userEvent.type(screen.getByPlaceholderText("192.168.1.100"), "10.0.0.9");
+    const port = screen.getByPlaceholderText("22");
+    await userEvent.clear(port);
+    await userEvent.type(port, "22023");
+    await userEvent.click(screen.getByRole("button", { name: "Add Device" }));
+
+    expect(update).toHaveBeenCalledTimes(1);
+    const saved = JSON.stringify(update.mock.calls[0][0]);
+    expect(saved).toContain('"transport":"ssh"');
+    expect(saved).toContain('"host":"10.0.0.9"');
+    expect(saved).toContain("22023");
+  });
+});
