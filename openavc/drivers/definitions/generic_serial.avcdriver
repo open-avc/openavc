@@ -10,7 +10,7 @@ id: generic_serial
 name: Generic Serial Device
 manufacturer: Generic
 category: utility
-version: 1.0.0
+version: 1.0.1
 author: OpenAVC
 description: >
   Control any RS-232/RS-485 device with a text protocol. Define commands and
@@ -39,7 +39,7 @@ config_schema:
     type: string
     required: true
     label: Serial Port
-    description: "e.g., COM3 or /dev/ttyUSB0. Use SIM:name for simulation."
+    description: "e.g., COM3 or /dev/ttyUSB0."
   baudrate:
     type: integer
     default: 9600
