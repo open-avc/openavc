@@ -9,6 +9,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Activity, Zap } from "lucide-react";
 import { useConnectionStore } from "../../store/connectionStore";
 import { showError } from "../../store/toastStore";
+import { parseApiError } from "../../api/errors";
+import { InlineError } from "../shared/InlineError";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { usePluginStore } from "../../store/pluginStore";
 import { useLogStore } from "../../store/logStore";
 import type { LogEntry } from "../../store/logStore";
@@ -25,7 +28,12 @@ import {
   formatMetric,
   filterPluginLog,
   sameLogTail,
+  contextActionsFor,
+  contextActionPayload,
+  contextActionName,
+  contextActionConfirm,
 } from "./pluginExtensionHelpers";
+import type { ContextActionPlace } from "./pluginExtensionHelpers";
 import { valueText } from "../shared/booleanWords";
 
 // ──── State Table Renderer ────
@@ -370,7 +378,9 @@ export function DevicePanelSlot({
 }
 
 // ──── Context Action Renderer ────
-// Renders context action buttons from plugin extensions.
+// Renders the context action buttons a page draws: a device's page, or a
+// plugin's own page (contextActionsFor). An action may ask a question first,
+// and a refusal is said beside the buttons.
 
 /** A context action's name: its plugin, then its id, which is unique only
  *  within that plugin. */
@@ -379,71 +389,114 @@ function actionKey(action: PluginExtension): string {
 }
 
 export function ContextActionRenderer({
-  context,
-  deviceId,
-  driverId,
+  place,
+  heading,
+  style,
 }: {
-  context: "global" | "device" | "plugin";
-  deviceId?: string;
-  driverId?: string;
+  place: ContextActionPlace;
+  /** Shown above the buttons, and only when there are some. */
+  heading?: string;
+  style?: React.CSSProperties;
 }) {
   const contextActions = usePluginStore((s) => s.extensions.context_actions);
   const [loading, setLoading] = useState<string | null>(null);
+  const [asking, setAsking] = useState<PluginExtension | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
-  const matching = contextActions.filter((action) => {
-    if (action.context !== context) return false;
-    if (context === "device" && action.match) {
-      const match = action.match as Record<string, unknown>;
-      if (match.driver_id && driverId) {
-        if (!matchesDriverGlob(driverId, String(match.driver_id))) return false;
-      }
-    }
-    return true;
-  });
-
-  const handleClick = useCallback(
-    async (action: PluginExtension) => {
-      if (!action.event) return;
-      setLoading(actionKey(action));
-      try {
-        const actionId = action.event.replace("action.", "");
-        const payload: Record<string, unknown> = {};
-        if (deviceId) payload.device_id = deviceId;
-        await api.emitContextAction(action.plugin_id, actionId, payload);
-      } catch (e) {
-        console.error("Context action failed:", e);
-      }
-      setLoading(null);
-    },
-    [deviceId]
-  );
-
+  const matching = contextActionsFor(contextActions, place);
   if (matching.length === 0) return null;
 
+  const run = async (action: PluginExtension) => {
+    setRefusal(null);
+    const name = contextActionName(action.event);
+    if (!name) {
+      setRefusal(`Couldn't run "${action.label}": the plugin gives it no event to send.`);
+      return;
+    }
+    setLoading(actionKey(action));
+    try {
+      await api.emitContextAction(action.plugin_id, name, contextActionPayload(place));
+    } catch (e) {
+      setRefusal(`Couldn't run "${action.label}": ${parseApiError(e)}`);
+    }
+    setLoading(null);
+  };
+
+  const press = (action: PluginExtension) => {
+    if (contextActionConfirm(action)) setAsking(action);
+    else run(action);
+  };
+
   return (
-    <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-      {matching.map((action) => (
-        <button
-          key={actionKey(action)}
-          onClick={() => handleClick(action)}
-          disabled={loading === actionKey(action)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-xs)",
-            padding: "var(--space-xs) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            background: "var(--bg-hover)",
-            fontSize: "var(--font-size-sm)",
-            opacity: loading === actionKey(action) ? 0.5 : 1,
+    <div style={style}>
+      {heading && <h3 style={CONTEXT_ACTION_HEADING}>{heading}</h3>}
+      <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        {matching.map((action) => (
+          <ContextActionButton
+            key={actionKey(action)}
+            action={action}
+            busy={loading === actionKey(action)}
+            onPress={press}
+          />
+        ))}
+      </div>
+      <InlineError
+        message={refusal}
+        onDismiss={() => setRefusal(null)}
+        style={{ marginTop: "var(--space-sm)" }}
+      />
+      {asking && (
+        <ConfirmDialog
+          title={asking.label}
+          message={contextActionConfirm(asking)}
+          confirmLabel={asking.label}
+          destructive
+          onConfirm={() => {
+            setAsking(null);
+            run(asking);
           }}
-          title={`${action.label} (${action.plugin_name})`}
-        >
-          <Zap size={12} />
-          {action.label}
-        </button>
-      ))}
+          onCancel={() => setAsking(null)}
+        />
+      )}
     </div>
+  );
+}
+
+const CONTEXT_ACTION_HEADING = {
+  fontSize: "var(--font-size-sm)",
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  marginBottom: "var(--space-sm)",
+} as const;
+
+function ContextActionButton({
+  action,
+  busy,
+  onPress,
+}: {
+  action: PluginExtension;
+  busy: boolean;
+  onPress: (action: PluginExtension) => void;
+}) {
+  return (
+    <button
+      onClick={() => onPress(action)}
+      disabled={busy}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-xs)",
+        padding: "var(--space-xs) var(--space-md)",
+        borderRadius: "var(--border-radius)",
+        background: "var(--bg-hover)",
+        fontSize: "var(--font-size-sm)",
+        opacity: busy ? 0.5 : 1,
+      }}
+      title={`${action.label} (${action.plugin_name})`}
+    >
+      <Zap size={12} />
+      {action.label}
+    </button>
   );
 }
 

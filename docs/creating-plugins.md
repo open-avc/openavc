@@ -22,7 +22,7 @@ Plugins can add panels to the device detail page. These appear below the standar
 
 ### Context Actions
 
-Plugins can add action buttons to toolbars. These might appear globally (e.g., "Scan Dante Network") or on specific device pages (e.g., "Identify on Dante"). Clicking a context action triggers the plugin to perform the action.
+Plugins can add action buttons to the Programmer IDE. An action's `context` decides where it appears: a `device` action on the page of each device its `match` names (e.g., "Identify on Dante"), and a `global` or `plugin` action under **Actions** on the plugin's own page (e.g., "Scan Dante Network"). Clicking an action sends the plugin the event it names, and an action can declare a `confirm` question the IDE asks first (e.g., "Clear every route?"). If the action can't be sent, the reason appears below the buttons.
 
 ### Panel Elements
 

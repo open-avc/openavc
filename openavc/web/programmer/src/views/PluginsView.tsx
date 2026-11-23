@@ -14,7 +14,7 @@ import { SchemaFormRenderer, configValueAt, withConfigValueAt } from "../compone
 import { PresentManagementPanel } from "../components/present/PresentManagementPanel";
 import { CollapsibleSection } from "../components/driver-builder/CollapsibleSection";
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
-import { MarkdownContent } from "../components/ai/MarkdownContent";
+import { PluginAbout } from "../components/plugins/PluginAbout";
 import { isPluginIncompatible } from "./pluginsView.helpers";
 import { useConnectionStore } from "../store/connectionStore";
 import {
@@ -663,49 +663,7 @@ function PluginDetail({
         style={{ marginBottom: "var(--space-md)" }}
       />
 
-      {/* Description */}
-      {info.description && (
-        <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-lg)" }}>
-          {info.description}
-        </p>
-      )}
-
-      {/* Usage / How to Use — markdown from PLUGIN_INFO.usage */}
-      {info.usage && (
-        <div
-          style={{
-            marginBottom: "var(--space-lg)",
-            padding: "var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border-color)",
-          }}
-        >
-          <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: "var(--space-sm)", color: "var(--text-secondary)" }}>
-            How to Use
-          </h3>
-          <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
-            <MarkdownContent content={info.usage} />
-          </div>
-        </div>
-      )}
-
-      {/* Error message */}
-      {info.status === "error" && info.error && (
-        <div
-          style={{
-            padding: "var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            marginBottom: "var(--space-md)",
-            background: "rgba(244, 67, 54, 0.12)",
-            border: "1px solid rgba(244, 67, 54, 0.3)",
-            fontSize: "var(--font-size-sm)",
-            color: "var(--color-error)",
-          }}
-        >
-          <strong>Error:</strong> {info.error}
-        </div>
-      )}
+      <PluginAbout info={info} />
 
       {/* Present's displays + routing live on its plugin page. Keyed to the
           plugin id; generalize a plugin-management-panel slot only if a

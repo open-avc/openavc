@@ -139,14 +139,20 @@ def test_helper_scenarios(helper_results: dict, scenario: str) -> None:
 
 def test_driver_glob_uses_shared_matcher() -> None:
     """Both driver-id match sites use the anchored glob compiler, not the
-    single-'*' startsWith shortcut."""
+    single-'*' startsWith shortcut: DevicePanelSlot in the renderers, and the
+    context actions' device match (``matchesDevice``) in the helpers."""
     src = EXTENSIONS_TSX.read_text(encoding="utf-8")
-    assert src.count("matchesDriverGlob(") >= 2, (
-        "DevicePanelSlot and ContextActionRenderer must both use the shared matcher"
+    helpers = HELPERS_TS.read_text(encoding="utf-8")
+    assert "matchesDriverGlob(" in src, "DevicePanelSlot must use the shared matcher"
+    device_match = helpers[helpers.index("function matchesDevice("):]
+    device_match = device_match[:device_match.index("\n}\n")]
+    assert "matchesDriverGlob(" in device_match, (
+        "a context action's device match must use the shared matcher"
     )
-    assert 'replace("*", "")' not in src, (
-        "driver-id match still uses the single-wildcard startsWith shortcut"
-    )
+    for text in (src, helpers):
+        assert 'replace("*", "")' not in text, (
+            "driver-id match still uses the single-wildcard startsWith shortcut"
+        )
 
 
 def test_plugin_log_reads_snapshots() -> None:

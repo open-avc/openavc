@@ -88,7 +88,7 @@ export async function emitContextAction(
   actionId: string,
   payload?: Record<string, unknown>
 ): Promise<{ status: string }> {
-  return request(`/plugins/${pluginId}/context-action/${actionId}`, {
+  return request(`/plugins/${pluginId}/context-action/${encodeURIComponent(actionId)}`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
@@ -164,6 +164,8 @@ export interface PluginExtension {
   metrics?: { key: string; label: string; format: string }[];
   context?: string;
   event?: string;
+  /** A context action's question before it runs ("Clear every route?"). */
+  confirm?: string;
   // panel_elements specific
   type?: string;
   renderer_url?: string;

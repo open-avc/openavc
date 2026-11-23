@@ -230,7 +230,7 @@ export function DeviceDetail({
       />
 
       {/* Plugin Context Actions */}
-      <ContextActionRenderer context="device" deviceId={deviceId} driverId={deviceConfig?.driver} />
+      <ContextActionRenderer place={{ page: "device", deviceId, driverId: deviceConfig?.driver }} />
 
       {/* Device Log */}
       <DeviceLog deviceId={deviceId} />

@@ -1,6 +1,6 @@
 """THE rules for a plugin's ``EXTENSIONS``: the table of extension types, what
-an entry must be to be accepted, and the characters a plugin element's names
-may hold.
+an entry must be to be accepted, the page each context action is drawn on, and
+the characters a plugin element's names may hold.
 
 A plugin adds views, device panels, status cards, context actions and panel
 elements to the IDE and the panel through ``EXTENSIONS``: a dict of those
@@ -16,6 +16,14 @@ The start asks it, through ``plugin_declarations``' ``EXTENSIONS`` row, and
 refuses a plugin it answers for; the serve (``core/plugin_extensions.py``)
 asks the same question and serves every entry of a declaration it accepts and
 none of one it refuses.
+
+``CONTEXT_ACTION_PAGES``: the page the IDE draws a context action on, by its
+``context``. A ``device`` action is drawn on the page of each device its
+``match`` names, and sent that device's id; a ``global`` or ``plugin`` action
+on its plugin's own page, sent nothing. The IDE's copy
+(``pluginExtensionHelpers.ts``, ``CONTEXT_ACTION_PAGES``) is held to it by
+``tests/test_plugin_extension_rules.py``. The start does not ask it: an action
+with another context starts and is drawn nowhere.
 
 ``is_panel_element_name``: the characters the panel accepts in a plugin
 element's two names, its plugin id and its type (letters, digits, underscore
@@ -48,6 +56,13 @@ EXTENSION_ID_FIELD = {
     "panel_elements": "type",
 }
 VALID_EXTENSION_TYPES = set(EXTENSION_ID_FIELD)
+
+#: The page the IDE draws a context action on, by the action's ``context``.
+CONTEXT_ACTION_PAGES = {
+    "global": "plugin",
+    "device": "device",
+    "plugin": "plugin",
+}
 
 #: What the panel accepts in a plugin element's plugin id and type, matched
 #: whole (``fullmatch``): ``panel.js`` writes the same class between ``^`` and

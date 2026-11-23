@@ -1,5 +1,6 @@
 """The rules for a plugin's EXTENSIONS (``core/plugin_extension_rules.py``), and
-the sides that ask them: the start, the page review and the panel."""
+the sides that ask them: the start, the serve, the page review, the panel and
+the IDE."""
 
 from __future__ import annotations
 
@@ -10,11 +11,13 @@ import pytest
 
 from openavc.core import plugin_declarations
 from openavc.core.plugin_extension_rules import (
+    CONTEXT_ACTION_PAGES,
     EXTENSION_ID_FIELD,
     PANEL_ELEMENT_NAME_RE,
     extensions_problem,
     is_panel_element_name,
 )
+from openavc.core.plugin_extensions import collect_extensions
 from openavc.ui.page_references import plugin_element_finding
 
 PANEL_JS = Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "panel.js"
@@ -76,6 +79,47 @@ def test_the_declarations_judge_asks_this_rule():
     """The start's EXTENSIONS row is this module's rule, not a copy of it."""
     assert plugin_declarations.extensions_problem is extensions_problem
     assert plugin_declarations.EXTENSION_ID_FIELD is EXTENSION_ID_FIELD
+
+
+HELPERS_TS = (
+    Path(__file__).resolve().parents[1] / "openavc" / "web" / "programmer" / "src"
+    / "components" / "plugins" / "pluginExtensionHelpers.ts"
+)
+
+
+def test_the_ide_draws_each_context_on_the_page_the_rule_names():
+    """The IDE's ``CONTEXT_ACTION_PAGES`` is the rule's table, word for word:
+    a context the IDE does not list would draw nowhere."""
+    source = HELPERS_TS.read_text(encoding="utf-8")
+    found = re.findall(r"export const CONTEXT_ACTION_PAGES[^=]*= \{([^}]*)\}", source)
+    assert len(found) == 1, "pluginExtensionHelpers.ts declares no CONTEXT_ACTION_PAGES object"
+    ide = dict(re.findall(r"(\w+): \"(\w+)\"", found[0]))
+    assert ide == CONTEXT_ACTION_PAGES
+
+
+def test_every_documented_context_draws_on_a_page():
+    assert set(CONTEXT_ACTION_PAGES) == {"global", "device", "plugin"}
+    assert set(CONTEXT_ACTION_PAGES.values()) == {"device", "plugin"}
+
+
+def test_an_action_with_an_unknown_context_still_starts():
+    """A context the IDE draws nowhere is not a reason to stop a plugin."""
+    assert extensions_problem({"context_actions": [{"id": "scan", "context": "toolbar"}]}) is None
+
+
+def test_the_ide_is_served_an_actions_confirm_sentence():
+    class AcmeWidget:
+        PLUGIN_INFO = {"id": "acme_widget", "name": "Acme Widget"}
+        EXTENSIONS = {"context_actions": [{
+            "id": "wipe", "label": "Wipe", "context": "plugin",
+            "event": "action.wipe", "confirm": "Wipe every preset?",
+        }]}
+
+    served = collect_extensions({"acme_widget": AcmeWidget()})["context_actions"]
+    assert served == [{
+        "id": "wipe", "label": "Wipe", "context": "plugin", "event": "action.wipe",
+        "confirm": "Wipe every preset?", "plugin_id": "acme_widget", "plugin_name": "Acme Widget",
+    }]
 
 
 def test_an_id_is_unique_within_its_plugin_and_type_only():

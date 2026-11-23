@@ -85,6 +85,10 @@ A password, API key or other login is kept on this system rather than in the pro
 
 Some plugins check a change before it is saved. A change the plugin could not use is not saved, and the message names the part and what is wrong with it. If the plugin finds a problem in settings saved earlier (in an older project, for example), your change is still saved, and the message names that part the first time.
 
+### Run a Plugin's Actions
+
+A running plugin can add buttons under **Actions** on its detail view, such as **Refresh Domains** for a Dante plugin, and buttons for a device on that device's page. Click one to run it. Some actions ask before they run, for example "Clear every route?". If an action can't run, the reason appears below the buttons.
+
 ### Disable a Plugin
 
 Select the plugin in the list and click **Disable**. The plugin stops and all its runtime effects (state keys, event subscriptions, background tasks) are cleaned up automatically. State keys under `plugin.<id>.*` are fully deleted from the state store (not just set to `None`), so they will not appear in state snapshots while the plugin is stopped. Configuration is preserved, and re-enabling restores everything.
