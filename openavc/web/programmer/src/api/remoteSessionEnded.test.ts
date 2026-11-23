@@ -141,8 +141,8 @@ describe("an answer to a request made inside the session", () => {
 describe("how the tab's socket closed", () => {
   for (const c of corpus.closes) {
     it(`${c.name}: ${c.ended ? "the session ended" : "not by itself"}`, async () => {
-      const { auth } = await load();
-      expect(auth.isEndedRemoteClose(c.code)).toBe(c.ended);
+      const { ws } = await load();
+      expect(ws.isEndedRemoteClose(c.code)).toBe(c.ended);
     });
   }
 });

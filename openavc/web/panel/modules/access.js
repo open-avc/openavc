@@ -32,7 +32,7 @@ export const NOT_APPROVED_CLOSE = 4010;
  *  wire contract's `session_ended` code. Only the cloud sends it: the system's
  *  own close codes pass through the tunnel as they are, and none of them is
  *  this one. The same code as the Programmer's REMOTE_SESSION_ENDED_CLOSE
- *  (openavc/web/programmer/src/api/auth.ts); both are tested on the same
+ *  (openavc/web/programmer/src/api/wsClient.ts); both are tested on the same
  *  cases, tests/fixtures/remote_session_ended_cases.json. */
 export const REMOTE_SESSION_ENDED_CLOSE = 4004;
 
@@ -195,6 +195,15 @@ export class PanelAccess {
         const plain = ANSWERS.get(answer.status);
         if (plain) this._show(answer.status, plain[0], [plain[1]]);
         else this._show('pending', 'Waiting for approval', waitingSentence(answer));
+    }
+
+    /** Put up the screen a close says, when it says one: the cloud's code for
+     *  an ended Remote Access session, or a refusal with a reason
+     *  (showRefusal). False for any other close. */
+    showForClose(code) {
+        if (!this.isEndedRemoteClose(code)) return this.showRefusal(code);
+        this.showRemoteSessionEnded();
+        return true;
     }
 
     /**
@@ -426,7 +435,8 @@ export class PanelAccess {
 
     /** True when the panel's socket closed because the Remote Access session
      *  it came through ended: the cloud's own code says so, with no question
-     *  asked. The same rule as isEndedRemoteClose in the Programmer. */
+     *  asked. The same rule as isEndedRemoteClose in the Programmer
+     *  (openavc/web/programmer/src/api/wsClient.ts). */
     isEndedRemoteClose(code) {
         return inRemoteSession() && code === REMOTE_SESSION_ENDED_CLOSE;
     }

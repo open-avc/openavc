@@ -4,7 +4,6 @@ import {
   hasRemoteSessionEnded,
   hasSession,
   inRemoteSession,
-  isEndedRemoteClose,
   requestSignIn,
 } from "./auth";
 import { BASE } from "./base";
@@ -23,6 +22,19 @@ type DisconnectHandler = (close: SocketClose) => void;
  *  starting, failed to start, or stopping. The reason is that phase, as
  *  /api/startup-status names it (middleware/startup_splash.py). */
 export const NOT_READY_CLOSE = 4503;
+/** The close code the cloud ends a Remote Access session's sockets with, the
+ *  wire contract's `session_ended` code. Only the cloud sends it: the system's
+ *  own close codes pass through the tunnel as they are, and none of them is
+ *  this one. The same code as the panel's REMOTE_SESSION_ENDED_CLOSE
+ *  (openavc/web/panel/modules/access.js); both are tested on the same cases,
+ *  tests/fixtures/remote_session_ended_cases.json. */
+export const REMOTE_SESSION_ENDED_CLOSE = 4004;
+
+/** True when this tab's socket closed because the Remote Access session it
+ *  came through ended: the cloud's own code says so, with no question asked. */
+export function isEndedRemoteClose(code: number): boolean {
+  return inRemoteSession() && code === REMOTE_SESSION_ENDED_CLOSE;
+}
 /** How often a socket the server turned away while starting tries again: a
  *  start takes seconds, so not the growing wait a dropped network gets. */
 const STARTING_RETRY_DELAY = 1000;
