@@ -129,17 +129,7 @@
         "calls": 1,
         "sameResponse": true,
         "input": "same",
-        "init": {
-          "headers": [
-            "Headers",
-            [
-              [
-                "authorization",
-                "Bearer tok-abc_123"
-              ]
-            ]
-          ]
-        },
+        "init": "undefined",
         "callerInitKept": true,
         "callerInputKept": true
       },
@@ -148,17 +138,7 @@
         "calls": 1,
         "sameResponse": true,
         "input": "same",
-        "init": {
-          "headers": [
-            "Headers",
-            [
-              [
-                "authorization",
-                "Bearer tok-abc_123"
-              ]
-            ]
-          ]
-        },
+        "init": "undefined",
         "callerInitKept": true,
         "callerInputKept": true
       },
@@ -167,17 +147,7 @@
         "calls": 1,
         "sameResponse": true,
         "input": "same",
-        "init": {
-          "headers": [
-            "Headers",
-            [
-              [
-                "authorization",
-                "Bearer tok-abc_123"
-              ]
-            ]
-          ]
-        },
+        "init": "undefined",
         "callerInitKept": true,
         "callerInputKept": true
       },
@@ -186,17 +156,7 @@
         "calls": 1,
         "sameResponse": true,
         "input": "same",
-        "init": {
-          "headers": [
-            "Headers",
-            [
-              [
-                "authorization",
-                "Bearer tok-abc_123"
-              ]
-            ]
-          ]
-        },
+        "init": "undefined",
         "callerInitKept": true,
         "callerInputKept": true
       },

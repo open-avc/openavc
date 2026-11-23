@@ -21,10 +21,12 @@
  *
  * The token is read at each request and never kept, so the IDE signing in or
  * out reaches the next one. A panel opened on its own holds no session, and
- * then nothing is added. A header the caller set is never replaced. Whether
- * a request goes to the API is read from its address as written, anywhere in
- * it, with no check of its origin (the IDE's isSameOriginApiUrl has one):
- * every request the panel makes goes to its own server.
+ * then nothing is added. A header the caller set is never replaced. The
+ * session goes only to this panel's own server: an address is resolved
+ * against the page, and carries it only when it has the page's origin and an
+ * /api path (the IDE's isSameOriginApiUrl, the same rule), so an address on
+ * another host, or one naming /api only in its query or fragment, gets
+ * nothing, and one that will not parse gets nothing.
  */
 
 const STORAGE_KEY = 'openavc.programmer.session';
@@ -47,9 +49,19 @@ function authSubprotocol() {
     return token ? `auth.bearer.${token}` : null;
 }
 
-/** /api, /api/..., /api?..., or /tunnel/<id>/api/... */
-function isApiUrl(url) {
-    return /(^|\/)api(\/|$|\?)/.test(url);
+/** An address on this page's own server whose path is /api, /api/...,
+ *  or /tunnel/<id>/api/...: the IDE's isSameOriginApiUrl. */
+function isSameOriginApiUrl(url, baseHref) {
+    let base;
+    let resolved;
+    try {
+        base = new URL(baseHref);
+        resolved = new URL(url, base);
+    } catch (_) {
+        return false;
+    }
+    if (resolved.origin !== base.origin) return false;
+    return /(^|\/)api(\/|$)/.test(resolved.pathname);
 }
 
 /** The address a fetch was asked for: a path, a URL, or a Request's own. */
@@ -86,7 +98,7 @@ export function installSessionBridge(win) {
     win.fetch = async (input, init) => {
         const url = urlOf(input);
         const token = sessionToken();
-        if (token && isApiUrl(url)) {
+        if (token && isSameOriginApiUrl(url, win.location.href)) {
             init = withAuthorization(input, init, `Bearer ${token}`);
         }
         return originalFetch(input, init);
