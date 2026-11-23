@@ -759,6 +759,7 @@ def test_panel_element_capabilities_default_empty():
 # ═══════════════════════════════════════════════════════════
 
 
+from openavc.api.panel_access import Admission  # noqa: E402
 from openavc.api.plugin_ext import (  # noqa: E402
     has_panel_paths,
     mint_guest_token,
@@ -767,6 +768,16 @@ from openavc.api.plugin_ext import (  # noqa: E402
     parse_panel_paths,
     verify_panel_token,
 )
+
+# A panel let in because Panel access is open, and a request from a panel on
+# the network (neither the console nor a tunnel).
+OPEN = Admission(True, "open")
+CONN = Request({"type": "http", "headers": [], "client": ("203.0.113.9", 50000)})
+
+
+@pytest.fixture
+def open_panels(monkeypatch):
+    monkeypatch.setattr("openavc.api.panel_access.access_mode", lambda: "open")
 
 
 def _media_router():
@@ -805,51 +816,83 @@ def _client_with_panel_paths(plugin_id="vp", panel_paths=PANEL_PATTERNS):
     return TestClient(app), app
 
 
+@pytest.mark.usefixtures("open_panels")
 class TestPanelToken:
     def test_valid_token_verifies(self):
-        token, expires_at = mint_panel_token("vp")
-        assert verify_panel_token(token, "vp")
+        token, expires_at = mint_panel_token("vp", OPEN)
+        assert verify_panel_token(token, "vp", CONN)
         assert expires_at > 0
 
     def test_token_is_plugin_scoped(self):
-        token, _ = mint_panel_token("vp")
-        assert not verify_panel_token(token, "other")
+        token, _ = mint_panel_token("vp", OPEN)
+        assert not verify_panel_token(token, "other", CONN)
 
     def test_expired_token_rejected(self):
-        token, _ = mint_panel_token("vp", ttl=-10)
-        assert not verify_panel_token(token, "vp")
+        token, _ = mint_panel_token("vp", OPEN, ttl=-10)
+        assert not verify_panel_token(token, "vp", CONN)
 
     def test_tampered_signature_rejected(self):
-        token, _ = mint_panel_token("vp")
+        token, _ = mint_panel_token("vp", OPEN)
         msg_b64, sig_b64 = token.split(".", 1)
         bad = msg_b64 + "." + ("A" + sig_b64[1:] if sig_b64[0] != "A" else "B" + sig_b64[1:])
-        assert not verify_panel_token(bad, "vp")
+        assert not verify_panel_token(bad, "vp", CONN)
 
     def test_garbage_token_rejected(self):
-        assert not verify_panel_token("not-a-token", "vp")
-        assert not verify_panel_token("", "vp")
+        assert not verify_panel_token("not-a-token", "vp", CONN)
+        assert not verify_panel_token("", "vp", CONN)
 
     def test_domain_separation_from_plugin_tokens(self):
         """A panel token must never verify as a full plugin token, and a full
         plugin token must never verify as a panel token — the families carry
         different privileges."""
-        panel_token, _ = mint_panel_token("vp")
+        panel_token, _ = mint_panel_token("vp", OPEN)
         plugin_token, _ = mint_plugin_token("vp")
         assert not verify_plugin_token(panel_token, "vp")
-        assert not verify_panel_token(plugin_token, "vp")
+        assert not verify_panel_token(plugin_token, "vp", CONN)
 
     def test_domain_separation_from_guest_tokens(self):
         guest_token, _ = mint_guest_token("vp", "scope1")
-        assert not verify_panel_token(guest_token, "vp")
+        assert not verify_panel_token(guest_token, "vp", CONN)
 
     def test_not_credential_bound(self, monkeypatch):
         """Unlike plugin tokens, a panel token survives a password change:
         it authenticates the panel surface, not a credential — a programmer
         password change must not kill wall-panel media."""
         _set_auth(monkeypatch, password="old")
-        token, _ = mint_panel_token("vp")
+        token, _ = mint_panel_token("vp", OPEN)
         _set_auth(monkeypatch, password="new")
-        assert verify_panel_token(token, "vp")
+        assert verify_panel_token(token, "vp", CONN)
+
+
+    def test_a_revoked_panel_s_token_stops(self, monkeypatch, tmp_path):
+        """Bound to the approved device it was minted for: revoking that panel
+        ends the token at its next use, not when it expires."""
+        from types import SimpleNamespace
+
+        from openavc.core.panel_devices import PanelDeviceStore
+
+        monkeypatch.setattr("openavc.api.panel_access.access_mode", lambda: "approved")
+        store = PanelDeviceStore(tmp_path / "panel_devices.json")
+        device = store.check_in(None, address="203.0.113.9", user_agent="tablet").device
+        store.approve(device.id, "Lobby", "test")
+        monkeypatch.setattr(
+            "openavc.api.panel_access.get_engine_optional",
+            lambda: SimpleNamespace(panel_devices=store),
+        )
+        token, _ = mint_panel_token("vp", Admission(True, "device", device.id))
+        assert verify_panel_token(token, "vp", CONN)
+        store.revoke(device.id)
+        assert not verify_panel_token(token, "vp", CONN)
+
+    def test_an_open_panel_s_token_stops_when_panels_need_approval(self, monkeypatch):
+        token, _ = mint_panel_token("vp", OPEN)
+        assert verify_panel_token(token, "vp", CONN)
+        monkeypatch.setattr("openavc.api.panel_access.access_mode", lambda: "approved")
+        assert not verify_panel_token(token, "vp", CONN)
+
+    def test_a_refused_admission_mints_nothing_usable(self):
+        token, _ = mint_panel_token("vp", Admission(False))
+        assert not verify_panel_token(token, "vp", CONN)
 
 
 class TestParsePanelPaths:
@@ -910,11 +953,12 @@ class TestPanelPathAllowed:
             unmount_plugin_router(app, "vp")
 
 
+@pytest.mark.usefixtures("open_panels")
 class TestPanelAccessDependency:
     """Claimed instance: the panel token opens ONLY declared routes."""
 
     def _headers(self, plugin_id="vp"):
-        token, _ = mint_panel_token(plugin_id)
+        token, _ = mint_panel_token(plugin_id, OPEN)
         return {PLUGIN_TOKEN_HEADER: token}
 
     def test_panel_token_reaches_declared_route(self, monkeypatch):
@@ -971,7 +1015,7 @@ class TestPanelAccessDependency:
 
     def test_expired_panel_token_rejected(self, monkeypatch):
         _set_auth(monkeypatch, password="secret")
-        token, _ = mint_panel_token("vp", ttl=-10)
+        token, _ = mint_panel_token("vp", OPEN, ttl=-10)
         client, app = _client_with_panel_paths()
         try:
             resp = client.get(

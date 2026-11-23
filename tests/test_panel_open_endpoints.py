@@ -138,7 +138,6 @@ async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_cl
     from openavc.api.plugin_ext import (
         mount_plugin_router,
         unmount_plugin_router,
-        verify_panel_token,
         verify_plugin_token,
     )
     from openavc.main import app as main_app
@@ -158,7 +157,6 @@ async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_cl
         assert body["token"]
         assert body["auth_required"] is True
         assert body["scope"] == "panel"
-        assert verify_panel_token(body["token"], "audio_player")
         # Never a full plugin token for an unauthenticated caller.
         assert not verify_plugin_token(body["token"], "audio_player")
         # And the token actually opens the declared route on the live app.
@@ -179,7 +177,7 @@ async def test_ext_token_panel_scope_needs_an_admitted_panel(claimed_client, acc
 
     from openavc.api._engine import _get_engine
     from openavc.api.panel_access import cookie_name
-    from openavc.api.plugin_ext import mount_plugin_router, unmount_plugin_router, verify_panel_token
+    from openavc.api.plugin_ext import mount_plugin_router, unmount_plugin_router
     from openavc.core.panel_devices import PanelDeviceStore
     from openavc.main import app as main_app
     from tests.panel_access_helpers import approve_a_device
@@ -206,7 +204,14 @@ async def test_ext_token_panel_scope_needs_an_admitted_panel(claimed_client, acc
             headers={"cookie": f"{cookie_name(engine.instance_id)}={value}"},
         )
         assert admitted.json()["scope"] == "panel"
-        assert verify_panel_token(admitted.json()["token"], "audio_player")
+        # The token alone opens the declared route, as a plugin's frame uses it...
+        token = {"x-openavc-plugin-token": admitted.json()["token"]}
+        assert claimed_client.get("/api/plugins/audio_player/ext/media", headers=token).status_code == 200
+        # ...until the panel's approval is taken back: then its next request is
+        # refused, though the token has hours left.
+        device_id = value.split(".", 1)[0]
+        engine.panel_devices.revoke(device_id)
+        assert claimed_client.get("/api/plugins/audio_player/ext/media", headers=token).status_code == 401
     finally:
         unmount_plugin_router(main_app, "audio_player")
 

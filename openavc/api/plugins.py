@@ -676,8 +676,9 @@ async def get_plugin_ext_token(
             "auth_required": True,
             "scope": "full",
         }
-    if has_panel_paths(plugin_id) and admit_panel(request, authenticated=False).admitted:
-        token, expires_at = mint_panel_token(plugin_id)
+    admission = admit_panel(request, authenticated=False) if has_panel_paths(plugin_id) else None
+    if admission is not None and admission.admitted:
+        token, expires_at = mint_panel_token(plugin_id, admission)
         return {
             "token": token,
             "expires_at": expires_at,

@@ -12,7 +12,11 @@ from openavc.api.plugin_ext import (
     mint_panel_token, mint_plugin_token, mount_plugin_guest_router,
     mount_plugin_router, unmount_plugin_guest_router, unmount_plugin_router,
 )
+from openavc.api.panel_access import Admission
 from openavc.core.host_policy import HostPolicy, PolicySnapshot
+
+# A panel let in because Panel access is open (the fixture below keeps it so).
+OPEN = Admission(True, "open")
 
 
 class MutableHost(HostPolicy):
@@ -23,7 +27,8 @@ class MutableHost(HostPolicy):
 
 
 @pytest.fixture
-def product(isolated_auth_config):
+def product(isolated_auth_config, monkeypatch):
+    monkeypatch.setattr("openavc.api.panel_access.access_mode", lambda: "open")
     isolated_auth_config.set("auth", "programmer_username", "engineer")
     isolated_auth_config.set("auth", "programmer_password", "disposable-plugin-password")
     isolated_auth_config.set("auth", "api_key", "")
@@ -58,7 +63,7 @@ def test_plugin_scope_and_guest_alias_keep_distinct_authority(product):
     mount_plugin_router(app, "policy_example", router, panel_paths=["GET /view"])
     mount_plugin_guest_router(app, "policy_example", guest, alias="policy-example-guest")
     validate_policies(app)
-    panel = {"x-openavc-plugin-token": mint_panel_token("policy_example")[0]}
+    panel = {"x-openavc-plugin-token": mint_panel_token("policy_example", OPEN)[0]}
     programmer = {"x-openavc-plugin-token": mint_plugin_token("policy_example")[0]}
     root = "/api/plugins/policy_example"
     with TestClient(app) as client:
@@ -116,7 +121,7 @@ async def test_stopped_plugin_stream_cannot_inherit_replacement_registration(
     mount(router)
     path = ("/policy-example-guest/view" if surface == "alias"
             else f"/api/plugins/policy_example/{surface}/view")
-    headers = [(b"x-openavc-plugin-token", mint_panel_token("policy_example")[0].encode())]
+    headers = [(b"x-openavc-plugin-token", mint_panel_token("policy_example", OPEN)[0].encode())]
     scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
              "method": "GET", "path": path,
              "raw_path": path.encode(), "query_string": b"",
@@ -178,8 +183,10 @@ async def test_plugin_stream_closes_when_its_credential_stops_authorizing(
 
     mount_plugin_router(app, "policy_example", router,
                         panel_paths=["GET /view"] if credential == "panel" else [])
-    mint = mint_panel_token if credential == "panel" else mint_plugin_token
-    token, expiry = mint("policy_example", ttl=60)
+    if credential == "panel":
+        token, expiry = mint_panel_token("policy_example", OPEN, ttl=60)
+    else:
+        token, expiry = mint_plugin_token("policy_example", ttl=60)
     path = "/api/plugins/policy_example/ext/view"
     scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
              "method": "GET", "path": path, "raw_path": path.encode(), "query_string": b"",

@@ -138,6 +138,34 @@ def _approved_device(conn: HTTPConnection, engine: Any) -> PanelDevice | None:
     return store.verify(conn.cookies.get(cookie_name(engine.instance_id)))
 
 
+def still_admits(conn: HTTPConnection, admission: Admission, *, engine: Any = None) -> bool:
+    """Whether the way a panel got in still holds, for ``conn``: what a
+    credential minted on an admission (a plugin's panel token) asks again on
+    every use, so revoking the device, or switching Panel access to approved
+    panels only, ends it at once rather than when it expires.
+
+    A device admission holds while that device is still approved; an open one
+    while the mode is still open; the console and a cloud tunnel while
+    ``conn`` still comes that way. A credential admission is never minted on
+    (a signed-in Programmer gets a full plugin token instead), so it holds for
+    nothing here.
+    """
+    if not admission.admitted:
+        return False
+    if admission.kind == "device":
+        engine = engine if engine is not None else get_engine_optional()
+        store = _store(engine) if engine is not None else None
+        device = store.get(admission.device_id) if store and admission.device_id else None
+        return device is not None and device.status == STATUS_APPROVED
+    if admission.kind == "open":
+        return access_mode() == ACCESS_OPEN
+    if admission.kind == "console":
+        return is_local_console_request(conn)
+    if admission.kind == "tunnel":
+        return is_tunneled_request(conn)
+    return False
+
+
 def admit(conn: HTTPConnection, *, authenticated: bool, engine: Any = None) -> Admission:
     """The whole rule, for a ``Request`` or a ``WebSocket``.
 

@@ -22,6 +22,13 @@ password / API-key change invalidates every previously-minted token). It is
 scoped to one ``plugin_id`` so a token minted for plugin A can't reach plugin
 B's routes.
 
+A panel-scoped token (``mint_panel_token``) opens only the paths the plugin
+declared panel-reachable, and is bound to how the panel got in (its approved
+device, the open mode, the console or a cloud tunnel). Every use asks the panel
+gate whether that still holds (``panel_access.still_admits``), so revoking a
+panel, or switching Panel access to approved panels only, ends its token at
+the next request instead of when it expires.
+
 Nothing sensitive lands on disk: the secret is never persisted, and because
 the token can also ride the ``_plugin_token`` query param (for iframe contexts
 that can't set a request header), :func:`install_access_log_redaction` strips
@@ -39,6 +46,7 @@ import logging
 import re
 import secrets
 import time
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasicCredentials
@@ -50,6 +58,11 @@ from openavc.api.host_policy import (
 from openavc.core.host_policy import HostCategory, HostPolicyDenied
 from openavc.middleware import rate_limit as _rate_limit
 from openavc.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from starlette.requests import HTTPConnection
+
+    from openavc.api.panel_access import Admission
 
 log = get_logger(__name__)
 
@@ -263,16 +276,25 @@ _PANEL_PATH_METHODS = {
 _panel_reachable: dict[str, tuple[tuple[str | None, str], ...]] = {}
 
 
-def mint_panel_token(plugin_id: str, ttl: int = _DEFAULT_TTL_SECONDS) -> tuple[str, int]:
-    """Mint a panel-scoped token for one plugin. Returns (token, expires_at)."""
+def mint_panel_token(
+    plugin_id: str, admission: Admission, ttl: int = _DEFAULT_TTL_SECONDS,
+) -> tuple[str, int]:
+    """Mint a panel-scoped token for one plugin, bound to how the panel got
+    in (``admission``, from the panel gate). Returns (token, expires_at)."""
     expires_at = int(time.time()) + int(ttl)
-    msg = f"{_PANEL_TOKEN_PREFIX}:{plugin_id}:{expires_at}".encode("utf-8")
+    device = admission.device_id or "-"
+    msg = f"{_PANEL_TOKEN_PREFIX}:{plugin_id}:{admission.kind}:{device}:{expires_at}".encode("utf-8")
     sig = hmac.new(_SECRET, msg, hashlib.sha256).digest()
     return f"{_b64(msg)}.{_b64(sig)}", expires_at
 
 
-def verify_panel_token(token: str, plugin_id: str) -> bool:
-    """Validate a panel token's signature, plugin binding, and expiry."""
+def verify_panel_token(token: str, plugin_id: str, conn: HTTPConnection) -> bool:
+    """Validate a panel token's signature, plugin binding and expiry, and that
+    the admission it was minted on still holds for ``conn``
+    (``panel_access.still_admits``): a revoked panel's token stops at its next
+    request."""
+    from openavc.api.panel_access import Admission, still_admits
+
     try:
         msg_b64, sig_b64 = token.split(".", 1)
         msg = _unb64(msg_b64)
@@ -285,11 +307,12 @@ def verify_panel_token(token: str, plugin_id: str) -> bool:
     try:
         head, exp_str = msg.decode("utf-8").rsplit(":", 1)
         expires_at = int(exp_str)
+        prefix, kind, device = head.rsplit(":", 2)
     except (ValueError, UnicodeDecodeError):
         return False
-    if head != f"{_PANEL_TOKEN_PREFIX}:{plugin_id}":
+    if prefix != f"{_PANEL_TOKEN_PREFIX}:{plugin_id}" or expires_at < int(time.time()):
         return False
-    return expires_at >= int(time.time())
+    return still_admits(conn, Admission(True, kind, None if device == "-" else device))
 
 
 def parse_panel_paths(panel_paths) -> tuple[tuple[str | None, str], ...]:
@@ -359,7 +382,7 @@ def _plugin_access_authority(request: Request, credentials, plugin_id: str, *, r
     if token and verify_plugin_token(token, plugin_id):
         return HostCategory.PROGRAMMER, lambda: verify_plugin_token(token, plugin_id)
     def panel_authority():
-        return bool(token and verify_panel_token(token, plugin_id)
+        return bool(token and verify_panel_token(token, plugin_id, request)
                     and panel_path_allowed(plugin_id, request.method,
                                            _ext_path_suffix(plugin_id, request.url.path)))
     if panel_authority():
@@ -419,7 +442,7 @@ def _plugin_host_policy(plugin_id: str, generation: object) -> EndpointPolicy:
             return authorized
         token = request.headers.get(PLUGIN_TOKEN_HEADER) or request.query_params.get(PLUGIN_TOKEN_QUERY, "")
         panel_path = panel_path_allowed(plugin_id, request.method, _ext_path_suffix(plugin_id, request.url.path))
-        if token and verify_panel_token(token, plugin_id):
+        if token and verify_panel_token(token, plugin_id, request):
             if panel_path or not application_policy(scope).snapshot().panel_enabled:
                 return HostCategory.PANEL
             # An enabled Programmer surface preserves the canonical 401 for a
