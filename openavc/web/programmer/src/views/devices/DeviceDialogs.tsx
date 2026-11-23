@@ -15,7 +15,8 @@ import { dialsAnAddress } from "../../components/shared/transportTraits";
 import { LineSettingSelect } from "../../components/shared/LineSettingSelect";
 import { SERIAL_LINE_SETTINGS, type SerialLineKey } from "../../api/types.gen";
 import { holdsTypedLogin, keepSavedLogins, SAVED_LOGIN, withoutSavedLogins } from "./deviceLogins";
-import { portsAlike, usbSerialToSave } from "./serialPortPick";
+import { usbSerialToSave } from "./serialPortPick";
+import { PortsAlikeNote } from "./RunNotes";
 
 // --- Typed Config Fields ---
 
@@ -596,7 +597,6 @@ function SerialPortPicker({
     setManual(false);
     onPick(next, usbSerialToSave(ports, next));
   };
-  const alike = manual ? [] : portsAlike(ports, value);
 
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
@@ -632,11 +632,7 @@ function SerialPortPicker({
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         Ports on the OpenAVC server. The USB adapter must be plugged into that machine.
       </div>
-      {alike.length > 0 && (
-        <div style={{ fontSize: 11, color: "var(--color-warning)", marginTop: "var(--space-xs)" }}>
-          {`This adapter reports the same serial number as ${alike.join(", ")}, so OpenAVC tells them apart by port. If you move its cable to another USB socket, choose the port again.`}
-        </div>
-      )}
+      <PortsAlikeNote ports={ports} device={value} />
     </div>
   );
 }

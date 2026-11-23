@@ -331,7 +331,11 @@ def clear_pending_marker(data_dir: Path) -> None:
         log.info("Cleared pending-update marker (startup successful)")
 
 
-def confirm_startup(data_dir: Path) -> None:
+class UpdateCannotUpdate(Exception):
+    """The first start after an update went on without its update checks."""
+
+
+def confirm_startup(data_dir: Path, went_without=()) -> None:
     """Clear the pending-update marker once the engine is running.
 
     Called from ``main._initialize_engine`` the moment ``engine.start()``
@@ -351,12 +355,17 @@ def confirm_startup(data_dir: Path) -> None:
 
     A confirmed update is also when the update cache is trimmed to what can
     still be used (``_trim_update_cache``).
+
+    ``went_without`` is the parts the start went on past
+    (``StartRun.problems``); one of them can keep the update from being
+    confirmed (``_refuse_without_update_checks``).
     """
     from openavc.version import __version__
 
     marker = read_pending_marker(data_dir)
     if not marker:
         return
+    _refuse_without_update_checks(marker, went_without)
     started = _marker_written_at(data_dir)
     clear_pending_marker(data_dir)
     from_version = marker.get("from_version", "")
@@ -374,6 +383,24 @@ def confirm_startup(data_dir: Path) -> None:
             "Update to v%s did not take effect (still running v%s); "
             "cleared stale pending-update marker",
             to_version, __version__,
+        )
+
+
+def _refuse_without_update_checks(marker: dict, went_without) -> None:
+    """THE rule for which part that did not start keeps a new version from
+    being confirmed: only the update checks. A version that cannot look for
+    updates cannot take the one that fixes it, from the IDE or the cloud, so
+    that start fails (``UpdateCannotUpdate``, its sentence on the start page)
+    and the next start rolls the update back. Any other part (a plugin, a
+    script, the driver library) is the integrator's to fix and still
+    confirms the update."""
+    from openavc.core.engine_lifecycle import UPDATE_CHECKS
+
+    if any(problem.stage == UPDATE_CHECKS.stage for problem in went_without):
+        raise UpdateCannotUpdate(
+            f"The update checks did not start on this version ({marker.get('to_version')}), "
+            "so it could not take the update that fixes it. "
+            f"The next start goes back to {marker.get('from_version')}."
         )
 
 

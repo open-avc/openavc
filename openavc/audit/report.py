@@ -255,7 +255,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from openavc.audit.confidence import device_was_silent, driver_test_report, suggested_confidence
 from openavc.audit.limits import report_limits
@@ -308,27 +308,23 @@ def _redact_file(name: str, raw: bytes, redactor: "Redactor") -> tuple[bytes, bo
     (drivers/python_source.py), any other file as UTF-8, and a file neither
     reads as text redacted byte for byte as Latin-1, so whatever its
     encoding a secret in it is masked."""
+    text, encode = _file_text(name, raw)
+    cleaned = redactor.text(text)
+    return (encode(cleaned), True) if cleaned != text else (raw, False)
+
+
+def _file_text(name: str, raw: bytes) -> tuple[str, Callable[[str], bytes]]:
+    """A driver file as text, and how to write the text back as bytes."""
     from openavc.drivers.python_source import (
-        SourceDecodeError, SourceEncodeError, decode_python_source, encode_python_source,
+        SourceDecodeError, decode_python_source, encode_python_source,
     )
 
-    if name.endswith(".py"):
-        try:
-            text = decode_python_source(raw, name)
-            cleaned = redactor.text(text)
-            return (encode_python_source(cleaned), True) if cleaned != text else (raw, False)
-        except (SourceDecodeError, SourceEncodeError, UnicodeEncodeError):
-            pass
-    else:
-        try:
-            text = raw.decode("utf-8")
-            cleaned = redactor.text(text)
-            return (cleaned.encode("utf-8"), True) if cleaned != text else (raw, False)
-        except UnicodeDecodeError:
-            pass
-    text = raw.decode("latin-1")
-    cleaned = redactor.text(text)
-    return (cleaned.encode("latin-1", errors="replace"), True) if cleaned != text else (raw, False)
+    try:
+        if name.endswith(".py"):
+            return decode_python_source(raw, name), encode_python_source
+        return raw.decode("utf-8"), lambda text: text.encode("utf-8")
+    except (SourceDecodeError, UnicodeDecodeError):
+        return raw.decode("latin-1"), lambda text: text.encode("latin-1", errors="replace")
 
 
 def place_files(

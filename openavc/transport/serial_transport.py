@@ -233,7 +233,6 @@ def _port_carrying(ports: list[dict[str, Any]], usb_serial: str, stored: object)
     """The path of the attached adapter whose serial number is ``usb_serial``,
     or None. Several adapters reporting it: the stored port when it is one of
     them, else a refusal naming them (``require_usb_adapter``)."""
-    from openavc.core.connection_fault import usb_adapters_alike_message
     from openavc.core.device_config import same_serial_port
 
     alike = [p["device"] for p in ports if p["serial_number"] == usb_serial]
@@ -242,7 +241,12 @@ def _port_carrying(ports: list[dict[str, Any]], usb_serial: str, stored: object)
     at_stored = next((path for path in alike if same_serial_port(path, str(stored or ""))), None)
     if at_stored is not None:
         return at_stored
-    raise ConnectionFaultError(usb_adapters_alike_message(usb_serial, alike), code=UNREACHABLE)
+    raise ConnectionFaultError(
+        f"More than one USB serial adapter on this system reports serial number {usb_serial} "
+        f"({', '.join(alike)}), so OpenAVC cannot tell which one this device uses. "
+        "Choose its port again in Edit Device.",
+        code=UNREACHABLE,
+    )
 
 
 def _with_port(config: dict, port: str) -> dict:

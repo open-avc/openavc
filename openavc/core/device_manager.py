@@ -496,21 +496,17 @@ class DeviceManager(
         (:meth:`_replace_device`).
 
         Args:
-            device_id: The existing device ID.
             new_config: Full device config dict (id, driver, name, config).
-            defer_connect: Passed through to :meth:`add_device` — leave the
-                re-added device for :meth:`bring_up` to dial.
+            defer_connect: leave the re-added device for :meth:`bring_up` to dial.
         """
         await self._replace_device(device_id, new_config, defer_connect=defer_connect)
 
     async def _replace_device(
         self, device_id: str, config: dict[str, Any], *, defer_connect: bool = False,
-    ) -> bool:
-        """Replace a device with a fresh instance built from ``config`` (an
-        edit, a driver reload, its driver arriving, a retry): THE rule for
-        what the same device keeps, said below. False when a file command
-        runs on the device: the replacement waits for it to end
-        (core/device_retire.py ``_hold_rebuild``)."""
+    ) -> None:
+        """Replace a device with a fresh instance from ``config`` (an edit, a
+        driver reload, its driver arriving, a retry), held while a file command
+        runs on it (``_hold_rebuild``): THE rule for what it keeps, below."""
         # What the same device keeps: its pause and who holds it, when a driver
         # runs it after; its sleep and commanded-restart window while it stays
         # on the driver whose commands declared them, each ending by its own
@@ -522,7 +518,7 @@ class DeviceManager(
         if before is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
         if self._hold_rebuild(device_id, config):
-            return False
+            return
         seconds_left, held_for = self._pause_to_carry(device_id)
         if before.status == DISABLED:
             self._forget_record(device_id)
@@ -538,7 +534,6 @@ class DeviceManager(
             config, carry_pause=seconds_left, carry_pause_for=held_for,
             defer_connect=defer_connect,
         )
-        return True
 
     def get_device_configs(self) -> dict[str, dict[str, Any]]:
         """Return a shallow copy of the device config dict (device_id → config)."""
@@ -644,13 +639,8 @@ class DeviceManager(
         readded: list[str] = []
         for device_id, config in affected:
             try:
-                if not await self._replace_device(device_id, config, defer_connect=True):
-                    log.info(
-                        f"Device '{device_id}' picks up the reloaded driver when "
-                        "its file command finishes"
-                    )
-                    continue
-                if self.status_of(device_id) != RUNNING:
+                await self._replace_device(device_id, config, defer_connect=True)
+                if self.status_of(device_id) != RUNNING or device_id in self._held_rebuilds:
                     continue
                 readded.append(device_id)
                 log.info(

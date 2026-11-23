@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Loader2, Check, AlertTriangle, X } from "lucide-react";
 import { ElementIcon } from "../../components/ui-builder/ElementIcon";
 import { Dialog } from "../../components/shared/Dialog";
@@ -13,8 +13,7 @@ import {
   seedParamValues,
 } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
-import { SetupActionWizard } from "./SetupActionWizard";
-import { takeReopenedRun } from "./openSetupRun";
+import { SetupWizardSlot, useSetupWizard } from "./SetupWizardSlot";
 import { parseApiError } from "../../api/errors";
 
 /**
@@ -39,17 +38,8 @@ export function QuickActions({
 }) {
   const [dialogAction, setDialogAction] = useState<DeviceAction | null>(null);
   const [confirmAction, setConfirmAction] = useState<DeviceAction | null>(null);
-  const [wizardAction, setWizardAction] = useState<DeviceAction | null>(null);
-  // A setup run this tab had open before a sign-in or a reload: its wizard
-  // opens again on it, whether or not its button shows now.
-  const [wizardRunId, setWizardRunId] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    const run = takeReopenedRun(deviceId, (id) => actions.some((a) => a.id === id));
-    const action = run && actions.find((a) => a.id === run.actionId);
-    if (!run || !action) return;
-    setWizardAction(action);
-    setWizardRunId(run.runId);
-  }, [deviceId, actions]);
+  const wizard = useSetupWizard(deviceId, actions);
+  const openWizard = wizard.open;
   const [running, setRunning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<
     { id: string; ok: boolean; message: string } | null
@@ -86,7 +76,7 @@ export function QuickActions({
         if (action.url) window.open(action.url, "_blank", "noopener,noreferrer");
       } else if (action.kind === "setup") {
         // The wizard owns the whole flow: confirm, params, and live progress.
-        setWizardAction(action);
+        openWizard(action);
       } else if (Object.keys(action.params).length > 0) {
         setDialogAction(action);
       } else if (action.confirm) {
@@ -95,23 +85,14 @@ export function QuickActions({
         invoke(action, {});
       }
     },
-    [invoke],
+    [invoke, openWizard],
   );
 
-  const wizard = wizardAction && (
-    <SetupActionWizard
-      deviceId={deviceId}
-      action={wizardAction}
-      runId={wizardRunId}
-      onClose={() => {
-        setWizardAction(null);
-        setWizardRunId(undefined);
-      }}
-      onComplete={() => onInvoked?.()}
-    />
+  const wizardSlot = (
+    <SetupWizardSlot deviceId={deviceId} wizard={wizard} onComplete={() => onInvoked?.()} />
   );
 
-  if (visible.length === 0) return wizard || null;
+  if (visible.length === 0) return wizardSlot;
 
   return (
     <div style={{ marginBottom: "var(--space-lg)" }}>
@@ -206,7 +187,7 @@ export function QuickActions({
         />
       )}
 
-      {wizard}
+      {wizardSlot}
     </div>
   );
 }

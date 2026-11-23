@@ -17,6 +17,7 @@ import { commandResultText } from "../../components/shared/commandParams";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { ReportLink } from "./ProblemReportDialog";
 import { reportableCommandFailure } from "./problemReport";
+import { ChangeWaitingNote } from "./RunNotes";
 
 /**
  * Send Command for a command that takes a file or hands one back. The files
@@ -255,18 +256,12 @@ export function CommandFileRunStatus({
       <div role="status" style={{ fontSize: "var(--font-size-sm)" }}>
         <div style={{ ...lineStyle, justifyContent: "space-between" }}>
           <span>
-            {sending
-              ? `Sending ${fileName} to ${deviceName}: ${pct}%`
-              : `${run.label}: waiting for ${deviceName} to finish.`}
+            {sending ? `Sending ${fileName} to ${deviceName}: ${pct}%` : `${run.label}: waiting for ${deviceName} to finish.`}
           </span>
           {stopButton}
         </div>
         {sending && <Bar value={pct} />}
-        {run.change_waiting && (
-          <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-            {`Your change to ${deviceName} is saved. It takes effect when ${run.label} finishes.`}
-          </div>
-        )}
+        <ChangeWaitingNote run={run} deviceName={deviceName} />
         {confirmStop && (
           <ConfirmDialog
             title={`Stop ${run.label}?`}

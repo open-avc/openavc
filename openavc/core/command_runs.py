@@ -153,6 +153,15 @@ class CommandRun:
         }
 
 
+def _stopped(run: CommandRun) -> None:
+    """A cancelled run: stopped by a person, or ended by the system with why."""
+    if run.ended_because is None:
+        run.status = CANCELLED
+    else:
+        run.status = ERROR
+        run.error = run.ended_because
+
+
 def _jsonable(value: Any) -> Any:
     """A driver's return value as the page can show it (what /command sends)."""
     try:
@@ -260,11 +269,7 @@ class CommandRuns:
                 run.result = _jsonable(result)
             run.status = DONE
         except asyncio.CancelledError:
-            if run.ended_because is None:
-                run.status = CANCELLED
-            else:
-                run.status = ERROR
-                run.error = run.ended_because
+            _stopped(run)
         except Exception as exc:  # the driver's own failure, worded for the page
             run.status = ERROR
             try:
@@ -286,8 +291,7 @@ class CommandRuns:
             run.ended = time.time()
             self._staging.discard_all(run.upload_ids)
             await self._publish(run)
-            if run.ended_because is None:
-                await self._apply_held_change(run.device_id)
+            await self._apply_held_change(run)
 
     async def _tick(self, run: CommandRun) -> None:
         last = run.sent()
@@ -370,11 +374,15 @@ class CommandRuns:
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await run.task
 
-    async def _apply_held_change(self, device_id: str) -> None:
+    async def _apply_held_change(self, run: CommandRun) -> None:
+        """A run that ended on its own or by a person: the change it held
+        applies now. One the system ended (removed, stopping) has none."""
+        if run.ended_because is not None:
+            return
         try:
-            await self._engine.devices.file_run_ended(device_id)
+            await self._engine.devices.file_run_ended(run.device_id)
         except Exception:
-            log.exception(f"Applying the change held for '{device_id}' failed")
+            log.exception(f"Applying the change held for '{run.device_id}' failed")
 
     async def stop(self) -> None:
         """Server shutdown: stop every run, saying why, and let each one clean up."""

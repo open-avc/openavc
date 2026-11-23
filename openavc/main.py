@@ -212,32 +212,6 @@ def _roll_back_a_failed_update(data_dir) -> None:
         os._exit(ending.code)
 
 
-class UpdateCannotUpdate(Exception):
-    """The first start after an update went on without its update checks."""
-
-
-def _refuse_an_update_that_cannot_update(data_dir, run: StartRun) -> None:
-    """The rule for which failed part keeps a new version from being
-    confirmed: only the update checks. A version that cannot look for
-    updates cannot take the one that fixes it, from the IDE or the cloud, so
-    the first start after an update that went on without them fails, and the
-    next start rolls the update back (updater/rollback.py). Any other part
-    (a plugin, a script, the driver library) is the integrator's to fix and
-    still confirms the update."""
-    from openavc.core.engine_lifecycle import UPDATE_CHECKS
-    from openavc.updater.rollback import read_pending_marker
-    if not any(problem.stage == UPDATE_CHECKS.stage for problem in run.problems):
-        return
-    marker = read_pending_marker(data_dir)
-    if not marker:
-        return
-    raise UpdateCannotUpdate(
-        f"The update checks did not start on this version ({marker.get('to_version')}), "
-        "so it could not take the update that fixes it. "
-        f"The next start goes back to {marker.get('from_version')}."
-    )
-
-
 def _sweep_stale_update_records(data_dir) -> None:
     """Defense in depth: drop a stale Linux apply-update.json left behind by
     a failed/aborted apply, so update-helper.sh (root, ExecStartPre) can't
@@ -411,8 +385,7 @@ async def _initialize_engine(app: FastAPI) -> None:
         with run.stage("confirming the last update"):
             if not firmware_host:
                 from openavc.updater.rollback import confirm_startup
-                _refuse_an_update_that_cannot_update(data_dir, run)
-                confirm_startup(data_dir)
+                confirm_startup(data_dir, went_without=run.problems)
 
         await run.go_on(_DISCOVERY_DATA, _load_discovery_hints)
 

@@ -13,23 +13,8 @@ import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { parseApiError } from "../../api/errors";
 import { fileParamsBlocked } from "../../components/shared/commandFiles";
 import { discardUpload, setupUploadOpener, uploadCommandFiles } from "../../api/commandFileClient";
-import { followSetupRun, type Step } from "./followSetupRun";
-import { forgetOpenSetupRun, rememberOpenSetupRun } from "./openSetupRun";
-
-type Phase = "input" | "running" | "done" | "error";
-
-/**
- * The sentence the handler wrote for the operator, out of the terminal event's
- * `result` object. Drivers put their whole finding here — the model they
- * reached, the firmware, the endpoint counts the operator is meant to
- * sanity-check — so it is shown in full rather than summarised. A result with
- * no message (or no result at all) is normal; the step log stands on its own.
- */
-function resultMessage(result: unknown): string {
-  if (!result || typeof result !== "object") return "";
-  const message = (result as Record<string, unknown>).message;
-  return typeof message === "string" ? message.trim() : "";
-}
+import type { Step } from "./followSetupRun";
+import { useSetupRun, type Phase } from "./useSetupRun";
 
 async function invokeWithFiles(run: {
   deviceId: string;
@@ -101,24 +86,16 @@ export function SetupActionWizard({
   onClose: () => void;
   onComplete?: () => void;
 }) {
-  const [phase, setPhase] = useState<Phase>(runId ? "running" : "input");
   const [values, setValues] = useState<Record<string, string>>(() =>
     seedParamValues(action.params),
   );
-  const [steps, setSteps] = useState<Step[]>([]);
   const [files, setFiles] = useState<Record<string, File | null>>({});
-  const [summary, setSummary] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const unsubRef = useRef<null | (() => void)>(null);
+  const { phase, steps, setSteps, summary, error, begin, started, stop } =
+    useSetupRun(deviceId, action.id, runId);
   const uploadAbort = useRef<AbortController | null>(null);
-  const runIdRef = useRef<string | undefined>(runId);
-  const endedRef = useRef(false);
 
-  // Stop listening if the wizard unmounts mid-run.
-  useEffect(() => () => {
-    unsubRef.current?.();
-    uploadAbort.current?.abort();
-  }, []);
+  // Stop an upload if the wizard unmounts mid-run.
+  useEffect(() => () => uploadAbort.current?.abort(), []);
 
   const hasParams = Object.keys(action.params).length > 0;
   const blocked =
@@ -126,63 +103,24 @@ export function SetupActionWizard({
     hasInvalidParams(action.params, values) || fileParamsBlocked(action.params, files);
   const confirmNote = typeof action.confirm === "string" ? action.confirm : null;
 
-  const follow = useCallback(() => {
-    endedRef.current = false;
-    const ended = () => {
-      endedRef.current = true;
-      if (runIdRef.current) forgetOpenSetupRun(runIdRef.current);
-    };
-    const run = followSetupRun(deviceId, action.id, () => runIdRef.current, {
-      step: (step) => setSteps((prev) => [...prev, step]),
-      done: (msg) => {
-        ended();
-        setSummary(resultMessage(msg.result));
-        setPhase("done");
-      },
-      failed: (message) => {
-        ended();
-        setError(message);
-        setPhase("error");
-      },
-    });
-    unsubRef.current = run.stop;
-    return run;
-  }, [deviceId, action.id]);
-
-  // Opened on a run that started before this page: ask how it stands now.
-  useEffect(() => {
-    if (runId) follow().check();
-  }, [runId, follow]);
-
   const startRun = useCallback(async () => {
-    setPhase("running");
-    setSteps([]);
-    setSummary("");
-    setError("");
-    runIdRef.current = undefined;
-    // Subscribe BEFORE the POST so an early progress event can't be missed.
-    const run = follow();
+    const run = begin();
     try {
       uploadAbort.current = new AbortController();
-      runIdRef.current = await invokeWithFiles({ deviceId, action, values, files,
-        signal: uploadAbort.current.signal, onProgress: setSteps });
-      // A run whose end came before its id did is not kept.
-      if (runIdRef.current && !endedRef.current) {
-        rememberOpenSetupRun({ deviceId, actionId: action.id, runId: runIdRef.current });
-      }
+      started(await invokeWithFiles({ deviceId, action, values, files,
+        signal: uploadAbort.current.signal, onProgress: setSteps }));
     } catch (e) {
       run.fail(parseApiError(e));
     } finally {
       uploadAbort.current = null;
     }
-  }, [deviceId, action, values, files, follow]);
+  }, [deviceId, action, values, files, begin, started, setSteps]);
 
   const close = useCallback(() => {
-    unsubRef.current?.();
-    if (runIdRef.current) forgetOpenSetupRun(runIdRef.current);
+    stop();
     onComplete?.();
     onClose();
-  }, [onClose, onComplete]);
+  }, [stop, onClose, onComplete]);
 
   return (
     <Dialog

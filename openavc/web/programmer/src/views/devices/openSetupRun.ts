@@ -23,10 +23,9 @@ function read(): OpenSetupRun | null {
     const value: unknown = JSON.parse(sessionStorage.getItem(KEY) ?? "null");
     if (!value || typeof value !== "object") return null;
     const { deviceId, actionId, runId } = value as Record<string, unknown>;
-    if (typeof deviceId !== "string" || typeof actionId !== "string" || typeof runId !== "string") {
-      return null;
-    }
-    return { deviceId, actionId, runId };
+    const fields = [deviceId, actionId, runId];
+    if (!fields.every((field) => typeof field === "string")) return null;
+    return { deviceId, actionId, runId } as OpenSetupRun;
   } catch {
     return null;
   }

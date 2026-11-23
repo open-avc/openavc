@@ -201,17 +201,6 @@ def bridge_port_missing_message() -> str:
     return _BRIDGE_PORT_MISSING_MESSAGE
 
 
-def usb_adapters_alike_message(usb_serial: str, ports: list[str]) -> str:
-    """What a device bound to a USB-to-serial adapter says when more than one
-    attached adapter reports its serial number and none is at its stored
-    port (``transport.serial_transport.require_usb_adapter``)."""
-    return (
-        f"More than one USB serial adapter on this system reports serial number {usb_serial} "
-        f"({', '.join(ports)}), so OpenAVC cannot tell which one this device uses. "
-        "Choose its port again in Edit Device."
-    )
-
-
 def usb_adapter_missing_message(usb_serial: str) -> str:
     """What a device bound to a USB-to-serial adapter that is not plugged in
     says: on its card (an ``unreachable`` fault, raised before anything is
