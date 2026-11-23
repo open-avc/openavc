@@ -222,7 +222,7 @@ def test_a_child_no_longer_wanted_is_deregistered():
 
 
 def test_a_reconcile_that_fails_on_a_reported_count_is_logged_and_unlatched(caplog):
-    driver = _driver({"output": _type({"count_from_state": "num_outputs"})})
+    driver = _driver({"output": _type({"count_from_state": "num_outputs", "count_from": "outputs"})})
 
     def broken() -> dict[str, int]:
         raise RuntimeError("roster broke")
@@ -246,7 +246,7 @@ def test_a_roster_that_fails_when_the_project_hands_its_labels_over_is_logged(ca
 
 
 def test_a_state_write_that_sizes_no_roster_does_not_reconcile():
-    driver = _driver({"output": _type({"count_from_state": "num_outputs"})})
+    driver = _driver({"output": _type({"count_from_state": "num_outputs", "count_from": "outputs"})})
     calls: list[int] = []
     driver._register_declared_children = lambda: calls.append(1) or {}
     driver.set_state("mode", "matrix")

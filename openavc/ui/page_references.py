@@ -51,8 +51,8 @@ while binding to nothing. Only against a roster the driver DECLARES -- a fixed
 count or a literal list, or a config field this device has actually filled in.
 Never against the live roster, because a page is usually authored before the
 device is connected and an unconnected device has no children at all; and never
-when ``count_from_state`` is declared, because the device resizes the roster
-once it answers.
+when ``count_from_state`` is declared beside ``count_from``, because the device
+resizes the roster once it answers.
 
 Everything here WARNS. The write lands and the findings ride back with it, for
 the same reason as the rest of the review: a rejection costs a whole round trip,

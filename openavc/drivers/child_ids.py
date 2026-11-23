@@ -19,6 +19,14 @@ this (a typed id back to its padded string form). It does now answer whether
 an id is in the declared RANGE: see ``child_id_range_error``, and which ids the
 type declares at all: see ``declared_child_ids``.
 
+THE reading of which source an ``instances:`` block names is here too
+(``roster_source``): the source, and the state variable the roster follows,
+which ``count_from_state`` names beside ``count_from`` only. The runtime roster
+(``declared_roster``), the authoring prediction (``declared_child_ids``), the
+simulator (``simulator/child_roster``) and the poll-length warning ask it, and
+the checker refuses ``count_from_state`` beside any other source
+(``child_type_checks``).
+
 Callers own the failure. Every function here returns ``None`` rather than
 raising, because the same bad input is a 404 to a REST route, a rejected
 parameter to the command dispatcher, and a skipped roster entry to a driver
@@ -28,6 +36,7 @@ share it too.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 # Kept in step with spec.CHILD_ID_TYPES, imported here so this module stays a
@@ -70,6 +79,43 @@ def coerce_child_local_id(
     return text or None
 
 
+# The order the sources are read in. A block the checker passes names one, so
+# the order decides only a block naming several, which every door but a Python
+# driver's load refuses.
+_SOURCE_ORDER = ("ids", "count", "count_from", "ids_from")
+
+#: The one source ``count_from_state`` goes with: a roster sized from a config
+#: field follows the count the device reports once it reports one. ``count``,
+#: ``ids`` and ``ids_from`` fix the roster, so beside them it is refused where a
+#: driver is written and followed by no reader.
+FOLLOWED_SOURCE = "count_from"
+
+
+@dataclass(frozen=True)
+class RosterSource:
+    """Which source an ``instances:`` block names, and what it follows.
+
+    ``kind`` is ``ids``, ``count``, ``count_from`` or ``ids_from``, or ``None``
+    when the block names none (or is not a mapping). ``follows`` is the state
+    variable the roster follows once the device reports a count, or ``None``.
+    A source present with a value that cannot be used is still the source;
+    what that value gives is each reader's own answer.
+    """
+
+    kind: str | None
+    follows: str | None
+
+
+def roster_source(instances: Any) -> RosterSource:
+    """THE reading of which source an ``instances:`` block names."""
+    if not isinstance(instances, dict):
+        return RosterSource(None, None)
+    kind = next((key for key in _SOURCE_ORDER if key in instances), None)
+    followed = instances.get("count_from_state")
+    follows = followed if kind == FOLLOWED_SOURCE and isinstance(followed, str) and followed else None
+    return RosterSource(kind, follows)
+
+
 def declared_child_ids(
     type_def: dict[str, Any] | None, config: dict[str, Any] | None,
 ) -> list[Any] | None:
@@ -84,8 +130,10 @@ def declared_child_ids(
     ``None`` whenever the declaration cannot settle it, which is a real answer
     and the common one:
 
-    * ``count_from_state`` — the device resizes the roster once it answers, so
-      anything said here is a prediction rather than a fact.
+    * a roster that follows the device's count (``count_from_state`` beside
+      ``count_from``, ``roster_source(...).follows``) — the device resizes it
+      once it answers, so anything said here is a prediction rather than a fact.
+      ``config_child_ids`` is the roster before it answers.
     * ``count_from`` / ``ids_from`` naming a config field this device has not
       filled in. The FIELD is what the caller should name in that case; it is
       right there in ``instances``.
@@ -97,40 +145,63 @@ def declared_child_ids(
     Coercing them to the type's id kind is the caller's job (``ids`` on a
     string-keyed type is names), and so is what to do with the ``None``.
     """
-    if not isinstance(type_def, dict):
+    instances = type_def.get("instances") if isinstance(type_def, dict) else None
+    if roster_source(instances).follows:
         return None
-    instances = type_def.get("instances")
-    if not isinstance(instances, dict):
-        return None
-    # A device-reported count can exceed anything declared here.
-    if instances.get("count_from_state"):
+    return config_child_ids(type_def, config)
+
+
+def config_child_ids(
+    type_def: dict[str, Any] | None, config: dict[str, Any] | None,
+) -> list[Any] | None:
+    """The ids this child type's source fixes from ``config`` alone, or ``None``.
+
+    ``declared_child_ids``, except that a roster that follows the device's count
+    is read at its ``count_from`` field: what the runtime builds before the
+    device's first report, and what a matrix of that size reports anyway.
+    """
+    instances = type_def.get("instances") if isinstance(type_def, dict) else None
+    kind = roster_source(instances).kind
+    if kind is None:
         return None
     cfg = config if isinstance(config, dict) else {}
+    return _SOURCE_IDS[kind](instances[kind], cfg)
 
-    ids = instances.get("ids")
-    if isinstance(ids, list) and ids:
-        return list(ids)
 
-    count = instances.get("count")
-    if isinstance(count, bool):  # bool is an int; not a roster
+def _listed(ids: Any, _config: dict[str, Any]) -> list[Any] | None:
+    return list(ids) if isinstance(ids, list) and ids else None
+
+
+def _counted(count: Any, _config: dict[str, Any]) -> list[int] | None:
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        return None  # bool is an int; not a roster
+    return list(range(1, count + 1))
+
+
+def _counted_from(field: Any, config: dict[str, Any]) -> list[int] | None:
+    try:
+        resolved = int(config.get(field)) if field else 0
+    except (TypeError, ValueError):
         return None
-    if isinstance(count, int) and count >= 1:
-        return list(range(1, count + 1))
+    return list(range(1, resolved + 1)) if resolved >= 1 else None
 
-    if field := instances.get("count_from"):
-        try:
-            resolved = int(cfg.get(field))
-        except (TypeError, ValueError):
-            return None
-        return list(range(1, resolved + 1)) if resolved >= 1 else None
 
-    if field := instances.get("ids_from"):
-        raw = cfg.get(field)
-        if not isinstance(raw, str) or not raw.strip():
-            return None
-        return [part.strip() for part in raw.split(",") if part.strip()]
+def _listed_from(field: Any, config: dict[str, Any]) -> list[str] | None:
+    try:
+        raw = config.get(field) if field else None
+    except TypeError:  # a field name that cannot key a mapping
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
-    return None
+
+_SOURCE_IDS = {
+    "ids": _listed,
+    "count": _counted,
+    "count_from": _counted_from,
+    "ids_from": _listed_from,
+}
 
 
 def page_starts(ids: list[Any], page_size: Any) -> list[Any]:

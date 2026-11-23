@@ -1423,11 +1423,12 @@ export interface DriverChildIdFormat {
  * Declarative roster. Makes the child type real at runtime for YAML drivers.
  * Exactly one of count (fixed IDs 1..N), count_from (an integer config field),
  * ids_from (a comma-separated config field; sparse IDs), or ids (a literal
- * fixed list; requires platform 0.23.0). An optional count_from_state names a
- * device-reported state var (e.g. num_outputs) the roster follows once
- * connected, with the chosen config source as the offline fallback. Children
- * register on connect, reconcile as a want-set (also whenever count_from_state
- * changes), and back the per-device Refresh from Device button.
+ * fixed list; requires platform 0.23.0). Beside count_from only, an optional
+ * count_from_state names a device-reported state var (e.g. num_outputs) the
+ * roster follows once connected, with the count_from field as the offline
+ * fallback. Children register on connect, reconcile as a want-set (also
+ * whenever count_from_state changes), and back the per-device Refresh from
+ * Device button.
  */
 export interface DriverChildInstances {
   /** Fixed roster: registers integer IDs 1..count. */
@@ -1440,9 +1441,10 @@ export interface DriverChildInstances {
   /**
    * Name of a device-reported integer state variable (e.g. num_outputs) the
    * roster follows once the device reports it, auto-sizing the roster to the
-   * hardware. Optional companion to count_from, which stays the offline
+   * hardware. Optional companion to count_from only, which stays the offline
    * fallback used before the device answers (a non-positive/absent value falls
-   * back to count_from). Requires platform 0.23.0.
+   * back to count_from); count, ids and ids_from fix the roster, so beside
+   * them it is refused. Requires platform 0.23.0.
    */
   count_from_state?: string;
   /**

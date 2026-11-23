@@ -527,11 +527,22 @@
  "instances_count_from_not_string": [
   "child_entity_types.zone.instances: count_from must name a config field"
  ],
+ "instances_count_from_state_beside_count": [
+  "child_entity_types.zone.instances: count_from_state beside count: ids, ids_from and count fix the roster; use count_from with count_from_state"
+ ],
+ "instances_count_from_state_beside_ids": [
+  "child_entity_types.zone.instances: count_from_state beside ids: ids, ids_from and count fix the roster; use count_from with count_from_state"
+ ],
+ "instances_count_from_state_beside_ids_from": [
+  "child_entity_types.zone.instances: count_from_state beside ids_from: ids, ids_from and count fix the roster; use count_from with count_from_state"
+ ],
  "instances_count_from_state_not_string": [
-  "child_entity_types.zone.instances: count_from_state must name a state variable"
+  "child_entity_types.zone.instances: count_from_state must name a state variable",
+  "child_entity_types.zone.instances: count_from_state beside count: ids, ids_from and count fix the roster; use count_from with count_from_state"
  ],
  "instances_count_from_state_undeclared": [
-  "child_entity_types.zone.instances: count_from_state 'zones' is not a declared state variable"
+  "child_entity_types.zone.instances: count_from_state 'zones' is not a declared state variable",
+  "child_entity_types.zone.instances: count_from_state beside count: ids, ids_from and count fix the roster; use count_from with count_from_state"
  ],
  "instances_count_from_undeclared_field": [
   "child_entity_types.zone.instances: count_from 'zone_count' is not a declared config field (config_schema / default_config / config_derived)"

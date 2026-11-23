@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
-from openavc.drivers.child_ids import declared_child_ids, page_starts
+from openavc.drivers.child_ids import config_child_ids, page_starts
 from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     LINE_GAP_TRANSPORTS,
@@ -283,9 +283,9 @@ def _poll_lines(
     ``page_size`` children. A ``when_state:`` gate, on an entry or on the
     whole poll, is counted as sent: the device's state is not known here, and
     the poll is as long as it gets while the gate is open. A roster the device resizes
-    (``count_from_state``) is counted at its config field, which is what the
-    runtime builds before the first report and what a matrix of that size
-    reports anyway.
+    (``count_from_state`` beside ``count_from``) is counted at its config field
+    (``child_ids.config_child_ids``), which is what the runtime builds before
+    the first report and what a matrix of that size reports anyway.
     """
     lines = 0
     for entry in queries:
@@ -311,20 +311,8 @@ def _entry_lines(
     child_type = entry.get("each_child")
     if child_type is None:
         return 1 if isinstance(entry.get("send"), str) else 0
-    ids = declared_child_ids(_config_sized(child_types.get(child_type)), config)
+    ids = config_child_ids(child_types.get(child_type), config)
     return len(page_starts(ids, entry.get("page_size"))) if ids else 0
-
-
-def _config_sized(type_def: Any) -> Any:
-    """A child type with ``count_from_state`` dropped, so its roster is the
-    one its config field declares."""
-    if not isinstance(type_def, dict):
-        return type_def
-    instances = type_def.get("instances")
-    if not isinstance(instances, dict) or not instances.get("count_from_state"):
-        return type_def
-    trimmed = {k: v for k, v in instances.items() if k != "count_from_state"}
-    return {**type_def, "instances": trimmed}
 
 
 def _largest_rosters(

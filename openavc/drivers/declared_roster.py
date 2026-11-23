@@ -6,7 +6,10 @@ A child type's ``instances:`` says which children exist, one of four ways:
 ids), ``count`` (1..N), ``count_from`` (an integer config field) with or
 without ``count_from_state`` (a state variable the device reports, which
 wins once it is a positive number), or ``ids_from`` (a comma-separated
-config field). The rules worth knowing before changing anything here:
+config field). Which source a block names, and whether it follows the
+device's count, is ``child_ids.roster_source``'s reading: ``count_from_state``
+beside any source but ``count_from`` is followed by no reader. The rules
+worth knowing before changing anything here:
 
 * **Registered offline, before any connect.** ``count: 7`` is seven whether
   anything answers or not, so the roster is built when the project hands
@@ -25,12 +28,13 @@ config field). The rules worth knowing before changing anything here:
 * **The template never replaces a person's name.** ``instances.label``
   seeds a child's label only where the project has not named it.
 
-Three readers of an ``instances:`` block, on purpose: this one is the
-runtime roster; ``child_ids.declared_child_ids`` is the authoring
-prediction (no ``count_from_state``, ``None`` rather than an empty roster);
-the simulator's ``child_roster.declared_ids`` seeds the simulated device
-from config alone. They differ where their jobs do (count 0, ``ids: []``, a
-reported count).
+Three readers of what an ``instances:`` block's source gives, on purpose,
+over the one reading of which source it is (``roster_source``): this one is
+the runtime roster; ``child_ids.declared_child_ids`` is the authoring
+prediction (no answer for a roster that follows the device, ``None`` rather
+than an empty roster); the simulator's ``child_roster.declared_ids`` seeds
+the simulated device from config alone. They differ where their jobs do
+(count 0, ``ids: []``, a reported count).
 
 ``DeclaredRoster`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``,
@@ -44,26 +48,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from openavc.drivers.child_ids import roster_source
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
 # is where a device's log view files them.
 log = get_logger("openavc.drivers.configurable")
 
-#: The keys that make an ``instances:`` block a counted roster; the
-#: simulator's reader (simulator/child_roster.py) reads the same set.
-COUNT_KEYS = ("count", "count_from", "count_from_state")
-
-
-def _count_from_state(tdef: Any) -> str | None:
+def _followed_state(tdef: Any) -> str | None:
     """The state variable a child type's roster sizes from, if any."""
-    if not isinstance(tdef, dict):
-        return None
-    inst = tdef.get("instances")
-    if not isinstance(inst, dict):
-        return None
-    key = inst.get("count_from_state")
-    return str(key) if key else None
+    return roster_source(tdef.get("instances") if isinstance(tdef, dict) else None).follows
 
 
 class DeclaredRoster:
@@ -74,7 +68,7 @@ class DeclaredRoster:
         roster whenever one of them is written."""
         child_types = self._definition.get("child_entity_types") or {}
         self._roster_state_deps: set[str] = {
-            key for tdef in child_types.values() if (key := _count_from_state(tdef))
+            key for tdef in child_types.values() if (key := _followed_state(tdef))
         }
         self._reconciling_roster = False
 
@@ -245,10 +239,11 @@ class DeclaredRoster:
         it cannot be resolved (yet)."""
         id_format = tdef.get("id_format") or {}
         id_type = id_format.get("type", "integer")
-        if "ids" in inst:
+        source = roster_source(inst)
+        if source.kind == "ids":
             return self._literal_ids(ctype, inst["ids"], id_type)
-        if any(key in inst for key in COUNT_KEYS):
-            return self._counted_ids(ctype, inst, id_type)
+        if source.kind in ("count", "count_from"):
+            return self._counted_ids(ctype, inst, id_type, source.follows)
         return self._ids_from_config(ctype, inst.get("ids_from"), id_type)
 
     def _literal_ids(
@@ -292,9 +287,9 @@ class DeclaredRoster:
             return None
 
     def _counted_ids(
-        self, ctype: str, inst: dict[str, Any], id_type: str,
+        self, ctype: str, inst: dict[str, Any], id_type: str, follows: str | None,
     ) -> list[int | str] | None:
-        """``count`` / ``count_from`` / ``count_from_state`` as 1..N."""
+        """``count``, or ``count_from`` and the count it ``follows``, as 1..N."""
         if id_type != "integer":
             log.warning(
                 f"[{self.device_id}] instances: count/count_from require "
@@ -304,7 +299,7 @@ class DeclaredRoster:
         if "count" in inst:
             raw: Any = inst["count"]
         else:
-            raw = self._known_count(inst)
+            raw = self._known_count(inst, follows)
             if raw is None:
                 # No count known yet: the roster waits for one (the
                 # count_from_state var arriving triggers a reconcile).
@@ -321,10 +316,10 @@ class DeclaredRoster:
             return None
         return list(range(1, n + 1))
 
-    def _known_count(self, inst: dict[str, Any]) -> Any:
+    def _known_count(self, inst: dict[str, Any], follows: str | None) -> Any:
         """The count the device reports, else the config field's while that
         is still unknown (offline, pre-sync); None when neither is known."""
-        reported = self._reported_count(inst.get("count_from_state"))
+        reported = self._reported_count(follows)
         if reported is not None:
             return reported
         return self._configured_count(inst.get("count_from"))

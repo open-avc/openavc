@@ -426,8 +426,9 @@ def test_the_children_section_names_each_child_by_its_project_label_then_its_tem
     assert list(out["prop_defs"]["gain"]) == ["type", "label", "min", "max", "step", "unit"]
     bus = info["children"]["input_bus"]
     assert bus["label"] == "Input Bus"
+    # An id_format that is not a mapping reads as integer ids, so the declared
+    # "002" and the project's "002" are one child, 2, as the runtime has it.
     assert bus["entries"] == [{"id": "7", "label": "Input Bus 7"},
-                              {"id": "002", "label": "Input Bus 002"},
                               {"id": "2", "label": "Two"}]
     assert list(info["children"]) == ["output", "input_bus"]
     assert info["child_entities"]["output"]["001"] == {"label": "Lobby"}

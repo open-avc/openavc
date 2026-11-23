@@ -293,7 +293,8 @@ class _Children:
         """The ids this type declares for THIS device's config, typed, or None.
 
         None is the honest answer for a roster the device sizes itself
-        (``count_from_state``), a config field left empty, and every Python
+        (``count_from_state`` beside ``count_from``), a config field left
+        empty, and every Python
         driver that registers its children in code.
         """
         type_def = dict(type_schema)

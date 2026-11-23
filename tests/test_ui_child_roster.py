@@ -79,13 +79,21 @@ def test_an_ids_from_config_field_is_split_on_commas() -> None:
 
 
 def test_a_device_reported_count_is_never_second_guessed() -> None:
-    """``count_from_state`` means the hardware resizes the roster on connect.
+    """``count_from_state`` beside ``count_from`` means the hardware resizes the
+    roster on connect.
 
-    An ID past the declared count is then a prediction about a device that has
-    not answered yet, not a mistake.
+    An ID past the configured count is then a prediction about a device that
+    has not answered yet, not a mistake.
     """
+    types = {"output": {"instances": {"count_from": "outputs", "count_from_state": "num_outputs"}}}
+    assert _ask(types, "device.acme_switcher.output.9.signal", {"outputs": 4}) is None
+
+
+def test_beside_a_fixed_count_the_device_count_is_not_followed() -> None:
+    """``count`` fixes the roster, so ``count_from_state`` beside it is read by
+    no one and an ID past the count is named."""
     types = {"output": {"instances": {"count": 4, "count_from_state": "num_outputs"}}}
-    assert _ask(types, "device.acme_switcher.output.9.signal") is None
+    assert _ask(types, "device.acme_switcher.output.9.signal") is not None
 
 
 def test_a_config_field_nobody_filled_in_says_nothing() -> None:

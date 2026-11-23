@@ -431,9 +431,11 @@ function emptyRosterMessage(
   const value = field ? config?.[field] : undefined;
   const unset = value === undefined || value === null || value === "" || value === 0;
 
-  // `count_from_state` means the hardware settles the count once it answers,
-  // so the config field is only a fallback and the device is what to ask.
-  if (field && unset && !instances.count_from_state) {
+  // `count_from_state` beside `count_from` (the one source it goes with)
+  // means the hardware settles the count once it answers, so the config field
+  // is only a fallback and the device is what to ask.
+  const followsDevice = Boolean(instances.count_from && instances.count_from_state);
+  if (field && unset && !followsDevice) {
     const schemaField = (
       (driverInfo?.config_schema ?? {}) as Record<string, { label?: string }>
     )[field];

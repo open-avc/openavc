@@ -439,9 +439,10 @@ def _output(instances, **extra) -> dict:
     ({"ids": [], "count": 3}, {}, None),
     # A list of nothing usable registers nothing.
     ({"ids": [True, 1.5]}, {}, None),
-    # `ids` that are not a list are passed over for the count.
-    ({"ids": "1,2", "count": 2}, {}, ["1", "2"]),
-    ({"ids": {"a": 1}, "ids_from": "names"}, {"names": "x"}, ["x"]),
+    # `ids` that are not a list are no children: `ids` is the source a block
+    # naming two is read by (child_ids.roster_source), as the runtime reads it.
+    ({"ids": "1,2", "count": 2}, {}, None),
+    ({"ids": {"a": 1}, "ids_from": "names"}, {"names": "x"}, None),
     ({"count": 3}, {}, ["1", "2", "3"]),
     ({"count": "4"}, {}, ["1", "2", "3", "4"]),
     ({"count": " 2 "}, {}, ["1", "2"]),
@@ -613,13 +614,13 @@ def test_project_children_rebuild_the_per_child_reads_for_the_new_roster():
     assert sim.handle_command(b"ROUTE? 4\r") == b"ROUTE 4 0\r"
 
 
-def test_a_count_key_makes_a_counted_roster_even_when_only_the_device_could_count_it():
-    """``count_from_state`` alone is a counted roster the simulated device
-    cannot size, so an ``ids_from`` beside it is never read."""
+def test_a_followed_count_beside_an_id_list_is_not_a_source():
+    """``count_from_state`` goes with ``count_from`` only, so beside
+    ``ids_from`` the roster is the list, as the runtime reads it."""
     sim = _roster_sim(
         _output({"count_from_state": "outputs", "ids_from": "names"}), {"names": "a,b"},
     )
-    assert "output" not in sim._child_roster
+    assert sim._child_roster["output"] == ["a", "b"]
 
 
 def test_a_padded_project_id_of_zero_is_the_wire_id_zero():

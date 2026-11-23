@@ -9,10 +9,13 @@ import {
   CHILD_TYPE_ID_RE,
   applyChildVarTypeChange,
   checkRename,
+  instancesForField,
+  instancesForSource,
   nextChildFieldId,
   nextChildTypeId,
   sanitizeFieldId,
   sanitizeTypeId,
+  type RosterSource,
 } from "./childEntityTypesHelpers";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
@@ -488,7 +491,7 @@ function InstancesSection({
   onUpdate: (partial: Partial<DriverChildEntityType>) => void;
 }) {
   const inst = type.instances;
-  const source: "none" | "count" | "count_from" | "ids_from" | "ids" =
+  const source: RosterSource =
     inst == null
       ? "none"
       : inst.count !== undefined
@@ -501,38 +504,10 @@ function InstancesSection({
               ? "ids"
               : "none";
 
-  // Carried across every source change for the same reason the label is:
-  // whether these IDs are fitted hardware or empty slots is a fact about the
-  // roster, not about which field happens to size it, and dropping it on a
-  // switch would quietly put seven empty positions back online.
-  const keepPresence =
-    inst?.presence === "reported" ? { presence: "reported" as const } : {};
-  const keepLabel = {
-    ...keepPresence,
-    ...(inst?.label ? { label: inst.label } : {}),
-  };
-  // `count_from_state` is a companion to the count family, not a source of its
-  // own, so every write in that family has to carry it the way `label` is
-  // carried — otherwise editing the config field silently drops it. It does
-  // NOT ride along to an ID-list roster: the runtime checks it before
-  // `ids_from`, so carrying it there would quietly take the roster over.
-  const keepFollow = inst?.count_from_state
-    ? { count_from_state: inst.count_from_state }
-    : {};
-  const keepCount = { ...keepFollow, ...keepLabel };
-
+  // What rides along to each source (the label, a reported presence, and
+  // count_from_state to count_from only) is instancesForSource's.
   const setSource = (next: string) => {
-    if (next === "none") {
-      onUpdate({ instances: undefined });
-    } else if (next === "count") {
-      onUpdate({ instances: { count: 2, ...keepCount } });
-    } else if (next === "count_from") {
-      onUpdate({ instances: { count_from: configFields[0] ?? "", ...keepCount } });
-    } else if (next === "ids") {
-      onUpdate({ instances: { ids: [], ...keepLabel } });
-    } else {
-      onUpdate({ instances: { ids_from: configFields[0] ?? "", ...keepLabel } });
-    }
+    onUpdate({ instances: instancesForSource(next as RosterSource, inst, configFields) });
   };
 
   const fieldSelect = (
@@ -543,12 +518,7 @@ function InstancesSection({
       data-testid={`child-instances-${key}-${name}`}
       value={value}
       onChange={(e) =>
-        onUpdate({
-          instances: {
-            [key]: e.target.value,
-            ...(key === "count_from" ? keepCount : keepLabel),
-          },
-        })
+        onUpdate({ instances: instancesForField(key, e.target.value, inst) })
       }
       style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
     >
@@ -617,8 +587,8 @@ function InstancesSection({
                 const n = parseInt(e.target.value, 10);
                 onUpdate({
                   instances: {
+                    ...instancesForSource("count", inst, configFields),
                     count: Number.isFinite(n) ? n : 1,
-                    ...keepCount,
                   },
                 });
               }}
@@ -653,18 +623,19 @@ function InstancesSection({
                   .map((t) => t.trim())
                   .filter((t) => t !== "")
                   .map((t) => (isInt && /^\d+$/.test(t) ? parseInt(t, 10) : t));
-                onUpdate({ instances: { ids, ...keepLabel } });
+                onUpdate({
+                  instances: { ...instancesForSource("ids", inst, configFields), ids },
+                });
               }}
               placeholder="st, m"
               style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
             />
           </div>
         )}
-        {/* Only offered against a config-field count, which is where the
-            runtime consults it: a literal Fixed count wins outright and the
-            state variable would never be read. Still rendered when one is
-            already set, so a value written by hand stays visible and
-            clearable rather than invisible. */}
+        {/* Only offered against a config-field count, the one source it goes
+            with: beside a Fixed count or an ID list the driver is refused.
+            Still rendered when one is already set, so a value written by hand
+            stays visible and clearable rather than invisible. */}
         {(source === "count_from" || inst?.count_from_state) && (
           <div>
             <span style={{ ...labelStyle, fontSize: "11px" }}>

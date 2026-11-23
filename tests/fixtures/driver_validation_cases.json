@@ -4908,6 +4908,117 @@
   },
   "transport": "tcp"
  },
+ "instances_count_from_state_beside_count": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4,
+     "count_from_state": "power"
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "instances_count_from_state_beside_ids": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count_from_state": "power",
+     "ids": [
+      1,
+      2
+     ]
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "instances_count_from_state_beside_ids_from": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count_from_state": "power",
+     "ids_from": "zone_list"
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "zone_list": "1,2"
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "instances_count_from_state_not_string": {
   "child_entity_types": {
    "zone": {

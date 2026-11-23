@@ -10,14 +10,15 @@ the project's children, which the manager delivers after construction
 variables with their defaults; this module only reads. The rules worth
 knowing before changing anything here:
 
-* **The simulator's own reader of ``instances:``, on purpose.** There are
-  three: drivers/declared_roster.py is the runtime roster, and
-  child_ids.declared_child_ids the authoring prediction. This one seeds the
-  simulated device from config alone, so a ``count_from_state`` count is
-  never read (the simulator IS the device; there is no reported count yet),
-  a count that does not read as a whole number is no children, and an
-  ``ids`` that is not a list is passed over for the forms after it. A new
-  ``instances:`` form is added to all three.
+* **The simulator's own reader of what a source gives, on purpose.** There
+  are three: drivers/declared_roster.py is the runtime roster, and
+  child_ids.declared_child_ids the authoring prediction. Which source a
+  block names is the one reading all three ask (``child_ids.roster_source``).
+  This one seeds the simulated device from config alone, so a followed
+  count is never read (the simulator IS the device; there is no reported
+  count yet), and a count that does not read as a whole number, or an
+  ``ids`` that is not a list, is no children. A new ``instances:`` form is
+  added to all three.
 * **Ids are the wire's text.** The roster holds each id as unpadded text,
   the form a regex capture or an expanded ``{child_id}`` query carries; a
   project child's padded id is read back through the type's ``id_format``,
@@ -31,25 +32,26 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.drivers.declared_roster import COUNT_KEYS
+from openavc.drivers.child_ids import coerce_child_local_id, roster_source
 
 
 def declared_ids(type_def: Any, config: dict) -> list:
     """The ids a child type's ``instances:`` block declares for this
-    instance's config (the driver's defaults under its own), in order; empty
-    when it declares none. One reader per form, the first that applies: a
+    instance's config (the driver's defaults under its own), in order, each
+    as the wire carries it (``wire_id``); empty when it declares none. One
+    reader per source, the one the block names (``roster_source``): a
     literal list, a count, a comma list from a config field."""
     inst = type_def.get("instances") if isinstance(type_def, dict) else None
-    if not isinstance(inst, dict):
-        return []
-    if isinstance(inst.get("ids"), list):
-        return _listed_ids(inst["ids"])
-    if any(key in inst for key in COUNT_KEYS):
-        return _counted_ids(inst, config)
-    if isinstance(inst.get("ids_from"), str):
-        return _ids_from_field(config.get(inst["ids_from"], ""))
-    return []
+    kind = roster_source(inst).kind
+    if kind == "ids":
+        ids = _listed_ids(inst["ids"]) if isinstance(inst["ids"], list) else []
+    elif kind in ("count", "count_from"):
+        ids = _counted_ids(inst, config)
+    elif kind == "ids_from" and isinstance(inst["ids_from"], str):
+        ids = _ids_from_field(config.get(inst["ids_from"], ""))
+    else:
+        ids = []
+    return [wire_id(type_def, local_id) for local_id in ids]
 
 
 def _listed_ids(ids: list) -> list:

@@ -48,7 +48,11 @@ from openavc.drivers.avcdriver_semantic import (
     validate_actions,
     value_conversion_errors,
 )
-from openavc.drivers.child_type_checks import RosterNames, child_type_errors
+from openavc.drivers.child_type_checks import (
+    RosterNames,
+    child_type_errors,
+    followed_count_errors,
+)
 from openavc.drivers.command_checks import SharedCommandChecks, state_name_errors
 from openavc.drivers.declared_names import DeclaredSections
 from openavc.drivers.discovery_block import discovery_refusals
@@ -514,6 +518,7 @@ def _child_type_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
         # judged even where the rest of the type is left out.
         judged = coverage.judged(f"child_entity_types.{name}", type_def, _roster_reads(type_def))
         errors.extend(child_type_errors(name, type_def if judged else {}, roster))
+        errors.extend(followed_count_errors(name, type_def if judged else {}))
     return errors
 
 

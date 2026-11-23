@@ -24,8 +24,12 @@ A roster declares exactly one source (``spec.INSTANCE_SOURCES``) and each has
 one function in ``_SOURCE_CHECKS``, so a new way to say which children exist is
 a function and a row here, and the message naming the sources follows the
 table; ``count_from_state``, the device-reported count a roster follows once
-connected, sits beside any of them. That is this check only: the roster is
-also read by ``child_ids.declared_child_ids`` (in its own order of sources),
+connected, goes with ``count_from`` only (``child_ids.FOLLOWED_SOURCE``).
+Beside a source that fixes the roster it is refused at the author's doors and
+a notice at load (``followed_count_errors``, which the definition walk asks
+among its author's-door parts), so a driver that loaded with one still loads,
+and no reader follows it (``child_ids.roster_source``). That is this check
+only: the roster is also read by ``child_ids.declared_child_ids``,
 ``declared_roster.py``, which registers it, the poll-length warning in
 ``avcdriver_semantic`` and the query entries' ``each_child`` check, and outside
 the contract by the Driver Builder and the simulator, and a new source reaches
@@ -41,7 +45,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.child_ids import FOLLOWED_SOURCE, coerce_child_local_id
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
     config_field_names,
@@ -85,6 +89,22 @@ def child_type_errors(child_type: Any, type_def: Any, names: RosterNames) -> lis
     errors += _child_variable_errors(where, type_def.get("state_variables"))
     errors += _instances_errors(where, child_type, type_def, names)
     return errors
+
+
+def followed_count_errors(child_type: Any, type_def: Any) -> list[str]:
+    """``count_from_state`` beside the one source that fixes the roster
+    instead of ``count_from``. A block naming no source, or several, is told
+    to declare one (``_source_errors``), and that is said first."""
+    instances = type_def.get("instances") if isinstance(type_def, dict) else None
+    if not isinstance(instances, dict) or instances.get("count_from_state") is None:
+        return []
+    sources = [key for key in INSTANCE_SOURCES if key in instances]
+    if len(sources) != 1 or sources[0] == FOLLOWED_SOURCE:
+        return []
+    return [
+        f"child_entity_types.{child_type}.instances: count_from_state beside {sources[0]}: "
+        f"ids, ids_from and count fix the roster; use count_from with count_from_state"
+    ]
 
 
 def _name_errors(child_type: str) -> list[str]:

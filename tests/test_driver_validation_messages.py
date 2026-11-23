@@ -956,6 +956,14 @@ CASES: dict[str, Any] = {
     "instances_not_mapping": _instances([4]),
     "instances_count_from_state_not_string": _instances({"count": 4, "count_from_state": 5}),
     "instances_count_from_state_undeclared": _instances({"count": 4, "count_from_state": "zones"}),
+    # count_from_state follows the device beside count_from only.
+    "instances_count_from_state_beside_count": _instances({"count": 4, "count_from_state": "power"}),
+    "instances_count_from_state_beside_ids": _instances({"ids": [1, 2], "count_from_state": "power"}),
+    "instances_count_from_state_beside_ids_from": _d(
+        default_config={"zone_list": "1,2"},
+        child_entity_types={"zone": {**_CHILD_TYPES["zone"],
+                                     "instances": {"ids_from": "zone_list", "count_from_state": "power"}}},
+    ),
     "instances_no_source": _instances({}),
     "instances_two_sources": _instances({"count": 4, "ids": [1, 2]}),
     "instances_ids_empty": _instances({"ids": []}),

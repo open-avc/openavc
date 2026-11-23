@@ -58,6 +58,7 @@ from openavc.drivers.child_type_checks import (
     RosterNames,
     child_param_reference_errors,
     child_type_errors,
+    followed_count_errors,
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
 from openavc.drivers.command_checks import CommandSection
@@ -455,6 +456,7 @@ class _DefinitionWalk:
         return [
             (self.rule_names, "responses"),
             (self.child_fault_codes, "responses"),
+            (self.followed_counts, "child_entity_types"),
             (self.line_settings, "default_config"),
             (self.discovery_authored, "discovery"),
             (self.model_problems, ""),
@@ -475,6 +477,16 @@ class _DefinitionWalk:
         for i, rule in enumerate(self.declared.responses):
             errors.ctx = f"responses[{i}]"
             errors.extend(child_fault_code_errors(i, rule))
+
+    def followed_counts(self) -> None:
+        """A child type's ``count_from_state`` beside a source that fixes its
+        roster (child_type_checks)."""
+        errors = self.authored
+        if "child_entity_types" in self.declared.misshapen:
+            return
+        for child_type, type_def in self.declared.child_types.items():
+            errors.ctx = f"child_entity_types.{child_type}"
+            errors.extend(followed_count_errors(child_type, type_def))
 
     def model_problems(self) -> None:
         """What the driver model reads and what a send carries that only the
