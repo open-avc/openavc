@@ -11561,9 +11561,9 @@ const PANEL_CHECKS = {
     },
     // The node a `keep` step held has had no entry animation started on it.
     keptStillHidden: (m) => {
-        const n = m.kept.parentElement;
-        assert(m.kept.style.opacity === '0' || (n && n.style.opacity === '0'),
-            `the node shows: opacity ${JSON.stringify(m.kept.style.opacity)}, class ${JSON.stringify(m.kept.className)}`);
+        const waiting = (node) => !!node && node.classList.contains('element-entry-waiting');
+        assert(waiting(m.kept) || waiting(m.kept.parentElement),
+            `the node shows: class ${JSON.stringify(m.kept.className)}`);
     },
     // How many Theme Studio name tags the document holds.
     nameTags: (m, want) => {

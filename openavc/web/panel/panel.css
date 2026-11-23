@@ -797,28 +797,33 @@ button.panel-element {
     to { transform: scale(0.9); opacity: 0; }
 }
 
-/* ===== Element Entry Animations ===== */
+/* ===== Element Entry Animations =====
+ *
+ * Each runs from nothing to the control as drawn: no `to` keyframe, so the end
+ * is the control's own opacity (a style's, a look's, a script's override), and
+ * no `forwards`, so nothing is held once it has run. A held last frame beats an
+ * inline style, and would draw every dimmed control fully opaque. */
 
+.element-entry-waiting {
+    visibility: hidden;
+}
 .element-entry-fade {
-    animation: elFadeIn 0.3s ease forwards;
+    animation: elFadeIn 0.3s ease;
 }
 .element-entry-fade-up {
-    animation: elFadeUp 0.3s ease forwards;
+    animation: elFadeUp 0.3s ease;
 }
 .element-entry-scale {
-    animation: elScaleIn 0.3s ease forwards;
+    animation: elScaleIn 0.3s ease;
 }
 @keyframes elFadeIn {
     from { opacity: 0; }
-    to { opacity: 1; }
 }
 @keyframes elFadeUp {
     from { opacity: 0; transform: translateY(0.8571rem); }
-    to { opacity: 1; transform: translateY(0); }
 }
 @keyframes elScaleIn {
     from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
 }
 
 /* ===== Small glass =====

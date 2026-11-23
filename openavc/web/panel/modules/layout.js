@@ -48,6 +48,9 @@ export const REM_BASE_PX = 14;
 // The snap increment a page falls back to: the old 12x8 grid's spacing.
 const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
 
+// An element waiting for its stagger step to come in.
+const ENTRY_WAITING = 'element-entry-waiting';
+
 // A border width written as these draws no frame.
 const NO_FRAME = new Set(['0', '0px']);
 
@@ -439,15 +442,21 @@ function drawChildren(el, element, ctx) {
     for (const child of children) drawSubtree(child, ctx, el);
 }
 
-/** Bring an element in after the ones drawn before it, one stagger step each. */
+/**
+ * Bring an element in after the ones drawn before it, one stagger step each.
+ *
+ * It waits hidden by a class and comes in by one, never by its inline
+ * opacity: that is the control's own (its style's, a look's, a script's
+ * override), and the animation runs from nothing to it and lets go when done
+ * (panel.css).
+ */
 function animateEntry(node, ctx) {
     const index = ctx.order++;
-    node.style.opacity = '0';
     const animClass = ctx.entryAnimation === 'stagger'
         ? `element-entry-${ctx.staggerStyle}`
         : `element-entry-${ctx.entryAnimation}`;
+    node.classList.add(ENTRY_WAITING);
     ctx.how.keep(setTimeout(() => {
-        node.style.opacity = '';
-        node.classList.add(animClass);
+        node.classList.replace(ENTRY_WAITING, animClass);
     }, ctx.staggerMs * index));
 }
