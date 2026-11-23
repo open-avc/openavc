@@ -27,9 +27,14 @@ from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
-from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.spec import PLACEHOLDER
-from openavc.simulator.driver_sends import command_sample, effective_config, entry_text
+from openavc.simulator.driver_sends import (
+    command_sample,
+    effective_config,
+    entry_text,
+    filled_rules,
+    with_config,
+)
 from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
 from openavc.simulator.reread_queries import read_back_query_lines
 from openavc.simulator.validation_result import ValidationResult
@@ -41,15 +46,22 @@ _PARAM_MARKER = "Q0PARAMQ0"
 
 
 class OscAddresses:
-    """The addresses the OSC simulator answers, with the driver's config."""
+    """The addresses the OSC simulator answers, with the driver's config: a
+    hand-written handler's pattern as written, a response rule's address
+    with the config filled in as the simulator fills it
+    (``driver_sends.filled_rules``)."""
 
     def __init__(self, sim_handlers: list, responses: list, driver_def: dict):
-        self._patterns = [*_addresses(sim_handlers), *_addresses(responses)]
         self._config = effective_config(driver_def)
+        self._patterns = [
+            *_addresses(sim_handlers), *_addresses(filled_rules(responses, self._config)),
+        ]
 
-    def filled(self, template: str) -> str:
-        """A template with the config filled in (shared runtime rules)."""
-        return safe_substitute(template, self._config)
+    def filled(self, template: str, params: Any = None) -> str:
+        """A template with the config filled in (shared runtime rules), a
+        placeholder one of ``params`` is named for left for it
+        (``driver_sends.with_config``)."""
+        return with_config(template, self._config, params)
 
     def answers(self, address: str) -> bool:
         """Whether the simulator answers this address. The console's own
@@ -67,7 +79,7 @@ class OscAddresses:
         no single sample value proves it. Wildcard handler patterns are probed
         with their * / ? / [...] parts collapsed to a plain segment token.
         """
-        rx = _template_regex(self.filled(template), params)
+        rx = _template_regex(self.filled(template, params), params)
         if rx is None:
             return False
         return any(rx.match(_probe(pattern)) for pattern in self._patterns)

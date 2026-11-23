@@ -37,6 +37,7 @@ from openavc.simulator.driver_sends import (
     entry_text,
     polled_queries,
     query_line,
+    with_config,
 )
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
 from openavc.simulator.validation_result import ValidationResult
@@ -57,11 +58,13 @@ def auto_handler_pattern(template: str, params: dict) -> re.Pattern | None:
 class SimulatorAnswers:
     """Who in the simulator answers a line, as the validator models it: its
     hand-written handlers in list order, then the ones it builds from the
-    driver's commands."""
+    driver's commands, each with ``config`` filled into its send as the
+    simulator fills it."""
 
-    def __init__(self, sim_handlers: list, commands: dict):
+    def __init__(self, sim_handlers: list, commands: dict, config: dict):
         self._handlers = _compile_handler_patterns(sim_handlers)
         self._commands = commands
+        self._config = config
 
     def hand_written(self, line: str) -> dict | None:
         """The first hand-written handler whose pattern matches the line."""
@@ -70,10 +73,12 @@ class SimulatorAnswers:
                 return handler
         return None
 
-    @staticmethod
-    def built_for(send_template: str, params: dict, sample: str) -> bool:
-        """Whether the handler built from this command answers its sample."""
-        auto_pattern = auto_handler_pattern(send_template, params)
+    def built_for(self, send_template: str, params: dict, sample: str) -> bool:
+        """Whether the handler built from this command answers its sample:
+        its send with the config filled in (``driver_sends.with_config``),
+        read backwards."""
+        filled = with_config(send_template, self._config, params)
+        auto_pattern = auto_handler_pattern(filled, params)
         return bool(auto_pattern and auto_pattern.match(sample))
 
     def built_from_any_command(self, query_text: Any, sample: str) -> bool:
@@ -115,8 +120,8 @@ def check_command_coverage(
     driver_def: dict,
 ) -> None:
     """Check every command has a matching handler in the simulator."""
-    answers = SimulatorAnswers(sim_handlers, commands)
     config = effective_config(driver_def)
+    answers = SimulatorAnswers(sim_handlers, commands, config)
 
     for cmd_name, cmd_def in commands.items():
         send_template = _framed_send(cmd_def, driver_def, config)
@@ -169,8 +174,8 @@ def check_poll_coverage(
     """Check every polling query, then_query entry and read_back query
     (``driver_sends.polled_queries``) has a matching simulator handler."""
     commands = driver_def.get("commands", {})
-    answers = SimulatorAnswers(sim_handlers, commands)
     config = effective_config(driver_def)
+    answers = SimulatorAnswers(sim_handlers, commands, config)
     transport = driver_def.get("transport", "tcp")
 
     for label, query in _each_query(polled_queries(driver_def, queries)):
@@ -228,8 +233,8 @@ def query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
     ``driver_sends.asked_queries``. Hand-written handlers only: they are the
     ones the response check reads replies from."""
     commands = driver_def.get("commands", {})
-    answers = SimulatorAnswers(sim_handlers, commands)
     config = effective_config(driver_def)
+    answers = SimulatorAnswers(sim_handlers, commands, config)
     transport = driver_def.get("transport", "tcp")
 
     answering: set[int] = set()

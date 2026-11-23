@@ -1,5 +1,16 @@
 """What a YAML driver sends, as the simulator's dispatcher receives it, for the validator.
 
+The config a device's templates are filled from is read here once, for the
+simulated device and the validator alike (``effective_config``): the
+driver's defaults, the device's own settings over them, then the
+``config_derived`` values, as the running driver holds its config. The
+auto-generated simulator (``yaml_auto``) fills a command's send with it
+(``with_config``, which leaves a placeholder a command's parameter is named
+for to the parameter, as the driver's send does) and its response rules'
+patterns and OSC addresses (``filled_rules``), and fills its query lines,
+setting writes, pushes, rosters and line ending from it; the validator's
+readers below fill from the driver's defaults alone.
+
 The validator (``validate``) asks whether the auto-generated simulator
 answers each line a driver puts on the wire, and whether the driver reads
 what comes back. Both questions start from the same lines, built here: a
@@ -37,16 +48,62 @@ from openavc.drivers.send_framing import framed_send
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
 
-def effective_config(driver_def: dict) -> dict:
-    """default_config plus config_derived values.
+def effective_config(driver_def: dict, config: dict | None = None) -> dict:
+    """The config a device's templates are filled from, as the running
+    driver holds it: the driver's ``default_config``, the device's own
+    settings over it (``config``; none for the validator, which knows no
+    device), then the ``config_derived`` values worked out from both.
 
-    Uses the same shared derivation the runtime runs, so a derived template
-    whose referenced fields are all non-empty is substituted; otherwise the
-    derived value is "" (so an optional prefix segment simply disappears).
+    The derivation is the runtime's own (``derive_config``), run last as the
+    driver runs it, so a derived template whose referenced fields are all
+    non-empty is substituted, otherwise the derived value is "" (an optional
+    prefix segment simply disappears). A new dict each call, so a caller may
+    change its copy.
     """
-    config = dict(driver_def.get("default_config", {}))
-    derive_config(config, driver_def.get("config_derived"))
-    return config
+    merged = dict(driver_def.get("default_config") or {})
+    merged.update(config or {})
+    derive_config(merged, driver_def.get("config_derived"))
+    return merged
+
+
+def with_config(template: Any, config: dict, params: Any = None) -> Any:
+    """A command's template with the config fields it names filled in, as
+    the driver fills them (``safe_substitute``), before its parameters.
+
+    A placeholder that names one of the command's own ``params`` is left
+    for the parameter: the driver fills ``{**config, **push params,
+    **params}``, so a parameter named like a config field (``{port}``) puts
+    its own value on the wire. A template that is not text is as written.
+    """
+    if not isinstance(template, str) or "{" not in template:
+        return template
+    taken = params if isinstance(params, dict) else {}
+    return safe_substitute(
+        template, {name: value for name, value in config.items() if name not in taken}
+    )
+
+
+def filled_rules(responses: Any, config: dict) -> Any:
+    """The response rules as the driver compiles them: each rule's
+    ``match:`` pattern and OSC ``address:`` with the config filled in
+    (``compiled_protocol``'s regex and OSC rules), so the simulator answers
+    with the text the driver's rule reads and at the address it listens on.
+    Each filled rule is a copy; a rule that is not a mapping, and a section
+    that is not a list, are as written."""
+    if not isinstance(responses, list):
+        return responses
+    return [_filled_rule(rule, config) for rule in responses]
+
+
+def _filled_rule(rule: Any, config: dict) -> Any:
+    if not isinstance(rule, dict):
+        return rule
+    filled = {
+        key: safe_substitute(rule[key], config)
+        for key in ("match", "address")
+        if isinstance(rule.get(key), str) and "{" in rule[key]
+    }
+    return {**rule, **filled} if filled else rule
 
 
 def entry_text(entry: Any) -> Any:
@@ -86,12 +143,13 @@ def command_sample(template: str, params: dict, driver_def: dict) -> str | None:
     """A command's send (or OSC address) with sample values, or None when a
     config field it names has no value.
 
-    The config goes in first, then each parameter's sample value through the
-    shared substitution, which applies any ``{name:spec}`` format spec
-    exactly the way the runtime send path does (numeric strings coerce
-    before formatting).
+    The config goes in first (``with_config``: a field a parameter is named
+    for is left for the parameter), then each parameter's sample value
+    through the shared substitution, which applies any ``{name:spec}``
+    format spec exactly the way the runtime send path does (numeric strings
+    coerce before formatting).
     """
-    filled = safe_substitute(template, effective_config(driver_def))
+    filled = with_config(template, effective_config(driver_def), params)
     test_values = {name: _test_value(param_def) for name, param_def in params.items()}
     sample = _as_dispatched(safe_substitute(filled, test_values))
     return None if _left_unfilled(template, sample) else sample

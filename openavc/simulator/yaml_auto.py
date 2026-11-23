@@ -77,6 +77,7 @@ from openavc.simulator.child_roster import (
 )
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.command_names import infer_state_var, name_switch
+from openavc.simulator.driver_sends import effective_config, filled_rules, with_config
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.inline_device import (
     authored_names,
@@ -238,6 +239,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         super().__init__(device_id, config)
         self._read_framing(driver_def)
         self._driver_def = driver_def
+        # The response rules every reply table reads, filled with this
+        # device's config as the driver compiles them.
+        self._rules = filled_rules(driver_def.get("responses") or [], self._instance_config())
         self._read_transport(driver_def, config)
         self._build_generated_handlers()
         sim_section = driver_def.get("simulator", {})
@@ -301,7 +305,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         self._command_handlers: list[CommandHandler] = []
         self._query_handlers: list[QueryHandler] = []
         self._state_responses: dict[str, StateResponse] = flat_replies(
-            self._driver_def.get("responses", []), self._var_def_for_key
+            self._rules, self._var_def_for_key
         )
         self._build_command_handlers()
         self._build_settings_handlers()
@@ -349,10 +353,10 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """
         self._child_roster: dict[str, list[str]] = {}
         self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = (
-            child_replies(self._driver_def.get("responses", []), self._child_types(), self._child_vars)
+            child_replies(self._rules, self._child_types(), self._child_vars)
         )
         self._child_list_answers: dict[tuple[str, str], ChildListAnswer] = list_answers(
-            self._driver_def.get("responses") or [], self._child_types(), self._child_vars
+            self._rules, self._child_types(), self._child_vars
         )
         self._child_query_handlers: list[ChildQueryHandler | ListQueryHandler] = []
         self._seed_declared_children()
@@ -428,12 +432,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return bool(cfg.get("ssl", defaults.get("ssl", False)))
 
     def _instance_config(self) -> dict:
-        """The driver's default_config overlaid with this instance's config:
-        the fields the driver fills its templates from. A new dict each call,
-        so a caller may change its copy."""
-        merged = dict(self._driver_def.get("default_config") or {})
-        merged.update(self.config or {})
-        return merged
+        """The fields the driver fills its templates from: its default_config,
+        this instance's config over it, then the config_derived values
+        (``driver_sends.effective_config``, the driver's own layering). A new
+        dict each call, so a caller may change its copy."""
+        return effective_config(self._driver_def, self.config)
 
     async def start(self, port: int) -> None:
         """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP).
@@ -1053,7 +1056,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         for cmd_name, cmd_def in self._driver_def.get("commands", {}).items():
             authored = cmd_name in self._authored_commands
             template = _framed_send(cmd_def, self._driver_def, config, authored=authored)
-            wire = self._command_wire(cmd_name, template, cmd_def)
+            wire = self._command_wire(cmd_name, template, cmd_def, config)
             if wire is None:
                 continue
             send_template, params, pattern = wire
@@ -1069,14 +1072,18 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     @staticmethod
     def _command_wire(
-        cmd_name: str, send_template: Any, cmd_def: dict
+        cmd_name: str, send_template: Any, cmd_def: dict, config: dict
     ) -> tuple[str, Any, re.Pattern] | None:
         """A command's send template as the wire carries it, its params, and
         the pattern that matches it; None for a command this chain cannot
-        match (no send, a raw passthrough, a pattern that will not compile)."""
+        match (no send, a raw passthrough, a pattern that will not compile).
+        The device's config is filled in as the driver fills it
+        (``driver_sends.with_config``: a placeholder a parameter is named
+        for stays the parameter's)."""
         if not send_template:
             return None
         params = cmd_def.get("params", {})
+        send_template = with_config(send_template, config, params)
 
         # A raw passthrough ("{command}\r") would match every line, and
         # setting nothing it would answer every line meant for a handler
@@ -1293,9 +1300,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         self._inline_json_fields: list[dict] = []
         if not self._inline_protocol:
             return
-        self._inline_response_handlers = response_handlers(
-            self._driver_def.get("responses", []), self.driver_id
-        )
+        self._inline_response_handlers = response_handlers(self._rules, self.driver_id)
         if self._is_http:
             self._inline_json_fields = json_fields(self._driver_def)
             if self._inline_json_fields:
@@ -1324,7 +1329,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _build_osc_address_handlers(self) -> None:
         """The address rules a message is matched against (osc_addresses)."""
-        self._osc_address_handlers = address_rules(self._driver_def.get("responses", []))
+        self._osc_address_handlers = address_rules(self._rules)
         logger.info(
             "Auto-gen OSC simulator for %s: %d address handlers",
             self.driver_id, len(self._osc_address_handlers),

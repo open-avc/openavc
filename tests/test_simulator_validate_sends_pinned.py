@@ -481,23 +481,12 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                    'template or a respond() call in a handler) is sent verbatim, '
                                    'so end it with the delimiter; only the handlers the simulator '
                                    'generates are terminated for you.')],
- 'command_raw_with_config_skips_the_prefix': [('error',
-                                               'command_coverage',
-                                               "No simulator handler matches command 'zone_on' "
-                                               "(sample: 'Z3 ON')")],
- 'command_sample_filled_from_config': [('error',
-                                        'command_coverage',
-                                        "No simulator handler matches command 'zone' (sample: 'Z3 "
-                                        "ON')"),
-                                       ('info',
+ 'command_raw_with_config_skips_the_prefix': [],
+ 'command_sample_filled_from_config': [('info',
                                         'reply_framing',
                                         '2 simulator replies checked, all terminated with '
                                         "'\\\\r\\\\n'.")],
- 'command_sample_filled_from_derived_config': [('error',
-                                                'command_coverage',
-                                                "No simulator handler matches command 'zone' "
-                                                "(sample: 'Z3 ON')"),
-                                               ('info',
+ 'command_sample_filled_from_derived_config': [('info',
                                                 'reply_framing',
                                                 '2 simulator replies checked, all terminated with '
                                                 "'\\\\r\\\\n'.")],
@@ -732,11 +721,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                        'reply_framing',
                                        '2 simulator replies checked, all terminated with '
                                        "'\\\\r\\\\n'.")],
- 'poll_query_equal_to_a_send_with_config': [('error',
-                                             'command_coverage',
-                                             "No simulator handler matches command 'ask_zone' "
-                                             "(sample: 'Z7?')"),
-                                            ('info',
+ 'poll_query_equal_to_a_send_with_config': [('info',
                                              'reply_framing',
                                              '2 simulator replies checked, all terminated with '
                                              "'\\\\r\\\\n'.")],
