@@ -1494,7 +1494,7 @@ A `set:` value on a `match:` rule is always one of those two — a capture refer
     - { group: 1, state: power, type: string, map: { "0": "off", "1": "on" } }
 ```
 
-- `mappings[].group`: Which regex capture group (1-based).
+- `mappings[].group`: Which regex capture group (1-based). `0`, or leaving it out, reads the whole text the pattern matched.
 - `mappings[].state`: Which state variable to update, one declared under `state_variables`.
 - `mappings[].type` (optional): How to convert the captured text: `string`, `integer`, `float`, `boolean`. Leave it out and the state variable's own declared type is used, which is normally what you want.
 - `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport. A mapped value of `null` leaves the variable empty instead, whatever its type, so a device's "no reading" code can map straight to empty: `map: { "--": null }` (platform 0.37.0+). The same holds for a `map:` or a literal in `child_set:` and `child_list:`, on a `json: true` rule and on an OSC rule.
