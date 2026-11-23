@@ -12,6 +12,7 @@ import { DriverPanel } from "./DriverBuilderView";
 import { DeviceDetail } from "./devices/DeviceDetail";
 import { DeviceGroupsPanel } from "./devices/DeviceGroupsPanel";
 import { DeviceListItem } from "./devices/DeviceListItem";
+import { useDropRemovedSelection } from "./devices/useDropRemovedSelection";
 import { AddDeviceDialog, EditDeviceDialog } from "./devices/DeviceDialogs";
 import { findDeviceReferences } from "./devices/deviceUtils";
 import { devicesOnBridgePort } from "./devices/bridgePorts";
@@ -39,6 +40,7 @@ export function DeviceView() {
     const focus = useNavigationStore.getState().consumeFocus();
     return focus?.type === "device" ? focus.id : null;
   });
+  useDropRemovedSelection(selectedId, devices, () => setSelectedId(null));
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editDevice, setEditDevice] = useState<DeviceConfig | null>(null);
   const [search, setSearch] = useState("");
