@@ -4098,6 +4098,11 @@ def platform_requirements(
     def walk(node: object, value: object, loc: str, depth: int = 0) -> None:
         if not isinstance(node, dict) or depth > 40:
             return
+        if node.get("enhancement_since"):
+            # Nothing inside an enhancement sets a floor: the driver runs
+            # correctly on a platform that ignores the field, so it does on
+            # one that acts on the field but not yet on something inside it.
+            return
         if "ref" in node:
             if node.get("since"):
                 record(loc, node["since"])

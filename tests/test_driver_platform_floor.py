@@ -300,6 +300,20 @@ def test_an_enhancement_field_does_not_raise_the_floor():
     assert platform_version_errors(definition, require_declaration=True) == []
 
 
+def test_a_field_inside_an_enhancement_does_not_raise_the_floor_either():
+    """A field in a then_query entry is acted on only by a platform that acts
+    on then_query, so its own floor (page_size's, here) sets none."""
+    entry = {"each_child": "output", "send": "Q{child_id}\r", "page_size": 4}
+    definition = _d(
+        responses=[{"match": "^CHG$", "set": {}, "then_query": ["PWR?\r", entry]}],
+        polling={"queries": ["PWR?\r"]},
+    )
+    assert platform_requirements(definition) == []
+    # The same entry in the poll, which every platform acts on, sets its floor.
+    polled = _d(polling={"queries": ["PWR?\r", entry]})
+    assert ("polling.queries[1].page_size", "0.37.0") in platform_requirements(polled)
+
+
 def test_an_enhancement_reaches_the_published_documentation():
     assert "enhancement_since" in _THEN_QUERY and "since" not in _THEN_QUERY
     assert spec.node_doc(_THEN_QUERY).endswith(
