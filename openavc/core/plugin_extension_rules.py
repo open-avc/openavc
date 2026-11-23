@@ -134,26 +134,50 @@ _REQUIRED_LAYOUT_FIELDS = {
 }
 
 
+def _is_flag(value: Any) -> bool:
+    return isinstance(value, bool)
+
+
 def _is_whole(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def _is_list_of(value: Any, kind: type) -> bool:
-    return isinstance(value, list) and all(isinstance(item, kind) for item in value)
+def _is_text(value: Any) -> bool:
+    return isinstance(value, str)
+
+
+def _is_texts(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _is_controls(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+
+def _is_key_pattern(value: Any) -> bool:
+    return isinstance(value, str) and "*" in value
+
+
+def _is_row_key(value: Any) -> bool:
+    return isinstance(value, str) and "{row}" in value
+
+
+def _is_route_match(value: Any) -> bool:
+    return isinstance(value, str) and value in SURFACE_ROUTE_MATCH_MODES
 
 
 #: Each kind of layout field: the words for it and whether a value is one.
 _KINDS: dict[str, tuple[str, Any]] = {
-    "flag": ("true or false", lambda v: isinstance(v, bool)),
+    "flag": ("true or false", _is_flag),
     "whole": ("a whole number", _is_whole),
-    "text": ("text", lambda v: isinstance(v, str)),
-    "texts": ("a list of text", lambda v: _is_list_of(v, str)),
-    "controls": ("a list of dicts", lambda v: _is_list_of(v, dict)),
-    "key pattern": ("a state key with *", lambda v: isinstance(v, str) and "*" in v),
-    "row key": ("a state key with {row}", lambda v: isinstance(v, str) and "{row}" in v),
+    "text": ("text", _is_text),
+    "texts": ("a list of text", _is_texts),
+    "controls": ("a list of dicts", _is_controls),
+    "key pattern": ("a state key with *", _is_key_pattern),
+    "row key": ("a state key with {row}", _is_row_key),
     "route match": (
         "one of " + ", ".join(repr(m) for m in sorted(SURFACE_ROUTE_MATCH_MODES)),
-        lambda v: isinstance(v, str) and v in SURFACE_ROUTE_MATCH_MODES,
+        _is_route_match,
     ),
 }
 
