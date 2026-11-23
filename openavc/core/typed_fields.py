@@ -47,13 +47,13 @@ from __future__ import annotations
 from typing import Any
 
 from openavc.drivers.registry import get_driver_class
-from openavc.drivers.spec import CONNECTION_FIELDS, PASSWORD_FIELD, is_secret_setting
+from openavc.drivers.spec import CONNECTION_FIELDS, NUMERIC_TYPES, PASSWORD_FIELD, is_secret_setting
 
 #: Connection fields trimmed whatever the driver's schema says of them.
 TRIMMED_CONNECTION_FIELDS: frozenset[str] = CONNECTION_FIELDS - {PASSWORD_FIELD}
 
 #: The schema types a person types a single value into.
-TRIMMED_SCHEMA_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "float"})
+TRIMMED_SCHEMA_TYPES: frozenset[str] = frozenset({"string", *NUMERIC_TYPES})
 
 
 def trims_value(key: str, field: Any) -> bool:

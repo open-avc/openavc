@@ -7,6 +7,7 @@ import {
   nextStateVariableName,
 } from "./stateVariableHelpers";
 import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
+import { VALUE_TYPE_OPTIONS } from "../shared/valueTypeTraits";
 
 const sanitizeVariableName = (raw: string) =>
   raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
@@ -153,12 +154,9 @@ export function StateVariableEditor({
                 }}
                 style={{ width: 100, fontSize: "var(--font-size-sm)" }}
               >
-                <option value="string">String</option>
-                <option value="integer">Integer</option>
-                <option value="number">Number</option>
-                <option value="float">Float</option>
-                <option value="boolean">Boolean</option>
-                <option value="enum">Enum</option>
+                {VALUE_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
               <input
                 type="checkbox"

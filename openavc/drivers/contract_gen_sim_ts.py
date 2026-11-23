@@ -2,7 +2,9 @@
 
 Produces ``openavc/web/simulator/src/store/controls.gen.ts``: one interface per
 control type the Simulator UI draws and the ``ControlDef`` union of them, read
-off ``spec.SIMULATOR_CONTROLS``, the one place the types are declared. Each
+off ``spec.SIMULATOR_CONTROLS``, the one place the types are declared, and the
+value type table (``spec.VALUE_TYPE_TRAITS``) a child property's row is drawn
+from (``valueTypes.ts``). Each
 interface is named for its type (``meters`` -> ``MetersControlDef``); a field
 the type cannot be drawn without is required, every other one optional (a
 label included: the server may send a control without one). ``DynamicControls``
@@ -17,7 +19,12 @@ from __future__ import annotations
 from typing import Any
 
 from openavc.drivers import spec
-from openavc.drivers.contract_gen_ts import BANNER, _doc_block, _mechanical_ts
+from openavc.drivers.contract_gen_ts import (
+    BANNER,
+    _doc_block,
+    _mechanical_ts,
+    value_type_traits_ts,
+)
 
 #: What a ``controls`` list of a control's own is called in TypeScript.
 _UNION = "ControlDef"
@@ -60,4 +67,5 @@ def render_controls_ts() -> str:
     interfaces = [_interface(name, declared) for name, declared in spec.SIMULATOR_CONTROLS.items()]
     members = "".join(f"\n  | {interface_name(name)}" for name in spec.SIMULATOR_CONTROLS)
     union = f"export type {_UNION} ={members};\n"
-    return BANNER + _HEADER + "\n".join(interfaces) + "\n" + union
+    values = "\n" + value_type_traits_ts("valueTypes.ts")
+    return BANNER + _HEADER + "\n".join(interfaces) + "\n" + union + values

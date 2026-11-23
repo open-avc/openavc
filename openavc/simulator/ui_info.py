@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
+from openavc.drivers.spec import value_type_traits
 from openavc.drivers.usable_number import number_value
 from openavc.simulator.child_roster import roster_id
 
@@ -29,12 +30,15 @@ MAX_STOPS = 500
 
 
 def variable_control(key: str, var_def: dict, var_type: str, label: str) -> dict:
-    """The control a state variable of ``var_type`` gets on the device card."""
-    if var_type in ("integer", "number"):
-        return _slider_or_indicator(key, var_def, label, integral=var_type == "integer")
-    if var_type == "boolean":
+    """The control a state variable of ``var_type`` gets on the device card:
+    the value type table's ``control`` for it, a slider stepping by whole
+    numbers unless the type is ``real``."""
+    traits = value_type_traits(var_type)
+    if traits.control == "slider":
+        return _slider_or_indicator(key, var_def, label, integral=not traits.real)
+    if traits.control == "toggle":
         return {"type": "toggle", "key": key, "label": label}
-    if var_type == "enum":
+    if traits.control == "choice":
         return _enum_control(key, var_def, label)
     return _indicator(key, label)
 

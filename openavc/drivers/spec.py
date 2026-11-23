@@ -276,8 +276,107 @@ BRIDGE_PORT_KINDS: tuple[str, ...] = ("serial", "ir", "relay")
 # don't participate in device matching.
 GENERIC_ID_PREFIXES: tuple[str, ...] = ("generic_",)
 
-# Value types for state variables, child state variables, and device settings.
-VALUE_TYPES: tuple[str, ...] = ("string", "integer", "number", "boolean", "enum", "float")
+# --- value types -------------------------------------------------------------
+
+
+class ValueTypeTraits(NamedTuple):
+    """What one value type is and how each reader treats it: a row of
+    :data:`VALUE_TYPE_TRAITS`.
+
+    How a value a device sent is read as the type (its coercer) follows from
+    two columns: a whole number when ``numeric`` and not ``real``, a real
+    one when both, otherwise a boolean token for ``boolean`` and text for the
+    rest (``compiled_protocol``'s wire forms).
+    """
+
+    #: A number: its declared ``min`` and ``max`` bound it, it may carry a
+    #: conversion (``scale``, ``offset``, ``unknown``), a capture in another
+    #: base decodes to it, and a person types one value for it.
+    numeric: bool
+    #: Read as a real number rather than a whole one: a value keeps its
+    #: fraction, a slider steps by fractions, and its zero is ``0.0``.
+    real: bool
+    #: What a variable of the type holds when nothing it declares says
+    #: otherwise (an integer's ``min`` and an enum's first value do).
+    zero: str | int | float | bool
+    #: The OSC type tag the simulator sends a value of the type under.
+    osc_tag: str
+    #: What the Simulator UI draws for it: ``slider`` (over a declared range,
+    #: a readout without one), ``toggle``, ``choice`` (over its values) or
+    #: ``text``.
+    control: str
+    #: The name the Driver Builder offers it under.
+    label: str
+
+
+#: THE table of what each value type is, for state variables, child state
+#: variables and device settings: every reader of a type's traits asks it
+#: (through the views below or :func:`value_type_traits`), and the Programmer
+#: and the Simulator UI read it from their generated files.
+#: tests/test_value_type_traits.py holds each row complete and fails a module
+#: that writes a list of value types of its own. ``float`` is an accepted
+#: spelling of ``number``, and every column says so.
+VALUE_TYPE_TRAITS: dict[str, ValueTypeTraits] = {
+    "string": ValueTypeTraits(
+        numeric=False, real=False, zero="", osc_tag="s", control="text", label="String",
+    ),
+    "integer": ValueTypeTraits(
+        numeric=True, real=False, zero=0, osc_tag="i", control="slider", label="Integer",
+    ),
+    "number": ValueTypeTraits(
+        numeric=True, real=True, zero=0.0, osc_tag="f", control="slider", label="Number",
+    ),
+    "boolean": ValueTypeTraits(
+        numeric=False, real=False, zero=False, osc_tag="i", control="toggle", label="Boolean",
+    ),
+    "enum": ValueTypeTraits(
+        numeric=False, real=False, zero="", osc_tag="s", control="choice", label="Enum",
+    ),
+    "float": ValueTypeTraits(
+        numeric=True, real=True, zero=0.0, osc_tag="f", control="slider", label="Float",
+    ),
+}
+
+# Value types for state variables, child state variables, and device settings,
+# in the table's order (the schema's enum and the checks' messages print it).
+VALUE_TYPES: tuple[str, ...] = tuple(VALUE_TYPE_TRAITS)
+
+#: The value types that are numbers. A command parameter's and a config
+#: field's numeric types are the same names (neither takes another).
+NUMERIC_TYPES: tuple[str, ...] = tuple(
+    name for name, row in VALUE_TYPE_TRAITS.items() if row.numeric
+)
+
+#: The numeric types read as a real number rather than a whole one.
+REAL_TYPES: tuple[str, ...] = tuple(
+    name for name, row in VALUE_TYPE_TRAITS.items() if row.real
+)
+
+
+def is_value_type(value_type: object) -> bool:
+    """Whether a declaration's ``type`` has a row: a value type, or none
+    (left out or null, which reads as ``string``). A check reading a file
+    the contract has not passed skips one that has no row: the contract's
+    own check names it."""
+    return value_type is None or (
+        isinstance(value_type, str) and value_type in VALUE_TYPE_TRAITS
+    )
+
+
+def value_type_traits(value_type: object) -> ValueTypeTraits:
+    """The row for a declaration's ``type``. None (a type left out, or
+    written null, which the loader warns on and loads) reads as ``string``.
+    Any other name has no row and raises ValueError: the loader refuses such
+    a type, so only a reader handed a file no check has passed gets there."""
+    if value_type is None:
+        return VALUE_TYPE_TRAITS["string"]
+    if not is_value_type(value_type):
+        raise ValueError(
+            f"{value_type!r} is not a value type; use one of "
+            + ", ".join(repr(name) for name in VALUE_TYPE_TRAITS)
+        )
+    return VALUE_TYPE_TRAITS[value_type]
+
 
 # Types a command/action parameter may declare. No "float" (a number param
 # covers it); "child_id" makes the param a picker over a declared child

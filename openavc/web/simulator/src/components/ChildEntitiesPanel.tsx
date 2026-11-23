@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChildPropDef, DeviceInfo } from "../store/api";
 import { useEditable } from "./controls/useEditable";
+import { valueTypeTraits } from "../store/valueTypes";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 interface Props {
@@ -29,10 +30,10 @@ function PropRow({ name, def, value, onChange }: {
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const type = def?.type ?? "string";
+  const traits = valueTypeTraits(def?.type);
   const label = def?.label || name;
 
-  if (type === "boolean") {
+  if (traits.control === "toggle") {
     return (
       <div className="state-row">
         <span className="state-key" style={{ paddingLeft: 10 }} title={label}>{label}</span>
@@ -46,7 +47,7 @@ function PropRow({ name, def, value, onChange }: {
     );
   }
 
-  if (type === "enum" && def?.values?.length) {
+  if (traits.control === "choice" && def?.values?.length) {
     return (
       <div className="state-row">
         <span className="state-key" style={{ paddingLeft: 10 }} title={label}>{label}</span>
@@ -65,7 +66,7 @@ function PropRow({ name, def, value, onChange }: {
   }
 
   const bounded =
-    (type === "number" || type === "integer") &&
+    traits.control === "slider" &&
     typeof def?.min === "number" && typeof def?.max === "number";
 
   if (bounded) {
@@ -85,7 +86,7 @@ function NumberRow({ name, def, value, onChange }: {
 }) {
   const min = def.min as number;
   const max = def.max as number;
-  const step = def.step ?? (def.type === "integer" ? 1 : 0.1);
+  const step = def.step ?? (valueTypeTraits(def.type).real ? 0.1 : 1);
   const server = Math.max(min, Math.min(max, Number(value ?? min) || 0));
   const slider = useEditable(server);
   return (

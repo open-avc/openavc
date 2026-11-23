@@ -42,12 +42,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.spec import NUMERIC_TYPES, is_secret_setting
 from openavc.drivers.usable_number import usable_number
 
 # Tuples, not sets: a declared type is whatever the definition holds, and a
-# membership test must not raise on an unhashable one.
-_NUMERIC_TYPES = ("integer", "number", "float")
+# membership test must not raise on an unhashable one (spec.NUMERIC_TYPES is a
+# tuple for the same reason).
 _TRUE_WORDS = ("true", "1", "yes", "on")
 _FALSE_WORDS = ("false", "0", "no", "off")
 
@@ -229,7 +229,7 @@ def validate_device_setting_value(key: str, sdef: Any, value: Any) -> Any:
     stype = sdef.get("type", "string")
     if stype == "boolean":
         return _setting_boolean(refused, value)
-    if stype in _NUMERIC_TYPES:
+    if stype in NUMERIC_TYPES:
         return _setting_number(refused, stype, sdef, value)
     return _setting_text(refused, sdef, value)
 
@@ -525,7 +525,7 @@ def _normalized_param(command: str, name: str, pdef: dict[str, Any], value: Any)
             return value
     refused = _Refused(f"'{command}': '{name}'", is_secret_setting(name, pdef))
     ptype = pdef.get("type", "string")
-    if ptype in _NUMERIC_TYPES:
+    if ptype in NUMERIC_TYPES:
         return _normalized_number(refused, ptype, pdef, value)
     return _normalized_text(refused, pdef, value)
 

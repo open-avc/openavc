@@ -53,7 +53,13 @@ from openavc.drivers.child_routes import (
 )
 from openavc.drivers.json_value_spec import FLAT, LISTED, Place, json_value_mapping
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
-from openavc.drivers.spec import PLACEHOLDER, placeholder_names
+from openavc.drivers.spec import (
+    NUMERIC_TYPES,
+    PLACEHOLDER,
+    REAL_TYPES,
+    placeholder_names,
+    value_type_traits,
+)
 from openavc.drivers.usable_number import usable_number
 from openavc.transport.binary_helpers import (
     DEFAULT_MAX_BUFFER,
@@ -195,31 +201,30 @@ def state_var_default(var_def: dict[str, Any]) -> Any:
     has not spoken has no reading, so the runtime records ``None`` and every
     consumer that judges a reading already knows what that means. See
     ``BaseDriver._default_for_var_def``.
+
+    Each type starts at its zero in the value type table
+    (``spec.VALUE_TYPE_TRAITS``), so a real one (``float`` as ``number``)
+    starts at ``0.0``, never ``''``. A type the table has no row for raises
+    ValueError; a check reading a file the contract has not passed asks
+    ``spec.is_value_type`` first.
     """
     var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-    if var_type == "boolean":
-        return False
-    if var_type == "integer":
+    traits = value_type_traits(var_type)
+    if traits.numeric and not traits.real:
         min_num = _min_as_number(var_def)
         if min_num is None:
             _warn_unusable_min(var_def)
-            return 0
+            return traits.zero
         return math.ceil(min_num)
-    if var_type in ("number", "float"):
-        # 'float' is an accepted type alias for 'number' (driver loader +
-        # schema). Both give a numeric 0.0, not '' — a consumer reading the
-        # var must not get a string where a number is expected.
-        #
-        # Unlike the integer branch above, this one does not consult `min`: a
-        # simulator seeds the WIRE value it will put on the socket, which is a
-        # different namespace from the logical value a driver's response rules
-        # map it to. That asymmetry predates the runtime leaving; it is the
-        # behaviour every remaining caller already had.
-        return 0.0
+    # A real number does not consult `min`: a simulator seeds the WIRE value
+    # it will put on the socket, which is a different namespace from the
+    # logical value a driver's response rules map it to. That asymmetry
+    # predates the runtime leaving; it is the behaviour every remaining caller
+    # already had.
     if var_type == "enum":
         values = var_def.get("values", [])
-        return values[0] if values else ""
-    return ""
+        return values[0] if values else traits.zero
+    return traits.zero
 
 
 def _warn_unusable_min(var_def: dict[str, Any]) -> None:
@@ -328,9 +333,10 @@ def coerce_bool_token(raw: Any) -> bool:
 def _numbers(
     integer: Callable[[Any], Any], real: Callable[[Any], Any]
 ) -> dict[str, Callable[[Any], Any]]:
-    """A wire form's number readers by declared type: ``float`` is an accepted
-    alias for ``number`` (driver loader + schema)."""
-    return {"integer": integer, "float": real, "number": real}
+    """A wire form's number readers by declared type, off the value type
+    table: a real type (``float`` is an accepted spelling of ``number``) is
+    read by ``real``, a whole one by ``integer``."""
+    return {name: real if name in REAL_TYPES else integer for name in NUMERIC_TYPES}
 
 
 @dataclass(frozen=True)

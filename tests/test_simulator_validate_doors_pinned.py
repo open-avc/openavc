@@ -864,11 +864,11 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
  'coverage_every_variable_seeded': [],
  'coverage_float': [('info',
                      'state_coverage',
-                     "'v' will use auto-gen default ''. Add to simulator.initial_state to "
+                     "'v' will use auto-gen default 0.0. Add to simulator.initial_state to "
                      'override.')],
  'coverage_integer_fractional_min': [('info',
                                       'state_coverage',
-                                      "'v' will use auto-gen default 0.5. Add to "
+                                      "'v' will use auto-gen default 1. Add to "
                                       'simulator.initial_state to override.')],
  'coverage_integer_min': [('info',
                            'state_coverage',
@@ -880,7 +880,7 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
                               'override.')],
  'coverage_integer_text_min': [('info',
                                 'state_coverage',
-                                "'v' will use auto-gen default 'low'. Add to "
+                                "'v' will use auto-gen default 0. Add to "
                                 'simulator.initial_state to override.')],
  'coverage_list_type': [('info',
                          'state_coverage',

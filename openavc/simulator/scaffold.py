@@ -16,7 +16,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_traits, value_type_traits
 
 
 def main():
@@ -442,17 +442,9 @@ _SERVER_TEMPLATES: dict[str, tuple[str, str, Callable[[dict, dict, str, str], st
 
 
 def _default_for_type(var_type: str) -> str:
-    """Return a Python literal default value for a type."""
-    if var_type == "integer":
-        return "0"
-    elif var_type in ("number", "float"):
-        return "0.0"
-    elif var_type == "boolean":
-        return "False"
-    elif var_type == "enum":
-        return '"off"'
-    else:
-        return '""'
+    """The type's zero (the value type table's) as a Python literal."""
+    zero = value_type_traits(var_type).zero
+    return f'"{zero}"' if isinstance(zero, str) else repr(zero)
 
 
 # Names whose plausible resting value is not the type's zero. A projector that
@@ -500,6 +492,10 @@ def _initial_value_for(var_name: str, var_def: dict) -> str:
     then tells you not to use.
     """
     var_type = var_def.get("type", "string")
+    try:
+        traits = value_type_traits(var_type)
+    except ValueError as refused:
+        raise ValueError(f"state variable {var_name!r}: {refused}") from None
 
     if var_type == "enum":
         values = var_def.get("values")
@@ -516,16 +512,16 @@ def _initial_value_for(var_name: str, var_def: dict) -> str:
     if known is not None:
         if var_type == "boolean":
             return known if known in ("True", "False") else "False"
-        if var_type in ("integer", "number", "float"):
+        if traits.numeric:
             return known if known.lstrip("-").replace(".", "", 1).isdigit() else _default_for_type(var_type)
         return known
 
-    if var_type in ("integer", "number", "float"):
+    if traits.numeric:
         low = var_def.get("min")
         high = var_def.get("max")
         if isinstance(low, (int, float)) and isinstance(high, (int, float)) and high > low:
             midpoint = low + (high - low) / 2
-            if var_type == "integer":
+            if not traits.real:
                 return str(int(midpoint))
             return str(round(float(midpoint), 2))
         if isinstance(low, (int, float)):

@@ -130,3 +130,31 @@ export type ControlDef =
   | PresetsControlDef
   | GroupControlDef
   | IndicatorControlDef;
+
+/**
+ * What one value type is and how each reader treats it: a row of
+ * VALUE_TYPE_TRAITS (drivers/spec.py ValueTypeTraits, where each column is
+ * explained).
+ */
+export interface ValueTypeTraits {
+  readonly numeric: boolean;
+  readonly real: boolean;
+  readonly zero: string | number | boolean;
+  readonly osc_tag: string;
+  readonly control: string;
+  readonly label: string;
+}
+
+/**
+ * What each value type of a state variable, a child state variable or a device
+ * setting is, one row per type (drivers/spec.py VALUE_TYPE_TRAITS). Ask a
+ * column through valueTypes.ts rather than listing types by hand.
+ */
+export const VALUE_TYPE_TRAITS: Readonly<Record<string, ValueTypeTraits>> = {
+  string: { numeric: false, real: false, zero: "", osc_tag: "s", control: "text", label: "String" },
+  integer: { numeric: true, real: false, zero: 0, osc_tag: "i", control: "slider", label: "Integer" },
+  number: { numeric: true, real: true, zero: 0.0, osc_tag: "f", control: "slider", label: "Number" },
+  boolean: { numeric: false, real: false, zero: false, osc_tag: "i", control: "toggle", label: "Boolean" },
+  enum: { numeric: false, real: false, zero: "", osc_tag: "s", control: "choice", label: "Enum" },
+  float: { numeric: true, real: true, zero: 0.0, osc_tag: "f", control: "slider", label: "Float" },
+};

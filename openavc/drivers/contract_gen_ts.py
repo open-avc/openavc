@@ -717,34 +717,71 @@ def _ts_value(value: Any) -> str:
     return json.dumps(value)
 
 
+#: A table cell's TypeScript kind, in the order a column's union names them.
+_CELL_KINDS: tuple[tuple[str, Callable[[Any], bool]], ...] = (
+    ("string", lambda v: isinstance(v, str)),
+    ("number", lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)),
+    ("boolean", lambda v: isinstance(v, bool)),
+    ("null", lambda v: v is None),
+)
+
+
+def _column_ts(values: list[Any]) -> str:
+    """A table column's TypeScript type: the kinds its cells hold."""
+    kinds = [name for name, holds in _CELL_KINDS if any(holds(v) for v in values)]
+    unknown = [v for v in values if not any(holds(v) for _name, holds in _CELL_KINDS)]
+    if unknown or not kinds:
+        raise ValueError(f"a table cell that is no string, number, boolean or null: {unknown!r}")
+    return " | ".join(kinds)
+
+
+def traits_table(
+    table: dict[str, Any], interface: str, name: str, row_doc: str, table_doc: str,
+) -> str:
+    """A spec table of NamedTuple rows as an interface (one member per column,
+    typed by what its cells hold) and a constant with one row per key."""
+    rows = list(table.values())
+    columns = type(rows[0])._fields
+    out = _doc_block(row_doc, "")
+    out += f"export interface {interface} {{\n"
+    for column in columns:
+        out += f"  readonly {column}: {_column_ts([getattr(row, column) for row in rows])};\n"
+    out += "}\n\n"
+    out += _doc_block(table_doc, "")
+    out += f"export const {name}: Readonly<Record<string, {interface}>> = {{\n"
+    for key, row in table.items():
+        cells = ", ".join(f"{column}: {_ts_value(getattr(row, column))}" for column in columns)
+        out += f"  {key}: {{ {cells} }},\n"
+    out += "};\n"
+    return out
+
+
 def _transport_traits() -> str:
     """Emit THE transport table (spec.TRANSPORT_TRAITS), one row per
     transport and one column per question, for transportTraits.ts."""
-    columns = spec.TransportTraits._fields
-    rows = spec.TRANSPORT_TRAITS.values()
-    out = _doc_block(
+    return traits_table(
+        spec.TRANSPORT_TRAITS, "TransportTraits", "TRANSPORT_TRAITS",
         "What one transport is and can do: a row of TRANSPORT_TRAITS "
         "(drivers/spec.py TransportTraits, where each column is explained).",
-        "",
-    )
-    out += "export interface TransportTraits {\n"
-    for column in columns:
-        flags = all(isinstance(getattr(row, column), bool) for row in rows)
-        ts_type = "boolean" if flags else "string | null"
-        out += f"  readonly {column}: {ts_type};\n"
-    out += "}\n\n"
-    out += _doc_block(
         "What each transport is and can do, one row per transport "
         "(drivers/spec.py TRANSPORT_TRAITS). Ask a column through "
         "transportTraits.ts rather than listing transports by hand.",
-        "",
     )
-    out += "export const TRANSPORT_TRAITS: Readonly<Record<string, TransportTraits>> = {\n"
-    for name, row in spec.TRANSPORT_TRAITS.items():
-        cells = ", ".join(f"{column}: {_ts_value(getattr(row, column))}" for column in columns)
-        out += f"  {name}: {{ {cells} }},\n"
-    out += "};\n"
-    return out
+
+
+def value_type_traits_ts(accessor: str) -> str:
+    """Emit THE value type table (spec.VALUE_TYPE_TRAITS), one row per value
+    type, for the accessor module named."""
+    return traits_table(
+        spec.VALUE_TYPE_TRAITS, "ValueTypeTraits", "VALUE_TYPE_TRAITS",
+        "What one value type is and how each reader treats it: a row of "
+        "VALUE_TYPE_TRAITS (drivers/spec.py ValueTypeTraits, where each column "
+        "is explained).",
+        "What each value type of a state variable, a child state variable or "
+        "a device setting is, one row per type (drivers/spec.py "
+        f"VALUE_TYPE_TRAITS). Ask a column through {accessor} rather than "
+        "listing types by hand.",
+    )
 
 
 def _send_forms() -> str:
@@ -971,6 +1008,7 @@ def render_types_ts() -> str:
     sections.append(_push_keys_by_type() + "\n")
     sections.append(_send_forms() + "\n")
     sections.append(_transport_traits() + "\n")
+    sections.append(value_type_traits_ts("valueTypeTraits.ts") + "\n")
     sections.append(_contract_keys() + "\n")
     sections.append(_serial_line_settings() + "\n")
 

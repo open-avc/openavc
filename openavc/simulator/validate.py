@@ -78,7 +78,8 @@ from pathlib import Path
 import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
-from openavc.drivers.spec import without_null_sections
+from openavc.drivers.compiled_protocol import state_var_default
+from openavc.drivers.spec import is_value_type, without_null_sections
 from openavc.simulator.control_checks import check_controls
 from openavc.simulator.handler_replies import check_response_parsing
 from openavc.simulator.notification_checks import check_notifications
@@ -231,19 +232,11 @@ def _check_state_coverage(
 
     for var_name, var_def in state_vars.items():
         if var_name not in sim_initial:
-            # Check what auto-gen will produce for the missing variable.
-            var_type = var_def.get("type", "string")
-            if var_type == "integer":
-                default = var_def.get("min", 0)
-            elif var_type == "number":
-                default = 0.0
-            elif var_type == "boolean":
-                default = False
-            elif var_type == "enum":
-                values = var_def.get("values", [])
-                default = values[0] if values else ""
-            else:
-                default = ""
+            # What auto-gen will produce for the missing variable: the
+            # simulator's own seed. A type the contract does not know (its
+            # check names it) is announced as text.
+            known = is_value_type(var_def.get("type"))
+            default = state_var_default(var_def) if known else ""
             # The simulator section merges per-key into the auto-generated
             # initial state (see yaml_auto._merge_simulator_section), so the
             # variable is fine — it'll start with the auto-gen default. This

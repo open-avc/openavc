@@ -55,7 +55,7 @@ import asyncio
 from typing import Any
 
 from openavc.core.device_config import apply_config_delta
-from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.spec import NUMERIC_TYPES, is_secret_setting
 from openavc.drivers.usable_number import number_value, usable_number
 from openavc.utils.logger import get_logger
 
@@ -109,7 +109,7 @@ def accepted_value(field_def: dict[str, Any], value: Any) -> tuple[bool, Any]:
             if str(option_value) == str(value).strip():
                 return True, option_value
         return False, None
-    if ftype in ("integer", "number", "float"):
+    if ftype in NUMERIC_TYPES:
         return _accepted_number(field_def, ftype, value)
     if ftype == "boolean":
         if isinstance(value, bool):

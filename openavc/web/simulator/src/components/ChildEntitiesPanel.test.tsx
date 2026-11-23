@@ -85,6 +85,24 @@ describe("child properties are drawn as what they are", () => {
     expect(name.value).toBe("Bar Speakers L");
   });
 
+  it("gives a float the fader a number gets, stepping by fractions", () => {
+    const d = device();
+    d.children!.channel.prop_defs!.fader = { type: "float", label: "Output Level", min: -80, max: 0 };
+    render(<ChildEntitiesPanel device={d} onStateChange={vi.fn()} />);
+
+    const fader = screen.getByLabelText("Output Level") as HTMLInputElement;
+    expect(fader.type).toBe("range");
+    expect(fader.step).toBe("0.1");
+  });
+
+  it("steps a whole number by one", () => {
+    const d = device();
+    d.children!.channel.prop_defs!.fader = { type: "integer", label: "Output Level", min: -80, max: 0 };
+    render(<ChildEntitiesPanel device={d} onStateChange={vi.fn()} />);
+
+    expect((screen.getByLabelText("Output Level") as HTMLInputElement).step).toBe("1");
+  });
+
   it("falls back to a text field when a simulator sends no types", () => {
     const d = device();
     delete (d.children!.channel as { prop_defs?: unknown }).prop_defs;

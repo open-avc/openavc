@@ -33,10 +33,10 @@ from collections.abc import Callable, Iterator
 from typing import Any, NamedTuple
 
 from openavc.drivers.setting_checks import python_setting_map_errors
-from openavc.drivers.spec import CONVERSION_KEYS
+from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES
 
-# A conversion needs a number to work on.
-_CONVERTIBLE_TYPES = ("integer", "number", "float")
+# A conversion needs a number to work on, named as the message says it.
+_NUMERIC_WORDS = ", ".join(NUMERIC_TYPES[:-1]) + " or " + NUMERIC_TYPES[-1]
 
 
 def value_conversion_errors(
@@ -168,9 +168,9 @@ def _declaration_errors(
             f"action's parameters are not converted"
         ]
     errors = []
-    if decl.get("type", "string") not in _CONVERTIBLE_TYPES:
+    if decl.get("type", "string") not in NUMERIC_TYPES:
         errors.append(
-            f"{where}: the type must be integer, number or float to use "
+            f"{where}: the type must be {_NUMERIC_WORDS} to use "
             f"{', '.join(present)}"
         )
     if _is_zero(decl.get("scale")):

@@ -20,6 +20,7 @@ import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEdito
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { oscArgsAsText } from "./fieldText";
 import { HttpWriteFields } from "./SettingHttpWriteFields";
+import { VALUE_TYPE_OPTIONS } from "../shared/valueTypeTraits";
 
 interface DeviceSettingsEditorProps {
   draft: DriverDefinition;
@@ -228,12 +229,9 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                       }
                       style={{ width: "100%" }}
                     >
-                      <option value="string">String</option>
-                      <option value="integer">Integer</option>
-                      <option value="number">Number</option>
-                      <option value="float">Float</option>
-                      <option value="boolean">Boolean</option>
-                      <option value="enum">Enum</option>
+                      {VALUE_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
                     </select>
                   </div>
                   <div>

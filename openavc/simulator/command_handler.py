@@ -22,9 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.compiled_protocol import reading_from_wire, value_for_map_word
-
-# The variable types a capture's non-decimal base decodes into a number for.
-_NUMERIC_TYPES = ("integer", "number", "float")
+from openavc.drivers.spec import NUMERIC_TYPES
 
 
 @dataclass(eq=False)
@@ -81,7 +79,8 @@ class CommandHandler:
 
     def _from_base(self, group: int, value: Any, var_type: str) -> Any:
         base = self.group_bases.get(group)
-        if not base or var_type not in _NUMERIC_TYPES:
+        # A capture's non-decimal base decodes into a number only.
+        if not base or var_type not in NUMERIC_TYPES:
             return value
         try:
             return int(value, base)

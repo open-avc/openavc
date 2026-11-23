@@ -25,14 +25,7 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
-# A state variable's type -> the OSC tag its value goes out under.
-_VARIABLE_TAGS = {
-    "float": "f",
-    "number": "f",
-    "integer": "i",
-    "boolean": "i",
-    "string": "s",
-}
+from openavc.drivers.spec import is_value_type, value_type_traits
 
 # The type tags osc_encode_message understands.
 OSC_TYPE_TAGS = frozenset("fishdbTFN")
@@ -73,9 +66,14 @@ def system_reply(
     return None
 
 
-def type_tag(value_type: str) -> str:
-    """The OSC tag a state variable of ``value_type`` goes out under."""
-    return _VARIABLE_TAGS.get(value_type, "f")
+def type_tag(value_type: object) -> str:
+    """The OSC tag a value of ``value_type`` goes out under: the value type
+    table's ``osc_tag``. The type is a reply mapping's coercion. One the
+    strict check refuses still loads, and it goes out, as a null one does, as
+    a float: the type a mapping without one is answered in, whose value is
+    sent uncast."""
+    known = value_type is not None and is_value_type(value_type)
+    return value_type_traits(value_type if known else "float").osc_tag
 
 
 def tagged(value: Any, tag: str) -> Any:

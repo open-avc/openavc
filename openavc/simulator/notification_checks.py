@@ -26,7 +26,7 @@ import re
 from typing import Any
 
 from openavc.drivers.compiled_protocol import state_var_default
-from openavc.drivers.spec import transport_has
+from openavc.drivers.spec import is_value_type, transport_has
 from openavc.simulator.driver_sends import effective_config
 from openavc.simulator.reply_reading import ReplyRules
 from openavc.simulator.validation_result import ValidationResult
@@ -35,7 +35,10 @@ from openavc.simulator.validation_result import ValidationResult
 def _default_for_type(var_def: dict) -> Any:
     """The value a state variable the initial state leaves out starts at: the
     simulator's own seed, so a template is rendered with a value the
-    simulator would produce."""
+    simulator would produce. A type the contract does not know (its check
+    names it) is rendered as text."""
+    if not is_value_type(var_def.get("type") if isinstance(var_def, dict) else None):
+        return ""
     return state_var_default(var_def)
 
 

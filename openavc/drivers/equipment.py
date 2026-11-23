@@ -29,6 +29,7 @@ from openavc.drivers.spec import (
     EQUIPMENT_BUILD_FIELDS,
     EQUIPMENT_PRODUCT_COMMAND_FIELDS,
     EQUIPMENT_PRODUCT_FIELDS,
+    NUMERIC_TYPES,
     is_file_command,
 )
 from openavc.drivers.equipment_protocol import MAX_MESSAGE_BYTES, PROTOCOL
@@ -559,7 +560,7 @@ class EquipmentDriver(BaseDriver):
                 value = coerce_child_local_id(child, value)
                 if value is None:
                     raise ValueError(f"'{command}': '{key}' is not a valid channel ID")
-            elif kind in {"boolean", "integer", "number", "enum"}:
+            elif kind in NUMERIC_TYPES or kind in ("boolean", "enum"):
                 value = validate_device_setting_value(key, rule, value)
                 if kind == "enum":
                     choices = [item.get("value") if isinstance(item, dict) else item

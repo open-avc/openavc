@@ -46,6 +46,7 @@ from collections.abc import Callable
 from typing import Any
 
 from openavc.drivers.python_info import UNEVALUATED
+from openavc.drivers.spec import NUMERIC_TYPES, REAL_TYPES
 from openavc.simulator.capacity import capacity_problems
 from openavc.simulator.single_client import single_client_problems
 from openavc.simulator.validation_result import ValidationResult
@@ -74,8 +75,8 @@ def _not_bool(kinds: type | tuple[type, ...]) -> Callable[[Any], bool]:
 
 _SEED_RULES: tuple[_SeedRule, ...] = (
     _SeedRule(("boolean",), lambda value: isinstance(value, bool)),
-    _SeedRule(("integer",), _not_bool(int)),
-    _SeedRule(("number", "float"), _not_bool((int, float))),
+    _SeedRule(tuple(t for t in NUMERIC_TYPES if t not in REAL_TYPES), _not_bool(int)),
+    _SeedRule(REAL_TYPES, _not_bool((int, float))),
 )
 
 
