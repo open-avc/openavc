@@ -42,10 +42,6 @@ interface DiscoveryState {
   scanId: string;
   /** The time limit the running scan works to, in seconds (0 when not known) */
   budgetSeconds: number;
-  /** Dynamic port labels from baseline + driver hints + community catalog */
-  portLabels: Record<string, string>;
-  /** The drivers that declare each port (port -> driver ids) */
-  portDrivers: Record<string, string[]>;
   /** Environment problems that kept scan phases from working */
   warnings: string[];
 
@@ -63,8 +59,6 @@ interface DiscoveryState {
   setBudgetSeconds: (seconds: number) => void;
   /** A scan began: started here, in another Programmer, or by the assistant */
   scanStarted: (scan: StartedScan) => void;
-  /** Set port labels, and the drivers behind each port, from API */
-  setPortLabels: (labels: Record<string, string>, portDrivers?: Record<string, string[]>) => void;
   /** Set environment warnings from API/WS */
   setWarnings: (warnings: string[]) => void;
   /** Clear all results */
@@ -79,8 +73,6 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
   message: "",
   scanId: "",
   budgetSeconds: 0,
-  portLabels: {},
-  portDrivers: {},
   warnings: [],
 
   upsertDevice: (device) =>
@@ -106,9 +98,6 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
   scanStarted: ({ scanId, budgetSeconds }) =>
     set({ status: "running", scanId, budgetSeconds, phase: "", progress: 0, message: "", warnings: [] }),
 
-  setPortLabels: (labels, portDrivers) =>
-    set({ portLabels: labels, portDrivers: portDrivers ?? {} }),
-
   setWarnings: (warnings) => set({ warnings }),
 
   clear: () =>
@@ -120,8 +109,6 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
       message: "",
       scanId: "",
       budgetSeconds: 0,
-      portLabels: {},
-      portDrivers: {},
       warnings: [],
     }),
 }));

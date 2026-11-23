@@ -559,8 +559,9 @@ async def test_the_pipeline_announces_phases_1_to_7_in_order():
 
 
 def _named_hint(name: str) -> SimpleNamespace:
-    return SimpleNamespace(name=name, oui=[], manufacturer="", category="",
-                           mdns=[], tcp_probe=None, port_open=[])
+    return SimpleNamespace(name=name, driver_id=name, driver_name=name, oui=[],
+                           manufacturer="", category="", mdns=[], tcp_probe=None,
+                           port_open=[])
 
 
 class TestSignalIndexFallback:
@@ -617,9 +618,11 @@ class TestSignalIndexFallback:
     def test_each_new_oui_prefix_is_counted_once(self, caplog):
         engine = DiscoveryEngine()
         hints = [
-            SimpleNamespace(oui=["00:11:22", "00:11:22"], manufacturer="Acme", category="display",
+            SimpleNamespace(driver_id="acme_one", driver_name="Acme One",
+                            oui=["00:11:22", "00:11:22"], manufacturer="Acme", category="display",
                             mdns=[], tcp_probe=None, port_open=[]),
-            SimpleNamespace(oui=["00:11:23"], manufacturer="Acme", category="display",
+            SimpleNamespace(driver_id="acme_two", driver_name="Acme Two",
+                            oui=["00:11:23"], manufacturer="Acme", category="display",
                             mdns=[], tcp_probe=None, port_open=[]),
         ]
         with patch("openavc.discovery.engine.load_discovery_hints",

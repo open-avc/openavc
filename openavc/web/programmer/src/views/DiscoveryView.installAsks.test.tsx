@@ -89,6 +89,7 @@ const SCANNED = {
   firmware: null,
   serial_number: null,
   open_ports: [8443],
+  ports: [{ port: 8443, label: null, in_use_by: null }],
   banners: {},
   protocols: [],
   category: "utility",
@@ -110,7 +111,7 @@ const SCANNED = {
 beforeEach(() => {
   useDiscoveryStore.getState().clear();
   useDriverBuilderStore.setState({ registeredDrivers: [] });
-  mocks.results = { devices: [SCANNED], status: "complete", port_labels: {}, port_drivers: {}, warnings: [] };
+  mocks.results = { devices: [SCANNED], status: "complete", warnings: [] };
   mocks.installed = [];
   mocks.library = [LIBRARY_ENTRY];
   mocks.add.mockClear();

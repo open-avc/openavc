@@ -1,30 +1,27 @@
 import { describe, it, expect } from "vitest";
 
-import { openPortLabel, projectDeviceAtAddress } from "./discoveryViewHelpers";
+import { openPortsText, projectDeviceAtAddress } from "./discoveryViewHelpers";
 import type { ProjectConfig } from "../api/types";
 
-// A port's label names the device's own driver when that driver claims the
-// port; otherwise the scan's shared label, which never picks one of several
-// drivers at random.
-describe("openPortLabel", () => {
-  const labels = { 17300: "Acme", 17200: "Acme Widget Pro", 23: "Telnet" };
-  const portDrivers = { "17300": ["acme_widget", "acme_widget_pro"], "17200": ["acme_widget_pro"] };
-  const name = (id: string) => ({ acme_widget_pro: "Acme Widget Pro" } as Record<string, string>)[id];
-
-  it("names the identified driver on a port it claims", () => {
-    expect(openPortLabel(17300, labels, portDrivers, "acme_widget_pro", name)).toBe("Acme Widget Pro");
+// The Open Ports line draws what the server sends: each port, the name it
+// gave the port, and the project device that holds it.
+describe("openPortsText", () => {
+  it("names each port the server named, and leaves an unnamed one bare", () => {
+    expect(openPortsText([
+      { port: 23, label: "Telnet", in_use_by: null },
+      { port: 8000, label: null, in_use_by: null },
+    ])).toBe("23 (Telnet), 8000");
   });
 
-  it("keeps the shared label for an unidentified device", () => {
-    expect(openPortLabel(17300, labels, portDrivers, undefined, name)).toBe("Acme");
+  it("marks a held port in use by its device", () => {
+    expect(openPortsText([
+      { port: 17300, label: "Acme Widget", in_use_by: "Lobby Widget" },
+      { port: 4100, label: null, in_use_by: "Lobby Widget" },
+    ])).toBe("17300 (Acme Widget, in use by Lobby Widget), 4100 (in use by Lobby Widget)");
   });
 
-  it("keeps the shared label on a port the identified driver does not claim", () => {
-    expect(openPortLabel(23, labels, portDrivers, "acme_widget_pro", name)).toBe("Telnet");
-  });
-
-  it("says unknown for a port nothing names", () => {
-    expect(openPortLabel(4999, labels, portDrivers, undefined, name)).toBe("unknown");
+  it("says none were found when there are none", () => {
+    expect(openPortsText([])).toBe("None detected");
   });
 });
 

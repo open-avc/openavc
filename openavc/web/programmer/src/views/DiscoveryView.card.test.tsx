@@ -62,6 +62,7 @@ const SCANNED = {
   firmware: null,
   serial_number: null,
   open_ports: [17300],
+  ports: [{ port: 17300, label: "Acme Widget Pro", in_use_by: null }],
   banners: {},
   protocols: [],
   category: "audio",
@@ -85,8 +86,6 @@ beforeEach(() => {
   mocks.results = {
     devices: [SCANNED],
     status: "complete",
-    port_labels: { "17300": "Acme" },
-    port_drivers: { "17300": ["acme_widget", "acme_widget_pro"] },
     warnings: [],
   };
   mocks.project = { devices: [], connections: {} };
@@ -115,9 +114,27 @@ describe("a scanned device's card", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Add to Project/ })).toBeTruthy());
   });
 
-  it("names its own driver on a port sibling models share", async () => {
+  it("lists each port as the server names it, a held one in use by its device", async () => {
+    mocks.results = {
+      ...mocks.results,
+      devices: [{
+        ...SCANNED,
+        open_ports: [23, 8000],
+        ports: [
+          { port: 23, label: "Telnet", in_use_by: null },
+          { port: 8000, label: null, in_use_by: null },
+          { port: 17300, label: "Acme Widget Pro", in_use_by: "Lobby Widget" },
+        ],
+      }],
+    };
     await openCard();
-    expect(screen.getByText(/17300 \(Acme Widget Pro\)/)).toBeTruthy();
+    expect(screen.getByText("23 (Telnet), 8000, 17300 (Acme Widget Pro, in use by Lobby Widget)")).toBeTruthy();
+  });
+
+  it("says no ports were found when it has none", async () => {
+    mocks.results = { ...mocks.results, devices: [{ ...SCANNED, open_ports: [], ports: [] }] };
+    await openCard();
+    expect(screen.getByText("None detected")).toBeTruthy();
   });
 
   it("has no Protocols row", async () => {
@@ -145,8 +162,6 @@ describe("a filtered list while a scan runs", () => {
     mocks.results = {
       devices: [{ ...SCANNED, manufacturer: null, model: null, identification: null }],
       status: "running",
-      port_labels: {},
-      port_drivers: {},
       warnings: [],
     };
     render(<DiscoveryPanel />);

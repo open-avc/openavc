@@ -8,7 +8,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 // leaves the list.
 
 const mocks = vi.hoisted(() => ({
-  results: { devices: [] as unknown[], status: "complete", port_labels: {}, warnings: [] as string[] },
+  results: { devices: [] as unknown[], status: "complete", warnings: [] as string[] },
 }));
 
 vi.mock("../api/restClient", () => ({
@@ -61,6 +61,7 @@ function host(ip: string) {
     firmware: null,
     serial_number: null,
     open_ports: [80],
+    ports: [{ port: 80, label: null, in_use_by: null }],
     banners: {},
     protocols: [],
     category: null,
@@ -78,7 +79,6 @@ beforeEach(() => {
   mocks.results = {
     devices: [host("10.0.0.7"), host("10.0.0.8")],
     status: "complete",
-    port_labels: {},
     warnings: [],
   };
   vi.mocked(api.discoveryGetResults).mockClear();
@@ -104,7 +104,7 @@ describe("DiscoveryPanel — a scan started somewhere else", () => {
     expect(screen.getByText(/up to 90s/)).toBeTruthy();
 
     // The scan heard from 10.0.0.7 again and not from 10.0.0.8.
-    mocks.results = { devices: [host("10.0.0.7")], status: "complete", port_labels: {}, warnings: [] };
+    mocks.results = { devices: [host("10.0.0.7")], status: "complete", warnings: [] };
     act(() => applyDiscoveryMessage({
       type: "discovery.complete",
       scan_id: "scan_2_1700000000",

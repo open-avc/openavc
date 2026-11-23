@@ -1,47 +1,19 @@
 // Pure logic behind the Discovery view (no React imports) so the
 // node-harness regression suite can exercise it directly.
 
-// Generic protocol fallbacks for ports the backend baseline + driver
-// catalog don't already cover. Vendor-specific labels (Samsung MDC,
-// Crestron CIP, PJLink, etc.) come from `portLabels` in the discovery
-// store — the backend builds that map from loaded drivers + community
-// catalog so it stays in sync with the catalog without UI changes.
-export const PORT_LABELS: Record<number, string> = {
-  23: "Telnet",
-  80: "HTTP",
-  443: "HTTPS",
-  5900: "VNC",
-  8080: "HTTP alt",
-  9090: "HTTP alt",
-};
+import type { DiscoveredPort } from "../api/discoveryClient";
 
-// Merge the generic PORT_LABELS fallbacks with the driver/catalog-supplied
-// labels from the backend. The dynamic labels win: a driver that declares
-// port 5900/9090 carries the vendor name, which must not be shadowed by the
-// generic "VNC" / "HTTP alt" fallback.
-export function mergePortLabels(dynamic: Record<number | string, string>): Record<number, string> {
-  const merged: Record<number, string> = { ...PORT_LABELS };
-  for (const [k, v] of Object.entries(dynamic)) {
-    merged[Number(k)] = v;
-  }
-  return merged;
-}
-
-// The label beside one of a scanned device's open ports. A port several
-// drivers claim carries a shared label (their maker, or the drivers); on a
-// device identified as one of them it names that driver instead.
-export function openPortLabel(
-  port: number,
-  labels: Record<number, string>,
-  portDrivers: Record<string, string[]>,
-  identifiedDriverId: string | undefined,
-  driverName: (driverId: string) => string | undefined,
-): string {
-  if (identifiedDriverId && (portDrivers[String(port)] ?? []).includes(identifiedDriverId)) {
-    const name = driverName(identifiedDriverId);
-    if (name) return name;
-  }
-  return labels[port] ?? "unknown";
+// A device's Open Ports line: each port with the name the server gave it and
+// the project device that holds it. The names are decided on the server, so
+// the card, the export and the assistant read the same.
+export function openPortsText(ports: DiscoveredPort[]): string {
+  if (ports.length === 0) return "None detected";
+  return ports
+    .map(({ port, label, in_use_by }) => {
+      const said = [label, in_use_by ? `in use by ${in_use_by}` : null].filter(Boolean);
+      return said.length > 0 ? `${port} (${said.join(", ")})` : String(port);
+    })
+    .join(", ");
 }
 
 // The order devices of one state are listed in: by what each is called (the

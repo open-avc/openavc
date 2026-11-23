@@ -122,82 +122,6 @@ async def refresh_all_device_matches() -> None:
             pass
 
 
-async def _build_port_labels(
-    engine: DiscoveryEngine,
-) -> tuple[dict[str, str], dict[str, list[str]]]:
-    """Port labels for the device cards, and the drivers that claim each port.
-
-    Vendor-specific labels come from drivers (which declare ports via
-    ``tcp_probe.port`` and ``port_open``) and from the community catalog
-    for un-installed drivers. The baseline labels the universal generic
-    ports (SSH, Telnet, HTTP, HTTPS, HTTP-alt) — these stay generic so
-    they don't get stomped by a driver that happens to probe HTTP.
-
-    A port only one driver declares carries that driver's name. A port
-    several declare belongs to none of them in particular: it is labelled
-    by their shared manufacturer, or by the drivers themselves, and the
-    second map (port -> driver ids) lets a card name the device's own
-    driver when it is one of them.
-    """
-    from openavc.discovery.port_scanner import BASELINE_PORTS
-
-    # Generic descriptions for the universal baseline. Not AV-specific
-    # — any device on the LAN may listen here.
-    baseline_labels: dict[int, str] = {
-        22: "SSH",
-        23: "Telnet",
-        80: "HTTP",
-        443: "HTTPS",
-        8080: "HTTP alt",
-    }
-
-    labels: dict[str, str] = {}
-    for port in BASELINE_PORTS:
-        labels[str(port)] = baseline_labels.get(port, f"Port {port}")
-
-    # port -> driver id -> (display name, manufacturer). Loaded drivers
-    # first, then the community catalog for drivers the user hasn't
-    # installed yet; a driver in both counts once.
-    claims: dict[int, dict[str, tuple[str, str]]] = {}
-
-    def claim(port: object, driver_id: str, name: str, manufacturer: str) -> None:
-        if not isinstance(port, int) or port in BASELINE_PORTS:
-            return
-        claims.setdefault(port, {}).setdefault(driver_id, (name, manufacturer))
-
-    for hint in engine.discovery_hints:
-        name = hint.driver_name or hint.driver_id
-        if hint.tcp_probe is not None:
-            claim(hint.tcp_probe.port, hint.driver_id, name, hint.manufacturer)
-        for p in hint.port_open:
-            claim(p, hint.driver_id, name, hint.manufacturer)
-
-    community_drivers = await engine.community_index.get_drivers()
-    for drv in community_drivers:
-        driver_id = str(drv.get("id") or "")
-        if not driver_id:
-            continue
-        for p in drv.get("ports", []):
-            claim(p, driver_id, str(drv.get("name") or driver_id),
-                  str(drv.get("manufacturer") or ""))
-
-    port_drivers: dict[str, list[str]] = {}
-    for port, by_driver in claims.items():
-        port_drivers[str(port)] = sorted(by_driver)
-        names = [by_driver[d][0] for d in sorted(by_driver)]
-        makers = {by_driver[d][1] for d in by_driver}
-        if len(names) == 1:
-            labels[str(port)] = names[0]
-        elif len(makers) == 1 and "" not in makers:
-            labels[str(port)] = makers.pop()
-        elif len(names) == 2:
-            labels[str(port)] = f"{names[0]} or {names[1]}"
-        else:
-            labels[str(port)] = f"{len(names)} drivers"
-
-    return labels, port_drivers
-
-
 # --- Request models ---
 
 ScanDepth = Literal["quick", "standard", "thorough"]
@@ -333,8 +257,8 @@ async def get_results(
       ``evidence_log`` -> full audit trail for the "Why?" UI reveal
     """
     engine = _get_engine()
-    # Read together, before the port labels are awaited, so the devices and
-    # the status are the same moment's outcome.
+    # Read together, so the devices and the status are the same moment's
+    # outcome.
     devices = engine.get_results()
     status = engine.get_status()
 
@@ -360,8 +284,6 @@ async def get_results(
         devices.sort(key=lambda d: (d.get("category") or "zzz").lower())
     # Default: identified > possible > unknown (engine handles ordering)
 
-    port_labels, port_drivers = await _build_port_labels(engine)
-
     return {
         "scan_id": status["scan_id"],
         "status": status["status"],
@@ -370,8 +292,6 @@ async def get_results(
         "total_alive": sum(1 for d in devices if d.get("alive")),
         "total_devices": len(devices),
         "scan_duration_seconds": status["duration"],
-        "port_labels": port_labels,
-        "port_drivers": port_drivers,
         "warnings": status["warnings"],
     }
 
@@ -704,6 +624,16 @@ async def install_and_match(req: InstallAndMatchRequest) -> dict[str, Any]:
     }
 
 
+def _port_text(port: dict[str, Any]) -> str:
+    """One of a device's ports as the export lists it: the number, then the
+    name beside it and the project device that holds it, when there are any
+    (``result.identity_of``)."""
+    said = [port["label"]] if port.get("label") else []
+    if port.get("in_use_by"):
+        said.append(f"in use by {port['in_use_by']}")
+    return f"{port['port']} ({', '.join(said)})" if said else str(port["port"])
+
+
 @router.get("/export", response_class=PlainTextResponse)
 async def export_results() -> str:
     """Export discovered devices as a plain text report."""
@@ -750,8 +680,8 @@ async def export_results() -> str:
             details.append(f"Serial: {d['serial_number']}")
         if d.get("protocols"):
             details.append(f"Protocols: {', '.join(d['protocols'])}")
-        if d.get("open_ports"):
-            details.append(f"Ports: {', '.join(str(p) for p in d['open_ports'])}")
+        if d.get("ports"):
+            details.append(f"Ports: {', '.join(_port_text(p) for p in d['ports'])}")
         if ident.get("driver_id"):
             details.append(f"Driver: {ident['driver_id']} (via {ident.get('source', '?')})")
         elif ident.get("candidates"):

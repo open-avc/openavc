@@ -6,12 +6,10 @@ already in openavc/web/programmer/node_modules and asserting on the results. Lik
 other frontend-logic suites it skips when the Node toolchain or esbuild isn't
 present rather than failing the Python-only CI gate.
 
-Covers the two Discovery view bugs: the hardcoded generic port labels (VNC /
-HTTP alt) shadowed driver/catalog-supplied vendor labels for ports 5900 and
-9090 (the merge now lets dynamic labels win), and the SNMP community payload
-rule that backs the config fix — a blank input means "keep the stored
-community" so the field is omitted from scan/save payloads instead of
-echoing a placeholder back.
+Covers the SNMP community payload rule that backs the config fix: a blank
+input means "keep the stored community" so the field is omitted from
+scan/save payloads instead of echoing a placeholder back. The names beside a
+device's ports are the server's (tests/test_discovery_port_labels.py).
 """
 from __future__ import annotations
 
@@ -75,8 +73,6 @@ def helper_results() -> dict:
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
-    "port_label_dynamic_wins",
-    "port_label_fallbacks_kept",
     "snmp_blank_omitted",
     "snmp_value_sent_verbatim",
 ]

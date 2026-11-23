@@ -14,10 +14,11 @@ Every device carries:
 THE rule for what a found device is identified as and called is
 ``identity_of``: its name (the heading of its Discovery card, the name its
 sort reads, the name it is added to the project with), the maker, model and
-category shown for it. Every record carries it (``to_dict``), so the REST
-results, the live feed, the export, the assistant's results and the Device
-Audit's network check all say the same; the add asks it for the name
-(``api/discovery._discovered_device_name``).
+category shown for it, and its ports with the name shown beside each (a port
+a project device holds included, in use by that device). Every record
+carries it (``to_dict``), so the REST results, the live feed, the export,
+the assistant's results and the Device Audit's network check all say the
+same; the add asks it for the name (``api/discovery._discovered_device_name``).
 
 THE rule for which source a device's maker, model and names are taken from
 when a scan's sources disagree is ``merge_device_info``'s, by the source's
@@ -29,8 +30,10 @@ device identified through an mDNS service shows is that service's
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from types import MappingProxyType
 from typing import Any
 
 
@@ -267,15 +270,60 @@ def _maker_and_model(manufacturer: str | None, model: str) -> str:
 
 
 @dataclass(frozen=True)
+class PortClaimant:
+    """A driver the scan reads that declares a port (its probe's, a
+    ``port_open:`` hint's, or the catalog's ``ports``)."""
+
+    driver_id: str
+    name: str
+    manufacturer: str = ""
+
+
+# The drivers that declare each port, by port, each list in driver id order
+# (``known_drivers.port_claims``). Read-only: the engine hands one table to
+# every device it reads.
+PortClaims = Mapping[int, tuple[PortClaimant, ...]]
+NO_PORT_CLAIMS: PortClaims = MappingProxyType({})
+
+# What usually listens on a port, named beside it when no driver of the
+# device's names it.
+GENERIC_PORT_LABELS: Mapping[int, str] = MappingProxyType({
+    22: "SSH",
+    23: "Telnet",
+    80: "HTTP",
+    443: "HTTPS",
+    5900: "VNC",
+    8080: "HTTP alt",
+    9090: "HTTP alt",
+})
+
+
+@dataclass(frozen=True)
+class PortLabel:
+    """One of a found device's ports: the name shown beside it (None when
+    nothing names it) and the project device that holds it, which the scan
+    never connects to (None when no device does)."""
+
+    port: int
+    label: str | None
+    in_use_by: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"port": self.port, "label": self.label, "in_use_by": self.in_use_by}
+
+
+@dataclass(frozen=True)
 class DeviceIdentity:
     """What a found device is called and shown as: ``name`` (its card's
     heading, the name its sort reads and the name it is added with), the
-    ``manufacturer``, ``model`` and ``category`` shown for it."""
+    ``manufacturer``, ``model`` and ``category`` shown for it, and its
+    ``ports``."""
 
     name: str
     manufacturer: str | None
     model: str | None
     category: str | None
+    ports: tuple[PortLabel, ...] = ()
 
 
 def identity_of(device: "DiscoveredDevice", adding_with: str | None = None) -> DeviceIdentity:
@@ -297,6 +345,9 @@ def identity_of(device: "DiscoveredDevice", adding_with: str | None = None) -> D
     mDNS service that identified the device gave (``_model_of``), else the
     scan's; the category is the scan's, where the identifying driver's ranks
     over a probe's and the MAC lookup's (``SOURCE_TRUST``).
+
+    The ports are the ones the scan found open and the ones a project device
+    holds, each named as ``_ports_of`` says.
     """
     by = device.identified_by
     model = _model_of(device)
@@ -305,7 +356,56 @@ def identity_of(device: "DiscoveredDevice", adding_with: str | None = None) -> D
         manufacturer=device.manufacturer or (by.maker() if by is not None else None),
         model=model,
         category=device.category,
+        ports=_ports_of(device),
     )
+
+
+def _ports_of(device: "DiscoveredDevice") -> tuple[PortLabel, ...]:
+    """The device's open ports and the ones a project device holds (which
+    the scan never connects to, so it never finds them open), in order.
+
+    A device identified as a driver names a port by that driver when the
+    driver declares it, else by what usually listens there, else not at all:
+    never by another driver, which would read as a second identity. A device
+    nobody identified names a port by the drivers that declare it, a hint of
+    what it may be, else by what usually listens there.
+    """
+    held = {
+        port: record["in_use_by"]
+        for port, record in device.port_probes.items()
+        if record.get("in_use_by")
+    }
+    match = device.identification
+    own = match.driver_id if match is not None and match.state == DeviceState.IDENTIFIED else None
+    return tuple(
+        PortLabel(port, _port_label(port, device.port_claims.get(port, ()), own), held.get(port))
+        for port in sorted(set(device.open_ports) | held.keys())
+    )
+
+
+def _port_label(port: int, claimants: tuple[PortClaimant, ...], own: str | None) -> str | None:
+    """The name beside ``port``, ``own`` being the driver the device was
+    identified as (None when it was not identified)."""
+    if own is not None:
+        named = next((c.name for c in claimants if c.driver_id == own), None)
+        return named or GENERIC_PORT_LABELS.get(port)
+    return _shared_label(claimants) or GENERIC_PORT_LABELS.get(port)
+
+
+def _shared_label(claimants: tuple[PortClaimant, ...]) -> str | None:
+    """The drivers that declare a port, named together: one driver by its
+    name, several by their shared maker, two by both names, more by how many.
+    None when no driver declares it."""
+    if not claimants:
+        return None
+    if len(claimants) == 1:
+        return claimants[0].name
+    makers = {c.manufacturer for c in claimants}
+    if len(makers) == 1 and "" not in makers:
+        return makers.pop()
+    if len(claimants) == 2:
+        return f"{claimants[0].name} or {claimants[1].name}"
+    return f"{len(claimants)} drivers"
 
 
 def _model_of(device: "DiscoveredDevice") -> str | None:
@@ -399,11 +499,15 @@ class DiscoveredDevice:
     # holds, whether the port's greeting asked for a login, and how each
     # check reached it.
     port_probes: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # The drivers that declare each port, the table the engine read when it
+    # made or last identified the device (``known_drivers.port_claims``),
+    # which its ports are named from (``identity_of``). Not sent.
+    port_claims: PortClaims = NO_PORT_CLAIMS
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON API response. ``name``, ``manufacturer``,
-        ``model`` and ``category`` are the device's identity
-        (``identity_of``)."""
+        ``model``, ``category`` and ``ports`` are the device's identity
+        (``identity_of``); ``open_ports`` are the ones the scan found open."""
         identity = identity_of(self)
         return {
             "ip": self.ip,
@@ -416,6 +520,7 @@ class DiscoveredDevice:
             "firmware": self.firmware,
             "serial_number": self.serial_number,
             "open_ports": self.open_ports,
+            "ports": [port.to_dict() for port in identity.ports],
             "banners": {str(k): v for k, v in self.banners.items()},
             "protocols": self.protocols,
             "mdns_services": self.mdns_services,

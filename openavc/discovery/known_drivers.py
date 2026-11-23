@@ -1,6 +1,7 @@
 """Which drivers a Discovery scan identifies devices with: one copy of each
 driver, installed or from the community catalog, and the tables built from
-those copies (the signal index, each driver's category, profile and name).
+those copies (the signal index, each driver's category, profile and name),
+and the drivers that declare each port (``port_claims``).
 
 The rules worth knowing before changing anything here:
 
@@ -23,10 +24,19 @@ registry or the catalog changes and keeps what they return.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from types import MappingProxyType
 from typing import Any
 
 from openavc.discovery.hints import DiscoveryHint, build_signal_index
-from openavc.discovery.result import DeviceState, IdentificationMatch, IdentifyingDriver
+from openavc.discovery.port_scanner import BASELINE_PORTS
+from openavc.discovery.result import (
+    DeviceState,
+    IdentificationMatch,
+    IdentifyingDriver,
+    PortClaimant,
+    PortClaims,
+)
 from openavc.discovery.tier_matcher import DriverProfile, SignalIndex
 from openavc.utils.version_rule import read_version
 
@@ -133,6 +143,54 @@ class DriverNames:
         return IdentifyingDriver(
             name=named[0], manufacturer=named[1], cross_vendor=match.cross_vendor,
         )
+
+
+def port_claims(hints: list[DiscoveryHint], catalog: list[Any]) -> PortClaims:
+    """The drivers that declare each port, which a found device's ports are
+    named from (``result.identity_of``).
+
+    A driver declares a port with its ``tcp_probe:`` or a ``port_open:``
+    hint, and a catalog driver with its listed ``ports``; every catalog
+    entry is read, so an installed driver that declares a port only in its
+    catalog listing still claims it, and a driver both installed and listed
+    counts once. The generic ports every scan checks (``BASELINE_PORTS``)
+    are claimed by none, so they keep the name of what usually listens
+    there; a malformed catalog entry or port is skipped.
+    """
+    by_port: dict[int, dict[str, PortClaimant]] = {}
+    for port, claimant in [*_hint_claims(hints), *_catalog_claims(catalog)]:
+        if type(port) is int and port not in BASELINE_PORTS:
+            by_port.setdefault(port, {}).setdefault(claimant.driver_id, claimant)
+    return MappingProxyType({
+        port: tuple(by_driver[d] for d in sorted(by_driver))
+        for port, by_driver in by_port.items()
+    })
+
+
+def _hint_claims(hints: list[DiscoveryHint]) -> Iterator[tuple[object, PortClaimant]]:
+    """Each port a driver's hints declare: its ``tcp_probe:`` and ``port_open:``
+    (a hint's ``driver_name`` is its driver's id when it has no name)."""
+    for hint in hints:
+        claimant = PortClaimant(hint.driver_id, hint.driver_name, hint.manufacturer)
+        probe = [hint.tcp_probe.port] if hint.tcp_probe is not None else []
+        for port in [*probe, *hint.port_open]:
+            yield port, claimant
+
+
+def _catalog_claims(catalog: list[Any]) -> Iterator[tuple[object, PortClaimant]]:
+    """Each port a catalog entry lists; an entry with no id or no list is skipped."""
+    for entry in catalog:
+        ports = entry.get("ports") if isinstance(entry, dict) and entry.get("id") else None
+        if isinstance(ports, list):
+            yield from ((port, _listed_driver(entry)) for port in ports)
+
+
+def _listed_driver(entry: dict[str, Any]) -> PortClaimant:
+    """The driver a catalog entry lists, as a port's claimant."""
+    driver_id = str(entry["id"])
+    return PortClaimant(
+        driver_id, str(entry.get("name") or driver_id), str(entry.get("manufacturer") or ""),
+    )
 
 
 def signal_index_from(

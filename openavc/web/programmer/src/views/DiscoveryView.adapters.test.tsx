@@ -22,7 +22,7 @@ vi.mock("../api/restClient", () => ({
     snmp_community_set: false,
     gentle_mode: false,
   })),
-  discoveryGetResults: vi.fn(async () => ({ devices: [], status: "idle", port_labels: {}, warnings: [] })),
+  discoveryGetResults: vi.fn(async () => ({ devices: [], status: "idle", warnings: [] })),
   // Reach devices through, as the server resolves it.
   getSystemConfig: vi.fn(async () => ({
     network: {},

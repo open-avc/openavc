@@ -42,7 +42,11 @@ export interface DiscoveredDevice {
   device_name: string | null;
   firmware: string | null;
   serial_number: string | null;
+  /** The ports the scan found open. */
   open_ports: number[];
+  /** The ports shown on its card: the open ones and the ones a project
+   *  device holds, each with the name beside it, decided by the server. */
+  ports: DiscoveredPort[];
   banners: Record<number, string>;
   protocols: string[];
   category: string | null;
@@ -54,6 +58,15 @@ export interface DiscoveredDevice {
   snmp_info: Record<string, unknown> | null;
   /** What each port received from the scan's TCP probes, by port number. */
   port_probes?: Record<string, PortProbeRecord>;
+}
+
+/** One of a found device's ports: the name shown beside it (null when
+ *  nothing names it) and the project device that holds it (null when none
+ *  does; the scan never connects to a held port). */
+export interface DiscoveredPort {
+  port: number;
+  label: string | null;
+  in_use_by: string | null;
 }
 
 /** How one TCP probe reached its port: read the port's greeting with no
@@ -85,9 +98,6 @@ export interface DiscoveryScanResult {
   total_alive: number;
   total_devices: number;
   scan_duration_seconds: number;
-  port_labels?: Record<string, string>;
-  /** The drivers that declare each port: port -> driver ids */
-  port_drivers?: Record<string, string[]>;
   /** Environment problems that kept scan phases from working */
   warnings?: string[];
 }

@@ -37,8 +37,7 @@ import type { DeviceState } from "../api/discoveryClient";
 import { showError } from "../store/toastStore";
 import {
   bannerDisplayText,
-  mergePortLabels,
-  openPortLabel,
+  openPortsText,
   projectDeviceAtAddress,
   compareScannedNames,
   snmpCommunityField,
@@ -207,15 +206,10 @@ export function DiscoveryPanel() {
   const message = useDiscoveryStore((s) => s.message);
   const setStatus = useDiscoveryStore((s) => s.setStatus);
   const setDevices = useDiscoveryStore((s) => s.setDevices);
-  const portLabels = useDiscoveryStore((s) => s.portLabels);
-  const setPortLabels = useDiscoveryStore((s) => s.setPortLabels);
   const warnings = useDiscoveryStore((s) => s.warnings);
   const setWarnings = useDiscoveryStore((s) => s.setWarnings);
   const clear = useDiscoveryStore((s) => s.clear);
   const upsertDevice = useDiscoveryStore((s) => s.upsertDevice);
-
-  // Generic fallbacks + dynamic driver/catalog port labels (dynamic wins)
-  const allPortLabels = useMemo(() => mergePortLabels(portLabels), [portLabels]);
 
   const [sortBy, setSortBy] = useState<SortKey>("state");
   const [filterCat, setFilterCat] = useState<FilterCategory>("all");
@@ -286,7 +280,6 @@ export function DiscoveryPanel() {
         else if (r.status === "complete") setStatus("complete");
         else if (r.status === "partial") setStatus("partial");
       }
-      if (r.port_labels) setPortLabels(r.port_labels, r.port_drivers);
       if (r.warnings) setWarnings(r.warnings);
     }).catch(console.error);
     api.getSystemConfig().then((cfg) => {
@@ -321,7 +314,7 @@ export function DiscoveryPanel() {
     }).catch(() => {});
     useDriverBuilderStore.getState().loadRegisteredDrivers().catch(console.error);
     api.fetchCommunityDrivers().then(setCommunityDrivers).catch(console.error);
-  }, [setDevices, setStatus, setPortLabels, setWarnings]);
+  }, [setDevices, setStatus, setWarnings]);
 
   // Reconcile with the server when a scan finishes. Devices arrive over the
   // WebSocket one at a time, but the engine's final pass can REMOVE records:
@@ -346,7 +339,6 @@ export function DiscoveryPanel() {
     api.discoveryGetResults().then((r) => {
       if (dropped) return;
       setDevices(r.devices);
-      if (r.port_labels) setPortLabels(r.port_labels, r.port_drivers);
       if (r.warnings) setWarnings(r.warnings);
     }).catch(console.error);
     // The scan read the server's copy of the driver library as it started,
@@ -355,7 +347,7 @@ export function DiscoveryPanel() {
       if (!dropped) setCommunityDrivers(drivers);
     }).catch(console.error);
     return () => { dropped = true; };
-  }, [status, setDevices, setPortLabels, setWarnings]);
+  }, [status, setDevices, setWarnings]);
 
   const driverNameLookup = useMemo(() => {
     // A driver's name: the installed copy's, else the library's.
@@ -940,7 +932,6 @@ export function DiscoveryPanel() {
               device={device}
               expanded={expandedIp === device.ip}
               onToggle={() => setExpandedIp(expandedIp === device.ip ? null : device.ip)}
-              portLabels={allPortLabels}
               driverNameLookup={driverNameLookup}
               installedDrivers={installedDrivers}
               hidden={hiddenIps.has(device.ip)}
@@ -977,7 +968,6 @@ function DeviceCard({
   device,
   expanded,
   onToggle,
-  portLabels,
   driverNameLookup,
   installedDrivers,
   hidden,
@@ -988,7 +978,6 @@ function DeviceCard({
   device: api.DiscoveredDevice;
   expanded: boolean;
   onToggle: () => void;
-  portLabels: Record<number, string>;
   driverNameLookup: Map<string, DriverEntry>;
   installedDrivers: DriverInfo[];
   hidden: boolean;
@@ -1005,7 +994,6 @@ function DeviceCard({
     setAddedDevice(info);
     useProjectStore.getState().load().catch(console.error);
   }, []);
-  const portDrivers = useDiscoveryStore((s) => s.portDrivers);
   // A device the project already connects to, found from the project itself
   // so a reload still knows it was added.
   const inProjectId = useProjectStore((s) =>
@@ -1209,15 +1197,7 @@ function DeviceCard({
           </div>
 
           <div>
-            <strong>Open Ports:</strong>{" "}
-            {device.open_ports.length > 0
-              ? device.open_ports
-                  .map((p) => `${p} (${openPortLabel(
-                    p, portLabels, portDrivers, ident?.driver_id ?? undefined,
-                    (id) => driverNameLookup.get(id)?.name,
-                  )})`)
-                  .join(", ")
-              : "None detected"}
+            <strong>Open Ports:</strong> {openPortsText(device.ports)}
           </div>
 
           {readableBanners.length > 0 && (

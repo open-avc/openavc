@@ -6,7 +6,7 @@ import { act, render, screen } from "@testing-library/react";
 // listed with the time they are from, as they do after a finished scan.
 
 const mocks = vi.hoisted(() => ({
-  results: { devices: [] as unknown[], status: "complete", port_labels: {}, warnings: [] },
+  results: { devices: [] as unknown[], status: "complete", warnings: [] },
 }));
 
 vi.mock("../api/restClient", () => ({
@@ -58,6 +58,7 @@ function ghost(ip: string) {
     firmware: null,
     serial_number: null,
     open_ports: [],
+    ports: [],
     banners: {},
     protocols: [],
     category: null,
@@ -72,7 +73,7 @@ function ghost(ip: string) {
 
 beforeEach(() => {
   useDiscoveryStore.getState().clear();
-  mocks.results = { devices: [], status: "running", port_labels: {}, warnings: [] };
+  mocks.results = { devices: [], status: "running", warnings: [] };
 });
 
 describe("DiscoveryPanel — a stopped scan", () => {

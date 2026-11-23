@@ -18,7 +18,7 @@ import { render, waitFor } from "@testing-library/react";
 // all, so this drives the real store and mocks only what it talks to.
 
 const mocks = vi.hoisted(() => ({
-  results: { devices: [] as unknown[], status: "complete", port_labels: {}, warnings: [] },
+  results: { devices: [] as unknown[], status: "complete", warnings: [] },
 }));
 
 vi.mock("../api/restClient", () => ({
@@ -70,6 +70,7 @@ function ghost(ip: string) {
     firmware: null,
     serial_number: null,
     open_ports: [],
+    ports: [],
     banners: {},
     protocols: [],
     category: null,
@@ -96,7 +97,7 @@ function storeIps() {
 
 beforeEach(() => {
   useDiscoveryStore.getState().clear();
-  mocks.results = { devices: [], status: "complete", port_labels: {}, warnings: [] };
+  mocks.results = { devices: [], status: "complete", warnings: [] };
 });
 
 describe("DiscoveryPanel — hosts a finished scan dropped", () => {
@@ -114,7 +115,6 @@ describe("DiscoveryPanel — hosts a finished scan dropped", () => {
     mocks.results = {
       devices: [ghost("10.0.0.7")],
       status: "complete",
-      port_labels: {},
       warnings: [],
     };
 
@@ -128,7 +128,7 @@ describe("DiscoveryPanel — hosts a finished scan dropped", () => {
     // an empty answer here is not an authority on anything and must not wipe
     // devices that are already on screen.
     seedStore("running");
-    mocks.results = { devices: [], status: "running", port_labels: {}, warnings: [] };
+    mocks.results = { devices: [], status: "running", warnings: [] };
 
     render(<DiscoveryPanel />);
 

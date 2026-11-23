@@ -72,6 +72,7 @@ const SCANNED = {
   firmware: null,
   serial_number: null,
   open_ports: [9443],
+  ports: [{ port: 9443, label: null, in_use_by: null }],
   banners: {},
   protocols: [],
   category: "audio",
@@ -93,7 +94,7 @@ const SCANNED = {
 beforeEach(() => {
   useDiscoveryStore.getState().clear();
   useConnectionStore.setState({ liveState: { "system.version": "0.37.0" } });
-  mocks.results = { devices: [SCANNED], status: "complete", port_labels: {}, port_drivers: {}, warnings: [] };
+  mocks.results = { devices: [SCANNED], status: "complete", warnings: [] };
   mocks.installAndMatch.mockClear();
 });
 

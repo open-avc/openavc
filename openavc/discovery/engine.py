@@ -65,6 +65,7 @@ from openavc.discovery.known_drivers import (
     driver_categories,
     driver_copies,
     driver_profiles,
+    port_claims,
     signal_index_from,
 )
 from openavc.discovery.community_index import CommunityIndexCache
@@ -83,6 +84,7 @@ from openavc.discovery.result import (
     DiscoveredDevice,
     Evidence,
     IdentificationMatch,
+    NO_PORT_CLAIMS,
     merge_device_info,
 )
 from openavc.discovery import scan_budget as budgeting
@@ -237,6 +239,9 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self._driver_categories: dict[str, str] = {}
         # What each of those drivers calls an identified device.
         self._driver_names = DriverNames({})
+        # The drivers that declare each port, handed to every device this
+        # engine makes or identifies, which its ports are named from.
+        self._port_claims = NO_PORT_CLAIMS
         # Driver-supplied Python discovery companions
         # ({driver_id: async probe}). Populated by
         # load_discovery_companions_from_dirs().
@@ -407,6 +412,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
 
         all_hints = installed_hints + community_hints
         self.discovery_hints = all_hints
+        self._port_claims = port_claims(all_hints, community_drivers)
         self.signal_index = signal_index_from(all_hints, installed_hints)
         self.tier_matcher = TierMatcher(self.signal_index, profiles=profiles)
         added = self._add_oui_prefixes(all_hints)
@@ -474,10 +480,12 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         from its evidence, the driver it names (which the device's identity
         is resolved from, ``result.identity_of``), and that driver's category.
         The scan's match, the re-match after a driver change and the Device
-        Audit's network check all ask it."""
+        Audit's network check all ask it. The device also takes the drivers
+        that declare each port as read now, which its ports are named from."""
         match = self.tier_matcher.match(device.evidence_log)
         device.identification = match
         device.identified_by = self._driver_names.identifying(match)
+        device.port_claims = self._port_claims
         self._fill_category_from_match(device)
         return match
 
@@ -1035,7 +1043,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
     def _get_or_create(self, ip: str) -> DiscoveredDevice:
         """Get existing device record or create a new one."""
         if ip not in self.results:
-            self.results[ip] = DiscoveredDevice(ip=ip)
+            self.results[ip] = DiscoveredDevice(ip=ip, port_claims=self._port_claims)
         return self.results[ip]
 
     def _phase_base_progress(self, phase: str) -> float:
