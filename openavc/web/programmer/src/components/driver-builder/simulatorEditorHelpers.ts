@@ -3,6 +3,8 @@
 // The editor component imports these; keep this file free of React/DOM
 // imports. Mirrors configSchemaHelpers.ts / responseBuilderHelpers.ts.
 
+import { valueTypeTraits } from "../shared/valueTypeTraits";
+
 export interface SimErrorMode {
   behavior?: string;
   description?: string;
@@ -114,12 +116,13 @@ export function applyErrorModeBehavior(
   return next;
 }
 
-/** Coerce a set_state value input by the state variable's declared type,
- *  mirroring the Initial State editor's parsing. */
+/** A value typed for a state variable (its Initial State, an error mode's
+ *  set_state) read as the variable's declared type: a real number, a whole
+ *  one, true or false, else the text as typed. */
 export function coerceSimStateValue(varType: string | undefined, raw: string): unknown {
   if (varType === "boolean") return raw.toLowerCase() === "true";
-  if (varType === "integer") return parseInt(raw) || 0;
-  if (varType === "number" || varType === "float") return parseFloat(raw) || 0;
+  const traits = valueTypeTraits(varType);
+  if (traits?.numeric) return (traits.real ? parseFloat(raw) : parseInt(raw)) || 0;
   return raw;
 }
 

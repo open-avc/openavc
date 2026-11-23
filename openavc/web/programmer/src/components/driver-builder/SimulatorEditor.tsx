@@ -122,19 +122,10 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
                       : ""
                   }
                   onChange={(e) => {
-                    const val = e.target.value;
-                    let parsed: unknown = val;
-                    if (varDef.type === "boolean") {
-                      parsed = val.toLowerCase() === "true";
-                    } else if (varDef.type === "integer") {
-                      parsed = parseInt(val) || 0;
-                    } else if (varDef.type === "number") {
-                      parsed = parseFloat(val) || 0;
-                    }
                     update({
                       initial_state: {
                         ...initState,
-                        [varName]: parsed,
+                        [varName]: coerceSimStateValue(varDef.type, e.target.value),
                       },
                     });
                   }}
