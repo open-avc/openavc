@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   results: {} as Record<string, unknown>,
   project: { devices: [] as unknown[], connections: {} as Record<string, unknown> },
   add: vi.fn(async () => ({ status: "ok", device_id: "acme_amp_10_0_0_9", name: "Acme AX-9" })),
+  load: vi.fn(async () => {}),
 }));
 
 vi.mock("../api/restClient", () => ({
@@ -44,7 +45,10 @@ vi.mock("../api/restClient", () => ({
 }));
 
 vi.mock("../store/projectStore", () => ({
-  useProjectStore: (selector: (s: unknown) => unknown) => selector({ project: mocks.project }),
+  useProjectStore: Object.assign(
+    (selector: (s: unknown) => unknown) => selector({ project: mocks.project }),
+    { getState: () => ({ project: mocks.project, load: mocks.load }) },
+  ),
 }));
 
 vi.mock("../store/navigationStore", () => ({
@@ -98,6 +102,7 @@ beforeEach(() => {
   mocks.results = { devices: [SCANNED], status: "complete", port_labels: {}, port_drivers: {}, warnings: [] };
   mocks.project = { devices: [], connections: {} };
   mocks.add.mockClear();
+  mocks.load.mockClear();
 });
 
 describe("a device added with settings to set up", () => {
@@ -110,5 +115,7 @@ describe("a device added with settings to set up", () => {
     await waitFor(() => expect(mocks.add).toHaveBeenCalled());
     fireEvent.click(await screen.findByRole("button", { name: "Finish setup" }));
     expect(await screen.findByText('Added "Acme AX-9" to project.')).toBeTruthy();
+    // The add was written by the server, so the project is read again.
+    expect(mocks.load).toHaveBeenCalled();
   });
 });
