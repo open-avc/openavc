@@ -59,6 +59,7 @@ from openavc.core.device_config import (
     same_serial_port,
 )
 from openavc.drivers.transport_choice import effective_transport
+from openavc.transport.binary_helpers import encode_escape_sequences, has_incomplete_byte_escape
 from openavc.transport.endpoint import HttpEndpoint, UnusablePort, http_endpoint
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
@@ -662,19 +663,22 @@ def _raw_port(body: TestCommandRequest, name: str) -> int:
 
 
 def _escaped(value: str, what: str) -> bytes:
-    """THE reading of a raw probe's text (``\\r``, ``\\x0D`` as the bytes they
-    stand for). An incomplete escape is a 422 naming ``what``, raised before
+    """THE reading of a raw probe's text: the running driver's
+    (``binary_helpers.encode_escape_sequences``), so the probe sends what a
+    command's ``send`` would: ``\\r``, ``\\n``, ``\\t``, ``\\\\`` and
+    ``\\x0D`` as the bytes they stand for, every other character as UTF-8,
+    an unknown escape as typed. A ``\\x`` without two hex digits, which the
+    driver would send as typed, is a 422 naming ``what``, raised before
     anything is opened: a one-connection device is never taken for nothing."""
-    try:
-        return value.encode().decode("unicode_escape").encode()
-    except UnicodeError:
+    if has_incomplete_byte_escape(value):
         raise HTTPException(
             status_code=422,
             detail=(
                 f"The {what} '{value}' has an incomplete backslash escape. Write a byte "
                 "as \\x and two hex digits, such as \\x0D, and a backslash itself as \\\\."
             ),
-        ) from None
+        )
+    return encode_escape_sequences(value)
 
 
 async def raw_tcp_probe(body: TestCommandRequest) -> dict:

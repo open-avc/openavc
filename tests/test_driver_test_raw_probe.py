@@ -84,3 +84,60 @@ async def test_text_it_can_read_goes_on_to_open(opened, transport):
 
     assert opened == [transport]
     assert answer["success"] is False
+
+
+@pytest.fixture
+def dialled(monkeypatch) -> dict[str, Any]:
+    """The TCP probe's transport, standing in: what it was opened with and
+    the bytes it was sent."""
+    from openavc.transport import tcp
+
+    seen: dict[str, Any] = {}
+
+    class _Link:
+        async def send_and_wait(self, data: bytes, timeout: float) -> bytes:
+            seen["sent"] = data
+            return b"OK"
+
+        async def close(self) -> None:
+            pass
+
+    async def create_tcp(**kwargs: Any):
+        seen["delimiter"] = kwargs["delimiter"]
+        return _Link()
+
+    monkeypatch.setattr(tcp.TCPTransport, "create", staticmethod(create_tcp))
+    return seen
+
+
+@pytest.mark.parametrize(("typed", "on_the_wire"), [
+    pytest.param("PWR?\\r", b"PWR?\r", id="a-line-ending-escape"),
+    pytest.param("\\x02PWR\\x03", b"\x02PWR\x03", id="control-byte-escapes"),
+    pytest.param("\\xFE\\x01", b"\xfe\x01", id="a-byte-above-7F-is-that-byte"),
+    pytest.param("Café\\r", "Café\r".encode(), id="text-goes-out-as-UTF-8"),
+    pytest.param("A\\\\x", b"A\\x", id="an-escaped-backslash-before-x"),
+    pytest.param("PWR\\q", b"PWR\\q", id="an-unknown-escape-goes-as-typed"),
+])
+async def test_the_probe_sends_what_the_driver_would(dialled, typed, on_the_wire):
+    """The probe reads its text the way the running driver reads a send:
+    the same escapes, a byte for each \\xHH, everything else as UTF-8."""
+    from openavc.transport.binary_helpers import encode_escape_sequences
+
+    answer = await driver_test._test_raw(_probe("tcp", command_string=typed))
+
+    assert answer["success"] is True
+    assert dialled["sent"] == on_the_wire == encode_escape_sequences(typed)
+
+
+@pytest.mark.parametrize(("typed", "splits_on"), [
+    pytest.param("\\r\\n", b"\r\n", id="CR-LF"),
+    pytest.param("\\xFE", b"\xfe", id="a-byte-above-7F"),
+])
+async def test_the_probe_splits_the_reply_on_the_delimiter_as_the_driver_does(
+    dialled, typed, splits_on,
+):
+    from openavc.drivers.line_ending import effective_delimiter
+
+    await driver_test._test_raw(_probe("tcp", delimiter=typed))
+
+    assert dialled["delimiter"] == splits_on == effective_delimiter({"delimiter": typed}, {})
