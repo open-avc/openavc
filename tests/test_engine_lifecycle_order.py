@@ -818,6 +818,54 @@ async def test_a_variable_a_system_stopping_trigger_sets_is_saved_by_the_stop(
 
 
 @pytest.mark.asyncio
+async def test_a_system_stopping_trigger_runs_its_macro_when_something_listens_for_its_fire(
+        tmp_path, no_update_checks):
+    """A trigger that has said it fired is never dropped by the stop: a plugin
+    that takes a moment over trigger.fired used to leave the fire inside its
+    listeners when the triggers stopped, and the macro never ran."""
+    eng = Engine(_project(
+        tmp_path, variables=_SAVED_VARIABLE,
+        macros=_sets_v_on("system.stopping", "set at the stop"),
+    ))
+    _quiet_services(eng, [])
+    await eng.start()
+
+    async def slow_listener(_event, _payload):
+        await asyncio.sleep(0.05)
+
+    eng.events.on("trigger.fired", slow_listener)
+    await eng.stop()
+    assert eng.state.get("var.v") == "set at the stop"
+    assert _saved(tmp_path).get("var.v") == "set at the stop"
+
+
+@pytest.mark.asyncio
+async def test_a_fire_held_past_the_macros_cancel_starts_nothing(
+        tmp_path, no_update_checks, monkeypatch):
+    """The stop waits only so long for a fire to reach the macro engine; one
+    held longer (a listener that hangs) must not start its macro once the
+    stop has cancelled the macros and the devices are letting go."""
+    import openavc.core.trigger_engine as trigger_engine
+
+    monkeypatch.setattr(trigger_engine, "_FIRE_HANDOVER_SECONDS", 0.01)
+    eng = Engine(_project(tmp_path, macros=_sets_v_on("system.stopping", "set after the stop")))
+    _quiet_services(eng, [])
+    await eng.start()
+    release = asyncio.Event()
+
+    async def hanging_listener(_event, _payload):
+        await release.wait()
+
+    eng.events.on("trigger.fired", hanging_listener)
+    await eng.stop()
+    release.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    await asyncio.sleep(0.05)
+    assert eng.state.get("var.v") != "set after the stop"
+
+
+@pytest.mark.asyncio
 async def test_a_variable_a_script_sets_at_system_stopping_is_saved_by_the_stop(
         tmp_path, no_update_checks):
     (tmp_path / "scripts").mkdir()

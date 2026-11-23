@@ -49,6 +49,9 @@ BroadcastWS = Callable[[dict[str, Any]], Awaitable[None]]
 # than silently reporting success.
 _CANCEL_GRACE_SECONDS = 5.0
 
+# Why a start is skipped once the shutdown has closed the engine (close).
+SKIPPED_STOPPING = "the system is stopping"
+
 # A macro's optional overlap="queue" guard waits for the in-flight
 # invocation to finish before starting. Poll this often for it to clear,
 # and give up after the ceiling so a queued call can't wait forever: the
@@ -165,6 +168,10 @@ class MacroEngine(MacroSteps):
         # script/plugin/AI dispatch all leave every in-flight invocation
         # individually trackable and cancellable (A51).
         self._running: dict[str, set[asyncio.Task]] = {}
+        # Set by the shutdown before it cancels the macros (close): no macro
+        # starts after, so a trigger fire still on its way cannot start one
+        # while the devices let go. A project loaded again opens it.
+        self._closed = False
         # macro_id -> monotonic timestamp of its last accepted start, used by
         # the optional per-macro cooldown guard. Enforced at execute() so the
         # cooldown holds from every entry point (script, REST, AI, UI, trigger,
@@ -256,8 +263,15 @@ class MacroEngine(MacroSteps):
             )
         return True
 
+    def close(self) -> None:
+        """No macro starts from here on: the shutdown, before ``cancel_all``.
+        A start then is skipped (``SKIPPED_STOPPING``), with its
+        ``macro.skipped`` event as any refused start has."""
+        self._closed = True
+
     async def cancel_all(self) -> None:
-        """Cancel all running macros (for system shutdown)."""
+        """Cancel all running macros (the shutdown, and a project change that
+        changed macro or group definitions)."""
         all_tasks = [t for tasks in self._running.values() for t in tasks]
         if not all_tasks:
             return
@@ -315,6 +329,7 @@ class MacroEngine(MacroSteps):
 
     def load_macros(self, macros: list[dict[str, Any]]) -> None:
         """Register macro definitions from the project config."""
+        self._closed = False
         self._macros.clear()
         for macro in macros:
             macro_id = macro.get("id", "")
@@ -505,6 +520,8 @@ class MacroEngine(MacroSteps):
         With no current task (a synthetic execute()) there is nothing to
         register: the throttle and the preemption still apply, without the lock.
         """
+        if self._closed:
+            return SKIPPED_STOPPING, []
         if guards.overlap == "queue":
             gave_up = await self._wait_for_slot(macro_id, name)
             if gave_up is not None:

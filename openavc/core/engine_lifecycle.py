@@ -723,7 +723,7 @@ class EngineLifecycleMixin:
         # devices they command are torn down — a macro racing disconnect_all
         # would error its remaining steps into a half-stopped engine. Late on
         # purpose: nothing that could restart one is still running.
-        await run.run("the macros", self.macros.cancel_all)
+        await run.run("the macros", self._end_macros)
         # Nothing that can set a variable is left (a "System Stopping"
         # trigger's macro, a script's or a plugin's stop): save the
         # persistent ones and stop watching, before the devices let go.
@@ -743,6 +743,13 @@ class EngineLifecycleMixin:
         # going offline, system.started), so none of it is dropped.
         await run.run("the pending events", self.state.flush_pending_events)
         log.info("Engine stopped")
+
+    async def _end_macros(self) -> None:
+        """Close the macro engine, so a trigger fire still held in its
+        listeners past the triggers' stop starts nothing, then cancel the
+        macros that are running, with the engine's grace."""
+        self.macros.close()
+        await self.macros.cancel_all()
 
     def _mark_stopped(self) -> None:
         self.state.set("system.started", False, source="system")

@@ -49,6 +49,11 @@ _CRON_POLL_INTERVAL = 30
 # macro engine's cancel grace so the two teardown paths behave alike.
 _CANCEL_DRAIN_SECONDS = 2.0
 
+# How long stop() waits for a fire that has said it fired, and is still inside
+# its trigger.fired listeners, to reach the macro engine. A fire held longer
+# goes on by itself; at a shutdown it finds the macro engine closed.
+_FIRE_HANDOVER_SECONDS = 2.0
+
 
 def _log_task_exception(task: asyncio.Task) -> None:
     """Done-callback to log unhandled exceptions from fire-and-forget tasks."""
@@ -128,6 +133,11 @@ class TriggerEngine:
         # reconcile cancels running macros only when macro/group definitions
         # actually changed, and shutdown cancels them via macros.cancel_all().
         self._macro_exec_tasks: set[asyncio.Task] = set()
+        # The fires among those still inside their trigger.fired listeners,
+        # each with the future set when it reaches the macro engine: stop()
+        # waits for them (_FIRE_HANDOVER_SECONDS), so a fire that has said it
+        # fired is handed over rather than dropped.
+        self._handing: dict[asyncio.Task, asyncio.Future] = {}
         # Cron duplicate-fire guard, instance-scoped so it survives a hot
         # reload (stop -> load_triggers -> start) instead of resetting and
         # double-firing a schedule near its scheduled minute.
@@ -263,8 +273,11 @@ class TriggerEngine:
     async def stop(self) -> None:
         """Unregister all listeners, cancel pending (pre-fire) tasks.
 
-        Fires that have already reached ``MacroEngine.execute()`` are
-        deliberately left running: their lifetime belongs to the macro
+        A fire that has said it fired (its log line, ``last_fired``) is
+        handed to the macro engine, never dropped: one still inside its
+        ``trigger.fired`` listeners is waited for, up to
+        ``_FIRE_HANDOVER_SECONDS``. Fires that have already reached
+        ``MacroEngine.execute()`` are deliberately left running: their lifetime belongs to the macro
         engine's registry, and which macros survive an edit must not depend
         on what fired them (the reconcile cancels running macros only on a
         macro/group diff; shutdown cancels them via ``macros.cancel_all()``).
@@ -316,6 +329,12 @@ class TriggerEngine:
         for handler_id in self._event_handler_ids:
             self.events.off(handler_id)
         self._event_handler_ids.clear()
+
+        # A fire that said it fired and is still in its trigger.fired
+        # listeners is not cancelled above: give it the moment it needs to
+        # reach the macro engine, so its macro runs as one with no listener
+        # does (a System Stopping trigger's, at a stop).
+        await self._await_handovers()
 
         # Drain the cancellations (same grace the macro engine gives
         # preempted macros) so nothing is still mid-unwind when the caller
@@ -735,6 +754,24 @@ class TriggerEngine:
 
         await self._fire_macro(ts, context)
 
+    def _handed_over(self, task: asyncio.Task | None, handed: asyncio.Future | None) -> None:
+        """A fire left its trigger.fired listeners: stop() need not wait for it."""
+        if task is not None:
+            self._handing.pop(task, None)
+        if handed is not None and not handed.done():
+            handed.set_result(None)
+
+    async def _await_handovers(self) -> None:
+        """Wait, up to _FIRE_HANDOVER_SECONDS, for each fire that has said it
+        fired to reach the macro engine."""
+        waiting = [future for future in self._handing.values() if not future.done()]
+        if not waiting:
+            return
+        try:
+            await asyncio.wait(waiting, timeout=_FIRE_HANDOVER_SECONDS)
+        except asyncio.CancelledError:
+            pass
+
     async def _fire_macro(
         self, ts: _TriggerState, context: dict[str, Any]
     ) -> None:
@@ -761,21 +798,16 @@ class TriggerEngine:
             f"Trigger {trigger_id} fired macro '{ts.macro_name}' "
             f"(type={trigger_type})"
         )
-        await self.events.emit(
-            "trigger.fired",
-            {
-                "trigger_id": trigger_id,
-                "macro_id": macro_id,
-                "macro_name": ts.macro_name,
-                "trigger_type": trigger_type,
-            },
-        )
-
-        # From here the fire is a running macro: hand its lifetime to the
-        # macro engine's registry (see _macro_exec_tasks comment in __init__).
+        # From here, with no await between, the fire has said it fired, so it
+        # is a running macro: its lifetime is the macro engine's registry's
+        # (see _macro_exec_tasks in __init__), and stop() hands it over
+        # rather than cancelling it while its trigger.fired listeners run.
         exec_task = asyncio.current_task()
+        handed: asyncio.Future | None = None
         if exec_task is not None:
             self._macro_exec_tasks.add(exec_task)
+            handed = asyncio.get_running_loop().create_future()
+            self._handing[exec_task] = handed
         # `execute` REPORTS how the run ended rather than raising, so the
         # catch-all below is only reached by a macro that does not exist —
         # a trigger left pointing at a deleted one. Either way the trigger
@@ -784,6 +816,16 @@ class TriggerEngine:
         outcome = "error"
         error: str | None = None
         try:
+            await self.events.emit(
+                "trigger.fired",
+                {
+                    "trigger_id": trigger_id,
+                    "macro_id": macro_id,
+                    "macro_name": ts.macro_name,
+                    "trigger_type": trigger_type,
+                },
+            )
+            self._handed_over(exec_task, handed)
             # Pass the trigger context (event payload / state-change snapshot)
             # so the macro can resolve $trigger.<field> refs and branch on what
             # fired it. Direct/REST/script runs pass no context (refs -> None).
@@ -792,6 +834,7 @@ class TriggerEngine:
             log.exception(f"Trigger {trigger_id} macro execution failed")
             error = str(e)
         finally:
+            self._handed_over(exec_task, handed)
             if exec_task is not None:
                 self._macro_exec_tasks.discard(exec_task)
             remaining = self._active_trigger_depth.get(trigger_id, 0) - 1
