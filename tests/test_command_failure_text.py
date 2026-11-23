@@ -372,7 +372,7 @@ async def test_a_refusal_keeps_its_sentence_at_every_door(engine, monkeypatch):
 # --- The platform's own sentences are not a driver's -------------------------
 
 
-async def test_the_conditional_depth_limit_keeps_its_sentence(engine):
+async def test_the_conditional_depth_limit_is_the_programmers_sentence_and_not_the_rooms(engine):
     step_errors = _collect(engine, "macro.step_error.*")
     errors = _collect(engine, "macro.error.*")
     assert await engine.macros.execute("too_deep") == "failed"
