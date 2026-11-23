@@ -1,8 +1,11 @@
 """Tests for serial transport, on the stand-in a caller asks for with simulate=True (always runnable)."""
 
 import asyncio
+import threading
+import time
 
 import pytest
+import serial
 
 import openavc.transport.serial_transport as st
 from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
@@ -15,15 +18,11 @@ async def test_invalid_serial_settings_raise_invalid_config_fault(monkeypatch):
     a transient disconnect: _connect must raise a typed invalid_config fault so
     the device card names the real cause instead of showing a generic
     'reconnecting' message and burning an hour of retries."""
-    def _raise(**kwargs):
+    def _raise(*args, **kwargs):
         raise ValueError("Not a valid parity: 'X'")
 
     monkeypatch.setattr(st, "HAS_SERIAL", True)
-    monkeypatch.setattr(
-        st, "serial_asyncio",
-        type("_M", (), {"open_serial_connection": staticmethod(_raise)}),
-        raising=False,
-    )
+    monkeypatch.setattr(serial, "serial_for_url", _raise)
 
     with pytest.raises(ConnectionFaultError) as ei:
         await SerialTransport.create(
@@ -331,3 +330,133 @@ async def test_numeric_port_is_a_typed_config_fault_not_a_crash():
     message = str(excinfo.value)
     assert "19900" in message
     assert "/dev/ttyUSB0" in message or "COM3" in message
+
+
+# --- the port's open runs off the event loop ---------------------------------
+
+
+class _FakePort:
+    """What pyserial's open hands back: a port that records being closed."""
+
+    def __init__(self):
+        self.closed = threading.Event()
+
+    def close(self):
+        self.closed.set()
+
+
+class _FakeSerialTransport:
+    """What the asyncio wrapper builds on an opened port, enough for a stream."""
+
+    def __init__(self, port, protocol):
+        self.port = port
+        self.protocol = protocol
+        self._closing = False
+
+    def is_closing(self):
+        return self._closing
+
+    def close(self):
+        if not self._closing:
+            self._closing = True
+            asyncio.get_running_loop().call_soon(self.protocol.connection_lost, None)
+
+    def get_extra_info(self, name, default=None):
+        return default
+
+
+def _ticking():
+    """A coroutine that counts while the loop is free to run it."""
+    ticks = {"n": 0}
+
+    async def tick():
+        while True:
+            ticks["n"] += 1
+            await asyncio.sleep(0.01)
+
+    return ticks, tick
+
+
+async def test_a_stalled_port_open_leaves_the_loop_serving(monkeypatch):
+    """An adapter whose open stalls must not stop every other device, panel
+    and timer: the open runs in a worker thread, the loop keeps running, and
+    the transport's timeout fires on time."""
+    port = _FakePort()
+
+    def _stall(*args, **kwargs):
+        time.sleep(0.6)
+        return port
+
+    monkeypatch.setattr(serial, "serial_for_url", _stall)
+    ticks, tick = _ticking()
+    ticker = asyncio.create_task(tick())
+    started = time.monotonic()
+    try:
+        with pytest.raises(ConnectionError, match="Failed to open serial port"):
+            await SerialTransport.create(
+                "/dev/ttyACME0", baudrate=9600, on_data=lambda d: None, timeout=0.2,
+            )
+        elapsed = time.monotonic() - started
+    finally:
+        ticker.cancel()
+    assert elapsed < 0.5
+    assert ticks["n"] >= 5
+
+
+async def test_a_port_that_opens_after_the_timeout_is_closed(monkeypatch):
+    """The thread cannot be stopped, so a port it opens after the transport
+    gave up is closed as it lands, never left holding the adapter."""
+    port = _FakePort()
+
+    def _late(*args, **kwargs):
+        time.sleep(0.3)
+        return port
+
+    monkeypatch.setattr(serial, "serial_for_url", _late)
+    with pytest.raises(ConnectionError):
+        await SerialTransport.create(
+            "/dev/ttyACME0", baudrate=9600, on_data=lambda d: None, timeout=0.1,
+        )
+    await asyncio.to_thread(port.closed.wait, 2.0)
+    assert port.closed.is_set()
+
+
+async def test_an_opened_port_carries_the_line_settings_and_reads(monkeypatch):
+    """The port is opened with the device's line settings and the stream is
+    built on it, so what arrives reaches on_data."""
+    port = _FakePort()
+    opened = {}
+
+    def _open(*args, **kwargs):
+        opened.update(kwargs, url=args[0] if args else kwargs.get("url"))
+        return port
+
+    async def _wrap(loop, protocol_factory, serial_instance):
+        assert serial_instance is port
+        protocol = protocol_factory()
+        transport = _FakeSerialTransport(serial_instance, protocol)
+        protocol.connection_made(transport)
+        _wrap.protocol = protocol
+        return transport, protocol
+
+    monkeypatch.setattr(serial, "serial_for_url", _open)
+    monkeypatch.setattr(st.serial_asyncio, "connection_for_serial", _wrap)
+    received = []
+    transport = await SerialTransport.create(
+        "/dev/ttyACME0", baudrate=19200, on_data=received.append,
+        bytesize=7, parity="E", stopbits=2, rtscts=True, delimiter=b"\r",
+    )
+    try:
+        assert transport.connected
+        assert opened == {
+            "url": "/dev/ttyACME0", "baudrate": 19200, "bytesize": 7,
+            "parity": "E", "stopbits": 2, "rtscts": True, "xonxoff": False,
+        }
+        _wrap.protocol.data_received(b"PWR=ON\r")
+        for _ in range(50):
+            if received:
+                break
+            await asyncio.sleep(0.01)
+        assert received == [b"PWR=ON"]
+    finally:
+        await asyncio.wait_for(transport.close(), 2.0)

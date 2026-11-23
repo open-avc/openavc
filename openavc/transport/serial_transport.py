@@ -42,11 +42,25 @@ log = get_logger(__name__)
 
 # Try to import pyserial-asyncio; fall back gracefully
 try:
+    import serial  # type: ignore[import-untyped]
     import serial_asyncio  # type: ignore[import-untyped]
 
     HAS_SERIAL = True
 except ImportError:
     HAS_SERIAL = False
+
+
+def _close_if_opened(opening: asyncio.Future) -> None:
+    """A port the worker thread opened after its connect gave up (a timeout,
+    a cancel): closed as it lands, so the adapter is not held open by a
+    transport nobody has. An open that failed is read here, so it is not
+    reported as never retrieved."""
+    if opening.cancelled() or opening.exception() is not None:
+        return
+    try:
+        opening.result().close()
+    except OSError:
+        pass
 
 
 def _serial_port_label(
@@ -455,18 +469,8 @@ class SerialTransport:
             return
 
         try:
-            self._reader, self._writer = await asyncio.wait_for(
-                serial_asyncio.open_serial_connection(
-                    url=self.port,
-                    baudrate=self.baudrate,
-                    bytesize=self._bytesize,
-                    parity=self._parity,
-                    stopbits=self._stopbits,
-                    rtscts=self._rtscts,
-                    xonxoff=self._xonxoff,
-                ),
-                timeout=self._timeout,
-            )
+            port = await self._open_port()
+            self._reader, self._writer = await self._stream_on(port)
             self._connected = True
             if self._frame_parser is not None:
                 self._frame_parser.reset()
@@ -490,6 +494,38 @@ class SerialTransport:
             raise ConnectionError(
                 f"Failed to open serial port {self.port}: {e}"
             ) from e
+
+    async def _open_port(self) -> Any:
+        """The OS open of the port, in a worker thread: an adapter whose open
+        stalls (a USB adapter mid-enumeration, a driver that blocks) would
+        otherwise hold the event loop, and every device, panel and timer
+        with it, out of reach of the timeout. The thread cannot be stopped,
+        so a port it opens after the timeout is closed as it lands."""
+        opening = asyncio.ensure_future(asyncio.to_thread(
+            serial.serial_for_url,
+            self.port,
+            baudrate=self.baudrate,
+            bytesize=self._bytesize,
+            parity=self._parity,
+            stopbits=self._stopbits,
+            rtscts=self._rtscts,
+            xonxoff=self._xonxoff,
+        ))
+        try:
+            return await asyncio.wait_for(asyncio.shield(opening), timeout=self._timeout)
+        except BaseException:
+            opening.add_done_callback(_close_if_opened)
+            raise
+
+    @staticmethod
+    async def _stream_on(port: Any) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """The reader and writer on an opened port, built on the loop as
+        pyserial-asyncio's own open builds them."""
+        loop = asyncio.get_running_loop()
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport, _ = await serial_asyncio.connection_for_serial(loop, lambda: protocol, port)
+        return reader, asyncio.StreamWriter(transport, protocol, reader, loop)
 
     async def wait_idle(self) -> None:
         """Return once no write is under way or waiting, the
