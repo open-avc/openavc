@@ -84,15 +84,32 @@ def rename_placeholder(text: str, name: str, new_name: str) -> str:
     return _ANY_PLACEHOLDER.sub(renamed, text)
 
 
+#: A line ending written as an escape at the end of a template: ``\r``,
+#: ``\n``, or either in hex (``\x0D``, ``\x0a``, any case), which the driver
+#: sends as the same byte.
+_ESCAPED_LINE_ENDING = re.compile(r"(?:\\[rn]|\\x0[aAdD])$")
+
+
+def without_escaped_line_endings(text: str) -> str:
+    """``text`` stripped, with every line-ending escape at its end dropped
+    (``_ESCAPED_LINE_ENDING``) and the whitespace before each: the line the
+    simulator's dispatcher reads, which it splits on the line ending and
+    strips."""
+    text = text.strip()
+    while True:
+        shorter = _ESCAPED_LINE_ENDING.sub("", text)
+        if shorter == text:
+            return text
+        text = shorter.rstrip()
+
+
 def _without_terminators(template: str) -> str:
     """A send template as the consumers read a line: stripped, its trailing
-    terminators dropped (real CR/LF and literal ``\\r``/``\\n`` escapes).
-    They match against delimiter-split, whitespace-stripped lines, so a
-    pattern that kept its terminator could never match anything."""
-    text = template.strip()
-    while text.endswith(("\\r", "\\n")):
-        text = text[:-2].rstrip()
-    return text
+    terminators dropped (real CR/LF and escaped ones,
+    ``without_escaped_line_endings``). They match against delimiter-split,
+    whitespace-stripped lines, so a pattern that kept its terminator could
+    never match anything."""
+    return without_escaped_line_endings(template)
 
 
 def spec_int_base(spec: str) -> int | None:

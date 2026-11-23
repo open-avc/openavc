@@ -46,6 +46,7 @@ from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.drivers.spec import placeholder_names
 from openavc.drivers.send_framing import framed_send
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
+from openavc.simulator.send_templates import without_escaped_line_endings
 
 
 def effective_config(driver_def: dict, config: dict | None = None) -> dict:
@@ -115,13 +116,14 @@ def _as_dispatched(text: str) -> str:
     """A line as the simulator's dispatcher matches it.
 
     Stripped, with the line ending gone, both the literal ``\\n`` / ``\\r``
-    a YAML template carries and a real one. The final strip mirrors the
-    dispatch, which strips each incoming line before matching: without it a
-    template with trailing whitespace before its ``\\r`` false-fails handler
-    patterns.
+    a YAML template carries and a real one, and one written in hex at the
+    end (``\\x0D``; ``send_templates.without_escaped_line_endings``). The
+    final strip mirrors the dispatch, which strips each incoming line before
+    matching: without it a template with trailing whitespace before its
+    ``\\r`` false-fails handler patterns.
     """
     text = text.strip().replace("\\n", "").replace("\\r", "")
-    return text.rstrip("\r\n").strip()
+    return without_escaped_line_endings(text.rstrip("\r\n"))
 
 
 def query_line(query_text: str, config: dict, transport: str) -> str:

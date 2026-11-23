@@ -659,6 +659,8 @@ FRAMINGS = {
         _framed_def(command_prefix="*"), {"command_prefix": "#"}),
     "a_suffix_that_is_not_whitespace": (_framed_def(command_suffix=";\r"), {}),
     "a_suffix_set_on_the_device_only": (_framed_def(), {"command_suffix": ";\r"}),
+    "a_suffix_written_as_a_hex_escape": (_framed_def(command_suffix="\\x0D"), {}),
+    "a_suffix_written_as_a_lower_case_hex_escape": (_framed_def(command_suffix="\\x0d"), {}),
     "a_send_that_starts_with_the_prefix": (
         _framed_def({"power_on": {"send": "!1PWR ON"}}, command_prefix="!1"), {}),
     "a_device_command_with_the_device_prefix": (

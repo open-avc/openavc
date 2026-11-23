@@ -199,6 +199,10 @@ FILE_FRAMINGS = {
     "a_prefix_set_on_the_device_only": (_PLAIN, {"command_prefix": "#"}, {"send": "PWR01"}, "#PWR01"),
     "a_suffix_that_is_not_whitespace": (
         {**ACME_RECEIVER, "command_suffix": ";\\r"}, {}, {"send": "PWR01"}, "!1PWR01;\\r"),
+    "a_suffix_written_as_a_hex_escape": (
+        {**ACME_RECEIVER, "command_suffix": "\\x0D"}, {}, {"send": "PWR01"}, "!1PWR01\\x0D"),
+    "a_line_feed_suffix_written_as_a_hex_escape": (
+        {**ACME_RECEIVER, "command_suffix": "\\x0a"}, {}, {"send": "PWR01"}, "!1PWR01\\x0a"),
     "a_send_that_starts_with_the_prefix_takes_it_again": (
         ACME_RECEIVER, {}, {"send": "!1PWR01"}, "!1!1PWR01\\r"),
     "a_send_that_ends_with_the_suffix_takes_it_again": (
