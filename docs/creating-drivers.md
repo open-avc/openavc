@@ -4168,6 +4168,14 @@ my_driver.avcdriver: error: version: must be a string; put it in quotes
 
 The second is the YAML trap: `version: 1.0` is a number until it is quoted.
 
+Where a field takes a number, the number must be finite. YAML reads `.inf` and
+`.nan` as numbers, and the check refuses both, as it does a number past about
+1.8e308:
+
+```
+my_driver.avcdriver: error: state_variables.level.max: must be a finite number, not .inf
+```
+
 A response rule writes, and gates its `only_when:` on, the state variables the
 driver declares, so a misspelled name is caught here rather than on the device:
 
