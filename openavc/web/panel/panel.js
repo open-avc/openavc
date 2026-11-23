@@ -23,6 +23,7 @@ import { ListControl, rowsFromState, showListSelection } from './modules/list.js
 import { GaugeControl } from './modules/gauge.js';
 import { LevelMeterControl } from './modules/meter.js';
 import { nothingToShow } from './modules/readings.js';
+import { pickKey } from './modules/compare.js';
 import { ClockControl, ClockTicker } from './modules/clock.js';
 import { KeypadControl } from './modules/keypad.js';
 import { TextEditor } from './modules/text_edit.js';
@@ -2726,7 +2727,11 @@ class PanelApp {
         const noReading = nothingToShow(value, offline);
         const colorMap = binding.map || {};
         const defaultColor = binding.default || '#9E9E9E';
-        const color = noReading ? defaultColor : (colorMap[value] || defaultColor);
+        // The colour's key is picked as every map on the panel picks one: the
+        // exact key, then one apart from case, then one the reading equals as
+        // a boolean or number, so a key 'on' lights for a device reporting ON.
+        const key = noReading ? null : pickKey(Object.keys(colorMap), value);
+        const color = (key !== null && colorMap[key]) || defaultColor;
 
         element.style.backgroundColor = color;
         element.style.color = color;

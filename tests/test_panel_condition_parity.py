@@ -21,10 +21,6 @@ with a null reading and with the key missing. A named state, a colour map's
 entry and a dropdown's look are named by text, an object's key, so the
 authored value is written there as text.
 
-One control still compares its own way, pinned below so a change shows up:
-the status LED's colour map (`evaluateColor` in `panel.js`) looks its key up
-exactly, case and all.
-
 Left out, because JSON cannot carry it: a whole number written with a
 decimal point. JSON's 1.0 reaches JavaScript as 1, so a case of 1.0 runs as 1
 on the panel; `test_press_parity.py` runs the server's 1.0 against it.
@@ -86,25 +82,6 @@ MATCHERS = (
 )
 #: The controls that read an authored map, each asked every keys case.
 PICKERS = ("pickState", "evaluateColor", "selectValue", "selectLook", "listAtDraw", "listAfterReading")
-
-#: Where the status LED's exact key lookup differs from the rule: case, and
-#: the words and numbers that mean a boolean or a number.
-LED_PAIRS = {
-    "text equals regardless of case", "boolean true equals on", "boolean true equals yes",
-    "boolean false equals off", "boolean true equals number 1", "a number other than zero is true",
-    "a fraction equals its text with a trailing zero",
-}
-LED_KEYS = {
-    "apart from case when none is exact", "apart from case before a boolean", "a boolean reads its words",
-    "false reads its words", "two that mean the same: the first in code point order",
-    "two apart from case: the first in code point order", "a number by value",
-}
-#: What the LED picks in each of those keys cases: what its exact lookup finds.
-LED_KEY_PICKS = {
-    "two that mean the same: the first in code point order": None,
-    "two apart from case: the first in code point order": None,
-}
-
 
 def _expected_in(case: dict, mode: str) -> object:
     return case.get("surface", case["expected"]) if mode == SURFACE else case["expected"]
@@ -168,7 +145,7 @@ def test_every_control_matches_as_the_rule(panel_answers: dict, comparer: str) -
         name for (name, actual, target), matched in zip(PAIRS, panel_answers[comparer], strict=True)
         if matched != _rule_matches(comparer, actual, target)
     }
-    assert differ == (LED_PAIRS if comparer == "evaluateColor" else set())
+    assert differ == set()
 
 
 @pytest.mark.parametrize("comparer", MATCHERS)
@@ -183,13 +160,7 @@ def test_every_map_reader_picks_the_key_the_rule_picks(panel_answers: dict, pick
         case["name"] for case, picked in zip(KEYS, panel_answers["picks"][picker], strict=True)
         if picked != case["expected"]
     }
-    assert differ == (LED_KEYS if picker == "evaluateColor" else set())
-
-
-def test_the_led_finds_only_the_key_spelled_as_the_reading(panel_answers: dict) -> None:
-    for case, picked in zip(KEYS, panel_answers["picks"]["evaluateColor"], strict=True):
-        if case["name"] in LED_KEY_PICKS:
-            assert picked == LED_KEY_PICKS[case["name"]], case["name"]
+    assert differ == set()
 
 
 def test_visible_when_shows_as_the_rule_s_surface_mode(panel_answers: dict) -> None:
@@ -230,9 +201,3 @@ def test_visible_when_holds_and_fails_under_every_operator(panel_answers: dict) 
 def test_a_list_row_whose_value_is_zero_lights(panel_answers: dict) -> None:
     """Readings 0, "0" and a blank, against rows 0 and 1: 0 lights for both spellings of it, never for a blank."""
     assert panel_answers["zeroRow"] == {"atDraw": [[0], [0], []], "afterReading": [[0], [0], []]}
-
-
-def test_every_pin_names_a_corpus_case() -> None:
-    """A pin naming a case the corpus no longer holds would pass by itself."""
-    assert LED_PAIRS <= {name for name, _actual, _target in PAIRS}
-    assert LED_KEYS | set(LED_KEY_PICKS) <= {c["name"] for c in KEYS}

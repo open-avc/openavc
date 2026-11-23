@@ -483,8 +483,7 @@ if the device supports them.
 
 ## How a bound value is compared
 
-One rule, the one macro and trigger conditions use, for everything on the panel
-but a status LED's colours:
+One rule, the one macro and trigger conditions use, for everything on the panel:
 
 - **Words compare apart from case**: `"On"` matches a device reporting `"ON"`.
 - **A boolean compares with the words and numbers that mean it**: `true` matches
@@ -503,13 +502,12 @@ but a status LED's colours:
 | A button's `toggle_value` against `toggle_key` | the rule |
 | `show.value` with a `condition.equals` | the rule |
 | `show.look` with `condition.equals` (two-state) | the rule |
-| `show.look` `states` keys, a `select` option's `value`, a `list` row's `value` | the key the value picks: the exact one, then one apart from case, then one it equals as a boolean or number |
+| `show.look` `states` keys, `show.look.map` keys (a status LED's colours), a `select` option's `value`, a `list` row's `value` | the key the value picks: the exact one, then one apart from case, then one it equals as a boolean or number |
 | `show.visible_when` | the rule; every operator spelling a macro condition takes |
-| `show.look.map` keys (a status LED's colours) | exact, **case-sensitive** text |
 
 So a look with states `on` and `off` follows a device reporting `ON` or `true`,
-and `{"true": "#4CAF50"}` lights an LED bound to a boolean while `{"True": ...}`
-does not. Write every map key and condition value in the device's own casing
+and an LED mapped `{"on": "#4CAF50"}` takes the green for `"ON"` or `true` too.
+Write every map key and condition value in the device's own casing
 and spelling anyway, and prefer lowercase `"true"` / `"false"` for booleans:
 that matches on every OpenAVC version, including ones older than this rule.
 
