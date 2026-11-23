@@ -79,11 +79,11 @@ one list.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.core.plugin_extension_rules import is_panel_element_name
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.param_validation import required_param_sentence
 from openavc.ui.matrix_model import resolve_axis
@@ -251,12 +251,6 @@ def first_device_of(key: str, device_ids: Iterable[str]) -> str | None:
     return None
 
 
-#: What the panel accepts in a plugin element's two ids, character for
-#: character. ``panel.js:3785`` tests both against this and draws its
-#: unconfigured placeholder if either fails, so anything else is decorative.
-_PLUGIN_ID_CHARS = re.compile(r"^[A-Za-z0-9_-]+$")
-
-
 def plugin_element_finding(
     dump: Mapping[str, Any],
     el_id: str,
@@ -266,7 +260,8 @@ def plugin_element_finding(
 
     ``plugin`` is a real type and passes the type check, so nothing here used to
     look inside it. But the renderer needs BOTH ``plugin_id`` and
-    ``plugin_type``, both matching ``[A-Za-z0-9_-]+``, and it builds
+    ``plugin_type``, both names it accepts (``is_panel_element_name``, which
+    the panel's copy is held to), and it builds
     ``/api/plugins/<id>/panel/<type>.html`` out of them. Miss either, or invent a
     type the plugin does not declare, and the panel draws a dashed grey box that
     says "Plugin" -- which reads as a loading state, not as a mistake.
@@ -295,7 +290,7 @@ def plugin_element_finding(
     malformed = [
         f"{name} '{value}'"
         for name, value in (("plugin_id", plugin_id), ("plugin_type", plugin_type))
-        if not _PLUGIN_ID_CHARS.match(str(value))
+        if not is_panel_element_name(value)
     ]
     if malformed:
         return Finding(

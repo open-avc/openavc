@@ -7,7 +7,8 @@ A plugin declares itself in six class attributes: ``PLUGIN_INFO`` (with
 them in one pass, one row of ``_RULES`` at a time, in the order the loader has
 always refused a plugin: the first refusal is the sentence the plugin's card
 shows. A new rule is one function and one row. The ``MACRO_ACTIONS`` and
-``SCRIPT_API`` rules are ``core/plugin_handler_rules.py``'s, a row each here.
+``SCRIPT_API`` rules are ``core/plugin_handler_rules.py``'s and the
+``EXTENSIONS`` rule ``core/plugin_extension_rules.py``'s, a row each here.
 
 Two ways in, one judge:
 
@@ -49,8 +50,8 @@ it, so the loader asks only the host check, whether this machine is listed
 (``platform_problem``). A check made before a plugin is published, which has
 no host to ask, asks ``platforms_problem`` instead.
 
-Purity contract: standard library only (with ``plugin_handler_rules`` and
-``plugin_source``), so openavc-plugins can carry these modules and run the
+Purity contract: standard library only (with ``plugin_handler_rules``,
+``plugin_extension_rules`` and ``plugin_source``), so openavc-plugins can carry these modules and run the
 rules in its CI without installing OpenAVC
 (``tests/test_plugin_declarations_purity.py`` holds it). openavc-plugins'
 ``validate.py`` runs this repo's copy (``scripts/vendor_platform_rules.py``
@@ -63,6 +64,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
+from openavc.core.plugin_extension_rules import (
+    EXTENSION_ID_FIELD as EXTENSION_ID_FIELD,
+    VALID_EXTENSION_TYPES as VALID_EXTENSION_TYPES,
+    extensions_problem as extensions_problem,
+)
 from openavc.core.plugin_handler_rules import (
     HandlerProbe,
     macro_actions_problem,
@@ -126,18 +132,6 @@ HOST_PORTS = frozenset({22, 23, 25, 135, 137, 138, 139, 445, 3389, 5900})
 
 #: The keys a ``CONFIG_SECRETS`` entry may have.
 CONFIG_SECRETS_KEYS = frozenset({"id", "fields", "generated"})
-
-# Each extension type, the field that identifies an entry within it, and the
-# order the types are served in (core/plugin_extensions.py). Panel elements are
-# keyed by their element type.
-EXTENSION_ID_FIELD = {
-    "views": "id",
-    "device_panels": "id",
-    "status_cards": "id",
-    "context_actions": "id",
-    "panel_elements": "type",
-}
-VALID_EXTENSION_TYPES = set(EXTENSION_ID_FIELD)
 
 
 class _Unread:
@@ -638,36 +632,6 @@ def _script_api(j: _Judging) -> str | None:
         return None
     problem = script_api_problem(value, j.plugin_id, j.handlers)
     return None if problem is None else f"SCRIPT_API invalid: {problem}"
-
-
-def extensions_problem(value: Any) -> str | None:
-    """What is wrong with an ``EXTENSIONS`` declaration, or None."""
-    if not isinstance(value, dict):
-        return "EXTENSIONS must be a dict"
-    for ext_type, ext_list in value.items():
-        problem = _extension_type_problem(ext_type, ext_list)
-        if problem:
-            return problem
-    return None
-
-
-def _extension_type_problem(ext_type: Any, ext_list: Any) -> str | None:
-    if ext_type not in VALID_EXTENSION_TYPES:
-        return f"unknown extension type '{ext_type}' (allowed: {sorted(VALID_EXTENSION_TYPES)})"
-    if not isinstance(ext_list, list):
-        return f"extension type '{ext_type}' must be a list"
-    id_field = EXTENSION_ID_FIELD[ext_type]
-    seen_ids: set[str] = set()
-    for i, ext in enumerate(ext_list):
-        if not isinstance(ext, dict):
-            return f"{ext_type}[{i}] must be a dict"
-        ext_id = ext.get(id_field)
-        if not ext_id or not isinstance(ext_id, str):
-            return f"{ext_type}[{i}] missing '{id_field}' (string)"
-        if ext_id in seen_ids:
-            return f"{ext_type} has duplicate {id_field} '{ext_id}'"
-        seen_ids.add(ext_id)
-    return None
 
 
 def _extensions(j: _Judging) -> str | None:

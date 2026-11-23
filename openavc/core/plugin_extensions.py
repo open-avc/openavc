@@ -1,29 +1,29 @@
-"""What a plugin's EXTENSIONS may declare, and what the panel and the IDE are served from them.
+"""What the panel and the IDE are served from the running plugins' EXTENSIONS.
 
 A plugin adds views, device panels, status cards, context actions and panel
-elements through ``EXTENSIONS``: a dict of those types (``EXTENSION_ID_FIELD``,
-which also gives each type's identifying field and the order they are served
-in), each a list of entries.
+elements through ``EXTENSIONS``: a dict of those types, each a list of entries.
 
-- What a declaration must be is ``core/plugin_declarations.py``'s
-  (``extensions_problem``), which refuses a malformed one when the plugin
-  starts, so a bad plugin fails to enable rather than blanking the plugin UI.
+- What a declaration must be is ``core/plugin_extension_rules.py``'s
+  (``extensions_problem``), which the start asks and refuses a malformed one
+  with, so a bad plugin fails to enable rather than blanking the plugin UI.
   ``validate_extensions`` here is that rule under the loader's
   ``(valid, error)`` signature.
 - ``collect_extensions`` builds the ``/api/plugins/extensions`` answer from the
-  running plugins and checks every entry's shape again, skipping a bad one with
-  a warning: one plugin's entry must never take the endpoint down for every
-  other plugin. The first plugin to claim an id keeps it. Each entry's
-  ``state_pattern`` is held inside its plugin's ``plugin.<id>.`` namespace, so a
-  plugin's sidebar cannot read unrelated state. A panel element's iframe grant
-  is cut down to ``ALLOWED_SANDBOX_PERMISSIONS`` and ``ALLOWED_ALLOW_FEATURES``
-  (the panel sets the iframe's ``sandbox`` and ``allow`` attributes from it)
-  and carries the plugin's capabilities, which the panel's iframe bridge checks
-  a request against.
+  running plugins. It serves exactly what the start accepts: every entry of a
+  declaration the rule accepts, none of one it refuses (logged), and two
+  plugins' entries of the same id both, since every reader finds an entry by
+  its plugin first. One plugin's declaration never takes the endpoint down for
+  every other plugin. Each entry's ``state_pattern`` is held inside its
+  plugin's ``plugin.<id>.`` namespace, so a plugin's sidebar cannot read
+  unrelated state. A panel element's iframe grant is cut down to
+  ``ALLOWED_SANDBOX_PERMISSIONS`` and ``ALLOWED_ALLOW_FEATURES`` (the panel
+  sets the iframe's ``sandbox`` and ``allow`` attributes from it) and carries
+  the plugin's capabilities, which the panel's iframe bridge checks a request
+  against.
 
-``sandbox_permissions`` is that same cut-down sandbox grant, summed over a
-plugin's panel elements: what the plugin list shows as part of the trust given
-at install.
+``sandbox_permissions`` is that same cut-down sandbox grant, summed over the
+panel elements a plugin would be served: what the plugin list shows as part of
+the trust given at install.
 
 Logs as ``openavc.core.plugin_loader``: the Programmer's plugin page shows
 that logger's lines beside the plugin's own.
@@ -32,11 +32,7 @@ that logger's lines beside the plugin's own.
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.core.plugin_declarations import (
-    EXTENSION_ID_FIELD as EXTENSION_ID_FIELD,
-    VALID_EXTENSION_TYPES as VALID_EXTENSION_TYPES,
-    extensions_problem,
-)
+from openavc.core.plugin_extension_rules import EXTENSION_ID_FIELD, extensions_problem
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.plugin_loader")
@@ -68,7 +64,7 @@ def validate_extensions(
     extensions: Any, plugin_id: str, plugin_class: type
 ) -> tuple[bool, str]:
     """Validate a plugin's EXTENSIONS declaration (the rule is
-    ``plugin_declarations.extensions_problem``). Returns (valid, error_message)."""
+    ``plugin_extension_rules.extensions_problem``). Returns (valid, error_message)."""
     problem = extensions_problem(extensions)
     return (False, problem) if problem else (True, "")
 
@@ -94,73 +90,36 @@ def collect_extensions(instances: dict[str, Any]) -> dict[str, list]:
     skipped; what it had already contributed stays.
     """
     result: dict[str, list] = {ext_type: [] for ext_type in EXTENSION_ID_FIELD}
-    # (ext_type, id) pairs already served: the first plugin to claim an id wins.
-    seen_ids: set[tuple[str, str]] = set()
     for plugin_id, instance in instances.items():
         try:
-            _collect_plugin(plugin_id, type(instance), result, seen_ids)
+            _collect_plugin(plugin_id, type(instance), result)
         except Exception:  # One bad plugin must not blank the whole endpoint
             log.exception("Failed to collect extensions for plugin '%s'", plugin_id)
     return result
 
 
-def _collect_plugin(
-    plugin_id: str, plugin_class: type, result: dict[str, list], seen_ids: set
-) -> None:
-    extensions = _declared_extensions(plugin_id, plugin_class)
-    if extensions is None:
+def _collect_plugin(plugin_id: str, plugin_class: type, result: dict[str, list]) -> None:
+    extensions = _accepted_extensions(plugin_id, plugin_class)
+    if not extensions:
         return
     info = plugin_class.PLUGIN_INFO
     source = _Source(plugin_id, info.get("name", plugin_id), info)
-    for ext_type in result:
-        for ext in _declared_entries(plugin_id, extensions, ext_type):
-            if _servable(source, ext_type, ext, seen_ids):
-                result[ext_type].append(_served_entry(source, ext_type, ext))
+    for ext_type, entries in result.items():
+        entries.extend(_served_entry(source, ext_type, ext) for ext in extensions.get(ext_type, []))
 
 
-def _declared_extensions(plugin_id: str, plugin_class: type) -> dict | None:
+def _accepted_extensions(plugin_id: str, plugin_class: type) -> dict | None:
+    """The plugin's EXTENSIONS when the start's rule accepts them, else None."""
     extensions = getattr(plugin_class, "EXTENSIONS", None)
     if extensions is None:
         return None
-    if not isinstance(extensions, dict):
+    problem = extensions_problem(extensions)
+    if problem:
         log.warning(
-            "Plugin '%s' EXTENSIONS is not a dict (%s); skipping",
-            plugin_id, type(extensions).__name__,
+            "Plugin '%s' EXTENSIONS invalid: %s; serving none of them", plugin_id, problem,
         )
         return None
     return extensions
-
-
-def _declared_entries(plugin_id: str, extensions: dict, ext_type: str) -> list:
-    ext_list = extensions.get(ext_type, [])
-    if not isinstance(ext_list, list):
-        log.warning(
-            "Plugin '%s' EXTENSIONS['%s'] is not a list; skipping",
-            plugin_id, ext_type,
-        )
-        return []
-    return ext_list
-
-
-def _servable(source: _Source, ext_type: str, ext: Any, seen_ids: set) -> bool:
-    """Whether an entry is served: a dict, and no earlier plugin's id. Claims its id."""
-    if not isinstance(ext, dict):
-        log.warning(
-            "Plugin '%s' %s entry is not a dict; skipping", source.plugin_id, ext_type,
-        )
-        return False
-    ext_id = ext.get(EXTENSION_ID_FIELD[ext_type])
-    if not (isinstance(ext_id, str) and ext_id):
-        return True
-    key = (ext_type, ext_id)
-    if key in seen_ids:
-        log.warning(
-            "Plugin '%s' %s '%s' duplicates an already-registered id; skipping",
-            source.plugin_id, ext_type, ext_id,
-        )
-        return False
-    seen_ids.add(key)
-    return True
 
 
 def _served_entry(source: _Source, ext_type: str, ext: dict) -> dict:
@@ -192,13 +151,12 @@ def sandbox_permissions(plugin_id: str, plugin_class: type) -> list[str]:
 
 
 def _panel_elements(plugin_class: type) -> list[dict]:
+    """The panel elements the plugin would be served: none of a declaration
+    the start's rule refuses."""
     extensions = getattr(plugin_class, "EXTENSIONS", None)
-    if not isinstance(extensions, dict):
+    if extensions is None or extensions_problem(extensions):
         return []
-    ext_list = extensions.get("panel_elements", [])
-    if not isinstance(ext_list, list):
-        return []
-    return [ext for ext in ext_list if isinstance(ext, dict)]
+    return extensions.get("panel_elements", [])
 
 
 def _sandbox_tokens(plugin_id: str, ext: dict) -> list[str]:

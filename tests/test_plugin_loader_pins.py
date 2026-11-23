@@ -759,7 +759,7 @@ def test_the_extensions_each_type_receives(loader, caplog):
         "views": [{"id": "main", "label": "Main", "state_pattern": "plugin.acme_a.*"}],
         "device_panels": [{"id": "dp", "state_pattern": "device.*"}],
         "status_cards": [{"id": "card", "state_pattern": "   "}, {"id": "card2", "state_pattern": ""}],
-        "context_actions": [{"id": "ctx", "state_pattern": 7}, {"label": "no id"}, {"label": "no id"}],
+        "context_actions": [{"id": "ctx", "state_pattern": 7}],
         "panel_elements": [{
             "type": "meter",
             "sandbox_permissions": ["allow-forms", "allow-top-navigation", "allow-forms", 3],
@@ -775,11 +775,7 @@ def test_the_extensions_each_type_receives(loader, caplog):
         "device_panels": [{"id": "dp", "state_pattern": "plugin.acme_a.*", **base}],
         "status_cards": [{"id": "card", "state_pattern": "plugin.acme_a.*", **base},
                          {"id": "card2", "state_pattern": "plugin.acme_a.*", **base}],
-        "context_actions": [
-            {"id": "ctx", "state_pattern": "plugin.acme_a.*", **base},
-            {"label": "no id", **base},
-            {"label": "no id", **base},
-        ],
+        "context_actions": [{"id": "ctx", "state_pattern": "plugin.acme_a.*", **base}],
         "panel_elements": [{
             "type": "meter",
             "sandbox_permissions": ["allow-forms"],
@@ -800,20 +796,40 @@ def test_the_extensions_each_type_receives(loader, caplog):
     ]
 
 
-def test_the_first_plugin_to_claim_an_id_keeps_it(loader, caplog):
+def test_two_plugins_may_use_the_same_id_and_both_are_served(loader, caplog):
+    """An id is unique within its plugin: the panel and the IDE find every
+    entry by its plugin first, so a second plugin's same-named panel element
+    keeps its own grant."""
     _running(loader, "acme_first", {"views": [{"id": "main"}], "panel_elements": [{"type": "meter"}]})
     _running(loader, "acme_second", {"views": [{"id": "main"}, {"id": "own"}],
-                                     "panel_elements": [{"type": "meter"}],
+                                     "panel_elements": [{"type": "meter",
+                                                         "sandbox_permissions": ["allow-forms"]}],
                                      "status_cards": [{"id": "main"}]})
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         result = loader.get_all_extensions()
     assert [(e["plugin_id"], e["id"]) for e in result["views"]] == [
-        ("acme_first", "main"), ("acme_second", "own")]
-    assert [e["plugin_id"] for e in result["panel_elements"]] == ["acme_first"]
+        ("acme_first", "main"), ("acme_second", "main"), ("acme_second", "own")]
+    assert [(e["plugin_id"], e["sandbox_permissions"]) for e in result["panel_elements"]] == [
+        ("acme_first", []), ("acme_second", ["allow-forms"])]
     assert [(e["plugin_id"], e["id"]) for e in result["status_cards"]] == [("acme_second", "main")]
+    assert _msgs(caplog, logging.WARNING) == []
+
+
+def test_a_declaration_the_start_refuses_is_not_served(loader, caplog):
+    """The serve asks the start's rule: an entry the start refuses (no id here)
+    keeps the whole declaration off the panel and the IDE, as it keeps the
+    plugin from starting."""
+    _running(loader, "acme_noid", {"views": [{"id": "v"}], "context_actions": [{"label": "no id"}]})
+    _running(loader, "acme_dup", {"status_cards": [{"id": "c"}, {"id": "c"}]})
+    _running(loader, "acme_ok", {"views": [{"id": "fine"}]})
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        result = loader.get_all_extensions()
+    assert {ext_type: [(e["plugin_id"], e["id"]) for e in entries]
+            for ext_type, entries in result.items() if entries} == {"views": [("acme_ok", "fine")]}
     assert _msgs(caplog, logging.WARNING) == [
-        "Plugin 'acme_second' views 'main' duplicates an already-registered id; skipping",
-        "Plugin 'acme_second' panel_elements 'meter' duplicates an already-registered id; skipping",
+        "Plugin 'acme_noid' EXTENSIONS invalid: context_actions[0] missing 'id' (string); "
+        "serving none of them",
+        "Plugin 'acme_dup' EXTENSIONS invalid: status_cards has duplicate id 'c'; serving none of them",
     ]
 
 
@@ -827,22 +843,22 @@ def test_malformed_extensions_are_skipped_and_the_rest_still_served(loader, capl
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         result = loader.get_all_extensions()
     assert [(e["plugin_id"], e["id"]) for e in result["views"]] == [("acme_last", "last")]
-    assert [(e["plugin_id"], e["id"]) for e in result["status_cards"]] == [("acme_mixed", "ok")]
+    assert result["status_cards"] == []
     messages = _msgs(caplog, logging.WARNING)
     assert messages == [
-        "Plugin 'acme_list' EXTENSIONS is not a dict (list); skipping",
-        "Plugin 'acme_mixed' EXTENSIONS['views'] is not a list; skipping",
-        "Plugin 'acme_mixed' status_cards entry is not a dict; skipping",
+        "Plugin 'acme_list' EXTENSIONS invalid: EXTENSIONS must be a dict; serving none of them",
+        "Plugin 'acme_mixed' EXTENSIONS invalid: extension type 'views' must be a list; "
+        "serving none of them",
         "Failed to collect extensions for plugin 'acme_broken'",
     ]
     failed = [r for r in caplog.records if r.getMessage().startswith("Failed to collect")]
     assert failed[0].levelno == logging.ERROR and failed[0].exc_info[0] is AttributeError
 
 
-def test_a_plugin_with_unknown_extension_types_serves_only_the_known_ones(loader):
+def test_a_plugin_with_an_unknown_extension_type_serves_none_of_them(loader):
     _running(loader, "acme_extra", {"widgets": [{"id": "w"}], "views": [{"id": "v"}]})
     result = loader.get_all_extensions()
-    assert [e["id"] for e in result["views"]] == ["v"]
+    assert result["views"] == []
     assert "widgets" not in result
 
 
@@ -852,11 +868,15 @@ def test_a_plugin_with_unknown_extension_types_serves_only_the_known_ones(loader
     ({"views": [{"id": "x"}]}, []),
     ({"panel_elements": {}}, []),
     ({"panel_elements": [
-        "x",
         {"type": "a", "sandbox_permissions": ["allow-popups", "allow-forms", "allow-bogus"]},
         {"type": "b", "sandbox_permissions": ["allow-forms", "allow-same-origin"]},
         {"type": "c"},
     ]}, ["allow-popups", "allow-forms", "allow-same-origin"]),
+    # A declaration the start refuses grants nothing: none of it is served.
+    ({"panel_elements": [
+        "x",
+        {"type": "a", "sandbox_permissions": ["allow-popups"]},
+    ]}, []),
 ])
 def test_the_sandbox_grant_a_plugin_is_listed_with(loader, extensions, expected):
     cls = _running(loader, "acme_sb", extensions)

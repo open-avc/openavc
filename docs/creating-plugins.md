@@ -80,7 +80,7 @@ EXTENSIONS = {
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `type` | Yes | Unique element type name within this plugin. **This also names the renderer file** — the panel loads `panel/<type>.html` (see note below). |
+| `type` | Yes | Element type name, unique within this plugin (another plugin may use the same one). Letters, digits, underscores and hyphens only: the panel draws a placeholder for any other name. **This also names the renderer file** — the panel loads `panel/<type>.html` (see note below). |
 | `label` | Yes | Human-readable name shown in the Element Palette |
 | `renderer` | Yes | Always `"iframe"` |
 | `default_size` | Yes | How big the element is when dropped, as a percentage of the page it lands on: `{"w": N, "h": N}`. The UI Builder uses this on drop and on click-to-add; if you omit it the element falls back to roughly a third of the page wide by a bit over a third tall. |

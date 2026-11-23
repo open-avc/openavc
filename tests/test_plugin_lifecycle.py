@@ -1357,8 +1357,8 @@ class TestExtensionsValidation:
 
 
 class TestGetAllExtensionsIsolation:
-    """get_all_extensions: one bad plugin can't break the endpoint;
-    duplicate ids across plugins are de-duplicated."""
+    """get_all_extensions: one bad plugin can't break the endpoint; it serves
+    what the start accepts, and two plugins' entries of the same id both."""
 
     @pytest.mark.asyncio
     async def test_malformed_extensions_does_not_break_endpoint(self, loader):
@@ -1388,7 +1388,7 @@ class TestGetAllExtensionsIsolation:
         assert "good_view" in view_ids
 
     @pytest.mark.asyncio
-    async def test_non_dict_entry_skipped_rest_kept(self, loader):
+    async def test_a_declaration_changed_after_start_is_judged_again(self, loader):
         class MixedExtPlugin:
             PLUGIN_INFO = _valid_info("mixed")
 
@@ -1400,17 +1400,17 @@ class TestGetAllExtensionsIsolation:
 
         register_plugin_class(MixedExtPlugin)
         await loader.start_plugin("mixed")
-        # Bypass load-time validation to exercise serve-time defensiveness.
+        # Changed after the start's check: the serve asks the start's rule
+        # again, and serves none of a declaration it refuses.
         MixedExtPlugin.EXTENSIONS = {
             "views": [{"id": "ok"}, "garbage", {"id": "ok2"}]
         }
 
         result = loader.get_all_extensions()
-        view_ids = [v["id"] for v in result["views"]]
-        assert "ok" in view_ids and "ok2" in view_ids
+        assert result["views"] == []
 
     @pytest.mark.asyncio
-    async def test_duplicate_ids_across_plugins_deduped(self, loader):
+    async def test_the_same_id_in_two_plugins_is_served_for_both(self, loader):
         class PluginA:
             PLUGIN_INFO = _valid_info("plug_a")
             EXTENSIONS = {"views": [{"id": "dash", "label": "A dash"}]}
@@ -1437,8 +1437,8 @@ class TestGetAllExtensionsIsolation:
         await loader.start_plugin("plug_b")
 
         result = loader.get_all_extensions()
-        dash_views = [v for v in result["views"] if v["id"] == "dash"]
-        assert len(dash_views) == 1  # second plugin's duplicate skipped
+        dash_views = [(v["plugin_id"], v["label"]) for v in result["views"] if v["id"] == "dash"]
+        assert dash_views == [("plug_a", "A dash"), ("plug_b", "B dash")]
 
 
 # ═══════════════════════════════════════════════════════════

@@ -690,7 +690,7 @@ class TestPanelElementSandboxSanitization:
             PLUGIN_INFO = {"id": "other_plug", "name": "Other", "version": "1.0.0"}
             EXTENSIONS = {
                 "status_cards": [{
-                    "type": "card", "label": "Card",
+                    "id": "card", "label": "Card",
                     # An entry that would be filtered for panel_elements should
                     # pass through untouched for other extension types.
                     "sandbox_permissions": ["allow-top-navigation"],

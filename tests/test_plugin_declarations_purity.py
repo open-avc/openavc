@@ -1,5 +1,6 @@
 """Import guard for the plugin declaration modules: ``plugin_declarations``,
-``plugin_handler_rules`` and ``plugin_source`` in ``openavc/core/``.
+``plugin_extension_rules``, ``plugin_handler_rules`` and ``plugin_source`` in
+``openavc/core/``.
 
 The plugin declaration rules and their static reader are meant to run where
 OpenAVC is not installed (a plugin repository's CI, a contributor's machine),
@@ -17,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = {
     "openavc", "openavc.core",
     "openavc.core.plugin_declarations",
+    "openavc.core.plugin_extension_rules",
     "openavc.core.plugin_handler_rules",
     "openavc.core.plugin_source",
 }
