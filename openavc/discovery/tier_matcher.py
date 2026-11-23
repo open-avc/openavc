@@ -694,7 +694,7 @@ def _another_kind(profile: DriverProfile | None, categories: set[str]) -> bool:
 # The strong tiers in the order they are trusted. A match from an earlier
 # tier ranks ahead of one from a later tier of the same kind (vendor-specific
 # or cross-vendor); every tier is read.
-_STRONG_TIERS = (
+STRONG_TIERS = (
     SignalTier.PASSIVE_LISTENER,
     SignalTier.BROADCAST_PROBE,
     SignalTier.ACTIVE_PROBE,
@@ -766,6 +766,16 @@ class TierMatcher:
             evidence=list(evidence_log),
         )
 
+    def strong_ranking(self, evidence_log: list[Evidence]) -> list[str]:
+        """Every driver a strong signal identifies, best first, once each.
+
+        THE ranking of a device's strong matches: the order ``match`` offers
+        them in, its ``driver_id`` then its ``alternatives``, a driver only a
+        hint named (``_place_peers``) left out wherever ``match`` puts it.
+        ``discovery/explain.py`` lists a device's strong drivers by it.
+        """
+        return [rule.driver_id for rule, _ev in self._strong_hits(evidence_log)]
+
     def _strong_hits(
         self, evidence_log: list[Evidence],
     ) -> list[tuple[SignalRule, Evidence]]:
@@ -789,9 +799,9 @@ class TierMatcher:
 
         ranked: list[tuple[bool, int, int, int, str, str, SignalRule, Evidence]] = []
         for ev in evidence_log:
-            if ev.tier not in _STRONG_TIERS:
+            if ev.tier not in STRONG_TIERS:
                 continue
-            tier = _STRONG_TIERS.index(ev.tier)
+            tier = STRONG_TIERS.index(ev.tier)
             for position, rule in enumerate(strong_rules(ev, self.index)):
                 fit = _fit(self.profiles.get(rule.driver_id), categories, models)
                 ranked.append(

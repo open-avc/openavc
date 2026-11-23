@@ -5,10 +5,11 @@
 signals identify, ranked, or the soft candidates. Two questions it does not
 answer are answered here.
 
-- ``explain_matches(evidence, index)`` lists, for every signal a device
+- ``explain_matches(evidence, matcher)`` lists, for every signal a device
   produced, every driver that signal points at, strong and soft, including
-  the soft signals the matcher did not need. It picks no winner; the matcher
-  does that.
+  the soft signals the matcher did not need. It picks no winner: the drivers
+  a strong signal identifies are listed in the matcher's own ranking
+  (``TierMatcher.strong_ranking``), the order the scan offers them in.
 - ``evaluate_driver_signals(hint, observed)`` turns it around. Given one
   driver's declared signals and what one device showed, it says of each
   declaration whether the device matched it, did not (and what the device
@@ -57,19 +58,14 @@ from openavc.discovery.tier_matcher import (
     KIND_SNMP_PEN,
     KIND_SSDP,
     KIND_VENDOR_STRING,
+    STRONG_TIERS,
     SignalIndex,
     SignalRule,
+    TierMatcher,
     evidence_open_port,
     extract_vendor_strings,
     soft_signal_hits,
     strong_rules,
-)
-
-# The matcher's tier order: a strong signal from an earlier tier wins.
-_STRONG_TIER_ORDER = (
-    SignalTier.PASSIVE_LISTENER,
-    SignalTier.BROADCAST_PROBE,
-    SignalTier.ACTIVE_PROBE,
 )
 
 # How much of a reply a sentence quotes. The observation keeps every byte.
@@ -109,19 +105,25 @@ class SignalHits:
 
 @dataclass
 class MatchExplanation:
-    """Every signal a device produced, in evidence order, with its drivers."""
+    """Every signal a device produced, in evidence order, with its drivers.
+
+    ``ranking`` is every driver a strong signal identifies, in the matcher's
+    ranking (``TierMatcher.strong_ranking``), set by ``explain_matches``.
+    """
 
     signals: list[SignalHits] = field(default_factory=list)
+    ranking: list[str] = field(default_factory=list)
 
     def drivers(self) -> dict[str, list[str]]:
         """Each driver any signal points at, with the sources that do.
 
-        Drivers a strong signal points at come first, in the matcher's tier
-        order, then the drivers only soft signals point at.
+        Drivers a strong signal identifies come first, in the matcher's
+        ranking, then the drivers only soft signals point at. Each driver's
+        sources: its strong signals by tier, then its soft ones.
         """
-        out: dict[str, list[str]] = {}
+        out: dict[str, list[str]] = {driver_id: [] for driver_id in self.ranking}
         ordered = [
-            s for tier in _STRONG_TIER_ORDER for s in self.signals if s.tier == tier
+            s for tier in STRONG_TIERS for s in self.signals if s.tier == tier
         ] + [s for s in self.signals if not s.strong]
         for sig in ordered:
             for driver_id in sig.drivers:
@@ -131,13 +133,12 @@ class MatchExplanation:
         return out
 
     def strong_drivers(self) -> list[str]:
-        """Every driver a strong signal identifies, in the matcher's tier order."""
-        out: list[str] = []
-        for tier in _STRONG_TIER_ORDER:
-            for sig in self.signals:
-                if sig.tier == tier:
-                    out.extend(d for d in sig.drivers if d not in out)
-        return out
+        """Every driver a strong signal identifies, in the matcher's ranking:
+        the identification first when a strong signal named it, then its
+        alternatives, in the order the scan offers them. A driver only a hint
+        named, which can lead an identification a shared protocol made, is
+        not among them."""
+        return list(self.ranking)
 
     def unclaimed(self) -> list[SignalHits]:
         """The signals no driver claims."""
@@ -152,17 +153,20 @@ class MatchExplanation:
 
 
 def explain_matches(
-    evidence: Iterable[Evidence], index: SignalIndex,
+    evidence: Iterable[Evidence], matcher: TierMatcher,
 ) -> MatchExplanation:
     """List every driver each of a device's signals points at.
 
-    ``evidence`` is the device's evidence log; ``index`` the signal index the
-    scan matched against. Soft signals that repeat a label (a host name the
-    scan recorded once per matching pattern) are listed once.
+    ``evidence`` is the device's evidence log; ``matcher`` the one the scan
+    identifies devices with, whose index and ranking are asked. Soft signals
+    that repeat a label (a host name the scan recorded once per matching
+    pattern) are listed once.
     """
-    explanation = MatchExplanation()
+    log = list(evidence)
+    index = matcher.index
+    explanation = MatchExplanation(ranking=matcher.strong_ranking(log))
     soft_seen: set[str] = set()
-    for ev in evidence:
+    for ev in log:
         if ev.tier == SignalTier.ENRICHMENT:
             hit = soft_signal_hits(ev, index)
             label, drivers = hit if hit is not None else (ev.source, [])

@@ -31,6 +31,7 @@ from openavc.discovery.probe_runner import (
 )
 from openavc.discovery.result import DeviceState
 from openavc.discovery.tier_matcher import (
+    DriverProfile,
     SignalIndex,
     SignalRule,
     TierMatcher,
@@ -86,8 +87,8 @@ async def _tcp_server(replies: list[bytes]):
 class TestExplainMatches:
     def test_two_drivers_fingerprinting_one_device_are_both_listed(self):
         # Two drivers whose TCP probes both matched the same device: explain
-        # lists both, and the matcher offers both, the same way in either log
-        # order.
+        # lists both in the order the matcher offers them, the same way in
+        # either log order.
         index = build_signal_index([
             _hint("acme_widget", tcp_probe={"port": 5000, "send_ascii": "ID?\r", "expect": "ACME"}),
             _hint("bolt_panel", tcp_probe={"port": 5000, "send_ascii": "ID?\r", "expect": "ACME"}),
@@ -95,14 +96,12 @@ class TestExplainMatches:
         a = evidence_active_probe("custom_acme_widget_tcp", {"text": "ACME 3000"}, port=5000)
         b = evidence_active_probe("custom_bolt_panel_tcp", {"text": "ACME 3000"}, port=5000)
         matcher = TierMatcher(index=index)
-        offers = set()
         for log in ([a, b], [b, a]):
             verdict = matcher.match(log)
-            explained = explain_matches(log, index)
-            assert set(explained.strong_drivers()) == {"acme_widget", "bolt_panel"}
-            assert {verdict.driver_id, *verdict.alternatives} == set(explained.strong_drivers())
-            offers.add((verdict.driver_id, tuple(verdict.alternatives)))
-        assert len(offers) == 1
+            explained = explain_matches(log, matcher)
+            assert explained.strong_drivers() == ["acme_widget", "bolt_panel"]
+            assert [verdict.driver_id, *verdict.alternatives] == explained.strong_drivers()
+            assert list(explained.drivers()) == ["acme_widget", "bolt_panel"]
 
     def test_a_shared_service_two_filters_both_satisfied(self):
         index = SignalIndex()
@@ -115,7 +114,7 @@ class TestExplainMatches:
         assert [r.driver_id for r in rules] == ["acme_widget_pro", "acme_widget"]
         # find_strong keeps returning the most specific, which the matcher puts first.
         assert index.find_strong("mdns", "_http._tcp.", ev.data["txt"]).driver_id == "acme_widget_pro"
-        explained = explain_matches([ev], index)
+        explained = explain_matches([ev], TierMatcher(index))
         assert explained.signals[0].drivers == ["acme_widget_pro", "acme_widget"]
 
     def test_two_amx_globs_both_match(self):
@@ -123,7 +122,7 @@ class TestExplainMatches:
         index.add_rule(SignalRule.for_amx_ddp("acme_widget", "Acme", "Widget*"))
         index.add_rule(SignalRule.for_amx_ddp("acme_widget_3k", "Acme", "Widget3*"))
         ev = evidence_amx_ddp("Acme", "Widget3000")
-        explained = explain_matches([ev], index)
+        explained = explain_matches([ev], TierMatcher(index))
         assert explained.signals[0].drivers == ["acme_widget_3k", "acme_widget"]
 
     def test_strong_first_then_soft_and_unclaimed_signals_kept(self):
@@ -137,7 +136,7 @@ class TestExplainMatches:
             evidence_mdns("_acme-ctl._tcp"),
             evidence_open_port(4352),
         ]
-        explained = explain_matches(log, index)
+        explained = explain_matches(log, TierMatcher(index))
         drivers = explained.drivers()
         assert list(drivers) == ["acme_widget", "acme_panel"]
         assert drivers["acme_widget"] == ["mdns:_acme-ctl._tcp.", "oui:00:11:22"]
@@ -155,7 +154,7 @@ class TestExplainMatches:
             evidence_hostname("widget-3000", matched_pattern="^widget-"),
             evidence_hostname("widget-3000", matched_pattern="-3000$"),
         ]
-        explained = explain_matches(log, index)
+        explained = explain_matches(log, TierMatcher(index))
         assert len(explained.signals) == 1
         assert explained.signals[0].source == "hostname:widget-3000"
         assert explained.signals[0].drivers == ["acme_widget", "acme_panel"]
@@ -166,18 +165,92 @@ class TestExplainMatches:
             _hint("acme_panel", snmp_pen=99999),
         ])
         log = [evidence_snmp_pen(99999)]
-        verdict = TierMatcher(index=index).match(log)
+        matcher = TierMatcher(index=index)
+        verdict = matcher.match(log)
         assert verdict.state == DeviceState.POSSIBLE
-        explained = explain_matches(log, index)
+        explained = explain_matches(log, matcher)
         assert explained.strong_drivers() == []
         assert set(explained.drivers()) == set(verdict.candidates)
 
     def test_to_dict_is_plain_data(self):
         index = build_signal_index([_hint("acme_widget", mdns=["_acme-ctl._tcp"])])
-        view = explain_matches([evidence_mdns("_acme-ctl._tcp")], index).to_dict()
+        view = explain_matches([evidence_mdns("_acme-ctl._tcp")], TierMatcher(index)).to_dict()
         assert view["strong_drivers"] == ["acme_widget"]
         assert view["signals"][0]["tier"] == "passive_listener"
         assert view["drivers"] == {"acme_widget": ["mdns:_acme-ctl._tcp."]}
+
+
+class TestStrongDriversInTheMatchersOrder:
+    """The drivers a strong signal identifies are listed in the order the
+    matcher offers them: the identification first, then its alternatives."""
+
+    def test_the_identified_driver_leads_a_shared_protocol_heard_earlier(self):
+        # The shared protocol answered an announcement, an earlier kind of
+        # signal than the maker's own probe; the maker's driver identifies it.
+        index = SignalIndex()
+        index.add_rule(SignalRule.for_mdns("acme_protocol", "_acme-proto._tcp", generic=True))
+        index.add_rule(SignalRule.for_active_probe("acme_widget", "custom_acme_widget_tcp"))
+        log = [
+            evidence_mdns("_acme-proto._tcp"),
+            evidence_active_probe("custom_acme_widget_tcp", {"text": "ACME"}, port=5000),
+        ]
+        matcher = TierMatcher(index)
+        verdict = matcher.match(log)
+
+        explained = explain_matches(log, matcher)
+
+        assert [verdict.driver_id, *verdict.alternatives] == ["acme_widget", "acme_protocol"]
+        assert explained.strong_drivers() == ["acme_widget", "acme_protocol"]
+        assert list(explained.drivers()) == ["acme_widget", "acme_protocol"]
+
+    def test_a_tie_goes_to_the_driver_of_the_kind_the_device_reported(self):
+        # Two makers' probes answered alike; the device's own report names a
+        # projector, so the projector driver leads, as the matcher has it.
+        index = SignalIndex()
+        index.add_rule(SignalRule.for_active_probe("acme_projector", "custom_acme_projector_tcp"))
+        index.add_rule(SignalRule.for_active_probe("acme_display", "custom_acme_display_tcp"))
+        log = [
+            evidence_active_probe("custom_acme_display_tcp", {"raw": "ACMECONTROL 1"}, port=1024),
+            evidence_active_probe("custom_acme_projector_tcp", {"raw": "ACMECONTROL 1"}, port=1024),
+            evidence_active_probe("custom_report_tcp", {"category": "projector"}, port=4352),
+        ]
+        matcher = TierMatcher(index, profiles={
+            "acme_projector": DriverProfile(category="projector"),
+            "acme_display": DriverProfile(category="display"),
+        })
+
+        explained = explain_matches(log, matcher)
+
+        assert matcher.match(log).driver_id == "acme_projector"
+        assert explained.strong_drivers() == ["acme_projector", "acme_display"]
+
+    def test_a_peer_a_hint_named_leads_the_identification_and_is_no_strong_driver(self):
+        # Only shared protocols answered and a host name points at a maker's
+        # driver with no fingerprint: that driver leads the identification,
+        # and the strong drivers keep the order it offers them in after it.
+        index = SignalIndex()
+        index.add_rule(SignalRule.for_active_probe(
+            "acme_protocol", "custom_acme_protocol_tcp", generic=True,
+        ))
+        index.add_rule(SignalRule.for_active_probe(
+            "bolt_protocol", "custom_bolt_protocol_tcp", generic=True,
+        ))
+        index.add_rule(SignalRule.for_hostname("acme_peer", "^peer-"))
+        log = [
+            evidence_active_probe("custom_bolt_protocol_tcp", {"text": "OK"}, port=5000),
+            evidence_active_probe("custom_acme_protocol_tcp", {"text": "OK"}, port=5000),
+            evidence_hostname("peer-1", matched_pattern="^peer-"),
+        ]
+        matcher = TierMatcher(index)
+        verdict = matcher.match(log)
+
+        explained = explain_matches(log, matcher)
+
+        assert [verdict.driver_id, *verdict.alternatives] == [
+            "acme_peer", "acme_protocol", "bolt_protocol",
+        ]
+        assert explained.strong_drivers() == ["acme_protocol", "bolt_protocol"]
+        assert list(explained.drivers()) == ["acme_protocol", "bolt_protocol", "acme_peer"]
 
 
 # ---------------------------------------------------------------------------

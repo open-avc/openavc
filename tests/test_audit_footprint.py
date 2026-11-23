@@ -162,19 +162,20 @@ async def bench(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _catalog(bench) -> bytes:
-    def entry(driver_id, name, discovery):
-        return {
-            "id": driver_id, "name": name, "manufacturer": "Acme", "category": "utility",
-            "transport": "tcp", "version": "1.0.0", "discovery": discovery,
-        }
+def _entry(driver_id, name, discovery):
+    return {
+        "id": driver_id, "name": name, "manufacturer": "Acme", "category": "utility",
+        "transport": "tcp", "version": "1.0.0", "discovery": discovery,
+    }
 
+
+def _catalog(bench) -> bytes:
     return json.dumps({"drivers": [
-        entry("acme_widget", "Acme Widget", {
+        _entry("acme_widget", "Acme Widget", {
             "mdns": VENDOR_TYPE,
             "tcp_probe": {"port": bench["banner"], "expect_regex": "ACME-WIDGET"},
         }),
-        entry("acme_gadget", "Acme Gadget", {
+        _entry("acme_gadget", "Acme Gadget", {
             "tcp_probe": {"port": bench["web"], "send_ascii": "HELLO\r\n", "expect_regex": "GADGET"},
             "snmp_pen": 99999,
             "manufacturer_alias": ["acmehttp"],
@@ -182,10 +183,8 @@ def _catalog(bench) -> bytes:
     ]}).encode()
 
 
-@pytest.fixture
-def discovery(monkeypatch, bench):
-    raw = _catalog(bench)
-
+def _engine_reading(monkeypatch, raw: bytes) -> DiscoveryEngine:
+    """A discovery engine whose catalog is ``raw``."""
     async def fetch(_path):
         return raw, ""
 
@@ -193,6 +192,11 @@ def discovery(monkeypatch, bench):
     engine = DiscoveryEngine()
     engine.load_driver_hints_from_registry([])
     return engine
+
+
+@pytest.fixture
+def discovery(monkeypatch, bench):
+    return _engine_reading(monkeypatch, _catalog(bench))
 
 
 def _rr(name, rtype, rdata):
@@ -355,6 +359,31 @@ async def test_the_check_records_everything_the_device_says(discovery, bench):
     finished = {key for key, status in progress if status in (DONE, SKIPPED)}
     assert finished == set(ACTIVITIES)
     json.dumps(fp.to_dict())
+
+
+async def test_the_verdict_lists_the_drivers_in_the_order_the_scan_offers_them(
+    monkeypatch, bench,
+):
+    """A shared protocol's driver answers the device's announcement, and the
+    maker's own driver its probe, a later kind of signal: the maker's driver
+    identifies the device, and the verdict lists it first."""
+    engine = _engine_reading(monkeypatch, json.dumps({"drivers": [
+        _entry("acme_protocol", "Acme Protocol", {
+            "mdns": {"service": VENDOR_TYPE, "cross_vendor": True},
+        }),
+        _entry("acme_widget", "Acme Widget", {
+            "tcp_probe": {"port": bench["banner"], "expect_regex": "ACME-WIDGET"},
+        }),
+    ]}).encode())
+    check, _ = _check(engine, bench)
+
+    verdict = (await check.run()).verdict
+
+    identification = verdict["identification"]
+    assert [identification["driver_id"], *identification["alternatives"]] == [
+        "acme_widget", "acme_protocol",
+    ]
+    assert verdict["explanation"]["strong_drivers"] == ["acme_widget", "acme_protocol"]
 
 
 async def test_a_companion_is_judged_by_whether_it_ran(monkeypatch, bench):
@@ -825,18 +854,11 @@ async def _check_listen_only_probe(monkeypatch, bench, greets):
     sends nothing and looks for the greeting."""
     handler, seen = _greets_some_sessions(greets)
     server, port = await _serve(handler)
-    raw = json.dumps({"drivers": [{
-        "id": "acme_widget", "name": "Acme Widget", "manufacturer": "Acme",
-        "category": "utility", "transport": "tcp", "version": "1.0.0",
-        "discovery": {"tcp_probe": {"port": port, "expect_regex": "ACME-WIDGET"}},
-    }]}).encode()
-
-    async def fetch(_path):
-        return raw, ""
-
-    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
-    engine = DiscoveryEngine()
-    engine.load_driver_hints_from_registry([])
+    engine = _engine_reading(monkeypatch, json.dumps({"drivers": [
+        _entry("acme_widget", "Acme Widget", {
+            "tcp_probe": {"port": port, "expect_regex": "ACME-WIDGET"},
+        }),
+    ]}).encode())
     check, _ = _check(
         engine, bench, port_list=[port], web_ports={},
         listeners=_heard_listeners(bench, device_heard=False),

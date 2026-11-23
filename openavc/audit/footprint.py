@@ -39,7 +39,8 @@ handshake on web ports only, plus connect-and-listen reads that send no bytes:
    only the checks that look for that prompt; the rest are kept as not sent.
 
 Then the verdict: the evidence a scan would have built, ``TierMatcher.match``
-on it, and ``explain_matches`` for every driver each signal points at.
+on it, and ``explain_matches`` for every driver each signal points at, the
+strong ones in the order the match offers them.
 
 What the check could not see is written down as it goes (``limits``): a
 listener that heard nobody at all, a MAC behind a router, the UDP ports no
@@ -1221,7 +1222,7 @@ class NetworkCheck:
         # reads as the device's Discovery card would.
         assert fp.device is not None, "the evidence is built first"
         match = self.discovery.identify(fp.device)
-        explanation = explain_matches(fp.evidence, self.discovery.signal_index)
+        explanation = explain_matches(fp.evidence, self.discovery.tier_matcher)
 
         named = [d for d in [match.driver_id, *match.candidates, *match.alternatives] if d]
         named.extend(d for d in explanation.drivers() if d not in named)
