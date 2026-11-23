@@ -55,6 +55,7 @@ from openavc.core.connection_fault import (
     normalize_child_fault_claim,
 )
 from openavc.core.state_store import StateStore
+from openavc.drivers.child_ids import integer_id_range_error
 from openavc.drivers.child_registration import ChildRegistration
 from openavc.drivers.contract_events import CHILD_UNREGISTERED
 from openavc.drivers.spec import (
@@ -138,18 +139,12 @@ def _integer_child_id(child_type: str, local_id: Any, id_format: dict[str, Any])
 
 
 def _check_integer_range(child_type: str, local_id: int, id_format: dict[str, Any]) -> None:
-    """Raise unless ``local_id`` lies in [min (default 1), max (unbounded
-    when undeclared)]."""
-    min_id = id_format.get("min", 1)
-    max_id = id_format.get("max")
-    if local_id < min_id:
-        raise ValueError(
-            f"Child {child_type} local_id {local_id} < min {min_id}"
-        )
-    if max_id is not None and local_id > max_id:
-        raise ValueError(
-            f"Child {child_type} local_id {local_id} > max {max_id}"
-        )
+    """Raise unless ``local_id`` lies in the type's range, the one a command
+    parameter is held to before it is sent (``child_ids.integer_id_range_error``:
+    min 1 when undeclared, max unbounded)."""
+    error = integer_id_range_error(id_format, local_id)
+    if error is not None:
+        raise ValueError(f"Child {child_type} local_id {local_id} {error}")
 
 
 def _refuse_bad_child_schema(

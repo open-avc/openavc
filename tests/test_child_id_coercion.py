@@ -19,7 +19,7 @@ from openavc.core.command_gates import coerce_child_id_params
 from openavc.drivers.avcdriver_semantic import validate_driver_definition
 from openavc.drivers.base import CommandParamError
 from openavc.drivers.child_ids import child_id_kind, coerce_child_local_id
-from openavc.drivers.child_ids import child_display_name
+from openavc.drivers.child_ids import child_display_name, child_id_range_error
 
 INT_TYPE = {"id_format": {"type": "integer"}}
 STR_TYPE = {"id_format": {"type": "string"}}
@@ -212,7 +212,6 @@ def test_dispatch_rejects_ids_outside_the_declared_range(raw, expected):
     # No bounds declared means unbounded, not invalid.
     ({"type": "integer"}, 9999),
     ({"type": "integer", "min": 1}, 9999),
-    ({"type": "integer", "max": 32}, -50),
     # A string type's ids are names; min/max describe nothing orderable.
     ({"type": "string", "min": 1, "max": 4}, "main_gain"),
     # A malformed bound is ignored rather than allowed to reject everything.
@@ -228,9 +227,28 @@ def test_dispatch_only_range_checks_what_the_driver_actually_declared(
     assert "outlet" in out
 
 
+@pytest.mark.parametrize("child_type_def, raw, expected", [
+    ({"id_format": {"type": "integer"}}, 0, "must be at least 1"),
+    ({"id_format": {"type": "integer", "max": 8}}, 0, "must be between 1 and 8"),
+    ({"id_format": {"type": "integer", "max": 32}}, -50, "must be between 1 and 32"),
+    ({}, 0, "must be at least 1"),
+])
+def test_an_undeclared_min_is_1_as_registration_reads_it(child_type_def, raw, expected):
+    """A command can address no child registration would refuse: an id
+    below 1 on a type that declares no min never reaches the wire."""
+    with pytest.raises(CommandParamError) as exc:
+        coerce_child_id_params(_driver(child_type_def), "set_level", {"outlet": raw})
+    assert expected in str(exc.value)
+    assert child_id_range_error(child_type_def, raw) == expected
+
+
+def test_a_declared_min_of_0_lets_0_through():
+    assert child_id_range_error({"id_format": {"type": "integer", "min": 0}}, 0) is None
+
+
 @pytest.mark.parametrize("bounds, raw, expected", [
     ({"min": 1}, 0, "must be at least 1"),
-    ({"max": 8}, 9, "must be at most 8"),
+    ({"max": 8}, 9, "must be between 1 and 8"),
 ])
 def test_dispatch_names_only_the_bound_that_exists(bounds, raw, expected):
     """A half-bounded type must not claim a range it never declared."""

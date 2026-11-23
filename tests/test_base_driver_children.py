@@ -171,9 +171,9 @@ def test_register_unknown_child_type_raises():
 
 def test_register_id_out_of_range_raises():
     drv = _make_driver()
-    with pytest.raises(ValueError, match="max"):
+    with pytest.raises(ValueError, match="between 1 and 762"):
         drv.register_child("encoder", 1000)  # max is 762
-    with pytest.raises(ValueError, match="min"):
+    with pytest.raises(ValueError, match="between 1 and 762"):
         drv.register_child("encoder", 0)
 
 
@@ -1053,7 +1053,7 @@ def _observed(drv: BaseDriver) -> list[tuple[str, dict[str, Any]]]:
 
 def test_integer_ids_start_at_one_and_have_no_ceiling_when_undeclared():
     drv = _driver_with_types({"zone": {"id_format": {"type": "integer"}}})
-    with pytest.raises(ValueError, match=re.escape("Child zone local_id 0 < min 1")):
+    with pytest.raises(ValueError, match=re.escape("Child zone local_id 0 must be at least 1")):
         drv.register_child("zone", 0)
     drv.register_child("zone", 1)
     drv.register_child("zone", 1_000_000)
@@ -1105,7 +1105,7 @@ def test_an_unsupported_id_kind_is_refused_before_the_id_is_looked_at():
 
 def test_integer_range_messages():
     drv = _make_driver()
-    with pytest.raises(ValueError, match=re.escape("Child encoder local_id 763 > max 762")):
+    with pytest.raises(ValueError, match=re.escape("Child encoder local_id 763 must be between 1 and 762")):
         drv.register_child("encoder", 763)
     with pytest.raises(TypeError, match=re.escape("Child encoder local_id must be int, got bool: True")):
         drv.register_child("encoder", True)
