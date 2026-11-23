@@ -2416,6 +2416,12 @@ commands:
       level: { type: integer, required: true, default: 50, min: 0, max: 100 }
 ```
 
+#### When the device answers with an error status
+
+The answer to an HTTP command is matched against `responses` whatever its status, so state shows what the device reports. A status of 400 or above then means the command did not finish (OpenAVC 0.41.0 and later). A 4xx (a path the device does not know, a refused password, a value it will not take, busy) reads as "The equipment could not accept the command". A 5xx reads as "The command did not finish successfully". Send Command shows the failure, a panel press says so, a macro step counts it as failed, and a command's `read_back` still runs. A device setting write answered 400 or above fails the same way, and a queued setting stays queued for the next connect. The status is in the device's log ("Command 'power_on' was answered HTTP 404") and its traffic view. A 2xx or 3xx is done; redirects are not followed.
+
+Poll, `on_connect` and follow-up requests are not failed by their status: their answers are read as usual and weighed against the password (below).
+
 #### TCP config fields
 
 These fields in `config_schema` (or `default_config`) are recognized by the TCP transport:

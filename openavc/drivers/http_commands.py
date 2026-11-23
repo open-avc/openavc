@@ -18,9 +18,14 @@ The rules worth knowing before changing anything here:
   (``_http_request``), so it fills and warns as a command does; only its
   default method (POST) and what becomes of its answer are its own
   (``setting_writes``).
-* **The answer** goes to the reply rules as a line of text and is returned,
-  whatever its status. A command with HTTP fields on another transport sends
-  nothing, logs an error and returns None.
+* **The answer** goes to the reply rules as a line of text, whatever its
+  status, so state shows what the device holds. A status of 400 and up then
+  fails a command a person sent, and a setting write, with its outcome
+  (``command_outcome.answered_outcome``; ``_fail_on_error_status``), once a
+  command's read-back is scheduled. A poll, start-up or follow-up line is
+  not failed by its status: its answer goes to the credential check
+  (``http_credential``). A command with HTTP fields on another transport
+  sends nothing and is refused as not sent.
 
 ``HttpCommands`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. A poll or start-up line that is a raw path reads
@@ -32,7 +37,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from openavc.drivers.command_outcome import not_sent
+from openavc.drivers.command_outcome import CommandOutcomeError, answered_outcome, not_sent
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -152,6 +157,18 @@ class HttpCommands:
             else:
                 out[k] = str(v)
         return out
+
+    def _fail_on_error_status(self, what: str, answer: Any) -> None:
+        """Raise the outcome of an answer whose status is 400 and up
+        (``answered_outcome``); anything else, and a send that is not an HTTP
+        answer, passes. ``what`` names the send in the log line, which keeps
+        the status the outcome's sentence leaves out."""
+        status = getattr(answer, "status_code", None)
+        outcome = answered_outcome(status)
+        if outcome is None:
+            return
+        log.warning(f"[{self.device_id}] {what} was answered HTTP {status}")
+        raise CommandOutcomeError(outcome)
 
     async def _process_http_response(
         self, command: str, response: Any

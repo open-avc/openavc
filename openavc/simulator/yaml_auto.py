@@ -524,8 +524,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         The request is synthesized into a command line:
             "METHOD /path?query|<body>"   (body section omitted when empty)
         so one set of generated handlers serves every transport. Status is 200
-        when a handler matched and 404 when none did; the body is whatever the
-        handler returned via respond().
+        when a handler answered, or carried the command out with nothing to
+        say (an empty body: ``_nothing_to_say``), and 404 when nothing matched,
+        a state machine refused the command, it named a child the device does
+        not have, or a script handler answered nothing (how a script plays a
+        refusal; ``respond("")`` is its empty 200). The driver fails a command
+        answered 404 (``command_outcome.answered_outcome``).
         """
         from aiohttp import web
 
@@ -886,7 +890,14 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             self.set_state(target_key, self._state_change_value(handler, source, m, target_key))
 
         text = self._command_reply(handler, child_id)
-        return None if text is None else self._with_line_ending(text)
+        return self._nothing_to_say() if text is None else self._with_line_ending(text)
+
+    def _nothing_to_say(self) -> bytes | None:
+        """What a command the device carried out answers when it has no
+        report to give: an empty answer on HTTP (a 200, where a real device
+        always answers and keeps 404 for a path it does not know), silence on
+        any other link."""
+        return b"" if self._is_http else None
 
     def _addressed_child(self, handler: CommandHandler, m: re.Match) -> str | None:
         """The rostered child a child-addressed command names: its captured
@@ -971,7 +982,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
     def _execute_query_handler(self, handler: QueryHandler) -> bytes | None:
         """Execute a query handler: respond with current state."""
         text = self._flat_reply_text(handler.response_var)
-        return None if text is None else self._with_line_ending(text)
+        return self._nothing_to_say() if text is None else self._with_line_ending(text)
 
     def _execute_explicit_handler(self, handler: ExplicitHandler, m: re.Match) -> bytes | None:
         """A template handler (template_handler.py): its writes in order,
@@ -982,7 +993,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             value = self._from_wire(key, filled) if from_device else filled
             self.set_state(key, self._coerce_value(key, value))
         if not handler.respond:
-            return None
+            return self._nothing_to_say()
         return fill(handler.respond, m, self._state, self._to_wire).encode()
 
     def _execute_script_handler(self, handler: ScriptHandler, m: re.Match) -> bytes | None:

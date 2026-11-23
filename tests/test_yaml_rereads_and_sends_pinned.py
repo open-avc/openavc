@@ -810,8 +810,10 @@ async def test_an_http_command_is_read_back_whatever_status_it_got() -> None:
     drv = _driver(unit, http)
     seen: list[Any] = []
     drv._read_back = lambda *args: seen.append(args[0])
-    response = await drv.send_command("http_cmd", {"level": 3})
-    assert response.status_code == 500
+    # A 500 fails the command, after its read-back is scheduled.
+    with pytest.raises(CommandOutcomeError) as caught:
+        await drv.send_command("http_cmd", {"level": 3})
+    assert caught.value.outcome == "failed"
     assert seen == ["http_cmd"]
     assert http.requests == [
         ("POST", "/x/3", {"params": {"a": "3", "b": 2}, "json_body": 3, "content": None, "headers": None}),

@@ -22,7 +22,8 @@ The rules worth knowing before changing anything here:
   when it names no method.
   A block with none of them is refused before anything is sent.
 * **What each returns.** True for an OSC message or a line, the HTTP answer
-  for a request. A body that parses as JSON goes as JSON and its answer is
+  for a request; an answer with a status of 400 and up is read and then
+  raised as the write's outcome, as a command's is (``http_commands``). A body that parses as JSON goes as JSON and its answer is
   read by the reply rules; any other body goes as raw content and its answer
   is returned unread. Which body is which is a command's rule too
   (``http_commands.body_parts``).
@@ -61,6 +62,7 @@ class SettingWrites:
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
     _build_osc_args: Callable[[list[Any], dict[str, Any]], list[Any]]
     _http_request: Callable[..., Any]
+    _fail_on_error_status: Callable[[str, Any], None]
     _line_bytes: Callable[[str], bytes]
 
     async def set_device_setting(self, key: str, value: Any) -> Any:
@@ -156,6 +158,9 @@ class SettingWrites:
         # of the new value.
         if hasattr(response, "text") and response.text:
             await self.on_data_received(response.text.encode("utf-8"))
+        # A status of 400 and up is the device refusing the write: raised,
+        # so a queued value stays queued (http_commands).
+        self._fail_on_error_status(f"Setting '{key}'", response)
         self._setting_written(key, value)
         return response
 

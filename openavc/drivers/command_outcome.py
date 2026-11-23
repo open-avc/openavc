@@ -131,6 +131,18 @@ def not_sent(
     return CommandOutcomeError("not_sent", message=sentence)
 
 
+def answered_outcome(status: Any) -> str | None:
+    """THE outcome an HTTP answer's status carries: ``rejected`` for a 4xx
+    (the device could not accept the request: a path it does not know, a
+    refused login, a bad value, busy), ``failed`` for 500 and up (it took the
+    request and could not finish it), None below 400. A redirect is not
+    followed, and counts as done as a 2xx does; anything that is not a status
+    number carries no outcome."""
+    if not isinstance(status, int) or isinstance(status, bool) or status < 400:
+        return None
+    return "rejected" if status < 500 else "failed"
+
+
 def outcome_of(exc: BaseException) -> str | None:
     """The code a failed send carries, or None for a plain failure."""
     return exc.outcome if isinstance(exc, CommandOutcomeError) else None

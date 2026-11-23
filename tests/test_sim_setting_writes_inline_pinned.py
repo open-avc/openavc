@@ -174,7 +174,9 @@ def test_a_setting_that_collides_with_a_command_loses_to_it():
 
 
 @pytest.mark.parametrize("line, state, reply", [
-    (b"POST /set|v=12", 12, None),
+    # Carried out with nothing to report: an empty answer, which HTTP sends
+    # as a 200 (a line nothing matches stays unanswered, a 404).
+    (b"POST /set|v=12", 12, b""),
     (b"PUT /set|v=12", 0, None),
 ])
 def test_an_http_settings_write_is_answered_through_the_command_chain(line, state, reply):

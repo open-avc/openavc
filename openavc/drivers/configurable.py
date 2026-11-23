@@ -369,8 +369,14 @@ class ConfigurableDriver(
         a response rule's follow-ups, a read-back that names a command) send
         through _send_command without one: they are reads, or the read
         itself.
+
+        An HTTP command the device answers with a status of 400 and up raises
+        its outcome once its answer is read and its read-back scheduled
+        (``http_commands``); the driver's own lines are not failed by theirs.
         """
-        return await self._send_command(command, params, read_back=True)
+        result = await self._send_command(command, params, read_back=True)
+        self._fail_on_error_status(f"Command '{command}'", result)
+        return result
 
     async def _send_command(
         self,
