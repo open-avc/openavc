@@ -89,6 +89,24 @@ def test_while_starting_the_api_answers_503():
     assert reply.json() == {"detail": "Server is starting up"}
 
 
+def test_after_a_failed_start_the_api_says_it_could_not_start():
+    """Not "starting up": that start is over, and only another start changes
+    it. The reason stays on the splash page and the status route."""
+    reply = _client(_record(error="project unreadable")).get("/api/devices")
+    assert reply.status_code == 503
+    detail = reply.json()["detail"]
+    assert detail.startswith("OpenAVC could not start."), detail
+    assert "project unreadable" not in detail
+
+
+def test_a_start_a_stop_cut_short_says_stopping():
+    record = _record()
+    record.stopping()
+    reply = _client(record).get("/api/devices")
+    assert reply.status_code == 503
+    assert reply.json() == {"detail": "Server is stopping"}
+
+
 def test_while_starting_a_page_is_the_splash():
     reply = _client(_record()).get("/panel?x=1")
     assert reply.status_code == 503

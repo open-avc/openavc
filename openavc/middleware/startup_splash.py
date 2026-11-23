@@ -30,7 +30,8 @@ or address a restart moves it to. A page from the internet may not.
 The HTTP listener comes up before the engine (``openavc.main`` starts the
 engine in the background so a browser gets an answer at once). Until the
 start has finished, the rest of the API answers 503 (the engine has no
-project yet), the panel's own files are served (``panel_file``: an open
+project yet) with the phase's sentence (``_NOT_SERVING``: starting, could not
+start, stopping), the panel's own files are served (``panel_file``: an open
 panel redraws, and asks for its icons, while the server starts), and every
 other path gets the splash page itself, which polls
 ``/api/startup-status`` and reloads once the engine is ready or shows the
@@ -473,10 +474,20 @@ class StartupSplashMiddleware(BaseHTTPMiddleware):
             return _open_to_this_network(request, answer)
         if record.serving:
             return await call_next(request)
-        return await _before_the_start_finishes(request, call_next)
+        return await _before_the_start_finishes(request, call_next, record)
 
 
-async def _before_the_start_finishes(request: Request, call_next):
+# What the rest of the API answers in each phase before the start has
+# finished. Read by anyone, signed in or not, so a failed start's reason is
+# left to the splash page and the status route.
+_NOT_SERVING = {
+    STARTING: "Server is starting up",
+    FAILED: "OpenAVC could not start. Open this server's address in a browser to see why.",
+    STOPPING: "Server is stopping",
+}
+
+
+async def _before_the_start_finishes(request: Request, call_next, record: RunState):
     """The answer to anything else asked before the start has finished."""
     path = request.url.path
     # Start again, reached before the start has finished: it answers only a
@@ -488,7 +499,7 @@ async def _before_the_start_finishes(request: Request, call_next):
         return await call_next(request)
     # Block API routes during startup (engine.project is None, etc.)
     if path.startswith("/api/"):
-        return JSONResponse({"detail": "Server is starting up"}, status_code=503)
+        return JSONResponse({"detail": _NOT_SERVING[record.phase]}, status_code=503)
     if panel_file(path):
         return await call_next(request)
     # Serve splash page for all UI routes
