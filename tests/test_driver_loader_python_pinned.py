@@ -451,12 +451,13 @@ def test_reload_returns_the_validated_id_and_registers_the_second_import(
     assert "pin_rl_first" not in registry._DRIVER_REGISTRY
 
 
-def test_reload_whose_registration_raises_has_already_dropped_the_old_id(
+def test_reload_whose_registration_raises_keeps_the_old_driver(
     tmp_path, isolated, monkeypatch
 ):
     path = tmp_path / "pin_rl_refuse.py"
     path.write_text(_driver("RefuseDriver", "pin_rl_refuse_old"), encoding="utf-8")
     assert load_python_drivers([tmp_path]) == 1
+    serving = registry._DRIVER_REGISTRY["pin_rl_refuse_old"]
     path.write_text(_driver("RefuseDriver", "pin_rl_refuse_newer"), encoding="utf-8")
 
     def refuse(_cls):
@@ -465,11 +466,9 @@ def test_reload_whose_registration_raises_has_already_dropped_the_old_id(
     monkeypatch.setattr(f"{RELOAD_HOME}.register_driver", refuse)
     with pytest.raises(RuntimeError, match="refused"):
         reload_python_driver(path)
-    assert "pin_rl_refuse_old" not in registry._DRIVER_REGISTRY
+    assert registry._DRIVER_REGISTRY["pin_rl_refuse_old"] is serving
     assert "pin_rl_refuse_newer" not in registry._DRIVER_REGISTRY
-    assert sys.modules["openavc_driver_pin_rl_refuse"].RefuseDriver.DRIVER_INFO["id"] == (
-        "pin_rl_refuse_newer"
-    )
+    assert sys.modules["openavc_driver_pin_rl_refuse"].RefuseDriver is serving
 
 
 # --- the Code view's listing of Python drivers --------------------------------

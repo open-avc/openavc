@@ -341,6 +341,15 @@ def trial_driver_import(filepath: Path) -> PythonRead:
         sys.modules.pop(name, None)
 
 
+def _restore_module(name: str, old_module: Any) -> None:
+    """A reload that will not take: the module the previous class came from
+    resident again (none, when there was none)."""
+    if old_module is not None:
+        sys.modules[name] = old_module
+    else:
+        sys.modules.pop(name, None)
+
+
 def _claim_ids(claim: Callable[[str], None], *driver_ids: str | None) -> None:
     """``claim`` asked of each id a reload registers or drops."""
     for driver_id in driver_ids:
@@ -357,8 +366,9 @@ def reload_python_driver(
     running driver is untouched and the result says why. Then ``claim`` is
     asked of the id the file declares and of the id it replaces, and raises to
     refuse with nothing touched (a door's ``driver_change.claim``). Then the
-    file is imported for real, the previous id is dropped when the id changed,
-    and the new class is registered.
+    file is imported for real, the new class is registered, and the previous
+    id is dropped when the id changed; a class the registry refuses leaves the
+    previous driver registered and its module resident.
 
     Returns ``{status, driver_id, old_driver_id, notices}`` (``notices``,
     what the author's doors refuse in a driver that loads anyway, kept for
@@ -384,8 +394,7 @@ def reload_python_driver(
     if final_class is None:
         # The previous class is still registered and serving devices: put its
         # module back so sys.modules and the registry agree.
-        if old_module is not None:
-            sys.modules[name] = old_module
+        _restore_module(name, old_module)
         return {
             "status": "error",
             "error": (
@@ -395,9 +404,16 @@ def reload_python_driver(
             "old_driver_preserved": True,
         }
 
+    # Registered before the previous id is dropped: a class the registry
+    # refuses (an id worked out when the file runs, so reading the file
+    # passed) leaves the previous driver registered and its module resident.
+    try:
+        register_driver(final_class)
+    except BaseException:
+        _restore_module(name, old_module)
+        raise
     if old_driver_id and old_driver_id != new_driver_id:
         unregister_driver(old_driver_id)
-    register_driver(final_class)
     refused_files.clear(filepath)
     refused_files.record_notices(filepath, new_driver_id, final.notices)
     log.info(f"Hot-reloaded Python driver: {new_driver_id} from {filepath.name}")

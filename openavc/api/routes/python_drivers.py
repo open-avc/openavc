@@ -342,8 +342,7 @@ async def _create_python_driver(body: PythonDriverCreateRequest) -> dict:
     driver_class = load_python_driver_file(filepath)
     if driver_class:
         registered = driver_class.DRIVER_INFO["id"]
-        _claim_created(registered, filepath)
-        register_driver(driver_class)
+        _register_created(driver_class, filepath)
         await changed(registered)
     else:
         # A file that does not load serves nothing yet: only the lists change.
@@ -360,16 +359,20 @@ def _refuse_a_new_id(*ids: Any) -> None:
         raise HTTPException(status_code=400, detail=f"Invalid driver ID: {refused}")
 
 
-def _claim_created(driver_id: str, filepath: Path) -> None:
-    """The id a created file turned out to declare, made this change's
-    before it is registered; while another change to that driver is under way
-    the file just created goes again, so the same create can be tried later."""
+def _register_created(driver_class: type, filepath: Path) -> None:
+    """The class a created file loaded, registered under the id it turned out
+    to declare, once that id is made this change's. While another change to
+    that driver is under way, or when the registry refuses the class (an id
+    the source works out to a reserved one), the file just created goes
+    again, so nothing is left half made and the same create can be tried
+    later."""
     from openavc.api.routes.drivers import claim_or_answer
     from openavc.drivers.python_modules import forget_module
 
     try:
-        claim_or_answer(driver_id)
-    except HTTPException:
+        claim_or_answer(driver_class.DRIVER_INFO["id"])
+        register_driver(driver_class)
+    except BaseException:
         forget_module(filepath)
         filepath.unlink(missing_ok=True)
         raise
