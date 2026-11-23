@@ -500,3 +500,17 @@ def test_a_real_transport_mismatch_is_still_an_error(tmp_path):
     path = _driver_and_sim_transports(tmp_path, "udp", "osc")
     result = validate_python_driver(path)
     assert any(i.check == "transport_match" for i in result.errors)
+
+
+@pytest.mark.parametrize("driver_transport", ["bridge", "nonsense"])
+def test_a_tcp_simulator_is_no_stand_in_for_a_transport_simulation_does_not_point_at_it(
+    tmp_path, driver_transport
+):
+    """The validator says a TCP simulator stands in only where a simulated
+    device is pointed at TCP (the transport table's simulator column: serial
+    and ssh). A bridge device opens nothing of its own and an unknown
+    transport is never pointed anywhere, so their TCP simulator would get no
+    traffic: a mismatch, not the supported substitution."""
+    path = _driver_and_sim_transports(tmp_path, driver_transport, "tcp")
+    result = validate_python_driver(path)
+    assert any(i.check == "transport_match" for i in result.errors)

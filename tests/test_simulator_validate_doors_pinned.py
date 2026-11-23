@@ -1421,10 +1421,9 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
  'single_client_driver_transport_computed': {'driver_id': 'acme_widget',
                                              'issues': [('info',
                                                          'transport_match',
-                                                         'Driver transport <unevaluated> has no '
-                                                         'simulator server, so it is simulated '
-                                                         'over TCP. That is the supported '
-                                                         'substitution, not a mismatch.')]},
+                                                         'DRIVER_INFO transport is computed, so '
+                                                         'the two transports could not be '
+                                                         'compared.')]},
  'single_client_on_serial': {'driver_id': 'acme_widget',
                              'issues': [('warning',
                                          'single_client',
@@ -1512,9 +1511,8 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
  'transport_driver_computed': {'driver_id': 'acme_widget',
                                'issues': [('info',
                                            'transport_match',
-                                           'Driver transport <unevaluated> has no simulator '
-                                           'server, so it is simulated over TCP. That is the '
-                                           'supported substitution, not a mismatch.')]},
+                                           'DRIVER_INFO transport is computed, so the two '
+                                           'transports could not be compared.')]},
  'transport_http_against_tcp': {'driver_id': 'acme_widget',
                                 'issues': [('error',
                                             'transport_match',
@@ -1540,10 +1538,10 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                                     'the supported substitution, not a '
                                                     'mismatch.')]},
  'transport_sim_computed': {'driver_id': 'acme_widget',
-                            'issues': [('error',
+                            'issues': [('info',
                                         'transport_match',
-                                        "DRIVER_INFO transport ('tcp') != SIMULATOR_INFO transport "
-                                        '(<unevaluated>)')]},
+                                        'SIMULATOR_INFO transport is computed, so the two '
+                                        'transports could not be compared.')]},
  'transport_ssh_over_tcp': {'driver_id': 'acme_widget',
                             'issues': [('info',
                                         'transport_match',

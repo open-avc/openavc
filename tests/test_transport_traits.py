@@ -7,7 +7,10 @@ read are held to the values they had before they became views of the table.
 """
 from __future__ import annotations
 
+import ast
 import importlib
+import re
+from pathlib import Path
 
 import pytest
 
@@ -105,3 +108,80 @@ def test_an_unknown_name_has_no_row():
     assert spec.transport_traits(["tcp"]) is None
     assert spec.transport_traits("tcp") is TRANSPORT_TRAITS["tcp"]
 
+
+# --- no list of its own -------------------------------------------------------
+
+_ROOT = Path(__file__).resolve().parents[1]
+_PACKAGE = _ROOT / "openavc"
+
+# Lists of transport names that are not a transport's traits, and why.
+_NOT_TRAITS = {
+    # A plugin's declared port is a TCP or UDP socket, not a driver transport.
+    "openavc/core/plugin_declarations.py",
+    # The command forms a read-back command takes (spec.SEND_FORMS), which
+    # share two names with transports.
+    "openavc/drivers/command_checks.py",
+    # Traffic channels, which name the push listeners beside the transports.
+    "openavc/audit/observe.py",
+}
+
+
+def _transport_names(node: ast.AST) -> list[str]:
+    if not isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return []
+    return [
+        element.value for element in node.elts
+        if isinstance(element, ast.Constant) and element.value in TRANSPORT_TRAITS
+    ]
+
+
+def _python_lists() -> list[str]:
+    found = []
+    for path in sorted(_PACKAGE.rglob("*.py")):
+        rel = path.relative_to(_ROOT).as_posix()
+        if rel == "openavc/drivers/spec.py" or rel in _NOT_TRAITS or "node_modules" in rel:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+        for node in ast.walk(tree):
+            names = _transport_names(node)
+            if len(names) >= 2:
+                found.append(f"{rel}:{node.lineno} {names}")
+    return found
+
+
+_TS_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+_TS_NAME = "|".join(TRANSPORT_TRAITS)
+_TS_LIST = re.compile(
+    rf"[\[\(\{{]\s*([\"'])({_TS_NAME})\1\s*,\s*([\"'])({_TS_NAME})\3"
+)
+
+
+def _typescript_lists() -> list[str]:
+    found = []
+    for app in ("programmer", "simulator"):
+        src = _PACKAGE / "web" / app / "src"
+        for path in sorted([*src.rglob("*.ts"), *src.rglob("*.tsx")]):
+            name = path.name
+            if name.endswith(".gen.ts") or ".test." in name:
+                continue
+            text = _TS_COMMENT.sub("", path.read_text(encoding="utf-8"))
+            for match in _TS_LIST.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                found.append(f"{path.relative_to(_ROOT).as_posix()}:{line} {match.group(0)}")
+    return found
+
+
+def test_no_module_lists_transports_for_itself():
+    """A reader asks the table (spec.transport_traits, or transportTraits.ts in
+    the Programmer) rather than listing the transports that have a trait: a
+    list of its own is the copy that misses the next transport."""
+    assert _python_lists() == []
+    assert _typescript_lists() == []
+
+
+def test_the_scan_finds_a_list():
+    tree = ast.parse('X = frozenset({"tcp", "udp"})\nY = ("tcp", "other")\n')
+    lists = [sorted(names) for node in ast.walk(tree) if len(names := _transport_names(node)) >= 2]
+    assert lists == [["tcp", "udp"]]
+    assert _TS_LIST.search('const NETWORK = ["tcp", "udp", "http"];')
+    assert not _TS_LIST.search(_TS_COMMENT.sub("", '// e.g. ["tcp", "serial"]'))

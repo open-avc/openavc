@@ -34,31 +34,16 @@ import re
 from pathlib import Path
 from typing import Any
 
-from openavc.drivers.python_info import ExtractError
+from openavc.drivers.python_info import UNEVALUATED, ExtractError
 from openavc.drivers.python_source import python_source
 from openavc.drivers.simulator_info import companion_simulator, read_simulator_info
-from openavc.drivers.spec import without_null_settings
+from openavc.drivers.spec import simulator_stand_in, without_null_settings
 from openavc.simulator.control_checks import check_controls
 from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
 from openavc.simulator.validation_result import ValidationResult, examples
 
 #: The fields a ``SIMULATOR_INFO`` must declare, in the order they are reported.
 _REQUIRED_FIELDS = ("driver_id", "name", "initial_state")
-
-# Transports the simulator serves with a server of its own — one module each
-# under openavc/simulator/ (tcp_simulator, http_simulator, udp_simulator, osc_simulator,
-# mqtt_simulator, websocket_simulator, snmp_simulator). Anything else is a raw byte pipe with no
-# simulator server, so it is simulated over TCP instead. That substitution is
-# the platform's own: SimulationManager._apply_sim_redirect flips a serial
-# device's transport to tcp for the duration of a simulation run precisely
-# because "the simulator has no serial server"
-# (openavc/core/simulation.py::_driver_transport_is_serial). A driver declaring
-# `serial` or `ssh` beside a `tcp` simulator is therefore correct, and erroring
-# on it asks the author to break a working simulator to satisfy a string
-# comparison.
-_SIMULATOR_SERVED_TRANSPORTS = frozenset(
-    {"tcp", "http", "udp", "osc", "mqtt", "websocket", "snmp"}
-)
 
 # How many unseeded variable names the grouped state-coverage line lists.
 _STATE_EXAMPLES = 6
@@ -259,15 +244,37 @@ def check_state_coverage(
 
 
 def _check_transports(result: ValidationResult, driver_transport: Any, sim_transport: Any) -> None:
-    """The driver's transport against its simulator's; a TCP stand-in for a
-    transport the simulator has no server for is the supported substitution."""
+    """The driver's transport against its simulator's.
+
+    A simulator on the server that stands in for the driver's transport is
+    the supported substitution: a raw byte pipe with no simulator server of
+    its own (serial, ssh) is simulated over TCP, and the platform points the
+    device at TCP for the run (``spec.simulator_stand_in``, the transport
+    table's ``simulator`` column, which ``core/simulation.py`` asks too). A
+    driver declaring ``serial`` or ``ssh`` beside a ``tcp`` simulator is
+    therefore correct, and erroring on it would ask the author to break a
+    working simulator. Any other difference is a simulator its device never
+    reaches.
+    """
     if driver_transport == sim_transport:
         return
-    if driver_transport not in _SIMULATOR_SERVED_TRANSPORTS and sim_transport == "tcp":
+    computed = [
+        side for side, value in (("DRIVER_INFO", driver_transport), ("SIMULATOR_INFO", sim_transport))
+        if value is UNEVALUATED
+    ]
+    if computed:
+        result.info(
+            "transport_match",
+            f"{' and '.join(computed)} transport {'is' if len(computed) == 1 else 'are'} "
+            f"computed, so the two transports could not be compared."
+        )
+        return
+    stand_in = simulator_stand_in(driver_transport)
+    if stand_in is not None and sim_transport == stand_in:
         result.info(
             "transport_match",
             f"Driver transport {driver_transport!r} has no simulator server, "
-            f"so it is simulated over TCP. That is the supported "
+            f"so it is simulated over {stand_in.upper()}. That is the supported "
             f"substitution, not a mismatch."
         )
     else:
