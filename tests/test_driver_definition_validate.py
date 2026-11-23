@@ -373,11 +373,14 @@ def test_every_context_tag_has_a_section_case():
     # placeholder checks' in tests/test_check_message_places.py, and what
     # only the author's doors refuse in a send (an OSC argument's value, a
     # placeholder outside a command's own fields) in tests/test_send_shapes.py.
+    # Each child type's own checks land on the type (the child_entity_types.<name>
+    # case above; its followed-count refusal in tests/test_count_from_state_companion.py).
     handed_back = set(re.findall(
         r"^\s*(?:errors|warnings)\.at_each\(\s*(\w+)\(", source, re.MULTILINE
     ))
     assert handed_back == {
         "unsaid", "value_conversion_issues", "substitution_issues", "authored_send_issues",
+        "child_type_issues",
     }, (
         f"a check hands back its own places: {sorted(handed_back)} — pin where they land"
     )

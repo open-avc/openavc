@@ -292,9 +292,8 @@ class _Children:
     def declared(self, type_schema: Mapping[str, Any]) -> list[Any] | None:
         """The ids this type declares for THIS device's config, typed, or None.
 
-        None is the honest answer for a roster the device sizes itself
-        (``count_from_state`` beside ``count_from``), a config field left
-        empty, and every Python
+        None is the honest answer for a roster the device sizes (``count_from``
+        with ``count_from_state``), a config field left empty, and every Python
         driver that registers its children in code.
         """
         type_def = dict(type_schema)

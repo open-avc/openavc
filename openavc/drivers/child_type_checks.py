@@ -24,11 +24,11 @@ A roster declares exactly one source (``spec.INSTANCE_SOURCES``) and each has
 one function in ``_SOURCE_CHECKS``, so a new way to say which children exist is
 a function and a row here, and the message naming the sources follows the
 table; ``count_from_state``, the device-reported count a roster follows once
-connected, goes with ``count_from`` only (``child_ids.FOLLOWED_SOURCE``).
+connected, goes with ``count_from`` only (``roster_source.FOLLOWED_SOURCE``).
 Beside a source that fixes the roster it is refused at the author's doors and
 a notice at load (``followed_count_issues``, which the definition walk adds
 to its author's-door refusals), so a driver that loaded with one still loads,
-and no reader follows it (``child_ids.roster_source``). That is this check
+and no reader follows it (``roster_source.roster_source``). That is this check
 only: the roster is also read by ``child_ids.declared_child_ids``,
 ``declared_roster.py``, which registers it, the poll-length warning in
 ``avcdriver_semantic`` and the query entries' ``each_child`` check, and outside
@@ -45,7 +45,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-from openavc.drivers.child_ids import FOLLOWED_SOURCE, coerce_child_local_id
+from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.roster_source import FOLLOWED_SOURCE
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
     config_field_names,
@@ -105,6 +106,17 @@ def followed_count_errors(child_type: Any, type_def: Any) -> list[str]:
         f"child_entity_types.{child_type}.instances: count_from_state beside {sources[0]}: "
         f"ids, ids_from and count fix the roster; use count_from with count_from_state"
     ]
+
+
+def child_type_issues(
+    driver_def: dict[str, Any], child_types: dict[str, Any],
+) -> Iterator[tuple[str, str]]:
+    """``child_type_errors`` for each child type, with its place, its roster
+    read against what ``driver_def`` declares; one type's after another's."""
+    names = RosterNames(driver_def)
+    for child_type, type_def in child_types.items():
+        for message in child_type_errors(child_type, type_def, names):
+            yield f"child_entity_types.{child_type}", message
 
 
 def followed_count_issues(child_types: dict[str, Any]) -> list[tuple[str, str]]:

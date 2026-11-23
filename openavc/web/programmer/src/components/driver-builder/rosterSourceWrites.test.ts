@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instancesForSource } from "./childEntityTypesHelpers";
+import { instancesForSource } from "./rosterSourceWrites";
 
 const followed = {
   count_from: "outputs",
@@ -10,7 +10,7 @@ const followed = {
 
 describe("instancesForSource", () => {
   it("keeps the followed count only for a config-field count", () => {
-    expect(instancesForSource("count_from", followed, ["frame_size"])).toEqual({
+    expect(instancesForSource("count_from", followed, ["frame_size"])).toStrictEqual({
       count_from: "frame_size",
       count_from_state: "num_outputs",
       label: "Output {id}",
@@ -23,7 +23,7 @@ describe("instancesForSource", () => {
     ["ids", { ids: [] }],
     ["ids_from", { ids_from: "frame_size" }],
   ] as const)("drops it for %s, which fixes the roster", (next, written) => {
-    expect(instancesForSource(next, followed, ["frame_size"])).toEqual({
+    expect(instancesForSource(next, followed, ["frame_size"])).toStrictEqual({
       ...written,
       label: "Output {id}",
       presence: "reported",
@@ -37,7 +37,7 @@ describe("instancesForSource", () => {
 
 describe("a new config field for the source", () => {
   it("keeps the followed count when the count's field changes", () => {
-    expect(instancesForSource("count_from", followed, ["frame_size"])).toEqual({
+    expect(instancesForSource("count_from", followed, ["frame_size"])).toStrictEqual({
       count_from: "frame_size",
       count_from_state: "num_outputs",
       label: "Output {id}",
@@ -46,7 +46,7 @@ describe("a new config field for the source", () => {
   });
 
   it("never carries it to an ID-list field", () => {
-    expect(instancesForSource("ids_from", followed, ["zones"])).toEqual({
+    expect(instancesForSource("ids_from", followed, ["zones"])).toStrictEqual({
       ids_from: "zones",
       label: "Output {id}",
       presence: "reported",
@@ -56,7 +56,7 @@ describe("a new config field for the source", () => {
 
 describe("a roster beside a fixed source", () => {
   it("does not carry a stray followed count to count_from", () => {
-    expect(instancesForSource("count_from", { count: 4, count_from_state: "n" }, ["f"])).toEqual({
+    expect(instancesForSource("count_from", { count: 4, count_from_state: "n" }, ["f"])).toStrictEqual({
       count_from: "f",
     });
   });

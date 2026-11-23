@@ -7,7 +7,7 @@ ids), ``count`` (1..N), ``count_from`` (an integer config field) with or
 without ``count_from_state`` (a state variable the device reports, which
 wins once it is a positive number), or ``ids_from`` (a comma-separated
 config field). Which source a block names, and whether it follows the
-device's count, is ``child_ids.roster_source``'s reading: ``count_from_state``
+device's count, is ``roster_source.roster_source``'s reading: ``count_from_state``
 beside any source but ``count_from`` is followed by no reader. The rules
 worth knowing before changing anything here:
 
@@ -48,7 +48,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openavc.drivers.child_ids import roster_source
+from openavc.drivers.roster_source import roster_source
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which

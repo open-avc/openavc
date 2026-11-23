@@ -440,7 +440,7 @@ def _output(instances, **extra) -> dict:
     # A list of nothing usable registers nothing.
     ({"ids": [True, 1.5]}, {}, None),
     # `ids` that are not a list are no children: `ids` is the source a block
-    # naming two is read by (child_ids.roster_source), as the runtime reads it.
+    # naming two is read by (roster_source.roster_source), as the runtime reads it.
     ({"ids": "1,2", "count": 2}, {}, None),
     ({"ids": {"a": 1}, "ids_from": "names"}, {"names": "x"}, None),
     ({"count": 3}, {}, ["1", "2", "3"]),

@@ -9,13 +9,12 @@ import {
   CHILD_TYPE_ID_RE,
   applyChildVarTypeChange,
   checkRename,
-  instancesForSource,
   nextChildFieldId,
   nextChildTypeId,
   sanitizeFieldId,
   sanitizeTypeId,
-  type RosterSource,
 } from "./childEntityTypesHelpers";
+import { instancesForSource, type RosterSource } from "./rosterSourceWrites";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { ValueConversionFields } from "./ValueConversionFields";

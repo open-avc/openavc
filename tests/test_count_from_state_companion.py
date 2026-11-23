@@ -18,8 +18,10 @@ import pytest
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.avcdriver_semantic import check_driver_definition
-from openavc.drivers.child_ids import config_child_ids, declared_child_ids, roster_source
+from openavc.drivers.child_ids import declared_child_ids
+from openavc.drivers.roster_source import config_child_ids, roster_source
 from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_issues
 from openavc.drivers.driver_warnings import _poll_lines
 from openavc.drivers.python_info import check_python_driver_info
 from openavc.simulator.child_roster import declared_ids
@@ -84,6 +86,15 @@ def test_a_driver_that_loads_today_still_loads_and_is_told(source, value):
     assert verdict.errors == []
     assert _said(verdict.notices) == [
         f"child_entity_types.zone.instances: count_from_state beside {source}: {FIX}"
+    ]
+
+
+def test_the_refusal_lands_on_the_child_type():
+    issues = validate_driver_issues(
+        _definition({"count": 3, "count_from_state": "num_zones"}), strict=True
+    )
+    assert [i["path"] for i in issues if "count_from_state beside" in i["message"]] == [
+        "child_entity_types.zone"
     ]
 
 

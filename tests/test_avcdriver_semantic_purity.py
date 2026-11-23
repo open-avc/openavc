@@ -11,7 +11,7 @@ asks, ``command_form``), ``condition_checks``,
 ``json_value_spec``), ``routing_checks``, ``serial_line``, ``setting_checks``,
 ``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``, ``tagged_errors``,
 and the number rule they read numbers through, ``usable_number``),
-``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
+``openavc/drivers/child_ids.py`` (with ``roster_source``, the roster-source rule it asks), ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
 standard library, each other and the two leaf rules they ask from ``utils/``
@@ -58,6 +58,7 @@ ALLOWED = {
     "openavc.drivers.query_entry_checks",
     "openavc.drivers.reply_name_checks",
     "openavc.drivers.response_rule_checks",
+    "openavc.drivers.roster_source",
     "openavc.drivers.routing_checks",
     "openavc.drivers.send_shape",
     "openavc.drivers.serial_line",

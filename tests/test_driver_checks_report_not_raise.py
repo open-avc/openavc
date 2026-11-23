@@ -67,7 +67,7 @@ ERROR_PARTS = [
     ("value_conversion_issues", "state_variables"),
     ("frame_parser_errors", "frame_parser"),
     ("send_frame_errors", "send_frame"),
-    ("RosterNames", "child_entity_types"),
+    ("child_type_issues", "child_entity_types"),
     ("QueryEntries", "polling"),
     ("routing_block_errors", "routing"),
     ("substitution_issues", ""),

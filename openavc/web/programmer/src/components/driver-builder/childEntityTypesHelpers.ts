@@ -1,11 +1,7 @@
 // Pure logic for the Child Entity Types editor, split out so it can be unit
 // tested without React (see openavc/tests/test_child_entity_types_helpers.py).
 // The editor component imports these; keep this file free of React/DOM imports.
-import {
-  followedState,
-  type DriverChildInstances,
-  type DriverChildStateVarDef,
-} from "../../api/types";
+import type { DriverChildStateVarDef } from "../../api/types";
 
 export const CHILD_TYPE_ID_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -86,43 +82,4 @@ export function applyChildVarTypeChange(
     delete next.values;
   }
   return next as unknown as DriverChildStateVarDef;
-}
-
-export type RosterSource = "none" | "count" | "count_from" | "ids_from" | "ids";
-
-type Written = (field: string, inst: DriverChildInstances | undefined) => DriverChildInstances;
-
-// What each source writes. `count_from_state` rides along to `count_from`
-// only: a count, a literal list and an ID-list field fix the roster, so the
-// platform refuses it beside them and no reader follows it.
-const SOURCE_WRITES: Record<Exclude<RosterSource, "none">, Written> = {
-  count: () => ({ count: 2 }),
-  count_from: (field, inst) => {
-    const follows = followedState(inst);
-    return follows ? { count_from: field, count_from_state: follows } : { count_from: field };
-  },
-  ids: () => ({ ids: [] }),
-  ids_from: (field) => ({ ids_from: field }),
-};
-
-/**
- * The instances block a change of roster source writes, the first config
- * field filling `count_from` or `ids_from`. The label and a `reported`
- * presence ride along to every source: they are facts about the roster, not
- * about which field sizes it.
- */
-export function instancesForSource(
-  next: RosterSource,
-  inst: DriverChildInstances | undefined,
-  configFields: string[],
-): DriverChildInstances | undefined {
-  if (next === "none") return undefined;
-  return { ...SOURCE_WRITES[next](configFields[0] ?? "", inst), ...kept(inst) };
-}
-
-function kept(inst: DriverChildInstances | undefined): DriverChildInstances {
-  return {
-    ...(inst?.presence === "reported" ? { presence: "reported" as const } : {}),
-    ...(inst?.label ? { label: inst.label } : {}),
-  };
 }

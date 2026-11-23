@@ -32,7 +32,8 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
-from openavc.drivers.child_ids import config_child_ids, page_starts
+from openavc.drivers.child_ids import page_starts
+from openavc.drivers.roster_source import config_child_ids
 from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     LINE_GAP_TRANSPORTS,
@@ -284,7 +285,7 @@ def _poll_lines(
     whole poll, is counted as sent: the device's state is not known here, and
     the poll is as long as it gets while the gate is open. A roster the device resizes
     (``count_from_state`` beside ``count_from``) is counted at its config field
-    (``child_ids.config_child_ids``), which is what the runtime builds before
+    (``roster_source.config_child_ids``), which is what the runtime builds before
     the first report and what a matrix of that size reports anyway.
     """
     lines = 0

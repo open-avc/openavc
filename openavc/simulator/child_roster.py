@@ -13,7 +13,7 @@ knowing before changing anything here:
 * **The simulator's own reader of what a source gives, on purpose.** There
   are three: drivers/declared_roster.py is the runtime roster, and
   child_ids.declared_child_ids the authoring prediction. Which source a
-  block names is the one reading all three ask (``child_ids.roster_source``).
+  block names is the one reading all three ask (``roster_source.roster_source``).
   This one seeds the simulated device from config alone, so a followed
   count is never read (the simulator IS the device; there is no reported
   count yet), and a count that does not read as a whole number, or an
@@ -32,7 +32,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from openavc.drivers.child_ids import coerce_child_local_id, roster_source
+from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.roster_source import roster_source
 
 
 def declared_ids(type_def: Any, config: dict) -> list:
