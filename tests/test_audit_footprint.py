@@ -336,7 +336,9 @@ async def test_the_check_records_everything_the_device_says(discovery, bench):
     assert verdict["catalog"]["used"] == "fresh"
     assert verdict["catalog"]["driver_count"] == 2
 
-    # The device record a Discovery card would show.
+    # The device record a Discovery card would show: called by the library
+    # driver it was identified as, not the model it read.
+    assert fp.device.to_dict()["name"] == "Acme Widget"
     assert fp.device.manufacturer == "Acme"
     assert fp.device.serial_number == "AW3-0042"
     # The description's model name alone; its model number is reported apart.
