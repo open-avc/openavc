@@ -485,7 +485,22 @@ class _DefinitionWalk:
             (self.model_problems, ""),
             (self.transport_named, "transport"),
             (self.param_unknowns, "commands"),
+            (self.seed_keys, "simulator"),
         ]
+
+    def seed_keys(self) -> None:
+        """Each ``simulator: initial_state`` key that is not text (``5:``,
+        which YAML reads as a number). The simulator reads one as its text;
+        an author is asked to write it so."""
+        simulator = self.driver_def.get("simulator")
+        seeds = simulator.get("initial_state") if isinstance(simulator, dict) else None
+        errors = self.authored
+        errors.ctx = "simulator.initial_state"
+        for key in (seeds if isinstance(seeds, dict) else ()):
+            if not isinstance(key, str):
+                errors.append(
+                    f'simulator.initial_state: the key {key} is not text; write it in quotes, as "{key}"'
+                )
 
     def param_unknowns(self) -> None:
         """A command parameter's ``unknown``, which no load reads

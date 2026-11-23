@@ -643,8 +643,9 @@ def test_seeded_children_are_adopted_in_the_order_the_section_seeds_them():
 
 
 def test_a_section_seed_that_is_not_text_is_never_read_as_a_child_without_child_types():
-    """With no child types the section's keys are never split, so a YAML
-    key that is a number does not stop the device being built."""
+    """With no child types the section's keys are never split; a YAML key
+    that is a number is read as its text (tests/test_sim_seed_keys.py has a
+    driver with child types)."""
     sim = _roster_sim(None, simulator={"initial_state": {5: 1, "a.b.c": 2}})
     assert sim._child_roster == {}
-    assert sim._state[5] == 1
+    assert sim._state["5"] == 1

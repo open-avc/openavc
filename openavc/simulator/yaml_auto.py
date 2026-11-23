@@ -198,11 +198,16 @@ _NAMED_SETTINGS = ("initial_state", "delays", "error_modes")
 def _settings_read(sim: dict) -> dict:
     """The section as the device's settings reader takes it: a named-values
     part that is not a mapping is left out (logged), never a device that
-    cannot be built."""
+    cannot be built, and an ``initial_state`` key YAML read as something else
+    (``5:``, a number) is read as its text, as the driver checker asks it to
+    be written."""
     misshapen = [key for key in _NAMED_SETTINGS if key in sim and not isinstance(sim[key], dict)]
     for key in misshapen:
         logger.warning("simulator.%s is not a mapping; it is left out", key)
-    return {key: value for key, value in sim.items() if key not in misshapen}
+    read = {key: value for key, value in sim.items() if key not in misshapen}
+    if isinstance(read.get("initial_state"), dict):
+        read["initial_state"] = {str(key): value for key, value in read["initial_state"].items()}
+    return read
 
 class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.

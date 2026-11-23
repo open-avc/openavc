@@ -107,6 +107,11 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "ir_codes",
     ),
     (
+        "simulator.initial_state",
+        _d(simulator={"initial_state": {5: 1}}),
+        "simulator.initial_state",
+    ),
+    (
         "command_prefix",
         _d(command_prefix=7),
         "command_prefix",
