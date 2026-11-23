@@ -630,6 +630,7 @@ When an instance is paired, the cloud console can send it the following:
 The cloud platform can open a remote access tunnel to the device's web interface. This works by proxying HTTP traffic through a secondary WebSocket connection, similar to how tools like ngrok or Cloudflare Tunnel work.
 
 - The device initiates the tunnel connection (outbound to cloud on port 443)
+- The person using it opens each session in their browser at an address of its own, `https://<session>.t.openavc.net/`, not at `cloud.openavc.com`, so a page the device serves can never read the cloud portal's sign-in or another session's. A browser behind a web filter needs `*.t.openavc.net` allowed on port 443 as well as `cloud.openavc.com`
 - No inbound ports are opened on the device or the network
 - Tunnel connections are authenticated with a per-tunnel token
 - Tunnels are closed when the remote session ends or when the device disconnects
@@ -715,6 +716,7 @@ Add to the typical rules:
 | Rule | Direction | Source | Destination | Port | Protocol |
 |------|-----------|--------|-------------|------|----------|
 | Cloud connection | Outbound | OpenAVC host | cloud.openavc.com | 443/tcp | WSS |
+| Remote access (browser) | Outbound | The computer opening Remote Access | *.t.openavc.net | 443/tcp | HTTPS, WSS |
 
 ### Multi-instance (ISC)
 
