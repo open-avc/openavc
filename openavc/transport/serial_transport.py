@@ -181,6 +181,11 @@ def require_usb_adapter(config: dict, driver_transport: str = "") -> dict:
     the adapter there from the bound one: the port there reports no serial
     number, or this host cannot list its ports.
 
+    When more than one attached adapter reports the serial number (clone
+    adapters can ship one fixed number), the number cannot tell them apart:
+    the stored port is dialled when it is one of them, and otherwise the dial
+    is refused naming them all, never guessing (``_port_carrying``).
+
     Only applies to a real local serial connection: a device set to go
     through a bridge (``core.bridge_binding``, resolved or not) is not on this
     computer's port and is left alone, and an explicit network transport is
@@ -201,7 +206,7 @@ def require_usb_adapter(config: dict, driver_transport: str = "") -> dict:
     ports = _attached_ports() if usb_serial else None
     if ports is None:
         return config
-    live = _port_carrying(ports, usb_serial)
+    live = _port_carrying(ports, usb_serial, config.get("port"))
     if live is not None:
         return _with_port(config, live)
     if _unidentified_port_at(ports, config.get("port")):
@@ -224,11 +229,20 @@ def _bound_usb_serial(config: dict, driver_transport: str) -> str:
     return config.get("usb_serial") or ""
 
 
-def _port_carrying(ports: list[dict[str, Any]], usb_serial: str) -> str | None:
-    """The path of the attached adapter whose serial number is ``usb_serial``."""
-    return next(
-        (p["device"] for p in ports if p["serial_number"] == usb_serial), None,
-    )
+def _port_carrying(ports: list[dict[str, Any]], usb_serial: str, stored: object) -> str | None:
+    """The path of the attached adapter whose serial number is ``usb_serial``,
+    or None. Several adapters reporting it: the stored port when it is one of
+    them, else a refusal naming them (``require_usb_adapter``)."""
+    from openavc.core.connection_fault import usb_adapters_alike_message
+    from openavc.core.device_config import same_serial_port
+
+    alike = [p["device"] for p in ports if p["serial_number"] == usb_serial]
+    if len(alike) <= 1:
+        return alike[0] if alike else None
+    at_stored = next((path for path in alike if same_serial_port(path, str(stored or ""))), None)
+    if at_stored is not None:
+        return at_stored
+    raise ConnectionFaultError(usb_adapters_alike_message(usb_serial, alike), code=UNREACHABLE)
 
 
 def _with_port(config: dict, port: str) -> dict:

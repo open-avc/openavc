@@ -511,3 +511,24 @@ async def test_test_connection_does_not_open_the_port_another_adapter_took(monke
     assert result["success"] is False
     assert "AB12CD" in result["error"] and "not plugged in" in result["error"]
     assert opened == []
+
+
+def test_two_adapters_reporting_one_serial_number_each_dial_their_own_port(monkeypatch):
+    """Clone adapters can ship one fixed serial number, so the number cannot
+    tell them apart: each device dials the port it was set to."""
+    _attached(monkeypatch, ("/dev/ttyUSB0", "AB12CD"), ("/dev/ttyUSB1", "AB12CD"))
+    first, second = _bound("/dev/ttyUSB0"), _bound("/dev/ttyUSB1")
+    assert st.require_usb_adapter(first)["port"] == "/dev/ttyUSB0"
+    assert st.require_usb_adapter(second)["port"] == "/dev/ttyUSB1"
+
+
+def test_adapters_alike_with_neither_at_the_stored_port_are_refused_by_name(monkeypatch):
+    _attached(monkeypatch, ("/dev/ttyUSB1", "AB12CD"), ("/dev/ttyUSB2", "AB12CD"))
+    with pytest.raises(ConnectionFaultError) as refused:
+        st.require_usb_adapter(_bound("/dev/ttyUSB0"))
+    assert refused.value.fault_code == UNREACHABLE
+    assert str(refused.value) == (
+        "More than one USB serial adapter on this system reports serial number AB12CD "
+        "(/dev/ttyUSB1, /dev/ttyUSB2), so OpenAVC cannot tell which one this device "
+        "uses. Choose its port again in Edit Device."
+    )

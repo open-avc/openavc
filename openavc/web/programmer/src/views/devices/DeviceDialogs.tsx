@@ -15,6 +15,7 @@ import { dialsAnAddress } from "../../components/shared/transportTraits";
 import { LineSettingSelect } from "../../components/shared/LineSettingSelect";
 import { SERIAL_LINE_SETTINGS, type SerialLineKey } from "../../api/types.gen";
 import { holdsTypedLogin, keepSavedLogins, SAVED_LOGIN, withoutSavedLogins } from "./deviceLogins";
+import { portsAlike, usbSerialToSave } from "./serialPortPick";
 
 // --- Typed Config Fields ---
 
@@ -554,7 +555,8 @@ const pickerLabelStyle: React.CSSProperties = {
 // a manual-entry escape hatch for a port that isn't attached yet. Picking a
 // detected adapter also stores its USB serial number (`usb_serial`) so the
 // binding survives the OS port name moving across reboot/replug; manual entry
-// stores no serial (the path is taken literally).
+// stores no serial (the path is taken literally), and neither does an adapter
+// whose number another attached adapter reports too (`usbSerialToSave`).
 function SerialPortPicker({
   value,
   onPick,
@@ -592,9 +594,9 @@ function SerialPortPicker({
       return;
     }
     setManual(false);
-    const match = ports.find((p) => p.device === next);
-    onPick(next, match?.serial_number ?? "");
+    onPick(next, usbSerialToSave(ports, next));
   };
+  const alike = manual ? [] : portsAlike(ports, value);
 
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
@@ -630,6 +632,11 @@ function SerialPortPicker({
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         Ports on the OpenAVC server. The USB adapter must be plugged into that machine.
       </div>
+      {alike.length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--color-warning)", marginTop: "var(--space-xs)" }}>
+          {`This adapter reports the same serial number as ${alike.join(", ")}, so OpenAVC tells them apart by port. If you move its cable to another USB socket, choose the port again.`}
+        </div>
+      )}
     </div>
   );
 }
