@@ -46,6 +46,8 @@ export class ListControl {
         this.itemBg = style.item_bg || DEFAULT_ITEM_BG;
         this.itemActiveBg = style.item_active_bg || DEFAULT_ITEM_ACTIVE_BG;
         this.selectedValues = new Set();
+        // Whether the last reading of the selection found its device away.
+        this.offline = false;
         this.drawn = { items: '', selection: undefined };
         this.scrollArea = document.createElement('div');
         this.scrollArea.className = 'list-scroll';
@@ -101,11 +103,13 @@ export class ListControl {
     /** A tap on a row: the pick it makes, then `ui.select` with its value
      *  (the list's action slot is `select`), then the rows lit for the pick at
      *  once -- painted, not drawn, since a draw would put the device's reading
-     *  back over the tap; its next reading takes over. */
+     *  back over the tap; its next reading takes over. While the device is
+     *  unreachable the tap still sends and lights nothing. */
     tap(item) {
+        this.host.send({ type: 'ui.select', element_id: this.element.id, value: item.value });
+        if (this.offline) return;
         if (this.listStyle === 'selectable') this._pickOnly(rowKey(item.value));
         else if (this.listStyle === 'multi_select') this._togglePick(rowKey(item.value));
-        this.host.send({ type: 'ui.select', element_id: this.element.id, value: item.value });
         paintPicks(this);
     }
 
@@ -144,6 +148,7 @@ export function rowsFromState(state, keyPattern) {
  * reading of nothing leaves the rows as they are.
  */
 export function showListSelection(list, value, offline) {
+    list.offline = Boolean(offline);
     if (!offline && nothingToShow(value)) return;
     const { scrollArea, selectedValues } = list;
     const rows = [...scrollArea.querySelectorAll('.list-item')];

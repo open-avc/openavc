@@ -140,6 +140,7 @@ SCENARIOS = [
     # A tapped list row lights at once; a static list shows its reported row.
     "list_tap_lights_the_tapped_row_at_once",
     "list_static_shows_the_reported_row_through_a_redraw",
+    "list_tap_lights_nothing_while_its_device_is_unreachable",
     # display_decimals reaches every element that draws a number.
     "label_display_decimals_rounds_a_numeric_value",
     "label_display_decimals_leaves_text_alone",

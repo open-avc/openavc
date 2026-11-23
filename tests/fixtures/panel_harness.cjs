@@ -7321,6 +7321,24 @@ const tests = {
         assert(action.sent.length === 1 && action.sent[0].type === 'ui.select', 'the action tap sends');
     },
 
+    list_tap_lights_nothing_while_its_device_is_unreachable() {
+        // A lit row while the device is away is only a memory: a tap still
+        // sends, and lights nothing until the device is back and reports.
+        const lit = (m) => [...m.node().querySelectorAll('.list-item')]
+            .filter((row) => row.classList.contains('active')).map((row) => row.dataset.value);
+        const m = levelMount({
+            id: 'x', type: 'list', items: [{ value: 'a' }, { value: 'b' }],
+            bindings: { show: { value: { key: CHOICE_KEY } } },
+        }, { state: { 'device.d.connected': true, [CHOICE_KEY]: 'a' } });
+        m.set('device.d.connected', false);
+        assert(lit(m).length === 0, `unreachable: ${lit(m)}`);
+        m.node().querySelectorAll('.list-item')[1].click();
+        assert(lit(m).length === 0, `a tap while unreachable: ${lit(m)}`);
+        assert(m.sent.length === 1 && m.sent[0].type === 'ui.select', 'the tap still sends');
+        m.set('device.d.connected', true);
+        assert(JSON.stringify(lit(m)) === '["a"]', `back, its reading lit: ${lit(m)}`);
+    },
+
     list_static_shows_the_reported_row_through_a_redraw() {
         // A read-only list lights the row its selection binding reports, at
         // draw and after its rows are drawn again, and a tap does nothing.
