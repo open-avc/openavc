@@ -925,8 +925,9 @@ async def restart_system(request: Request) -> dict[str, Any]:
     Body (optional): ``{"mode": "graceful" | "hard"}``. With no mode it is
     graceful, which waits 2 seconds so this answer and the log get out
     before the stop begins; "hard" stops at once. Any other mode is refused
-    with 400, a request while a restart or a stop is already under way with
-    409, and one before the server is up with 503.
+    with 400, a request while a restart or a stop is already under way or an
+    update or rollback is being installed with 409, and one before the server
+    is up with 503.
 
     The answer comes before the stop: the service manager (NSSM, systemd,
     Docker) brings the server back, and a manual run starts its own
@@ -948,6 +949,7 @@ async def restart_system(request: Request) -> dict[str, Any]:
 _RESTART_REFUSAL_STATUS = {
     restart.UNKNOWN_MODE: 400,
     restart.UNDER_WAY: 409,
+    restart.UPDATING: 409,
     restart.NOT_READY: 503,
 }
 

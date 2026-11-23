@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -134,3 +135,62 @@ async def test_a_request_before_the_door_is_armed_is_refused_and_a_later_one_is_
     assert restart.request_exit("graceful", "cloud").accepted
     await _settle()
     assert exits == [2]
+
+
+INSTALLING = "An update to v9.9.9 is being installed. OpenAVC restarts by itself when it is done."
+
+
+class _Updates:
+    """The engine's updater as the door asks it: the sentence an update being
+    installed refuses a restart with, "" once there is none."""
+
+    def __init__(self, sentence: str = INSTALLING) -> None:
+        self.sentence = sentence
+
+    def restart_refusal(self) -> str:
+        return self.sentence
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["api", "cloud", "start again"])
+async def test_a_request_while_an_update_is_being_installed_is_refused(door, source):
+    door.engine.update_manager = _Updates()
+
+    answer = restart.request_exit("graceful", source)
+    await _settle()
+
+    assert (answer.accepted, answer.refusal, answer.sentence) == (False, restart.UPDATING, INSTALLING)
+    assert door.exits == []
+    assert door.run_state.phase == READY
+
+
+@pytest.mark.asyncio
+async def test_the_listen_watcher_asks_again_until_the_update_is_done(door, monkeypatch):
+    """An asker nobody waits on is not refused for good: once the update has
+    failed (or ended the process), its restart goes ahead."""
+    updates = door.engine.update_manager = _Updates()
+    waits = []
+
+    async def wait(seconds):
+        waits.append(seconds)
+        if len(waits) == 2:
+            updates.sentence = ""
+
+    monkeypatch.setattr(restart.asyncio, "sleep", wait)
+
+    answer = await restart.request_exit_after_update("graceful", "listen")
+
+    assert (answer.accepted, answer.wait_seconds) == (True, 2)
+    assert waits == [restart.ASK_AGAIN_SECONDS] * 2
+    assert len(restart._exiting) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_listen_watcher_is_not_asked_again_for_any_other_refusal(door, monkeypatch):
+    door.engine.stopping = True
+    monkeypatch.setattr(restart.asyncio, "sleep", AsyncMock())
+
+    answer = await restart.request_exit_after_update("graceful", "listen safety net")
+
+    assert answer.refusal == restart.UNDER_WAY
+    restart.asyncio.sleep.assert_not_awaited()

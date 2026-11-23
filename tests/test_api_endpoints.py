@@ -7,6 +7,7 @@ integration tests in test_api.py.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -43,6 +44,8 @@ def _make_mock_engine():
     engine.scripts = MagicMock()
     engine.plugin_loader = MagicMock()
     engine.isc = None
+    # No updater until a route makes one: the restart door asks it.
+    engine.update_manager = None
     # Both gates on, so /api/isc/status reports the "enabled everywhere but
     # did not start" case rather than unpacking a MagicMock.
     engine.isc_gates.return_value = (True, True)
@@ -569,6 +572,16 @@ def test_a_restart_during_a_service_stop_is_refused(client, exits):
     resp = c.post("/api/system/restart")
     assert resp.status_code == 409
     assert resp.json()["detail"] == "The server is already stopping."
+    assert exits == []
+
+
+def test_a_restart_while_an_update_is_being_installed_is_refused(client, exits):
+    c, engine = client
+    sentence = "An update to v9.9.9 is being installed. OpenAVC restarts by itself when it is done."
+    engine.update_manager = SimpleNamespace(restart_refusal=lambda: sentence)
+    resp = c.post("/api/system/restart")
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == sentence
     assert exits == []
 
 

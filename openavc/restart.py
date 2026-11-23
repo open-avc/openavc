@@ -15,6 +15,13 @@ process for a retry through ``exit_to_retry``: the same stop, a different exit
 code (``RETRY_EXIT_CODE``), and nothing said on the run-state record, whose
 failed phase stands for the tray until the next start writes its own.
 
+While an update or rollback is being installed, every request and a failed
+start's retry are refused (``UPDATING``, in the updater's sentence: the
+engine's ``update_manager.restart_refusal``, which its run record decides),
+since a restart would cut it off. The listen watcher and its safety net, which
+nobody waits on, ask again until it is done (``request_exit_after_update``),
+and so does the failed start's retry (openavc/start_retry.py).
+
 An applied update or rollback ends the process through the same door
 (``exit_for_update``, the updater's ``_end_process``): the same stop, the
 exit code the install's service manager reads, and a last step of its own
@@ -109,6 +116,11 @@ RETRY_EXIT_CODE = 75
 UNKNOWN_MODE = "unknown_mode"
 NOT_READY = "not_ready"
 UNDER_WAY = "under_way"
+UPDATING = "updating"
+
+# How long an asker nobody waits on (``request_exit_after_update``) waits
+# before it asks again while an update is being installed.
+ASK_AGAIN_SECONDS = 10
 
 # The engine an accepted request stops, set once the server is up
 # (``accept_restarts``); until then every request is refused.
@@ -242,6 +254,9 @@ def request_exit(mode: Any, source: str) -> ExitAnswer:
         return _refuse(source, mode, UNDER_WAY, "A restart is already under way.")
     if engine.stopping:
         return _refuse(source, mode, UNDER_WAY, "The server is already stopping.")
+    installing = _update_being_installed(engine)
+    if installing:
+        return _refuse(source, mode, UPDATING, installing)
     wait = WAIT_SECONDS[mode]
     log.warning(
         "Restart requested (source=%s, mode=%s); stopping %s",
@@ -249,6 +264,33 @@ def request_exit(mode: Any, source: str) -> ExitAnswer:
     )
     _start_exit(wait, engine)
     return ExitAnswer(accepted=True, mode=mode, wait_seconds=wait)
+
+
+async def request_exit_after_update(mode: Any, source: str) -> ExitAnswer:
+    """``request_exit`` for an asker nobody waits on (the listen watcher and
+    its safety net): while an update or rollback is being installed it asks
+    again every ``ASK_AGAIN_SECONDS``, so the restart still happens if the
+    update fails; the update's own exit otherwise ends the process first.
+    Any other answer is returned at once."""
+    while True:
+        answer = request_exit(mode, source)
+        if answer.refusal != UPDATING:
+            return answer
+        await asyncio.sleep(ASK_AGAIN_SECONDS)
+
+
+def update_being_installed() -> bool:
+    """An update or rollback is being installed on the armed door's engine,
+    so a failed start's retry waits (openavc/start_retry.py)."""
+    return _engine is not None and bool(_update_being_installed(_engine))
+
+
+def _update_being_installed(engine) -> str:
+    """The sentence an update or rollback being installed refuses a restart
+    with, asked of the engine's updater (updater/manager.py
+    ``restart_refusal``); "" when none is, or the engine has no updater."""
+    updates = getattr(engine, "update_manager", None)
+    return updates.restart_refusal() if updates is not None else ""
 
 
 def exit_for_update(source: str, code: int, last=None) -> bool:
@@ -314,12 +356,17 @@ def exit_to_retry() -> bool:
     restart runs, exiting with ``RETRY_EXIT_CODE``. Nothing is said on the
     run-state record, so its failed phase stands for the tray and the menu
     bar until the next start writes its own. False, and nothing done, when the
-    door is not armed or an exit or a stop is already under way (Start again
-    pressed during the wait, a service stop)."""
+    door is not armed, an exit or a stop is already under way (Start again
+    pressed during the wait, a service stop), or an update or rollback is
+    being installed (``update_being_installed``)."""
     engine = _engine
     if engine is None:
         return False
     if _exiting or engine.stopping:
+        return False
+    installing = _update_being_installed(engine)
+    if installing:
+        log.warning("Not trying the start again yet: %s", installing)
         return False
     log.warning("Startup failed; stopping so the service manager starts it again")
     _ending.ends_with(RETRY_EXIT_CODE)

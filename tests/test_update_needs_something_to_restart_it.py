@@ -27,7 +27,6 @@ def _manager(tmp_path, deployment=DeploymentType.LINUX_PACKAGE):
     mgr._state = MagicMock()
     mgr._state.get.return_value = ""
     mgr._checker = MagicMock()
-    mgr._update_in_progress = False
     mgr._history = []
     mgr._maintenance_task = None
     mgr._auto_check_task = None

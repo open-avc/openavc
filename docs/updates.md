@@ -27,6 +27,8 @@ From the Updates view, click **Install vX.Y.Z**. A progress dialog walks through
 
 The restart stops the system the way any other restart does: **System Stopping** triggers run, persisted variables are saved, plugins stop and every device is disconnected before the new version starts. A rollback stops the same way. This holds for an update or rollback from a version later than v0.40.0.
 
+While an update or rollback is being installed, the system takes no other. Another Install, a rollback, or an update sent or staged from OpenAVC Cloud is refused with a message naming the version being installed, until the new version starts or the update fails. A restart is refused the same way until the update restarts the server itself, whether it is asked for from Settings or from OpenAVC Cloud. A restart a change of network adapter needs waits for the update and then goes ahead if the update failed. This holds on a system running a version later than v0.41.0-rc1.
+
 Verification is mandatory. If a download cannot be checked against a published SHA256 checksum, the update is refused and nothing is applied, leaving your current version untouched.
 
 On Linux, the Raspberry Pi appliance, and macOS, updates are also **cryptographically signed**. Each release artifact carries a detached signature, and a privileged pre-start step verifies that signature against a trusted key shipped with your installation before extracting anything. A tampered or unsigned artifact is refused, so a compromised download or release asset cannot be applied. This is what makes the automatic-update path safe to run unattended.

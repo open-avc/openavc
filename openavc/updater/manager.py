@@ -58,8 +58,6 @@ class UpdateManager:
     #: The version the last update installed, while an older one is running
     #: ("" otherwise); set once at startup (updater/history.py).
     _older_than_last_update = ""
-    #: An applied update or rollback is ending the process (``_end_process``).
-    _ending = False
     _run_record: update_run.RunRecord | None = None
 
     @property
@@ -83,7 +81,6 @@ class UpdateManager:
         self._state = state_store
         self._checker = UpdateChecker()
         self._deployment_type = detect_deployment_type()
-        self._update_in_progress = False
         self._auto_check_task: asyncio.Task | None = None
         self._maintenance_task: asyncio.Task | None = None
         self._history: list[dict[str, Any]] = []
@@ -144,9 +141,20 @@ class UpdateManager:
 
     @property
     def update_in_progress(self) -> bool:
-        """True from the start of an update until it fails, and from the end
-        of an applied update or rollback until the process ends."""
-        return self._update_in_progress or self._ending
+        """An update or rollback is in flight: from its start until it fails
+        or the process ends (``RunRecord.in_flight``)."""
+        return self.run_record.in_flight
+
+    def busy_refusal(self) -> dict[str, Any] | None:
+        """What an update, a rollback or a staged target asked for while one is
+        in flight answers (``RunRecord.refusal``); None when none is."""
+        refusal = self.run_record.refusal()
+        return {"success": False, "error": refusal} if refusal else None
+
+    def restart_refusal(self) -> str:
+        """Why the restart door (``restart.py``) refuses a restart now
+        (``RunRecord.restart_refusal``)."""
+        return self.run_record.restart_refusal()
 
     def _set_state(self, key: str, value: Any) -> None:
         """Set a state key if state store is available."""
@@ -501,7 +509,7 @@ class UpdateManager:
         # Don't clobber an in-flight apply's status/progress UI. A concurrent
         # check (operator or cloud) would otherwise flip system.update_status to
         # checking/idle and stomp the apply's error mid-update.
-        touch_status = not self._update_in_progress
+        touch_status = not self.update_in_progress
         if touch_status:
             self._set_state("system.update_status", "checking")
             self._set_state("system.update_error", "")
@@ -564,8 +572,9 @@ class UpdateManager:
         """
         if self._firmware_host:
             return self._firmware_host.refusal()
-        if self.update_in_progress:
-            return {"success": False, "error": "Update already in progress"}
+        busy = self.busy_refusal()
+        if busy:
+            return busy
 
         # Prefer a cloud-staged update if one is pending — covers the
         # auto_restart=False case where the cloud pushed a target_version
@@ -592,7 +601,6 @@ class UpdateManager:
         if not updates_itself(self._deployment_type):
             return self_update_refusal(self._deployment_type, release.version)
 
-        self._update_in_progress = True
         self.run_record.begin(update_run.UpdateRun(release.version, update_run.CHECKED, from_version=__version__))
         self._set_state("system.update_error", "")
 
@@ -650,8 +658,6 @@ class UpdateManager:
             log.exception(error_msg)
             self._cleanup_failed_apply(release.version, error_msg)
             return {"success": False, "error": error_msg}
-        finally:
-            self._update_in_progress = False
 
     async def apply_cloud_update(
         self, target_version: str, update_url: str,
@@ -669,7 +675,6 @@ class UpdateManager:
         from urllib.parse import urlparse
         parsed = urlparse(update_url)
 
-        self._update_in_progress = True
         self.run_record.begin(update_run.UpdateRun(
             target_version, update_run.PUSHED, from_version=__version__, rollback=rollback,
             update_url=update_url, checksum_sha256=checksum_sha256,
@@ -755,8 +760,6 @@ class UpdateManager:
             log.exception(error_msg)
             self._cleanup_failed_apply(target_version, error_msg)
             return {"success": False, "error": error_msg}
-        finally:
-            self._update_in_progress = False
 
     def _cloud_update_refusal(
         self, target_version: str, update_url: str, rollback: bool,
@@ -770,8 +773,9 @@ class UpdateManager:
         """
         if self._firmware_host:
             return self._firmware_host.refusal()
-        if self.update_in_progress:
-            return {"success": False, "error": "Update already in progress"}
+        busy = self.busy_refusal()
+        if busy:
+            return busy
         if not updates_itself(self._deployment_type):
             return self_update_refusal(self._deployment_type, target_version)
         from urllib.parse import urlparse
@@ -832,16 +836,20 @@ class UpdateManager:
     def stage_update(
         self, target_version: str, update_url: str,
         checksum_sha256: str | None = None, *, rollback: bool = False,
-    ) -> None:
+    ) -> dict[str, Any] | None:
         """Persist a cloud-staged update so it can be applied manually later (A63).
 
         Called when the cloud sends ``software_update`` with
         ``auto_restart=False``. The next call to ``apply_update`` uses this
         target instead of polling GitHub. A rollback keeps its mark, so the
-        record is read as one.
+        record is read as one. Refused while an update or rollback is in
+        flight (``busy_refusal``, returned); None otherwise.
         """
         if self._firmware_host:
             raise PermissionError(self._firmware_host.guidance)
+        busy = self.busy_refusal()
+        if busy:
+            return busy
         import json
         payload = {
             "target_version": target_version,
@@ -862,6 +870,7 @@ class UpdateManager:
             log.info("Cloud staged update for v%s", target_version)
         except OSError:
             log.exception("Failed to persist cloud-staged update")
+        return None
 
     def get_staged_update(self) -> dict[str, Any] | None:
         """Return the staged-update record, or None if no update is staged.
@@ -1028,18 +1037,17 @@ class UpdateManager:
         moment first, so the answer to whoever asked gets out. ``last`` (the
         rollback's) runs after the stop and ends the process itself.
 
-        From here until the process ends, another update or a rollback is
-        refused as one in progress. A door that is not armed yet (the
-        server's start is still running) ends nothing, and the version
-        applied starts with the server's next start."""
+        The run stays in flight until the process ends, so another update
+        or a rollback is refused from here on. A door that is not armed yet
+        (the server's start is still running) ends nothing, and the version
+        applied starts with the server's next start (a restart, once the
+        door is armed, is one)."""
         ending = update_exit(self._deployment_type)
-        self._ending = True
         log.info(
             "Ending the process for the %s (exit %d): %s",
             source, ending.code, ending.who_starts_it,
         )
         if not restart.exit_for_update(source, ending.code, last):
-            self._ending = False
             log.warning(
                 "The %s is applied and takes effect when the server next starts", source,
             )
@@ -1056,16 +1064,17 @@ class UpdateManager:
         put_back_for_rollback(self._data_dir, self._project_path, then=end)
 
     async def rollback(self) -> dict[str, Any]:
-        """Rollback to the previous version."""
+        """Rollback to the previous version. Refused while an update or
+        rollback is in flight; one that raises or is cancelled ends its run
+        failed, so it never stays in flight."""
         if self._firmware_host:
             return self._firmware_host.refusal()
-        from openavc.updater.rollback import (
-            can_rollback, perform_rollback, rollback_target_version,
-        )
+        from openavc.updater.rollback import can_rollback, rollback_target_version
         from openavc.system_config import APP_DIR
 
-        if self.update_in_progress:
-            return {"success": False, "error": "Cannot rollback while an update is in progress"}
+        busy = self.busy_refusal()
+        if busy:
+            return busy
 
         refusal = rollback_refusal(self._deployment_type, can_rollback(APP_DIR))
         if refusal:
@@ -1077,6 +1086,19 @@ class UpdateManager:
         self.run_record.begin(update_run.UpdateRun(
             target_version, update_run.PREVIOUS, from_version=__version__, rollback=True,
         ))
+        try:
+            return await self._roll_back(target_version)
+        except asyncio.CancelledError:
+            self._rollback_failed("Rollback cancelled")
+            raise
+        except Exception:
+            log.exception("Rollback failed")
+            self._rollback_failed("Rollback failed")
+            return {"success": False, "error": "Rollback failed. Check server logs."}
+
+    async def _roll_back(self, target_version: str) -> dict[str, Any]:
+        """The rollback's steps, its run begun."""
+        from openavc.updater.rollback import perform_rollback
 
         # Create a backup of current state before rolling back
         self._step("backing_up")
@@ -1107,22 +1129,24 @@ class UpdateManager:
             to_version=__version__,
             automatic=False,
         )
-
-        if success:
-            self._add_history_entry(
-                __version__, target_version, "success", rollback=True,
-            )
-            self._step("restarting")
-            # On Windows the installer perform_rollback scheduled starts the
-            # earlier version; elsewhere the helper applies the rollback as
-            # the service manager starts the server again.
-            self._end_process("rollback", last=self._put_logins_back)
-            return {"success": True, "message": "Rollback initiated, server will restart"}
-        else:
-            self._set_state("system.update_status", "error")
-            self._set_state("system.update_error", "Rollback failed")
-            self.run_record.fail("Rollback failed")
+        if not success:
+            self._rollback_failed("Rollback failed")
             return {"success": False, "error": "Rollback failed. Check server logs."}
+
+        self._add_history_entry(
+            __version__, target_version, "success", rollback=True,
+        )
+        self._step("restarting")
+        # On Windows the installer perform_rollback scheduled starts the
+        # earlier version; elsewhere the helper applies the rollback as
+        # the service manager starts the server again.
+        self._end_process("rollback", last=self._put_logins_back)
+        return {"success": True, "message": "Rollback initiated, server will restart"}
+
+    def _rollback_failed(self, error: str) -> None:
+        self._set_state("system.update_status", "error")
+        self._set_state("system.update_error", error)
+        self.run_record.fail(error)
 
     def get_status(self) -> dict[str, Any]:
         """Get current update status."""
@@ -1346,6 +1370,14 @@ class UpdateManager:
                 # Wait until we're actually inside the window (enforces the end,
                 # so an update can't fire any time after the start).
                 await self._sleep_until_in_window(start_time, end_time, tz)
+
+                if self.update_in_progress:
+                    log.info(
+                        "Maintenance window: %s Trying again tomorrow",
+                        self.run_record.in_flight_sentence(),
+                    )
+                    await asyncio.sleep(24 * 3600)
+                    continue
 
                 result = await self.check_for_updates()
                 if not result.get("update_available"):

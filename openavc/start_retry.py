@@ -125,8 +125,14 @@ async def _hold_or_retry(run_state, restarts: int) -> None:
         HOLD_SECONDS, restarts + 1, MAX_AUTOMATIC_RESTARTS,
     )
     await asyncio.sleep(HOLD_SECONDS)
-    if restart.exit_to_retry():
-        status_folder.write_start_retry(_retry_record(restarts + 1))
+    # An update being installed (the cloud's, say) would be cut off: hold
+    # again until it is done, which ends the process itself unless it failed.
+    while not restart.exit_to_retry():
+        if not restart.update_being_installed():
+            return
+        run_state.retrying(HOLD_SECONDS)
+        await asyncio.sleep(HOLD_SECONDS)
+    status_folder.write_start_retry(_retry_record(restarts + 1))
 
 
 def start_again(run_state) -> restart.ExitAnswer:

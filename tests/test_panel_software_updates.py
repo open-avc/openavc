@@ -567,7 +567,6 @@ def _manager(tmp_path) -> UpdateManager:
     mgr = UpdateManager.__new__(UpdateManager)
     mgr._data_dir = tmp_path
     mgr._state = MagicMock()
-    mgr._update_in_progress = False
     return mgr
 
 

@@ -504,12 +504,16 @@ class CommandHandler:
         """A63: persist the cloud-provided URL + checksum (and a rollback's
         mark) so a later manual apply uses this exact target instead of
         falling back to GitHub. Surfaces system.update_staged_version so the
-        IDE can show "Update v0.6.0 staged by cloud"."""
+        IDE can show "Update v0.6.0 staged by cloud". Refused, with the
+        updater's sentence, while an update or rollback is in flight."""
         target_version, update_url = payload["target_version"], payload["update_url"]
         if update_url:
-            self._update_manager.stage_update(
+            refused = self._update_manager.stage_update(
                 target_version, update_url, payload["checksum_sha256"], rollback=payload["rollback"],
             )
+            if refused:
+                await self._send_apply_result(request_id, refused)
+                return
             result_text = f"Update to {target_version} staged. Apply from the Programmer IDE when ready."
         else:
             result_text = f"Update to {target_version} available. auto_restart=false, waiting for manual apply."

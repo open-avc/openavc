@@ -9,10 +9,20 @@ here (step ``WAITING``) and becomes the run when it goes ahead; another run
 takes its place.
 
 The manager (``updater/manager.py``) holds one ``RunRecord`` and writes it
-where it writes the staged record, the history row and the in-progress flag:
-a run begins where the flag is set, takes each step the Updates page shows,
-and ends failed where a failed apply is cleaned up. A run that reached its
-exit is ended at the next start, as the update history ends its row.
+where it writes the staged record and the history row: a run begins as an
+update or rollback starts, takes each step the Updates page shows, and ends
+failed where a failed apply is cleaned up. A run that reached its exit is
+ended at the next start, as the update history ends its row.
+
+**In flight** (``RunRecord.in_flight``): THE answer to whether an update or
+rollback is under way, from its start until it fails or the process ends,
+applied or not. Every door that starts one asks it through the manager
+(``update_in_progress``, ``busy_refusal``: Install, a rollback, the cloud's
+push and staged target, the maintenance window), and so does the restart
+door (``restart.py``, through the manager's ``restart_refusal``) until the run
+reaches its exit (``RunRecord.installing``): a restart would cut it off, and
+from there its own exit ends the process. Each refusal names the run
+(``RunRecord.in_flight_sentence``).
 
 **Read back at start** (``RunRecord.read_at_start``): a staged record is the
 run waiting; otherwise the run file, unless a newer history row describes a
@@ -52,6 +62,8 @@ SOURCES = (CHECKED, STAGED, PUSHED, PREVIOUS, UNRECORDED)
 #: downloading, verifying, applying, restarting. "" is a run read from an
 #: earlier release's history row, which does not say.
 WAITING = "waiting"
+#: The step of a run that is applied and ends the process.
+RESTARTING = "restarting"
 
 # How a run ended: the update history's words.
 PENDING = "pending"          # not ended yet
@@ -225,6 +237,44 @@ class RunRecord:
             self._keep(run)
         self.run = run
         return run
+
+    @property
+    def in_flight(self) -> bool:
+        """A run began in this process and has not failed. It stays in flight
+        until the process ends, applied or not."""
+        return self._in_flight
+
+    @property
+    def installing(self) -> bool:
+        """The run in flight has not reached its exit (``RESTARTING``)."""
+        return self._in_flight and self.run.step != RESTARTING
+
+    def in_flight_sentence(self) -> str:
+        """The run in flight in a sentence, for a door it refuses ("" when
+        none is)."""
+        if not self._in_flight:
+            return ""
+        run = self.run
+        kind = "rollback" if run.rollback else "update"
+        to = f"v{run.target}" if run.target else "the previous version"
+        if self.installing:
+            article = "A" if run.rollback else "An"
+            return f"{article} {kind} to {to} is being installed."
+        return f"The {kind} to {to} is applied and takes effect when OpenAVC restarts."
+
+    def refusal(self) -> str:
+        """What another update, a rollback or a staged target is refused with
+        while a run is in flight ("" when none is)."""
+        sentence = self.in_flight_sentence()
+        return f"{sentence} Try again once it has finished." if self.installing else sentence
+
+    def restart_refusal(self) -> str:
+        """What a restart is refused with while the run is being installed,
+        since a restart would cut it off; "" otherwise, its exit included
+        (that exit ends the process)."""
+        if not self.installing:
+            return ""
+        return f"{self.in_flight_sentence()} OpenAVC restarts by itself when it is done."
 
     def begin(self, run: UpdateRun) -> None:
         """``run`` begins in this process: the staged run going ahead (again,

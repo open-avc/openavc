@@ -92,7 +92,6 @@ async def test_apply_cloud_update_full_flow(tmp_path):
     mgr._project_path = data_dir / "project.avc"
     mgr._state = MagicMock()
     mgr._checker = MagicMock()
-    mgr._update_in_progress = False
     mgr._history = []
     mgr._deployment_type = MagicMock()
     mgr._deployment_type.value = "windows_installer"
@@ -159,7 +158,6 @@ async def test_apply_cloud_update_bad_checksum(tmp_path):
     mgr._project_path = data_dir / "project.avc"
     mgr._state = MagicMock()
     mgr._checker = MagicMock()
-    mgr._update_in_progress = False
     mgr._history = []
     mgr._deployment_type = MagicMock()
 
@@ -207,7 +205,6 @@ async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
     mgr._project_path = data_dir / "project.avc"
     mgr._state = MagicMock()
     mgr._checker = MagicMock()
-    mgr._update_in_progress = False
     mgr._history = []
     mgr._deployment_type = MagicMock()
 
@@ -504,9 +501,9 @@ async def test_command_handler_auto_restart_false():
     events = MockEventBus()
     devices = MockDeviceManager()
     update_manager = AsyncMock()
-    # stage_update is sync (manager.py:495); override the AsyncMock default
-    # so the call doesn't return an un-awaited coroutine.
-    update_manager.stage_update = MagicMock()
+    # stage_update is sync, returning a refusal or None; override the
+    # AsyncMock default so the call doesn't return an un-awaited coroutine.
+    update_manager.stage_update = MagicMock(return_value=None)
 
     handler = CommandHandler(agent, devices, events, update_manager=update_manager)
 

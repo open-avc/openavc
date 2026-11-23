@@ -147,9 +147,15 @@ def boot(monkeypatch, tmp_path):
 
 
 def _requests(monkeypatch):
-    """Every restart request the boot's doors make, recorded instead of run."""
+    """Every restart request the boot's doors make, recorded instead of run,
+    each accepted."""
     asked: list[tuple] = []
-    monkeypatch.setattr(restart_door, "request_exit", lambda *args: asked.append(args))
+
+    def request_exit(mode, source):
+        asked.append((mode, source))
+        return restart_door.ExitAnswer(accepted=True, mode=mode)
+
+    monkeypatch.setattr(restart_door, "request_exit", request_exit)
     return asked
 
 

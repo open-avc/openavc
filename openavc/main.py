@@ -262,10 +262,10 @@ def _watch_listen_choice() -> asyncio.Task:
     from openavc.system_config import get_system_config
 
     async def restart_to_follow_adapter(_reason: str) -> None:
-        restart.request_exit("graceful", "listen")
+        await restart.request_exit_after_update("graceful", "listen")
 
     async def restart_to_go_back(_reason: str) -> None:
-        restart.request_exit("graceful", "listen safety net")
+        await restart.request_exit_after_update("graceful", "listen safety net")
 
     async def safety_net_tick() -> None:
         try:

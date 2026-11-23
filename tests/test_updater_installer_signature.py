@@ -261,7 +261,6 @@ def _windows_manager(tmp_path):
     mgr._project_path = mgr._data_dir / "project.avc"
     mgr._state = MagicMock()
     mgr._checker = MagicMock()
-    mgr._update_in_progress = False
     mgr._history = []
     mgr._deployment_type = DeploymentType.WINDOWS_INSTALLER
     state: dict = {}
@@ -348,7 +347,7 @@ async def test_refused_installer_is_never_scheduled(tmp_path, door, report, reas
     assert "Nothing was installed" in mgr.state["system.update_error"]
     assert mgr._history[0]["status"] == "failed"
     assert read_pending_marker(mgr._data_dir) is None
-    assert mgr._update_in_progress is False
+    assert not mgr.update_in_progress
 
 
 @pytest.mark.asyncio

@@ -199,6 +199,30 @@ async def test_start_again_during_the_wait_is_the_only_exit(folder, managed, exi
     assert exits == [] and _recorded(folder) is None
 
 
+async def test_while_an_update_is_being_installed_the_retry_waits_for_it(folder, managed, exits, hold):
+    """A start that failed can still take an update (the cloud's), and a
+    retry now would cut it off: the hold goes round again until the update is
+    done, and ends the process only if it failed."""
+    sentence = "An update to v9.9.9 is being installed. OpenAVC restarts by itself when it is done."
+    updates = SimpleNamespace(sentence=sentence)
+    updates.restart_refusal = lambda: updates.sentence
+    engine = _engine()
+    engine.update_manager = updates
+    record = _failed()
+
+    def during():
+        if len(hold.waits) == 2:
+            updates.sentence = ""
+
+    hold.during = during
+    await start_retry.after_failure(engine, record, 0)
+    await asyncio.gather(*restart._exiting)
+
+    assert hold.waits == [start_retry.HOLD_SECONDS] * 2
+    assert exits == [restart.RETRY_EXIT_CODE]
+    assert _recorded(folder)["restarts"] == 1
+
+
 def test_the_retry_exit_needs_the_door_armed(exits):
     restart.reset()
     assert restart.exit_to_retry() is False

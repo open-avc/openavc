@@ -139,6 +139,7 @@ async def test_a_rollback_the_cloud_marks_installs_an_older_release():
 @pytest.mark.asyncio
 async def test_a_staged_rollback_keeps_its_mark():
     manager = MagicMock()
+    manager.stage_update.return_value = None
     _, handler = _handler(manager)
 
     await _send(handler, _update("0.39.0", auto_restart=False, rollback=True))

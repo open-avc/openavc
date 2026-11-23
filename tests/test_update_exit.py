@@ -198,8 +198,10 @@ async def test_while_the_exit_runs_another_update_or_a_rollback_is_refused(door,
 
     answer = await EXITS[which](mgr)
 
-    assert answer["success"] is False
-    assert "in progress" in answer["error"]
+    assert answer == {
+        "success": False,
+        "error": "The update to v9.9.9 is applied and takes effect when OpenAVC restarts.",
+    }
     assert mgr.update_in_progress
     door.hold.set()
     await _the_exit()
@@ -247,7 +249,7 @@ async def test_a_service_stop_with_no_update_leaves_the_lifespan_to_end(door):
 
 
 @pytest.mark.asyncio
-async def test_before_the_door_is_armed_nothing_ends_and_the_update_is_not_held(door, tmp_path, caplog):
+async def test_before_the_door_is_armed_nothing_ends_and_the_update_stays_in_flight(door, tmp_path, caplog):
     restart.reset()
     mgr = _manager(tmp_path, LINUX)
 
@@ -256,7 +258,9 @@ async def test_before_the_door_is_armed_nothing_ends_and_the_update_is_not_held(
     assert answer["success"] is True
     assert restart._exiting == set()
     assert door.order == []
-    assert not mgr.update_in_progress
+    # Applied, it waits for the next start: tests/test_update_in_flight.py
+    # has what that refuses and what starts it.
+    assert mgr.update_in_progress
     assert "takes effect when the server next starts" in caplog.text
 
 

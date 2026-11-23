@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from openavc.updater import update_run
 from openavc.updater.manager import UpdateManager
 from openavc.updater.platform import DeploymentType
 
@@ -31,7 +32,6 @@ def _bare_manager(tmp_path, deployment=DeploymentType.LINUX_PACKAGE):
     mgr._project_path = data_dir / "project.avc"
     mgr._state = MagicMock()
     mgr._checker = MagicMock()
-    mgr._update_in_progress = False
     mgr._history = []
     mgr._maintenance_task = None
     mgr._auto_check_task = None
@@ -258,7 +258,7 @@ async def test_cancelled_apply_records_failed_and_propagates(tmp_path):
         with pytest.raises(asyncio.CancelledError):
             await mgr.apply_update()
 
-    assert mgr._update_in_progress is False                 # finally ran
+    assert not mgr.update_in_progress                      # the run ended failed
     assert mgr._history and mgr._history[0]["status"] == "failed"
 
 
@@ -337,7 +337,7 @@ def test_backup_atomic_on_write_failure(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_check_does_not_touch_status_during_apply(tmp_path):
     mgr = _bare_manager(tmp_path)
-    mgr._update_in_progress = True
+    mgr.run_record.begin(update_run.UpdateRun("2.0.0", update_run.CHECKED, from_version="1.0.0"))
     mgr._checker.check = AsyncMock(return_value=None)
     mgr._checker.current_version = "1.0.0"
     mgr._checker.last_error = "some error"
