@@ -97,9 +97,13 @@ export function matrixRouteMatches(
   const x = matrixRouteValue(a);
   const y = matrixRouteValue(b);
   if (x === null || y === null) return false;
-  if (x === y) return true;
-  // Own keys only, so a mode no copy knows (or "toString") guesses no number.
-  if (!Object.prototype.hasOwnProperty.call(MATRIX_ROUTE_MATCH_MODES, mode) || MATRIX_ROUTE_MATCH_MODES[mode] !== true) return false;
+  // `=== true`, so a mode no copy knows (or "toString") guesses no number.
+  return x === y || (MATRIX_ROUTE_MATCH_MODES[mode] === true && matrixSamePort(x, y));
+}
+
+/** Whether two routed values name the one port number: a number, or the
+ *  single digit run in a word. */
+function matrixSamePort(x: number | string, y: number | string): boolean {
   const dx = typeof x === "number" ? x : matrixRouteDigits(x);
   const dy = typeof y === "number" ? y : matrixRouteDigits(y);
   return dx !== null && dx === dy;

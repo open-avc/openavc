@@ -45,18 +45,24 @@ const ROUTES = {
 };
 const read = (key) => ROUTES[key];
 const ROUTE_KEY = "plugin.acme_router.source.{row}";
-results.routed_by_its_label = H.crosspointRouted(ROUTE_KEY, "exact", read, "amp.1", "stagebox / 01") === true;
-results.shared_number_is_another_source = H.crosspointRouted(ROUTE_KEY, "exact", read, "amp.1", "Laptop / 01") === false;
-results.shared_number_matches_in_port_mode = H.crosspointRouted(ROUTE_KEY, "port", read, "amp.1", "Laptop / 01") === true;
-results.routed_to_nothing = H.crosspointRouted(ROUTE_KEY, "exact", read, "amp.2", "") === false;
-results.no_route_key_never_routed = H.crosspointRouted(undefined, "exact", read, "amp.1", "Stagebox / 01") === false;
-results.unpublished_row_never_routed = H.crosspointRouted(ROUTE_KEY, "exact", read, "amp.9", "Stagebox / 01") === false;
+results.routed_by_its_label = H.crosspointRouted({ route_state_pattern: ROUTE_KEY, route_match: "exact" }, read, "amp.1", "stagebox / 01") === true;
+results.shared_number_is_another_source = H.crosspointRouted({ route_state_pattern: ROUTE_KEY, route_match: "exact" }, read, "amp.1", "Laptop / 01") === false;
+results.shared_number_matches_in_port_mode = H.crosspointRouted({ route_state_pattern: ROUTE_KEY, route_match: "port" }, read, "amp.1", "Laptop / 01") === true;
+results.routed_to_nothing = H.crosspointRouted({ route_state_pattern: ROUTE_KEY, route_match: "exact" }, read, "amp.2", "") === false;
+results.no_route_key_never_routed = H.crosspointRouted({ route_match: "exact" }, read, "amp.1", "Stagebox / 01") === false;
+results.unpublished_row_never_routed = H.crosspointRouted({ route_state_pattern: ROUTE_KEY, route_match: "exact" }, read, "amp.9", "Stagebox / 01") === false;
 
 // --- axisCaption: the name the plugin publishes, else the token ---
 results.caption_is_the_published_name = H.axisCaption("MIC-01 / 01", "mic_01.1") === "MIC-01 / 01";
 results.caption_of_a_blank_name_is_the_token = H.axisCaption("  ", "mic_01.1") === "mic_01.1";
 results.caption_of_no_name_is_the_token = H.axisCaption(undefined, "mic_01.1") === "mic_01.1";
 results.caption_of_a_number_is_the_token = H.axisCaption(3, "mic_01.1") === "mic_01.1";
+results.axis_entries_carry_token_caption_and_value = eq(
+  H.matrixAxis(["plugin.acme_router.tx.mic_01.1", "plugin.acme_router.tx.mic_01.2"], "plugin.acme_router.tx.*",
+    (key) => ({ "plugin.acme_router.tx.mic_01.1": "MIC-01 / 01" })[key]),
+  [{ token: "mic_01.1", caption: "MIC-01 / 01", value: "MIC-01 / 01" }, { token: "mic_01.2", caption: "mic_01.2" }],
+);
+results.routed_in_the_layouts_default_mode = H.crosspointRouted({ route_state_pattern: ROUTE_KEY }, read, "amp.1", "Laptop / 01") === false;
 
 // --- matchStateKeys: '*' matches anywhere, not just as a suffix ---
 const KEYS = [

@@ -177,9 +177,13 @@ export const ROUTE_MATCH_MODES = Object.freeze({ port: true, exact: false });
 export function routeMatches(a, b, mode = 'port') {
     const x = routeValue(a), y = routeValue(b);
     if (x === null || y === null) return false;
-    if (x === y) return true;
-    // Own keys only, so a mode no copy knows (or 'toString') guesses no number.
-    if (!Object.prototype.hasOwnProperty.call(ROUTE_MATCH_MODES, mode) || ROUTE_MATCH_MODES[mode] !== true) return false;
+    // `=== true`, so a mode no copy knows (or 'toString') guesses no number.
+    return x === y || (ROUTE_MATCH_MODES[mode] === true && samePort(x, y));
+}
+
+/** Whether two routed values name the one port number: a number, or the
+ *  single digit run in a word. */
+function samePort(x, y) {
     const dx = typeof x === 'number' ? x : routeDigits(x);
     const dy = typeof y === 'number' ? y : routeDigits(y);
     return dx !== null && dx === dy;

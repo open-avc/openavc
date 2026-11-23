@@ -127,6 +127,8 @@ SCENARIOS = [
     "caption_of_a_blank_name_is_the_token",
     "caption_of_no_name_is_the_token",
     "caption_of_a_number_is_the_token",
+    "axis_entries_carry_token_caption_and_value",
+    "routed_in_the_layouts_default_mode",
     # Wildcard enumeration.
     "trailing_wildcard",
     "mid_string_wildcard",
@@ -165,7 +167,8 @@ def test_the_crosspoint_rule_is_the_matrix_route_rule() -> None:
 
 def test_matrix_axes_use_wildcard_matcher() -> None:
     src = MATRIX_TSX.read_text(encoding="utf-8")
-    assert "matchStateKeys(" in src
+    assert "matrixAxis(" in src
+    assert "matchStateKeys(" in HELPERS_TS.read_text(encoding="utf-8").split("export function matrixAxis", 1)[1]
     assert 'state_pattern ?? "").replace("*"' not in src, (
         "row/col enumeration must not assume a trailing wildcard"
     )

@@ -26,18 +26,49 @@ export function routeMatchMode(declared: unknown): MatrixRouteMatchMode {
  * `{row}` filled in, whose value names the source routed to it; each source
  * (a column) is named by the value of its own key. The two are compared by
  * the matrix's route rule (`matrixRouteMatches`, the Builder's copy of
- * ui/matrix_model.py's) in the layout's mode. A layout that names no route
- * key reads every crosspoint as unrouted.
+ * ui/matrix_model.py's) in the layout's mode (`routeMatchMode`). A layout
+ * that names no route key reads every crosspoint as unrouted.
  */
 export function crosspointRouted(
-  routeStatePattern: string | undefined,
-  mode: MatrixRouteMatchMode,
+  layout: MatrixRouteLayout,
   read: (key: string) => unknown,
   row: string,
-  columnLabel: unknown,
+  columnValue: unknown,
 ): boolean {
-  if (!routeStatePattern) return false;
-  return matrixRouteMatches(read(routeStatePattern.replace("{row}", row)), columnLabel, mode);
+  const pattern = layout.route_state_pattern;
+  if (!pattern) return false;
+  return matrixRouteMatches(
+    read(pattern.replace("{row}", row)),
+    columnValue,
+    routeMatchMode(layout.route_match),
+  );
+}
+
+/** What a matrix layout says about its routes (SurfaceLayout's two fields). */
+export interface MatrixRouteLayout {
+  route_state_pattern?: string;
+  route_match?: string;
+}
+
+/** One row or column: the token its pattern's `*` matched (what a click
+ *  sends), the name it is headed by, and its key's value (a column's is the
+ *  name its source is routed by). */
+export interface MatrixAxisEntry {
+  token: string;
+  caption: string;
+  value: unknown;
+}
+
+/** The rows or the columns a pattern draws from the state keys, in key order. */
+export function matrixAxis(
+  keys: string[],
+  pattern: string | undefined,
+  read: (key: string) => unknown,
+): MatrixAxisEntry[] {
+  return matchStateKeys(keys, pattern ?? "").map((m) => {
+    const value = read(m.key);
+    return { token: m.name, caption: axisCaption(value, m.name), value };
+  });
 }
 
 /** What a row or column is called: its key's own value, the name the plugin

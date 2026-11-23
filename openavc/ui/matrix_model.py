@@ -218,10 +218,13 @@ def route_matches(a: Any, b: Any, mode: str = PORT) -> bool:
     x, y = route_value(a), route_value(b)
     if x is None or y is None:
         return False
-    if x == y:
-        return True
-    if ROUTE_MATCH_MODES.get(mode) is not True:  # a mode no copy knows guesses no number
-        return False
+    # ``is True``, so a mode no copy knows guesses no number.
+    return x == y or (ROUTE_MATCH_MODES.get(mode) is True and _same_port(x, y))
+
+
+def _same_port(x: float | int | str, y: float | int | str) -> bool:
+    """Whether two routed values name the one port number: a number, or the
+    single digit run in a word."""
     dx = x if isinstance(x, int | float) else _route_digits(x)
     dy = y if isinstance(y, int | float) else _route_digits(y)
     return dx is not None and dx == dy

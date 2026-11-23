@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { Trash2, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../../store/connectionStore";
-import { axisCaption, crosspointRouted, matchStateKeys, routeMatchMode } from "../routingMatrixHelpers";
+import { crosspointRouted, matrixAxis, type MatrixAxisEntry } from "../routingMatrixHelpers";
 import * as api from "../../../api/restClient";
 import { useAnchoredPanel } from "../../shared/AnchoredPanel";
 import type { SurfaceLayout } from "./types";
@@ -36,30 +36,15 @@ export function RoutingMatrix({
   const presetPanel = useAnchoredPanel<HTMLButtonElement, HTMLDivElement>({ width: "intrinsic" });
   const presetDropdownOpen = presetPanel.open;
 
-  // Rows and columns from state ('*' matches anywhere in the pattern). Each
-  // is drawn by its key's own value, the name the plugin gives it, and sent
-  // back by its token; a column's value is also the name its source is
-  // routed by.
+  // Rows and columns from state ('*' matches anywhere in the pattern), each
+  // headed by the name the plugin gives it and sent back by its token.
+  const read = (key: string) => liveState[key];
   const stateKeys = Object.keys(liveState);
-  const rows = matchStateKeys(stateKeys, layout.rows_state_pattern ?? "");
-  const rowNames = rows.map((m) => m.name);
-  const columns = matchStateKeys(stateKeys, layout.columns_state_pattern ?? "");
-  const colNames = columns.map((m) => m.name);
-  const columnLabels = new Map(columns.map((m) => [m.name, liveState[m.key]]));
-  const rowCaption = new Map(rows.map((m) => [m.name, axisCaption(liveState[m.key], m.name)]));
-  const colCaption = new Map(columns.map((m) => [m.name, axisCaption(liveState[m.key], m.name)]));
-  const routeMode = routeMatchMode(layout.route_match);
+  const rows = matrixAxis(stateKeys, layout.rows_state_pattern, read);
+  const columns = matrixAxis(stateKeys, layout.columns_state_pattern, read);
 
-  const getCellState = (row: string, col: string): boolean =>
-    crosspointRouted(
-      layout.route_state_pattern,
-      routeMode,
-      (key) => liveState[key],
-      row,
-      columnLabels.get(col),
-    );
-
-  const handleCellClick = async (row: string, col: string) => {
+  const handleCellClick = async (row: string, column: MatrixAxisEntry) => {
+    const col = column.token;
     // One action per cell at a time: the toggle direction is derived from
     // liveState, which only updates when the plugin pushes the row's new
     // route — a rapid second click would re-read the pre-click state and
@@ -68,7 +53,7 @@ export function RoutingMatrix({
     if (pendingCells.has(cellKey)) return;
     setPendingCells((prev) => new Set(prev).add(cellKey));
     try {
-      const actionId = getCellState(row, col) ? "unroute" : "route";
+      const actionId = crosspointRouted(layout, read, row, column.value) ? "unroute" : "route";
       await api.emitContextAction(pluginId, actionId, { row, col });
     } finally {
       setPendingCells((prev) => {
@@ -112,7 +97,7 @@ export function RoutingMatrix({
     onRequestConfigRefresh?.();
   };
 
-  const hasData = rowNames.length > 0 || colNames.length > 0;
+  const hasData = rows.length > 0 || columns.length > 0;
 
   const btnStyle: React.CSSProperties = {
     display: "flex",
@@ -284,9 +269,9 @@ export function RoutingMatrix({
                 <th style={{ padding: "var(--space-xs) var(--space-sm)", fontSize: 10, color: "var(--text-muted)" }}>
                   {layout.rows_label ?? ""}
                 </th>
-                {colNames.map((col) => (
+                {columns.map((col) => (
                   <th
-                    key={col}
+                    key={col.token}
                     style={{
                       padding: "var(--space-xs)",
                       fontSize: 10,
@@ -297,14 +282,14 @@ export function RoutingMatrix({
                       maxHeight: 80,
                     }}
                   >
-                    {colCaption.get(col)}
+                    {col.caption}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rowNames.map((row) => (
-                <tr key={row}>
+              {rows.map((row) => (
+                <tr key={row.token}>
                   <td
                     style={{
                       padding: "var(--space-xs) var(--space-sm)",
@@ -313,15 +298,15 @@ export function RoutingMatrix({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {rowCaption.get(row)}
+                    {row.caption}
                   </td>
-                  {colNames.map((col) => {
-                    const active = getCellState(row, col);
-                    const pending = pendingCells.has(`${row}|${col}`);
+                  {columns.map((col) => {
+                    const active = crosspointRouted(layout, read, row.token, col.value);
+                    const pending = pendingCells.has(`${row.token}|${col.token}`);
                     return (
-                      <td key={col} style={{ padding: 1 }}>
+                      <td key={col.token} style={{ padding: 1 }}>
                         <button
-                          onClick={() => handleCellClick(row, col)}
+                          onClick={() => handleCellClick(row.token, col)}
                           disabled={pending}
                           style={{
                             width: 24,
@@ -333,7 +318,7 @@ export function RoutingMatrix({
                             opacity: pending ? 0.5 : 1,
                             transition: "background var(--transition-fast)",
                           }}
-                          title={`${rowCaption.get(row)} \u2192 ${colCaption.get(col)}: ${active ? "Routed" : "Unrouted"}`}
+                          title={`${row.caption} \u2192 ${col.caption}: ${active ? "Routed" : "Unrouted"}`}
                         />
                       </td>
                     );

@@ -137,13 +137,15 @@ def test_the_corpus_reaches_every_form_of_the_rule() -> None:
     # A match through a single embedded number, and one refused for two.
     assert any(c["expected"] and _kind(c["a"]) == "str" and _kind(c["b"]) == "number" for c in MATCHES)
     assert any(not c["expected"] and c["a"] == "1080p60" for c in MATCHES)
-    # Every mode is asked, and one pair is answered both ways by the two
-    # modes, so neither is the other under another name.
-    assert set(ROUTE_MATCH_MODES) <= {c.get("mode", "port") for c in MATCHES}
-    # And a mode no copy knows, which every copy reads the same way.
-    assert any(c.get("mode", "port") not in ROUTE_MATCH_MODES for c in MATCHES)
+
+
+def test_the_corpus_asks_every_mode() -> None:
+    """Every mode is asked, and a mode no copy knows; one pair is answered
+    both ways by the two modes, so neither is the other under another name."""
+    asked = {c.get("mode", "port") for c in MATCHES}
+    assert set(ROUTE_MATCH_MODES) < asked
     by_pair: dict = {}
     for c in MATCHES:
         by_pair.setdefault((repr(c["a"]), repr(c["b"])), set()).add(c["expected"])
-    assert any(answers == {True, False} for answers in by_pair.values())
+    assert {True, False} in by_pair.values()
     assert any("report_value" in (c["source"] or {}) for c in REPORTS)

@@ -166,16 +166,33 @@ def surface_layout_problem(layout: Any) -> str | None:
     if not isinstance(layout, dict):
         return "SURFACE_LAYOUT must be a dict"
     layout_type = layout.get("type")
-    fields = SURFACE_LAYOUT_FIELDS.get(layout_type) if isinstance(layout_type, str) else None
-    if fields is None:
+    if layout_type not in SURFACE_LAYOUT_FIELDS:
         known = ", ".join(repr(t) for t in sorted(SURFACE_LAYOUT_FIELDS))
         return f"SURFACE_LAYOUT type {layout_type!r} is not one of {known}"
-    for field in layout:
-        if field != "type" and field not in fields:
-            return f"SURFACE_LAYOUT has {field!r}, which a {layout_type} layout does not have"
-    for field, meaning in _REQUIRED_LAYOUT_FIELDS.get(layout_type, {}).items():
-        if field not in layout:
-            return f"SURFACE_LAYOUT ({layout_type}) needs {field!r}: {meaning}"
+    return (
+        _unknown_layout_field(layout, layout_type)
+        or _missing_layout_field(layout, layout_type)
+        or _layout_value_problem(layout, SURFACE_LAYOUT_FIELDS[layout_type])
+    )
+
+
+def _unknown_layout_field(layout: dict, layout_type: str) -> str | None:
+    fields = SURFACE_LAYOUT_FIELDS[layout_type]
+    stray = next((f for f in layout if f != "type" and f not in fields), None)
+    if stray is None:
+        return None
+    return f"SURFACE_LAYOUT has {stray!r}, which a {layout_type} layout does not have"
+
+
+def _missing_layout_field(layout: dict, layout_type: str) -> str | None:
+    required = _REQUIRED_LAYOUT_FIELDS.get(layout_type, {})
+    missing = next((f for f in required if f not in layout), None)
+    if missing is None:
+        return None
+    return f"SURFACE_LAYOUT ({layout_type}) needs {missing!r}: {required[missing]}"
+
+
+def _layout_value_problem(layout: dict, fields: dict[str, str]) -> str | None:
     for field, kind in fields.items():
         words, fits = _KINDS[kind]
         if field in layout and not fits(layout[field]):
