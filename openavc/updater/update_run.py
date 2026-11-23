@@ -106,10 +106,11 @@ class UpdateRun:
     def _readable(self) -> bool:
         return bool(self.target) and self.source in SOURCES and self.end in ENDS
 
-    def waits_for(self, other: UpdateRun) -> bool:
-        """This is a staged target waiting, and ``other`` installs it."""
+    def stages(self, other: UpdateRun) -> bool:
+        """This is the cloud's staged target, waiting or tried before, and
+        ``other`` installs it."""
         return (
-            self.step == WAITING
+            self.source == STAGED
             and (self.target, self.update_url) == (other.target, other.update_url)
         )
 
@@ -190,7 +191,7 @@ def _read_back(
     """Which run a start reads back (the module's docstring says why)."""
     if staged:
         waiting = _staged_run(staged)
-        return saved if saved is not None and saved.waits_for(waiting) else waiting
+        return saved if saved is not None and saved.stages(waiting) else waiting
     if _still_saved(saved, row):
         return saved
     return _row_run(row)
@@ -226,9 +227,10 @@ class RunRecord:
         return run
 
     def begin(self, run: UpdateRun) -> None:
-        """``run`` begins in this process: the staged run going ahead when it
-        installs the target staged. Written with its first step."""
-        if self.run is not None and self.run.waits_for(run):
+        """``run`` begins in this process: the staged run going ahead (again,
+        after a failed try) when it installs the target staged. Written with
+        its first step."""
+        if self.run is not None and self.run.stages(run):
             run = replace(run, source=STAGED)
         self.run = run
         self._in_flight = True
@@ -256,15 +258,10 @@ class RunRecord:
 
     def _read(self) -> UpdateRun | None:
         try:
-            text = self._path.read_text(encoding="utf-8")
+            run = UpdateRun.from_dict(json.loads(self._path.read_text(encoding="utf-8")))
         except FileNotFoundError:
             return None
-        except OSError as e:
-            log.warning("Could not read the update run record (%s)", e)
-            return None
-        try:
-            run = UpdateRun.from_dict(json.loads(text))
-        except ValueError:
+        except (OSError, ValueError):
             run = None
         if run is None:
             log.warning("The update run record at %s is not one this version reads; ignoring it", self._path)

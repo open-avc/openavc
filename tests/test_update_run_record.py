@@ -118,9 +118,11 @@ def test_with_nothing_on_disk_there_is_no_run_and_no_file(tmp_path):
     assert not (tmp_path / update_run.RUN_FILE).exists()
 
 
-@pytest.mark.parametrize("text", ["{", "[]", '{"format": 99, "target": "9.0.0"}', '{"format": 1}'])
-def test_a_run_file_this_version_cannot_read_gives_way_to_the_history(tmp_path, text):
-    (tmp_path / update_run.RUN_FILE).write_text(text, encoding="utf-8")
+@pytest.mark.parametrize(
+    "content", [b"{", b"[]", b'{"format": 99, "target": "9.0.0"}', b'{"format": 1}', b"\xff\xfe{"],
+)
+def test_a_run_file_this_version_cannot_read_gives_way_to_the_history(tmp_path, content):
+    (tmp_path / update_run.RUN_FILE).write_bytes(content)
     _write(tmp_path, "update-history.json", [ROWS["confirmed"]])
     run = _start(tmp_path, "0.41.0").run_record.run
     assert (run.target, run.end) == ("0.41.0", "success")
@@ -264,6 +266,28 @@ async def test_installing_the_staged_target_is_the_staged_run_going_ahead(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_a_second_try_at_the_staged_target_is_still_the_staged_run(tmp_path):
+    mgr = _start(tmp_path, "0.41.0")
+    with patch("openavc.updater.manager.__version__", "0.41.0"):
+        mgr.stage_update("0.42.0", URL, "ab" * 32)
+
+    async def blip(url, filename):
+        raise RuntimeError("network blip")
+
+    for _ in range(2):
+        with patch("openavc.updater.manager.__version__", "0.41.0"), \
+             patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
+             patch("openavc.updater.backup.cleanup_old_backups"), \
+             patch.object(mgr, "_download_artifact", side_effect=blip):
+            assert (await mgr.apply_update())["success"] is False
+        run = _run_file(tmp_path)
+        assert (run["source"], run["end"]) == ("staged", "failed")
+
+    # The same files read back the same way at the next start.
+    assert _start(tmp_path, "0.41.0").run_record.run.source == "staged"
+
+
+@pytest.mark.asyncio
 async def test_staging_while_an_update_runs_leaves_the_run_in_flight(tmp_path):
     mgr = _start(tmp_path, "0.41.0")
     staged_midway = {}
@@ -282,6 +306,21 @@ async def test_staging_while_an_update_runs_leaves_the_run_in_flight(tmp_path):
 
     assert (staged_midway["target"], staged_midway["step"]) == ("0.42.0", "downloading")
     assert (_run_file(tmp_path)["target"], _run_file(tmp_path)["end"]) == ("0.42.0", "failed")
+
+
+@pytest.mark.asyncio
+async def test_a_target_still_staged_after_a_push_waits_at_the_next_start(tmp_path):
+    """A push does not clear the staged record yet, so a newer staged target
+    is the run at the next start; the pushed run's end is the history's."""
+    mgr = _start(tmp_path, "0.41.0")
+    with patch("openavc.updater.manager.__version__", "0.41.0"):
+        mgr.stage_update("0.43.0", URL, "ab" * 32)
+    await _apply_cloud(mgr, tmp_path)
+    assert (_run_file(tmp_path)["target"], _run_file(tmp_path)["source"]) == ("0.42.0", "pushed")
+
+    run = _start(tmp_path, "0.42.0").run_record.run
+    assert (run.target, run.step) == ("0.43.0", "waiting")
+    assert (_history(tmp_path)[0]["to_version"], _history(tmp_path)[0]["status"]) == ("0.42.0", "success")
 
 
 async def _roll_back(mgr: UpdateManager, tmp_path: Path, *, works: bool):
