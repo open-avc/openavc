@@ -15,8 +15,10 @@ import { BooleanOptions } from "../shared/BooleanOptions";
 import { EnumValuesEditor } from "../shared/EnumValuesEditor";
 import { normalizeOptionList } from "../shared/paramOptions";
 
+// A field ID is what a {placeholder} names, so it keeps to the names one can
+// carry: letters, digits and underscores, not starting with a digit.
 const sanitizeFieldName = (raw: string) =>
-  raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
+  raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase().replace(/^[0-9]+/, "");
 
 interface ConfigSchemaEditorProps {
   draft: DriverDefinition;
