@@ -89,13 +89,14 @@ def _param_wire_value(name: str, value: Any, pdef: dict[str, Any]) -> dict[str, 
     """A parameter as it goes on the wire, when its declaration translates
     it: its ``map:`` word, else through its ``scale`` / ``offset`` (the real
     value back to the device's own number); nothing when it declares
-    neither. Only a declared conversion converts: a None with no scale stays
-    None even if ``unknown`` names a code for it."""
+    neither. A parameter has no ``unknown`` (``compiled_protocol.param_conversion``),
+    so a None goes out as it would with no conversion."""
     mapped = compiled_protocol.map_word(value, pdef.get("map"))
     if mapped is not None:
         return {name: mapped}
-    if pdef.get("scale") is not None or pdef.get("offset") is not None:
-        return {name: compiled_protocol.value_to_wire(value, pdef)}
+    conversion = compiled_protocol.param_conversion(pdef)
+    if conversion is not None:
+        return {name: compiled_protocol.value_to_wire(value, conversion)}
     return {}
 
 

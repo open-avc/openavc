@@ -55,6 +55,7 @@ from openavc.drivers.child_routes import (
 )
 from openavc.drivers.json_value_spec import FLAT, LISTED, Place, json_value_mapping
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
+from openavc.drivers.spec import PARAM_CONVERSION_KEYS
 from openavc.drivers.spec import (
     NUMERIC_TYPES,
     PLACEHOLDER,
@@ -489,12 +490,19 @@ def coerce_osc_value(value: Any, value_type: str) -> Any:
 # the contract's (spec.CONVERSION_KEYS), which the validator reads too.
 
 
-def conversion_of(decl: Any) -> dict[str, Any] | None:
-    """The conversion keys a state variable or param declares, or None."""
+def conversion_of(decl: Any, keys: tuple[str, ...] = CONVERSION_KEYS) -> dict[str, Any] | None:
+    """The conversion keys a state variable declares, or None; a command
+    parameter's are its ``PARAM_CONVERSION_KEYS`` (``param_conversion``)."""
     if not isinstance(decl, dict):
         return None
-    found = {k: decl[k] for k in CONVERSION_KEYS if decl.get(k) is not None}
+    found = {k: decl[k] for k in keys if decl.get(k) is not None}
     return found or None
+
+
+def param_conversion(decl: Any) -> dict[str, Any] | None:
+    """THE conversion a command parameter declares: its scale and offset,
+    never an ``unknown`` (``spec.PARAM_CONVERSION_KEYS``), or None."""
+    return conversion_of(decl, PARAM_CONVERSION_KEYS)
 
 
 def _whole(number: float) -> int:

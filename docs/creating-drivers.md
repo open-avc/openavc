@@ -828,7 +828,7 @@ state_variables:
     unknown: [255]
 ```
 
-Every response rule that writes the variable is converted, in text, JSON and OSC rules alike, except a value that comes out of a rule's `map:`, which is used as written. `min`, `max`, `step` and `default` are in real units. A command parameter that sets the value declares the same `scale` and `offset` (see [`commands` entry](#commands-entry)), and a device setting converts through its state variable. A Python driver converts in its own code, so these keys are refused there.
+Every response rule that writes the variable is converted, in text, JSON and OSC rules alike, except a value that comes out of a rule's `map:`, which is used as written. `min`, `max`, `step` and `default` are in real units. A command parameter that sets the value declares the same `scale` and `offset` (see [`commands` entry](#commands-entry)), but never `unknown`: a parameter is sent, not read, so Validate refuses `unknown` on one (from OpenAVC 0.41.0, a driver already installed with one loads, ignores it and names it on its Installed entry). A device setting converts through its state variable. A Python driver converts in its own code, so these keys are refused there.
 
 The auto-generated simulator holds the real value and answers in the device's own form: the number converted back, empty sent as the first `unknown` value, and as many digits as the rule reads, so a rule reading `(\d{3})` is answered `030`, not `30`.
 

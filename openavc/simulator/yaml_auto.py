@@ -64,6 +64,7 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     coerce_osc_value,
     conversion_of,
+    param_conversion,
     map_entry,
     reading_from_wire,
     safe_substitute,
@@ -1822,7 +1823,7 @@ class _CommandRead:
                 base = spec_int_base(self.specs.get(param_name, ""))
                 if base and group is not None:
                     self.group_bases[group] = base
-            conversion = conversion_of(param_def)
+            conversion = param_conversion(param_def)
             if conversion and group is not None:
                 self.group_conversions[group] = conversion
 

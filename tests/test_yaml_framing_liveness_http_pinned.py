@@ -481,10 +481,12 @@ def test_nothing_to_translate_returns_the_same_dict() -> None:
     assert wire({"a": {"map": {"1": "X"}}}, empty) is empty
 
 
-def test_none_is_left_alone_without_scale_even_with_unknown_declared() -> None:
+def test_none_is_left_alone_even_with_unknown_declared() -> None:
+    # A parameter has no unknown: it names a reading, so a None is never sent
+    # as its code, with or without a scale.
     given = {"a": None}
     assert wire({"a": {"unknown": [255]}}, given) is given
-    assert wire({"a": {"unknown": [255], "scale": 1}}, {"a": None}) == {"a": 255}
+    assert wire({"a": {"unknown": [255], "scale": 1}}, {"a": None}) == {"a": None}
 
 
 def test_only_the_translated_params_change_and_the_rest_keep_their_order() -> None:

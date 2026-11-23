@@ -157,9 +157,30 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
     the block's ``requires:`` gate, which says whether this release reads
     the block at all.
     """
-    walk = _KeyWalk()
+    walk = _KeyWalk({(place, "unknown") for place, _ in param_unknowns(driver_def)})
     walk.walk({"fields": _KEY_WALK_FIELDS, "extra": False}, driver_def, "")
     return walk.errors
+
+
+def param_unknowns(driver_def: dict[str, Any]) -> list[tuple[str, str]]:
+    """Each command parameter that declares ``unknown``, by its place, with
+    THE sentence saying where it goes: a parameter is sent and has no
+    reading (``spec.PARAM_CONVERSION_KEYS``). Refused where a driver is
+    written, named where one loads (the definition walk's ``param_unknowns``
+    part); the key walk leaves the key to it."""
+    found = []
+    commands = driver_def.get("commands") if isinstance(driver_def, dict) else None
+    for cmd_name, cmd_def in (commands.items() if isinstance(commands, dict) else ()):
+        params = cmd_def.get("params") if isinstance(cmd_def, dict) else None
+        for pname, pdef in (params.items() if isinstance(params, dict) else ()):
+            if isinstance(pdef, dict) and "unknown" in pdef:
+                found.append((
+                    f"commands.{cmd_name}.params.{pname}",
+                    f"Command '{cmd_name}' param '{pname}': remove unknown. It marks a "
+                    "value the device sends when it has no reading, so it goes on the "
+                    "state variable a reply sets, never on a parameter.",
+                ))
+    return found
 
 
 # The top-level fields as the key walk reads them: a field left whole to its
@@ -182,8 +203,10 @@ class _KeyWalk:
     reads.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, said: set[tuple[str, str]] | None = None) -> None:
         self.errors = _TaggedErrors()
+        # (place, key) another check refuses in words of its own.
+        self.said = said or set()
 
     def walk(self, node: Any, value: Any, loc: str) -> None:
         if not isinstance(node, dict):
@@ -244,6 +267,8 @@ class _KeyWalk:
     def _undeclared(self, known: set[str], value: dict[Any, Any], loc: str) -> None:
         errors = self.errors
         for key in sorted(set(value) - known, key=str):
+            if (loc, key) in self.said:
+                continue
             close = _difflib.get_close_matches(
                 str(key), sorted(known), n=1, cutoff=0.7
             )
@@ -459,7 +484,13 @@ class _DefinitionWalk:
             (self.discovery_authored, "discovery"),
             (self.model_problems, ""),
             (self.transport_named, "transport"),
+            (self.param_unknowns, "commands"),
         ]
+
+    def param_unknowns(self) -> None:
+        """A command parameter's ``unknown``, which no load reads
+        (module-level ``param_unknowns``)."""
+        self.authored.at_each(param_unknowns(self.driver_def))
 
     def transport_named(self) -> None:
         """A transport written as a null or a blank: no transport, which a

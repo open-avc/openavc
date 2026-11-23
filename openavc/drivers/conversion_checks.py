@@ -33,7 +33,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, NamedTuple
 
 from openavc.drivers.setting_checks import python_setting_map_errors
-from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES
+from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES, PARAM_CONVERSION_KEYS
 
 # A conversion needs a number to work on, named as the message says it.
 _NUMERIC_WORDS = ", ".join(NUMERIC_TYPES[:-1]) + " or " + NUMERIC_TYPES[-1]
@@ -69,7 +69,8 @@ def value_conversion_issues(
         for sites in _PLACES
         for site in sites(driver_def)
         for message in _declaration_errors(
-            site.where, site.decl, python=python, in_action=site.in_action
+            site.where, site.decl, python=python, in_action=site.in_action,
+            keys=CONVERSION_KEYS if python else site.keys,
         )
     ]
 
@@ -77,12 +78,15 @@ def value_conversion_issues(
 class _Site(NamedTuple):
     """One declaration that may carry a conversion: its ``place`` in the
     definition, the ``where`` its messages open with, the declaration itself,
-    and whether it is an action's parameter (never converted)."""
+    whether it is an action's parameter (never converted), and the keys it
+    converts through (a command parameter's have no ``unknown``, which the
+    definition walk refuses in words of its own)."""
 
     place: str
     where: str
     decl: Any
     in_action: bool = False
+    keys: tuple[str, ...] = CONVERSION_KEYS
 
 
 def _variable_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
@@ -99,7 +103,8 @@ def _child_variable_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
 def _command_param_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
     for cmd_name, pname, pdef in _inner_entries(driver_def.get("commands"), "params"):
         yield _Site(
-            f"commands.{cmd_name}.params.{pname}", f"Command '{cmd_name}' param '{pname}'", pdef
+            f"commands.{cmd_name}.params.{pname}", f"Command '{cmd_name}' param '{pname}'", pdef,
+            keys=PARAM_CONVERSION_KEYS,
         )
 
 
@@ -147,14 +152,15 @@ def _entries(block: Any) -> list[tuple[Any, Any]]:
 
 
 def _declaration_errors(
-    where: str, decl: Any, *, python: bool, in_action: bool
+    where: str, decl: Any, *, python: bool, in_action: bool,
+    keys: tuple[str, ...] = CONVERSION_KEYS,
 ) -> list[str]:
     """What one declaration is held to: nothing without a conversion key; on
     the Python surface, its removal; on an action's parameter, the move to
     the command's own; otherwise a numeric type and a scale that is not 0."""
     if not isinstance(decl, dict):
         return []
-    present = [k for k in CONVERSION_KEYS if k in decl]
+    present = [k for k in keys if k in decl]
     if not present:
         return []
     if python:

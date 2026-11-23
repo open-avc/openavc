@@ -1006,10 +1006,17 @@ VALUE_UNKNOWN: dict = {
 }
 
 # The keys a declaration converts through, in the order the checks name them:
-# what compiled_protocol reads off a state variable or param, and what
+# what compiled_protocol reads off a state variable, and what
 # conversion_checks refuses where nothing would apply them. The registry
 # entries above carry the same names (tests/test_conversion_keys.py).
 CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset", "unknown")
+
+# The keys a command parameter converts through. A parameter is sent, never
+# read back as a reading, so it has no ``unknown``: that names a value the
+# device sends when it has no reading, and goes on the state variable a reply
+# sets (the definition walk refuses one on a parameter, and the runtime and
+# the simulator never read it there).
+PARAM_CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset")
 
 # Column types for a table config field: the scalar config types (a table
 # inside a table cell is not a thing).
