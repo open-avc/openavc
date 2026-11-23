@@ -7,6 +7,7 @@ the update came from) and deletes the rest, so it stops growing by one
 installer per update, and Rollback offers the version the update came from.
 """
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -58,6 +59,24 @@ def test_a_confirmed_update_keeps_the_running_and_the_previous_installer(tmp_pat
     assert read_pending_marker(tmp_path) is None
     assert _cached(tmp_path) == ["OpenAVC-Setup-0.39.0.exe", "OpenAVC-Setup-0.40.0.exe"]
     assert _rollback_target(tmp_path, "0.40.0") == "0.39.0"
+
+
+def test_an_installer_downloaded_during_this_start_stays(tmp_path):
+    """A cloud-pushed update can download its installer while the engine
+    starts, before the confirm. It is newer than the pending marker, which
+    every start touches first, and it is left for the update to run."""
+    cache = _cache(tmp_path, "0.38.0", "0.39.0", "0.40.0")
+    write_pending_marker(tmp_path, "0.39.0", "0.40.0")
+    marker_time = (tmp_path / "pending-update").stat().st_mtime
+    pushed = cache / "OpenAVC-Setup-0.41.0.exe"
+    pushed.write_bytes(b"0.41.0")
+    os.utime(pushed, (marker_time + 5, marker_time + 5))
+
+    _confirm(tmp_path, "0.40.0")
+
+    assert _cached(tmp_path) == [
+        "OpenAVC-Setup-0.39.0.exe", "OpenAVC-Setup-0.40.0.exe", "OpenAVC-Setup-0.41.0.exe",
+    ]
 
 
 def test_rollback_still_runs_the_previous_installer_afterwards(tmp_path):

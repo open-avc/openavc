@@ -404,7 +404,9 @@ def _refuse_without_update_checks(marker: dict, went_without) -> None:
         )
 
 
-def prune_installer_cache(data_dir: Path, from_version: str) -> list[str]:
+def prune_installer_cache(
+    data_dir: Path, from_version: str, written_by: float | None = None,
+) -> list[str]:
     """Windows: delete the cached installers no rollback can use; return their names.
 
     Every in-app update downloads its installer into ``update-cache``, and
@@ -416,7 +418,9 @@ def prune_installer_cache(data_dir: Path, from_version: str) -> list[str]:
     stay and the rest go, so Rollback offers ``from_version`` afterwards.
 
     When ``from_version`` has no installer here, the newest other one stays,
-    which is what Rollback offered already. A file whose name does not carry a
+    which is what Rollback offered already. So does one written after
+    ``written_by``: an update the cloud pushed while the engine started may
+    have downloaded it and not yet run it. A file whose name does not carry a
     version is not one of ours and is left alone. Called once an update is
     confirmed (``confirm_startup``), when no update or rollback is running.
     Nothing here can stop the server starting: every failure is logged and the
@@ -427,7 +431,10 @@ def prune_installer_cache(data_dir: Path, from_version: str) -> list[str]:
     except OSError:
         log.warning("Could not read the installer cache; leaving it as it is", exc_info=True)
         return []
-    removed = _remove_cached_files(_installers_no_rollback_uses(installers, from_version))
+    removed = _remove_cached_files([
+        inst for inst in _installers_no_rollback_uses(installers, from_version)
+        if written_by is None or _written_by(inst, written_by)
+    ])
     if removed:
         log.info(
             "Removed %d cached installer(s) no rollback uses: %s",
@@ -446,15 +453,15 @@ def _marker_written_at(data_dir: Path) -> float | None:
 
 
 def _trim_update_cache(data_dir: Path, from_version: str, started: float | None) -> None:
-    """After a confirmed update: on Windows the installers no rollback uses go
-    (``prune_installer_cache``), elsewhere the update archives written before
-    ``started`` (``prune_update_archives``).
+    """After a confirmed update, what was written before ``started``: on
+    Windows the installers no rollback uses (``prune_installer_cache``),
+    elsewhere the update archives (``prune_update_archives``).
 
     A failure in it never reaches startup, whatever the cache holds.
     """
     try:
         if sys.platform == "win32":
-            prune_installer_cache(data_dir, from_version)
+            prune_installer_cache(data_dir, from_version, written_by=started)
         elif started is not None:
             prune_update_archives(data_dir, written_by=started)
     except Exception:
