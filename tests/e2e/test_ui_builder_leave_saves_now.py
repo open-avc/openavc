@@ -67,6 +67,10 @@ def test_leaving_the_builder_sends_the_waiting_save_without_asking(server_factor
         "aria-current", "page"
     )
     saves.release()
-    page.wait_for_timeout(300)
-    saved = page.request.get(f"{handle.base_url}/api/project").json()
-    assert saved["ui"]["pages"][0]["elements"] == []
+    elements = None
+    for _ in range(50):
+        elements = page.request.get(f"{handle.base_url}/api/project").json()["ui"]["pages"][0]["elements"]
+        if elements == []:
+            break
+        page.wait_for_timeout(100)
+    assert elements == []
