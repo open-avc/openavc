@@ -77,7 +77,7 @@ def normalize_relpath(raw: str, *, require_extension: bool = True) -> str:
     if len(parts) > MAX_PATH_DEPTH:
         raise CustomUIPathError(f"Path is nested too deeply (max {MAX_PATH_DEPTH} levels).")
     for part in parts:
-        if not _COMPONENT_RE.match(part) or len(part) > _MAX_COMPONENT_LEN:
+        if not _COMPONENT_RE.fullmatch(part) or len(part) > _MAX_COMPONENT_LEN:
             raise CustomUIPathError(
                 f"'{part}' is not a valid file or folder name. Use letters, numbers, "
                 "spaces, dots, dashes and underscores."

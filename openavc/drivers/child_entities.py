@@ -109,7 +109,7 @@ def _string_child_id(child_type: str, local_id: Any, id_format: dict[str, Any]) 
             f"Child {child_type} local_id must be str (id_format.type "
             f"is 'string'), got {type(local_id).__name__}: {local_id!r}"
         )
-    if not _CHILD_STRING_ID_RE.match(local_id):
+    if not _CHILD_STRING_ID_RE.fullmatch(local_id):
         raise ValueError(
             f"Child {child_type} local_id {local_id!r} is not a valid "
             f"string id (allowed characters: letters, digits, '_', '-')"

@@ -189,7 +189,7 @@ def _sanitize_filename(raw: str) -> str:
     """Sanitize filename: strip path components, validate characters."""
     # Strip any path components (prevent directory traversal)
     name = Path(raw).name
-    if not name or not FILENAME_PATTERN.match(name):
+    if not name or not FILENAME_PATTERN.fullmatch(name):
         raise HTTPException(
             status_code=400,
             detail=f"Invalid filename: {raw!r}. Use alphanumeric, hyphens, underscores, dots.",

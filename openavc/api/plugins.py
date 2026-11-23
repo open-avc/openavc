@@ -478,7 +478,7 @@ async def emit_context_action(plugin_id: str, action_id: str, request: Request) 
     # Action names are plain identifiers (declared context_actions, matrix
     # route/unroute, preset actions all match); anything else would splice
     # extra segments into the event name.
-    if not _ACTION_ID_RE.match(action_id):
+    if not _ACTION_ID_RE.fullmatch(action_id):
         raise HTTPException(status_code=400, detail=(
             f"The plugin names this action '{action_id}', which is not an action name: a name "
             "starts with a letter, followed only by letters, digits, '_' or '-'. Ask the "

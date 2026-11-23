@@ -154,7 +154,7 @@ class ScriptCreateRequest(BaseModel):
     @field_validator("id")
     @classmethod
     def validate_id(cls, v: str) -> str:
-        if not v or not _SCRIPT_ID_RE.match(v):
+        if not v or not _SCRIPT_ID_RE.fullmatch(v):
             raise ValueError("Script ID must be lowercase alphanumeric with underscores")
         return v
 

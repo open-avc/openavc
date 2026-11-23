@@ -266,6 +266,15 @@ async def test_context_action_invalid_action_id_400s(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_context_action_id_with_a_trailing_newline_400s(monkeypatch):
+    engine = _engine(monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        await emit_context_action("acme_widget", "route\n", _FakeRequest({}))
+    assert exc.value.status_code == 400
+    assert engine.events.emitted == []
+
+
+@pytest.mark.asyncio
 async def test_context_action_non_dict_payload_400s(monkeypatch):
     engine = _engine(monkeypatch)
     with pytest.raises(HTTPException) as exc:

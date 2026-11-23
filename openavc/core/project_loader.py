@@ -835,7 +835,7 @@ class ScriptConfig(_ForwardCompatModel):
         # segment, a sys.modules key, and a thread name, so an imported
         # project must not carry ids the API would reject (slashes, spaces,
         # dots, uppercase). Lowercase alphanumeric + underscore only.
-        if not v or not _SCRIPT_ID_RE.match(v):
+        if not v or not _SCRIPT_ID_RE.fullmatch(v):
             raise ValueError(
                 f"Script ID '{v}' must be lowercase alphanumeric with underscores "
                 f"(^[a-z0-9_]+$)"

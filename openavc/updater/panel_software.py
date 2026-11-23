@@ -164,7 +164,7 @@ def _signer_set(value: Any) -> frozenset[str]:
     if not isinstance(value, str) or not value.strip():
         return frozenset()
     parts = {p.strip().lower() for p in value.split(",") if p.strip()}
-    if not parts or not all(_HEX64.match(p) for p in parts):
+    if not parts or not all(_HEX64.fullmatch(p) for p in parts):
         return frozenset()
     return frozenset(parts)
 
@@ -301,7 +301,7 @@ class _Record:
             )
         except (KeyError, TypeError, ValueError):
             return None
-        if not _HEX64.match(record.sha256) or record.install not in INSTALL_MODES:
+        if not _HEX64.fullmatch(record.sha256) or record.install not in INSTALL_MODES:
             return None
         return record
 
@@ -407,7 +407,7 @@ class _Request:
         scheme = urlparse(self.url).scheme
         if scheme != "https":
             return _invalid(f"Refusing a download address that is not HTTPS ({scheme or 'none'}).")
-        if not _HEX64.match(self.sha256):
+        if not _HEX64.fullmatch(self.sha256):
             return _invalid("The update has no valid SHA-256 checksum, so nothing was staged.")
         if self.version_code is None:
             return _invalid("The update has no valid version code, so nothing was staged.")

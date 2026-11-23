@@ -1798,7 +1798,7 @@ class ReportStore:
 
     def save(self, name: str, data: bytes) -> str:
         """Write ``data`` as ``name`` (made unique), prune, return the name used."""
-        if not self.name_pattern.match(name):
+        if not self.name_pattern.fullmatch(name):
             raise ValueError(f"Not a report file name: {name}")
         self.directory.mkdir(parents=True, exist_ok=True)
         final = name
@@ -1827,7 +1827,7 @@ class ReportStore:
             return []
         out = []
         for path in self.directory.iterdir():
-            if path.is_file() and self.name_pattern.match(path.name):
+            if path.is_file() and self.name_pattern.fullmatch(path.name):
                 stat = path.stat()
                 out.append({"name": path.name, "size": stat.st_size, "modified": stat.st_mtime})
         out.sort(key=lambda r: r["modified"], reverse=True)
@@ -1835,7 +1835,7 @@ class ReportStore:
 
     def path(self, name: str) -> Path | None:
         """The report's path, or None when there is no such report."""
-        if not self.name_pattern.match(name):
+        if not self.name_pattern.fullmatch(name):
             return None
         path = self.directory / name
         return path if path.is_file() else None

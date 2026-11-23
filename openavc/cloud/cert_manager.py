@@ -63,7 +63,7 @@ def _valid_dns_name(name: str, max_labels: int = 10) -> bool:
     parts = name.split(".")
     if len(parts) > max_labels:
         return False
-    return all(_DNS_LABEL_RE.match(part) for part in parts)
+    return all(_DNS_LABEL_RE.fullmatch(part) for part in parts)
 
 
 def generate_key_and_csr(label: str, zone: str) -> tuple[bytes, str]:

@@ -22,7 +22,7 @@ def is_safe_script_filename(name: str) -> bool:
     surface can't drop a file into an unexpected subdir or with an unexpected
     type. Mirrors the ``.py``-basename discipline the driver endpoints enforce.
     """
-    return bool(_SCRIPT_FILENAME_RE.match(name))
+    return bool(_SCRIPT_FILENAME_RE.fullmatch(name))
 
 
 def safe_path_within(base: Path, candidate: str) -> Path | None:

@@ -120,7 +120,7 @@ def validate_hostname(name: str) -> str:
     if not name or len(name) > 253:
         raise ValueError("Hostname must be 1-253 characters.")
     for label in name.split("."):
-        if not _HOSTNAME_LABEL.match(label):
+        if not _HOSTNAME_LABEL.fullmatch(label):
             raise ValueError(
                 "Hostname may contain letters, digits, and hyphens, and "
                 "must not start or end with a hyphen."

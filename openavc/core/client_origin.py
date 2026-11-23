@@ -65,7 +65,7 @@ def parse_client_id(value: str | None) -> str | None:
     if not value:
         return None
     value = value.strip()
-    if not _CLIENT_ID.match(value):
+    if not _CLIENT_ID.fullmatch(value):
         return None
     return value
 
