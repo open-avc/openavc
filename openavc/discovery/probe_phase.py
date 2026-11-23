@@ -29,7 +29,7 @@ The rules worth knowing before changing anything here:
   execution agree about what the phase is about to do. The phase reads the
   drivers once, as it begins.
 * A probe enriches the device's empty fields and never replaces what the
-  passive listeners or SNMP already said (``fill_only``).
+  passive listeners or SNMP already said (``result.SOURCE_TRUST``).
 * Every record names a host on a scanned subnet (discovery/scan_scope.py): a
   companion's host outside them is dropped.
 
@@ -397,7 +397,7 @@ class DriverProbes:
                 "scanned subnets; ignoring", host,
             )
             return
-        await self._add_probe_evidence(host, ev, "companion", "broadcast_probe")
+        await self._add_probe_evidence(host, ev, "broadcast_probe")
 
     # --- Keeping what answered ---
 
@@ -424,22 +424,19 @@ class DriverProbes:
                 continue
             self._probe_merged.add(at)
             for ip, ev, source in self._probe_finished[at]:
-                await self._add_probe_evidence(ip, ev, source, source)
+                await self._add_probe_evidence(ip, ev, source)
             merged += 1
         return merged
 
-    async def _add_probe_evidence(
-        self, ip: str, ev: Evidence, info_source: str, update_source: str,
-    ) -> None:
-        """Put one probe's evidence on its device, and lift what it extracted
-        (hostname, model, firmware) onto the record so the card and the
-        export report show it. ``fill_only``: a probe runs after passive
-        collection, so it enriches empty fields but never clobbers an
-        authoritative passive or SNMP identity by being longer."""
+    async def _add_probe_evidence(self, ip: str, ev: Evidence, update_source: str) -> None:
+        """Put one probe's evidence on its device, and lift what it read from
+        the reply (hostname, model, firmware) onto the record so the card and
+        the export report show it. A probe's reading only fills a field the
+        listeners and SNMP left empty (``result.SOURCE_TRUST``)."""
         device = self._get_or_create(ip)
         device.alive = True
         device.evidence_log.append(ev)
         info = device_info_from_evidence(ev)
         if info:
-            merge_device_info(device, info, info_source, fill_only=True)
+            merge_device_info(device, info, "probe")
         await self._emit_device_update(device, update_source)

@@ -87,12 +87,12 @@ class NamesAndMac:
     """What an address's names and MAC address tell a scan.
 
     ``own`` is what the scan read itself (``hostname``, ``device_name``,
-    ``mac``) and merges by the standard rule, so a re-scan refreshes a renamed
-    or reassigned host instead of showing the previous occupant. ``card_maker``
-    is the OUI registry's ``manufacturer`` and ``category``: they name the
-    network card's maker, often not the device's, so they only fill fields
-    nothing else filled. ``evidence`` is the host-name records, then the OUI
-    record.
+    ``mac``), merged as the network's names for the address (``arp``), so a
+    re-scan's own reads replace the last scan's, a renamed or reassigned host
+    included. ``card_maker`` is the OUI registry's ``manufacturer`` and
+    ``category``: they name the network card's maker, often not the
+    device's, so they only fill fields nothing else filled (``oui``).
+    ``evidence`` is the host-name records, then the OUI record.
     """
 
     own: dict[str, Any]
@@ -109,7 +109,7 @@ class NamesAndMac:
         if self.own:
             merge_device_info(device, self.own, "arp")
         if self.card_maker:
-            merge_device_info(device, self.card_maker, "arp", fill_only=True)
+            merge_device_info(device, self.card_maker, "oui")
 
 
 class ScanLookups(Protocol):

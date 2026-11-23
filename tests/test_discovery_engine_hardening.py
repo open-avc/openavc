@@ -465,22 +465,22 @@ class TestCollectCancellation:
 
 
 class TestMergePriority:
-    def test_fill_only_keeps_existing_identity(self):
+    def test_a_probe_only_fills_existing_identity(self):
         dev = DiscoveredDevice(ip="10.77.0.9")
         dev.manufacturer = "QSC"  # set by an authoritative passive source
         # A longer probe-derived value would win under length-only merge.
         merge_device_info(
             dev, {"manufacturer": "QSC Audio Products LLC", "model": "Core110"},
-            "probe", fill_only=True,
+            "probe",
         )
         assert dev.manufacturer == "QSC"   # not clobbered
         assert dev.model == "Core110"      # empty field still filled
 
-    def test_default_merge_still_prefers_longer(self):
+    def test_a_source_that_read_the_device_replaces_a_value_of_unknown_source(self):
         dev = DiscoveredDevice(ip="10.77.0.9")
-        dev.manufacturer = "QSC"
-        merge_device_info(dev, {"manufacturer": "QSC Audio"}, "snmp")
-        assert dev.manufacturer == "QSC Audio"
+        dev.manufacturer = "QSC Audio"
+        merge_device_info(dev, {"manufacturer": "QSC"}, "snmp")
+        assert dev.manufacturer == "QSC"
 
     async def test_companion_probe_does_not_overwrite_passive_manufacturer(self):
         engine = DiscoveryEngine()

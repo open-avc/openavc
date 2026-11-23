@@ -18,6 +18,12 @@ category shown for it. Every record carries it (``to_dict``), so the REST
 results, the live feed, the export, the assistant's results and the Device
 Audit's network check all say the same; the add asks it for the name
 (``api/discovery._discovered_device_name``).
+
+THE rule for which source a device's maker, model and names are taken from
+when a scan's sources disagree is ``merge_device_info``'s, by the source's
+trust (``SOURCE_TRUST``), never by which string is longer; and the model a
+device identified through an mDNS service shows is that service's
+(``identity_of``).
 """
 
 from __future__ import annotations
@@ -141,6 +147,12 @@ class IdentificationMatch:
     enrichment signal put ahead of it included). It names the device
     (``identity_of``) and is not sent itself.
 
+    ``record`` (``identified`` only) is the record that said what the
+    device is: the best fingerprint match's (a cross-vendor one when a hint
+    put a peer driver ahead of it), or the connected project device's. It
+    is ``evidence``'s first, so it is not sent itself; ``identity_of`` reads
+    the model off it.
+
     ``evidence`` is the part of the device's log that fed this result:
     the fingerprint records that matched for ``identified``, the best
     match's first (plus the enrichment records when a cross-vendor match
@@ -160,6 +172,7 @@ class IdentificationMatch:
     reason: str = ""
     evidence: list[Evidence] = field(default_factory=list)
     cross_vendor: bool = False
+    record: Evidence | None = None
 
     @classmethod
     def identified(
@@ -176,6 +189,11 @@ class IdentificationMatch:
             alternatives=list(alternatives or []),
             evidence=list(evidence or []),
         )
+
+    def said_by(self, record: Evidence) -> "IdentificationMatch":
+        """This identification, naming the record that said what the device
+        is (``record``)."""
+        return replace(self, record=record)
 
     def through_a_shared_protocol(self) -> "IdentificationMatch":
         """This identification, marked as said by a ``cross_vendor``
@@ -275,25 +293,47 @@ def identity_of(device: "DiscoveredDevice", adding_with: str | None = None) -> D
 
     The maker is the one the scan read, else the identifying driver's, unless
     that driver was identified through a fingerprint many makers share (its
-    maker is a protocol's, "Generic" and the like). The model and category
-    are as the scan holds them.
+    maker is a protocol's, "Generic" and the like). The model is the one the
+    mDNS service that identified the device gave (``_model_of``), else the
+    scan's; the category is the scan's.
     """
     by = device.identified_by
+    model = _model_of(device)
     return DeviceIdentity(
-        name=_name_of(device, adding_with),
+        name=_name_of(device, model, adding_with),
         manufacturer=device.manufacturer or (by.maker() if by is not None else None),
-        model=device.model,
+        model=model,
         category=device.category,
     )
 
 
-def _name_of(device: "DiscoveredDevice", adding_with: str | None) -> str:
-    """``identity_of``'s name."""
+def _model_of(device: "DiscoveredDevice") -> str | None:
+    """The model shown for ``device``: the one the mDNS service that
+    identified it gave, else the one the scan holds.
+
+    A device's services can each name a model (its product code on the
+    service a driver knows it by, a board code on another), and the scan
+    holds one of them. The service that said what the device is says which,
+    and a re-match to another driver reads its own service's.
+    """
+    from openavc.discovery.tier_matcher import KIND_MDNS
+
+    match = device.identification
+    record = match.record if match is not None else None
+    if record is not None and record.data.get("kind") == KIND_MDNS:
+        model = mdns_txt_identity(record.data.get("txt") or {}).get("model")
+        if model:
+            return model
+    return device.model
+
+
+def _name_of(device: "DiscoveredDevice", model: str | None, adding_with: str | None) -> str:
+    """``identity_of``'s name, ``model`` being the one it shows."""
     by = device.identified_by
     if by is not None and not by.cross_vendor:
         return by.name
-    if device.model:
-        return _maker_and_model(device.manufacturer, device.model)
+    if model:
+        return _maker_and_model(device.manufacturer, model)
     named = by.name if by is not None else adding_with
     return named or _self_named(device)
 
@@ -348,6 +388,9 @@ class DiscoveredDevice:
     # The driver ``identification`` names, set beside it on every match
     # (None when it names none), so the record's name follows the match.
     identified_by: IdentifyingDriver | None = None
+    # The source each identity field was last taken from (``SOURCE_TRUST``),
+    # by field. Kept across scans with the fields themselves; not sent.
+    field_sources: dict[str, str] = field(default_factory=dict)
 
     # What each port received from the scan's identification checks, by port
     # (``port_guard.PortGuard.record``): a port a connected project device
@@ -386,47 +429,71 @@ class DiscoveredDevice:
         }
 
 
+# The sources a device's identity fields are read from, least trusted first.
+# The first three only fill a field nothing else gave, the first of them the
+# scan reads filling it: the maker and category registered for the device's
+# MAC address (the network card's, often not the device's), then what a
+# driver's probe or companion read from its reply (the driver's own literals
+# left out, ``device_info_from_evidence``), then the category its identifying
+# driver declares. Then what the device and its network say of it: an mDNS service's TXT keys and instance name, whose meaning each
+# service type sets for itself; the network's names for the address (reverse
+# DNS, NetBIOS) and the ARP table's MAC; its SNMP agent (sysName, the Entity
+# MIB); its AMX beacon (Make, Model), written for control systems; and its
+# UPnP description (manufacturer, modelName, friendlyName), written for a
+# control point to show.
+SOURCE_TRUST: tuple[str, ...] = (
+    "driver_category", "probe", "oui",
+    "mdns", "arp", "snmp", "amx_ddp", "ssdp",
+)
+_FILLS_ONLY = 3  # the first three
+# A value set with no source recorded (built directly): any of the sources
+# that read the device replaces it, none of those that only fill does.
+_UNRECORDED = _FILLS_ONLY - 0.5
+
+_IDENTITY_KEYS = ("mac", "hostname", "manufacturer", "model", "device_name",
+                  "firmware", "serial_number", "category")
+
+
+def _trust(source: str) -> int:
+    """Where ``source`` stands in ``SOURCE_TRUST``; a source nobody ranked is refused."""
+    try:
+        return SOURCE_TRUST.index(source)
+    except ValueError:
+        raise ValueError(f"{source!r} is not a ranked identity source") from None
+
+
 def merge_device_info(
     existing: DiscoveredDevice,
     new_info: dict[str, Any],
-    source: str,  # kept for API compatibility — not stored on the device
-    *,
-    fill_only: bool = False,
+    source: str,
 ) -> None:
-    """Merge new information into an existing device record.
+    """Merge what ``source`` read about a device into its record.
 
-    Rules:
-      - Never overwrite with None (only enrich)
-      - More specific info wins (longer strings)
-      - ``fill_only=True`` (driver-probe / companion / ARP-OUI sources):
-        only set an identity field that is still empty; never overwrite a
-        value an earlier, higher-trust source already provided. Driver-
-        declared ``tcp_probe``/``udp_probe`` text and community Python
-        companions run *after* passive collection (mDNS/SSDP/AMX/SNMP), so
-        the length-only rule would otherwise let their text clobber
-        authoritative passive identity. The ARP/OUI merges use it too: OUI
-        names the NIC vendor (often not the device vendor), the late ARP
-        harvest runs after passive collection, and on a re-scan the phase-4
-        pass sees identity carried over from the previous scan. They all
-        still enrich fields nothing else populated.
+    An identity field (MAC, host name, maker, model, the name it gave itself,
+    firmware, serial, category) takes the new value when it is empty, or when
+    ``source`` is trusted as much as the one it was taken from (the same
+    source read again, a later scan included, replaces its own value) or
+    more (``SOURCE_TRUST``). A less trusted source fills only an empty field,
+    so the result is the same whatever order different sources arrive in and
+    whichever string is longer. Each field records its source
+    (``DiscoveredDevice.field_sources``). An empty value is never taken.
+
+    Open ports, protocols and mDNS service types are added to; a banner, the
+    SNMP and the SSDP details are kept as first read.
     """
-    del source  # legacy parameter, retained so call sites keep their breadcrumb
-
-    for key in ("mac", "hostname", "manufacturer", "model", "device_name",
-                "firmware", "serial_number", "category"):
+    trust: int | None = None
+    for key in _IDENTITY_KEYS:
         new_val = new_info.get(key)
-        if new_val is None:
+        if new_val is None or new_val == "":
             continue
-        old_val = getattr(existing, key, None)
-        if old_val is None:
-            setattr(existing, key, new_val)
-        elif fill_only:
-            # Lower-trust source: keep the existing authoritative value.
-            continue
-        elif isinstance(new_val, str) and isinstance(old_val, str):
-            # More specific (longer) string wins
-            if len(new_val) > len(old_val):
-                setattr(existing, key, new_val)
+        if trust is None:
+            trust = _trust(source)
+        if getattr(existing, key, None) not in (None, ""):
+            held = existing.field_sources.get(key)
+            if trust < (_trust(held) if held is not None else _UNRECORDED):
+                continue
+        setattr(existing, key, new_val)
+        existing.field_sources[key] = source
 
     # Merge list fields (deduplicate)
     for key in ("open_ports", "protocols", "mdns_services"):
@@ -478,25 +545,58 @@ def device_info_from_evidence(ev: Evidence) -> dict[str, Any]:
     All three layouts are scanned; first non-None value per key wins.
     The probe-runner ``make`` alias is folded into ``manufacturer`` so
     the device card renders a single vendor regardless of which key
-    the driver extracted.
+    the driver extracted. A field the driver's own rule set to a literal
+    (``driver_supplied``: ``extract_manufacturer`` naming ``manufacturer``
+    or ``make``) is the driver's claim, not the device's, and is left out.
     """
+    supplied = set(ev.data.get("driver_supplied") or ())
+    keys = [key for key in _PROBE_DEVICE_INFO_KEYS if key not in supplied]
+    fold_make = "make" not in supplied
     info: dict[str, Any] = {}
+    for layout in _probe_layouts(ev):
+        _absorb_layout(layout, info, keys, fold_make)
+    return info
 
-    def _absorb(src: Any) -> None:
-        if not isinstance(src, dict):
-            return
-        for key in _PROBE_DEVICE_INFO_KEYS:
-            val = src.get(key)
-            if val is not None and key not in info:
-                info[key] = val
-        if "manufacturer" not in info:
-            make = src.get("make")
-            if make is not None:
-                info["manufacturer"] = make
 
+def _probe_layouts(ev: Evidence) -> tuple[Any, Any, Any]:
+    """The three places probe evidence carries device info, in the order
+    ``device_info_from_evidence`` reads them."""
     response = ev.data.get("response")
-    _absorb(response)
-    if isinstance(response, dict):
-        _absorb(response.get("extracted"))
-    _absorb(ev.data.get("txt"))
+    extracted = response.get("extracted") if isinstance(response, dict) else None
+    return response, extracted, ev.data.get("txt")
+
+
+def _absorb_layout(src: Any, info: dict[str, Any], keys: list[str], fold_make: bool) -> None:
+    """Add to ``info`` each of ``keys`` that ``src`` carries and ``info``
+    lacks, then its ``make`` as the manufacturer when ``fold_make`` and no
+    manufacturer is known yet."""
+    if not isinstance(src, dict):
+        return
+    for key in keys:
+        if src.get(key) is not None:
+            info.setdefault(key, src[key])
+    make = src.get("make") if fold_make else None
+    if make is not None:
+        info.setdefault("manufacturer", make)
+
+
+# The TXT keys an mDNS service names its device by, by the field each fills,
+# the long key ahead of the short one.
+_MDNS_TXT_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("manufacturer", ("manufacturer", "mf")),
+    ("model", ("model", "md")),
+    ("firmware", ("firmware", "fw")),
+    ("serial_number", ("serialNumber", "sn")),
+)
+
+
+def mdns_txt_identity(txt: dict[str, str]) -> dict[str, str]:
+    """What one mDNS service's TXT record says its device is: the maker,
+    model, firmware and serial it names, by field. A key with an empty value
+    names nothing."""
+    info: dict[str, str] = {}
+    for name, keys in _MDNS_TXT_KEYS:
+        value = next((txt[k] for k in keys if txt.get(k)), None)
+        if value:
+            info[name] = value
     return info

@@ -97,7 +97,9 @@ async def test_probes_merge_in_the_order_they_started_and_once() -> None:
         assert await engine.merge_probe_results() == 0
     device = engine.results["10.77.0.5"]
     assert device.evidence_log == [early, middle, late]
-    assert device.model == "Early"
+    # A probe's reading replaces an earlier probe's (the same source read
+    # again), so the last probe started holds, whichever answered first.
+    assert device.model == "Late"
     assert updates.seen == [
         ("10.77.0.5", "broadcast_probe"), ("10.77.0.5", "companion"),
         ("10.77.0.5", "protocol_probe"),

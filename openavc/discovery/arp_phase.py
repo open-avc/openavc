@@ -283,11 +283,11 @@ class ArpHarvest:
                 continue
             device = self._get_or_create(ip)
             info, oui_ev = mac_info_and_evidence(mac, self.oui_db)
-            # fill_only: this runs AFTER passive collection, and OUI names
-            # the NIC vendor — a longer IEEE registrant string must not
-            # clobber the manufacturer/category a device self-reported via
-            # mDNS/SSDP/SNMP. Enrich empty fields; never overwrite.
-            merge_device_info(device, info, "arp", fill_only=True)
+            # The MAC is the ARP table's; the maker and category its OUI
+            # names are the network card's, which only fill what the device
+            # did not report itself (``result.SOURCE_TRUST``).
+            merge_device_info(device, {"mac": info.pop("mac")}, "arp")
+            merge_device_info(device, info, "oui")
             device.evidence_log.append(oui_ev)
             enriched += 1
             await self._emit_device_update(device, "arp_harvest")

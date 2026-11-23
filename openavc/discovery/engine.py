@@ -495,7 +495,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             return
         category = self._driver_categories.get(match.driver_id)
         if category:
-            merge_device_info(device, {"category": category}, "driver_match", fill_only=True)
+            merge_device_info(device, {"category": category}, "driver_category")
 
     async def start_scan(
         self,

@@ -23,6 +23,7 @@ from openavc.discovery.multicast import (
     send_per_interface,
     set_shared_port_reuse,
 )
+from openavc.discovery.result import mdns_txt_identity
 
 log = logging.getLogger("discovery.mdns")
 
@@ -351,7 +352,7 @@ class MDNSResult:
         """
         if self.services:
             return list(self.services.values())
-        if self.service_type or self.port:
+        if any((self.service_type, self.port, self.txt_records, self.instance_name)):
             return [MDNSService(
                 service_type=self.service_type,
                 instance_name=self.instance_name,
@@ -361,43 +362,31 @@ class MDNSResult:
         return []
 
     def to_device_info(self) -> dict[str, Any]:
-        """Convert to a dict suitable for merge_device_info()."""
+        """Convert to a dict suitable for merge_device_info().
+
+        What the device says it is comes from one service's own record per
+        field: the first, by service type, that gives it. One device's
+        services can disagree (a product code on one, a board code on
+        another), and the answer must not depend on which was heard last.
+        The model a device identified through one of these services shows is
+        that service's (``result.identity_of``).
+        """
         info: dict[str, Any] = {}
         if self.hostname:
             info["hostname"] = self.hostname
         elif self.address_name:
             info["hostname"] = _display_hostname(self.address_name)
 
-        # Extract manufacturer/model from instance name or TXT records
-        if self.instance_name:
-            info["device_name"] = self.instance_name
-        elif self.address_name:
-            info["device_name"] = self.address_name
-
-        # Common TXT record keys used by AV devices
-        txt = self.txt_records
-        if "manufacturer" in txt:
-            info["manufacturer"] = txt["manufacturer"]
-        elif "mf" in txt:
-            info["manufacturer"] = txt["mf"]
-        if "model" in txt:
-            info["model"] = txt["model"]
-        elif "md" in txt:
-            info["model"] = txt["md"]
-        if "firmware" in txt:
-            info["firmware"] = txt["firmware"]
-        elif "fw" in txt:
-            info["firmware"] = txt["fw"]
-        if "serialNumber" in txt:
-            info["serial_number"] = txt["serialNumber"]
-        elif "sn" in txt:
-            info["serial_number"] = txt["sn"]
+        services = self.service_list()
+        said = _said_of_itself(services)
+        if self.address_name:
+            said.setdefault("device_name", self.address_name)
+        info.update(said)
 
         # Record every raw mDNS service type seen on the wire. Protocol
         # / category labels come from the matched driver's registry
         # entry once the matcher runs in finalize, so core does not
         # ship a service-type → protocol / category dispatch.
-        services = self.service_list()
         types: list[str] = []
         ports: list[int] = []
         for svc in services:
@@ -1157,6 +1146,25 @@ def _host_key(name: str) -> str:
 def _is_link_local(ip: str) -> bool:
     """Is ``ip`` an IPv4 link-local (169.254/16) address?"""
     return ip.startswith("169.254.")
+
+
+def _said_of_itself(services: list[MDNSService]) -> dict[str, str]:
+    """What a device's services say it is (the name it gave, its maker,
+    model, firmware and serial), each field from the first service that gives
+    it: by service type, then instance name, a service of unknown type last."""
+    info: dict[str, str] = {}
+    for svc in sorted(services, key=_service_order):
+        if svc.instance_name:
+            info.setdefault("device_name", svc.instance_name)
+        for key, value in mdns_txt_identity(svc.txt_records).items():
+            info.setdefault(key, value)
+    return info
+
+
+def _service_order(svc: MDNSService) -> tuple[bool, str, str]:
+    """The order ``_said_of_itself`` reads a device's services in."""
+    return (svc.service_type is None, (svc.service_type or "").lower(),
+            svc.instance_name or "")
 
 
 def _fold_result(kept: MDNSResult, stranded: MDNSResult) -> None:

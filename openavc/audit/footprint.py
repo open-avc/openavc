@@ -1188,19 +1188,17 @@ class NetworkCheck:
             if obs.evidence is None:
                 continue
             evidence.append(obs.evidence)
-            probe_info = device_info_from_evidence(obs.evidence)
-            # A manufacturer the driver's rule supplies is not what the
+            # What a driver's rule supplies is left out: it is not what the
             # device reported (the evidence still says the driver named it).
-            if obs.evidence.data.get("driver_supplied"):
-                probe_info.pop("manufacturer", None)
+            probe_info = device_info_from_evidence(obs.evidence)
             if probe_info:
-                merge_device_info(device, probe_info, "protocol_probe", fill_only=True)
+                merge_device_info(device, probe_info, "probe")
         for raw in fp.companion_evidence:
             ev = _evidence_from_dict(raw)
             evidence.append(ev)
             companion_info = device_info_from_evidence(ev)
             if companion_info:
-                merge_device_info(device, companion_info, "companion", fill_only=True)
+                merge_device_info(device, companion_info, "probe")
 
         texts = banner_texts(banners)
         for port, exchange in sorted(fp.web.items()):

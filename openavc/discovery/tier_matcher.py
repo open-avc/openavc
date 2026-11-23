@@ -659,18 +659,17 @@ class DriverProfile:
 
 def _reported_by_device(evidence_log: list[Evidence]) -> tuple[set[str], set[str]]:
     """The categories and model names the device itself gave, from every
-    record: a field a driver's rule set to a literal (``driver_supplied``) is
-    that driver's claim, not the device's, and is left out."""
+    record (``device_info_from_evidence``, which leaves out what a driver's
+    own rule supplied)."""
     categories: set[str] = set()
     models: set[str] = set()
     for ev in evidence_log:
         info = device_info_from_evidence(ev)
-        supplied = set(ev.data.get("driver_supplied") or ())
         category = info.get("category")
-        if isinstance(category, str) and category.strip() and "category" not in supplied:
+        if isinstance(category, str) and category.strip():
             categories.add(category.strip().lower())
         model = info.get("model")
-        if isinstance(model, str) and _model_key(model) and "model" not in supplied:
+        if isinstance(model, str) and _model_key(model):
             models.add(_model_key(model))
     return categories, models
 
@@ -747,7 +746,7 @@ class TierMatcher:
                 driver_id=connected.data["driver_id"],
                 source=connected.source,
                 evidence=[connected],
-            )
+            ).said_by(connected)
 
         # enrichment soft signals -> possible state if any narrows the candidate set
         candidates, source = self._gather_soft_candidates(evidence_log)
@@ -828,7 +827,7 @@ class TierMatcher:
         when one may lead, as the "best fit", and behind them otherwise.
         """
         strong_evidence = _distinct_records([ev for _, ev in hits])
-        best = hits[0][0]
+        best, record = hits[0]
         best_source = f"{best.kind}:{best.source_id}"
         matched = [rule.driver_id for rule, _ in hits]
 
@@ -838,7 +837,7 @@ class TierMatcher:
                 source=best_source,
                 alternatives=matched[1:],
                 evidence=strong_evidence,
-            )
+            ).said_by(record)
 
         peers, soft_source = self._pick_demotion_target(
             evidence_log, anchors=set(matched),
@@ -854,7 +853,7 @@ class TierMatcher:
                 source=best_source,
                 alternatives=matched[1:],
                 evidence=strong_evidence,
-            ).through_a_shared_protocol()
+            ).said_by(record).through_a_shared_protocol()
 
         lead, trail = self._place_peers(peers, evidence_log)
         offered = [*lead, *matched, *trail]
@@ -866,7 +865,7 @@ class TierMatcher:
             source=soft_source if lead else best_source,
             alternatives=offered[1:],
             evidence=[*strong_evidence, *soft_evidence],
-        ).through_a_shared_protocol()
+        ).said_by(record).through_a_shared_protocol()
 
     def _collect_soft_signal_results(
         self, evidence_log: list[Evidence],

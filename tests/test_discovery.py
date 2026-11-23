@@ -113,15 +113,17 @@ class TestMergeDeviceInfo:
         merge_device_info(device, {"manufacturer": None}, "probe")
         assert device.manufacturer == "Extron"
 
-    def test_more_specific_wins(self):
-        device = DiscoveredDevice(ip="192.168.1.1", manufacturer="NEC")
-        merge_device_info(device, {"manufacturer": "NEC Display Solutions"}, "snmp")
-        assert device.manufacturer == "NEC Display Solutions"
+    def test_a_more_trusted_source_replaces_a_less_trusted_one(self):
+        device = DiscoveredDevice(ip="192.168.1.1")
+        merge_device_info(device, {"manufacturer": "NEC Display Solutions"}, "mdns")
+        merge_device_info(device, {"manufacturer": "NEC"}, "snmp")
+        assert device.manufacturer == "NEC"
 
-    def test_shorter_does_not_overwrite(self):
-        device = DiscoveredDevice(ip="192.168.1.1", model="PA1004UL Projector")
-        merge_device_info(device, {"model": "PA1004UL"}, "probe")
-        assert device.model == "PA1004UL Projector"
+    def test_a_less_trusted_source_only_fills(self):
+        device = DiscoveredDevice(ip="192.168.1.1")
+        merge_device_info(device, {"model": "PA1004UL"}, "snmp")
+        merge_device_info(device, {"model": "PA1004UL Projector"}, "probe")
+        assert device.model == "PA1004UL"
 
     def test_merge_open_ports(self):
         device = DiscoveredDevice(ip="192.168.1.1", open_ports=[23])
