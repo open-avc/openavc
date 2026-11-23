@@ -23,7 +23,12 @@ export function isRealType(type: unknown): boolean {
   return valueTypeTraits(type)?.real === true;
 }
 
-/** The choices a value type picker offers, in the contract's order. */
-export const VALUE_TYPE_OPTIONS: readonly { value: string; label: string }[] = VALUE_TYPES.map(
-  (value) => ({ value, label: VALUE_TYPE_TRAITS[value].label }),
-);
+// How a picker groups the types: by how each is drawn, the numbers together.
+const CONTROL_ORDER = ["text", "slider", "toggle", "choice"];
+
+/** The choices a value type picker offers: the contract's types grouped by
+ * how each is drawn (String; Integer, Number, Float; Boolean; Enum). */
+export const VALUE_TYPE_OPTIONS: readonly { value: string; label: string }[] = [...VALUE_TYPES]
+  .sort((a, b) =>
+    CONTROL_ORDER.indexOf(VALUE_TYPE_TRAITS[a].control) - CONTROL_ORDER.indexOf(VALUE_TYPE_TRAITS[b].control))
+  .map((value) => ({ value, label: VALUE_TYPE_TRAITS[value].label }));
