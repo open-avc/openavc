@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
+
+from openavc.drivers.spec import transport_traits
 
 
 def main():
@@ -45,7 +48,11 @@ def main():
         output_path = driver_path.parent / f"{driver_path.stem}_sim.py"
 
     # Generate skeleton
-    skeleton = generate_skeleton(driver_info, driver_path.stem)
+    try:
+        skeleton = generate_skeleton(driver_info, driver_path.stem)
+    except ValueError as refused:
+        print(f"Error: {refused}", file=sys.stderr)
+        sys.exit(1)
 
     output_path.write_text(skeleton, encoding="utf-8")
     print(f"Generated simulator skeleton: {output_path}")
@@ -147,31 +154,21 @@ def generate_skeleton(info: dict, driver_stem: str) -> str:
     command_doc_block = "\n".join(command_docs) if command_docs else "            (no commands found in DRIVER_INFO)"
     state_comment_block = "\n".join(state_comments) if state_comments else "            (no state variables found)"
 
-    # Choose base class based on transport
-    if transport == "http":
-        base_import = "from openavc.simulator.http_simulator import HTTPSimulator"
-        base_class = "HTTPSimulator"
-        handler_method = _http_handler_template(commands, state_vars, command_doc_block, state_comment_block)
-    elif transport == "osc":
-        # OSC handler uses `Any` in its signature (args: list[tuple[str, Any]]),
-        # which is evaluated at runtime under PEP 604/585 — must be imported.
-        base_import = (
-            "from typing import Any\n\n"
-            "from openavc.simulator.osc_simulator import OSCSimulator"
-        )
-        base_class = "OSCSimulator"
-        handler_method = _osc_handler_template(commands, state_vars, command_doc_block, state_comment_block)
-    else:
-        base_import = "from openavc.simulator.tcp_simulator import TCPSimulator"
-        base_class = "TCPSimulator"
-        handler_method = _tcp_handler_template(commands, state_vars, command_doc_block, state_comment_block)
+    base_import, base_class, handler = _server_template(transport)
+    handler_method = handler(commands, state_vars, command_doc_block, state_comment_block)
 
     # Framing. The simulator never reads the driver's delimiter — it uses its
     # own — so a line-framed driver paired with a simulator that declares none
     # gets raw chunks and has to reassemble them by hand, with nothing saying
     # why. Carry it across when the driver declared one.
+    # Only where the driver sends raw lines (the transport table's line_form):
+    # an HTTP, OSC, MQTT or SNMP simulator frames by its protocol.
+    traits = transport_traits(transport)
+    framed = traits is None or traits.line_form == "raw"
     delimiter_literal = _delimiter_literal(info)
-    if delimiter_literal:
+    if not framed:
+        delimiter_block = ""
+    elif delimiter_literal:
         delimiter_block = (
             f'        "delimiter": {delimiter_literal},'
             "  # carried from the driver's DRIVER_INFO\n"
@@ -187,17 +184,20 @@ def generate_skeleton(info: dict, driver_stem: str) -> str:
         )
 
     child_block = _child_entity_block(info)
+    checks = [
+        "initial_state below holds plausible values, not this device's real ones.",
+        *(["The framing line in SIMULATOR_INFO matches how the driver actually frames."] if framed else []),
+        "Every command in the list below gets an answer.",
+    ]
+    checks = "".join(f"  {number}. {text}\n" for number, text in enumerate(checks, 1))
 
     return f'''"""
 {name} — Simulator
 Generated skeleton. Fill in the handler method with protocol logic.
 
-Before you go further, check these three — they are starting points, not
+Before you go further, check these — they are starting points, not
 finished work:
-  1. initial_state below holds plausible values, not this device's real ones.
-  2. The framing line in SIMULATOR_INFO matches how the driver actually frames.
-  3. Every command in the list under handle_command gets a reply.
-
+{checks}
 Driver: {driver_id}
 Transport: {transport}
 """
@@ -230,6 +230,25 @@ class {class_name}({base_class}):
 {child_block}
 {handler_method}
 '''
+
+
+def _server_template(transport: str) -> tuple[str, str, Callable[[dict, dict, str, str], str]]:
+    """The import, base class and handler a simulator for ``transport`` is
+    written on: the server the simulator serves it on (the transport table's
+    ``simulator`` column), so a byte pipe with no server of its own (serial,
+    ssh) is written on TCP and a UDP, MQTT or SNMP driver on its own.
+
+    Raises ValueError for a device that opens no connection itself.
+    """
+    traits = transport_traits(transport)
+    server = traits.simulator if traits is not None else "tcp"
+    if server is None:
+        raise ValueError(
+            f"A {transport} device opens no connection of its own: its commands "
+            "go out through its bridge, which is simulated instead, so it has "
+            "no simulator file."
+        )
+    return _SERVER_TEMPLATES[server]
 
 
 def _tcp_handler_template(commands: dict, state_vars: dict, cmd_docs: str, state_docs: str) -> str:
@@ -334,6 +353,92 @@ def _osc_handler_template(commands: dict, state_vars: dict, cmd_docs: str, state
         #       return None  # Subscription renewal, no response
 
         return None'''
+
+
+def _mqtt_handler_template(commands: dict, state_vars: dict, cmd_docs: str, state_docs: str) -> str:
+    return f'''    async def on_publish(self, client_id: str, topic: str, payload: bytes) -> None:
+        """
+        A message the driver published to this simulated broker. Update state,
+        and publish what the device would answer.
+
+        Available helpers:
+            self.state              — dict of current state values
+            self.set_state(k, v)    — update state (triggers UI refresh)
+            self.active_errors      — set of currently active error mode names
+            await self.broadcast(topic, payload)          — to every subscriber
+            await self.publish_to(client_id, topic, payload)
+
+        Driver commands to handle:
+{cmd_docs}
+
+        State variables to maintain:
+{state_docs}
+        """
+        # Example:
+        #   if topic == "device/power/set":
+        #       self.set_state("power", payload.decode())
+        #       await self.broadcast("device/power/state", payload)'''
+
+
+def _snmp_handler_template(commands: dict, state_vars: dict, cmd_docs: str, state_docs: str) -> str:
+    return f'''    # A simulated SNMP agent is its MIB: the base answers GET, GETNEXT, SET
+    # and walks from OIDS. Each entry is (type_name, value, writable); a
+    # two-item entry is read-only.
+    #
+    # Driver commands to handle:
+{_commented(cmd_docs)}
+    #
+    # State variables to maintain:
+{_commented(state_docs)}
+    OIDS = {{
+        # "1.3.6.1.2.1.1.1.0": ("string", "Sample device", False),
+    }}
+
+    def write_oid(self, oid: str, type_name: str, value: object) -> int:
+        """A SET from the driver: apply it, and keep self.state in step."""
+        status = super().write_oid(oid, type_name, value)
+        # Example:
+        #   if status == 0 and oid == "1.3.6.1.4.1.99999.1.1.0":
+        #       self.set_state("power", "on" if value else "off")
+        return status'''
+
+
+def _commented(block: str) -> str:
+    """A documentation block's lines as comments in a class body."""
+    return "\n".join(f"    # {line.strip()}" for line in block.splitlines())
+
+
+# The import, base class and handler each simulator server is written on,
+# keyed by the transport table's ``simulator`` column. UDPSimulator takes the
+# same handle_command as TCPSimulator.
+_SERVER_TEMPLATES: dict[str, tuple[str, str, Callable[[dict, dict, str, str], str]]] = {
+    "tcp": (
+        "from openavc.simulator.tcp_simulator import TCPSimulator",
+        "TCPSimulator", _tcp_handler_template,
+    ),
+    "udp": (
+        "from openavc.simulator.udp_simulator import UDPSimulator",
+        "UDPSimulator", _tcp_handler_template,
+    ),
+    "http": (
+        "from openavc.simulator.http_simulator import HTTPSimulator",
+        "HTTPSimulator", _http_handler_template,
+    ),
+    # The OSC handler uses `Any` in its signature (args: list[tuple[str, Any]]),
+    # which is evaluated at runtime under PEP 604/585, so it is imported.
+    "osc": (
+        "from typing import Any\n\nfrom openavc.simulator.osc_simulator import OSCSimulator",
+        "OSCSimulator", _osc_handler_template,
+    ),
+    "mqtt": (
+        "from openavc.simulator.mqtt_simulator import MQTTSimulator",
+        "MQTTSimulator", _mqtt_handler_template,
+    ),
+    "snmp": (
+        "from openavc.simulator.snmp_simulator import SNMPSimulator",
+        "SNMPSimulator", _snmp_handler_template,
+    ),
+}
 
 
 def _default_for_type(var_type: str) -> str:

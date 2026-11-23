@@ -7,6 +7,8 @@ generated `_sim.py` fails to load with `NameError: name 'Any' is not
 defined` the first time the simulator tries to import it.
 """
 
+import pytest
+
 from openavc.simulator.scaffold import generate_skeleton
 
 
@@ -63,3 +65,37 @@ def test_http_scaffold_compiles_cleanly():
     ns: dict = {}
     exec(compile(skeleton, "<scaffold-http>", "exec"), ns)
     assert "SampleDriverSimulator" in ns
+
+
+# The simulator server each transport is served on (the transport table's
+# simulator column), as the base class a scaffolded simulator subclasses. A
+# byte pipe the simulator has no server for (serial, ssh) is served over TCP.
+_BASES = {
+    "tcp": "TCPSimulator",
+    "serial": "TCPSimulator",
+    "ssh": "TCPSimulator",
+    "udp": "UDPSimulator",
+    "http": "HTTPSimulator",
+    "osc": "OSCSimulator",
+    "mqtt": "MQTTSimulator",
+    "snmp": "SNMPSimulator",
+}
+
+
+@pytest.mark.parametrize("transport", sorted(_BASES))
+def test_each_transport_gets_the_server_it_is_served_on(transport):
+    """A UDP, MQTT or SNMP driver's simulator listens where its driver
+    sends: a TCP server labelled udp never hears a datagram."""
+    skeleton = generate_skeleton(_sample_driver_info(transport), "sample_driver")
+    ns: dict = {}
+    exec(compile(skeleton, f"<scaffold-{transport}>", "exec"), ns)
+    simulator = ns["SampleDriverSimulator"]
+    assert _BASES[transport] in [base.__name__ for base in simulator.__mro__]
+    assert simulator.SIMULATOR_INFO["transport"] == transport
+    simulator("sample_device", {})
+
+
+def test_a_bridge_device_is_refused_with_why():
+    """A device on a bridge opens nothing itself: its bridge is simulated."""
+    with pytest.raises(ValueError, match="through its bridge"):
+        generate_skeleton(_sample_driver_info("bridge"), "sample_driver")
