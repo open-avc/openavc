@@ -505,10 +505,12 @@ class DeviceManager(
 
     async def _replace_device(
         self, device_id: str, config: dict[str, Any], *, defer_connect: bool = False,
-    ) -> None:
+    ) -> bool:
         """Replace a device with a fresh instance built from ``config`` (an
         edit, a driver reload, its driver arriving, a retry): THE rule for
-        what the same device keeps, said below."""
+        what the same device keeps, said below. False when a file command
+        runs on the device: the replacement waits for it to end
+        (core/device_retire.py ``_hold_rebuild``)."""
         # What the same device keeps: its pause and who holds it, when a driver
         # runs it after; its sleep and commanded-restart window while it stays
         # on the driver whose commands declared them, each ending by its own
@@ -519,6 +521,8 @@ class DeviceManager(
         before = self.device_record(device_id)
         if before is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        if self._hold_rebuild(device_id, config):
+            return False
         seconds_left, held_for = self._pause_to_carry(device_id)
         if before.status == DISABLED:
             self._forget_record(device_id)
@@ -534,6 +538,7 @@ class DeviceManager(
             config, carry_pause=seconds_left, carry_pause_for=held_for,
             defer_connect=defer_connect,
         )
+        return True
 
     def get_device_configs(self) -> dict[str, dict[str, Any]]:
         """Return a shallow copy of the device config dict (device_id → config)."""
@@ -639,7 +644,12 @@ class DeviceManager(
         readded: list[str] = []
         for device_id, config in affected:
             try:
-                await self._replace_device(device_id, config, defer_connect=True)
+                if not await self._replace_device(device_id, config, defer_connect=True):
+                    log.info(
+                        f"Device '{device_id}' picks up the reloaded driver when "
+                        "its file command finishes"
+                    )
+                    continue
                 if self.status_of(device_id) != RUNNING:
                     continue
                 readded.append(device_id)

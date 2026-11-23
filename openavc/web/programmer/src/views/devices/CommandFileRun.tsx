@@ -262,6 +262,11 @@ export function CommandFileRunStatus({
           {stopButton}
         </div>
         {sending && <Bar value={pct} />}
+        {run.change_waiting && (
+          <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
+            {`Your change to ${deviceName} is saved. It takes effect when ${run.label} finishes.`}
+          </div>
+        )}
         {confirmStop && (
           <ConfirmDialog
             title={`Stop ${run.label}?`}

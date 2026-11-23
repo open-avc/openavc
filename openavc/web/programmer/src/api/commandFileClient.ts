@@ -52,6 +52,8 @@ export interface CommandRun {
   /** The file the command handed back; `gone` once downloaded or expired. */
   returned: { name: string; size: number; gone?: boolean } | null;
   client_id: string | null;
+  /** A change to the device waits for this run to end, then applies. */
+  change_waiting?: boolean;
 }
 
 /** Opens an upload for one file param, at whichever door will run it. */

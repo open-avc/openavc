@@ -16,6 +16,11 @@ runner set (``core/setup_actions.py``):
   - a person can stop a run. That cancels the driver's call (its own cleanup
     runs) and frees the device, so a driver with no timeout of its own
     cannot hold the slot until the server restarts;
+  - a change to the device while a run goes (an edit, a driver reload) waits
+    for the run, which says so (``change_waiting``), and applies when it
+    ends however it ends (core/device_retire.py ``_hold_rebuild``); removing
+    the device or stopping the system ends the run with a sentence saying
+    why (``end``, :data:`_ENDED_BECAUSE`);
   - a run that finished is kept for :data:`RUN_KEEP_SECONDS`, so a reloaded
     device page can show how it ended and still download what it returned.
 
@@ -35,6 +40,7 @@ from typing import Any, Callable
 
 from openavc.core.client_origin import request_client_id
 from openavc.core.command_gates import command_definition, command_label
+from openavc.core.device_retire import RETIRED_REMOVED, RETIRED_REPLACED, RETIRED_STOPPING
 from openavc.core.file_staging import FileStaging, HeldFile, StagingError
 from openavc.drivers.command_files import CommandFile, DeviceFile
 from openavc.drivers.spec import file_param_names, is_file_command
@@ -49,6 +55,20 @@ RUNNING = "running"
 DONE = "done"
 ERROR = "error"
 CANCELLED = "cancelled"
+
+# Why the system ended a run (core/device_retire.py RETIRED_*), as the page
+# says it. The device may hold part of a file by then.
+_ENDED_BECAUSE = {
+    RETIRED_REMOVED: "'{label}' stopped because the device was removed. Check the device before you use it.",
+    RETIRED_REPLACED: (
+        "'{label}' stopped because the device's settings or driver changed. "
+        "Check the device before you use it."
+    ),
+    RETIRED_STOPPING: (
+        "'{label}' stopped because the system is shutting down. "
+        "Check the device before you use it."
+    ),
+}
 
 
 def device_owner(device_id: str) -> str:
@@ -97,6 +117,10 @@ class CommandRun:
     held_id: str | None = None
     returned: dict[str, Any] | None = None
     task: asyncio.Task | None = None
+    # A change to the device is waiting for this run to end.
+    change_waiting: bool = False
+    # The sentence when the system ended the run (_ENDED_BECAUSE), not a person.
+    ended_because: str | None = None
 
     def sent(self) -> int:
         return sum(f.bytes_read for f in self.files.values())
@@ -125,6 +149,7 @@ class CommandRun:
             "error_code": self.error_code,
             "returned": self.returned,
             "client_id": self.client_id,
+            "change_waiting": self.change_waiting,
         }
 
 
@@ -144,6 +169,7 @@ class CommandRuns:
         self._engine = engine
         self._staging = staging
         self._runs: dict[str, CommandRun] = {}
+        self._notices: set[asyncio.Task] = set()
 
     # -- starting ----------------------------------------------------------------
 
@@ -234,7 +260,11 @@ class CommandRuns:
                 run.result = _jsonable(result)
             run.status = DONE
         except asyncio.CancelledError:
-            run.status = CANCELLED
+            if run.ended_because is None:
+                run.status = CANCELLED
+            else:
+                run.status = ERROR
+                run.error = run.ended_because
         except Exception as exc:  # the driver's own failure, worded for the page
             run.status = ERROR
             try:
@@ -256,6 +286,8 @@ class CommandRuns:
             run.ended = time.time()
             self._staging.discard_all(run.upload_ids)
             await self._publish(run)
+            if run.ended_because is None:
+                await self._apply_held_change(run.device_id)
 
     async def _tick(self, run: CommandRun) -> None:
         last = run.sent()
@@ -313,9 +345,43 @@ class CommandRuns:
             run.task.cancel()
         return run
 
+    def hold_change(self, device_id: str) -> bool:
+        """True when a file run is going on the device: a change to it waits
+        for the run (core/device_retire.py), and the run says so."""
+        run = self.running(device_id)
+        if run is None:
+            return False
+        if not run.change_waiting:
+            run.change_waiting = True
+            notice = asyncio.get_running_loop().create_task(self._publish(run))
+            self._notices.add(notice)
+            notice.add_done_callback(self._notices.discard)
+        return True
+
+    async def end(self, device_id: str, why: str) -> None:
+        """The system ends the device's run (it is removed, replaced or the
+        system stops; core/device_retire.py RETIRED_*), with the sentence
+        for why, and waits for the driver's own cleanup."""
+        run = self.running(device_id)
+        if run is None or run.task is None:
+            return
+        run.ended_because = _ENDED_BECAUSE[why].format(label=run.label)
+        run.task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await run.task
+
+    async def _apply_held_change(self, device_id: str) -> None:
+        try:
+            await self._engine.devices.file_run_ended(device_id)
+        except Exception:
+            log.exception(f"Applying the change held for '{device_id}' failed")
+
     async def stop(self) -> None:
-        """Server shutdown: stop every run and let each one clean up."""
-        tasks = [r.task for r in self._runs.values() if r.task and not r.task.done()]
+        """Server shutdown: stop every run, saying why, and let each one clean up."""
+        running = [r for r in self._runs.values() if r.task and not r.task.done()]
+        for run in running:
+            run.ended_because = _ENDED_BECAUSE[RETIRED_STOPPING].format(label=run.label)
+        tasks = [r.task for r in running]
         for task in tasks:
             task.cancel()
         for task in tasks:
