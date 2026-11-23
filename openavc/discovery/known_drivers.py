@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from types import MappingProxyType
 from typing import Any
 
 from openavc.discovery.hints import DiscoveryHint, build_signal_index
@@ -161,10 +160,10 @@ def port_claims(hints: list[DiscoveryHint], catalog: list[Any]) -> PortClaims:
     for port, claimant in [*_hint_claims(hints), *_catalog_claims(catalog)]:
         if type(port) is int and port not in BASELINE_PORTS:
             by_port.setdefault(port, {}).setdefault(claimant.driver_id, claimant)
-    return MappingProxyType({
+    return {
         port: tuple(by_driver[d] for d in sorted(by_driver))
         for port, by_driver in by_port.items()
-    })
+    }
 
 
 def _hint_claims(hints: list[DiscoveryHint]) -> Iterator[tuple[object, PortClaimant]]:

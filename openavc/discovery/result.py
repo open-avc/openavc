@@ -280,10 +280,9 @@ class PortClaimant:
 
 
 # The drivers that declare each port, by port, each list in driver id order
-# (``known_drivers.port_claims``). Read-only: the engine hands one table to
-# every device it reads.
+# (``known_drivers.port_claims``). Never changed once built: the engine hands
+# one table to every device it reads. A plain dict, so a device still copies.
 PortClaims = Mapping[int, tuple[PortClaimant, ...]]
-NO_PORT_CLAIMS: PortClaims = MappingProxyType({})
 
 # What usually listens on a port, named beside it when no driver of the
 # device's names it.
@@ -502,7 +501,7 @@ class DiscoveredDevice:
     # The drivers that declare each port, the table the engine read when it
     # made or last identified the device (``known_drivers.port_claims``),
     # which its ports are named from (``identity_of``). Not sent.
-    port_claims: PortClaims = NO_PORT_CLAIMS
+    port_claims: PortClaims = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON API response. ``name``, ``manufacturer``,

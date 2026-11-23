@@ -246,3 +246,14 @@ async def test_the_results_carry_no_table_of_port_names_beside_the_devices(resto
     assert results["devices"][0]["ports"] == [
         {"port": 4352, "label": "Zenith Projector", "in_use_by": None},
     ]
+
+
+def test_a_device_still_copies_and_pickles_with_its_port_names():
+    import copy
+    import pickle
+
+    engine = _engine([ACME_WIDGET, ZENITH])
+    device = _found(engine, ports=[17300, 4352], mdns="_acme-widget._tcp")
+    engine.identify(device)
+    for copied in (copy.deepcopy(device), pickle.loads(pickle.dumps(device))):
+        assert _labels(copied.to_dict()) == {4352: None, 17300: "Acme Widget"}

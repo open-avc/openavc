@@ -84,7 +84,6 @@ from openavc.discovery.result import (
     DiscoveredDevice,
     Evidence,
     IdentificationMatch,
-    NO_PORT_CLAIMS,
     merge_device_info,
 )
 from openavc.discovery import scan_budget as budgeting
@@ -241,7 +240,7 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self._driver_names = DriverNames({})
         # The drivers that declare each port, handed to every device this
         # engine makes or identifies, which its ports are named from.
-        self._port_claims = NO_PORT_CLAIMS
+        self._port_claims = port_claims([], [])
         # Driver-supplied Python discovery companions
         # ({driver_id: async probe}). Populated by
         # load_discovery_companions_from_dirs().
