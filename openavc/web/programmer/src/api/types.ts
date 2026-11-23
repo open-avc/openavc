@@ -811,8 +811,8 @@ export interface ChildEntityInstances {
   ids_from?: string;
   /** A literal id list. */
   ids?: (string | number)[];
-  /** A device-reported state variable the roster follows once it answers;
-      the config source above is only the offline fallback. */
+  /** A device-reported state variable the roster follows once it answers,
+      beside `count_from` only; that field is the offline fallback. */
   count_from_state?: string;
 }
 
