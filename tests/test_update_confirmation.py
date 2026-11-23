@@ -474,3 +474,75 @@ class TestTheLastUpdatesEndIsPublished:
         assert tuple(state.values[key] for key in LAST_RESULT_KEYS) == (
             "failed", "0.32.0", "Update failed: disk full",
         )
+
+
+# ===========================================================================
+# A new version whose update checks did not start is not confirmed
+# ===========================================================================
+
+
+def _start_keeping(tmp_path: Path, stage):
+    """``_initialize_engine`` with an engine start that went on past
+    ``stage`` (it failed and the start carried on, as GoOn stages do)."""
+    import openavc.main as main
+
+    from openavc.middleware.startup_splash import RunState
+    from tests.listen_helpers import use_plan
+
+    async def start(run):
+        run.kept(stage)
+
+    app = SimpleNamespace(state=SimpleNamespace(run_state=RunState()))
+    cfg = SimpleNamespace(data_dir=tmp_path)
+    use_plan("this_computer")
+    with patch("openavc.system_config.get_system_config", return_value=cfg), \
+            patch.object(main.engine, "start", new=start), \
+            patch("openavc.updater.rollback.perform_rollback"), \
+            patch("openavc.updater.rollback.restore_pre_update_data"), \
+            patch.object(main.start_retry, "after_failure", new=AsyncMock()) as after, \
+            patch.object(main.os, "_exit", side_effect=_Exited):
+        import asyncio
+        asyncio.run(main._initialize_engine(app))
+    return app.state.run_state, after
+
+
+class TestUpdateChecksThatDidNotStartAreNotConfirmed:
+    """A version that cannot look for updates cannot take the one that fixes it."""
+
+    def test_the_first_start_after_an_update_fails_and_keeps_the_marker(self, tmp_path):
+        from openavc.core.engine_lifecycle import UPDATE_CHECKS
+        from openavc.middleware.startup_splash import FAILED
+
+        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
+        record, after = _start_keeping(tmp_path, UPDATE_CHECKS)
+
+        assert read_pending_marker(tmp_path) is not None
+        assert record.phase == FAILED
+        assert record.error == (
+            "Confirming the last update failed: The update checks did not start on "
+            "this version (2.0.0), so it could not take the update that fixes it. "
+            "The next start goes back to 1.0.0."
+        )
+        after.assert_awaited_once()
+        # The start that follows the retry is the one that rolls back.
+        assert check_rollback_needed(tmp_path) is True
+
+    def test_another_part_that_did_not_start_still_confirms_the_update(self, tmp_path):
+        from openavc.core.engine_lifecycle import _PLUGINS
+        from openavc.middleware.startup_splash import READY
+
+        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
+        record, after = _start_keeping(tmp_path, _PLUGINS)
+
+        assert read_pending_marker(tmp_path) is None
+        assert record.phase == READY
+        after.assert_not_awaited()
+
+    def test_with_no_update_pending_the_start_goes_on(self, tmp_path):
+        from openavc.core.engine_lifecycle import UPDATE_CHECKS
+        from openavc.middleware.startup_splash import READY
+
+        record, after = _start_keeping(tmp_path, UPDATE_CHECKS)
+
+        assert record.phase == READY
+        after.assert_not_awaited()

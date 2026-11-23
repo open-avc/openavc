@@ -341,7 +341,7 @@ _STAGED_FILES = GoOn(
     "Files left by commands from an earlier run were not cleared. "
     "Check the server log for the reason.",
 )
-_UPDATE_CHECKS = GoOn(
+UPDATE_CHECKS = GoOn(
     "update_checks", "starting the update checks",
     "The update checks did not start, so this server does not look for "
     "updates. Check the server log for the reason.",
@@ -445,8 +445,8 @@ class EngineLifecycleMixin:
         await run.run("marking the system started", self._announce_started)
         # Start trigger engine after system.started (so startup triggers work)
         await run.run("starting the triggers", self.triggers.start)
-        if await run.go_on(_UPDATE_CHECKS, self._start_update_manager) is False:
-            run.kept(_UPDATE_CHECKS)
+        if await run.go_on(UPDATE_CHECKS, self._start_update_manager) is False:
+            run.kept(UPDATE_CHECKS)
         # Panel software updates on appliance hardware, through the update manager
         if await run.go_on(_PANEL_SOFTWARE, self._start_panel_software) is False:
             run.kept(_PANEL_SOFTWARE)
