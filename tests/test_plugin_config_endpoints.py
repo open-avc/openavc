@@ -257,6 +257,11 @@ async def test_context_action_invalid_action_id_400s(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await emit_context_action("acme_widget", "x.y/z", _FakeRequest({}))
     assert exc.value.status_code == 400
+    # Shown beside the plugin's buttons: the reason, and who can fix it.
+    assert exc.value.detail == (
+        "The plugin names this action 'x.y/z', which is not an action name: a name starts with "
+        "a letter, followed only by letters, digits, '_' or '-'. Ask the plugin's author to correct it."
+    )
     assert engine.events.emitted == []
 
 
