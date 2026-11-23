@@ -1243,7 +1243,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
                                     "Device setting 'power': map key '1' is not a value a boolean "
                                     'setting takes; use "true" and "false"')],
  'settings_map_boolean_good': [],
- 'settings_map_boolean_spaced': [],
+ 'settings_map_boolean_spaced': [('device_settings.power',
+                                  "Device setting 'power': map key ' TRUE ' is not a value a boolean "
+                                  'setting takes; use "true" and "false"')],
  'settings_map_empty': [('device_settings.volume',
                          "Device setting 'volume': map must be a non-empty mapping of setting "
                          'value -> device word')],

@@ -658,7 +658,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                  "Command 'c' param 'a': map must be a non-empty mapping of value -> wire value"),
                 ('commands.c',
                  "Command 'c' param 'b': map must be a non-empty mapping of value -> wire value"),
-                ('commands.c', "Command 'c' param 'd': map entries must be scalar value -> wire value pairs"),
+                ('commands.c',
+                 "Command 'c' param 'd': map word for 'on' is not text. YAML reads bare "
+                 'on/off/yes/no/true/false as booleans and bare digits as numbers. Put it in quotes.'),
                 ('commands.c', "Command 'c' param 'e': map entries must be scalar value -> wire value pairs"),
                 ('commands.c',
                  "Command 'c' param 'f': map entries must be scalar value -> wire value pairs")],

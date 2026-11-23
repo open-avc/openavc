@@ -255,7 +255,9 @@ _MAP = {"true": "ON", "false": "OFF", "Lo": "low", "LO": "LOW", 1: "One", "x": "
         # An exact match anywhere beats a match ignoring case earlier.
         ("low", (True, "Lo")),
         ("LOW", (True, "LO")),
-        ("Low", (True, "Lo")),
+        # Two words alike apart from case: the first in code point order,
+        # the order every map's lookup breaks a tie by.
+        ("Low", (True, "LO")),
         ("One", (True, 1)),
         ("one", (True, 1)),
         ("mid", (True, "x")),
