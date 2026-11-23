@@ -241,8 +241,10 @@ def test_route_returns_the_public_key_only(monkeypatch, tmp_path):
     monkeypatch.setattr(ssh_identity, "key_dir", lambda: tmp_path / "ssh")
     app.dependency_overrides[require_programmer_auth] = lambda: None
     try:
-        with TestClient(app, raise_server_exceptions=True) as client:
-            resp = client.get("/api/devices/ssh-key")
+        # This route needs no running engine. Entering the app's lifespan starts
+        # initialization in the background and races the startup middleware's 503.
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/api/devices/ssh-key")
     finally:
         app.dependency_overrides.pop(require_programmer_auth, None)
     assert resp.status_code == 200, resp.text
