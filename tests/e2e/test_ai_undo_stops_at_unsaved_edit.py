@@ -93,8 +93,6 @@ def test_undo_on_a_reply_stops_at_an_edit_still_saving(server_factory, page: Pag
     control.wait_for(state="detached", timeout=5_000)
     saves.wait_for()
 
-    # Leaving the Builder with the edit unsaved asks first; the answer is Leave.
-    page.once("dialog", lambda dialog: dialog.accept())
     _open(page, "AI Assistant")
     undo.click()
 

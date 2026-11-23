@@ -211,10 +211,11 @@ function AuthedApp() {
 
   const handleViewChange = useCallback(
     (view: typeof activeView) => {
+      // A Builder edit waiting on its timer goes now rather than after the
+      // Builder closes. Nothing is lost by leaving, so nothing is asked: a
+      // save that fails says so on every view (the Save failed line).
       const current = useNavigationStore.getState().activeView;
-      if (current === "ui-builder" && view !== "ui-builder" && useProjectStore.getState().dirty) {
-        if (!window.confirm("You have unsaved UI changes. Leave without saving?")) return;
-      }
+      if (current === "ui-builder" && view !== "ui-builder") useProjectStore.getState().flushSave();
       navigateTo(view);
     },
     [navigateTo],
