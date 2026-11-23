@@ -38,14 +38,15 @@ export interface RunListener {
  * may have gone out while it was down. Live events are this device's and
  * action's, and once the run's id is known, this run's only. `stop` ends
  * the following; `fail` ends it with a failure of the wizard's own (the
- * request that starts the run was refused).
+ * request that starts the run was refused); `check` asks the server now
+ * (a wizard opened on a run that started before the page did).
  */
 export function followSetupRun(
   deviceId: string,
   actionId: string,
   runId: () => string | undefined,
   on: RunListener,
-): { stop: () => void; fail: (message: string) => void } {
+): { stop: () => void; fail: (message: string) => void; check: () => void } {
   let finished = false;
   const stop = () => {
     finished = true;
@@ -81,7 +82,7 @@ export function followSetupRun(
     if (msg.device_id !== deviceId || msg.action_id !== actionId) return;
     if (isThisRun(msg)) take(msg);
   });
-  const stopReconnect = onConnect(() => {
+  const check = () => {
     const id = runId();
     if (!id || finished) return;
     api.getSetupRun(deviceId, id).then(
@@ -90,6 +91,7 @@ export function followSetupRun(
       },
       (e) => fail(parseApiError(e)),
     );
-  });
-  return { stop, fail };
+  };
+  const stopReconnect = onConnect(check);
+  return { stop, fail, check };
 }

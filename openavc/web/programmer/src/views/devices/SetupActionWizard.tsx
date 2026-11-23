@@ -14,6 +14,7 @@ import { parseApiError } from "../../api/errors";
 import { fileParamsBlocked } from "../../components/shared/commandFiles";
 import { discardUpload, setupUploadOpener, uploadCommandFiles } from "../../api/commandFileClient";
 import { followSetupRun, type Step } from "./followSetupRun";
+import { forgetOpenSetupRun, rememberOpenSetupRun } from "./openSetupRun";
 
 type Phase = "input" | "running" | "done" | "error";
 
@@ -81,20 +82,26 @@ const btnStyle = (variant: "primary" | "muted"): React.CSSProperties => ({
  *
  * The final event can be missed while the WebSocket is down (a dropped
  * network, a server restart), so the run is followed by `followSetupRun`,
- * which asks the server how it stands each time the socket reconnects.
+ * which asks the server how it stands each time the socket reconnects. A
+ * restart that signs the tab out takes the wizard with the page, so the tab
+ * keeps the open run (`openSetupRun.ts`) and the wizard is opened on it
+ * again after the next sign-in (`runId`), saying how it ended.
  */
 export function SetupActionWizard({
   deviceId,
   action,
+  runId,
   onClose,
   onComplete,
 }: {
   deviceId: string;
   action: DeviceAction;
+  /** A run already started (before a sign-in or a reload): follow it, ask nothing. */
+  runId?: string;
   onClose: () => void;
   onComplete?: () => void;
 }) {
-  const [phase, setPhase] = useState<Phase>("input");
+  const [phase, setPhase] = useState<Phase>(runId ? "running" : "input");
   const [values, setValues] = useState<Record<string, string>>(() =>
     seedParamValues(action.params),
   );
@@ -104,7 +111,8 @@ export function SetupActionWizard({
   const [error, setError] = useState<string>("");
   const unsubRef = useRef<null | (() => void)>(null);
   const uploadAbort = useRef<AbortController | null>(null);
-  const runIdRef = useRef<string | undefined>(undefined);
+  const runIdRef = useRef<string | undefined>(runId);
+  const endedRef = useRef(false);
 
   // Stop listening if the wizard unmounts mid-run.
   useEffect(() => () => {
@@ -118,6 +126,34 @@ export function SetupActionWizard({
     hasInvalidParams(action.params, values) || fileParamsBlocked(action.params, files);
   const confirmNote = typeof action.confirm === "string" ? action.confirm : null;
 
+  const follow = useCallback(() => {
+    endedRef.current = false;
+    const ended = () => {
+      endedRef.current = true;
+      if (runIdRef.current) forgetOpenSetupRun(runIdRef.current);
+    };
+    const run = followSetupRun(deviceId, action.id, () => runIdRef.current, {
+      step: (step) => setSteps((prev) => [...prev, step]),
+      done: (msg) => {
+        ended();
+        setSummary(resultMessage(msg.result));
+        setPhase("done");
+      },
+      failed: (message) => {
+        ended();
+        setError(message);
+        setPhase("error");
+      },
+    });
+    unsubRef.current = run.stop;
+    return run;
+  }, [deviceId, action.id]);
+
+  // Opened on a run that started before this page: ask how it stands now.
+  useEffect(() => {
+    if (runId) follow().check();
+  }, [runId, follow]);
+
   const startRun = useCallback(async () => {
     setPhase("running");
     setSteps([]);
@@ -125,31 +161,25 @@ export function SetupActionWizard({
     setError("");
     runIdRef.current = undefined;
     // Subscribe BEFORE the POST so an early progress event can't be missed.
-    const run = followSetupRun(deviceId, action.id, () => runIdRef.current, {
-      step: (step) => setSteps((prev) => [...prev, step]),
-      done: (msg) => {
-        setSummary(resultMessage(msg.result));
-        setPhase("done");
-      },
-      failed: (message) => {
-        setError(message);
-        setPhase("error");
-      },
-    });
-    unsubRef.current = run.stop;
+    const run = follow();
     try {
       uploadAbort.current = new AbortController();
       runIdRef.current = await invokeWithFiles({ deviceId, action, values, files,
         signal: uploadAbort.current.signal, onProgress: setSteps });
+      // A run whose end came before its id did is not kept.
+      if (runIdRef.current && !endedRef.current) {
+        rememberOpenSetupRun({ deviceId, actionId: action.id, runId: runIdRef.current });
+      }
     } catch (e) {
       run.fail(parseApiError(e));
     } finally {
       uploadAbort.current = null;
     }
-  }, [deviceId, action, values, files]);
+  }, [deviceId, action, values, files, follow]);
 
   const close = useCallback(() => {
     unsubRef.current?.();
+    if (runIdRef.current) forgetOpenSetupRun(runIdRef.current);
     onComplete?.();
     onClose();
   }, [onClose, onComplete]);

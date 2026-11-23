@@ -14,6 +14,7 @@ import { SaveFailedBanner } from "./components/shared/SaveFailedBanner";
 import { ProjectDraftOffer } from "./components/shared/ProjectDraftOffer";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
+import { reopenSetupRun } from "./views/devices/openSetupRun";
 import { Setup } from "./components/Setup";
 import { RemoteSessionEnded } from "./components/RemoteSessionEnded";
 import { DashboardView } from "./views/DashboardView";
@@ -153,6 +154,10 @@ function AuthedApp() {
   useEffect(() => {
     loadProject();
   }, [loadProject]);
+
+  // A setup wizard this tab had open when a restart signed it out (or the
+  // page reloaded): open its device again, where the wizard says how it ended.
+  useEffect(() => reopenSetupRun(), []);
 
   // Warn before closing tab with unsaved changes. The driver-builder draft is
   // a module-global store that only persists to disk on Save, and it stays

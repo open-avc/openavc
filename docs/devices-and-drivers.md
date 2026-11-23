@@ -138,6 +138,10 @@ progress, then the driver's result. OpenAVC removes the uploaded file when the
 run ends; the driver keeps the configuration or credentials needed to operate.
 Setup file imports require OpenAVC 0.40.1 or newer.
 
+If the page reloads while a setup runs, or OpenAVC restarts and asks you to sign
+in again, the device and its wizard open again afterwards in the same browser
+tab and show how the setup ended.
+
 One button shows up on its own: if the device has its own web page (it answers on a standard web port), an **Open Web UI** button appears and opens that page in a new browser tab. No driver setup is needed for most equipment.
 
 ## Configuration Tables

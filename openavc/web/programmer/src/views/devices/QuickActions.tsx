@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Check, AlertTriangle, X } from "lucide-react";
 import { ElementIcon } from "../../components/ui-builder/ElementIcon";
 import { Dialog } from "../../components/shared/Dialog";
@@ -14,6 +14,7 @@ import {
 } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { SetupActionWizard } from "./SetupActionWizard";
+import { takeReopenedRun } from "./openSetupRun";
 import { parseApiError } from "../../api/errors";
 
 /**
@@ -39,6 +40,16 @@ export function QuickActions({
   const [dialogAction, setDialogAction] = useState<DeviceAction | null>(null);
   const [confirmAction, setConfirmAction] = useState<DeviceAction | null>(null);
   const [wizardAction, setWizardAction] = useState<DeviceAction | null>(null);
+  // A setup run this tab had open before a sign-in or a reload: its wizard
+  // opens again on it, whether or not its button shows now.
+  const [wizardRunId, setWizardRunId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const run = takeReopenedRun(deviceId, (id) => actions.some((a) => a.id === id));
+    const action = run && actions.find((a) => a.id === run.actionId);
+    if (!run || !action) return;
+    setWizardAction(action);
+    setWizardRunId(run.runId);
+  }, [deviceId, actions]);
   const [running, setRunning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<
     { id: string; ok: boolean; message: string } | null
@@ -87,7 +98,20 @@ export function QuickActions({
     [invoke],
   );
 
-  if (visible.length === 0) return null;
+  const wizard = wizardAction && (
+    <SetupActionWizard
+      deviceId={deviceId}
+      action={wizardAction}
+      runId={wizardRunId}
+      onClose={() => {
+        setWizardAction(null);
+        setWizardRunId(undefined);
+      }}
+      onComplete={() => onInvoked?.()}
+    />
+  );
+
+  if (visible.length === 0) return wizard || null;
 
   return (
     <div style={{ marginBottom: "var(--space-lg)" }}>
@@ -182,14 +206,7 @@ export function QuickActions({
         />
       )}
 
-      {wizardAction && (
-        <SetupActionWizard
-          deviceId={deviceId}
-          action={wizardAction}
-          onClose={() => setWizardAction(null)}
-          onComplete={() => onInvoked?.()}
-        />
-      )}
+      {wizard}
     </div>
   );
 }
