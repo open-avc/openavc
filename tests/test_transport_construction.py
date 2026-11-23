@@ -660,12 +660,25 @@ async def test_an_unknown_transport_is_refused():
     assert caught.value.fault_code == "invalid_config"
 
 
-async def test_an_adapter_with_no_address_fails_before_the_transport_is_looked_up(monkeypatch):
+async def test_an_adapter_with_no_address_fails_before_the_transport_is_built(monkeypatch):
+    def no_address(host):
+        raise ConnectionFaultError("The chosen adapter has no address", code="unreachable")
+
+    create = _created(monkeypatch, "openavc.transport.tcp.TCPTransport.create")
+    monkeypatch.setattr("openavc.transport.endpoint.control_bind_address", no_address)
+    with pytest.raises(ConnectionFaultError, match="no address"):
+        await _driver({"host": "192.0.2.80"})._create_transport("tcp")
+    create.assert_not_awaited()
+
+
+async def test_a_transport_openavc_cannot_connect_over_is_refused_as_that_not_as_the_adapter(monkeypatch):
+    """Only a transport that dials an address asks for the adapter, so an
+    unknown one is refused for what it is."""
     def no_address(host):
         raise ConnectionFaultError("The chosen adapter has no address", code="unreachable")
 
     monkeypatch.setattr("openavc.transport.endpoint.control_bind_address", no_address)
-    with pytest.raises(ConnectionFaultError, match="no address"):
+    with pytest.raises(ConnectionFaultError, match=r"Connection is set to 'carrier_pigeon'"):
         await _driver({"host": "192.0.2.80"})._create_transport("carrier_pigeon")
 
 
