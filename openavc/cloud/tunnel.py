@@ -3,6 +3,14 @@ OpenAVC Cloud — Tunnel handler for remote UI access.
 
 Manages secondary WebSocket connections to the cloud for proxying
 HTTP and WebSocket traffic between the cloud and local UI services.
+
+THE end of a tunnel on this side. A tunnel ends here when the cloud closes it
+(tunnel_close), when its data socket closes or fails, when this system's
+connection to the cloud drops, and when the agent stops. Each ending discards
+the tunnel's session secret before anything that can wait, so a secret never
+outlives the tunnel it was minted for. An ending the cloud did not ask for is
+told to it (tunnel_closed): at once when the connection is up, and once it is
+connected again when it is not. The cloud's own close is not answered.
 """
 
 from __future__ import annotations
@@ -19,11 +27,12 @@ import websockets
 from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidHandshake
 
 from openavc.cloud.protocol import (
-    HTTP_CANCEL, HTTP_REQUEST, TUNNEL_CLOSE, TUNNEL_DATA_MAX_BYTES, TUNNEL_OPEN,
+    HTTP_CANCEL, HTTP_REQUEST, TUNNEL_CLOSE, TUNNEL_CLOSED, TUNNEL_CONNECTION_LOST,
+    TUNNEL_DATA_MAX_BYTES, TUNNEL_DATA_SOCKET_CLOSED, TUNNEL_OPEN,
     TUNNEL_STREAM_IDLE_SECONDS, WS_CLOSE, WS_CLOSE_LOCAL_UNREACHABLE, WS_FRAME, WS_OPEN,
     build_http_body, build_http_body_end, build_http_response, build_http_response_start,
-    build_ws_close, build_ws_frame, close_reason, read_as, read_tunnel_data,
-    sendable_close_code, ws_close_code,
+    build_tunnel_closed_payload, build_ws_close, build_ws_frame, close_reason, read_as,
+    read_tunnel_data, sendable_close_code, ws_close_code,
 )
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_tls_kwargs
@@ -102,13 +111,34 @@ class TunnelConnection:
     http_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
 
 
+async def _cancel_and_wait(tasks) -> None:
+    """Cancel each unfinished task and wait for every one to finish."""
+    pending = [t for t in list(tasks) if t and not t.done()]
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+async def _close_quietly(ws: Any) -> None:
+    """Close a socket during tunnel teardown, best effort."""
+    try:
+        await ws.close()
+    except (ConnectionClosed, OSError):
+        pass
+
+
 class TunnelHandler:
-    """Handles tunnel_open/tunnel_close messages and proxies traffic."""
+    """Handles tunnel_open/tunnel_close messages, proxies traffic, and ends
+    each tunnel (the module docstring has when)."""
 
     def __init__(self, agent: CloudAgent):
         self._agent = agent
         self._tunnels: dict[str, TunnelConnection] = {}
         self._http_client: httpx.AsyncClient | None = None
+        # tunnel_id -> why: tunnels ended here while the cloud could not be
+        # told, told on the next connection (start).
+        self._untold: dict[str, str] = {}
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None:
@@ -289,73 +319,98 @@ class TunnelHandler:
         """Handle a tunnel_close message from the cloud."""
         await self._close_tunnel(read_as(TUNNEL_CLOSE, msg)["tunnel_id"])
 
-    async def _close_tunnel(self, tunnel_id: str) -> None:
-        """Close a single tunnel and all its connections."""
+    def _detach(self, tunnel_id: str) -> TunnelConnection | None:
+        """Take a tunnel out of routing and discard its secret. Waits for nothing.
+
+        The secret goes before anything else. This is what makes a withdrawn
+        authorization stop working here as well as at the cloud, and it must
+        not depend on the teardown finishing cleanly, or on a dead network's
+        socket close taking its time.
+        """
         conn = self._tunnels.pop(tunnel_id, None)
-        if not conn:
-            return
-
-        log.info(f"Closing tunnel {tunnel_id}")
-
-        # Before anything else. This is what makes a withdrawn authorization
-        # stop working here as well as at the cloud, and it must not depend on
-        # the teardown below finishing cleanly.
-        if conn.session_secret:
+        if conn and conn.session_secret:
             from openavc.api import cloud_session
             cloud_session.close_session(tunnel_id)
             conn.session_secret = ""
+        return conn
 
-        # Cancel receive task
-        if conn.recv_task and not conn.recv_task.done():
-            conn.recv_task.cancel()
-            try:
-                await conn.recv_task
-            except asyncio.CancelledError:
-                pass
+    async def _close_tunnel(self, tunnel_id: str) -> bool:
+        """Close a single tunnel and all its connections. Whether this call closed it."""
+        conn = self._detach(tunnel_id)
+        if not conn:
+            return False
+        log.info(f"Closing tunnel {tunnel_id}")
+        await self._teardown(conn)
+        return True
 
-        # Cancel in-flight data-message handlers BEFORE tearing down the
-        # connection maps: an http_request/ws_open handler still awaiting its
-        # local connect would otherwise complete after this close and
-        # re-populate local_ws_connections / spawn a forwarder for a tunnel
-        # that no longer exists.
-        data_tasks = [t for t in conn._data_tasks if not t.done()]
-        for task in data_tasks:
-            task.cancel()
-        if data_tasks:
-            await asyncio.gather(*data_tasks, return_exceptions=True)
+    async def _end_here(self, tunnel_id: str, reason: str) -> None:
+        """End a tunnel this side can no longer carry, and tell the cloud."""
+        if await self._close_tunnel(tunnel_id):
+            await self._tell_closed(tunnel_id, reason)
 
-        # Cancel forward tasks (awaited so their cleanup finishes before the
-        # sockets they reference are closed below)
-        forward_tasks = [t for t in conn._forward_tasks if not t.done()]
-        for task in forward_tasks:
-            task.cancel()
-        if forward_tasks:
-            await asyncio.gather(*forward_tasks, return_exceptions=True)
+    async def _tell_closed(self, tunnel_id: str, reason: str) -> None:
+        """Tell the cloud this system ended a tunnel; kept for the next connection when it cannot hear."""
+        try:
+            sent = await self._agent.send_message(
+                TUNNEL_CLOSED, build_tunnel_closed_payload(tunnel_id, reason)
+            )
+        except Exception:
+            # Catch-all: the send is best effort, and the tunnel is already ended.
+            log.debug(f"Tunnel {tunnel_id}: could not tell the cloud it ended", exc_info=True)
+            sent = False
+        if not sent:
+            self._untold[tunnel_id] = reason
 
-        # Close all local WS connections
-        for ws_id, ws in list(conn.local_ws_connections.items()):
-            try:
-                await ws.close()
-            except (ConnectionClosed, OSError):
-                pass  # Best-effort close during tunnel teardown
-        conn.local_ws_connections.clear()
+    async def _end_every_tunnel(self) -> list[str]:
+        """End every tunnel, every secret first. The tunnels this call ended."""
+        conns = [c for c in (self._detach(tid) for tid in list(self._tunnels)) if c]
+        for conn in conns:
+            log.info(f"Closing tunnel {conn.tunnel_id}")
+            await self._teardown(conn)
+        return [c.tunnel_id for c in conns]
 
-        # Close secondary data WS
-        if conn.data_ws:
-            try:
-                await conn.data_ws.close()
-            except (ConnectionClosed, OSError):
-                pass  # Best-effort close during tunnel teardown
-            conn.data_ws = None
+    async def start(self) -> None:
+        """The connection to the cloud is up: tell it about the tunnels that
+        ended while it could not hear."""
+        untold, self._untold = self._untold, {}
+        for tunnel_id, reason in untold.items():
+            await self._tell_closed(tunnel_id, reason)
 
     async def stop(self) -> None:
-        """Close all tunnels (agent shutdown)."""
-        tunnel_ids = list(self._tunnels.keys())
-        for tid in tunnel_ids:
-            await self._close_tunnel(tid)
+        """The connection to the cloud is gone, or the agent is stopping: every
+        tunnel ends with it, every secret first.
+
+        The cloud may not have noticed, because a connection that comes back
+        before the old one is seen to go replaces it without the cloud's own
+        cleanup, so each is told once the next connection is up (start).
+        """
+        for tunnel_id in await self._end_every_tunnel():
+            self._untold[tunnel_id] = TUNNEL_CONNECTION_LOST
         if self._http_client:
             await self._http_client.aclose()
             self._http_client = None
+
+    async def _teardown(self, conn: TunnelConnection) -> None:
+        """Stop a detached tunnel's work and close its sockets."""
+        # The receive task, unless this is it: a data socket that ended ends
+        # its own tunnel from inside the receive loop.
+        if conn.recv_task is not asyncio.current_task():
+            await _cancel_and_wait([conn.recv_task])
+        # In-flight data-message handlers go BEFORE the connection maps: an
+        # http_request/ws_open handler still awaiting its local connect would
+        # otherwise complete after this close and re-populate
+        # local_ws_connections / spawn a forwarder for a tunnel that no longer
+        # exists.
+        await _cancel_and_wait(conn._data_tasks)
+        # Forward tasks, awaited so their cleanup finishes before the sockets
+        # they reference are closed below.
+        await _cancel_and_wait(conn._forward_tasks)
+        for ws in list(conn.local_ws_connections.values()):
+            await _close_quietly(ws)
+        conn.local_ws_connections.clear()
+        if conn.data_ws:
+            await _close_quietly(conn.data_ws)
+            conn.data_ws = None
 
     async def _data_receive_loop(self, conn: TunnelConnection) -> None:
         """Receive messages from the secondary data WS and dispatch."""
@@ -416,8 +471,11 @@ class TunnelHandler:
         except asyncio.CancelledError:
             return
         except Exception:
-            # Catch-all: isolates unexpected data-channel errors from crashing the tunnel
+            # Catch-all: isolates unexpected data-channel errors from crashing the agent
             log.exception(f"Tunnel {conn.tunnel_id}: error in data receive loop")
+        # Nothing reads the data socket any more, so the tunnel can carry
+        # nothing: it ends here, and its secret with it.
+        await self._end_here(conn.tunnel_id, TUNNEL_DATA_SOCKET_CLOSED)
 
     async def _handle_http_request(self, conn: TunnelConnection, msg: dict) -> None:
         """Proxy an HTTP request to the local service."""

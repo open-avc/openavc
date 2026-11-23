@@ -39,8 +39,8 @@ def test_message_sets_are_the_agents_own():
     }
     assert protocol.UPSTREAM_TYPES == {
         "heartbeat", "state_batch", "alert", "alert_resolved", "active_alerts",
-        "command_result", "tunnel_ready", "tunnel_failed", "diagnostic_result", "pong",
-        "ai_tool_result", "project_data", "monitors", "device_commands_data", "gap_report",
+        "command_result", "tunnel_ready", "tunnel_failed", "tunnel_closed", "diagnostic_result",
+        "pong", "ai_tool_result", "project_data", "monitors", "device_commands_data", "gap_report",
         "cert_request", "cert_status",
     }
     assert protocol.DOWNSTREAM_TYPES == {
@@ -69,7 +69,7 @@ def test_buffer_priorities_are_unchanged():
     assert MESSAGE_PRIORITY == {
         "state_batch": 0, "heartbeat": 2, "alert_resolved": 3, "alert": 4,
         "active_alerts": 4, "command_result": 5, "tunnel_ready": 5, "tunnel_failed": 5,
-        "diagnostic_result": 5, "ai_tool_result": 5, "project_data": 5,
+        "tunnel_closed": 5, "diagnostic_result": 5, "ai_tool_result": 5, "project_data": 5,
         "device_commands_data": 5, "gap_report": 7, "cert_request": 5, "cert_status": 5,
         "pong": 6, "session_rotate": 10, "ack": 9, "session_invalid": 9,
         "config_update": 7, "capabilities_update": 7, "command": 7, "config_push": 7,

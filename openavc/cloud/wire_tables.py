@@ -425,6 +425,12 @@ MESSAGES: tuple[Message, ...] = (
         Field("reason", "string", "capability_disabled: the 'tunnel' capability is not enabled",
               "Why."),
     ), priority=5),
+    Message("tunnel_closed", "up", "session",
+            "This system ended one of its tunnels itself. An older cloud logs it and drops it.", (
+        Field("tunnel_id", "string", "tun_5d2c8e", "The tunnel."),
+        Field("reason", "string", "data_socket_closed", "Why it ended.",
+              vocabulary="tunnel_closed_reasons"),
+    ), priority=5, since="0.41.0"),
     Message("gap_report", "up", "session", "Downstream sequences that never arrived.", (
         Field("missing_from", "integer", 12, "The first missing sequence."),
         Field("missing_to", "integer", 14, "The last missing sequence."),
@@ -782,6 +788,14 @@ VOCABULARIES: dict[str, tuple[Entry, ...]] = {
               since=FIRST_CONTRACT_RELEASE),
         Entry("none", "No release file: this install is updated another way.",
               since=FIRST_CONTRACT_RELEASE),
+    ),
+    # Why this system ended a tunnel itself (tunnel_closed). A reason the
+    # cloud does not know reads as the instance having closed it.
+    "tunnel_closed_reasons": (
+        Entry("data_socket_closed", "The tunnel's data socket closed or failed.", since="0.41.0"),
+        Entry("connection_lost",
+              "This system's connection to the cloud dropped, and its tunnels ended with it; "
+              "told once it is connected again.", since="0.41.0"),
     ),
     "refusal_reasons": (
         Entry("unexpected_message", "A handshake step arrived out of order."),

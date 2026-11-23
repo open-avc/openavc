@@ -626,9 +626,10 @@ class CloudAgent:
             await self._sync_feature_subsystems()
 
             # Trusted-certificate connect-time self-check (renews certs for
-            # instances that were offline through their renewal window).
-            if self._cert_manager:
-                await self._cert_manager.start()
+            # instances that were offline through their renewal window), and
+            # the tunnels that ended while the cloud could not hear.
+            for subsystem in filter(None, (self._cert_manager, self._tunnel_handler)):
+                await subsystem.start()
 
             # Run until either steady-state task finishes (a clean disconnect
             # returns from the receive loop; an error raises), then re-raise the
@@ -640,12 +641,11 @@ class CloudAgent:
         finally:
             # Clean up on disconnect — stop subsystems so they re-initialize
             # (and re-send initial state snapshot) on the next connection.
-            if self._state_relay:
-                await self._state_relay.stop()
-            if self._alert_monitor:
-                await self._alert_monitor.stop()
-            if self._cert_manager:
-                await self._cert_manager.stop()
+            # Every tunnel ends with the connection, its secret with it.
+            for subsystem in filter(None, (
+                self._tunnel_handler, self._state_relay, self._alert_monitor, self._cert_manager,
+            )):
+                await subsystem.stop()
             if self._ws:
                 try:
                     await self._ws.close()

@@ -119,6 +119,7 @@ ALERT_RESOLVED = "alert_resolved"
 COMMAND_RESULT = "command_result"
 TUNNEL_READY = "tunnel_ready"
 TUNNEL_FAILED = "tunnel_failed"
+TUNNEL_CLOSED = "tunnel_closed"
 DIAGNOSTIC_RESULT = "diagnostic_result"
 PONG = "pong"
 AI_TOOL_RESULT = "ai_tool_result"
@@ -238,6 +239,8 @@ CERTIFICATE_NAMES = vocabulary("certificate_names")
 
 # A config push's result when there was no earlier project to send back.
 CONFIG_APPLIED = vocabulary("config_push_results")[0]
+
+TUNNEL_DATA_SOCKET_CLOSED, TUNNEL_CONNECTION_LOST = vocabulary("tunnel_closed_reasons")
 
 # Why an alert ended, on the `reason` field of `alert_resolved`. An instance
 # can only ever report two things, and the difference between them is what a
@@ -641,8 +644,11 @@ def build_tunnel_ready_payload(tunnel_id: str) -> dict[str, Any]:
 
 
 def build_tunnel_failed_payload(tunnel_id: str, reason: str) -> dict[str, Any]:
-    """Tunnel failure (or refusal) with a human-readable reason."""
+    """A tunnel that failed (or was refused), or that this system ended, and why."""
     return {"tunnel_id": tunnel_id, "reason": reason}
+
+
+build_tunnel_closed_payload = build_tunnel_failed_payload
 
 
 def build_gap_report_payload(missing_from: int, missing_to: int) -> dict[str, Any]:
@@ -681,6 +687,7 @@ UPSTREAM_PAYLOAD_BUILDERS = {
     PONG: build_pong_payload,
     TUNNEL_READY: build_tunnel_ready_payload,
     TUNNEL_FAILED: build_tunnel_failed_payload,
+    TUNNEL_CLOSED: build_tunnel_closed_payload,
     GAP_REPORT: build_gap_report_payload,
     CERT_REQUEST: build_cert_request_payload,
     CERT_STATUS: build_cert_status_payload,

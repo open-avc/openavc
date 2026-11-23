@@ -1542,6 +1542,49 @@
         "sig": "aa52f17bcfc3b855a1741923c995ee9b6ac0f5003b5e35b23ee2615ac21b4f8f"
       }
     },
+    "tunnel_closed": {
+      "direction": "up",
+      "phase": "session",
+      "since": "0.41.0",
+      "description": "This system ended one of its tunnels itself. An older cloud logs it and drops it.",
+      "priority": 5,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "tunnel_id": {
+            "type": "string",
+            "description": "The tunnel.",
+            "x-since": "0.41.0"
+          },
+          "reason": {
+            "type": "string",
+            "x-vocabulary": "tunnel_closed_reasons",
+            "enum": [
+              "data_socket_closed",
+              "connection_lost"
+            ],
+            "description": "Why it ended.",
+            "x-since": "0.41.0"
+          }
+        },
+        "required": [
+          "tunnel_id",
+          "reason"
+        ],
+        "additionalProperties": true
+      },
+      "example": {
+        "type": "tunnel_closed",
+        "ts": "2026-11-17T15:46:00.000Z",
+        "seq": 1,
+        "session": "st_7c1e9a3b5d",
+        "payload": {
+          "tunnel_id": "tun_5d2c8e",
+          "reason": "data_socket_closed"
+        },
+        "sig": "ae48fd82bd9f27a5ffb3957824c0df9e8bcb9d6c23995af19ba12f966a17e282"
+      }
+    },
     "gap_report": {
       "direction": "up",
       "phase": "session",
@@ -3631,6 +3674,18 @@
         "value": "none",
         "since": "0.41.0",
         "description": "No release file: this install is updated another way."
+      }
+    ],
+    "tunnel_closed_reasons": [
+      {
+        "value": "data_socket_closed",
+        "since": "0.41.0",
+        "description": "The tunnel's data socket closed or failed."
+      },
+      {
+        "value": "connection_lost",
+        "since": "0.41.0",
+        "description": "This system's connection to the cloud dropped, and its tunnels ended with it; told once it is connected again."
       }
     ],
     "refusal_reasons": [
