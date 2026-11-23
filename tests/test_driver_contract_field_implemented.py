@@ -203,9 +203,12 @@ RUNTIME_OPT_OUT = {
     # `secret` to decide whether a value a device reports may be saved into a
     # field, and avcdriver_semantic reads `default`; those left this list and
     # the blind spots below because the search can see them now.
-    "configSchemaEntry.required":
-        "Connection-form validation: the field is mandatory in the device "
-        "config form. Nothing on the wire consults it.",
+    # `required` is deliberately NOT listed either, though the runtime still
+    # reads none of it (it marks a field mandatory in the device config form).
+    # core/plugin_extension_rules.py, a plugin surface's layout rules, holds a
+    # local named `required` beside a layout's `columns` -- this block's
+    # anchor -- so the scoped search counts it as read, on the same coincidence
+    # as `advanced` above.
     # config_schema's `columns` and help's `overview`/`connection` belong here
     # on the same reasoning, and are deliberately NOT listed: each is declared
     # in only one block, so it takes the unscoped grep and passes on ordinary
