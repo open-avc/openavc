@@ -76,7 +76,7 @@ from openavc.drivers.polling import PollLoop
 # The push channel lives in its own module; these two helpers stay importable
 # from here, the path core/push_ports.py and drivers use.
 from openavc.drivers.push import PushChannel, push_port, resolve_push_value  # noqa: F401
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has
 from openavc.drivers.transport_choice import effective_transport
 # Building a device's transport from its config lives in its own module;
 # _ssh_option_list stays importable from here.
@@ -659,8 +659,7 @@ class BaseDriver(
         something (a multicast default, a broadcast) leaves it unmarked.
         Serial, bridge-routed and IR devices dial no address of their own.
         """
-        traits = transport_traits(self._effective_transport())
-        if traits is None or not traits.addressed:
+        if not transport_has(self._effective_transport(), "addressed"):
             return False
         field = (self.DRIVER_INFO.get("config_schema") or {}).get("host")
         if not (isinstance(field, dict) and field.get("required") is True):

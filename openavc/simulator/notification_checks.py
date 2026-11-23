@@ -26,7 +26,7 @@ import re
 from typing import Any
 
 from openavc.drivers.compiled_protocol import state_var_default
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has
 from openavc.simulator.driver_sends import effective_config
 from openavc.simulator.reply_reading import ReplyRules
 from openavc.simulator.validation_result import ValidationResult
@@ -99,9 +99,8 @@ def _push_carries_notifications(driver_def: dict, transport: Any) -> bool:
 def _notifications_reach_driver(driver_def: dict, transport: Any) -> bool:
     """Whether a ``notifications:`` message can reach the driver at all: on a
     declared push channel, or on a transport that pushes on its control link."""
-    traits = transport_traits(transport)
-    return _push_carries_notifications(driver_def, transport) or (
-        traits is not None and traits.control_link_push
+    return _push_carries_notifications(driver_def, transport) or transport_has(
+        transport, "control_link_push"
     )
 
 

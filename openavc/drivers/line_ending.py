@@ -49,7 +49,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has
 from openavc.drivers.transport_choice import declared_transport
 from openavc.transport.binary_helpers import encode_escape_sequences
 
@@ -133,8 +133,7 @@ def reply_line_ending(definition: Mapping[str, Any], config: Mapping[str, Any]) 
     not a byte stream, a ``frame_parser`` that frames them, or none."""
     # Split only a byte stream (the transport table's byte_stream column); a
     # datagram transport frames one message per packet.
-    traits = transport_traits(declared_transport(definition))
-    if traits is None or not traits.byte_stream:
+    if not transport_has(declared_transport(definition), "byte_stream"):
         return None
     if definition.get("frame_parser"):
         return None

@@ -42,7 +42,7 @@ from openavc.drivers.refused_files import refusal_for
 # driver contract's list, where a reply rule's gate reads it too. The AI's
 # property check and the device audit import it from here.
 from openavc.drivers.spec import PLATFORM_DEVICE_KEYS as PLATFORM_DEVICE_KEYS
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has
 from openavc.utils.log_redaction import redact_config
 
 if TYPE_CHECKING:
@@ -273,7 +273,7 @@ class DeviceInfoMixin:
         return [
             conn for conn in self.connections_now()
             if self._devices[conn.device_id].get_state("connected")
-            and _dials_an_address(conn.transport) and conn.host
+            and transport_has(conn.transport, "addressed") and conn.host
             and isinstance(conn.port, int)
         ]
 
@@ -317,10 +317,3 @@ class DeviceInfoMixin:
             return entry
         except Exception:
             return {"id": device_id, "name": device_id, "status": RUNNING, "connected": False}
-
-
-def _dials_an_address(transport: str) -> bool:
-    """Whether ``transport`` dials a network address of its own (the
-    transport table's ``addressed`` column)."""
-    traits = transport_traits(transport)
-    return traits is not None and traits.addressed

@@ -43,7 +43,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_away import connection_descriptor
 from openavc.core.event_bus import detach_emit_chain
 from openavc.drivers.base import ConnectEndedError
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -411,8 +411,7 @@ class DeviceReconnectMixin:
         host, port, transport = connection_descriptor(driver)
         # Only where the real connect costs more than a probe (the transport
         # table's probe_first column, which says why for each).
-        traits = transport_traits(transport)
-        if traits is None or not traits.probe_first or not _dialable(host, port):
+        if not transport_has(transport, "probe_first") or not _dialable(host, port):
             return None
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address

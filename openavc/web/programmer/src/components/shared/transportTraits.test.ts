@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TRANSPORT_TRAITS } from "../../api/types";
-import { dialsAnAddress, transportTraits } from "./transportTraits";
+import { dialsAnAddress, sendsRawLines, transportTraits } from "./transportTraits";
 
 describe("transportTraits", () => {
   it("reads a transport's row whatever its case", () => {
@@ -20,5 +20,11 @@ describe("transportTraits", () => {
     expect(dialsAnAddress("serial")).toBe(false);
     expect(dialsAnAddress("bridge")).toBe(false);
     expect(dialsAnAddress("constructor")).toBe(false);
+  });
+
+  it("says which transports send raw text lines", () => {
+    const raw = Object.keys(TRANSPORT_TRAITS).filter(sendsRawLines);
+    expect(raw).toEqual(["tcp", "serial", "udp", "ssh"]);
+    expect(sendsRawLines("http")).toBe(false);
   });
 });

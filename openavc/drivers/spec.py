@@ -236,6 +236,13 @@ def transport_traits(transport: object) -> TransportTraits | None:
     return TRANSPORT_TRAITS.get(transport) if isinstance(transport, str) else None
 
 
+def transport_has(transport: object, trait: str) -> bool:
+    """Whether ``transport`` has the yes-or-no column ``trait``: False for a
+    name that is no transport. An unknown column raises AttributeError."""
+    row = transport_traits(transport)
+    return row is not None and bool(getattr(row, trait))
+
+
 def transports_where(trait: str) -> tuple[str, ...]:
     """The transports whose ``trait`` column is true, in the table's order."""
     return tuple(name for name, row in TRANSPORT_TRAITS.items() if getattr(row, trait))

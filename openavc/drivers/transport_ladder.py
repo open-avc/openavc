@@ -65,7 +65,7 @@ from openavc.core.connection_fault import (
     no_serial_port_message,
 )
 from openavc.drivers.serial_line import SERIAL_LINE_SETTINGS, read_line_setting
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
@@ -591,7 +591,6 @@ class TransportLadder:
         with _refusing_unusable(_FRAMING_UNUSABLE):
             frame_parser = self._create_frame_parser()
             delimiter = self._resolve_delimiter()
-        traits = transport_traits(transport_type)
         asked = _Asked(
             frame_parser=frame_parser,
             delimiter=delimiter,
@@ -600,7 +599,7 @@ class TransportLadder:
             # a loopback host. The rule, and each transport's fallback port,
             # are in transport/endpoint.py so a connection test dials the same
             # way.
-            control_ip=(self.local_address() or None) if traits and traits.addressed else None,
+            control_ip=self._bind_address(transport_type),
         )
         build = _BUILDERS.get(transport_type) if isinstance(transport_type, str) else None
         if build is None:
@@ -612,6 +611,13 @@ class TransportLadder:
         with _refusing_unusable(_SETTINGS_UNUSABLE):
             kwargs = self._transport_kwargs(transport_type, await settings(self, asked))
         await dial(self, kwargs, asked)
+
+    def _bind_address(self, transport_type: str) -> str | None:
+        """The local IP this connection leaves from (:meth:`local_address`),
+        asked only of a transport that dials an address."""
+        if not transport_has(transport_type, "addressed"):
+            return None
+        return self.local_address() or None
 
     def local_address(self, host: str | None = None) -> str | None:
         """The local IP a connection this driver opens to ``host`` leaves

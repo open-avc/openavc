@@ -102,6 +102,14 @@ def test_a_stand_in_is_named_only_for_a_transport_the_simulator_does_not_serve()
     assert spec.simulator_stand_in(None) is None
 
 
+def test_a_column_is_asked_of_any_name():
+    assert spec.transport_has("ssh", "addressed")
+    assert not spec.transport_has("serial", "addressed")
+    assert not spec.transport_has("nonsense", "addressed")
+    with pytest.raises(AttributeError):
+        spec.transport_has("tcp", "nonsense")
+
+
 def test_an_unknown_name_has_no_row():
     assert spec.transport_traits("nonsense") is None
     assert spec.transport_traits(None) is None

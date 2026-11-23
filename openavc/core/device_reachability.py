@@ -93,7 +93,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.discovery.network_scanner import resolve_address
 from openavc.discovery.port_guard import held_ports
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has, transport_traits
 from openavc.drivers.transport_ladder import serial_line_settings
 from openavc.transport.endpoint import (
     checks_certificate,
@@ -230,8 +230,8 @@ def _opens_connection(resolved: dict[str, Any]) -> bool:
     ssh, mqtt, http and OSC over TCP do, UDP, SNMP, OSC over UDP and serial
     do not, and an IR device's bridge is tested as a device of its own."""
     conn = connection_of(resolved)
-    traits = transport_traits(conn.transport)
-    if traits is not None and not traits.addressed:
+    known = transport_traits(conn.transport) is not None
+    if known and not transport_has(conn.transport, "addressed"):
         return False
     return not _sends_datagrams(conn.transport, resolved.get("config") or {})
 
@@ -240,8 +240,7 @@ def _sends_datagrams(transport: str, cfg: dict[str, Any]) -> bool:
     """Whether the device is reached by datagrams, with no connection to open
     (the transport table's ``datagram`` column): UDP and SNMP, and OSC unless
     the device sets its ``transport_mode`` to TCP."""
-    traits = transport_traits(transport)
-    if traits is None or not traits.datagram:
+    if not transport_has(transport, "datagram"):
         return False
     if transport == "osc":
         return str(cfg.get("transport_mode", "udp")).lower() != "tcp"

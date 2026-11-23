@@ -13,6 +13,13 @@ export function transportTraits(transport: unknown): TransportTraits | undefined
     : undefined;
 }
 
+/** Whether a driver on `transport` sends its text lines as raw bytes,
+ * framed by the command prefix and suffix (not an OSC address or an HTTP
+ * request). */
+export function sendsRawLines(transport: unknown): boolean {
+  return transportTraits(transport)?.line_form === "raw";
+}
+
 /** Whether `transport` dials a network address of its own (the device's
  * IP address), as TCP, UDP, OSC, HTTP, SSH, MQTT and SNMP do. */
 export function dialsAnAddress(transport: unknown): boolean {

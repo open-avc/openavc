@@ -58,7 +58,7 @@ from openavc.core.device_config import (
     devices_at_host,
     same_serial_port,
 )
-from openavc.drivers.spec import transport_traits
+from openavc.drivers.spec import transport_has, transport_traits
 from openavc.drivers.transport_choice import effective_transport
 from openavc.transport.binary_helpers import encode_escape_sequences, has_incomplete_byte_escape
 from openavc.transport.endpoint import HttpEndpoint, UnusablePort, http_endpoint
@@ -134,15 +134,14 @@ async def check_connection_conflict(
     empty list means it's safe to test.
     """
     transport = transport.lower()
-    traits = transport_traits(transport)
-    if traits is None or not traits.holds_session:
+    if not transport_has(transport, "holds_session"):
         return {"conflicts": []}
     engine = _get_engine()
     if not engine.project:
         return {"conflicts": []}
     running = getattr(engine, "devices", None)
 
-    if traits.addressed:
+    if transport_has(transport, "addressed"):
         try:
             target_port: int | str = int(port)
         except (TypeError, ValueError):
@@ -482,14 +481,12 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         # Settle period — many devices send a response in multiple frames
         # (NEC NaviSet per-parameter lines, Christie LX ACK then DATA). Without
         # this short wait the disconnect tears down the transport before
-        # trailing frames arrive. A request-and-reply transport (HTTP) already
-        # returns the full response with the request, so it skips the settle.
-        traits = transport_traits(transport_type)
+        # trailing frames arrive. HTTP already returns the full response
+        # synchronously so we skip the settle there.
         if (
             received_chunks
             and error_text is None
-            and traits is not None
-            and not traits.request_reply
+            and _replies_trail(transport_type)
         ):
             await asyncio.sleep(min(0.3, body.timeout / 4))
 
@@ -867,3 +864,11 @@ async def _test_osc_raw(body: TestCommandRequest) -> dict:
         "state_changes": {},
         "error": error_text,
     }
+
+
+def _replies_trail(transport: str) -> bool:
+    """Whether a reply can still be arriving once the send has returned: any
+    transport that is not request and reply (the transport table's column),
+    which hands the whole response back with the request."""
+    row = transport_traits(transport)
+    return row is not None and not row.request_reply

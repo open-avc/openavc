@@ -40,7 +40,7 @@ from openavc.drivers.spec import (
     PORT_OPEN_TRANSPORTS,
     SILENCE_CHECK_TRANSPORTS,
     is_secret_setting,
-    transport_traits,
+    transport_has,
 )
 from openavc.drivers.usable_number import usable_number
 
@@ -260,8 +260,7 @@ def _line_gap(transport: Any, delay: float) -> float | None:
     whose lines are not counted."""
     if transport in LINE_GAP_TRANSPORTS:
         return delay if delay > 0 else DEFAULT_LINE_GAP_S
-    traits = transport_traits(transport)
-    if traits is not None and traits.delay_only:
+    if transport_has(transport, "delay_only"):
         return delay
     return None
 

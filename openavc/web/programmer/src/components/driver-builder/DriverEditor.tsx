@@ -37,7 +37,7 @@ import { SendFrameEditor } from "./SendFrameEditor";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { transportTraits } from "../shared/transportTraits";
+import { sendsRawLines } from "../shared/transportTraits";
 import { IssueList } from "./IssueList";
 import {
   validateDriverSafely,
@@ -270,7 +270,7 @@ export function DriverEditor({
   // Command framing wraps a raw line only (the transport table's line_form) —
   // OSC uses an address, HTTP a path/body, so neither is line-framed and the
   // section is hidden for them.
-  const isByteStream = transportTraits(draft.transport)?.line_form === "raw";
+  const isByteStream = sendsRawLines(draft.transport);
   const framingEnabled = !!(draft.command_prefix || draft.command_suffix);
 
   const countMeta = (n: number, singular: string, plural = `${singular}s`) =>
