@@ -2208,7 +2208,7 @@ DEFS = {
             'map': {
                 'type': 'object',
                 'min_props': 1,
-                'doc': "Wire-value translation applied after validation, before substitution: the validated value (string-keyed) is replaced by the mapped wire value. Values not in the map pass through unchanged. A boolean param matches the keys \"true\" and \"false\" in any case. Most useful on child_id params whose local ids differ from the protocol's channel numbers, and on a boolean the device spells as a word (ON / OFF) or a digit.",
+                'doc': "Wire-value translation applied after validation, before substitution: the validated value is replaced by the wire value of the key it names (the key it spells exactly, else one that differs only in case, else one it equals as a true/false or a number). Values the map does not name pass through unchanged. A boolean param matches the keys \"true\" and \"false\" in any case. Most useful on child_id params whose local ids differ from the protocol's channel numbers, and on a boolean the device spells as a word (ON / OFF) or a digit.",
                 'extra': {
                     # any_of, not one_of: an integer wire value is also a
                     # number, and one_of refused every integer map value.
@@ -2539,7 +2539,7 @@ DEFS = {
             },
             'map': {
                 'type': 'object',
-                'doc': 'Lookup table translating raw captured values to friendly values.',
+                'doc': "Lookup table translating raw captured values to friendly values. A reply names the key it spells exactly, else one that differs only in case, else one it equals as a true/false or a number (a JSON true names the key \"true\"); a reply that names no key is read as it came. Quote every key, and every value where the variable holds text or an enum choice: YAML reads bare digits as a number and a bare on or off as a true/false.",
             },
             'value': ANY,
             'arg': {
@@ -3146,7 +3146,7 @@ DEFS = {
             'map': {
                 'type': 'object',
                 'min_props': 1,
-                'doc': "YAML drivers. The device's own word for each setting value, e.g. {\"true\": \"ON\", \"false\": \"OFF\"} for a device that writes a flag as ON / OFF. The value chosen in the editor is replaced by its mapped word before it is substituted as {value}; a value not in the map is written as it is, through its state variable's conversion. Keys are setting values: true and false on a boolean setting, the declared values on an enum. Quote every key and word, since YAML reads a bare true, on or yes as a boolean. The simulator maps the word back to the setting value.",
+                'doc': "YAML drivers. The device's own word for each setting value, e.g. {\"true\": \"ON\", \"false\": \"OFF\"} for a device that writes a flag as ON / OFF. The value chosen in the editor is replaced by the word of the key it names (the key it spells exactly, else one that differs only in case, else one it equals as a true/false or a number) before it is substituted as {value}; a value that names no key is written as it is, through its state variable's conversion. Keys are setting values: true and false on a boolean setting, the declared values on an enum. Quote every key and word, since YAML reads a bare true, on or yes as a boolean. The simulator maps the word back to the setting value.",
                 'since': '0.37.0',
                 'extra': {
                     # any_of, not one_of: an integer wire value is also a

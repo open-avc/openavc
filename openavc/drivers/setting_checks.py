@@ -265,10 +265,12 @@ def _map_pair_error(where: str, key: Any, word: Any) -> str | None:
 
 
 def _map_key_error(where: str, key: Any, stype: Any, allowed: list[str] | None) -> str | None:
-    """A key is a value the setting takes: true or false on a boolean, a
-    declared value on an enum, anything on another type."""
+    """A key is a value the setting takes: true or false on a boolean (in
+    any case, never padded, which the lookup reads as no boolean,
+    ``compiled_protocol.map_word``), a declared value on an enum, anything on
+    another type."""
     if stype == "boolean":
-        if str(key).strip().lower() in ("true", "false"):
+        if str(key).lower() in ("true", "false"):
             return None
         return (
             f"{where}: map key '{key}' is not a value a boolean setting "

@@ -130,17 +130,22 @@ def test_a_boolean_value_matches_its_key_however_it_is_spelled(key):
     assert map_word(False, {key: "ON"}) is None
 
 
-def test_a_boolean_value_never_matches_a_number_key():
-    assert map_word(True, {"1": "ON"}) is None
-    assert map_word(False, {0: "OFF"}) is None
+def test_a_boolean_value_matches_a_number_key_by_value():
+    # The lookup every authored map follows (condition_eval.match_key): a
+    # boolean meets a key it equals as a boolean, a number non-zero true,
+    # once no key spells it.
+    assert map_word(True, {"1": "ON"}) == "ON"
+    assert map_word(False, {0: "OFF"}) == "OFF"
+    assert map_word(True, {"1": "X", "true": "ON"}) == "ON"
 
 
-def test_other_values_match_on_their_text():
+def test_other_values_match_on_their_text_then_apart_from_case():
     assert map_word("auto", {"auto": "AUTO"}) == "AUTO"
     assert map_word(3, {3: "THREE"}) == "THREE"
     assert map_word(3, {"3": "THREE"}) == "THREE"
     assert map_word("3", {3: "THREE"}) == "THREE"
-    assert map_word("Auto", {"auto": "AUTO"}) is None
+    assert map_word("Auto", {"auto": "AUTO"}) == "AUTO"
+    assert map_word("Auto", {"auto": "a", "Auto": "b"}) == "b"
 
 
 def test_the_word_is_text_and_no_map_maps_nothing():
@@ -152,7 +157,10 @@ def test_the_word_is_text_and_no_map_maps_nothing():
 def test_a_word_reads_back_exactly_first_then_ignoring_case():
     value_map = {"a": "On", "b": "ON"}
     assert value_for_map_word("ON", value_map) == (True, "b")
-    assert value_for_map_word("on", value_map) == (True, "a")
+    assert value_for_map_word("On", value_map) == (True, "a")
+    # Two words alike apart from case: the first in code point order, the
+    # order every map's lookup breaks a tie by.
+    assert value_for_map_word("on", value_map) == (True, "b")
     assert value_for_map_word(" ON ", {"true": "ON"}) == (True, "true")
     assert value_for_map_word("5", {"low": 5}) == (True, "low")
     assert value_for_map_word("MAYBE", {"true": "ON"}) == (False, None)

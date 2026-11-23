@@ -38,9 +38,8 @@ from typing import Any
 
 from openavc.drivers.command_form import command_form
 from openavc.drivers.http_commands import request_target
-from openavc.drivers.compiled_protocol import apply_send_frame, safe_substitute
+from openavc.drivers.compiled_protocol import apply_send_frame, map_entry, safe_substitute
 from openavc.simulator.send_templates import placeholder_pattern
-from openavc.simulator.state_replies import map_key
 from openavc.transport.frame_parsers import write_frame
 
 logger = logging.getLogger("openavc.simulator.yaml_auto")
@@ -434,24 +433,27 @@ class PushChannels:
     def _read_notifications(self, notifications: Any) -> None:
         """The ``notifications:`` templates: ``{state_key: {value: template}}``
         or ``{state_key: template}`` for any value (filed under ``*``).
-        ``{key}`` is the state key, ``{value}`` the new value."""
+        ``{key}`` is the state key, ``{value}`` the new value. A value's key
+        is kept as YAML read it, for the lookup to read (an unquoted ``true:``
+        arrives as a boolean)."""
         self._notification_map = {}
         for key, value_map in notifications.items():
             if isinstance(value_map, dict):
                 self._notification_map[key] = {
-                    str(k): str(v) for k, v in value_map.items()
+                    k: str(v) for k, v in value_map.items()
                 }
             elif isinstance(value_map, str):
                 self._notification_map[key] = {"*": value_map}
 
     def _notification_template(self, key: str, value: Any) -> str | None:
         """The `notifications:` template for ``key`` taking ``value``: the
-        one written for that value, else the key's ``*`` template, else
-        None."""
+        one written for that value (picked as every value map picks,
+        ``map_entry``), else the key's ``*`` template, else None."""
         value_map = self._notification_map.get(key) if self._notification_map else None
         if not value_map:
             return None
-        return value_map.get(map_key(value)) or value_map.get("*") or None
+        found, template = map_entry(value_map, value)
+        return (template if found else None) or value_map.get("*") or None
 
     def _push_channel(self) -> str | None:
         """The sender of the declared channel a notification goes out on: the

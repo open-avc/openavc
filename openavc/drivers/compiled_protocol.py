@@ -29,7 +29,8 @@ and read_back queries the simulator answers (``reread_queries``).
 
 Pure on purpose: stdlib plus ``openavc.transport.binary_helpers``, the driver
 contract's tables (``openavc.drivers.spec``, directly and through ``child_routes``),
-``json_value_spec`` and the logger only — the same contract as
+``json_value_spec``, the map lookup every authored map follows
+(``openavc.core.condition_eval``, itself pure) and the logger only — the same contract as
 ``openavc.drivers.inline_protocol``, and for the same reason: the simulator
 runs as a separate process and imports this
 module directly, so it must not pull in the driver runtime or transport stack
@@ -45,6 +46,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.core.condition_eval import match_key, value_words
 from openavc.drivers.child_routes import (
     compile_child_list,
     compile_child_set,
@@ -568,59 +570,51 @@ def value_to_wire(value: Any, decl: Any) -> Any:
     return _whole(round((number - offset) / scale, 9))
 
 
-# ── A value's own word on the wire (map) ──
+# ── A value map: a reply's, a setting's, a parameter's ──
 #
-# A device setting or a command parameter may declare ``map``: the word the
-# device expects for each value (``{"true": "ON", "false": "OFF"}``). The
-# runtime writes the word in place of the value; the simulator reads a
-# setting's word back to the value. All of them go through these functions so
-# a key matches the same way everywhere.
+# A reply's ``map:`` turns what the device sent into the variable's value; a
+# device setting's or a command parameter's ``map:`` names the word the device
+# expects for each value (``{"true": "ON", "false": "OFF"}``), which the
+# runtime writes in place of the value and the simulator reads back. Every
+# one picks its entry through ``condition_eval.match_key``, the rule every
+# authored map follows: the exact key, then one apart from case, then one the
+# reading equals as a boolean or number. So a key YAML read as a number (an
+# unquoted ``01:`` is 1) still matches the reply "01", a quoted "01" matches
+# only "01", and a JSON ``true`` matches the key "true".
 
 
-def _map_key_matches(key: Any, value: Any) -> bool:
-    """Does a map key name ``value``? A boolean value matches the key true /
-    True / "true" alike (a YAML bare key, a quoted one, the IDE's JSON bool);
-    anything else matches on its text, so an unquoted integer key matches."""
-    if isinstance(value, bool):
-        return str(key).strip().lower() == ("true" if value else "false")
-    return str(key) == str(value)
+def map_entry(value_map: Any, reading: Any) -> tuple[bool, Any]:
+    """The entry of an authored value map that ``reading`` picks:
+    ``(True, its value)``, or ``(False, None)`` when it picks none (or the
+    map is no mapping). A value may itself be None: a reply mapped to no
+    value is still a match."""
+    if not isinstance(value_map, dict):
+        return False, None
+    key = match_key(value_map, reading)
+    return (False, None) if key is None else (True, value_map[key])
 
 
 def map_word(value: Any, value_map: Any) -> str | None:
     """The device's word for ``value`` from a setting's or parameter's
     ``map``, as text, or None when the map has no entry for it (the caller
     writes the value as it is)."""
-    if not isinstance(value_map, dict):
-        return None
-    for key, word in value_map.items():
-        if _map_key_matches(key, value):
-            return str(word)
-    return None
+    found, word = map_entry(value_map, value)
+    return str(word) if found else None
 
 
 def value_for_map_word(word: Any, value_map: Any) -> tuple[bool, Any]:
     """The setting value a device ``word`` stands for: the inverse of
-    :func:`map_word`. An exact match wins, then one ignoring case.
-    ``(True, key)`` when found (the key as declared; the caller coerces it to
-    the state variable's type), ``(False, None)`` when the map has no such
-    word."""
+    :func:`map_word`, the word read as the text the device sent, trimmed.
+    ``(True, key)`` when found (the key as declared, the first written for
+    that word; the caller coerces it to the state variable's type),
+    ``(False, None)`` when the map has no such word."""
     if not isinstance(value_map, dict):
         return False, None
-    text = str(word).strip()
-    exact = _key_for(value_map, lambda mapped: mapped == text)
-    if exact[0]:
-        return exact
-    folded = text.lower()
-    return _key_for(value_map, lambda mapped: mapped.lower() == folded)
-
-
-def _key_for(value_map: dict[Any, Any], matches: Callable[[str], bool]) -> tuple[bool, Any]:
-    """``(True, key)`` for the first entry whose word, as text, ``matches``;
-    ``(False, None)`` when none does (a key may itself be None or False)."""
-    for key, mapped in value_map.items():
-        if matches(str(mapped)):
-            return True, key
-    return False, None
+    picked = match_key(value_map.values(), str(word).strip())
+    if picked is None:
+        return False, None
+    spelled = value_words(picked)
+    return True, next(key for key, mapped in value_map.items() if value_words(mapped) == spelled)
 
 
 # ── send_frame packet framing ──

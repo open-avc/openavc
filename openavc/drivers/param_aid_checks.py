@@ -27,6 +27,7 @@ from typing import Any, Callable
 
 from openavc.drivers.spec import PARAM_OPTIONS_FROM_SOURCES, VALUE_TYPES
 from openavc.drivers.usable_number import is_number_value
+from openavc.drivers.yaml_text import NOT_TEXT
 from openavc.utils.regex_safety import regex_safety_error
 
 
@@ -125,15 +126,20 @@ def _map_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> list[s
     The map translates the checked value before it is put in the send
     template (0-based channel numbers, letter codes), so a pair that is not
     two scalars would never translate. One message however many pairs are
-    wrong.
+    wrong: the first, in the words YAML's own reading needs (``yaml_text``)
+    where a bare on or off was read as a boolean word.
     """
     value_map = pdef.get("map")
     if value_map is None:
         return []
     if not isinstance(value_map, dict) or not value_map:
         return [f"{at}: map must be a non-empty mapping of value -> wire value"]
-    if all(_is_wire_scalar(k) and _is_wire_scalar(v) for k, v in value_map.items()):
+    wrong = [(k, v) for k, v in value_map.items() if not (_is_wire_scalar(k) and _is_wire_scalar(v))]
+    if not wrong:
         return []
+    key, word = wrong[0]
+    if isinstance(word, bool) and _is_wire_scalar(key):
+        return [f"{at}: map word for '{key}' is not text. {NOT_TEXT}"]
     return [f"{at}: map entries must be scalar value -> wire value pairs"]
 
 

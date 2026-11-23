@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
+from openavc.core.condition_eval import value_words
 from openavc.drivers.spec import is_value_type, value_type_traits
 
 # The type tags osc_encode_message understands.
@@ -99,10 +100,12 @@ class PushTarget(NamedTuple):
     reverse_map: dict[str, str] | None
 
     def device_token(self, value: Any) -> str | None:
-        """The device's token for ``value``; None without a map or a match."""
+        """The device's token for ``value``, filed and read under the value's
+        words apart from case (``value_words``); None without a map or a
+        match."""
         if not self.reverse_map:
             return None
-        return self.reverse_map.get(str(value).lower())
+        return self.reverse_map.get(value_words(value).lower())
 
 
 def address_rules(responses: Any) -> list[tuple[str, list[dict]]]:
@@ -132,7 +135,7 @@ def push_targets(rules: list[tuple[str, list[dict]]]) -> dict[str, PushTarget]:
             tag = type_tag(mapping.get("type", "float"))
             value_map = mapping.get("map")
             reverse_map = (
-                {str(state_val).lower(): str(osc_val) for osc_val, state_val in value_map.items()}
+                {value_words(state_val).lower(): str(osc_val) for osc_val, state_val in value_map.items()}
                 if value_map else None
             )
             targets[state_key] = PushTarget(address, arg, tag, reverse_map)

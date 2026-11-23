@@ -36,6 +36,12 @@ ALLOWED = {
     # THE usable-number rule: the seed rule, a conversion and the JSON
     # readers ask it. Standard library only.
     "openavc.drivers.usable_number",
+    # THE map lookup every authored map follows (match_key): a reply's,
+    # a setting's and a parameter's map ask it. It reads numbers through
+    # core.monitors; both are standard library only.
+    "openavc.core",
+    "openavc.core.condition_eval",
+    "openavc.core.monitors",
     "openavc.transport",
     "openavc.transport.binary_helpers",
     "openavc.utils",
@@ -167,6 +173,7 @@ def test_the_reread_queries_stay_within_the_protocol_closure():
         "openavc.drivers.query_entry",
         "openavc.drivers.framing_checks",
         "openavc.drivers.auth_block",
+        "openavc.drivers.yaml_text",
         "openavc.simulator",
         "openavc.simulator.send_templates",
         "openavc.simulator.reread_queries",

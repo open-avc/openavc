@@ -70,6 +70,7 @@ ALLOWED = {
     "openavc.drivers.tagged_errors",
     "openavc.drivers.transport_choice",
     "openavc.drivers.usable_number",
+    "openavc.drivers.yaml_text",
     "openavc.utils",
     "openavc.utils.regex_safety",
     "openavc.utils.version_rule",

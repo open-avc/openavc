@@ -691,10 +691,13 @@
   "Command 'set_level' param 'level': decimals must be a non-negative integer"
  ],
  "param_map_bad_pairs": [
-  "Command 'set_level' param 'level': map entries must be scalar value -> wire value pairs"
+  "Command 'set_level' param 'level': map word for 'a' is not text. YAML reads bare on/off/yes/no/true/false as booleans and bare digits as numbers. Put it in quotes."
  ],
  "param_map_empty": [
   "Command 'set_level' param 'level': map must be a non-empty mapping of value -> wire value"
+ ],
+ "param_map_word_not_scalar": [
+  "Command 'set_level' param 'level': map entries must be scalar value -> wire value pairs"
  ],
  "param_min_greater_than_max": [
   "Command 'set_level' param 'level': min (10) must be <= max (1)"
@@ -973,6 +976,9 @@
  ],
  "read_back_true_on_send_command": [
   "Command 'set': 'read_back: true' reads back from an OSC command's own address or an HTTP command's own path. Name the query that reads this command's value instead"
+ ],
+ "reply_map_value_not_text": [
+  "responses[0].mappings[0].map: value 'True' for '1' is not text. YAML reads bare on/off/yes/no/true/false as booleans and bare digits as numbers. Put it in quotes."
  ],
  "response_after_json_on_json_rule": [
   "Response 0: after_json applies to regex rules; a json: true rule already reads the body"

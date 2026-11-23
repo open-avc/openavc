@@ -4,6 +4,11 @@ THE comparison of a reading with what an author wrote.
 Asked by every reader of a condition on the server: a macro's ``skip_if`` and
 conditional steps, a trigger's guards, a panel press the server resolves
 (``ui_events.resolve_press``), a select's value map, and both page reviews.
+``match_key`` is also every driver value map's lookup (a reply's, a device
+setting's and a command parameter's), asked by the driver runtime and the
+simulator through ``drivers/compiled_protocol.map_entry``; this module stays
+standard-library-only (and ``core.monitors``) for them, since the simulator
+and the driver validator import it.
 The rule, in the order it is applied:
 
 - a reading that has not arrived (None) is never equal; what it does to

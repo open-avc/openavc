@@ -132,6 +132,7 @@ from openavc.drivers.substitution_checks import (
     validate_substitutions as validate_substitutions,
 )
 from openavc.drivers.tagged_errors import TaggedErrors as _TaggedErrors
+from openavc.drivers.yaml_text import NOT_TEXT
 
 
 def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
@@ -222,9 +223,7 @@ class _KeyWalk:
             if not isinstance(key, str):
                 errors.at(
                     loc,
-                    f"{_at(loc)}name '{key}' is not text. YAML reads bare "
-                    f"on/off/yes/no/true/false as booleans and bare "
-                    f"digits as numbers. Put it in quotes.",
+                    f"{_at(loc)}name '{key}' is not text. {NOT_TEXT}",
                 )
             self.walk(extra, sub, _inside(loc, key))
 

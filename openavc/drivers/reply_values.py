@@ -155,13 +155,14 @@ class ReplyValues:
         self, raw: Any, mapping: dict[str, Any], coerce: Any
     ) -> Any:
         """What one value the device sent becomes under its mapping: the
-        ``map:`` entry it names, else the conversion and the coercer for its
+        ``map:`` entry it picks (``compiled_protocol.map_entry``, the lookup
+        every value map follows), else the conversion and the coercer for its
         wire form (``coerce``: _convert_value, _convert_osc_value or
         _convert_json_value)."""
         value_type = mapping.get("type", "string")
-        value_map = mapping.get("map")
-        if value_map and str(raw) in value_map:
-            return self._convert_declared(value_map[str(raw)], value_type)
+        found, mapped = compiled_protocol.map_entry(mapping.get("map"), raw)
+        if found:
+            return self._convert_declared(mapped, value_type)
         return self._read_converted(raw, value_type, mapping, coerce)
 
     def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:

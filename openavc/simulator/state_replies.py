@@ -4,8 +4,12 @@
 flat variable's ``StateResponse``, one child variable's ``ChildStateResponse``,
 and a ``ChildListAnswer`` for a variable a ``child_list`` rule spreads across
 children. This module is what those tables do with a value: the value map
-first, keyed by ``map_key`` (the one rule both the table builders and the
-lookups use, so a YAML ``true`` and a boolean state value meet), then the
+first, filed under each value the driver's map writes and read under the value
+the simulator holds, both spelled ``condition_eval.value_words`` (so a YAML
+``true`` and a boolean state value meet, and a value mapped to null is found
+for an empty one). It is the reverse of a reply's map, a value the variable
+holds against values the map writes, so the reading is exact; a reading off
+the wire is picked by ``compiled_protocol.map_entry``. Then the
 templates of every rule that writes the variable, each rendered in each form
 the value can take (``wire_forms``), and the first rendering whose own rule
 reads the value back is the one sent (``first_read_back``). A reply carries the
@@ -24,6 +28,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.core.condition_eval import value_words
 from openavc.drivers.compiled_protocol import value_to_wire
 from openavc.simulator.reply_templates import fill_template, slot_text
 
@@ -31,12 +36,6 @@ from openavc.simulator.reply_templates import fill_template, slot_text
 # (``search``), with the capture group the value is read from; None when the
 # pattern does not compile as written.
 ReadBack = tuple[re.Pattern, int] | None
-
-
-def map_key(value: Any) -> str:
-    """The key a value map files ``value`` under: its text, a boolean
-    lowercase (``true``), so a YAML ``true`` and a boolean state value meet."""
-    return str(value).lower() if isinstance(value, bool) else str(value)
 
 
 def rule_pattern(pattern: str, group: int) -> ReadBack:
@@ -149,9 +148,9 @@ class StateResponse(_RuleTemplates):
     def format(self, value: Any) -> str:
         """The reply text for ``value``: its value map entry, else its
         templates' first rendering read back, else the bare wire value."""
-        key = map_key(value)
-        if key in self.value_map:
-            return self.value_map[key]
+        reply = self.value_map.get(value_words(value))
+        if reply is not None:
+            return reply
         if self.template:
             return render_first([
                 (template, rule, {})
@@ -190,10 +189,10 @@ class ChildStateResponse(_RuleTemplates):
         """Reply text for this child/value, or None when nothing derivable
         represents the value (unlike flat replies, a bare value with no id
         slot would be garbage on the wire)."""
-        key = map_key(value)
-        if key in self.value_map:
+        reply = self.value_map.get(value_words(value))
+        if reply is not None:
             return fill_template(
-                self.value_map[key], {"child_id": _wire_id(child_id, self.id_wire_map)}
+                reply, {"child_id": _wire_id(child_id, self.id_wire_map)}
             )
         if self.template:
             return render_first([
@@ -227,7 +226,7 @@ class ChildListAnswer:
     def render_item(self, child_id: str, value: Any) -> str:
         wire_id = _wire_id(child_id, self.id_wire_map)
         if self.value_words is not None:
-            word = self.value_words.get(map_key(value))
+            word = self.value_words.get(value_words(value))
             if word is not None:
                 return fill_template(self.item, {"value": word, "child_id": wire_id})
         return render_first(

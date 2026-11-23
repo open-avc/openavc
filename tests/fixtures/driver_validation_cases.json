@@ -6767,6 +6767,32 @@
   },
   "transport": "tcp"
  },
+ "param_map_word_not_scalar": {
+  "commands": {
+   "set_level": {
+    "params": {
+     "level": {
+      "map": {
+       "a": [
+        1
+       ]
+      },
+      "type": "string"
+     }
+    },
+    "send": "LVL {level}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "param_min_greater_than_max": {
   "commands": {
    "set_level": {
@@ -9188,6 +9214,37 @@
   },
   "id": "acme_widget",
   "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "reply_map_value_not_text": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "mappings": [
+     {
+      "group": 1,
+      "map": {
+       "0": "off",
+       "1": true
+      },
+      "state": "power"
+     }
+    ],
+    "match": "P=(\\d)"
+   }
+  ],
   "state_variables": {
    "power": {
     "label": "Power",

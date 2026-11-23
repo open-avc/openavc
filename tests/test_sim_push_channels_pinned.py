@@ -534,8 +534,10 @@ def test_render_notification_state_refs():
 def test_notification_templates_parse_both_shapes():
     sim = _sim(simulator={"notifications": {"level": {1: "ONE", "*": "ANY"}, "power": "P{value}",
                                             "bad": 5}})
-    assert sim._notification_map == {"level": {"1": "ONE", "*": "ANY"}, "power": {"*": "P{value}"}}
+    # A value's key is kept as YAML read it; the lookup reads it.
+    assert sim._notification_map == {"level": {1: "ONE", "*": "ANY"}, "power": {"*": "P{value}"}}
     assert sim._notification_template("level", 1) == "ONE"
+    assert sim._notification_template("level", "1") == "ONE"
     assert sim._notification_template("level", 2) == "ANY"
     assert sim._notification_template("power", True) == "P{value}"
     assert sim._notification_template("nope", 1) is None

@@ -30,6 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.core.condition_eval import value_words
 from openavc.drivers.compiled_protocol import conversion_of
 from openavc.simulator.reply_templates import (
     emit_literal,
@@ -41,7 +42,6 @@ from openavc.simulator.state_replies import (
     ChildListAnswer,
     ChildStateResponse,
     StateResponse,
-    map_key,
     rule_pattern,
 )
 
@@ -152,7 +152,7 @@ class _FlatRule:
                 tables[state_key] = StateResponse(
                     state_key, conversion_of(var_def_for(state_key))
                 )
-            self._read_value(tables[state_key], map_key(set_value))
+            self._read_value(tables[state_key], value_words(set_value))
         for mapping in self.map_reversals:
             self._reverse_map(tables, mapping)
 
@@ -184,7 +184,7 @@ class _FlatRule:
             return
         for raw, friendly in mapping["map"].items():
             sr.value_map.setdefault(
-                map_key(friendly), fill_template(template, {"value": raw})
+                value_words(friendly), fill_template(template, {"value": raw})
             )
 
 
@@ -315,7 +315,7 @@ class _ChildValue:
     def _reply(self, sr: ChildStateResponse, value: Any, slots: dict[int, str]) -> None:
         """File ``value``'s whole reply, unless an earlier rule did; the id
         map comes with the first reply."""
-        vkey = map_key(value)
+        vkey = value_words(value)
         if vkey in sr.value_map:
             return
         reply = emit_template_multi(self.pattern, slots)
@@ -419,7 +419,7 @@ def _list_value(expr: Any) -> tuple[int | None, dict[str, str] | None] | None:
         return ref_number(expr.get("group")), None
     words: dict[str, str] = {}
     for word, value in raw_map.items():
-        words.setdefault(map_key(value), str(word))
+        words.setdefault(value_words(value), str(word))
     return ref_number(expr.get("group")), words
 
 

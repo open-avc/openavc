@@ -33,7 +33,9 @@ What it holds so far:
   command whose only form is an address or IR code left empty, which sends
   nothing (``command_form.left_empty_forms``), and a command parameter or
   config field whose name no placeholder can carry, which is never filled in
-  (``spec.is_placeholder_name``).
+  (``spec.is_placeholder_name``), and a reply map's key, or a value it writes
+  where its variable holds text, that YAML did not read as text
+  (``yaml_text``).
 
 The rules worth knowing before changing anything here:
 
@@ -52,7 +54,7 @@ The rules worth knowing before changing anything here:
   rule reads through the model yet has no member here.
 
 Pure: the standard library, ``spec`` and the leaves it composes (``query_entry``,
-``framing_checks``, ``auth_block``, ``command_form``), with
+``framing_checks``, ``auth_block``, ``command_form``, ``yaml_text``), with
 absolute ``openavc.`` imports (``tests/test_avcdriver_semantic_purity.py``).
 Vendored with the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 """
@@ -68,6 +70,7 @@ from openavc.drivers.command_form import FORM_LEFT_EMPTY, left_empty_forms
 from openavc.drivers.framing_checks import push_frame_field_issues
 from openavc.drivers.query_entry import OSC_MESSAGE, QueryEntry, read_query_entry
 from openavc.drivers.spec import is_placeholder_name
+from openavc.drivers.yaml_text import reply_map_problems
 
 YAML = "yaml"
 PYTHON = "python"
@@ -90,6 +93,10 @@ _PLACEHOLDER_NAME_WORDS = (
     "a {placeholder} cannot name it, so it is never filled in; use only letters, "
     "digits and underscores, starting with a letter or underscore"
 )
+
+# The code of a reply map's key, or a value it writes where its variable holds
+# text, that YAML did not read as text (yaml_text).
+NOT_TEXT = "not_text"
 
 # The sections whose keys a placeholder fills from, beside each command's params.
 _CONFIG_SECTIONS = ("config_schema", "default_config", "config_derived")
@@ -181,6 +188,9 @@ def read_driver(definition: Mapping[str, Any], kind: str = YAML) -> DriverModel:
     ) + tuple(
         ModelProblem(place, PLACEHOLDER_NAME, _PLACEHOLDER_NAME_WORDS)
         for place in _unfillable_names(definition)
+    ) + tuple(
+        ModelProblem(place, NOT_TEXT, words)
+        for place, words in reply_map_problems(definition)
     )
     return DriverModel(YAML, definition, WireModel(queries), problems)
 

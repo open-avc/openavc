@@ -628,6 +628,9 @@ CASES: dict[str, Any] = {
     "param_trim_not_bool": _param(type="string", trim="yes"),
     "param_map_empty": _param(type="string", map={}),
     "param_map_bad_pairs": _param(type="string", map={"a": True}),
+    "param_map_word_not_scalar": _param(type="string", map={"a": [1]}),
+    "reply_map_value_not_text": _d(responses=[{"match": r"P=(\d)", "mappings": [
+        {"group": 1, "state": "power", "map": {"1": True, "0": "off"}}]}]),
     "param_options_state_empty": _param(type="string", options_state=""),
     "param_options_from_not_mapping": _param(type="string", options_from="other"),
     "param_options_from_bad_source": _param(type="string", options_from={"source": "moon", "param": "level"}),
@@ -1257,12 +1260,16 @@ def test_every_message_an_author_check_can_show_reads_plainly():
             and isinstance(node.body[0], ast.Expr)
             and isinstance(node.body[0].value, ast.Constant)
         }
+        # A dash alone is no punctuation in a sentence: it is the glyph a
+        # monitor shows for no reading (core/monitors, which the map lookup
+        # every value map asks reads numbers through).
         dashed += [
             f"{path.relative_to(_ROOT).as_posix()}:{node.lineno}: {node.value!r}"
             for node in ast.walk(tree)
             if isinstance(node, ast.Constant)
             and isinstance(node.value, str)
             and "\u2014" in node.value
+            and node.value.strip() != "\u2014"
             and id(node) not in docstrings
         ]
     assert dashed == []

@@ -63,6 +63,7 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     coerce_osc_value,
     conversion_of,
+    map_entry,
     reading_from_wire,
     safe_substitute,
     split_send_frames,
@@ -627,16 +628,16 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return [(address, self._osc_query(mappings))]
 
     def _osc_set(self, mappings: list[dict], args: list[tuple[str, Any]]) -> None:
-        """Each mapping's argument into its variable: through the mapping's
-        map, else the variable's conversion, then its type."""
+        """Each mapping's argument into its variable: through the entry of the
+        mapping's map it picks (``map_entry``, the driver's own lookup), else
+        the variable's conversion, then its type."""
         for mapping in mappings:
             arg_idx = mapping.get("arg", 0)
             state_key = mapping.get("state")
             if state_key and arg_idx < len(args):
                 _, value = args[arg_idx]
-                value_map = mapping.get("map")
-                mapped = value_map.get(str(value)) if value_map else None
-                if mapped is None:
+                found, mapped = map_entry(mapping.get("map"), value)
+                if not found:
                     mapped = self._from_wire(state_key, value)
                 self.set_state(state_key, self._coerce_value(state_key, mapped))
 
