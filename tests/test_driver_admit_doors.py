@@ -447,7 +447,7 @@ async def test_an_update_the_loader_refuses_keeps_the_installed_driver(lib):
     lib.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(transport="carrier_pigeon")
     refusal = await _refused(_update("acme_widget.avcdriver"))
     assert (refusal.status_code, refusal.detail) == (
-        422, f"{_UPDATE_REFUSED}:\nUnsupported transport: carrier_pigeon",
+        422, f"{_UPDATE_REFUSED}:\ntransport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'",
     )
     _kept(lib, before, cls)
 

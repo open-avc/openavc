@@ -2714,6 +2714,10 @@ transports: [tcp, serial]
 
 A device using this driver then shows a connection picker (`Network (IP)`, `Direct serial`, `Through a bridge`) in its Connection settings. Only declare `transports` when the command and response strings are byte-for-byte identical across the listed media. If they differ, ship separate drivers instead.
 
+In simulation, a device is served the transport it picked, not the driver's default (OpenAVC 0.41.0 and later): a device on a `[tcp, udp]` driver set to UDP gets a UDP simulator. A serial pick is simulated over TCP, as every serial device is.
+
+`transport` names one transport. Written as `null`, left blank or as a word that is none of them, Validate and the Driver Builder's save refuse the file with a sentence naming the transports a YAML driver can use. A file already installed with a null or blank transport still loads and connects over TCP, and its Installed entry says why it would be refused. A Python driver's `DRIVER_INFO["transport"]` is held to the same rule, against every transport a Python driver can use.
+
 A **bridge** is a device that other devices connect through, such as a serial-to-Ethernet adapter. A bridge driver declares the typed ports it exposes:
 
 ```yaml

@@ -27,6 +27,7 @@ from typing import Any
 
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import is_value_type, transport_has
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.driver_sends import effective_config
 from openavc.simulator.reply_reading import ReplyRules
 from openavc.simulator.validation_result import ValidationResult
@@ -61,7 +62,7 @@ def check_notifications(
     if not notifications:
         return
 
-    transport = driver_def.get("transport", "tcp")
+    transport = declared_transport(driver_def)
     if not _notifications_reach_driver(driver_def, transport):
         result.warning(
             "notifications",

@@ -104,6 +104,7 @@ from openavc.drivers.shape_checks import (
     LEFT_FIELDS,
     shape_of as _shape_of,
     shape_refusals,
+    transport_refusal,
     unsaid,
 )
 from openavc.drivers.serial_line import line_setting_errors
@@ -457,7 +458,16 @@ class _DefinitionWalk:
             (self.line_settings, "default_config"),
             (self.discovery_authored, "discovery"),
             (self.model_problems, ""),
+            (self.transport_named, "transport"),
         ]
+
+    def transport_named(self) -> None:
+        """A transport written as a null or a blank: no transport, which a
+        load reads as tcp (``transport_choice``), so it is refused only where
+        a driver is written, in the sentence a wrong word gets."""
+        transport = self.driver_def.get("transport", "tcp")
+        if not transport:
+            self.authored.append(transport_refusal(transport))
 
     def rule_names(self) -> None:
         """The state variables each response rule writes and gates on, read
@@ -523,10 +533,12 @@ class _DefinitionWalk:
         transport = driver_def.get("transport", "")
         # "bridge" is the sentinel transport for a device that emits through a
         # live bridge instance (an IR device on an emitter port) rather than
-        # dialing a host of its own: it opens no socket.
+        # dialing a host of its own: it opens no socket. A null or blank one
+        # reads as tcp where a driver is loaded, so only the author's doors
+        # refuse it (transport_named).
         if transport and transport not in YAML_TRANSPORTS:
             errors.ctx = "transport"
-            errors.append(f"Unsupported transport: {transport}")
+            errors.append(transport_refusal(transport))
         # The IR code-set opt-in is a flag that turns on the device page's IR
         # Codes editor; the codes live in the device config / default_config.
         ir_codes_flag = driver_def.get("ir_codes")

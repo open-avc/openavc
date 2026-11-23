@@ -45,6 +45,7 @@ from openavc.drivers.compiled_protocol import derive_config, safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.drivers.spec import placeholder_names
 from openavc.drivers.send_framing import framed_send
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import without_escaped_line_endings
 
@@ -247,7 +248,7 @@ def probed_lines(commands: dict, queries: list, driver_def: dict) -> list[str]:
     is a finding an author reads past.
     """
     config = effective_config(driver_def)
-    transport = driver_def.get("transport", "tcp")
+    transport = declared_transport(driver_def)
     probes = _liveness_probe(driver_def.get("liveness"), config, transport)
     probes += _query_probes(queries, config, transport)
     probes += _command_probes(commands, driver_def, config)

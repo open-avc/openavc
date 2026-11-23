@@ -58,6 +58,7 @@ from openavc.drivers.command_form import command_form
 from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.spec import bare_placeholder, without_null_sections
+from openavc.drivers.transport_choice import declared_transport, effective_transport
 from openavc.drivers.usable_number import usable_number
 from openavc.drivers.compiled_protocol import (
     build_send_frame,
@@ -284,8 +285,15 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         device is served over TLS, as the driver dials it in the field
         (self_signed_tls.py); the platform reads that back out of
         to_info_dict() and leaves its ssl setting alone while redirected.
+
+        The transport is the one the device connects over: its own pick from
+        the driver's transports, else the driver's (transport_choice). A pick
+        with no server of its own (serial, ssh) gets the TCP server, as the
+        simulation points the device at TCP, and SIMULATOR_INFO keeps its name
+        (one cable: base.single_client_supported).
         """
-        transport = driver_def.get("transport", "tcp")
+        transport = effective_transport(effective_config(driver_def, config), driver_def)
+        self.SIMULATOR_INFO["transport"] = transport
         self._is_udp = transport == "udp"
         self._is_osc = transport == "osc"
         self._is_http = transport == "http"
@@ -1613,7 +1621,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             "driver_id": driver_def.get("id", "unknown"),
             "name": driver_def.get("name", "Unknown") + " Simulator",
             "category": driver_def.get("category", "generic"),
-            "transport": driver_def.get("transport", "tcp"),
+            "transport": declared_transport(driver_def),
             "default_port": driver_def.get("default_config", {}).get("port", 0),
             "delimiter": driver_def.get("delimiter"),
             "initial_state": initial_state,

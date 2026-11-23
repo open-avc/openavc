@@ -34,6 +34,7 @@ from typing import Any, Iterator
 
 from openavc.drivers.child_ids import page_starts
 from openavc.drivers.roster_source import config_child_ids
+from openavc.drivers.transport_choice import declared_transport, effective_transport
 from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     LINE_GAP_TRANSPORTS,
@@ -42,6 +43,7 @@ from openavc.drivers.spec import (
     SILENCE_CHECK_TRANSPORTS,
     is_secret_setting,
     transport_has,
+    transport_traits,
 )
 from openavc.drivers.usable_number import usable_number
 
@@ -94,8 +96,9 @@ def port_open_warnings(driver_def: dict[str, Any]) -> list[str]:
     discovery = driver_def.get("discovery")
     if not isinstance(discovery, dict) or not discovery.get("port_open"):
         return []
-    declared = _with_extras(driver_def.get("transport"), driver_def)
-    transports = {t for t in declared if isinstance(t, str) and t}
+    # One that is no transport is the transport refusal's to name.
+    declared = _with_extras(declared_transport(driver_def), driver_def)
+    transports = {t for t in declared if isinstance(t, str) and transport_traits(t) is not None}
     if not transports or transports & set(PORT_OPEN_TRANSPORTS):
         return []
     return [
@@ -158,7 +161,7 @@ class _AtDefaults:
 
     def __init__(self, driver_def: dict[str, Any]) -> None:
         self.config = _mapping(driver_def.get("default_config"))
-        self.transport = self.config.get("transport") or driver_def.get("transport")
+        self.transport = effective_transport(self.config, driver_def)
         polling = driver_def.get("polling")
         self.queries = polling.get("queries") if isinstance(polling, dict) else None
 

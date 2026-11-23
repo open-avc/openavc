@@ -61,6 +61,7 @@ from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.python_driver_class import driver_class_info
 from openavc.drivers.python_source import SourceDecodeError, python_source
 from openavc.drivers.serial_line import SERIAL_LINE_SETTINGS, line_setting_errors
+from openavc.drivers.shape_checks import transport_refusal
 from openavc.drivers.spec import CONFIG_FIELD_SOURCES
 from openavc.drivers.state_variable_checks import DEVICE_VARIABLE, state_variable_errors
 
@@ -271,7 +272,7 @@ def check_python_driver_info(
     both kinds of driver declare alike (``_SHARED_SECTIONS``: the state
     variables, the child types, each command's parameter aids and its
     ``sets:`` and ``query_for:``, the push block, the serial line settings in
-    ``default_config``, the ``discovery:`` block; the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
+    ``default_config``, the ``discovery:`` block, the ``transport``; the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
     (``drivers.check``, catalog CI, the Code view's save). Where a driver is
     loaded or a device connects they are the ``notices``, so a driver that
     worked before still does and the door can say what is wrong with it. A
@@ -604,6 +605,18 @@ def _line_setting_section(info: dict[str, Any], coverage: _Coverage) -> list[str
     return [message for _, message in line_setting_errors(seen)]
 
 
+def _transport_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
+    """A ``transport`` that is none of the transports, a null or a blank one
+    too (``shape_checks.transport_refusal``); one left out reads as tcp."""
+    if "transport" not in info:
+        return []
+    value = info["transport"]
+    if not coverage.judged("transport", value):
+        return []
+    refusal = transport_refusal(value, "python")
+    return [refusal] if refusal else []
+
+
 # A block judged whole by ``check`` (push_block_checks, discovery_block), unless
 # the reader could not see it or a section it names into (``reads``).
 def _whole_block(name: str, check: Callable[[dict[str, Any]], list[str]], reads=lambda _: ()):
@@ -621,6 +634,7 @@ _SHARED_SECTIONS: tuple[tuple[str, Callable[[dict[str, Any], _Coverage], list[st
     ("push", _whole_block("push", push_block_errors, lambda block: _push_reads(block))),
     ("default_config", _line_setting_section),
     ("discovery", _whole_block("discovery", discovery_refusals)),
+    ("transport", _transport_section),
 )
 
 

@@ -80,6 +80,7 @@ import yaml
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import is_value_type, without_null_sections
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.control_checks import check_controls
 from openavc.simulator.handler_replies import check_response_parsing
 from openavc.simulator.notification_checks import check_notifications
@@ -149,7 +150,7 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     sim = driver_def.get("simulator", {})
     sim_initial = sim.get("initial_state", {})
     sim_handlers = sim.get("command_handlers", [])
-    transport = driver_def.get("transport", "tcp")
+    transport = declared_transport(driver_def)
     known_keys = _known_state_keys(state_vars, sim_initial, sim)
 
     # ── Check 1: State variable coverage ──

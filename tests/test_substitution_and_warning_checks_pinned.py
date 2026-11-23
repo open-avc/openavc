@@ -634,13 +634,9 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [],
   'connected for as long as the connection stays open. '
   'Add a liveness block that asks something the device '
   'answers in every state.')],
- 'silence_transport_unhashable': [('error', 'transport', "Unsupported transport: ['tcp']"),
-                                  ('warning',
-                                   'liveness',
-                                   'liveness: could not be checked for warnings (unhashable type: '
-                                   "'list'). One of its values is not the kind it should be, such "
-                                   'as a number or true/false where a name goes; correct it and '
-                                   'check again')],
+ # The transport rule reads a list as no transport it knows, so the silence
+ # check runs, and finds nothing to say, instead of failing on the list.
+ 'silence_transport_unhashable': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not ['tcp']")],
  'cmd_clean': [],
  'cmd_config_typo': [('error',
                       'commands.set.send',
@@ -1369,7 +1365,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [],
                     'transport is osc, so the hint can never fire. Drop it, or add a transport '
                     'that listens on TCP.')],
  'port_open_tcp': [],
- 'port_open_transport_not_text': [('error', 'transport', 'Unsupported transport: 5')],
+ 'port_open_transport_not_text': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 5")],
  'port_open_udp_with_tcp': [],
  'resp_entry_not_mapping': [('error', 'responses[0]', 'Response 0: must be a mapping'),
                             ('error',

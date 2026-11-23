@@ -241,17 +241,20 @@ _NOT_A_RESOLUTION = {
     ("support/problem_report.py", "address.get('transport', '')"),
 }
 
-# The driver checker and the simulator read a definition's own declared
-# transport to judge or serve the file; they change with the driver contract.
+# The driver checker judges a definition's transport as written (a null is
+# refused, not read as tcp); the two simulator modules read a Python driver
+# from its source, where a transport built in code is a marker the rule
+# cannot read, and ask the rule for every other value.
 _CONTRACT = (
-    "simulator/",
     "drivers/avcdriver_semantic.py",
     "drivers/command_checks.py",
-    "drivers/driver_warnings.py",
     "drivers/liveness_checks.py",
     "drivers/push_block_checks.py",
     "drivers/python_info.py",
+    "drivers/shape_checks.py",
     "drivers/sign_in_checks.py",
+    "simulator/python_parity.py",
+    "simulator/scaffold.py",
 )
 
 

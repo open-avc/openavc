@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable
 
 from openavc.drivers.spec import without_null_settings
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.capacity import DeviceCapacity, capacity_problems
 from openavc.simulator.self_signed_tls import wants_tls
 from openavc.simulator.single_client import SingleClient, single_client_problems
@@ -147,7 +148,7 @@ class BaseSimulator(ABC):
 
     @property
     def transport(self) -> str:
-        return self.SIMULATOR_INFO.get("transport", "tcp")
+        return declared_transport(self.SIMULATOR_INFO)
 
     @property
     def default_port(self) -> int:

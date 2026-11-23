@@ -30,6 +30,7 @@ from typing import Any
 
 from openavc.drivers.command_form import command_form
 from openavc.drivers.send_framing import framed_send
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.driver_sends import (
     asked_queries,
     command_sample,
@@ -176,7 +177,7 @@ def check_poll_coverage(
     commands = driver_def.get("commands", {})
     config = effective_config(driver_def)
     answers = SimulatorAnswers(sim_handlers, commands, config)
-    transport = driver_def.get("transport", "tcp")
+    transport = declared_transport(driver_def)
 
     for label, query in _each_query(polled_queries(driver_def, queries)):
         query_text = _checked_query(query, commands)
@@ -235,7 +236,7 @@ def query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
     commands = driver_def.get("commands", {})
     config = effective_config(driver_def)
     answers = SimulatorAnswers(sim_handlers, commands, config)
-    transport = driver_def.get("transport", "tcp")
+    transport = declared_transport(driver_def)
 
     answering: set[int] = set()
     for entry in asked_queries(driver_def):

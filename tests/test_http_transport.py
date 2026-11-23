@@ -682,7 +682,7 @@ def test_driver_loader_rejects_invalid():
         "name": "Test Bad",
         "transport": "ftp",
     })
-    assert any("Unsupported transport" in e for e in errors)
+    assert "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'ftp'" in errors
 
 
 # --- Response size bounding ---

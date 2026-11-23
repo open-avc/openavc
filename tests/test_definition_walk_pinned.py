@@ -417,7 +417,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
  'device_settings_none': [],
  'device_settings_text': [('error', 'device_settings', 'device_settings: must be a mapping')],
  'device_settings_zero': [('error', 'device_settings', 'device_settings: must be a mapping')],
- 'everything': [('error', 'transport', 'Unsupported transport: carrier_pigeon'),
+ 'everything': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"),
                 ('error',
                  'ir_codes',
                  'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / the '
@@ -518,7 +518,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                 ('notice',
                  'responses[1].then_query[2]',
                  'responses[1].then_query[2]: must be a string or a mapping; put it in quotes')],
- 'everything_with_wrong_shapes': [('error', 'transport', 'Unsupported transport: carrier_pigeon'),
+ 'everything_with_wrong_shapes': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"),
                                   ('error',
                                    'ir_codes',
                                    'ir_codes: must be a boolean (the code-set lives in '
@@ -586,7 +586,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                    'list')],
  'everything_without_responses_and_child_types': [('error',
                                                    'transport',
-                                                   'Unsupported transport: carrier_pigeon'),
+                                                   "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"),
                                                   ('error',
                                                    'ir_codes',
                                                    'ir_codes: must be a boolean (the code-set '
@@ -1029,15 +1029,15 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                              'responses[4].then_query[2]',
                              'responses[4].then_query[2]: must be a string or a mapping; put it in '
                              'quotes')],
- 'transport_a_list': [('error', 'transport', "Unsupported transport: ['tcp']")],
- 'transport_a_mapping': [('error', 'transport', "Unsupported transport: {'tcp': 1}")],
+ 'transport_a_list': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not ['tcp']")],
+ 'transport_a_mapping': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not {'tcp': 1}")],
  'transport_bridge': [],
  'transport_empty': [('notice',
                       'transport',
                       "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not "
                       "''")],
- 'transport_none': [('notice', 'transport', 'transport: must be a string')],
- 'transport_unknown': [('error', 'transport', 'Unsupported transport: carrier_pigeon')]}
+ 'transport_none': [('notice', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not null")],
+ 'transport_unknown': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'")]}
 
 STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error',
                                                                                 'actions',
@@ -1147,7 +1147,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
  'everything': [('error',
                  'responses[1].then_query[2]',
                  'responses[1].then_query[2]: must be a string or a mapping; put it in quotes'),
-                ('error', 'transport', 'Unsupported transport: carrier_pigeon'),
+                ('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"),
                 ('error',
                  'ir_codes',
                  'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / the '
@@ -1256,7 +1256,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                                    'on_connect',
                                    'on_connect: must be a list; write a single entry as a one-item '
                                    'list'),
-                                  ('error', 'transport', 'Unsupported transport: carrier_pigeon'),
+                                  ('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"),
                                   ('error',
                                    'ir_codes',
                                    'ir_codes: must be a boolean (the code-set lives in '
@@ -1326,7 +1326,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                                    'that field if the driver has to keep installing on 0.1.0.')],
  'everything_without_responses_and_child_types': [('error',
                                                    'transport',
-                                                   'Unsupported transport: carrier_pigeon'),
+                                                   "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"),
                                                   ('error',
                                                    'ir_codes',
                                                    'ir_codes: must be a boolean (the code-set '
@@ -1783,15 +1783,15 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                              'device reads connected for as long as the connection stays open. Add '
                              'a liveness block that asks something the device answers in every '
                              'state.')],
- 'transport_a_list': [('error', 'transport', "Unsupported transport: ['tcp']")],
- 'transport_a_mapping': [('error', 'transport', "Unsupported transport: {'tcp': 1}")],
+ 'transport_a_list': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not ['tcp']")],
+ 'transport_a_mapping': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not {'tcp': 1}")],
  'transport_bridge': [],
  'transport_empty': [('error',
                       'transport',
                       "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not "
                       "''")],
- 'transport_none': [('error', 'transport', 'transport: must be a string')],
- 'transport_unknown': [('error', 'transport', 'Unsupported transport: carrier_pigeon')]}
+ 'transport_none': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not null")],
+ 'transport_unknown': [('error', 'transport', "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'")]}
 
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_issues_their_order_and_their_tags(case: str) -> None:

@@ -39,6 +39,7 @@ from openavc.drivers.python_info import UNEVALUATED, ExtractError
 from openavc.drivers.python_source import python_source
 from openavc.drivers.simulator_info import companion_simulator, read_simulator_info
 from openavc.drivers.spec import simulator_stand_in, without_null_settings
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.control_checks import check_controls
 from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
 from openavc.simulator.validation_result import ValidationResult, examples
@@ -113,18 +114,24 @@ def _check_pair(
 ) -> None:
     """The pair's checks, in the order they report."""
     _check_required_fields(result, sim_info)
-    check_declared_settings(
-        result, sim_info, 'SIMULATOR_INFO["{}"]', driver_info.get("transport"),
-    )
+    driver_transport = _declared(driver_info)
+    check_declared_settings(result, sim_info, 'SIMULATOR_INFO["{}"]', driver_transport)
     check_controls(result, sim_info, set())
     _check_ids(result, driver_info.get("id"), sim_info.get("driver_id"))
     _check_state(result, driver_info, sim_info)
-    _check_transports(
-        result, driver_info.get("transport", "tcp"), sim_info.get("transport", "tcp"),
-    )
+    _check_transports(result, driver_transport, _declared(sim_info))
     _check_command_names(
         result, python_source(sim_path), driver_info.get("commands", {}),
     )
+
+
+def _declared(info: dict) -> Any:
+    """A side's declared transport by the rule (``transport_choice``: tcp
+    when it names none, a null too), or the ``UNEVALUATED`` marker for one
+    built in code, which no check judges."""
+    if info.get("transport") is UNEVALUATED:
+        return UNEVALUATED
+    return declared_transport(info)
 
 
 def _check_required_fields(result: ValidationResult, sim_info: dict) -> None:

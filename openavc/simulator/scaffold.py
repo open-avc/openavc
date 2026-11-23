@@ -17,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from openavc.drivers.spec import ValueTypeTraits, transport_traits, value_type_traits
+from openavc.drivers.transport_choice import declared_transport
 
 
 def main():
@@ -104,7 +105,8 @@ def generate_skeleton(info: dict, driver_stem: str) -> str:
     driver_id = _plain(info.get("id"), "unknown")
     name = _plain(info.get("name"), "Unknown Device")
     category = _plain(info.get("category"), "generic")
-    transport = _plain(info.get("transport"), "tcp")
+    # A transport built in code is no choice the skeleton can print.
+    transport = declared_transport({"transport": _plain(info.get("transport"), "")})
     default_config = _plain(info.get("default_config"), {})
     default_port = _plain(default_config.get("port"), 0)
     state_vars = _plain(info.get("state_variables"), {})

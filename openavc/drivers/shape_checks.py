@@ -472,6 +472,22 @@ def shape_refusals(definition: dict[str, Any], tier: str = "yaml") -> list[tuple
     return ShapeWalk(tier).walk_definition(definition)
 
 
+def transport_refusal(value: Any, tier: str = "yaml") -> str | None:
+    """THE sentence for a driver's ``transport`` that is none of the
+    transports a driver of ``tier`` may name (``FIELDS["transport"]``: a YAML
+    driver's ``enum``, a Python driver's ``python_enum``), naming them; None
+    for one that is. A null or a blank value names none. The author's doors
+    refuse with it and a load door names it, so it reads the same at both."""
+    node = FIELDS["transport"]
+    allowed = node["python_enum"] if tier == "python" else node["enum"]
+    if _in_set(value, allowed):
+        return None
+    if value is None:
+        named = _join([_shown(v) for v in allowed])
+        return f"transport: must be {named}, not {'None' if tier == 'python' else 'null'}"
+    return f"transport: {_enum_sentence(node if tier != 'python' else {}, allowed, value)}"
+
+
 def shape_of(field: str, value: Any, tier: str = "yaml") -> list[tuple[str, str]]:
     """The refusals of one top-level field's ``value`` (none for a field the
     contract does not declare)."""

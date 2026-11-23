@@ -1178,7 +1178,7 @@
   "unknown key 'state_varibles' (did you mean 'state_variables'?)"
  ],
  "unsupported_transport": [
-  "Unsupported transport: carrier_pigeon"
+  "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not 'carrier_pigeon'"
  ],
  "when_state_boolean_quoted": [
   "polling: when_state.standby is a boolean; write true or false without quotes, not 'false'"

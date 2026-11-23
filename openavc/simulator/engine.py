@@ -28,6 +28,7 @@ import yaml
 
 from openavc.core.connection_fault import SimulatorCause, simulator_error_text
 from openavc.drivers.spec import without_null_sections, without_null_settings
+from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.base import BaseSimulator
 from openavc.simulator.simulator_file import load_simulator_folder
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
@@ -210,7 +211,7 @@ class SimulatorManager:
             driver_id=driver_id,
             name=driver_def.get("name", driver_id) + " Simulator",
             category=driver_def.get("category", "generic"),
-            transport=driver_def.get("transport", "tcp"),
+            transport=declared_transport(driver_def),
             default_port=driver_def.get("default_config", {}).get("port", 0),
             source=source,
             avcdriver_path=path,
@@ -226,7 +227,7 @@ class SimulatorManager:
             driver_id=driver_id,
             name=info.get("name", driver_id),
             category=info.get("category", "generic"),
-            transport=info.get("transport", "tcp"),
+            transport=declared_transport(info),
             default_port=info.get("default_port", 0),
             source="python",
             simulator_class=simulator_class,
