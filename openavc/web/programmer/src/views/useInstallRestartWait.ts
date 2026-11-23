@@ -57,6 +57,46 @@ async function ask(): Promise<RestartHeard> {
   return restartHeard(status);
 }
 
+const NOTHING_SHOWN: RestartWait = { startFailure: null, startingAgain: false };
+
+/** What the dialog shows after one answer, from what it showed before. */
+function nextShown(was: RestartWait, answer: RestartHeard, failedBefore: boolean): RestartWait {
+  if (answer.kind === "failed") return { startFailure: answer.status, startingAgain: false };
+  if (answer.kind === "starting" && failedBefore) return { startFailure: null, startingAgain: true };
+  return { startFailure: was.startFailure, startingAgain: false };
+}
+
+/** One run of the wait: each poll's answer, what it has seen, and whether
+ *  it was stopped. */
+class RestartWaiter {
+  cancelled = false;
+  private failedBefore = false;
+  private readonly show: (next: (was: RestartWait) => RestartWait) => void;
+  private readonly onVersion: (version: string) => void;
+
+  constructor(
+    show: (next: (was: RestartWait) => RestartWait) => void,
+    onVersion: (version: string) => void,
+  ) {
+    this.show = show;
+    this.onVersion = onVersion;
+  }
+
+  async poll(): Promise<void> {
+    const answer = await ask();
+    if (this.cancelled || answer.kind === "unheard") return;
+    if (answer.kind === "failed") this.failedBefore = true;
+    const failedBefore = this.failedBefore;
+    this.show((was) => nextShown(was, answer, failedBefore));
+    if (answer.kind === "ready") await this.settle(answer.version);
+  }
+
+  private async settle(version: string | null): Promise<void> {
+    const known = version ?? (await versionFromHealth());
+    if (!this.cancelled && known) this.onVersion(known);
+  }
+}
+
 /** While `active`, ask the server's status, keep the failed start to show,
  *  and hand `onVersion` each version heard once it is ready; the caller
  *  decides whether that version settles the update. `onVersion` must keep
@@ -65,36 +105,16 @@ export function useInstallRestartWait(
   active: boolean,
   onVersion: (version: string) => void,
 ): RestartWait {
-  const [startFailure, setStartFailure] = useState<StartupStatus | null>(null);
-  const [startingAgain, setStartingAgain] = useState(false);
+  const [shown, setShown] = useState<RestartWait>(NOTHING_SHOWN);
   useEffect(() => {
     if (!active) return;
-    let cancelled = false;
-    let failedBefore = false;
-    setStartFailure(null);
-    setStartingAgain(false);
-    const heard = (answer: RestartHeard) => {
-      if (answer.kind === "failed") {
-        failedBefore = true;
-        setStartFailure(answer.status);
-      } else if (answer.kind === "starting" && failedBefore) {
-        setStartFailure(null);
-      }
-      setStartingAgain(answer.kind === "starting" && failedBefore);
-    };
-    const poll = async () => {
-      const answer = await ask();
-      if (cancelled || answer.kind === "unheard") return;
-      heard(answer);
-      if (answer.kind !== "ready") return;
-      const version = answer.version ?? (await versionFromHealth());
-      if (!cancelled && version) onVersion(version);
-    };
-    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
+    setShown(NOTHING_SHOWN);
+    const waiter = new RestartWaiter(setShown, onVersion);
+    const timer = window.setInterval(() => void waiter.poll(), POLL_INTERVAL_MS);
     return () => {
-      cancelled = true;
+      waiter.cancelled = true;
       window.clearInterval(timer);
     };
   }, [active, onVersion]);
-  return { startFailure, startingAgain };
+  return shown;
 }

@@ -97,65 +97,9 @@ export function childNameFrom(
   return String(seeded).trim();
 }
 
-/** What each child is called now, keyed `<type>.<padded id>`: `childNameFrom`
- *  over the live values of the type's `label_field` and the reserved `label`
- *  (the fetched state where live state has none), else `childDisplayName`.
- *
- *  A device usually reports its names a moment after the list is fetched, so
- *  a name taken from the fetch alone is the slot's ("Input 1") rather than the
- *  device's ("CH1"). Two lookups per child: cheap enough to run on every
- *  live-state tick, which building the declarations below is not. */
-export function liveChildNames(
-  resp: ChildEntitiesListResponse | null,
-  liveState: Record<string, unknown>,
-  deviceId: string,
-): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!resp) return out;
-  for (const [ctype, tdef] of Object.entries(resp.child_entity_types ?? {})) {
-    for (const entry of resp.children?.[ctype] ?? []) {
-      out.set(
-        `${ctype}.${entry.local_id_padded}`,
-        liveChildName(entry, tdef, liveState, `device.${deviceId}.${ctype}.`)
-          || childDisplayName(ctype, tdef, entry),
-      );
-    }
-  }
-  return out;
-}
-
-/** What one fetched child is called now: `childNameFrom` over the live values
- *  of the type's `label_field` and the reserved `label`, the fetched state
- *  where live state has none. `typePrefix` is `device.<id>.<type>.`. "" when
- *  nothing names it; the caller words the absence. */
-export function liveChildName(
-  entry: ChildEntityEntry,
-  tdef: { label_field?: string } | null | undefined,
-  liveState: Record<string, unknown>,
-  typePrefix: string,
-): string {
-  const field = tdef?.label_field?.trim();
-  const read = liveOrFetched(entry, liveState, `${typePrefix}${entry.local_id_padded}.`);
-  const state: Record<string, unknown> = { label: read("label") };
-  if (field) state[field] = read(field);
-  return childNameFrom(entry.label, state, tdef);
-}
-
-/** A reader of one child's key: live state's value, else the fetched one. */
-function liveOrFetched(
-  entry: ChildEntityEntry,
-  liveState: Record<string, unknown>,
-  prefix: string,
-): (key: string) => unknown {
-  return (key) => {
-    const live = liveState[prefix + key];
-    return live !== undefined ? live : entry.state?.[key];
-  };
-}
-
 /** Every child reading this device has, as the declaration it is authored
  *  against, keyed by its suffix under `device.<id>.`. `names` (from
- *  `liveChildNames`) names each child; without it, the fetched name.
+ *  `liveChildNames`, api/liveChildNames.ts) names each child; without it, the fetched name.
  *
  *  Built once per payload rather than resolved per key: a loaded controller
  *  carries tens of thousands of these and the callers look them up on every

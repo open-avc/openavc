@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { childReadingDeclarations, liveChildNames } from "../../api/childStateVars";
+import { childReadingDeclarations } from "../../api/childStateVars";
+import { liveChildNames } from "../../api/liveChildNames";
 import type { ChildEntitiesListResponse, ChildEntityStateVarDef } from "../../api/types";
 
 /** One device's child-reading declarations, each child named from live state.

@@ -11,7 +11,7 @@
  *  audit's own children and stay as fetched. */
 import { useEffect, useState } from "react";
 import * as api from "../../api/restClient";
-import { liveChildName } from "../../api/childStateVars";
+import { liveChildName } from "../../api/liveChildNames";
 import type { ChildEntityEntry, ChildEntityTypeSchema } from "../../api/types";
 import { useConnectionStore } from "../../store/connectionStore";
 import type { ParamPickers } from "./ParamInput";
@@ -84,27 +84,40 @@ function namesOf(children: ChildEntityEntry[] | undefined, key: string): Map<str
   return out;
 }
 
-export function useLiveChildren(source: ChildSource): LiveChildren {
-  const { childType, deviceId, pickers } = source;
-  const [children, setChildren] = useState<ChildEntityEntry[] | undefined>(undefined);
-  const [typeDef, setTypeDef] = useState<ChildEntityTypeSchema | undefined>(undefined);
-  const prefix = childType && deviceId && !pickers ? `device.${deviceId}.${childType}.` : "";
-  const stamp = useSettled(
+/** The prefix of a project device's child keys of this type; "" for a
+ *  picker that does not follow a project device. */
+function followedPrefix({ childType, deviceId, pickers }: ChildSource): string {
+  return childType && deviceId && !pickers ? `device.${deviceId}.${childType}.` : "";
+}
+
+/** `childRosterStamp`, settled, so a controller registering its children in
+ *  a burst is fetched once. */
+function useRosterStamp(prefix: string): string {
+  return useSettled(
     useConnectionStore((s) => (prefix ? childRosterStamp(s.liveState, prefix) : "")),
     400,
   );
+}
+
+interface FetchedList {
+  children?: ChildEntityEntry[];
+  typeDef?: ChildEntityTypeSchema;
+}
+
+/** The fetched list, fetched again whenever `stamp` moves. */
+function useFetchedChildren(source: ChildSource, stamp: string): FetchedList {
+  const { childType, deviceId, pickers } = source;
+  const [fetched, setFetched] = useState<FetchedList>({});
   const reachable = !!deviceId || !!pickers;
   useEffect(() => {
     if (!childType || !reachable) return;
     let cancelled = false;
     fetchChildren(source)
       .then(({ found, schema }) => {
-        if (cancelled) return;
-        setChildren(found);
-        setTypeDef(schema);
+        if (!cancelled) setFetched({ children: found, typeDef: schema });
       })
       .catch(() => {
-        if (!cancelled) setChildren([]);
+        if (!cancelled) setFetched({ children: [] });
       });
     return () => {
       cancelled = true;
@@ -113,6 +126,12 @@ export function useLiveChildren(source: ChildSource): LiveChildren {
     // not refetch on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childType, deviceId, reachable, stamp]);
+  return fetched;
+}
+
+export function useLiveChildren(source: ChildSource): LiveChildren {
+  const prefix = followedPrefix(source);
+  const { children, typeDef } = useFetchedChildren(source, useRosterStamp(prefix));
   const key = useConnectionStore((s) =>
     prefix && children ? namesKey(children, typeDef, s.liveState, prefix) : "",
   );

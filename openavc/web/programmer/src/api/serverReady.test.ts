@@ -70,6 +70,7 @@ describe("waitForServerReady", () => {
     });
     await expect(waitForServerReady(() => true, 1)).resolves.toEqual({
       phase: "failed", version: "0.41.0", error: "Project file is not valid JSON", held: false, retryIn: 30,
+      problems: [],
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

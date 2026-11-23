@@ -4,8 +4,8 @@ import {
   childReadingDeclarations,
   childSchemaFor,
   childVarDefForSuffix,
-  liveChildNames,
 } from "./childStateVars";
+import { liveChildNames } from "./liveChildNames";
 import type { ChildEntitiesListResponse } from "./types";
 
 /**
