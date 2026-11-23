@@ -212,21 +212,7 @@ export function ScriptView() {
       if (type === "ui") {
         // An image or a font in a control's folder is a real file with nothing
         // to type into; the editor says so rather than showing its bytes.
-        let text = "";
-        if (isEditableUiPath(id)) {
-          try {
-            text = await readCustomUiFile(id);
-          } catch (e) {
-            // Never leave an error message sitting in the buffer as if it were
-            // the file: saving would write it over the author's control.
-            showError(`Could not open ${id}: ${parseApiError(e)}`);
-            setSelectedId(null);
-            setSelectedType(null);
-            setSource("");
-            setOriginalSource("");
-            return;
-          }
-        }
+        const text = isEditableUiPath(id) ? await readCustomUiFile(id) : "";
         setSource(text);
         setOriginalSource(text);
       } else {
@@ -238,8 +224,13 @@ export function ScriptView() {
         setOriginalSource(result.source);
       }
     } catch (e) {
-      console.error(`Failed to load ${type}:`, e);
-      setSource(`# Error loading ${type}: ${parseApiError(e)}`);
+      // Never leave an error message sitting in the buffer as if it were the
+      // file: saving would write it over the author's script, driver or
+      // control. Say why, and open nothing.
+      showError(`Could not open ${id}: ${parseApiError(e)}`);
+      setSelectedId(null);
+      setSelectedType(null);
+      setSource("");
       setOriginalSource("");
     } finally {
       setLoading(false);
