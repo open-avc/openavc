@@ -34,6 +34,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from openavc.drivers.avcdriver_semantic import UNEVALUATED_KEY
 from openavc.drivers.python_info import UNEVALUATED, ExtractError
 from openavc.drivers.python_source import python_source
 from openavc.drivers.simulator_info import companion_simulator, read_simulator_info
@@ -111,9 +112,7 @@ def _check_pair(
     result: ValidationResult, driver_info: dict, sim_info: dict, sim_path: Path,
 ) -> None:
     """The pair's checks, in the order they report."""
-    for field in _REQUIRED_FIELDS:
-        if field not in sim_info:
-            result.error("simulator_info", f"SIMULATOR_INFO missing required field: '{field}'")
+    _check_required_fields(result, sim_info)
     check_declared_settings(
         result, sim_info, 'SIMULATOR_INFO["{}"]', driver_info.get("transport"),
     )
@@ -126,6 +125,21 @@ def _check_pair(
     _check_command_names(
         result, python_source(sim_path), driver_info.get("commands", {}),
     )
+
+
+def _check_required_fields(result: ValidationResult, sim_info: dict) -> None:
+    """Each required field the table leaves out: an error, unless the table
+    is merged from another mapping (``UNEVALUATED_KEY``), which may hold it,
+    and it is named as not checked."""
+    merged = UNEVALUATED_KEY in sim_info
+    for field in [f for f in _REQUIRED_FIELDS if f not in sim_info]:
+        if merged:
+            result.info(
+                "simulator_info",
+                f"SIMULATOR_INFO is merged from another mapping, so '{field}' could not be checked",
+            )
+        else:
+            result.error("simulator_info", f"SIMULATOR_INFO missing required field: '{field}'")
 
 
 def _check_ids(result: ValidationResult, driver_id: Any, sim_driver_id: Any) -> None:
@@ -148,8 +162,11 @@ def _check_state(result: ValidationResult, driver_info: dict, sim_info: dict) ->
     computed block used to be checked against an invention instead of reported
     as unreadable.
     """
+    # A table merged from another mapping may hold initial_state, so one it
+    # leaves out is as unreadable as one built in code.
+    absent = UNEVALUATED if UNEVALUATED_KEY in sim_info else {}
     sim_initial = _readable(
-        result, sim_info.get("initial_state", {}),
+        result, sim_info.get("initial_state", absent),
         "SIMULATOR_INFO initial_state is computed, so state coverage and "
         "initial-state types could not be checked.",
     )

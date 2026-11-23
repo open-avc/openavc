@@ -79,10 +79,14 @@ def read_simulator_info(sim_path: Path) -> dict | None:
     no readable mapping (the import cannot decode the file, it does not
     parse, or no class assigns one).
 
-    Read off the first class body that assigns it, through the lenient
-    evaluator the driver side uses (``python_info.lenient_ast_value``): a
-    value it cannot evaluate comes back as the UNEVALUATED marker, never as
-    its own source text, so a check never judges an invention.
+    Read off the class the simulator serves, the first whose table names a
+    driver id (``simulator_claims``: its own table, or the one a base in the
+    file gives it); in a file where none names one, off the first class body
+    that assigns it. Through the lenient evaluator the driver side uses
+    (``python_info.lenient_ast_value``): a value it cannot evaluate comes back
+    as the UNEVALUATED marker, never as its own source text, and a table
+    merged from another mapping carries ``UNEVALUATED_KEY``, so a check never
+    judges an invention.
     """
     try:
         return _simulator_info_in(python_source(sim_path))
@@ -96,10 +100,26 @@ def _simulator_info_in(source: str) -> dict | None:
         tree = ast.parse(source)
     except SyntaxError:
         return None
-    for item in _class_body_items(tree):
-        if any(_names_simulator_info(target) for target in _assigned(item)):
-            value = lenient_ast_value(item.value, _PLACE, [])
-            return value if isinstance(value, dict) else None
+    table = _served_table(tree)
+    if table is None:
+        table = next((
+            item.value for item in _class_body_items(tree)
+            if any(_names_simulator_info(target) for target in _assigned(item))
+        ), None)
+    if table is None:
+        return None
+    value = lenient_ast_value(table, _PLACE, [])
+    return value if isinstance(value, dict) else None
+
+
+def _served_table(tree: ast.Module) -> ast.Dict | None:
+    """The table of the first class ``_claims_in`` would take, or None when
+    no class names a driver id."""
+    classes = file_classes(tree)
+    for name, node in classes.items():
+        table = inherited_table(node, classes, _PLACE) if derives(node) else None
+        if _claim(name, table) is not None:
+            return table
     return None
 
 
