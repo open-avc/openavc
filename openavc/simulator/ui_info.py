@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
-from openavc.drivers.spec import value_type_traits
+from openavc.drivers.spec import value_type_traits_or_text
 from openavc.drivers.usable_number import number_value
 from openavc.simulator.child_roster import roster_id
 
@@ -32,8 +32,9 @@ MAX_STOPS = 500
 def variable_control(key: str, var_def: dict, var_type: str, label: str) -> dict:
     """The control a state variable of ``var_type`` gets on the device card:
     the value type table's ``control`` for it, a slider stepping by whole
-    numbers unless the type is ``real``."""
-    traits = value_type_traits(var_type)
+    numbers unless the type is ``real``. A type with no row is drawn as the
+    text it reads as."""
+    traits = value_type_traits_or_text(var_type)
     if traits.control == "slider":
         return _slider_or_indicator(key, var_def, label, integral=not traits.real)
     if traits.control == "toggle":

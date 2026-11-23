@@ -75,6 +75,26 @@ def test_a_type_with_no_row_raises_naming_the_types(written):
         spec.value_type_traits(written)
 
 
+def test_a_type_with_no_row_reads_as_text_where_a_driver_still_carries_one():
+    """A Python driver with such a type loads (the loader warns), and the
+    simulator reads a YAML file as written, so these readers draw it as the
+    text it reads as rather than failing the device."""
+    assert spec.value_type_traits_or_text("double") is VALUE_TYPE_TRAITS["string"]
+    assert spec.value_type_traits_or_text(["number"]) is VALUE_TYPE_TRAITS["string"]
+    assert spec.value_type_traits_or_text("float") is VALUE_TYPE_TRAITS["float"]
+
+
+def test_the_simulator_builds_a_device_whose_type_has_no_row():
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    sim = YAMLAutoSimulator("acme_widget", config={}, driver_def={
+        "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+        "state_variables": {"gain": {"type": "double", "min": 0, "max": 10}},
+    })
+    assert sim.SIMULATOR_INFO["initial_state"]["gain"] == ""
+    assert sim.SIMULATOR_INFO["controls"] == [{"type": "indicator", "key": "gain", "label": "Gain"}]
+
+
 # --- every reader reads float as number --------------------------------------
 
 

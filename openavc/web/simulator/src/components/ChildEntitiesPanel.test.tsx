@@ -103,6 +103,14 @@ describe("child properties are drawn as what they are", () => {
     expect((screen.getByLabelText("Output Level") as HTMLInputElement).step).toBe("1");
   });
 
+  it("draws a type the table has no row for as text", () => {
+    const d = device();
+    d.children!.channel.prop_defs!.fader = { type: "double", label: "Output Level", min: -80, max: 0 };
+    render(<ChildEntitiesPanel device={d} onStateChange={vi.fn()} />);
+
+    expect((screen.getByLabelText("Output Level") as HTMLInputElement).type).toBe("text");
+  });
+
   it("falls back to a text field when a simulator sends no types", () => {
     const d = device();
     delete (d.children!.channel as { prop_defs?: unknown }).prop_defs;

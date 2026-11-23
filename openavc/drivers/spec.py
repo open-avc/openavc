@@ -366,8 +366,8 @@ def is_value_type(value_type: object) -> bool:
 def value_type_traits(value_type: object) -> ValueTypeTraits:
     """The row for a declaration's ``type``. None (a type left out, or
     written null, which the loader warns on and loads) reads as ``string``.
-    Any other name has no row and raises ValueError: the loader refuses such
-    a type, so only a reader handed a file no check has passed gets there."""
+    Any other name has no row and raises ValueError, for a reader whose answer
+    to such a type is a refusal (the scaffold's)."""
     if value_type is None:
         return VALUE_TYPE_TRAITS["string"]
     if not is_value_type(value_type):
@@ -376,6 +376,15 @@ def value_type_traits(value_type: object) -> ValueTypeTraits:
             + ", ".join(repr(name) for name in VALUE_TYPE_TRAITS)
         )
     return VALUE_TYPE_TRAITS[value_type]
+
+
+def value_type_traits_or_text(value_type: object) -> ValueTypeTraits:
+    """The row for a declaration's ``type``, a type with no row read as
+    ``string``. A YAML file's loader refuses such a type, but a Python driver
+    with one loads (the loader warns) and the simulator reads a YAML file as
+    written, so a reader there draws or seeds it as the text it reads as
+    rather than failing the device."""
+    return value_type_traits(value_type if is_value_type(value_type) else "string")
 
 
 # Types a command/action parameter may declare. No "float" (a number param

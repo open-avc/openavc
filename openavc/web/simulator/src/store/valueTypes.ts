@@ -4,13 +4,11 @@
 // own is the copy that misses float.
 import { VALUE_TYPE_TRAITS, type ValueTypeTraits } from "./controls.gen";
 
-/** The row for a declared type; a type left out or null reads as string.
- * The server sends only types a loaded driver declares, and the loader
- * refuses any other, so a name with no row is a platform fault and throws. */
+/** The row for a declared type. A type left out or null, or one with no row
+ * (a Python driver with one still loads), reads as string, so it is drawn as
+ * the text it reads as. */
 export function valueTypeTraits(type: unknown): ValueTypeTraits {
-  if (type === undefined || type === null) return VALUE_TYPE_TRAITS.string;
-  if (typeof type === "string" && Object.prototype.hasOwnProperty.call(VALUE_TYPE_TRAITS, type)) {
-    return VALUE_TYPE_TRAITS[type];
-  }
-  throw new Error(`${JSON.stringify(type)} is not a value type`);
+  return typeof type === "string" && Object.prototype.hasOwnProperty.call(VALUE_TYPE_TRAITS, type)
+    ? VALUE_TYPE_TRAITS[type]
+    : VALUE_TYPE_TRAITS.string;
 }

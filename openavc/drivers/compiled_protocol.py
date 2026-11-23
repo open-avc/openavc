@@ -58,7 +58,7 @@ from openavc.drivers.spec import (
     PLACEHOLDER,
     REAL_TYPES,
     placeholder_names,
-    value_type_traits,
+    value_type_traits_or_text,
 )
 from openavc.drivers.usable_number import usable_number
 from openavc.transport.binary_helpers import (
@@ -204,12 +204,11 @@ def state_var_default(var_def: dict[str, Any]) -> Any:
 
     Each type starts at its zero in the value type table
     (``spec.VALUE_TYPE_TRAITS``), so a real one (``float`` as ``number``)
-    starts at ``0.0``, never ``''``. A type the table has no row for raises
-    ValueError; a check reading a file the contract has not passed asks
-    ``spec.is_value_type`` first.
+    starts at ``0.0``, never ``''``; a type the table has no row for starts
+    as text, ``''``.
     """
     var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-    traits = value_type_traits(var_type)
+    traits = value_type_traits_or_text(var_type)
     if traits.numeric and not traits.real:
         min_num = _min_as_number(var_def)
         if min_num is None:
