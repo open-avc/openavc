@@ -37,8 +37,10 @@ function draw(layout: SurfaceLayout = LAYOUT, state: Record<string, unknown> = S
   render(<RoutingMatrix layout={layout} pluginId="acme_router" config={{}} />);
 }
 
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+// A crosspoint by the names its row and column are drawn with.
 const cell = (row: string, col: string) =>
-  screen.getByRole("button", { name: new RegExp(`^${row.replace(".", "\\.")} → ${col.replace(".", "\\.")}: `) });
+  screen.getByRole("button", { name: new RegExp(`^${escaped(row)} → ${escaped(col)}: `) });
 
 beforeEach(() => {
   mocks.emit.mockReset();
@@ -48,22 +50,22 @@ beforeEach(() => {
 describe("a destination's route, read from its own key", () => {
   it("draws the crosspoint its source names as routed, and a click on it unroutes it", async () => {
     draw();
-    expect(cell("amp.1", "stagebox.1")).toHaveAccessibleName("amp.1 → stagebox.1: Routed");
-    await act(async () => { fireEvent.click(cell("amp.1", "stagebox.1")); });
+    expect(cell("Amp / L", "Stagebox / 01")).toHaveAccessibleName("Amp / L → Stagebox / 01: Routed");
+    await act(async () => { fireEvent.click(cell("Amp / L", "Stagebox / 01")); });
     expect(mocks.emit).toHaveBeenCalledWith("acme_router", "unroute", { row: "amp.1", col: "stagebox.1" });
   });
 
   it("draws a source sharing only a number as another source, and a click on it routes it", async () => {
     draw();
-    expect(cell("amp.1", "laptop.1")).toHaveAccessibleName("amp.1 → laptop.1: Unrouted");
-    await act(async () => { fireEvent.click(cell("amp.1", "laptop.1")); });
+    expect(cell("Amp / L", "Laptop / 01")).toHaveAccessibleName("Amp / L → Laptop / 01: Unrouted");
+    await act(async () => { fireEvent.click(cell("Amp / L", "Laptop / 01")); });
     expect(mocks.emit).toHaveBeenCalledWith("acme_router", "route", { row: "amp.1", col: "laptop.1" });
   });
 
   it("draws every crosspoint of a destination routed to nothing as unrouted", () => {
     draw();
-    expect(cell("amp.2", "stagebox.1")).toHaveAccessibleName("amp.2 → stagebox.1: Unrouted");
-    expect(cell("amp.2", "laptop.1")).toHaveAccessibleName("amp.2 → laptop.1: Unrouted");
+    expect(cell("Amp / R", "Stagebox / 01")).toHaveAccessibleName("Amp / R → Stagebox / 01: Unrouted");
+    expect(cell("Amp / R", "Laptop / 01")).toHaveAccessibleName("Amp / R → Laptop / 01: Unrouted");
   });
 
   it("follows the route as the plugin reports it moving", () => {
@@ -71,25 +73,43 @@ describe("a destination's route, read from its own key", () => {
     act(() => {
       useConnectionStore.setState({ liveState: { ...STATE, "plugin.acme_router.source.amp.1": "Laptop / 01" } });
     });
-    expect(cell("amp.1", "stagebox.1")).toHaveAccessibleName("amp.1 → stagebox.1: Unrouted");
-    expect(cell("amp.1", "laptop.1")).toHaveAccessibleName("amp.1 → laptop.1: Routed");
+    expect(cell("Amp / L", "Stagebox / 01")).toHaveAccessibleName("Amp / L → Stagebox / 01: Unrouted");
+    expect(cell("Amp / L", "Laptop / 01")).toHaveAccessibleName("Amp / L → Laptop / 01: Routed");
   });
 
   it("compares exactly when the layout names no mode", () => {
     const { route_match: _omitted, ...layout } = LAYOUT;
     draw(layout);
-    expect(cell("amp.1", "stagebox.1")).toHaveAccessibleName("amp.1 → stagebox.1: Routed");
-    expect(cell("amp.1", "laptop.1")).toHaveAccessibleName("amp.1 → laptop.1: Unrouted");
+    expect(cell("Amp / L", "Stagebox / 01")).toHaveAccessibleName("Amp / L → Stagebox / 01: Routed");
+    expect(cell("Amp / L", "Laptop / 01")).toHaveAccessibleName("Amp / L → Laptop / 01: Unrouted");
   });
 
   it("compares in the mode the layout declares", () => {
     draw({ ...LAYOUT, route_match: "port" });
-    expect(cell("amp.1", "laptop.1")).toHaveAccessibleName("amp.1 → laptop.1: Routed");
+    expect(cell("Amp / L", "Laptop / 01")).toHaveAccessibleName("Amp / L → Laptop / 01: Routed");
   });
 
   it("draws every crosspoint unrouted for a layout that names no route key", () => {
     const { route_state_pattern: _omitted, ...layout } = LAYOUT;
     draw(layout);
-    expect(cell("amp.1", "stagebox.1")).toHaveAccessibleName("amp.1 → stagebox.1: Unrouted");
+    expect(cell("Amp / L", "Stagebox / 01")).toHaveAccessibleName("Amp / L → Stagebox / 01: Unrouted");
+  });
+});
+
+describe("what each row and column is called", () => {
+  it("heads each row and column with the name the plugin publishes for it", () => {
+    draw();
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "", "Laptop / 01", "Stagebox / 01",
+    ]);
+    expect(screen.getByRole("cell", { name: "Amp / L" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Amp / R" })).toBeInTheDocument();
+  });
+
+  it("heads a row the plugin gives no name with its key's own text, and still sends that", async () => {
+    draw(LAYOUT, { ...STATE, "plugin.acme_router.rx.amp.2": "" });
+    expect(screen.getByRole("cell", { name: "amp.2" })).toBeInTheDocument();
+    await act(async () => { fireEvent.click(cell("amp.2", "Laptop / 01")); });
+    expect(mocks.emit).toHaveBeenCalledWith("acme_router", "route", { row: "amp.2", col: "laptop.1" });
   });
 });

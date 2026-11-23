@@ -40,6 +40,13 @@ export function crosspointRouted(
   return matrixRouteMatches(read(routeStatePattern.replace("{row}", row)), columnLabel, mode);
 }
 
+/** What a row or column is called: its key's own value, the name the plugin
+ *  publishes for it ("MIC-01 / 01"), else the token its pattern matched, which
+ *  is what a click sends back either way. */
+export function axisCaption(value: unknown, token: string): string {
+  return typeof value === "string" && value.trim() !== "" ? value : token;
+}
+
 export interface StatePatternMatch {
   /** Full state key. */
   key: string;

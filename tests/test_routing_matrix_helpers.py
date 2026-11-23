@@ -8,6 +8,9 @@ What it decides, and the defects each check keeps fixed:
   in the layout's ``route_match`` mode, exact when it names none. The matrix
   used to read one key per crosspoint, which the plugins publish none of, so
   every routed cell drew unrouted and a click on one routed it again.
+- What a row or column is called: its key's own value, the name the plugin
+  publishes for it, else the token its pattern matched (which a click sends
+  either way); the matrix used to head them by the token alone.
 - Row/column enumeration: ``*`` matches anywhere in the pattern; a prefix
   derivation that only worked for a trailing wildcard silently produced an
   empty matrix for a mid-string pattern.
@@ -119,6 +122,11 @@ SCENARIOS = [
     "routed_to_nothing",
     "no_route_key_never_routed",
     "unpublished_row_never_routed",
+    # What a row or column is called.
+    "caption_is_the_published_name",
+    "caption_of_a_blank_name_is_the_token",
+    "caption_of_no_name_is_the_token",
+    "caption_of_a_number_is_the_token",
     # Wildcard enumeration.
     "trailing_wildcard",
     "mid_string_wildcard",

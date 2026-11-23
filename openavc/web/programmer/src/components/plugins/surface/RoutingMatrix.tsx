@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { Trash2, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../../store/connectionStore";
-import { crosspointRouted, matchStateKeys, routeMatchMode } from "../routingMatrixHelpers";
+import { axisCaption, crosspointRouted, matchStateKeys, routeMatchMode } from "../routingMatrixHelpers";
 import * as api from "../../../api/restClient";
 import { useAnchoredPanel } from "../../shared/AnchoredPanel";
 import type { SurfaceLayout } from "./types";
@@ -36,15 +36,18 @@ export function RoutingMatrix({
   const presetPanel = useAnchoredPanel<HTMLButtonElement, HTMLDivElement>({ width: "intrinsic" });
   const presetDropdownOpen = presetPanel.open;
 
-  // Rows and columns from state ('*' matches anywhere in the pattern); a
-  // column's own value is the name its source is routed by.
+  // Rows and columns from state ('*' matches anywhere in the pattern). Each
+  // is drawn by its key's own value, the name the plugin gives it, and sent
+  // back by its token; a column's value is also the name its source is
+  // routed by.
   const stateKeys = Object.keys(liveState);
-  const rowNames = matchStateKeys(stateKeys, layout.rows_state_pattern ?? "").map(
-    (m) => m.name,
-  );
+  const rows = matchStateKeys(stateKeys, layout.rows_state_pattern ?? "");
+  const rowNames = rows.map((m) => m.name);
   const columns = matchStateKeys(stateKeys, layout.columns_state_pattern ?? "");
   const colNames = columns.map((m) => m.name);
   const columnLabels = new Map(columns.map((m) => [m.name, liveState[m.key]]));
+  const rowCaption = new Map(rows.map((m) => [m.name, axisCaption(liveState[m.key], m.name)]));
+  const colCaption = new Map(columns.map((m) => [m.name, axisCaption(liveState[m.key], m.name)]));
   const routeMode = routeMatchMode(layout.route_match);
 
   const getCellState = (row: string, col: string): boolean =>
@@ -294,7 +297,7 @@ export function RoutingMatrix({
                       maxHeight: 80,
                     }}
                   >
-                    {col}
+                    {colCaption.get(col)}
                   </th>
                 ))}
               </tr>
@@ -310,7 +313,7 @@ export function RoutingMatrix({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {row}
+                    {rowCaption.get(row)}
                   </td>
                   {colNames.map((col) => {
                     const active = getCellState(row, col);
@@ -330,7 +333,7 @@ export function RoutingMatrix({
                             opacity: pending ? 0.5 : 1,
                             transition: "background var(--transition-fast)",
                           }}
-                          title={`${row} \u2192 ${col}: ${active ? "Routed" : "Unrouted"}`}
+                          title={`${rowCaption.get(row)} \u2192 ${colCaption.get(col)}: ${active ? "Routed" : "Unrouted"}`}
                         />
                       </td>
                     );

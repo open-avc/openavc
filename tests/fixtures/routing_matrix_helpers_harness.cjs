@@ -52,6 +52,12 @@ results.routed_to_nothing = H.crosspointRouted(ROUTE_KEY, "exact", read, "amp.2"
 results.no_route_key_never_routed = H.crosspointRouted(undefined, "exact", read, "amp.1", "Stagebox / 01") === false;
 results.unpublished_row_never_routed = H.crosspointRouted(ROUTE_KEY, "exact", read, "amp.9", "Stagebox / 01") === false;
 
+// --- axisCaption: the name the plugin publishes, else the token ---
+results.caption_is_the_published_name = H.axisCaption("MIC-01 / 01", "mic_01.1") === "MIC-01 / 01";
+results.caption_of_a_blank_name_is_the_token = H.axisCaption("  ", "mic_01.1") === "mic_01.1";
+results.caption_of_no_name_is_the_token = H.axisCaption(undefined, "mic_01.1") === "mic_01.1";
+results.caption_of_a_number_is_the_token = H.axisCaption(3, "mic_01.1") === "mic_01.1";
+
 // --- matchStateKeys: '*' matches anywhere, not just as a suffix ---
 const KEYS = [
   "plugin.acme_router.rx.amp-1.1",
