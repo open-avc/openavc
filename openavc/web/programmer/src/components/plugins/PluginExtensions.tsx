@@ -372,6 +372,12 @@ export function DevicePanelSlot({
 // ──── Context Action Renderer ────
 // Renders context action buttons from plugin extensions.
 
+/** A context action's name: its plugin, then its id, which is unique only
+ *  within that plugin. */
+function actionKey(action: PluginExtension): string {
+  return `${action.plugin_id}.${action.id}`;
+}
+
 export function ContextActionRenderer({
   context,
   deviceId,
@@ -398,7 +404,7 @@ export function ContextActionRenderer({
   const handleClick = useCallback(
     async (action: PluginExtension) => {
       if (!action.event) return;
-      setLoading(action.id);
+      setLoading(actionKey(action));
       try {
         const actionId = action.event.replace("action.", "");
         const payload: Record<string, unknown> = {};
@@ -418,9 +424,9 @@ export function ContextActionRenderer({
     <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
       {matching.map((action) => (
         <button
-          key={`${action.plugin_id}.${action.id}`}
+          key={actionKey(action)}
           onClick={() => handleClick(action)}
-          disabled={loading === action.id}
+          disabled={loading === actionKey(action)}
           style={{
             display: "flex",
             alignItems: "center",
@@ -429,7 +435,7 @@ export function ContextActionRenderer({
             borderRadius: "var(--border-radius)",
             background: "var(--bg-hover)",
             fontSize: "var(--font-size-sm)",
-            opacity: loading === action.id ? 0.5 : 1,
+            opacity: loading === actionKey(action) ? 0.5 : 1,
           }}
           title={`${action.label} (${action.plugin_name})`}
         >

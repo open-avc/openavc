@@ -108,8 +108,10 @@ interface PluginElementType {
   pluginType: string;
 }
 
-/** A plugin element's two names, read off `plugin:<plugin_id>:<plugin_type>`
- *  (the type may itself hold a colon); null for any other type. */
+/** A plugin element's two names, read off `plugin:<plugin_id>:<plugin_type>`;
+ *  null for any other type. A type the panel draws holds no colon
+ *  (`is_panel_element_name` in core/plugin_extension_rules.py); one that does
+ *  is still read whole, everything after the second colon. */
 function pluginElementType(type: string): PluginElementType | null {
   if (!type.startsWith("plugin:")) return null;
   const parts = type.split(":");
