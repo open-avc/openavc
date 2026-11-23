@@ -240,7 +240,7 @@ def _check_fields(data: dict[str, Any]) -> None:
 
 def _check_id(data: dict[str, Any]) -> None:
     theme_id = data["id"]
-    if not isinstance(theme_id, str) or not ID_PATTERN.match(theme_id):
+    if not isinstance(theme_id, str) or not ID_PATTERN.fullmatch(theme_id):
         raise ThemeRefused(_BAD_ID)
 
 

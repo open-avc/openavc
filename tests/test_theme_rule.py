@@ -128,6 +128,14 @@ def test_an_id_that_is_not_text_is_refused_not_a_server_error(client, theme_id):
     assert "Theme ID" in resp.json()["detail"]
 
 
+def test_an_id_with_a_line_break_after_it_is_refused(client, tmp_path):
+    """The id is the file's name: one character past the rule is refused, a
+    line break at its end included."""
+    resp = client.post("/api/themes", json=_theme("acme\n"))
+    assert resp.status_code == 400
+    assert not any((tmp_path / "themes").glob("acme*"))
+
+
 @pytest.mark.parametrize("variables", [5, "dark", ["#000"]], ids=["a number", "text", "a list"])
 def test_variables_that_are_not_named_values_are_refused(client, variables):
     resp = client.post("/api/themes", json=_theme("acme", variables=variables))
