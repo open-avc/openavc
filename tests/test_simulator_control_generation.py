@@ -103,6 +103,28 @@ def test_a_variable_with_no_range_is_still_a_readout_not_a_slider():
     assert control["type"] == "indicator"
 
 
+@pytest.mark.parametrize("bounds", [
+    {"min": 0, "max": float("inf")},
+    {"min": float("-inf"), "max": 0},
+    {"min": 0, "max": float("nan")},
+    {"min": float("nan"), "max": 10},
+    {"min": True, "max": 10},
+])
+@pytest.mark.parametrize("var_type", ["integer", "number"])
+def test_a_bound_that_is_no_usable_number_leaves_a_readout(var_type, bounds):
+    """The loader names such a bound and loads the driver, so the simulator
+    still has to be built for it: the variable is a readout, as one with no
+    range is, rather than a slider whose step cannot be worked out."""
+    control = controls_for({"reading": {"type": var_type, **bounds}})["reading"]
+    assert control["type"] == "indicator"
+
+
+def test_an_impossible_range_clamps_without_raising():
+    sim = build({"level": {"type": "integer", "min": 10, "max": 0}})
+    sim.set_state("level", 5)
+    assert sim.get_state("level") == 0
+
+
 # ── Child property types ─────────────────────────────────────────────────
 
 

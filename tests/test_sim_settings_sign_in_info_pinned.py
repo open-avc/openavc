@@ -363,9 +363,9 @@ def test_every_kind_of_variable_gets_its_control():
                     "initial_state": {}, "delays": {"command_response": 0.05}}
     with pytest.raises(AttributeError):
         YAMLAutoSimulator._build_info({"state_variables": {"x": "integer"}})
-    with pytest.raises(ValueError):
-        YAMLAutoSimulator._build_info(
-            {"state_variables": {"x": {"type": "integer", "min": "low", "max": 3}}})
+    unusable = YAMLAutoSimulator._build_info(
+        {"state_variables": {"x": {"type": "integer", "min": "low", "max": 3}}})
+    assert unusable["controls"] == [{"type": "indicator", "key": "x", "label": "X"}]
 
 
 @pytest.mark.parametrize(("args", "step"), [

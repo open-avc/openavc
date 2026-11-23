@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
+from openavc.drivers.usable_number import number_value
 from openavc.simulator.child_roster import roster_id
 
 #: A slider never gets more stops than this from a step the simulator invents.
@@ -43,10 +44,12 @@ def _indicator(key: str, label: str) -> dict:
 
 
 def _slider_or_indicator(key: str, var_def: dict, label: str, *, integral: bool) -> dict:
-    """A slider over a declared range; without both bounds, an indicator."""
+    """A slider over a declared range; without both bounds, each a usable
+    number (``number_value``: not an infinity, NaN or a boolean), an
+    indicator. The loader names such a bound and still loads the driver."""
     v_min = var_def.get("min")
     v_max = var_def.get("max")
-    if v_min is None or v_max is None:
+    if number_value(v_min) is None or number_value(v_max) is None:
         return _indicator(key, label)
     ctl = {"type": "slider", "key": key, "label": label,
            "min": v_min, "max": v_max,
