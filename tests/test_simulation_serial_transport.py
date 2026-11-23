@@ -54,20 +54,20 @@ def _manager(dm) -> SimulationManager:
     return SimulationManager(engine=_FakeEngine(dm))
 
 
-# ── _driver_transport_needs_tcp_stand_in: resolution order ───────────────────────────
+# ── _simulator_stand_in: resolution order ───────────────────────────────────
 
 def test_transport_is_serial_from_driver_default():
-    assert SimulationManager._driver_transport_needs_tcp_stand_in(_FakeDriver("serial"))
-    assert not SimulationManager._driver_transport_needs_tcp_stand_in(_FakeDriver("tcp"))
+    assert SimulationManager._simulator_stand_in(_FakeDriver("serial")) == "tcp"
+    assert SimulationManager._simulator_stand_in(_FakeDriver("tcp")) is None
 
 
 def test_config_transport_overrides_driver_default():
     # Device config overriding a serial driver to tcp → not serial.
     d = _FakeDriver("serial", config_transport="tcp")
-    assert not SimulationManager._driver_transport_needs_tcp_stand_in(d)
+    assert SimulationManager._simulator_stand_in(d) is None
     # Device config overriding a tcp-default driver to serial → serial.
     d2 = _FakeDriver("tcp", config_transport="serial")
-    assert SimulationManager._driver_transport_needs_tcp_stand_in(d2)
+    assert SimulationManager._simulator_stand_in(d2) == "tcp"
 
 
 # ── _apply_sim_redirect / _restore_original_config ──────────────────────────
@@ -216,12 +216,10 @@ def test_ssh_also_gets_the_tcp_stand_in():
     `simulated: true` and could not actually be simulated without the user
     first hand-editing `transport: tcp` into its device config.
     """
-    assert SimulationManager._driver_transport_needs_tcp_stand_in(_FakeDriver("ssh"))
+    assert SimulationManager._simulator_stand_in(_FakeDriver("ssh")) == "tcp"
 
 
 def test_a_transport_the_simulator_serves_is_left_alone():
     """Vacuity guard: these have servers of their own and must not be flipped."""
-    for transport in ("tcp", "http", "udp", "osc", "mqtt", "websocket"):
-        assert not SimulationManager._driver_transport_needs_tcp_stand_in(
-            _FakeDriver(transport)
-        ), transport
+    for transport in ("tcp", "http", "udp", "osc", "mqtt", "snmp", "websocket", "bridge"):
+        assert SimulationManager._simulator_stand_in(_FakeDriver(transport)) is None, transport

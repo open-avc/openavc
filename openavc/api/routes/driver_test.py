@@ -58,6 +58,7 @@ from openavc.core.device_config import (
     devices_at_host,
     same_serial_port,
 )
+from openavc.drivers.spec import transport_traits
 from openavc.drivers.transport_choice import effective_transport
 from openavc.transport.binary_helpers import encode_escape_sequences, has_incomplete_byte_escape
 from openavc.transport.endpoint import HttpEndpoint, UnusablePort, http_endpoint
@@ -123,22 +124,25 @@ async def check_connection_conflict(
     the driver's default port, a transport override, a bridge's pass-through
     port and a USB-serial binding all count, and a running device is matched
     where its driver connects now, so a device a running simulation points at
-    the simulator holds the simulator's port, not its own. ``tcp`` matches
-    host and port, ``serial`` matches the port name; other transports hold no
-    session and return nothing.
+    the simulator holds the simulator's port, not its own. A transport that
+    holds a session (the transport table's ``holds_session``) collides: one
+    that dials an address matches host and port on the same transport,
+    ``serial`` matches the port name; the rest hold no session and return
+    nothing.
 
     Returns ``{"conflicts": [...]}`` with one entry per matching device. An
     empty list means it's safe to test.
     """
     transport = transport.lower()
-    if transport not in ("tcp", "serial"):
+    traits = transport_traits(transport)
+    if traits is None or not traits.holds_session:
         return {"conflicts": []}
     engine = _get_engine()
     if not engine.project:
         return {"conflicts": []}
     running = getattr(engine, "devices", None)
 
-    if transport == "tcp":
+    if traits.addressed:
         try:
             target_port: int | str = int(port)
         except (TypeError, ValueError):
@@ -147,7 +151,7 @@ async def check_connection_conflict(
             return {"conflicts": []}
         matches = [
             conn for conn in devices_at_host(engine.project, [host], running)
-            if conn.transport == "tcp" and conn.port == target_port
+            if conn.transport == transport and conn.port == target_port
         ]
     else:
         if not port.strip():
@@ -478,12 +482,14 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         # Settle period — many devices send a response in multiple frames
         # (NEC NaviSet per-parameter lines, Christie LX ACK then DATA). Without
         # this short wait the disconnect tears down the transport before
-        # trailing frames arrive. HTTP already returns the full response
-        # synchronously so we skip the settle there.
+        # trailing frames arrive. A request-and-reply transport (HTTP) already
+        # returns the full response with the request, so it skips the settle.
+        traits = transport_traits(transport_type)
         if (
             received_chunks
             and error_text is None
-            and transport_type in ("tcp", "udp", "osc", "serial")
+            and traits is not None
+            and not traits.request_reply
         ):
             await asyncio.sleep(min(0.3, body.timeout / 4))
 

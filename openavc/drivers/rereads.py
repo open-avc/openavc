@@ -53,7 +53,7 @@ from typing import Any, Callable
 from openavc.drivers.child_registration import ChildRegistrations, registered_since
 from openavc.drivers.command_form import command_form
 from openavc.drivers.query_entry import EACH_CHILD, read_query_entry
-from openavc.drivers.spec import FOLLOW_UP_SETTLE_S, placeholder_names
+from openavc.drivers.spec import FOLLOW_UP_SETTLE_S, placeholder_names, transport_traits
 from openavc.transport.pacing import sleep_at_least
 from openavc.utils.logger import get_logger
 
@@ -422,8 +422,10 @@ class Rereads:
             return key, ("command", (entry, shared))
         text = self._substitute_for_wire(f"commands.{command}.read_back", entry, all_params)
         transport_type = self._effective_transport()
-        if transport_type in ("osc", "http"):
-            return f"{transport_type} {text}", (transport_type, text)
+        traits = transport_traits(transport_type)
+        form = traits.line_form if traits is not None else None
+        if form is not None and form != "raw":
+            return f"{form} {text}", (form, text)
         return f"raw {text}", ("raw", self._raw_bytes(transport_type, text))
 
     async def _send_read_backs(self, command: str, sends: list[ReadBack]) -> None:

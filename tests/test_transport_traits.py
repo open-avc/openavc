@@ -104,3 +104,4 @@ def test_an_unknown_name_has_no_row():
     assert spec.transport_traits(None) is None
     assert spec.transport_traits(["tcp"]) is None
     assert spec.transport_traits("tcp") is TRANSPORT_TRAITS["tcp"]
+

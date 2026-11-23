@@ -2,6 +2,7 @@
 // the driver export path.
 
 import { isSecretSetting } from "../shared/secretSetting";
+import { dialsAnAddress } from "../shared/transportTraits";
 
 /**
  * Canonical delimiter form = real control characters — what YAML decoding
@@ -107,8 +108,6 @@ export function connectionFieldsFor(transport: string): Record<string, FieldDef>
   }
 }
 
-const NETWORK_TRANSPORTS = new Set(["tcp", "udp", "osc", "http"]);
-
 /**
  * A network driver's config_schema with the connection fields it lacks
  * added first, and the keys that were added. A driver saved by an earlier
@@ -121,7 +120,7 @@ export function addMissingConnectionFields(
   transport: string,
 ): { schema: Record<string, unknown>; added: string[] } {
   const current = schema ?? {};
-  if (!NETWORK_TRANSPORTS.has(transport)) return { schema: current, added: [] };
+  if (!dialsAnAddress(transport)) return { schema: current, added: [] };
   const fields = connectionFieldsFor(transport);
   const added = Object.keys(fields).filter((key) => !(key in current));
   if (added.length === 0) return { schema: current, added };

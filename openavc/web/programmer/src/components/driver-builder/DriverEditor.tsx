@@ -37,6 +37,7 @@ import { SendFrameEditor } from "./SendFrameEditor";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { transportTraits } from "../shared/transportTraits";
 import { IssueList } from "./IssueList";
 import {
   validateDriverSafely,
@@ -266,9 +267,10 @@ export function DriverEditor({
   const livenessEnabled = !!draft.liveness;
   const frameParserEnabled = !!draft.frame_parser;
   const sendFrameEnabled = !!draft.send_frame;
-  // Command framing wraps byte-stream sends only — OSC uses an address, HTTP a
-  // path/body, so neither is line-framed and the section is hidden for them.
-  const isByteStream = ["tcp", "serial", "udp"].includes(draft.transport);
+  // Command framing wraps a raw line only (the transport table's line_form) —
+  // OSC uses an address, HTTP a path/body, so neither is line-framed and the
+  // section is hidden for them.
+  const isByteStream = transportTraits(draft.transport)?.line_form === "raw";
   const framingEnabled = !!(draft.command_prefix || draft.command_suffix);
 
   const countMeta = (n: number, singular: string, plural = `${singular}s`) =>

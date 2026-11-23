@@ -26,6 +26,7 @@ import re
 from typing import Any
 
 from openavc.drivers.compiled_protocol import state_var_default
+from openavc.drivers.spec import transport_traits
 from openavc.simulator.driver_sends import effective_config
 from openavc.simulator.reply_reading import ReplyRules
 from openavc.simulator.validation_result import ValidationResult
@@ -85,12 +86,6 @@ def check_notifications(
 # stream rides the control session and so needs HTTP.
 _PUSH_ON_ANY_TRANSPORT = ("multicast", "tcp_listener", "http_listener", "udp_listener")
 
-# Transports whose simulator pushes on the control link itself: TCP and serial
-# to every connected client, a UDP device to the last peer it heard from. HTTP
-# and OSC have no control-link push.
-_CONTROL_LINK_PUSH = ("tcp", "serial", "udp")
-
-
 def _push_carries_notifications(driver_def: dict, transport: Any) -> bool:
     """Whether the driver declares a push channel the simulator emits its
     notifications on instead of the control connection."""
@@ -104,8 +99,9 @@ def _push_carries_notifications(driver_def: dict, transport: Any) -> bool:
 def _notifications_reach_driver(driver_def: dict, transport: Any) -> bool:
     """Whether a ``notifications:`` message can reach the driver at all: on a
     declared push channel, or on a transport that pushes on its control link."""
+    traits = transport_traits(transport)
     return _push_carries_notifications(driver_def, transport) or (
-        transport in _CONTROL_LINK_PUSH
+        traits is not None and traits.control_link_push
     )
 
 

@@ -77,7 +77,7 @@ from openavc.core.connection_fault import (
     SimulatorGap,
     simulator_error_text,
 )
-from openavc.drivers.spec import CHILD_RESERVED_PROPS
+from openavc.drivers.spec import CHILD_RESERVED_PROPS, simulator_stand_in
 from openavc.drivers.transport_choice import effective_transport
 from openavc.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 from openavc.utils.logger import get_logger
@@ -1355,26 +1355,19 @@ class SimulationManager:
                 t.cancel()
         self._drain_tasks = []
 
-    # Transports with no simulator server of their own. Each is a raw byte
-    # pipe, so the simulator serves it over TCP and the driver is flipped to
-    # TCP to reach it — the same substitution the serial-over-IP bridge
-    # passthrough makes in Engine.resolved_device_config.
-    #
-    # ``ssh`` was missing here until 2026-07-31, so an SSH driver kept its
-    # declared transport under simulation and tried to open an SSH session
-    # against the simulator's plain TCP socket. netgear_m4250_m4350 ships
-    # `simulated: true` and could not in fact be simulated without the user
-    # first hand-editing `transport: tcp` into its device config.
-    _TCP_STAND_IN_TRANSPORTS = frozenset({"serial", "ssh"})
-
     @staticmethod
-    def _driver_transport_needs_tcp_stand_in(driver: Any) -> bool:
-        """True when the device's effective transport (transport_choice, the
-        one BaseDriver.connect opens) has no simulator server."""
+    def _simulator_stand_in(driver: Any) -> str | None:
+        """The transport the driver is pointed at while simulated in place
+        of its own, or None to keep its own: the device's effective transport
+        (transport_choice, the one BaseDriver.connect opens) has no simulator
+        server, being a raw byte pipe (serial, ssh), so the simulator serves it
+        over TCP, as the transport table's ``simulator`` column says. The same
+        substitution the serial-over-IP bridge passthrough makes in
+        Engine.resolved_device_config."""
         transport = effective_transport(
             getattr(driver, "config", None), getattr(driver, "DRIVER_INFO", None)
         )
-        return transport in SimulationManager._TCP_STAND_IN_TRANSPORTS
+        return simulator_stand_in(transport)
 
     def _apply_sim_redirect(
         self, driver: Any, device_id: str, sim_port: int
@@ -1416,8 +1409,9 @@ class SimulationManager:
         # redirect too: the simulator listens for it on the same port number,
         # so it shows in the protocol log instead of leaving the box.
         driver.udp_redirect = (_SIM_HOST, sim_port)
-        if self._driver_transport_needs_tcp_stand_in(driver):
-            driver.config["transport"] = "tcp"
+        stand_in = self._simulator_stand_in(driver)
+        if stand_in is not None:
+            driver.config["transport"] = stand_in
         if driver.config.get("ssl"):
             if self._sim_tls.get(device_id):
                 driver.config["verify_ssl"] = False

@@ -49,16 +49,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from openavc.drivers.spec import transport_traits
 from openavc.drivers.transport_choice import declared_transport
 from openavc.transport.binary_helpers import encode_escape_sequences
 
 #: What ends a device's lines when neither its driver nor the device names
 #: anything (``spec.py``'s ``delimiter`` field says so to authors).
 DEFAULT_LINE_ENDING = "\r"
-
-#: The transports whose replies the driver splits on the line ending: one byte
-#: stream each. A datagram transport frames one message per packet.
-REPLY_SPLIT_TRANSPORTS = ("tcp", "serial")
 
 
 class LineEndingNotText(ValueError):
@@ -134,7 +131,10 @@ def sent_line_ending(definition: Mapping[str, Any], config: Mapping[str, Any]) -
 def reply_line_ending(definition: Mapping[str, Any], config: Mapping[str, Any]) -> str | None:
     """What the driver splits the device's replies on, as written, or None:
     not a byte stream, a ``frame_parser`` that frames them, or none."""
-    if declared_transport(definition) not in REPLY_SPLIT_TRANSPORTS:
+    # Split only a byte stream (the transport table's byte_stream column); a
+    # datagram transport frames one message per packet.
+    traits = transport_traits(declared_transport(definition))
+    if traits is None or not traits.byte_stream:
         return None
     if definition.get("frame_parser"):
         return None

@@ -76,6 +76,7 @@ from openavc.drivers.polling import PollLoop
 # The push channel lives in its own module; these two helpers stay importable
 # from here, the path core/push_ports.py and drivers use.
 from openavc.drivers.push import PushChannel, push_port, resolve_push_value  # noqa: F401
+from openavc.drivers.spec import transport_traits
 from openavc.drivers.transport_choice import effective_transport
 # Building a device's transport from its config lives in its own module;
 # _ssh_option_list stays importable from here.
@@ -145,9 +146,6 @@ def roster_config_fields(child_types: Any) -> set[str]:
     blocks = [t.get("instances") for t in type_defs if isinstance(t, dict)]
     names = [b.get(key) for b in blocks if isinstance(b, dict) for key in ("count_from", "ids_from")]
     return {name for name in names if isinstance(name, str) and name}
-
-# The transports that dial a network address of their own (``config["host"]``).
-_ADDRESSED_TRANSPORTS = frozenset({"tcp", "udp", "osc", "http", "ssh", "mqtt", "snmp"})
 
 # An httpx client a driver creates for itself is recorded for its device like
 # the platform's own transports, with nothing in the driver; it and a
@@ -661,7 +659,8 @@ class BaseDriver(
         something (a multicast default, a broadcast) leaves it unmarked.
         Serial, bridge-routed and IR devices dial no address of their own.
         """
-        if self._effective_transport() not in _ADDRESSED_TRANSPORTS:
+        traits = transport_traits(self._effective_transport())
+        if traits is None or not traits.addressed:
             return False
         field = (self.DRIVER_INFO.get("config_schema") or {}).get("host")
         if not (isinstance(field, dict) and field.get("required") is True):

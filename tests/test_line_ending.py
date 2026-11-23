@@ -193,7 +193,9 @@ def test_a_datagram_transport_splits_no_replies():
 
 def test_the_rule_is_importable_with_nothing_but_its_leaves():
     """The simulator, a separate process, and the validator import it: it
-    pulls in no driver runtime, transport stack or logger."""
+    pulls in no driver runtime, transport stack or logger. The driver
+    contract (spec, standard library only) says which transports are a
+    byte stream."""
     code = (
         "import sys\n"
         "import openavc.drivers.line_ending\n"
@@ -206,6 +208,6 @@ def test_the_rule_is_importable_with_nothing_but_its_leaves():
     assert result.returncode == 0, result.stderr
     assert set(result.stdout.split()) == {
         "openavc", "openavc.drivers", "openavc.drivers.line_ending",
-        "openavc.drivers.transport_choice", "openavc.transport",
+        "openavc.drivers.spec", "openavc.drivers.transport_choice", "openavc.transport",
         "openavc.transport.binary_helpers",
     }

@@ -43,6 +43,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_away import connection_descriptor
 from openavc.core.event_bus import detach_emit_chain
 from openavc.drivers.base import ConnectEndedError
+from openavc.drivers.spec import transport_traits
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -87,13 +88,6 @@ _RECONNECT_INTERVAL_DEFAULT = 5.0
 # lockstep after a switch reboot — the one moment when they are ALL offline.
 _RECONNECT_JITTER = 0.2  # +/- 20%
 
-# Transports where the real connect is expensive enough to be worth gating
-# behind a cheap reachability check first. ssh spawns an `ssh` subprocess and
-# negotiates keys; mqtt does a TLS handshake; http can carry an auth exchange.
-# Everything else (tcp, serial, udp, osc) connects about as cheaply as any
-# probe would, so probing first would just do the work twice — and on a
-# single-session device, an extra socket is not free.
-_PROBE_FIRST_TRANSPORTS = frozenset({"ssh", "mqtt", "http"})
 # Long enough for Windows to report a refused port: it sends the SYN twice more
 # after the first reset, so a refusal arrives about 2 s after the dial (2.00 s
 # measured, on loopback and on this computer's LAN addresses alike). A shorter
@@ -415,7 +409,10 @@ class DeviceReconnectMixin:
         it as a setting to fix.
         """
         host, port, transport = connection_descriptor(driver)
-        if transport not in _PROBE_FIRST_TRANSPORTS or not _dialable(host, port):
+        # Only where the real connect costs more than a probe (the transport
+        # table's probe_first column, which says why for each).
+        traits = transport_traits(transport)
+        if traits is None or not traits.probe_first or not _dialable(host, port):
             return None
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address
