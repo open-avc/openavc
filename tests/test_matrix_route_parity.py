@@ -139,7 +139,9 @@ def test_the_corpus_reaches_every_form_of_the_rule() -> None:
     assert any(not c["expected"] and c["a"] == "1080p60" for c in MATCHES)
     # Every mode is asked, and one pair is answered both ways by the two
     # modes, so neither is the other under another name.
-    assert {c.get("mode", "port") for c in MATCHES} == set(ROUTE_MATCH_MODES)
+    assert set(ROUTE_MATCH_MODES) <= {c.get("mode", "port") for c in MATCHES}
+    # And a mode no copy knows, which every copy reads the same way.
+    assert any(c.get("mode", "port") not in ROUTE_MATCH_MODES for c in MATCHES)
     by_pair: dict = {}
     for c in MATCHES:
         by_pair.setdefault((repr(c["a"]), repr(c["b"])), set()).add(c["expected"])

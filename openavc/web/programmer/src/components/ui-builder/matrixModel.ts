@@ -15,7 +15,9 @@
  * way to name an entry) is made here and in matrix_model.py together.
  *
  * Read by the page review's matrix checks, the floor's row count
- * (controlMinimums.ts) and the matrix's properties.
+ * (controlMinimums.ts) and the matrix's properties; the plugin routing matrix
+ * (components/plugins/routingMatrixHelpers.ts) compares through
+ * `matrixRouteMatches` in its layout's mode.
  */
 import { isPlainObject, own } from "./authoredValues";
 
@@ -96,7 +98,8 @@ export function matrixRouteMatches(
   const y = matrixRouteValue(b);
   if (x === null || y === null) return false;
   if (x === y) return true;
-  if (!MATRIX_ROUTE_MATCH_MODES[mode]) return false;
+  // Own keys only, so a mode no copy knows (or "toString") guesses no number.
+  if (!Object.prototype.hasOwnProperty.call(MATRIX_ROUTE_MATCH_MODES, mode) || MATRIX_ROUTE_MATCH_MODES[mode] !== true) return false;
   const dx = typeof x === "number" ? x : matrixRouteDigits(x);
   const dy = typeof y === "number" ? y : matrixRouteDigits(y);
   return dx !== null && dx === dy;

@@ -69,7 +69,10 @@
     {"name": "exact: a labelled port is not its number", "mode": "exact", "a": "IN2", "b": 2, "expected": false},
     {"name": "exact: a number and its text", "mode": "exact", "a": 3, "b": "3", "expected": true},
     {"name": "exact: nothing routed matches nothing", "mode": "exact", "a": "", "b": "", "expected": false},
-    {"name": "exact: zero is unrouted", "mode": "exact", "a": 0, "b": "0", "expected": false}
+    {"name": "exact: zero is unrouted", "mode": "exact", "a": 0, "b": "0", "expected": false},
+    {"name": "a mode no copy knows guesses no number", "mode": "fuzzy", "a": "Stagebox / 01", "b": "Laptop / 01", "expected": false},
+    {"name": "an inherited name is no mode", "mode": "toString", "a": "IN2", "b": 2, "expected": false},
+    {"name": "a mode no copy knows still matches one name", "mode": "fuzzy", "a": "MIC-01 / 01", "b": "mic-01 / 01", "expected": true}
   ],
   "reports": [
     {"name": "a source matched by what it sends", "source": {"value": 1}, "expected": 1},

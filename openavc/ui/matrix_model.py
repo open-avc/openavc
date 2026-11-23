@@ -42,6 +42,17 @@ half therefore mirrors this module, as the Builder's matrixModel.ts, and the
 same test that catches a review drifting catches a resolver drifting -- which is
 not true of a renderer, and is why the renderer does not get a copy.
 
+Which source a report names
+---------------------------
+THE route rule is ``route_matches`` below, in a mode (``ROUTE_MATCH_MODES``):
+``port``, a panel matrix's, also matches two values naming one port number;
+``exact``, which a plugin's routing matrix declares (``route_match`` in its
+``SURFACE_LAYOUT``, ``core/plugin_extension_rules.py``), does not, since its
+sources are names. The panel's modules/matrix.js and the Builder's
+matrixModel.ts carry it too, and the IDE's plugin routing matrix compares
+through the Builder's copy; tests/test_matrix_route_parity.py holds all three
+to one corpus.
+
 Pure stdlib, so ``control_minimums.py`` can ask it how many rows a matrix draws
 without either of them growing an import.
 """
@@ -209,7 +220,7 @@ def route_matches(a: Any, b: Any, mode: str = PORT) -> bool:
         return False
     if x == y:
         return True
-    if not ROUTE_MATCH_MODES[mode]:
+    if ROUTE_MATCH_MODES.get(mode) is not True:  # a mode no copy knows guesses no number
         return False
     dx = x if isinstance(x, int | float) else _route_digits(x)
     dy = y if isinstance(y, int | float) else _route_digits(y)

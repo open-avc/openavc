@@ -13,8 +13,10 @@
  * `route_matches` in openavc/ui/matrix_model.py and by matrixModel.ts in the
  * Builder, and the three must agree or the page review judges a matrix the
  * panel does not draw: tests/test_matrix_route_parity.py runs all three over
- * one corpus with the answer each case must get. The sources and destinations arrive already expanded
- * by the server (matrix_model.py), so nothing here expands a pattern.
+ * one corpus with the answer each case must get. It is asked in a mode
+ * (`ROUTE_MATCH_MODES`); the panel's own matrix asks the default, `port`.
+ * The sources and destinations arrive already expanded by the server
+ * (matrix_model.py), so nothing here expands a pattern.
  *
  * The panel lends a matrix what it needs as a host. Its functions read the
  * panel when called: `read(key)` the current state, `send(frame)`,
@@ -176,7 +178,8 @@ export function routeMatches(a, b, mode = 'port') {
     const x = routeValue(a), y = routeValue(b);
     if (x === null || y === null) return false;
     if (x === y) return true;
-    if (!ROUTE_MATCH_MODES[mode]) return false;
+    // Own keys only, so a mode no copy knows (or 'toString') guesses no number.
+    if (!Object.prototype.hasOwnProperty.call(ROUTE_MATCH_MODES, mode) || ROUTE_MATCH_MODES[mode] !== true) return false;
     const dx = typeof x === 'number' ? x : routeDigits(x);
     const dy = typeof y === 'number' ? y : routeDigits(y);
     return dx !== null && dx === dy;
