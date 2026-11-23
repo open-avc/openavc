@@ -3,7 +3,10 @@ import type { SerialPortInfo } from "../../api/systemClient";
 import { portsAlike, usbSerialToSave } from "./serialPortPick";
 
 function port(device: string, serial_number: string): SerialPortInfo {
-  return { device, description: device, manufacturer: "Acme", vid: 0x0403, pid: 0x6001, serial_number, hwid: "" };
+  return {
+    device, description: device, manufacturer: "Acme", vid: 0x0403, pid: 0x6001, serial_number, hwid: "",
+    usb: true, label: device,
+  };
 }
 
 describe("serialPortPick", () => {
