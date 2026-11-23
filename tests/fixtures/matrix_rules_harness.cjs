@@ -41,8 +41,12 @@ function routeAnswers(copy, corpus) {
   return {
     values: corpus.values.map((c) => plain(copy.value(c.reported))),
     // Asked both ways round: the rule is symmetric, and a copy that is not
-    // shows up as one answer differing from the other.
-    matches: corpus.matches.map((c) => [copy.matches(c.a, c.b), copy.matches(c.b, c.a)]),
+    // shows up as one answer differing from the other. A case with no mode
+    // is asked with none, so each copy's default is the one judged.
+    matches: corpus.matches.map((c) => (c.mode === undefined
+      ? [copy.matches(c.a, c.b), copy.matches(c.b, c.a)]
+      : [copy.matches(c.a, c.b, c.mode), copy.matches(c.b, c.a, c.mode)])),
+    modes: Object.keys(copy.modes || {}),
     reports: corpus.reports.map((c) => plain(copy.reports(c.source))),
   };
 }
@@ -62,11 +66,17 @@ function panelNames(panel, c) {
   const builder = loadTypeScript(modelPath);
   const request = JSON.parse(fs.readFileSync(0, "utf8"));
   const copies = {
-    panel: { value: panel.routeValue, matches: panel.routeMatches, reports: panel.sourceReports },
+    panel: {
+      value: panel.routeValue,
+      matches: panel.routeMatches,
+      reports: panel.sourceReports,
+      modes: panel.ROUTE_MATCH_MODES,
+    },
     builder: {
       value: builder.matrixRouteValue,
       matches: builder.matrixRouteMatches,
       reports: builder.matrixSourceReports,
+      modes: builder.MATRIX_ROUTE_MATCH_MODES,
     },
   };
   const out = {};

@@ -156,18 +156,27 @@ function routeDigits(s) {
 }
 
 /**
- * Do two routed-source values name the same source?
- *
- * Equality first, so identical values can never read as a mismatch. Then a
- * single embedded number, so a device reporting 'IN2' or 'HDMI 3' can still
- * light its crosspoint -- but only when there is exactly one digit run, so
- * nothing is guessed from a source NAME ('Laptop') or a value that happens
- * to carry two numbers ('1080p60').
+ * Whether two values naming the same single port number match, by mode:
+ * `port`, the default, for a switcher's ports; `exact` for sources that are
+ * names, which a plugin's routing matrix declares. `ROUTE_MATCH_MODES` in
+ * matrix_model.py, held to it by tests/test_matrix_route_parity.py.
  */
-export function routeMatches(a, b) {
+export const ROUTE_MATCH_MODES = Object.freeze({ port: true, exact: false });
+
+/**
+ * Do two routed-source values name the same source, in `mode`?
+ *
+ * Equality first, so identical values can never read as a mismatch. Then, in
+ * the port mode, a single embedded number, so a device reporting 'IN2' or
+ * 'HDMI 3' can still light its crosspoint -- but only when there is exactly
+ * one digit run, so nothing is guessed from a source NAME ('Laptop') or a
+ * value that happens to carry two numbers ('1080p60').
+ */
+export function routeMatches(a, b, mode = 'port') {
     const x = routeValue(a), y = routeValue(b);
     if (x === null || y === null) return false;
     if (x === y) return true;
+    if (!ROUTE_MATCH_MODES[mode]) return false;
     const dx = typeof x === 'number' ? x : routeDigits(x);
     const dy = typeof y === 'number' ? y : routeDigits(y);
     return dx !== null && dx === dy;

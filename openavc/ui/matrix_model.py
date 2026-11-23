@@ -178,20 +178,39 @@ def source_report_value(entry: Mapping[str, Any] | None) -> Any:
     return entry.get("value") if reported is None else reported
 
 
-def route_matches(a: Any, b: Any) -> bool:
-    """Do two routed-source values name the same source?
+#: The default mode: a panel's matrix, whose sources are a switcher's ports.
+PORT = "port"
+#: The mode a plugin's routing matrix declares (``route_match`` in its
+#: ``SURFACE_LAYOUT``), whose sources are names: "Stagebox / 01" and
+#: "Laptop / 01" are two sources, though they share a number.
+EXACT = "exact"
+#: Whether two values naming the same single port number match, by mode. The
+#: two modes differ there and nowhere else: both read a value with
+#: ``route_value``, so case and the spaces at either end never count, and both
+#: match identical values. ``ROUTE_MATCH_MODES`` in the panel's
+#: modules/matrix.js and ``MATRIX_ROUTE_MATCH_MODES`` in the Builder's
+#: matrixModel.ts are its copies, and ``core/plugin_extension_rules.py``
+#: names its words for a layout's ``route_match``.
+ROUTE_MATCH_MODES: dict[str, bool] = {PORT: True, EXACT: False}
 
-    Equality first, so identical values can never read as a mismatch. Then a
-    single embedded number, so a device reporting 'IN2' or 'HDMI 3' still lights
-    its crosspoint -- but only when there is exactly one digit run, so nothing is
-    guessed from a source NAME ('Laptop') or from a value carrying two numbers
-    ('1080p60').
+
+def route_matches(a: Any, b: Any, mode: str = PORT) -> bool:
+    """Do two routed-source values name the same source, in ``mode``
+    (``ROUTE_MATCH_MODES``)?
+
+    Equality first, so identical values can never read as a mismatch. Then, in
+    the port mode, a single embedded number, so a device reporting 'IN2' or
+    'HDMI 3' still lights its crosspoint -- but only when there is exactly one
+    digit run, so nothing is guessed from a source NAME ('Laptop') or from a
+    value carrying two numbers ('1080p60').
     """
     x, y = route_value(a), route_value(b)
     if x is None or y is None:
         return False
     if x == y:
         return True
+    if not ROUTE_MATCH_MODES[mode]:
+        return False
     dx = x if isinstance(x, int | float) else _route_digits(x)
     dy = y if isinstance(y, int | float) else _route_digits(y)
     return dx is not None and dx == dy

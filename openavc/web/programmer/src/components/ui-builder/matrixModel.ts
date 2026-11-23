@@ -77,12 +77,26 @@ function matrixRouteDigits(text: string): number | null {
   return runs && runs.length === 1 ? Number(runs[0]) : null;
 }
 
-/** Do two routed-source values name the same source? */
-export function matrixRouteMatches(a: unknown, b: unknown): boolean {
+/** Whether two values naming the same single port number match, by mode:
+ *  `port`, the default, for a switcher's ports; `exact` for sources that are
+ *  names, which a plugin's routing matrix declares (`route_match` in its
+ *  layout). `ROUTE_MATCH_MODES` in matrix_model.py, held to it by
+ *  tests/test_matrix_route_parity.py. */
+export const MATRIX_ROUTE_MATCH_MODES = { port: true, exact: false } as const;
+
+export type MatrixRouteMatchMode = keyof typeof MATRIX_ROUTE_MATCH_MODES;
+
+/** Do two routed-source values name the same source, in `mode`? */
+export function matrixRouteMatches(
+  a: unknown,
+  b: unknown,
+  mode: MatrixRouteMatchMode = "port",
+): boolean {
   const x = matrixRouteValue(a);
   const y = matrixRouteValue(b);
   if (x === null || y === null) return false;
   if (x === y) return true;
+  if (!MATRIX_ROUTE_MATCH_MODES[mode]) return false;
   const dx = typeof x === "number" ? x : matrixRouteDigits(x);
   const dy = typeof y === "number" ? y : matrixRouteDigits(y);
   return dx !== null && dx === dy;

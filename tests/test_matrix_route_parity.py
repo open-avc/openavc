@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from openavc.ui.matrix_model import route_matches, route_value, source_report_value
+from openavc.ui.matrix_model import ROUTE_MATCH_MODES, route_matches, route_value, source_report_value
 from tests import gates
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,9 +88,16 @@ def test_the_panel_and_the_builder_read_each_report_as_the_corpus_says(copies: d
     assert wrong == []
 
 
+def _modes(case: dict) -> tuple:
+    """The mode a case names, as an argument: none when it names none, so
+    the default is the one judged."""
+    return (case["mode"],) if "mode" in case else ()
+
+
 @pytest.mark.parametrize("case", MATCHES, ids=[c["name"] for c in MATCHES])
 def test_the_server_matches_each_pair_as_the_corpus_says(case: dict) -> None:
-    both_ways = [route_matches(case["a"], case["b"]), route_matches(case["b"], case["a"])]
+    mode = _modes(case)
+    both_ways = [route_matches(case["a"], case["b"], *mode), route_matches(case["b"], case["a"], *mode)]
     assert both_ways == [case["expected"]] * 2
 
 
@@ -99,6 +106,11 @@ def test_the_panel_and_the_builder_match_each_pair_as_the_corpus_says(copies: di
     got = copies[copy]["matches"]
     wrong = [(c["name"], g) for c, g in zip(MATCHES, got, strict=True) if g != [c["expected"]] * 2]
     assert wrong == []
+
+
+@pytest.mark.parametrize("copy", COPIES)
+def test_the_panel_and_the_builder_know_the_same_modes(copies: dict, copy: str) -> None:
+    assert copies[copy]["modes"] == list(ROUTE_MATCH_MODES)
 
 
 @pytest.mark.parametrize("case", REPORTS, ids=[c["name"] for c in REPORTS])
@@ -125,4 +137,11 @@ def test_the_corpus_reaches_every_form_of_the_rule() -> None:
     # A match through a single embedded number, and one refused for two.
     assert any(c["expected"] and _kind(c["a"]) == "str" and _kind(c["b"]) == "number" for c in MATCHES)
     assert any(not c["expected"] and c["a"] == "1080p60" for c in MATCHES)
+    # Every mode is asked, and one pair is answered both ways by the two
+    # modes, so neither is the other under another name.
+    assert {c.get("mode", "port") for c in MATCHES} == set(ROUTE_MATCH_MODES)
+    by_pair: dict = {}
+    for c in MATCHES:
+        by_pair.setdefault((repr(c["a"]), repr(c["b"])), set()).add(c["expected"])
+    assert any(answers == {True, False} for answers in by_pair.values())
     assert any("report_value" in (c["source"] or {}) for c in REPORTS)

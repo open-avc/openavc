@@ -1,5 +1,5 @@
 {
-  "_about": "The matrix's route rule: what a reported value names, whether two values name the same source, and what a source is matched by. Run by tests/test_matrix_route_parity.py over ui/matrix_model.py, the panel's modules/matrix.js and the Builder's matrixModel.ts. Each case says the answer all three must give.",
+  "_about": "The matrix's route rule: what a reported value names, whether two values name the same source (in each mode: a case with no mode is the default, port), and what a source is matched by. Run by tests/test_matrix_route_parity.py over ui/matrix_model.py, the panel's modules/matrix.js and the Builder's matrixModel.ts. Each case says the answer all three must give.",
   "values": [
     {"name": "nothing", "reported": null, "expected": null},
     {"name": "empty text", "reported": "", "expected": null},
@@ -58,7 +58,18 @@
     {"name": "true is not port 1", "a": true, "b": 1, "expected": false},
     {"name": "true and its text", "a": true, "b": "true", "expected": true},
     {"name": "digits of another script name no port", "a": "IN٣", "b": 3, "expected": false},
-    {"name": "a number past a double and its text", "a": "12345678901234567890", "b": 12345678901234567890, "expected": true}
+    {"name": "a number past a double and its text", "a": "12345678901234567890", "b": 12345678901234567890, "expected": true},
+    {"name": "two names sharing one number are one port", "a": "Stagebox / 01", "b": "Laptop / 01", "expected": true},
+    {"name": "exact: two names sharing one number are two sources", "mode": "exact", "a": "Stagebox / 01", "b": "Laptop / 01", "expected": false},
+    {"name": "exact: one name apart from case", "mode": "exact", "a": "MIC-01 / 01", "b": "mic-01 / 01", "expected": true},
+    {"name": "exact: one name apart from the spaces at its ends", "mode": "exact", "a": " MIC-01 / 01 ", "b": "MIC-01 / 01", "expected": true},
+    {"name": "exact: spaces inside a name are part of it", "mode": "exact", "a": "MIC-01 / 01", "b": "MIC-01/01", "expected": false},
+    {"name": "exact: two names", "mode": "exact", "a": "MIC-01 / 01", "b": "MIC-02 / 01", "expected": false},
+    {"name": "exact: a source with no channel names no column", "mode": "exact", "a": "MIC-01 / ", "b": "MIC-01 / 01", "expected": false},
+    {"name": "exact: a labelled port is not its number", "mode": "exact", "a": "IN2", "b": 2, "expected": false},
+    {"name": "exact: a number and its text", "mode": "exact", "a": 3, "b": "3", "expected": true},
+    {"name": "exact: nothing routed matches nothing", "mode": "exact", "a": "", "b": "", "expected": false},
+    {"name": "exact: zero is unrouted", "mode": "exact", "a": 0, "b": "0", "expected": false}
   ],
   "reports": [
     {"name": "a source matched by what it sends", "source": {"value": 1}, "expected": 1},
