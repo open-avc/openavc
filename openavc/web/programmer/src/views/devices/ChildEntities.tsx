@@ -5,7 +5,7 @@ import { Activity, ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-r
 import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
-import { CHILD_RESERVED_PROPS } from "../../api/types";
+import { CHILD_RESERVED_PROPS, followedState } from "../../api/types";
 import { CHILD_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { childNameFrom } from "../../api/childStateVars";
 import { useSettled } from "../../components/shared/useSettled";
@@ -431,11 +431,9 @@ function emptyRosterMessage(
   const value = field ? config?.[field] : undefined;
   const unset = value === undefined || value === null || value === "" || value === 0;
 
-  // `count_from_state` beside `count_from` (the one source it goes with)
-  // means the hardware settles the count once it answers, so the config field
-  // is only a fallback and the device is what to ask.
-  const followsDevice = Boolean(instances.count_from && instances.count_from_state);
-  if (field && unset && !followsDevice) {
+  // A roster that follows the device's count is settled by the hardware once
+  // it answers, so the config field is only a fallback and the device is what to ask.
+  if (field && unset && !followedState(instances)) {
     const schemaField = (
       (driverInfo?.config_schema ?? {}) as Record<string, { label?: string }>
     )[field];

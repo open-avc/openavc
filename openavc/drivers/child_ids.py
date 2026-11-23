@@ -111,9 +111,14 @@ def roster_source(instances: Any) -> RosterSource:
     if not isinstance(instances, dict):
         return RosterSource(None, None)
     kind = next((key for key in _SOURCE_ORDER if key in instances), None)
-    followed = instances.get("count_from_state")
-    follows = followed if kind == FOLLOWED_SOURCE and isinstance(followed, str) and followed else None
+    follows = _followed(instances) if kind == FOLLOWED_SOURCE else None
     return RosterSource(kind, follows)
+
+
+def _followed(instances: dict[str, Any]) -> str | None:
+    """The state variable ``count_from_state`` names, when it names one."""
+    followed = instances.get("count_from_state")
+    return (followed or None) if isinstance(followed, str) else None
 
 
 def declared_child_ids(
@@ -173,9 +178,9 @@ def _listed(ids: Any, _config: dict[str, Any]) -> list[Any] | None:
 
 
 def _counted(count: Any, _config: dict[str, Any]) -> list[int] | None:
-    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-        return None  # bool is an int; not a roster
-    return list(range(1, count + 1))
+    if type(count) is not int:  # a bool is an int, and not a roster
+        return None
+    return list(range(1, count + 1)) if count >= 1 else None
 
 
 def _counted_from(field: Any, config: dict[str, Any]) -> list[int] | None:

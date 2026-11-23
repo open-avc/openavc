@@ -9,7 +9,6 @@ import {
   CHILD_TYPE_ID_RE,
   applyChildVarTypeChange,
   checkRename,
-  instancesForField,
   instancesForSource,
   nextChildFieldId,
   nextChildTypeId,
@@ -518,7 +517,7 @@ function InstancesSection({
       data-testid={`child-instances-${key}-${name}`}
       value={value}
       onChange={(e) =>
-        onUpdate({ instances: instancesForField(key, e.target.value, inst) })
+        onUpdate({ instances: instancesForSource(key, inst, [e.target.value]) })
       }
       style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
     >

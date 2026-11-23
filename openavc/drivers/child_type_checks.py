@@ -26,8 +26,8 @@ a function and a row here, and the message naming the sources follows the
 table; ``count_from_state``, the device-reported count a roster follows once
 connected, goes with ``count_from`` only (``child_ids.FOLLOWED_SOURCE``).
 Beside a source that fixes the roster it is refused at the author's doors and
-a notice at load (``followed_count_errors``, which the definition walk asks
-among its author's-door parts), so a driver that loaded with one still loads,
+a notice at load (``followed_count_issues``, which the definition walk adds
+to its author's-door refusals), so a driver that loaded with one still loads,
 and no reader follows it (``child_ids.roster_source``). That is this check
 only: the roster is also read by ``child_ids.declared_child_ids``,
 ``declared_roster.py``, which registers it, the poll-length warning in
@@ -104,6 +104,15 @@ def followed_count_errors(child_type: Any, type_def: Any) -> list[str]:
     return [
         f"child_entity_types.{child_type}.instances: count_from_state beside {sources[0]}: "
         f"ids, ids_from and count fix the roster; use count_from with count_from_state"
+    ]
+
+
+def followed_count_issues(child_types: dict[str, Any]) -> list[tuple[str, str]]:
+    """``followed_count_errors`` for each child type, with its place."""
+    return [
+        (f"child_entity_types.{child_type}", message)
+        for child_type, type_def in child_types.items()
+        for message in followed_count_errors(child_type, type_def)
     ]
 
 

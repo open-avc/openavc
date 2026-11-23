@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instancesForField, instancesForSource } from "./childEntityTypesHelpers";
+import { instancesForSource } from "./childEntityTypesHelpers";
 
 const followed = {
   count_from: "outputs",
@@ -35,9 +35,9 @@ describe("instancesForSource", () => {
   });
 });
 
-describe("instancesForField", () => {
+describe("a new config field for the source", () => {
   it("keeps the followed count when the count's field changes", () => {
-    expect(instancesForField("count_from", "frame_size", followed)).toEqual({
+    expect(instancesForSource("count_from", followed, ["frame_size"])).toEqual({
       count_from: "frame_size",
       count_from_state: "num_outputs",
       label: "Output {id}",
@@ -46,10 +46,18 @@ describe("instancesForField", () => {
   });
 
   it("never carries it to an ID-list field", () => {
-    expect(instancesForField("ids_from", "zones", followed)).toEqual({
+    expect(instancesForSource("ids_from", followed, ["zones"])).toEqual({
       ids_from: "zones",
       label: "Output {id}",
       presence: "reported",
+    });
+  });
+});
+
+describe("a roster beside a fixed source", () => {
+  it("does not carry a stray followed count to count_from", () => {
+    expect(instancesForSource("count_from", { count: 4, count_from_state: "n" }, ["f"])).toEqual({
+      count_from: "f",
     });
   });
 });
