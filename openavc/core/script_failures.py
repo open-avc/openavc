@@ -20,6 +20,7 @@ import traceback
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
+from openavc.core import script_runs
 from openavc.utils.log_buffer import USER_SCRIPT_NAMESPACE
 from openavc.utils.logger import get_logger
 
@@ -89,23 +90,37 @@ def script_line(call: str) -> ScriptLine:
     )
 
 
-def report_refused(
-    script: LoadedScript | None, call: str, sentence: str, line: ScriptLine | None = None,
-) -> None:
+def report_refused(script: LoadedScript | None, call: str, sentence: str) -> None:
     """Report a call the platform refused or dropped, against the script that
     made it: ``events.emit`` past the bus's chain limit, or a ``state.set`` or
     ``state.delete`` the authored-writer rule refuses
     (``state_store.check_authored_write``).
 
     Not raised into the script: the event or the write is lost either way, and
-    the lines after the call run as they always have. ``line`` is where the
-    call was made (:func:`script_line`), read here when the caller did not.
+    the lines after the call run as they always have. The script's line is
+    read on the calling thread (:func:`script_line`), and the record is then
+    made on the loop: a plain ``def`` handler calls from its worker thread.
     """
     if script is None:
         return
-    where = line or script_line(call)
+    where = script_line(call)
     log.error(f"Script '{script.script_id}' {where.handler}: {sentence}")
-    report(ScriptFailure(script, where.handler, call, sentence, where.traceback))
+    failure = ScriptFailure(script, where.handler, call, sentence, where.traceback)
+    loop = script_runs.hand_off_loop()
+    if loop is None:
+        report(failure)
+    else:
+        script_runs.call_on_loop(loop, report, (failure,), {})
+
+
+def refused(call: str, sentence: str | None) -> bool:
+    """Whether a script's state write was refused (``sentence`` is the
+    authored-writer rule's answer), reporting it against the running script.
+    Asked on the script's own thread, before the write is handed to the loop,
+    so the line recorded is the script's."""
+    if sentence:
+        report_refused(script_runs.current_script.get(), call, sentence)
+    return bool(sentence)
 
 
 def report_dropped_emit(script: LoadedScript | None, sentence: str) -> None:

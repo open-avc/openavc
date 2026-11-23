@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextlib
 import contextvars
 import inspect
 import queue
@@ -56,6 +57,30 @@ if TYPE_CHECKING:
     from openavc.core.script_engine import LoadedScript
 
 log = get_logger(__name__)
+
+
+# --- The script whose code is running ---
+
+# The load of the script whose code is running: set by ScriptEngine around its
+# top-level code and each handler, called function and timer callback, and
+# carried by the context into the tasks and worker threads a run hands off to
+# (``call_on_loop`` takes it across). A timer is attributed to it, which is
+# what lets one script be reloaded without disturbing another's timers, and
+# what refuses a timer asked for by the old version once a reload or unload
+# has ended it; a refused state write is recorded against it.
+current_script: contextvars.ContextVar[LoadedScript | None] = contextvars.ContextVar(
+    "openavc_current_script", default=None,
+)
+
+
+@contextlib.contextmanager
+def current_script_context(script: LoadedScript | None):
+    """Bind the running script's load for the duration of a call."""
+    token = current_script.set(script)
+    try:
+        yield
+    finally:
+        current_script.reset(token)
 
 
 class HandlerTimedOut(Exception):

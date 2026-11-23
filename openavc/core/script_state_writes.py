@@ -42,16 +42,27 @@ _NOT_ONE_VALUE = {
 }
 
 
+def _is_openavc_state(node: ast.AST) -> bool:
+    """``openavc.state``."""
+    if not isinstance(node, ast.Attribute) or node.attr != "state":
+        return False
+    return isinstance(node.value, ast.Name) and node.value.id == "openavc"
+
+
+def _is_state(node: ast.AST) -> bool:
+    """``state`` as a script imports it, or ``openavc.state``."""
+    if isinstance(node, ast.Name):
+        return node.id == "state"
+    return _is_openavc_state(node)
+
+
 def _state_call(node: ast.AST) -> str | None:
     """``set`` or ``delete`` for ``state.set(...)``, ``openavc.state.delete(...)``."""
     if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
         return None
-    owner = node.func.value
-    is_state = (isinstance(owner, ast.Name) and owner.id == "state") or (
-        isinstance(owner, ast.Attribute) and owner.attr == "state"
-        and isinstance(owner.value, ast.Name) and owner.value.id == "openavc"
-    )
-    return node.func.attr if is_state and node.func.attr in ("set", "delete") else None
+    if not _is_state(node.func.value):
+        return None
+    return node.func.attr if node.func.attr in ("set", "delete") else None
 
 
 def _argument(node: ast.Call, position: int, name: str) -> ast.AST | None:

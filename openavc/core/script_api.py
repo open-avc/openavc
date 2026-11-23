@@ -21,12 +21,10 @@ the code cannot say; `tests/test_script_api_generated.py` fails without them.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import functools
 import inspect
 import threading
 import traceback
-from contextvars import ContextVar
 from typing import Any, Callable, TYPE_CHECKING
 
 from openavc.core import script_failures, script_runs
@@ -316,26 +314,6 @@ class _DeviceProxy:
         return self._manager.list_devices()
 
 
-def _refused_write(call: str, sentence: str | None) -> bool:
-    """Whether a write was refused, reporting it against the running script.
-
-    The script's line is read here, on the thread the script runs on, before
-    the record is handed to the loop: a plain ``def`` handler's frames are on
-    its worker thread, and the loop's stack holds none of them.
-    """
-    if sentence is None:
-        return False
-    _report_refused_write(_current_script.get(), call, sentence, script_failures.script_line(call))
-    return True
-
-
-@_leashed
-def _report_refused_write(
-    script: LoadedScript | None, call: str, sentence: str, line: script_failures.ScriptLine,
-) -> None:
-    script_failures.report_refused(script, call, sentence, line)
-
-
 class _StateProxy:
     """Proxy to StateStore. Lets scripts do state.get/set/subscribe."""
 
@@ -352,28 +330,25 @@ class _StateProxy:
         return self._store.get(key, default)
 
     def set(self, key: str, value: Any, source: str = "script") -> None:
-        """Write a value, unless the authored-writer rule refuses it
-        (``state_store.check_authored_write``): then it is reported on the
-        script's row and the script carries on."""
-        if not _refused_write("state.set", check_authored_write(key, value)):
-            self._set(key, value, source)
+        refused = script_failures.refused("state.set", check_authored_write(key, value))
+        self._set(key, value, source, refused)
 
     def delete(self, key: str) -> None:
-        """Remove a key, unless it is the platform's own; refused as ``set`` is."""
-        if not _refused_write("state.delete", platform_key_sentence(key)):
-            self._delete(key)
+        self._delete(key, script_failures.refused("state.delete", platform_key_sentence(key)))
 
     @_leashed
-    def _set(self, key: str, value: Any, source: str) -> None:
+    def _set(self, key: str, value: Any, source: str, refused: bool) -> None:
         if self._store is None:
             raise RuntimeError("Script API not configured — state proxy not bound")
-        self._store.set(key, value, source=source)
+        if not refused:
+            self._store.set(key, value, source=source)
 
     @_leashed
-    def _delete(self, key: str) -> None:
+    def _delete(self, key: str, refused: bool) -> None:
         if self._store is None:
             raise RuntimeError("Script API not configured — state proxy not bound")
-        self._store.delete(key)
+        if not refused:
+            self._store.delete(key)
 
     @_leashed
     def get_namespace(self, prefix: str) -> dict[str, Any]:
@@ -403,7 +378,7 @@ class _EventProxy:
             raise ValueError(refused)
         if await self._bus.emit(event, payload) is False:
             script_failures.report_dropped_emit(
-                _current_script.get(), self._bus.dropped_sentence(event),
+                script_runs.current_script.get(), self._bus.dropped_sentence(event),
             )
 
 
@@ -648,25 +623,9 @@ plugins = _PluginsProxy()
 
 # --- Current-script context ---
 
-# The load of the script whose code is running: set by ScriptEngine around its
-# top-level code and each handler, called function and timer callback, and
-# carried by the context into the tasks and worker threads a run hands off to.
-# A timer is attributed to it, which is what lets one script be reloaded
-# without disturbing another's timers, and what refuses a timer asked for by
-# the old version once a reload or unload has ended it.
-_current_script: ContextVar[LoadedScript | None] = ContextVar(
-    "openavc_current_script", default=None,
-)
-
-
-@contextlib.contextmanager
-def current_script_context(script: LoadedScript | None):
-    """Bind the running script's load for the duration of a call."""
-    token = _current_script.set(script)
-    try:
-        yield
-    finally:
-        _current_script.reset(token)
+# The load whose code is running lives with the run machinery (script_runs),
+# which carries it across every hand-off; the engine binds it through here.
+current_script_context = script_runs.current_script_context
 
 
 # --- Timer functions ---
@@ -709,7 +668,7 @@ def _register_timer(timer_id: str, coro_factory: Callable[[], Any]) -> None:
     removed) while a handler of it was still running gets no timer: the id is
     returned so the handler's next line runs, and nothing is scheduled.
     """
-    owner = _current_script.get()
+    owner = script_runs.current_script.get()
     if owner is not None and owner.unloaded:
         _log.warning(
             f"Script '{owner.script_id}': timer {timer_id} not started, because "
@@ -881,7 +840,7 @@ def cancel_all_timers() -> int:
     of a script, that is the timers this load has started so far, never those
     of the version still running while it imports.
     """
-    return cancel_script_timers(_current_script.get())
+    return cancel_script_timers(script_runs.current_script.get())
 
 
 def cancel_script_timers(script: LoadedScript | None) -> int:

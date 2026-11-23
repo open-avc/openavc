@@ -183,8 +183,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
     if reason:
         found.append(_finding(path, reason, action=action, refused="file"))
 
-    found.extend(_refused_emit_findings(step, path))
-    found.extend(_state_write_findings(step, path))
+    found.extend(_refused_step_findings(step, path))
 
     if action == "delay":
         seconds = step.get("seconds")
@@ -279,24 +278,41 @@ def _refused_emit_findings(step: dict, path: str) -> list[dict[str, Any]]:
     return [_finding(path, refused, action="event.emit", refused="platform_event")]
 
 
+def _refused_step_findings(step: dict, path: str) -> list[dict[str, Any]]:
+    """What the runtime refuses or warns of when a step runs, in its words: an
+    Emit Event step's platform name, and a Set Variable step's write."""
+    return _refused_emit_findings(step, path) + _state_write_findings(step, path)
+
+
 def _state_write_findings(step: dict, path: str) -> list[dict[str, Any]]:
     """A Set Variable step the runtime refuses (``state_store.check_authored_write``),
     in its words: a key OpenAVC owns (``refused: "platform_key"``) or a value
     written as a list or a dict (``refused: "value"``). A ``$`` reference is
     only known when the step runs, and the runtime refuses it then. A device's
     key is a warning: the write runs and lasts until the device's next report."""
-    key = step.get("key")
-    if step.get("action") != "state.set" or not isinstance(key, str) or not key:
+    if step.get("action") != "state.set":
         return []
-    refused = platform_key_sentence(key)
-    if refused:
-        return [_finding(path, refused, action="state.set", refused="platform_key")]
-    refused = flat_value_sentence(step.get("value"))
-    if refused:
-        return [_finding(path, refused, action="state.set", refused="value")]
-    if key.startswith(DEVICE_PREFIX):
-        return [_finding(path, DEVICE_WRITE_NOTE.format(key=key), action="state.set", warning=True)]
+    key = step.get("key")
+    if not isinstance(key, str):
+        return []
+    return _refused_write_findings(step, path, key) or _device_write_findings(path, key)
+
+
+def _refused_write_findings(step: dict, path: str, key: str) -> list[dict[str, Any]]:
+    refusals = (
+        ("platform_key", platform_key_sentence(key)),
+        ("value", flat_value_sentence(step.get("value"))),
+    )
+    for refused, sentence in refusals:
+        if sentence:
+            return [_finding(path, sentence, action="state.set", refused=refused)]
     return []
+
+
+def _device_write_findings(path: str, key: str) -> list[dict[str, Any]]:
+    if not key.startswith(DEVICE_PREFIX):
+        return []
+    return [_finding(path, DEVICE_WRITE_NOTE.format(key=key), action="state.set", warning=True)]
 
 
 def _event_trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
