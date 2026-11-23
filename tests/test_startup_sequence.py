@@ -167,7 +167,8 @@ async def test_a_good_boot_checks_sweeps_starts_then_confirms(boot):
     ]
     assert boot.calls["check_rollback_needed"] == [((boot.data_dir,), {})]
     assert boot.calls["clear_stale_rollback_marker"] == [((boot.data_dir,), {})]
-    assert boot.calls["confirm_startup"] == [((boot.data_dir,), {})]
+    # With the start's parts that did not start: none on a good boot.
+    assert boot.calls["confirm_startup"] == [((boot.data_dir,), {"went_without": []})]
     assert boot.app.state.run_state.answer() == {
         "phase": READY, "ready": True, "version": __version__, "error": None, "problems": [],
         "held": False, "retry_in": None,
