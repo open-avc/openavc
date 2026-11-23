@@ -108,6 +108,12 @@ export interface MacroIssue {
   param?: string;
   /** What the step's form calls that parameter, when its driver is loaded. */
   param_label?: string;
+  /** Why the runtime refuses the step outright: `file`, `platform_event`,
+   *  `platform_key` or `value`. */
+  refused?: string;
+  /** A warning, not a step that won't run: a Set Variable step on a
+   *  device's key, which runs and lasts until the device's next report. */
+  warning?: boolean;
 }
 
 /**
@@ -148,9 +154,21 @@ export async function validateMacros(
  *  - `platform_event`: a `system.` name, which only OpenAVC sends. On an
  *    `emit(` line the call is refused; on an `@on_event` line the pattern
  *    hears nothing, since the platform never sends it. `event` is the name,
- *    and the message names the `custom.` one to use. */
+ *    and the message names the `custom.` one to use.
+ *  - `platform_key`: a `state.set` or `state.delete` of a `system.` or `isc.`
+ *    key, which is refused when it runs. `event` is the key as written.
+ *  - `not_one_value`: a `state.set` whose value is written as a list, a dict, a
+ *    set or a tuple, which is refused when it runs. `event` is the key.
+ *  - `device_key`: a `state.set` of a `device.` key, which runs and lasts until
+ *    the device's next report. `event` is the key. */
 export interface ScriptIssue {
-  kind: "no_emitter" | "startup_timer" | "platform_event";
+  kind:
+    | "no_emitter"
+    | "startup_timer"
+    | "platform_event"
+    | "platform_key"
+    | "not_one_value"
+    | "device_key";
   line: number;
   event: string;
   message: string;

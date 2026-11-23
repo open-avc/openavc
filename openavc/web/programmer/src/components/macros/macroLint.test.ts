@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { MacroConfig } from "../../api/types";
-import { lintPayload, issuesAt, issueLabel, issueSummary, issueText, useMacroLint } from "./macroLint";
+import { blockingIssues, lintPayload, issuesAt, issueLabel, issueSummary, issueText, useMacroLint } from "./macroLint";
 import type { MacroIssue } from "./macroLint";
 
 vi.mock("../../api/restClient", () => ({
@@ -128,6 +128,17 @@ describe("issueSummary", () => {
     expect(
       issueSummary([issue({ index: 0 }), issue({ index: 3 }), issue({ scope: "trigger", index: 0 })]),
     ).toBe("2 steps and 1 trigger");
+  });
+});
+
+describe("blockingIssues", () => {
+  it("leaves out a warning, which marks its step but runs", () => {
+    const device = issue({ index: 2, action: "state.set", warning: true, message: "replaced at the next report" });
+    const refused = issue({ index: 1, action: "state.set", refused: "platform_key" });
+    expect(blockingIssues([device, refused])).toEqual([refused]);
+    expect(blockingIssues([device])).toEqual([]);
+    expect(blockingIssues(undefined)).toEqual([]);
+    expect(issuesAt([device, refused], "step", 2)).toEqual([device]);
   });
 });
 

@@ -129,6 +129,15 @@ export function issueText(issue: MacroIssue): string {
   return label ? `${label} is required.` : issue.message;
 }
 
+/**
+ * The issues that mean a step or trigger won't run as built: every one but a
+ * warning (a Set Variable step on a device's key, which runs and lasts until
+ * the device's next report). A warning still marks its own step.
+ */
+export function blockingIssues(issues: MacroIssue[] | undefined): MacroIssue[] {
+  return (issues ?? []).filter((i) => !i.warning);
+}
+
 /** "1 step", "2 steps and 1 trigger" -- the summary line's subject. */
 export function issueSummary(issues: MacroIssue[]): string {
   const steps = new Set(issues.filter((i) => i.scope === "step").map((i) => i.index));

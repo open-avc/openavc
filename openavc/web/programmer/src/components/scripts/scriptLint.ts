@@ -83,6 +83,21 @@ const BADGE_WORDS: Record<ScriptIssue["kind"], { one: string; many: string; titl
     many: "system. event names",
     title: "Names starting with system. are OpenAVC's own. Open the script to see the custom. name to use.",
   },
+  platform_key: {
+    one: "write OpenAVC refuses",
+    many: "writes OpenAVC refuses",
+    title: "system. and isc. keys belong to OpenAVC. Open the script to see which line, and keep your value under var.",
+  },
+  not_one_value: {
+    one: "value that is not one value",
+    many: "values that are not one value",
+    title: "A state value is one piece of text, a number or true/false. Open the script to see which line.",
+  },
+  device_key: {
+    one: "device value set by hand",
+    many: "device values set by hand",
+    title: "The device's next report replaces a value set here. Open the script to see which line.",
+  },
 };
 
 /** What the script list says about a script's issues, worded by their kind

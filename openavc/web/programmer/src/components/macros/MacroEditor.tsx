@@ -65,7 +65,7 @@ import {
 } from "./pluginMacroActions";
 import { CopyButton } from "../shared/CopyButton";
 import { GroupMemberChips } from "./GroupMemberChips";
-import { issuesAt, issueLabel, issueSummary, issueText, type MacroIssue } from "./macroLint";
+import { blockingIssues, issuesAt, issueLabel, issueSummary, issueText, type MacroIssue } from "./macroLint";
 import { StepNamesContext, stepDeviceIds, useCommandLabels, useStepNames } from "./commandLabels";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
@@ -760,7 +760,7 @@ export function MacroEditor({
 
       {/* What will not run as built. Amber and never a blocker: half-built is
           what editing looks like, and the save path stays shape-only. */}
-      {(issues?.length ?? 0) > 0 && (
+      {blockingIssues(issues).length > 0 && (
         <div
           style={{
             display: "flex",
@@ -775,9 +775,9 @@ export function MacroEditor({
         >
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", color: "#f59e0b", fontWeight: 600 }}>
             <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-            {issueSummary(issues!)} won't run as built
+            {issueSummary(blockingIssues(issues))} won't run as built
           </div>
-          {issues!.map((issue, n) => (
+          {blockingIssues(issues).map((issue, n) => (
             <div key={n} style={{ paddingLeft: 22 }}>
               <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>
                 {issueLabel(issue)}

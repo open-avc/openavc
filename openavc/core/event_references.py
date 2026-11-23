@@ -50,6 +50,10 @@ the platform never sends hears nothing, since no project can send one there.
 controls' `system.` events renamed (`core/event_migration.py`); a script is
 code and is not rewritten, so this is where it hears of it.
 
+**And what a script writes.** A `state.set` or `state.delete` the runtime
+refuses, and a `device.` key the device's next report replaces, are
+`core/script_state_writes`, whose issues join these.
+
 `script_issues` is every check together, each issue tagged with its `kind`,
 and is what `POST /api/scripts/validate` and the AI's script tools ask.
 
@@ -74,6 +78,7 @@ from openavc.core.event_bus import (
     silent_pattern_sentence,
     silent_platform_pattern,
 )
+from openavc.core.script_state_writes import state_write_issues
 from openavc.ui.page_review import do_action_dicts
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
@@ -457,7 +462,7 @@ def script_issues(
              "message": STARTUP_TIMER_MESSAGE}
             for line in startup_timers(source)
         ]
-        more = timers + platform_names(source)
+        more = timers + platform_names(source) + state_write_issues(source)
         if more:
             merged = issues.get(script_id, []) + more
             issues[script_id] = sorted(merged, key=lambda issue: issue["line"])

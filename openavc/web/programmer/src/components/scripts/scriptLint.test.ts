@@ -79,6 +79,15 @@ describe("issueBadge", () => {
     expect(issueBadge([named(4), timer(8)]).text).toBe("2 warnings");
   });
 
+  it("words each kind of state write by what happens to it", () => {
+    const write = (kind: ScriptIssue["kind"]) => issue({ kind, line: 5, event: "system.version" });
+    expect(issueBadge([write("platform_key")]).text).toBe("1 write OpenAVC refuses");
+    expect(issueBadge([write("platform_key"), write("platform_key")]).text).toBe("2 writes OpenAVC refuses");
+    expect(issueBadge([write("not_one_value")]).text).toBe("1 value that is not one value");
+    expect(issueBadge([write("device_key")]).text).toBe("1 device value set by hand");
+    expect(issueBadge([write("device_key")]).title).toContain("next report");
+  });
+
   it("counts both kinds together as warnings rather than misnaming one", () => {
     const badge = issueBadge([issue(), timer(8)]);
     expect(badge.text).toBe("2 warnings");

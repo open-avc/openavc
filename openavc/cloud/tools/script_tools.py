@@ -31,6 +31,7 @@ from openavc.core.event_references import (
     project_script_sources,
     script_issues,
 )
+from openavc.core.script_state_writes import DEVICE_KEY, NOT_ONE_VALUE, PLATFORM_KEY
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 
 #: Said once per reply that carries one, at the moment it is broken rather
@@ -51,6 +52,18 @@ _KIND_NOTES = {
         "Names starting with system. are OpenAVC's own: events.emit() of one is refused when "
         "it runs, and a handler for one OpenAVC never sends never fires. Use the custom. name "
         "each warning gives."
+    ),
+    PLATFORM_KEY: (
+        "system. and isc. keys are OpenAVC's own: a state.set() or state.delete() of one is "
+        "refused when it runs and the script carries on. Keep the value under a var. key."
+    ),
+    NOT_ONE_VALUE: (
+        "A state value is one string, number, boolean or None: a state.set() of a list or a "
+        "dict is refused when it runs. Store each part under its own key, or as a JSON string."
+    ),
+    DEVICE_KEY: (
+        "A device.* key is the device's report: a state.set() of one lasts until its next "
+        "report. Send the device a command to change it."
     ),
 }
 
@@ -100,8 +113,9 @@ def _new_script_path(scripts_dir: Path, filename: str) -> Path:
 
 def _script_issues(engine: Any, script_id: str, source: str) -> list[dict]:
     """The script lint's issues in the script just written: handlers nothing in
-    the project can reach, timers that stop at the script's next edit, and
-    the platform's own event names.
+    the project can reach, timers that stop at the script's next edit, the
+    platform's own event names, and the state writes the runtime refuses or a
+    device's next report replaces.
 
     The same check the IDE's script lint runs, at the other door that writes a
     script. A generator is told in the reply it is already reading, which is

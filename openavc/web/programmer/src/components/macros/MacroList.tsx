@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import type { MacroConfig } from "../../api/types";
 import { CopyButton } from "../shared/CopyButton";
-import { issueLabel, issueSummary, issueText, type MacroIssuesById } from "./macroLint";
+import { blockingIssues, issueLabel, issueSummary, issueText, type MacroIssuesById } from "./macroLint";
 
 interface MacroListProps {
   macros: MacroConfig[];
@@ -156,7 +156,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                 >
                   {m.steps.length} step{m.steps.length !== 1 ? "s" : ""}
                 </div>
-                {(issues?.[m.id]?.length ?? 0) > 0 && (
+                {blockingIssues(issues?.[m.id]).length > 0 && (
                   <div
                     style={{
                       display: "flex",
@@ -166,12 +166,12 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                       fontSize: 11,
                       color: "#f59e0b",
                     }}
-                    title={issues![m.id]
+                    title={blockingIssues(issues?.[m.id])
                       .map((i) => `${issueLabel(i)}: ${issueText(i)}`)
                       .join("\n")}
                   >
                     <AlertTriangle size={11} style={{ flexShrink: 0 }} />
-                    {issueSummary(issues![m.id])} won't run
+                    {issueSummary(blockingIssues(issues?.[m.id]))} won't run
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>

@@ -39,6 +39,12 @@ from typing import Any
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
 from openavc.core.event_bus import check_project_emit, silent_pattern_sentence, silent_platform_pattern
 from openavc.core.project_loader import SECONDS_MIN, MacroStep, TriggerConfig, choice_rule
+from openavc.core.state_store import (
+    DEVICE_PREFIX,
+    DEVICE_WRITE_NOTE,
+    flat_value_sentence,
+    platform_key_sentence,
+)
 from openavc.drivers.param_labels import param_label as _readable_param
 from openavc.drivers.param_validation import required_param_sentence
 from openavc.utils.logger import get_logger
@@ -178,6 +184,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
         found.append(_finding(path, reason, action=action, refused="file"))
 
     found.extend(_refused_emit_findings(step, path))
+    found.extend(_state_write_findings(step, path))
 
     if action == "delay":
         seconds = step.get("seconds")
@@ -272,6 +279,26 @@ def _refused_emit_findings(step: dict, path: str) -> list[dict[str, Any]]:
     return [_finding(path, refused, action="event.emit", refused="platform_event")]
 
 
+def _state_write_findings(step: dict, path: str) -> list[dict[str, Any]]:
+    """A Set Variable step the runtime refuses (``state_store.check_authored_write``),
+    in its words: a key OpenAVC owns (``refused: "platform_key"``) or a value
+    written as a list or a dict (``refused: "value"``). A ``$`` reference is
+    only known when the step runs, and the runtime refuses it then. A device's
+    key is a warning: the write runs and lasts until the device's next report."""
+    key = step.get("key")
+    if step.get("action") != "state.set" or not isinstance(key, str) or not key:
+        return []
+    refused = platform_key_sentence(key)
+    if refused:
+        return [_finding(path, refused, action="state.set", refused="platform_key")]
+    refused = flat_value_sentence(step.get("value"))
+    if refused:
+        return [_finding(path, refused, action="state.set", refused="value")]
+    if key.startswith(DEVICE_PREFIX):
+        return [_finding(path, DEVICE_WRITE_NOTE.format(key=key), action="state.set", warning=True)]
+    return []
+
+
 def _event_trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
     """An Event trigger with no pattern, or one that can hear nothing: under
     ``system.`` and matching none of the events the platform sends."""
@@ -333,7 +360,10 @@ def validate_macro_step(step: dict, path: str, **lookups: Any) -> list[str]:
     caller holding the engine and the driver registry can answer. A keyword it
     does not name is a TypeError, as on any signature.
     """
-    return [_ai_line(f) for f in _step_findings(step, path, _Lookups(**lookups))]
+    return [
+        _ai_line(f) for f in _step_findings(step, path, _Lookups(**lookups))
+        if not f.get("warning")
+    ]
 
 
 def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
@@ -470,12 +500,17 @@ def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, An
     ``message`` is the runtime's refusal, from ``required_sentence``; the
     lookups are :class:`_Lookups`, by keyword). A step
     whose command no macro can run (``file_command``) carries
-    ``refused: "file"``, and an Emit Event step naming one of the platform's
-    own events ``refused: "platform_event"``; each message is the runtime's
-    own refusal.
+    ``refused: "file"``, an Emit Event step naming one of the platform's
+    own events ``refused: "platform_event"``, and a Set Variable step whose
+    write is refused ``refused: "platform_key"`` or ``refused: "value"``; each
+    message is the runtime's own refusal.
 
-    Nothing here is a warning and nothing is a refusal: every record means the
-    step or trigger as written cannot do what it says. Deliberately NOT
+    Nothing here is a refusal, and every record but one kind means the step or
+    trigger as written cannot do what it says. That kind carries
+    ``warning: true``: a Set Variable step on a device's key, which runs and
+    lasts until the device's next report. The editor does not count it as a
+    step that won't run, and ``validate_macro`` does not refuse on it.
+    Deliberately NOT
     included are ``validate_macro``'s soft reference checks (a device or macro
     id that no longer resolves) -- those are logged there rather than raised
     for a reason that still holds, that a macro may legitimately be authored
@@ -527,6 +562,7 @@ def validate_macro(
     errors: list[str] = [
         _ai_line(issue)
         for issue in macro_issues(steps, triggers, **lookups)
+        if not issue.get("warning")
     ]
     warnings: list[str] = []
     if project and not errors:
