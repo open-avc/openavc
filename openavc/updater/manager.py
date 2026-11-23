@@ -26,6 +26,7 @@ from openavc.updater.checker import (
     still_an_update,
     update_applied,
 )
+from openavc.updater import update_run
 from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
     DeploymentType,
@@ -59,6 +60,14 @@ class UpdateManager:
     _older_than_last_update = ""
     #: An applied update or rollback is ending the process (``_end_process``).
     _ending = False
+    _run_record: update_run.RunRecord | None = None
+
+    @property
+    def run_record(self) -> update_run.RunRecord:
+        """This system's update run (updater/update_run.py)."""
+        if self._run_record is None:
+            self._run_record = update_run.RunRecord(self._data_dir)
+        return self._run_record
 
     @property
     def _firmware_host(self):
@@ -115,6 +124,7 @@ class UpdateManager:
             self._set_state(
                 "system.update_staged_version", staged.get("target_version", "")
             )
+        self.run_record.read_at_start(staged, self._history)
 
         # An update update-helper.sh could not apply and set aside to retry.
         # Say so once per start: this is the only signal that a box which looks
@@ -142,6 +152,11 @@ class UpdateManager:
         """Set a state key if state store is available."""
         if self._state:
             self._state.set(key, value, source="system")
+
+    def _step(self, step: str) -> None:
+        """The run's step, which the Updates page shows as the update's status."""
+        self._set_state("system.update_status", step)
+        self.run_record.step(step)
 
     def _load_history(self) -> None:
         """Load update history from disk."""
@@ -399,7 +414,7 @@ class UpdateManager:
     async def _verify_checksum(self, *, checksum_url: str, artifact_path: Path,
                                artifact_name: str) -> None:
         """Download SHA256SUMS.txt and verify the artifact checksum."""
-        self._set_state("system.update_status", "verifying")
+        self._step("verifying")
 
         async with internet_client(timeout=30.0, follow_redirects=True) as c:
             resp = await c.get(checksum_url)
@@ -578,12 +593,13 @@ class UpdateManager:
             return self_update_refusal(self._deployment_type, release.version)
 
         self._update_in_progress = True
+        self.run_record.begin(update_run.UpdateRun(release.version, update_run.CHECKED, from_version=__version__))
         self._set_state("system.update_error", "")
 
         try:
             # Step 1: Backup (to_thread: zips the whole data dir, and the
             # room is still live while the update runs)
-            self._set_state("system.update_status", "backing_up")
+            self._step("backing_up")
             from openavc.updater.backup import create_backup, cleanup_old_backups
             backup_path = await asyncio.to_thread(
                 create_backup, self._data_dir, __version__,
@@ -593,7 +609,7 @@ class UpdateManager:
             log.info("Pre-update backup created: %s", backup_path)
 
             # Step 2: Download + verify checksum
-            self._set_state("system.update_status", "downloading")
+            self._step("downloading")
             self._set_state("system.update_progress", 0)
             artifact_path = await self._download_update(release)
             self._set_state("system.update_progress", 100)
@@ -605,7 +621,7 @@ class UpdateManager:
                                  backup_path=backup_path)
 
             # Step 4: Apply (platform-specific)
-            self._set_state("system.update_status", "applying")
+            self._step("applying")
             if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
                 await asyncio.to_thread(self._apply_windows, artifact_path, release.version)
             elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
@@ -618,7 +634,7 @@ class UpdateManager:
             # version actually runs (avoids false "success" if restart fails)
             self._add_history_entry(__version__, release.version, "pending")
 
-            self._set_state("system.update_status", "restarting")
+            self._step("restarting")
             log.info("Update to v%s applied, restarting...", release.version)
             self._end_process("update")
 
@@ -654,12 +670,16 @@ class UpdateManager:
         parsed = urlparse(update_url)
 
         self._update_in_progress = True
+        self.run_record.begin(update_run.UpdateRun(
+            target_version, update_run.PUSHED, from_version=__version__, rollback=rollback,
+            update_url=update_url, checksum_sha256=checksum_sha256,
+        ))
         self._set_state("system.update_error", "")
 
         try:
             # Step 1: Backup (to_thread: zips the whole data dir, and the
             # room is still live while the update runs)
-            self._set_state("system.update_status", "backing_up")
+            self._step("backing_up")
             from openavc.updater.backup import create_backup, cleanup_old_backups
             backup_path = await asyncio.to_thread(
                 create_backup, self._data_dir, __version__,
@@ -675,7 +695,7 @@ class UpdateManager:
             # synthesized name built from a sanitized version string.
             filename = self._safe_artifact_filename(parsed.path, target_version)
 
-            self._set_state("system.update_status", "downloading")
+            self._step("downloading")
             self._set_state("system.update_progress", 0)
             artifact_path = await self._download_artifact(update_url, filename)
             self._set_state("system.update_progress", 100)
@@ -690,7 +710,7 @@ class UpdateManager:
                     "No checksum provided for the update artifact — refusing to "
                     "apply an unverified update."
                 )
-            self._set_state("system.update_status", "verifying")
+            self._step("verifying")
             await self._verify_hash(artifact_path, checksum_sha256)
 
             # Fetch the detached signature (convention: artifact URL + ".sig")
@@ -711,7 +731,7 @@ class UpdateManager:
                                  backup_path=backup_path)
 
             # Step 5: Apply (platform-specific)
-            self._set_state("system.update_status", "applying")
+            self._step("applying")
             if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
                 await asyncio.to_thread(self._apply_windows, artifact_path, target_version)
             elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
@@ -721,7 +741,7 @@ class UpdateManager:
 
             self._add_history_entry(__version__, target_version, "pending")
 
-            self._set_state("system.update_status", "restarting")
+            self._step("restarting")
             log.info("Update to v%s applied (cloud URL), restarting...", target_version)
             self._end_process("cloud update")
 
@@ -835,6 +855,10 @@ class UpdateManager:
                 json.dumps(payload, indent=2), encoding="utf-8"
             )
             self._set_state("system.update_staged_version", target_version)
+            self.run_record.stage(update_run.UpdateRun(
+                target_version, update_run.STAGED, update_run.WAITING, rollback=rollback,
+                update_url=update_url, checksum_sha256=checksum_sha256,
+            ))
             log.info("Cloud staged update for v%s", target_version)
         except OSError:
             log.exception("Failed to persist cloud-staged update")
@@ -878,6 +902,7 @@ class UpdateManager:
         except OSError:
             log.exception("Failed to clear staged-update marker")
         self._set_state("system.update_staged_version", "")
+        self.run_record.drop_waiting()
 
     @staticmethod
     def _file_sha256(path: Path) -> str:
@@ -993,6 +1018,7 @@ class UpdateManager:
         self._set_state("system.update_status", "error")
         self._set_state("system.update_error", error_msg)
         self._add_history_entry(__version__, to_version, "failed", error_msg)
+        self.run_record.fail(error_msg)
 
     def _end_process(self, source: str, last=None) -> None:
         """End the process for the update or rollback just applied, through
@@ -1048,9 +1074,12 @@ class UpdateManager:
         # Resolve the actual target version up front so history can record a
         # real version instead of a placeholder.
         target_version = rollback_target_version(APP_DIR)
+        self.run_record.begin(update_run.UpdateRun(
+            target_version, update_run.PREVIOUS, from_version=__version__, rollback=True,
+        ))
 
         # Create a backup of current state before rolling back
-        self._set_state("system.update_status", "backing_up")
+        self._step("backing_up")
         try:
             from openavc.updater.backup import create_backup, cleanup_old_backups
             await asyncio.to_thread(
@@ -1067,7 +1096,7 @@ class UpdateManager:
         # next apply_update() (which prefers a staged record).
         self.clear_staged_update()
 
-        self._set_state("system.update_status", "applying")
+        self._step("applying")
         # Pass the versions explicitly: a manual rollback runs after the
         # pending-update marker is cleared, so perform_rollback can't recover
         # them from it. We're abandoning the running version (to_version) and
@@ -1083,7 +1112,7 @@ class UpdateManager:
             self._add_history_entry(
                 __version__, target_version, "success", rollback=True,
             )
-            self._set_state("system.update_status", "restarting")
+            self._step("restarting")
             # On Windows the installer perform_rollback scheduled starts the
             # earlier version; elsewhere the helper applies the rollback as
             # the service manager starts the server again.
@@ -1092,6 +1121,7 @@ class UpdateManager:
         else:
             self._set_state("system.update_status", "error")
             self._set_state("system.update_error", "Rollback failed")
+            self.run_record.fail("Rollback failed")
             return {"success": False, "error": "Rollback failed. Check server logs."}
 
     def get_status(self) -> dict[str, Any]:

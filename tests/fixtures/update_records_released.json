@@ -1,0 +1,82 @@
+{
+  "written_by": ["0.40.0", "0.41.0-rc1"],
+  "about": "What the released updater leaves in the data folder for the next start to read: staged-update.json (stage_update) and the newest update-history.json row (_add_history_entry, as _load_history and _reconcile_reverted_update leave it). Each shape is copied from those releases' updater/manager.py; a release that writes another shape adds it here.",
+  "staged": {
+    "target_version": "0.41.0",
+    "update_url": "https://github.com/open-avc/openavc/releases/download/v0.41.0/openavc-0.41.0-linux-x86_64.tar.gz",
+    "checksum_sha256": "3f1c9a0e5b7d2a4c6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d"
+  },
+  "staged_without_checksum": {
+    "target_version": "0.41.0",
+    "update_url": "https://github.com/open-avc/openavc/releases/download/v0.41.0/openavc-0.41.0-linux-x86_64.tar.gz",
+    "checksum_sha256": null
+  },
+  "rows": {
+    "pending": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.41.0",
+      "status": "pending",
+      "error": "",
+      "rollback": false,
+      "timestamp": "2026-11-20T14:03:11.402118+00:00"
+    },
+    "failed": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.41.0",
+      "status": "failed",
+      "error": "Update failed: Checksum mismatch: expected 3f1c9a0e5b7d2a4c..., got 9e8d7c6b5a493827...",
+      "rollback": false,
+      "timestamp": "2026-11-20T14:03:11.402118+00:00"
+    },
+    "cancelled": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.41.0",
+      "status": "failed",
+      "error": "Update cancelled",
+      "rollback": false,
+      "timestamp": "2026-11-20T14:03:11.402118+00:00"
+    },
+    "confirmed": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.41.0",
+      "status": "success",
+      "error": "",
+      "rollback": false,
+      "timestamp": "2026-11-20T14:03:11.402118+00:00",
+      "running_version": "0.41.0"
+    },
+    "confirmed_by_0_40_0": {
+      "from_version": "0.39.0",
+      "to_version": "0.40.0",
+      "status": "success",
+      "error": "",
+      "rollback": false,
+      "timestamp": "2026-11-07T18:12:40.118530+00:00"
+    },
+    "did_not_apply": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.41.0",
+      "status": "failed",
+      "error": "Update did not apply: expected v0.41.0, running v0.41.0-rc1",
+      "rollback": false,
+      "timestamp": "2026-11-20T14:03:11.402118+00:00"
+    },
+    "reverted": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.41.0",
+      "status": "rolled_back",
+      "error": "Update was reverted; running v0.41.0-rc1",
+      "rollback": false,
+      "timestamp": "2026-11-20T14:03:11.402118+00:00",
+      "running_version": "0.41.0"
+    },
+    "manual_rollback": {
+      "from_version": "0.41.0-rc1",
+      "to_version": "0.40.0",
+      "status": "success",
+      "error": "",
+      "rollback": true,
+      "timestamp": "2026-11-20T15:30:02.771904+00:00"
+    }
+  }
+}
