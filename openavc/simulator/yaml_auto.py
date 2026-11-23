@@ -55,7 +55,7 @@ from urllib.parse import unquote
 import yaml
 
 from openavc.drivers.command_form import command_form
-from openavc.drivers.line_ending import sent_line_ending
+from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.spec import without_null_sections
 from openavc.drivers.usable_number import usable_number
@@ -63,7 +63,6 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     coerce_osc_value,
     conversion_of,
-    decode_delimiter,
     reading_from_wire,
     safe_substitute,
     split_send_frames,
@@ -143,6 +142,7 @@ from openavc.simulator.telnet_sign_in import (
     sign_in_for,
 )
 from openavc.simulator.template_handler import ExplicitHandler, fill, state_writes
+from openavc.transport.binary_helpers import received_text, sent_text
 
 logger = logging.getLogger(__name__)
 
@@ -763,7 +763,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         the line; a registration nothing answers with an empty
         acknowledgement; else the line read as several commands run
         together."""
-        text = data.decode("utf-8", errors="replace").strip()
+        text = received_text(data).strip()
         if not text:
             return None
 
@@ -865,8 +865,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
     def _execute_command_handler(self, handler: CommandHandler, m: re.Match) -> bytes | None:
         """Run a matched command: the state machines it drives, the child it
         names, each state change it makes, then its reply."""
-        delimiter = self._get_delimiter()
-
         # Drive any state machines with this command name (the documented
         # trigger contract). A machine that rejects the command in its current
         # state (e.g. during cooldown) suppresses the response entirely.
@@ -884,7 +882,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             self.set_state(target_key, self._state_change_value(handler, source, m, target_key))
 
         text = self._command_reply(handler, child_id)
-        return None if text is None else (text + delimiter).encode()
+        return None if text is None else self._with_line_ending(text)
 
     def _addressed_child(self, handler: CommandHandler, m: re.Match) -> str | None:
         """The rostered child a child-addressed command names: its captured
@@ -968,9 +966,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _execute_query_handler(self, handler: QueryHandler) -> bytes | None:
         """Execute a query handler: respond with current state."""
-        delimiter = self._get_delimiter()
         text = self._flat_reply_text(handler.response_var)
-        return None if text is None else (text + delimiter).encode()
+        return None if text is None else self._with_line_ending(text)
 
     def _execute_explicit_handler(self, handler: ExplicitHandler, m: re.Match) -> bytes | None:
         """A template handler (template_handler.py): its writes in order,
@@ -1142,14 +1139,17 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
         The driver sends raw queries with ``{config_field}`` placeholders
         substituted and backslash escape sequences encoded to real bytes;
-        inbound dispatch then strips terminators and surrounding whitespace
-        (``_dispatch_command``). A query handler built from the as-authored
-        text (``"Status_Audio 1 \\r"``) could therefore never match the line
-        it arrives as (``"Status_Audio 1"``) — normalize the same way here.
+        inbound dispatch then reads those bytes as text and strips
+        terminators and surrounding whitespace (``_dispatch_command``). A
+        query handler built from the as-authored text
+        (``"Status_Audio 1 \\r"``) could therefore never match the line it
+        arrives as (``"Status_Audio 1"``) — normalize the same way here
+        (``binary_helpers.sent_text``: the driver's bytes, read as the
+        dispatcher reads them).
         """
         if "{" in query_text:
             query_text = safe_substitute(query_text, self._instance_config())
-        return decode_delimiter(query_text).strip()
+        return sent_text(query_text).strip()
 
     # ── Child-entity modeling ──
 
@@ -1259,7 +1259,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             key = f"{ctype}.{cid}.{var}"
             value = self._state[key] if key in self._state else state_var_default(var_def)
             items.append(answer.render_item(cid, value))
-        return (answer.render(start, items) + self._get_delimiter()).encode()
+        return self._with_line_ending(answer.render(start, items))
 
     def _build_child_query_handlers(self) -> None:
         """The list, page and per-child reads for the current roster
@@ -1282,7 +1282,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         )
         if text is None:
             return None
-        return (text + self._get_delimiter()).encode()
+        return self._with_line_ending(text)
 
     def _build_inline_handlers(self) -> None:
         """A Generic device's own response patterns, and an HTTP one's JSON
@@ -1316,7 +1316,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             else:
                 value = src
             self.set_state(state_key, self._coerce_value(state_key, value))
-        return (text + self._get_delimiter()).encode()
+        return self._with_line_ending(text)
 
     def _inline_json_reply(self) -> bytes:
         """The JSON status poll's answer (inline_device.json_body)."""
@@ -1472,7 +1472,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             return
         text = self._format_state_reply(key, value)
         if text is not None:
-            self._send_on_control_link((text + self._get_delimiter()).encode())
+            self._send_on_control_link(self._with_line_ending(text))
 
     def _osc_push_wanted(self, key: str) -> bool:
         """An OSC change goes out when no message is being answered, the key
@@ -1522,16 +1522,22 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     # ── Helpers ──
 
-    def _get_delimiter(self) -> str:
-        """What ends each line the device answers with, decoded: the line
-        ending the driver splits on (``line_ending.sent_line_ending``: the
-        driver's delimiter, else this device's config over the driver's
-        defaults, else CR).
+    def _get_delimiter(self) -> bytes:
+        """What ends each line the device answers with, as the bytes the
+        driver splits on (``line_ending.sent_line_ending``: the driver's
+        delimiter, else this device's config over the driver's defaults,
+        else CR; ``line_ending.decode_delimiter``, so an escaped ``\\xFE``
+        is byte FE as it is to the driver).
 
         HTTP responses don't have a line delimiter — the response body is
         whatever the handler returned, with no trailing line ending.
         """
         return decode_delimiter(sent_line_ending(self._driver_def, self._instance_config()))
+
+    def _with_line_ending(self, text: str) -> bytes:
+        """A line the device answers with, as it goes out: its text as UTF-8,
+        then the line ending's bytes."""
+        return text.encode() + self._get_delimiter()
 
     def _var_def_for_key(self, state_key: str) -> dict:
         """Variable definition for a flat key, or for a dotted child key

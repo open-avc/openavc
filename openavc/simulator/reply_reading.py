@@ -34,19 +34,20 @@ from typing import Any
 
 from openavc.drivers.compiled_protocol import (
     build_json_mappings,
-    decode_delimiter,
     parse_json_reply,
     safe_substitute,
 )
 from openavc.drivers.json_value_spec import CHILD, json_value_mapping
-from openavc.drivers.line_ending import reply_line_ending
+from openavc.drivers.line_ending import decode_delimiter, reply_line_ending
+from openavc.transport.binary_helpers import received_text
 
 
-def frame_delimiter(driver_def: dict, config: dict) -> str | None:
-    """The line ending the driver splits replies on, decoded, under
-    ``config`` (the driver's defaults where no device is known), or None: a
-    transport that is not a byte stream, a ``frame_parser`` that frames the
-    replies, or none (``line_ending.reply_line_ending``'s rule)."""
+def frame_delimiter(driver_def: dict, config: dict) -> bytes | None:
+    """The bytes the driver splits replies on, under ``config`` (the
+    driver's defaults where no device is known), or None: a transport that is
+    not a byte stream, a ``frame_parser`` that frames the replies, or none
+    (``line_ending.reply_line_ending``'s rule, read as bytes by
+    ``line_ending.decode_delimiter``, as the running driver reads it)."""
     raw = reply_line_ending(driver_def, config)
     return (decode_delimiter(raw) or None) if raw else None
 
@@ -171,6 +172,8 @@ class ReplyRules:
 
     patterns: list[re.Pattern]
     json_keys: set[str]
+    #: The line ending as the text it reads as (``binary_helpers.
+    #: received_text`` of its bytes), which a reply's text is split on.
     delimiter: str | None
 
     @classmethod
@@ -181,7 +184,8 @@ class ReplyRules:
         the JSON keys, the delimiter."""
         patterns = compile_response_patterns(responses, config)
         json_keys = json_rule_keys(responses)
-        return cls(patterns, json_keys, frame_delimiter(driver_def, config))
+        delimiter = frame_delimiter(driver_def, config)
+        return cls(patterns, json_keys, received_text(delimiter) if delimiter else None)
 
     @classmethod
     def regex_only(cls, responses: list, config: dict) -> ReplyRules:

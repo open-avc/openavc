@@ -75,6 +75,8 @@ CASES = [
     pytest.param("", "\r", None, id="an-empty-file-delimiter-is-none"),
     pytest.param(_MISSING, "", None, id="the-device's-none-option"),
     pytest.param(">", _MISSING, b">", id="a-terminator-of-its-own"),
+    pytest.param("\\xFE", _MISSING, b"\xfe", id="a-byte-escape-above-7F-is-one-byte"),
+    pytest.param("\\x03", "\r", b"\x03", id="a-control-byte-escape"),
 ]
 
 
@@ -92,7 +94,7 @@ def _runtime(definition: dict, config: dict) -> bytes | None:
 
 def _simulator(definition: dict, config: dict) -> bytes | None:
     sim = YAMLAutoSimulator("widget_1", config, driver_def=definition)
-    return sim._get_delimiter().encode() or None
+    return sim._get_delimiter() or None
 
 
 def _authored_ending(definition: dict, config: dict) -> bytes | None:
@@ -127,8 +129,7 @@ def test_the_validator_judges_replies_by_it(in_file, on_device, expected):
     """The validator reads a definition with no device: the driver's
     default_config is the device's settings there."""
     definition = _definition(in_file, default_config=_config(on_device))
-    judged = frame_delimiter(definition, _config(on_device))
-    assert (judged.encode() if judged else None) == expected
+    assert frame_delimiter(definition, _config(on_device)) == expected
 
 
 def test_the_simulator_reads_the_driver_defaults_as_the_device_does():

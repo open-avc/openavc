@@ -44,10 +44,11 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
-from openavc.drivers.compiled_protocol import conversion_of, decode_delimiter, safe_substitute
+from openavc.drivers.compiled_protocol import conversion_of, safe_substitute
 from openavc.drivers.spec import placeholder_names
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.send_templates import send_param_specs, send_regex, spec_int_base
+from openavc.transport.binary_helpers import sent_text
 
 logger = logging.getLogger("openavc.simulator.yaml_auto")
 
@@ -157,11 +158,12 @@ def wire_line(template: str, instance_config: Callable[[], dict]) -> str | None:
     """The one segment of a write that holds ``{value}`` (the one name the
     runtime always fills with the value being written, with or without a
     format spec), its config placeholders filled from the instance's config
-    as the driver fills them, stripped; None when no segment holds it.
-    ``{value}`` is never a config key: it is left for ``send_regex`` to turn
-    into the capture."""
+    as the driver fills them, stripped; None when no segment holds it. Its
+    escapes read as the line the driver's bytes arrive as
+    (``binary_helpers.sent_text``). ``{value}`` is never a config key: it is
+    left for ``send_regex`` to turn into the capture."""
     segments = [
-        s for s in decode_delimiter(template).replace("\r", "\n").split("\n")
+        s for s in sent_text(template).replace("\r", "\n").split("\n")
         if s.strip()
     ]
     wire = next((s for s in segments if "value" in placeholder_names(s)), None)

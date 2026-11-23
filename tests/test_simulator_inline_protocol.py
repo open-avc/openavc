@@ -148,7 +148,7 @@ def test_state_to_response_formatting():
 
 def test_config_delimiter_used():
     sim = _sim(GENERIC_DEF, INLINE_CONFIG)
-    assert sim._get_delimiter() == "\r"
+    assert sim._get_delimiter() == b"\r"
 
 
 # ── Helper units ────────────────────────────────────────────────────────────

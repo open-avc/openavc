@@ -26,17 +26,25 @@ _ESCAPE_MAP = {
     r"\\": "\\",
 }
 
+#: The backslash escapes a driver's text may carry, as ``encode_escape_sequences``
+#: reads them: ``\r``, ``\n``, ``\t``, ``\\`` and ``\x`` with two hex digits.
+ESCAPE_SEQUENCE = re.compile(r"\\(?:r|n|t|\\|x[0-9a-fA-F]{2})")
+
 
 def encode_escape_sequences(s: str) -> bytes:
     r"""Convert a string with escape sequences (\r, \n, \t, \xHH) to bytes.
 
-    Only safe, known sequences are processed; unknown backslash sequences are
-    passed through literally. ``\xHH`` yields the single raw byte 0xHH, so
-    binary delimiters and headers (e.g. ``\xFE`` / ``\xAA``) come out exact.
-    All other text is encoded as UTF-8, so an on-screen message, label, or
-    user string variable containing non-Latin-1 characters (an em dash, curly
+    THE reading of a typed escape: the running driver, the simulator, the
+    simulator validator and the Builder's raw probe all ask it. Only safe,
+    known sequences are processed; unknown backslash sequences are passed
+    through literally. ``\xHH`` yields the single raw byte 0xHH, so binary
+    delimiters and headers (e.g. ``\xFE`` / ``\xAA``) come out exact. All
+    other text is encoded as UTF-8, so an on-screen message, label, or user
+    string variable containing non-Latin-1 characters (an em dash, curly
     quotes, accented or CJK text) is sent instead of raising
-    UnicodeEncodeError on a normal control path.
+    UnicodeEncodeError on a normal control path. A character is never a byte
+    of its own: ``þ`` (what a YAML double-quoted ``"\xFE"`` already is) goes
+    out as its UTF-8, C3 BE, and only the escape ``\xFE`` is byte FE.
 
     Used by drivers and frame parsers.
     """
@@ -46,7 +54,7 @@ def encode_escape_sequences(s: str) -> bytes:
     # ``\xHH`` as its raw byte.
     result = bytearray()
     pos = 0
-    for m in re.finditer(r'\\(?:r|n|t|\\|x[0-9a-fA-F]{2})', s):
+    for m in ESCAPE_SEQUENCE.finditer(s):
         result += s[pos:m.start()].encode("utf-8")
         seq = m.group(0)
         if seq in _ESCAPE_MAP:
@@ -58,6 +66,29 @@ def encode_escape_sequences(s: str) -> bytes:
         pos = m.end()
     result += s[pos:].encode("utf-8")
     return bytes(result)
+
+
+def has_incomplete_byte_escape(s: str) -> bool:
+    r"""Whether ``s`` holds a ``\x`` that ``encode_escape_sequences`` does not
+    read as a byte (fewer than two hex digits after it), and so would send as
+    typed. An escaped backslash before an ``x`` (``\\x``) is not one."""
+    return any("\\x" in literal for literal in ESCAPE_SEQUENCE.split(s))
+
+
+def received_text(data: bytes) -> str:
+    """Bytes off the wire as the text a reader matches them by: UTF-8, a byte
+    that is not text read as U+FFFD. The simulator's dispatcher reads what
+    arrives through it, the way the running driver's line reader decodes a
+    reply."""
+    return data.decode("utf-8", errors="replace")
+
+
+def sent_text(s: str) -> str:
+    r"""A line written with escapes, as the text it reads as at the far end:
+    the bytes ``encode_escape_sequences`` sends, read by ``received_text``.
+    What the simulator recognises a line the driver sends by, so an escaped
+    byte above 7F (``\xFE``, never valid UTF-8 alone) matches what arrives."""
+    return received_text(encode_escape_sequences(s))
 
 
 def pack_length_prefix(value: int, size: int, endian: str = "big") -> bytes:

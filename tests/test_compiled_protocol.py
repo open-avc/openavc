@@ -2,8 +2,8 @@
 
 Most of these helpers are exercised end-to-end through the driver and
 simulator suites; the cases here pin the pieces whose call sites are thin
-wrappers around this module — delimiter decoding, send_frame packet framing,
-and the receive-side compile — so a regression points straight at the shared
+wrappers around this module — send_frame packet framing and the
+receive-side compile — so a regression points straight at the shared
 implementation.
 """
 from __future__ import annotations
@@ -12,7 +12,6 @@ from openavc.drivers.compiled_protocol import (
     apply_send_frame,
     build_send_frame,
     compile_driver,
-    decode_delimiter,
     split_send_frames,
 )
 from openavc.simulator.send_templates import (
@@ -26,27 +25,6 @@ from openavc.simulator.reply_templates import (
     emit_template_multi,
     fill_template,
 )
-
-
-# ── decode_delimiter ──
-
-
-def test_decode_delimiter_passes_real_characters_through():
-    # YAML double-quoted scalars already carry real control characters.
-    assert decode_delimiter("\r\n") == "\r\n"
-    assert decode_delimiter("#") == "#"
-
-
-def test_decode_delimiter_decodes_backslash_escapes():
-    assert decode_delimiter("\\r\\n") == "\r\n"
-    assert decode_delimiter("\\t") == "\t"
-    assert decode_delimiter("\\x03") == "\x03"
-    assert decode_delimiter("\\\\") == "\\"
-
-
-def test_decode_delimiter_leaves_unknown_sequences_alone():
-    assert decode_delimiter("\\q") == "\\q"
-    assert decode_delimiter("") == ""
 
 
 # ── send_frame build / apply / split ──

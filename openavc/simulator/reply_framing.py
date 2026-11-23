@@ -129,7 +129,7 @@ class _Heard:
 
 
 def _ask_the_simulator(
-    build: Callable[[], Any], probes: list[str], delimiter: str,
+    build: Callable[[], Any], probes: list[str], terminator: bytes,
 ) -> _Heard | None:
     """Each probe's reply from a simulator ``build`` makes, or None when it
     cannot be built (an unbuildable simulator is the other checks' finding).
@@ -147,7 +147,6 @@ def _ask_the_simulator(
             sim = build()
         except Exception:
             return None
-        terminator = delimiter.encode()
         heard = _Heard()
         for probe in probes:
             try:

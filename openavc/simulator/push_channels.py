@@ -91,7 +91,7 @@ class PushChannels:
     """The push targets a driver declares and the notifications sent on them."""
 
     # Host attributes (YAMLAutoSimulator and its server bases). Also asked of
-    # the host: _instance_config, _get_delimiter, _to_wire and capacity_kind
+    # the host: _instance_config, _with_line_ending, _to_wire and capacity_kind
     # (YAMLAutoSimulator); _silenced, log_protocol and send_to_listener
     # (BaseSimulator); push (TCPSimulator); push_datagram (the datagram
     # server); push_sse_event and post_http_callback (HTTPServerMixin).
@@ -493,7 +493,7 @@ class PushChannels:
         notifications on that channel ONLY — real devices with a dedicated
         notice feed never send those frames on the control connection.
         """
-        data = (msg + self._get_delimiter()).encode()
+        data = self._with_line_ending(msg)
         sender = self._push_channel()
         if sender is None:
             self._send_on_control_link(data)

@@ -30,9 +30,10 @@ Two answers are narrower than the line ending itself, for a YAML definition:
   a driver whose ``frame_parser`` frames its replies reads none of them by a
   line ending (the transport builds the declared parser in its place).
 
-``effective_delimiter`` is the line ending as bytes, through the one escape
-decoder (``binary_helpers.encode_escape_sequences``); the simulator and the
-validator still decode the text through ``compiled_protocol.decode_delimiter``.
+``decode_delimiter`` is a line ending as the bytes on the wire, through the one
+escape decoder (``binary_helpers.encode_escape_sequences``): ``effective_delimiter``
+(the running driver), the simulator's replies and the validator's judging all
+read it through here, so an escaped ``\\xFE`` is byte FE to each of them.
 
 Not asked here, on purpose: a Python simulator's ``SIMULATOR_INFO.delimiter``
 (``simulator/tcp_simulator.py``) is what the simulated device splits the
@@ -83,12 +84,17 @@ def line_ending(info: Mapping[str, Any], config: Mapping[str, Any]) -> str | byt
     return DEFAULT_LINE_ENDING
 
 
+def decode_delimiter(value: str | bytes) -> bytes:
+    """A line ending as written, as the bytes on the wire: text through the
+    one escape decoder (``\\r``, ``\\xFE`` as the bytes they name, every
+    character as UTF-8), bytes as they are; ``b""`` for none."""
+    return value if isinstance(value, bytes) else encode_escape_sequences(value)
+
+
 def effective_delimiter(info: Mapping[str, Any], config: Mapping[str, Any]) -> bytes | None:
     """The line ending as bytes, or None for none. Raises
     ``LineEndingNotText``."""
-    value = line_ending(info, config)
-    raw = value if isinstance(value, bytes) else encode_escape_sequences(value)
-    return raw or None
+    return decode_delimiter(line_ending(info, config)) or None
 
 
 def _text_line_ending(definition: Mapping[str, Any], config: Mapping[str, Any]) -> str:

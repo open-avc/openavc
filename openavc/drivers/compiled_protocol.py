@@ -625,34 +625,6 @@ def _key_for(value_map: dict[Any, Any], matches: Callable[[str], bool]) -> tuple
     return False, None
 
 
-# ── Delimiter decoding ──
-
-
-def decode_delimiter(delim: str) -> str:
-    """Decode a driver-declared delimiter string to its real characters.
-
-    A YAML double-quoted scalar already carries real control characters
-    (``"\\r\\n"`` arrives as CR LF), but a single-quoted or hand-typed value
-    arrives as literal backslash escapes instead. Decodes the same escape set
-    ``binary_helpers.encode_escape_sequences`` handles (``\\r``, ``\\n``,
-    ``\\t``, ``\\\\``, ``\\xHH``) so both spellings mean the same bytes on the
-    wire; anything else passes through untouched.
-    """
-
-    def _one(m: re.Match) -> str:
-        seq = m.group(0)
-        mapped = _DELIMITER_ESCAPES.get(seq)
-        if mapped is not None:
-            return mapped
-        # \xHH — the regex guarantees exactly two hex digits (0x00-0xFF).
-        return chr(int(seq[2:], 16))
-
-    return re.sub(r"\\(?:r|n|t|\\|x[0-9a-fA-F]{2})", _one, delim)
-
-
-_DELIMITER_ESCAPES = {"\\r": "\r", "\\n": "\n", "\\t": "\t", "\\\\": "\\"}
-
-
 # ── send_frame packet framing ──
 
 
