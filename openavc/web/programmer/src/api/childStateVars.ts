@@ -116,7 +116,7 @@ export function liveChildNames(
     for (const entry of resp.children?.[ctype] ?? []) {
       out.set(
         `${ctype}.${entry.local_id_padded}`,
-        liveChildName(entry, tdef, liveState, deviceId, ctype)
+        liveChildName(entry, tdef, liveState, `device.${deviceId}.${ctype}.`)
           || childDisplayName(ctype, tdef, entry),
       );
     }
@@ -126,47 +126,31 @@ export function liveChildNames(
 
 /** What one fetched child is called now: `childNameFrom` over the live values
  *  of the type's `label_field` and the reserved `label`, the fetched state
- *  where live state has none. "" when nothing names it; the caller words the
- *  absence. */
+ *  where live state has none. `typePrefix` is `device.<id>.<type>.`. "" when
+ *  nothing names it; the caller words the absence. */
 export function liveChildName(
   entry: ChildEntityEntry,
   tdef: { label_field?: string } | null | undefined,
   liveState: Record<string, unknown>,
-  deviceId: string,
-  ctype: string,
+  typePrefix: string,
 ): string {
   const field = tdef?.label_field?.trim();
-  const prefix = `device.${deviceId}.${ctype}.${entry.local_id_padded}.`;
-  const read = (key: string) => {
-    const live = liveState[prefix + key];
-    return live !== undefined ? live : entry.state?.[key];
-  };
+  const read = liveOrFetched(entry, liveState, `${typePrefix}${entry.local_id_padded}.`);
   const state: Record<string, unknown> = { label: read("label") };
   if (field) state[field] = read(field);
   return childNameFrom(entry.label, state, tdef);
 }
 
-/** What live state says about one device's children of one type that the
- *  fetched list cannot follow by itself: how many keys they hold (a child
- *  registering or going) and each reserved `label` (where the server mirrors
- *  a label saved in the project). A name the device reports is read live
- *  (`liveChildName`) and needs no new fetch, so it is not part of this. */
-export function childRosterStamp(
+/** A reader of one child's key: live state's value, else the fetched one. */
+function liveOrFetched(
+  entry: ChildEntityEntry,
   liveState: Record<string, unknown>,
-  deviceId: string,
-  ctype: string,
-): string {
-  const prefix = `device.${deviceId}.${ctype}.`;
-  let count = 0;
-  const labels: string[] = [];
-  for (const [key, value] of Object.entries(liveState)) {
-    if (!key.startsWith(prefix)) continue;
-    count++;
-    if (key.endsWith(".label") && key.indexOf(".", prefix.length) === key.length - 6) {
-      labels.push(`${key.slice(prefix.length)}=${String(value)}`);
-    }
-  }
-  return `${count}\u0000${labels.join("\u0000")}`;
+  prefix: string,
+): (key: string) => unknown {
+  return (key) => {
+    const live = liveState[prefix + key];
+    return live !== undefined ? live : entry.state?.[key];
+  };
 }
 
 /** Every child reading this device has, as the declaration it is authored

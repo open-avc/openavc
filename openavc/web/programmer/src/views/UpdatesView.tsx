@@ -7,59 +7,13 @@ import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api/restClient";
-import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay, restartHeard } from "./updatesHelpers";
-import { cardStyle, sectionTitle } from "./updatesStyles";
+import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
+import { cardStyle, primaryBtn, secondaryBtn, sectionTitle } from "./updatesStyles";
 import { PanelSoftwareSection } from "./PanelSoftwareSection";
 import { UpdateWarnings, hasUpdateWarning } from "./UpdateWarnings";
-import { landingUrl } from "../components/shared/restartPollHelpers";
-import { FailedStart } from "../components/shared/RestartProgressDialog";
-import { askStartupStatus, type StartupStatus } from "../api/startupStatus";
-import { BASE, getTunnelPrefix } from "../api/base";
+import { useInstallRestartWait } from "./useInstallRestartWait";
+import { InstallWaitFooter } from "./InstallWaitFooter";
 import { parseApiError } from "../api/errors";
-
-// How often to ask the server's startup status whether it is back on a new
-// version. Fast enough that the dialog closes promptly after a swap, slow
-// enough that a server rebinding its port isn't hammered while it starts.
-const HEALTH_POLL_INTERVAL_MS = 2000;
-
-/** The running version from /api/health: what a release too old to name its
- *  version in its startup status says (a rollback to one). "" when it does
- *  not answer. */
-async function versionFromHealth(): Promise<string> {
-  try {
-    const res = await fetch(`${BASE}/health`, { cache: "no-store" });
-    if (!res.ok) return "";
-    return String((await res.json())?.version ?? "");
-  } catch {
-    return "";
-  }
-}
-
-const btnStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-sm) var(--space-lg)",
-  borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-sm)",
-  fontWeight: 500,
-  cursor: "pointer",
-  transition: "all var(--transition-fast)",
-};
-
-const primaryBtn: React.CSSProperties = {
-  ...btnStyle,
-  background: "var(--accent-bg)",
-  color: "#fff",
-  border: "1px solid var(--accent)",
-};
-
-const secondaryBtn: React.CSSProperties = {
-  ...btnStyle,
-  background: "transparent",
-  color: "var(--text-primary)",
-  border: "1px solid var(--border-color)",
-};
 
 type UpdateStep = "backup" | "download" | "verify" | "apply" | "restart";
 
@@ -92,11 +46,6 @@ export function UpdatesView() {
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [watchdogTripped, setWatchdogTripped] = useState(false);
-  // A start of the new version that failed, as the server says it, and a
-  // start under way after one: shown in the progress dialog while the wait
-  // goes on, so a start that follows still settles it.
-  const [startFailure, setStartFailure] = useState<StartupStatus | null>(null);
-  const [startingAgain, setStartingAgain] = useState(false);
   const prevVersionRef = useRef<string>("");
   const prevStatusRef = useRef<string>("");
   // Which action this view started, so the completion toast can tell a
@@ -151,51 +100,15 @@ export function UpdatesView() {
     api.getUpdateHistory().then(setHistory).catch(() => {});
   }, []);
 
-  // Completion detection that does NOT depend on the WebSocket. See
-  // healthProbeOutcome: the restart being waited on invalidates this browser's
-  // session token, so the Programmer socket reconnects refused and its
-  // snapshot never arrives. The startup status carries no credential, reports
-  // the running version, and says why a start failed, while the server
-  // retries it, holds for Start again or rolls the update back.
-  useEffect(() => {
-    if (!showProgressModal) return;
-    let cancelled = false;
-    let failedBefore = false;
-    setStartFailure(null);
-    setStartingAgain(false);
-    const timer = window.setInterval(async () => {
-      const { status } = await askStartupStatus(`${BASE}/startup-status`, { cache: "no-store" });
-      if (cancelled) return;
-      const heard = restartHeard(status);
-      if (heard.kind === "failed") {
-        failedBefore = true;
-        setStartingAgain(false);
-        setStartFailure(heard.status);
-        return;
-      }
-      if (heard.kind === "starting") {
-        if (failedBefore) {
-          setStartFailure(null);
-          setStartingAgain(true);
-        }
-        return;
-      }
-      // Not answering yet: the server is between processes. Keep asking;
-      // the watchdog below is the backstop if it never comes back.
-      if (heard.kind === "unheard") return;
-      setStartingAgain(false);
-      const probed = heard.version ?? (await versionFromHealth());
-      if (cancelled || !probed) return;
-      const outcome = healthProbeOutcome(startVersionRef.current, probed, actionRef.current);
-      if (outcome === "updated" || outcome === "rolled_back") {
-        resolveCompletion(outcome === "rolled_back", probed);
-      }
-    }, HEALTH_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [showProgressModal, resolveCompletion]);
+  // Completion detection that does NOT depend on the WebSocket (see
+  // useInstallRestartWait), which also keeps a failed start to show.
+  const settleOnVersion = useCallback((probed: string) => {
+    const outcome = healthProbeOutcome(startVersionRef.current, probed, actionRef.current);
+    if (outcome === "updated" || outcome === "rolled_back") {
+      resolveCompletion(outcome === "rolled_back", probed);
+    }
+  }, [resolveCompletion]);
+  const { startFailure, startingAgain } = useInstallRestartWait(showProgressModal, settleOnVersion);
 
   // Detect completion after the restart (the WebSocket reconnect snapshot
   // delivers the new version + update_status reset to idle in one shot):
@@ -611,37 +524,13 @@ export function UpdatesView() {
               </div>
             )}
 
-            {startFailure && updateStatus !== "error" ? (
-              <FailedStart
-                failure={{
-                  status: startFailure,
-                  page: landingUrl(
-                    "/programmer/",
-                    window.location.origin,
-                    { origin: window.location.origin, prefix: getTunnelPrefix() },
-                  ),
-                }}
-                onClose={() => setShowProgressModal(false)}
-              />
-            ) : watchdogTripped && updateStatus !== "error" ? (
-              <div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-                  This is taking longer than expected. The server may still be coming back up.
-                  If this dialog doesn't close within a few minutes, check the server logs.
-                  It's safe to close this dialog; any update in progress continues on the server.
-                </div>
-                <button
-                  style={secondaryBtn}
-                  onClick={() => setShowProgressModal(false)}
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-                {startingAgain ? "Starting again..." : "Do not close this window or power off the system."}
-              </div>
-            )}
+            <InstallWaitFooter
+              startFailure={startFailure}
+              startingAgain={startingAgain}
+              watchdogTripped={watchdogTripped}
+              errored={updateStatus === "error"}
+              onClose={() => setShowProgressModal(false)}
+            />
 
             {/* Error in modal */}
             {updateStatus === "error" && (
