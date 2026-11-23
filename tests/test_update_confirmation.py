@@ -399,6 +399,17 @@ class TestHistoryCannotClaimAnUpdateThatWasUndone:
 
         assert rows[0]["status"] == "success"
 
+    def test_a_history_that_is_not_text_does_not_stop_the_updater(self, tmp_path):
+        """A damaged file (a card that lost power mid-write) can hold bytes
+        that are not text at all. The updater still starts, with no history,
+        rather than leaving the system without updates."""
+        (tmp_path / "update-history.json").write_bytes(b"\xff\xfe[{")
+
+        with patch("openavc.updater.manager.__version__", "0.31.0"):
+            mgr = UpdateManager(state_store=None, data_dir=tmp_path)
+
+        assert mgr.get_history() == []
+
 
 # ===========================================================================
 # 5: how the last update ended is published for the cloud

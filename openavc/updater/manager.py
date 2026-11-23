@@ -164,7 +164,7 @@ class UpdateManager:
         if history_path.exists():
             try:
                 self._history = json.loads(history_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError) as e:
+            except (ValueError, OSError) as e:  # not JSON, or not text at all
                 # Log rather than silently swallow: a corrupt history skips the
                 # pending->success/failed reconciliation below, so a real update
                 # would otherwise vanish from history with no trace.
