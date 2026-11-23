@@ -472,9 +472,9 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
     def identify(self, device: DiscoveredDevice) -> IdentificationMatch:
         """THE door a found device is identified through: its identification
         from its evidence, the driver it names (which the device's identity
-        is resolved from, ``result.identity_of``), and its driver's category
-        when it has none. The scan's match, the re-match after a driver change
-        and the Device Audit's network check all ask it."""
+        is resolved from, ``result.identity_of``), and that driver's category.
+        The scan's match, the re-match after a driver change and the Device
+        Audit's network check all ask it."""
         match = self.tier_matcher.match(device.evidence_log)
         device.identification = match
         device.identified_by = self._driver_names.identifying(match)
@@ -482,13 +482,15 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         return match
 
     def _fill_category_from_match(self, device: DiscoveredDevice) -> None:
-        """An identified device takes its driver's category when it has none.
+        """An identified device takes its driver's category.
 
         The category is what the driver declares about itself, the same data
         an ``oui:`` hint's category comes from, so core learns nothing about
-        any product here. Only an outright identification counts (a
-        "possible" names several drivers), and a category already on the
-        device stays.
+        any product here. It replaces the one the MAC lookup gave (the
+        category of whichever driver registered the network card's prefix)
+        and a probe's, read before or after it (``result.SOURCE_TRUST``). Only
+        an outright identification counts (a "possible" names several
+        drivers).
         """
         match = device.identification
         if match is None or match.state != DeviceState.IDENTIFIED or not match.driver_id:

@@ -759,6 +759,74 @@ class TestCategoryFromIdentifyingDriver:
         result = _rematched(engine, "10.0.0.5")
         assert result["category"] is None
 
+    # Another maker's driver that registered the prefix of the device's
+    # network card: the MAC lookup names its category, not the device's.
+    _BOLT = {
+        "id": "bolt_fixture",
+        "name": "Bolt Fixture",
+        "category": "lighting",
+        "manufacturer": "Bolt",
+        "transport": "tcp",
+        "discovery": {"oui": ["02:11:22"]},
+    }
+    _MAC = "02:11:22:33:44:55"
+
+    def _engine_with_both(self) -> DiscoveryEngine:
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([dict(self._ACME), dict(self._BOLT)])
+        engine.results["10.0.0.5"] = self._device()
+        return engine
+
+    def _read_the_mac(self, engine: DiscoveryEngine) -> None:
+        from openavc.discovery.scan_evidence import names_and_mac
+
+        names_and_mac(None, None, self._MAC, engine).merge_into(engine.results["10.0.0.5"])
+
+    @pytest.mark.parametrize("mac_first", [True, False])
+    async def test_the_drivers_category_is_shown_over_the_mac_prefixs(self, mac_first):
+        engine = self._engine_with_both()
+        device = engine.results["10.0.0.5"]
+        if mac_first:
+            self._read_the_mac(engine)
+        engine.identify(device)
+        if not mac_first:
+            self._read_the_mac(engine)
+        assert device.identification.driver_id == "acme_dsp"
+        assert device.to_dict()["category"] == "audio"
+
+    async def test_a_rescan_reading_the_mac_again_keeps_it(self):
+        engine = self._engine_with_both()
+        device = engine.results["10.0.0.5"]
+        self._read_the_mac(engine)
+        engine.identify(device)
+        engine._reset_for_scan(*engine._scan_policy(None))
+        self._read_the_mac(engine)
+        assert device.to_dict()["category"] == "audio"
+
+    async def test_the_late_arp_harvest_keeps_it(self):
+        engine = self._engine_with_both()
+        device = engine.results["10.0.0.5"]
+        engine.identify(device)
+        with patch(
+            "openavc.discovery.arp_phase.harvest_arp_table",
+            AsyncMock(return_value={"10.0.0.5": self._MAC}),
+        ):
+            await engine._late_arp_harvest()
+        assert device.mac == self._MAC
+        assert device.to_dict()["category"] == "audio"
+
+    async def test_a_rematch_to_another_driver_takes_that_drivers_category(self):
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([dict(self._ACME)])
+        engine.results["10.0.0.5"] = self._device()
+        assert _rematched(engine, "10.0.0.5")["category"] == "audio"
+        engine.load_driver_hints_from_registry(
+            [{**self._ACME, "id": "acme_amp", "name": "Acme Amp", "category": "power"}],
+        )
+        result = _rematched(engine, "10.0.0.5")
+        assert result["identification"]["driver_id"] == "acme_amp"
+        assert result["category"] == "power"
+
 
 # --- collect passive results tests ---
 

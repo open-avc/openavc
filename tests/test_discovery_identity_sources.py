@@ -12,10 +12,10 @@ from, when they say different things.
 * Otherwise each field is taken from the most trusted source that gave it,
   never from whichever string is longer: the UPnP description, then the AMX
   beacon, then SNMP, then the network's own names for the address, then mDNS.
-  The MAC address's registered maker, a driver probe's reply and the driver's
-  category only fill a field nothing else gave, the first the scan reads
-  filling it. The same source read again (a later scan) replaces its own
-  value.
+  The identifying driver's category, a driver probe's reply and the MAC
+  address's registered maker and category only fill a field nothing else
+  gave, in that order of trust, whatever order the scan reads them in. The
+  same source read again (a later scan) replaces its own value.
 """
 from __future__ import annotations
 
@@ -209,7 +209,7 @@ class TestTrust:
         assert device.device_name == "Lobby Display"         # the UPnP description
         assert device.hostname == "lobby.example.edu"        # reverse DNS over mDNS
         assert device.mac == "02:00:00:00:00:81"
-        assert device.category == "networking"               # the MAC registry, then the driver
+        assert device.category == "streaming-and-everything-else"  # the driver over the MAC registry
 
     @pytest.mark.parametrize("first,then", [("ssdp", "snmp"), ("snmp", "ssdp")])
     def test_a_upnp_model_is_kept_over_a_longer_snmp_one(self, first, then):
@@ -233,14 +233,28 @@ class TestTrust:
         merge_device_info(device, {"model": "WP-3000 (mDNS board name)"}, "mdns")
         assert device.model == "WP-3000"
 
-    @pytest.mark.parametrize("order", [("oui", "probe", "driver_category"),
-                                       ("driver_category", "probe", "oui")])
-    def test_the_sources_that_only_fill_keep_the_order_the_scan_reads_them(self, order):
+    @pytest.mark.parametrize("order", list(itertools.permutations(
+        ("oui", "probe", "driver_category"))))
+    def test_the_identifying_drivers_category_is_kept_over_a_probes_and_the_mac_registrys(
+        self, order,
+    ):
+        # The MAC registry's category is whichever driver registered the
+        # network card's prefix first; a probe's is what a driver's companion
+        # said, a shared protocol's included ("projector" from a display that
+        # answered a projector protocol).
         said = {"oui": "networking", "probe": "projector", "driver_category": "display"}
         device = DiscoveredDevice(ip=DEVICE_IP)
         for source in order:
             merge_device_info(device, {"category": said[source]}, source)
-        assert device.category == "networking"
+        assert device.category == "display"
+
+    @pytest.mark.parametrize("first,then", [("oui", "probe"), ("probe", "oui")])
+    def test_a_probe_replys_maker_is_kept_over_the_network_cards(self, first, then):
+        said = {"oui": "Network Card Maker", "probe": "Acme"}
+        device = DiscoveredDevice(ip=DEVICE_IP)
+        merge_device_info(device, {"manufacturer": said[first]}, first)
+        merge_device_info(device, {"manufacturer": said[then]}, then)
+        assert device.manufacturer == "Acme"
 
     def test_a_fill_only_source_never_replaces_a_value_of_unknown_source(self):
         device = DiscoveredDevice(ip=DEVICE_IP, manufacturer="Acme")

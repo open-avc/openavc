@@ -295,7 +295,8 @@ def identity_of(device: "DiscoveredDevice", adding_with: str | None = None) -> D
     that driver was identified through a fingerprint many makers share (its
     maker is a protocol's, "Generic" and the like). The model is the one the
     mDNS service that identified the device gave (``_model_of``), else the
-    scan's; the category is the scan's.
+    scan's; the category is the scan's, where the identifying driver's ranks
+    over a probe's and the MAC lookup's (``SOURCE_TRUST``).
     """
     by = device.identified_by
     model = _model_of(device)
@@ -376,7 +377,8 @@ class DiscoveredDevice:
     # SNMP info
     snmp_info: dict[str, Any] | None = None
 
-    # Category hint (from OUI or protocol)
+    # The kind of equipment: the identifying driver's, else a probe's, else
+    # the MAC lookup's (``SOURCE_TRUST``)
     category: str | None = None
 
     # Responding status
@@ -430,19 +432,24 @@ class DiscoveredDevice:
 
 
 # The sources a device's identity fields are read from, least trusted first.
-# The first three only fill a field nothing else gave, the first of them the
-# scan reads filling it: the maker and category registered for the device's
-# MAC address (the network card's, often not the device's), then what a
-# driver's probe or companion read from its reply (the driver's own literals
-# left out, ``device_info_from_evidence``), then the category its identifying
-# driver declares. Then what the device and its network say of it: an mDNS service's TXT keys and instance name, whose meaning each
-# service type sets for itself; the network's names for the address (reverse
-# DNS, NetBIOS) and the ARP table's MAC; its SNMP agent (sysName, the Entity
-# MIB); its AMX beacon (Make, Model), written for control systems; and its
-# UPnP description (manufacturer, modelName, friendlyName), written for a
-# control point to show.
+# The first three only fill a field the device and its network said nothing
+# of, and among themselves the more trusted replaces the less, whatever order
+# the scan reads them in: the maker and category registered for the device's
+# MAC address (the network card's maker, and the category of whichever
+# driver registered its prefix first); then what a driver's probe or
+# companion read from its reply (the driver's own literals left out,
+# ``device_info_from_evidence``; a companion's category is its own driver's,
+# a shared protocol's included); then the category the driver that
+# identified the device declares (``DiscoveryEngine.identify``). Then what
+# the device and its network say of it: an mDNS service's TXT keys and
+# instance name, whose meaning each service type sets for itself; the
+# network's names for the address (reverse DNS, NetBIOS) and the ARP table's
+# MAC; its SNMP agent (sysName, the Entity MIB); its AMX beacon (Make,
+# Model), written for control systems; and its UPnP description
+# (manufacturer, modelName, friendlyName), written for a control point to
+# show.
 SOURCE_TRUST: tuple[str, ...] = (
-    "driver_category", "probe", "oui",
+    "oui", "probe", "driver_category",
     "mdns", "arp", "snmp", "amx_ddp", "ssdp",
 )
 _FILLS_ONLY = 3  # the first three

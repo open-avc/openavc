@@ -175,11 +175,8 @@ class SSDPResult:
         if ssdp_info:
             info["ssdp_info"] = ssdp_info
 
-        # Try to infer category from ST
-        category = _st_to_category(self.st)
-        if category:
-            info["category"] = category
-
+        # No category: a UPnP device type is too broad to say one (a speaker
+        # is a MediaRenderer too), so it comes from the identifying driver.
         return info
 
     def to_evidence_records(self) -> list:
@@ -233,19 +230,6 @@ class SSDPResult:
                 data=data,
             ))
         return records
-
-
-def _st_to_category(st: str | None) -> str | None:
-    """Map SSDP search target to device category.
-
-    MediaRenderer and MediaServer are too broad to categorize reliably
-    (a wireless audio speaker is a MediaRenderer but is audio, not
-    display). Category is better determined by manufacturer, protocol
-    probes, and driver matching.
-    """
-    # Intentionally returns None — broad UPnP types are ambiguous.
-    # Specific category comes from OUI, protocol probes, or driver match.
-    return None
 
 
 def _readable(socks: list[socket.socket], timeout: float) -> list[socket.socket]:

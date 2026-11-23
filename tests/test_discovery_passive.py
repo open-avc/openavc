@@ -35,7 +35,6 @@ from openavc.discovery.ssdp_scanner import (
     _extract_port_from_url,
     _location_host_is_sender,
     _parse_upnp_xml,
-    _st_to_category,
     M_SEARCH_TEMPLATE,
     MAX_DESCRIPTION_FETCHES,
     MAX_SSDP_SOURCES,
@@ -862,19 +861,18 @@ class TestExtractPortFromUrl:
         assert _extract_port_from_url("http://10.0.0.1:49152/desc.xml") == 49152
 
 
-class TestSTToCategory:
-    def test_media_renderer(self):
-        # MediaRenderer is too broad to categorize (could be display or speaker)
-        assert _st_to_category("urn:schemas-upnp-org:device:MediaRenderer:1") is None
-
-    def test_media_server(self):
-        assert _st_to_category("urn:schemas-upnp-org:device:MediaServer:1") is None
-
-    def test_basic_device(self):
-        assert _st_to_category("urn:schemas-upnp-org:device:Basic:1") is None
-
-    def test_none(self):
-        assert _st_to_category(None) is None
+class TestSSDPCategory:
+    @pytest.mark.parametrize("st", [
+        "urn:schemas-upnp-org:device:MediaRenderer:1",
+        "urn:schemas-upnp-org:device:MediaServer:1",
+        "urn:schemas-upnp-org:device:Basic:1",
+        None,
+    ])
+    def test_a_upnp_device_type_gives_no_category(self, st):
+        # Too broad to say one (a speaker is a MediaRenderer too): the
+        # category comes from the driver that identifies the device.
+        result = SSDPResult(ip="192.168.1.60", st=st, manufacturer="Acme", model_name="AP-200")
+        assert "category" not in result.to_device_info()
 
 
 # ============================================================
