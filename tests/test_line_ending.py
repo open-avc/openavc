@@ -150,6 +150,19 @@ def test_a_delimiter_that_is_not_text_is_named_with_who_set_it():
     assert not from_device.value.from_driver
 
 
+def test_a_delimiter_no_bytes_can_carry_is_not_text():
+    """A lone surrogate cannot be sent at all: the running driver refuses it
+    as it refuses a number, and the simulator and the validator end nothing
+    with it, instead of each raising its own encoding error."""
+    with pytest.raises(LineEndingNotText) as from_driver:
+        line_ending({"delimiter": "\ud800"}, {})
+    assert from_driver.value.from_driver
+    definition = _definition("\ud800")
+    assert sent_line_ending(definition, {}) == ""
+    assert reply_line_ending(definition, {}) is None
+    assert frame_delimiter(definition, {}) is None
+
+
 def test_a_python_driver_may_declare_bytes():
     assert effective_delimiter({"delimiter": b"\x03"}, {}) == b"\x03"
     assert effective_delimiter({"delimiter": b""}, {}) is None

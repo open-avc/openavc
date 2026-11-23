@@ -15,7 +15,8 @@ validator (which judges the simulator's replies by it). Each asks here:
 * **An empty one means none,** not a delimiter of no bytes: the device page's
   Line ending control stores its None option as ``""``, and a driver may
   declare ``delimiter: ""`` for a raw byte stream.
-* **One that is not text** (a number, a list) raises ``LineEndingNotText``,
+* **One that is not text** (a number, a list, or text no bytes can carry: a
+  lone surrogate such as ``"\\ud800"``) raises ``LineEndingNotText``,
   saying whether the driver or the device set it: the running driver refuses
   the connection with it, and the simulator and the send side end nothing
   with it.
@@ -61,7 +62,8 @@ REPLY_SPLIT_TRANSPORTS = ("tcp", "serial")
 
 
 class LineEndingNotText(ValueError):
-    """A delimiter that is neither text nor bytes, and who set it."""
+    """A delimiter that is neither text that can be sent nor bytes, and who
+    set it."""
 
     def __init__(self, value: Any, from_driver: bool) -> None:
         self.value = value
@@ -78,10 +80,24 @@ def line_ending(info: Mapping[str, Any], config: Mapping[str, Any]) -> str | byt
         value = source.get("delimiter")
         if value is None:
             continue
-        if not isinstance(value, (str, bytes)):
+        if not _sendable(value):
             raise LineEndingNotText(value, from_driver)
         return value
     return DEFAULT_LINE_ENDING
+
+
+def _sendable(value: Any) -> bool:
+    """Bytes, or text the escape decoder can make bytes of (UTF-8 carries
+    every character but a lone surrogate)."""
+    if isinstance(value, bytes):
+        return True
+    if not isinstance(value, str):
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def decode_delimiter(value: str | bytes) -> bytes:
