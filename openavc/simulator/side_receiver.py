@@ -37,11 +37,11 @@ for a number and what a magic packet applies, and yaml_auto runs the rest
 from __future__ import annotations
 
 import random
-import re
 from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, NamedTuple
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.spec import bare_placeholder
 
 #: How many numbers start(0) tries before a refusal stands: one each server
 #: picks, then the rest drawn (DRAWN_PORTS).
@@ -55,11 +55,6 @@ DRAWN_PORTS = (49152, 65535)
 #: MAC sixteen times.
 MAGIC_PACKET_PREFIX = b"\xff" * 6
 _MAGIC_PACKET_LENGTH = 102
-
-#: A value that is nothing but one placeholder, which a magic packet cannot
-#: fill.
-_LONE_PLACEHOLDER = re.compile(r"\{[^{}]+\}")
-
 
 def side_send_blocks(driver_def: dict) -> dict[str, dict]:
     """Each command's udp: block, by command name: every command the runtime
@@ -166,4 +161,6 @@ def wake_sets(driver_def: dict, side_commands: dict[str, dict]) -> Iterator[tupl
 
 
 def _is_lone_placeholder(value: Any) -> bool:
-    return isinstance(value, str) and _LONE_PLACEHOLDER.fullmatch(value) is not None
+    """A value that is one parameter's reference (``spec.bare_placeholder``),
+    which a magic packet cannot fill."""
+    return bare_placeholder(value) is not None

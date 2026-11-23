@@ -7,8 +7,8 @@ the runtime puts on the wire for a template, the inversion of that template
 must match. These pin that agreement for each parameter type and format spec,
 the capture class each one inverts to (a boolean with a numeric spec among
 them), the terminators dropped, the passthrough test, which spec and which
-capture group a parameter gets, and where the two disagree today (a
-placeholder name that is not an identifier). On an invented Acme device.
+capture group a parameter gets, and that a placeholder name that is not an
+identifier is no placeholder to either. On an invented Acme device.
 """
 
 from __future__ import annotations
@@ -212,16 +212,17 @@ def test_an_empty_spec_still_counts_as_the_params_placeholder():
     assert send_param_groups("{a:}{b}", {"a": {}, "b": {}}) == {"a": 1, "b": 2}
 
 
-def test_a_placeholder_name_that_is_not_an_identifier_is_filled_but_not_inverted():
-    # safe_substitute fills any word-character name; the inversion reads only
-    # an identifier as a placeholder, so the line it is sent as goes
-    # unmatched, and the group numbering still counts it.
-    assert safe_substitute("A{1x}B", {"1x": 5}) == "A5B"
+def test_a_placeholder_name_that_is_not_an_identifier_is_neither_filled_nor_inverted():
+    # The fill and the inversion read one token, so a name that is not an
+    # identifier goes out as typed and is matched as typed, and the group
+    # numbering counts only the placeholders the inversion captures.
+    assert safe_substitute("A{1x}B", {"1x": 5}) == "A{1x}B"
     assert send_regex("A{1x}B", {"1x": {"type": "integer"}}) == r"A\{1x\}B"
-    assert safe_substitute("A{été}B", {"été": 5}) == "A5B"
+    assert safe_substitute("A{été}B", {"été": 5}) == "A{été}B"
     assert send_regex("A{été}B", {"été": {"type": "integer"}}) == "A\\{été\\}B"
-    assert send_param_groups("{1x}{a}", {"1x": {}, "a": {}}) == {"1x": 1, "a": 2}
+    assert send_param_groups("{1x}{a}", {"1x": {}, "a": {}}) == {"a": 1}
     assert send_regex("{1x}{a}", {"1x": {}, "a": {}}) == r"\{1x\}(.+)"
+    assert send_param_specs("{1x:02d}{a:x}", {"1x": {}, "a": {}}) == {"1x": "", "a": "x"}
 
 
 @pytest.mark.parametrize(

@@ -12,9 +12,13 @@ written with, so the captured text can be decoded (``spec_int_base``);
 
 The substitution and its inversion must agree, so a change to the placeholder
 token or to a format spec ``safe_substitute`` honors is a change here too.
-``tests/test_send_patterns_pinned.py`` round-trips each parameter type and spec
-through both, and pins where they disagree today: a placeholder whose name is
-not an identifier is filled but not inverted.
+Every reader here walks the one token (``_ANY_PLACEHOLDER``, the contract's
+``spec.PLACEHOLDER``), so a name that is not an identifier is literal text to
+the inversion as it is to the substitution. ``placeholder_pattern`` is the
+template read as a regex with each placeholder written as its caller says, for
+the simulator's other matchers. ``tests/test_send_patterns_pinned.py``
+round-trips each parameter type and spec through both, and
+``tests/test_placeholder_token.py`` runs every reader over the same templates.
 
 Standard library only (``tests/test_compiled_protocol_purity.py``).
 """
@@ -22,6 +26,7 @@ Standard library only (``tests/test_compiled_protocol_purity.py``).
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 
@@ -40,16 +45,30 @@ from typing import Any
 _ANY_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
 
 
-def _placeholder_re(name: str) -> re.Pattern[str]:
-    """``{name}`` or ``{name:spec}``, the spec (without its colon) as group 1:
-    the same token shape safe_substitute expands."""
-    return re.compile(r"\{" + re.escape(name) + r"(?::([^{}]*))?\}")
+def _placeholders_of(text: str, names: Any) -> list[re.Match[str]]:
+    """Each placeholder of ``text`` whose name is in ``names``, in order."""
+    return [m for m in _ANY_PLACEHOLDER.finditer(text) if m.group(1) in names]
+
+
+def placeholder_pattern(template: str, token: Callable[[re.Match[str]], str]) -> str:
+    """``template`` as a regex: its literal text escaped (``re.escape``) and
+    each placeholder written as ``token`` returns for its match. What a
+    simulator matcher that is not a command's inversion (an HTTP poll, a
+    registration command) reads a template with."""
+    out: list[str] = []
+    pos = 0
+    for m in _ANY_PLACEHOLDER.finditer(template):
+        out.append(re.escape(template[pos:m.start()]))
+        out.append(token(m))
+        pos = m.end()
+    out.append(re.escape(template[pos:]))
+    return "".join(out)
 
 
 def declared_placeholders(text: str, params: dict[str, Any]) -> list[str]:
     """The declared params ``text``'s placeholders name, in order, one per
     occurrence: the captures ``send_regex`` makes of it."""
-    return [m.group(1) for m in _ANY_PLACEHOLDER.finditer(text) if m.group(1) in params]
+    return [m.group(1) for m in _placeholders_of(text, params)]
 
 
 def rename_placeholder(text: str, name: str, new_name: str) -> str:
@@ -57,10 +76,12 @@ def rename_placeholder(text: str, name: str, new_name: str) -> str:
     ``new_name``, each keeping its spec."""
 
     def renamed(m: re.Match[str]) -> str:
-        spec = "" if m.group(1) is None else ":" + m.group(1)
+        if m.group(1) != name:
+            return m.group(0)
+        spec = "" if m.group(2) is None else ":" + m.group(2)
         return "{" + new_name + spec + "}"
 
-    return _placeholder_re(name).sub(renamed, text)
+    return _ANY_PLACEHOLDER.sub(renamed, text)
 
 
 def _without_terminators(template: str) -> str:
@@ -185,10 +206,9 @@ def _escape_literal(text: str) -> str:
 def send_param_specs(template: str, params: dict[str, Any]) -> dict[str, str]:
     """Map each declared param to the format spec its placeholder carries
     in the template ('' when bare or absent)."""
-    specs: dict[str, str] = {}
-    for name in params:
-        m = _placeholder_re(name).search(template)
-        specs[name] = (m.group(1) or "") if m else ""
+    specs = dict.fromkeys(params, "")
+    for m in reversed(_placeholders_of(template, params)):
+        specs[m.group(1)] = m.group(2) or ""
     return specs
 
 
@@ -201,12 +221,7 @@ def send_param_groups(template: str, params: dict[str, Any]) -> dict[str, int]:
     order the params dict declares them in. A consumer resolving a
     declared ``sets: {var: "{param}"}`` reference needs the group that
     actually holds the param's wire value."""
-    occurrences: list[tuple[int, str]] = []
-    for name in params:
-        for m in _placeholder_re(name).finditer(template):
-            occurrences.append((m.start(), name))
-    occurrences.sort()
     groups: dict[str, int] = {}
-    for idx, (_, name) in enumerate(occurrences, start=1):
-        groups.setdefault(name, idx)
+    for idx, m in enumerate(_placeholders_of(template, params), start=1):
+        groups.setdefault(m.group(1), idx)
     return groups

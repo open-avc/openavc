@@ -49,6 +49,7 @@ from openavc.drivers.inline_protocol import (
 )
 from openavc.drivers.send_framing import framed_commands
 from openavc.simulator.reply_rules import mappings_to_set
+from openavc.simulator.send_templates import placeholder_pattern
 
 logger = logging.getLogger("openavc.simulator.yaml_auto")
 
@@ -156,8 +157,7 @@ def _is_http_poll(cmd: Any) -> bool:
 
 def _poll_pattern(cmd: dict) -> re.Pattern:
     method = str(cmd.get("method") or "GET").upper()
-    pattern = re.escape(f"{method} {cmd.get('path') or '/'}")
-    pattern = re.sub(r"\\\{\w+\\\}", r"[^\\s|]+", pattern)
+    pattern = placeholder_pattern(f"{method} {cmd.get('path') or '/'}", lambda m: r"[^\s|]+")
     return re.compile(f"^{pattern}(?:\\|.*)?$")
 
 

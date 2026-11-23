@@ -21,7 +21,6 @@ the command templates are read with.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from functools import partial
@@ -39,10 +38,9 @@ from openavc.drivers.driver_model import (
     read_driver,
 )
 from openavc.drivers.query_entry import OSC_MESSAGE
+from openavc.drivers.spec import placeholder_names
 from openavc.simulator.send_templates import declared_placeholders, rename_placeholder
 
-
-_CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 
 def _poll_and_start_up(model: DriverModel) -> list[Any]:
@@ -107,7 +105,7 @@ def _single_child_type(resp: dict[str, Any]) -> str | None:
 
 def _names_the_child(send: Any) -> bool:
     """A query text carrying a ``{child_id}`` placeholder."""
-    return isinstance(send, str) and bool(_CHILD_ID_TOKEN.search(send))
+    return isinstance(send, str) and "child_id" in placeholder_names(send)
 
 
 def _routed_follow_up(entry: Any, child_type: str | None) -> Any:

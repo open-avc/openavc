@@ -53,6 +53,7 @@ from openavc.drivers.child_routes import (
 )
 from openavc.drivers.json_value_spec import FLAT, LISTED, Place, json_value_mapping
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
+from openavc.drivers.spec import PLACEHOLDER, placeholder_names
 from openavc.drivers.usable_number import usable_number
 from openavc.transport.binary_helpers import (
     DEFAULT_MAX_BUFFER,
@@ -67,16 +68,14 @@ log = get_logger(__name__)
 # ── Placeholder substitution ──
 
 
-#: A {name} or {name:spec} placeholder, the token ``safe_substitute`` fills;
-#: the spec excludes braces so it can't span tokens.
-_SUBSTITUTION_RE = re.compile(r"\{(\w+)(?::([^{}]*))?\}")
-
-
 def safe_substitute(template: str, params: dict[str, Any]) -> str:
     """
     Substitute {name} and {name:spec} placeholders with values from params.
 
-    Only replaces {name} where name is a key in params. An optional
+    The placeholder is the driver contract's token, ``spec.PLACEHOLDER``, so
+    a name that is not an identifier (``{1x}``) is left as typed, as every
+    reader of the template reads it. Only replaces {name} where name is a
+    key in params. An optional
     ``:format_spec`` (Python format-spec mini-language) formats the value —
     e.g. ``{preset:02d}`` zero-pads and ``{addr:04X}`` hex-formats, both
     common in device protocols. A numeric spec applied to a numeric string
@@ -98,7 +97,7 @@ def safe_substitute(template: str, params: dict[str, Any]) -> str:
         # is visible to the author instead of crashing the send.
         return match.group(0) if formatted is None else formatted
 
-    return _SUBSTITUTION_RE.sub(replacer, template)
+    return PLACEHOLDER.sub(replacer, template)
 
 
 def _formatted(value: Any, spec: str) -> str | None:
@@ -144,12 +143,6 @@ def _spec_retries(value: Any) -> Iterator[Any]:
         yield number
 
 
-def _placeholder_names(template: str) -> list[str]:
-    """The name in each placeholder ``safe_substitute`` would fill in
-    ``template``, in order, repeats kept."""
-    return [m.group(1) for m in _SUBSTITUTION_RE.finditer(template)]
-
-
 def derive_config(config: dict[str, Any], derived: Any) -> None:
     """Populate ``config`` in place with values derived from other fields.
 
@@ -165,7 +158,7 @@ def derive_config(config: dict[str, Any], derived: Any) -> None:
     for name, template in derived.items():
         if not isinstance(template, str):
             continue
-        refs = _placeholder_names(template)
+        refs = placeholder_names(template)
         if any(not str(config.get(f, "") or "").strip() for f in refs):
             config[name] = ""
         else:

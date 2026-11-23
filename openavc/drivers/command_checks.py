@@ -54,8 +54,8 @@ from openavc.drivers.send_shape import osc_args_errors
 from openavc.drivers.spec import (
     FILE_PARAM_EXCLUDED_KEYS,
     FILE_PARAM_MAX_BYTES,
-    PLACEHOLDER,
     SEND_FORMS,
+    bare_placeholder,
 )
 
 # Each form a command can send in, as a message names it (by the fields that
@@ -201,18 +201,15 @@ class _StateNames:
         return []
 
 
-_BARE_PARAM = re.compile(r"\{([^{}]+)\}")
-
-
 def _literal_or_param(value: Any, params: dict[str, Any]) -> bool:
     """A ``sets:`` value with no brace in it, or exactly one ``{param}`` of
-    this command's."""
+    this command's (``spec.bare_placeholder``)."""
     if not isinstance(value, str):
         return True
     if "{" not in value and "}" not in value:
         return True
-    ref = _BARE_PARAM.fullmatch(value)
-    return bool(ref) and ref.group(1) in params
+    name = bare_placeholder(value)
+    return name is not None and name in params
 
 
 def _form_errors(where: str, forms: list[str]) -> list[str]:
@@ -289,19 +286,10 @@ def _udp_port_errors(
     return _port_text_errors(where, port, config_names)
 
 
-def _bare_placeholder(text: str) -> str | None:
-    """The name in a value that is one placeholder with no format spec, else
-    None: a port is a number, so a spec has nothing to format."""
-    match = PLACEHOLDER.fullmatch(text)
-    if match is None or match.group(2) is not None:
-        return None
-    return match.group(1)
-
-
 def _port_text_errors(where: str, port: str, config_names: set[str]) -> list[str]:
     """A port written as text: a ``{config_field}`` the driver declares, or
     digits."""
-    field = _bare_placeholder(port.strip())
+    field = bare_placeholder(port.strip())
     if field is not None:
         if field in config_names:
             return []

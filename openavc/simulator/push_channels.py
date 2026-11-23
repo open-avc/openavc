@@ -39,6 +39,7 @@ from typing import Any
 from openavc.drivers.command_form import command_form
 from openavc.drivers.http_commands import request_target
 from openavc.drivers.compiled_protocol import apply_send_frame, safe_substitute
+from openavc.simulator.send_templates import placeholder_pattern
 from openavc.simulator.state_replies import map_key
 from openavc.transport.frame_parsers import write_frame
 
@@ -629,7 +630,11 @@ def _registration_matcher(commands: dict, cmd_name: Any) -> re.Pattern | None:
         template = str(cmd["send"])
     else:
         return None
-    pattern = re.escape(template)
-    pattern = pattern.replace(re.escape("{listener_port}"), r"(?P<lport>\d+)")
-    pattern = re.sub(r"\\\{\w+\\\}", r"[^&\\s|]+", pattern)
+    pattern = placeholder_pattern(template, _registration_token)
     return re.compile(r"^" + pattern + r"\s*(?:\|.*)?$")
+
+
+def _registration_token(m: re.Match) -> str:
+    """What a registration command's placeholder arrives as: the listener
+    port a capture of its digits, any other token one run of non-separators."""
+    return r"(?P<lport>\d+)" if m.group(1) == "listener_port" else r"[^&\s|]+"

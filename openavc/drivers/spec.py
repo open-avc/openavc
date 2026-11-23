@@ -271,26 +271,41 @@ PORT_OPEN_TRANSPORTS: tuple[str, ...] = ("tcp", "http")
 
 # --- templates ---------------------------------------------------------------
 
-# One `{name}` or `{name:spec}` placeholder in a wire template: the name (group
-# 1) and the format spec after its colon (group 2), which takes no braces so a
-# token never spans two. The name has to be an identifier, so a literal JSON
-# body, `{"vol": {level}}`, matches only on the real placeholder and never on
-# the brace that opens the object. The placeholder check (substitution_checks),
-# a udp: port's config field (command_checks), the runtime's warning for one
-# that survives substitution (ConfigurableDriver._substitute_for_wire) and the
-# simulator's read-back coverage check read templates with it; the simulator's
-# send-template reader keeps a copy, held equal by tests/test_placeholder_token.py
-# because that module imports nothing outside the standard library. The runtime
-# fills a wider set of names
-# (compiled_protocol.safe_substitute takes any `\w+`), so every placeholder
-# found here is one it fills when the name is given.
-PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
+# THE `{name}` or `{name:spec}` placeholder in a template: the name (group 1)
+# and the format spec after its colon (group 2), which takes no braces so a
+# token never spans two. The name has to be an identifier (ASCII letters,
+# digits and underscores, not starting with a digit), so a literal JSON body,
+# `{"vol": {level}}`, matches only on the real placeholder and never on the
+# brace that opens the object, and `{1x}` or `{été}` is no placeholder at all:
+# it goes out as typed. The runtime fills exactly these
+# (compiled_protocol.safe_substitute, push's resolve_push_value), and every
+# reader of a template reads them: the placeholder check (substitution_checks),
+# a udp: port's config field and a sets: reference (bare_placeholder), the
+# runtime's warning for one that survives substitution
+# (ConfigurableDriver._substitute_for_wire), push's checks, an inline command's
+# auto-declared parameters, the simulator's matchers and its validator's
+# samples. The simulator's send-template reader keeps a copy, held equal by
+# tests/test_placeholder_token.py because that module imports nothing outside
+# the standard library; the same test runs every reader over the same
+# templates in both directions.
+_PLACEHOLDER_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
+PLACEHOLDER = re.compile(r"\{(" + _PLACEHOLDER_NAME + r")(?::([^{}]*))?\}")
 
 
 def placeholder_names(template: str) -> list[str]:
     """The name in each :data:`PLACEHOLDER` of ``template``, in order,
     repeats kept."""
     return [match.group(1) for match in PLACEHOLDER.finditer(template)]
+
+
+def bare_placeholder(text: object) -> str | None:
+    """The name when ``text`` is one :data:`PLACEHOLDER` with no format spec,
+    else None: a ``sets:`` value's reference to a parameter, a port's config
+    field (a port is a number, so a spec has nothing to format)."""
+    match = PLACEHOLDER.fullmatch(text) if isinstance(text, str) else None
+    if match is None or match.group(2) is not None:
+        return None
+    return match.group(1)
 
 
 # --- framing -----------------------------------------------------------------

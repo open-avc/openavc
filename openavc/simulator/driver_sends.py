@@ -26,19 +26,15 @@ samples and config from here; its child-id sample is its own (the
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import derive_config, safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
+from openavc.drivers.spec import placeholder_names
 from openavc.drivers.send_framing import framed_send
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
-
-
-_CHILD_ID = re.compile(r"\{child_id(?::([^{}]*))?\}")
-_TOKEN = re.compile(r"\{([a-z_]+)(?::[^{}]*)?\}")
 
 
 def effective_config(driver_def: dict) -> dict:
@@ -79,10 +75,7 @@ def query_line(query_text: str, config: dict, transport: str) -> str:
     path expanded to the ``GET /path`` line the HTTP simulator dispatches —
     without that last one every raw-path poll looks unanswered.
     """
-    sample = safe_substitute(query_text, config)
-    sample = _CHILD_ID.sub(
-        lambda m: format(1, m.group(1)) if m.group(1) else "1", sample,
-    )
+    sample = safe_substitute(safe_substitute(query_text, config), {"child_id": 1})
     sample = _as_dispatched(sample)
     if transport == "http" and sample.startswith("/"):
         sample = f"GET {sample}"
@@ -136,13 +129,11 @@ def _enum_wire_value(param_def: dict) -> str:
 
 
 def _left_unfilled(template: str, sample: str) -> bool:
-    """Whether a token of the template is still in braces (a config field
-    with no default). The protocol's own braces around a substituted value
-    (``{{name}}`` sends ``{test}``) are not one."""
-    for token in _TOKEN.finditer(template):
-        if re.search(r"\{" + token.group(1) + r"(?::[^{}]*)?\}", sample):
-            return True
-    return False
+    """Whether a placeholder of the template is still one in the sample (a
+    config field with no default). The protocol's own braces around a
+    substituted value (``{{name}}`` sends ``{test}``) are not one."""
+    left = set(placeholder_names(sample))
+    return any(name in left for name in placeholder_names(template))
 
 
 # ── The queries each check reads ──

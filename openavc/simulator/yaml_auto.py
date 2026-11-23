@@ -57,7 +57,7 @@ import yaml
 from openavc.drivers.command_form import command_form
 from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
 from openavc.drivers.send_framing import framed_send
-from openavc.drivers.spec import without_null_sections
+from openavc.drivers.spec import bare_placeholder, without_null_sections
 from openavc.drivers.usable_number import usable_number
 from openavc.drivers.compiled_protocol import (
     build_send_frame,
@@ -1831,13 +1831,13 @@ class _CommandRead:
         # doesn't declare.
         if self.child_type and var_name in self.child_vars:
             self.child_state_keys.add(var_name)
-        ref = re.fullmatch(r"\{([^{}]+)\}", set_value) if isinstance(set_value, str) else None
-        if not ref:
+        ref = bare_placeholder(set_value)
+        if ref is None:
             # Literal, wrapped so an integer literal can't be mistaken for a
             # capture-group index.
             self.state_changes[var_name] = ("literal", set_value)
             return
-        group = param_groups.get(ref.group(1))
+        group = param_groups.get(ref)
         if group:
             self.state_changes[var_name] = group  # capture group
         # An unresolvable "{param}" reference declares nothing (the

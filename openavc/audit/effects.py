@@ -19,7 +19,6 @@ contract); anything else is the device's own.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,9 +26,7 @@ from openavc.audit.changes import state_label
 from openavc.audit.observe import recorded
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
-
-_PARAM_REF = re.compile(r"\{([^{}]+)\}")
-
+from openavc.drivers.spec import bare_placeholder
 
 @dataclass
 class Readout:
@@ -83,9 +80,9 @@ def declared_effects(
 def _declared(
     key: str, value: Any, child: tuple[str, str, set[str]] | None, params: dict[str, Any],
 ) -> dict[str, Any]:
-    ref = _PARAM_REF.fullmatch(value) if isinstance(value, str) else None
-    if ref:
-        given = params.get(ref.group(1))
+    ref = bare_placeholder(value)
+    if ref is not None:
+        given = params.get(ref)
         has_value = given not in (None, "")
         expected = given if has_value else None
     else:

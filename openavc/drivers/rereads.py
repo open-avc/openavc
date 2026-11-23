@@ -47,24 +47,19 @@ the driver object. A follow-up line goes out as a poll line does
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from typing import Any, Callable
 
 from openavc.drivers.child_registration import ChildRegistrations, registered_since
 from openavc.drivers.command_form import command_form
 from openavc.drivers.query_entry import EACH_CHILD, read_query_entry
-from openavc.drivers.spec import FOLLOW_UP_SETTLE_S
+from openavc.drivers.spec import FOLLOW_UP_SETTLE_S, placeholder_names
 from openavc.transport.pacing import sleep_at_least
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
 # the IDE's log view shows as their source.
 log = get_logger("openavc.drivers.configurable")
-
-# A {child_id} / {child_id:spec} token: in a response rule's follow-up query,
-# the child the rule wrote (_follow_up_lines).
-_CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 # What a read-back sends: (key, (kind, what)). ``key`` says two queries are
 # the same one.
@@ -224,7 +219,7 @@ class Rereads:
             return [(line, None) for line in lines]
         out: list[tuple[str, Any]] = []
         for line in lines:
-            if _CHILD_ID_TOKEN.search(line):
+            if "child_id" in placeholder_names(line):
                 out.extend(
                     (self._safe_substitute(line, {"child_id": local_id}), local_id)
                     for local_id in child_ids

@@ -25,6 +25,7 @@ import json
 import re
 from typing import Any
 
+from openavc.drivers.spec import placeholder_names
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -105,7 +106,7 @@ def derive_command_params(
     params already declared on the command are preserved.
     """
     params: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
-    for ph in re.findall(r"\{(\w+)(?::[^{}]*)?\}", send):
+    for ph in placeholder_names(send):
         if ph in config_keys or ph in params:
             continue
         params[ph] = {"type": "string"}

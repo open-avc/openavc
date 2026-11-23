@@ -36,7 +36,6 @@ openavc-sdk).
 
 from __future__ import annotations
 
-import re
 from typing import Any, Callable
 
 from openavc.drivers.declared_names import DeclaredSections, config_field_names
@@ -52,6 +51,7 @@ from openavc.drivers.spec import (
     PUSH_SESSION_KEYS,
     PUSH_TYPE_KEYS,
     is_multicast_group,
+    placeholder_names,
 )
 from openavc.drivers.usable_number import is_number_value
 from openavc.utils.regex_safety import regex_safety_error
@@ -120,7 +120,7 @@ class _PushCheck:
 
     def template(self, where: str, value: str) -> None:
         """A ``{config_field}`` template: every token a declared field."""
-        fields = re.findall(r"\{(\w+)\}", value)
+        fields = placeholder_names(value)
         if not fields:
             self.found.append(
                 f"push: {where} {value!r} has braces but no {{config_field}} token"

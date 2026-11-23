@@ -46,12 +46,12 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import re
 from collections.abc import Callable
 from typing import Any
 
 from openavc.core.condition_eval import reads_as_on
 from openavc.core.connection_fault import ConnectionFaultError, typed_fault_from_exc
+from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.transport.http_client import StreamOwner
 from openavc.utils.logger import get_logger
 
@@ -61,15 +61,13 @@ log = get_logger("openavc.drivers.base")
 
 
 def resolve_push_value(value: Any, config: dict[str, Any]) -> Any:
-    """Resolve a push-block value: ``{config_field}`` tokens substitute from
-    ``config``; unknown fields are left verbatim so the warning a failed
-    subscription logs names exactly what did not resolve."""
+    """Resolve a push-block value: its ``{config_field}`` placeholders fill
+    from ``config`` as a command's do (``safe_substitute``, format specs
+    included, so ``{port:04d}`` reads as the simulator fills it); unknown
+    fields are left verbatim so the warning a failed subscription logs names
+    exactly what did not resolve."""
     if isinstance(value, str) and "{" in value:
-        return re.sub(
-            r"\{(\w+)\}",
-            lambda m: str(config.get(m.group(1), m.group(0))),
-            value,
-        )
+        return safe_substitute(value, config)
     return value
 
 

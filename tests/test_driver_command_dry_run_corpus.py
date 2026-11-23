@@ -26,14 +26,12 @@ import yaml
 from openavc.api.models import TestCommandRequest
 from openavc.api.routes.driver_test import _dry_run_command
 from openavc.drivers import compiled_protocol
+from openavc.drivers.spec import PLACEHOLDER
 from tests import gates
 from tests.driver_library import DRIVERS_ROOT, yaml_driver_files
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 BUILTIN_DEFINITIONS = OPENAVC_ROOT / "openavc" / "drivers" / "definitions"
-
-# {name} or {name:spec} — the substituter's own placeholder grammar.
-PLACEHOLDER = re.compile(r"\{(\w+)(?::([^{}]*))?\}")
 
 # Fields of a command that the send path substitutes and puts on the wire.
 TEMPLATE_FIELDS = ("send", "address", "path", "body")
