@@ -339,163 +339,223 @@ def friendly_error(
             in words for the room.
 
     Returns:
-        A human-readable error string with actionable guidance.
+        A human-readable error string with actionable guidance: the sentence
+        written for ``exc`` (``worded_error``), else its own text framed by
+        its kind (``quoted_error``).
     """
-    if isinstance(exc, CommandOutcomeError):
-        return str(exc)
+    worded = worded_error(exc, device, host, at_panel=at_panel)
+    return worded if worded is not None else quoted_error(exc, device)
 
+
+def worded_error(
+    exc: Exception, device: str = "", host: str = "", *, at_panel: bool = False
+) -> str | None:
+    """The sentence the platform wrote for ``exc``, or None when the only
+    words there are for it are its own text (``quoted_error``). A reader who
+    must never be shown an exception's own text (the room, for a macro step
+    with no device behind it) asks this one. The first kind ``exc`` is, in
+    ``_WORDED``'s order, answers."""
+    for kinds, word in _WORDED:
+        if isinstance(exc, kinds):
+            return word(exc, device, host, at_panel)
+    return None
+
+
+def _outcome_sentence(exc: Exception, _device: str, _host: str, _at_panel: bool) -> str:
+    return str(exc)
+
+
+def _refused_sentence(_exc: Exception, device: str, host: str, _at_panel: bool) -> str:
     device_label = f" '{device}'" if device else ""
+    return (
+        f"Could not connect to{device_label}. "
+        f"Check that the device is powered on and the IP address ({host or 'the device'}) is correct."
+    )
+
+
+def _timed_out_sentence(_exc: Exception, device: str, host: str, _at_panel: bool) -> str:
+    target = f"{device} ({host})" if device and host else device or host or "The device"
+    return (
+        f"{target} did not respond in time. "
+        "Check its power, network connection and configured port, then retry."
+    )
+
+
+def _reset_sentence(_exc: Exception, device: str, _host: str, _at_panel: bool) -> str:
+    device_label = f" '{device}'" if device else ""
+    return (
+        f"Lost connection to{device_label}. "
+        "The device closed the connection unexpectedly. It may have rebooted or the network dropped."
+    )
+
+
+def _aborted_sentence(_exc: Exception, device: str, _host: str, _at_panel: bool) -> str:
+    device_label = f" '{device}'" if device else ""
+    return (
+        f"Connection to{device_label} was aborted. "
+        "The device or network terminated the connection."
+    )
+
+
+def _worded_connection_error(
+    exc: Exception, device: str, _host: str, at_panel: bool,
+) -> str | None:
+    """A ConnectionError the platform raised on purpose: a refusal that is
+    already a sentence, or a device's own state (restarting, asleep, not
+    connected)."""
+    refusal = _worded_refusal(exc, device, at_panel)
+    return refusal if refusal is not None else _worded_device_state(exc, device)
+
+
+def _worded_refusal(exc: Exception, device: str, at_panel: bool) -> str | None:
+    # A broadcast or multicast refused because the adapter chosen in Reach
+    # devices through has no address: the device is not what is missing,
+    # and the refusal already says what to do -- in Settings, which is
+    # the integrator's to open, not the room's.
+    from openavc.reach_devices import AdapterUnavailable
+
+    from openavc.core.device_manager import NoSimulatorError
+
+    # Refused because a running simulation has no simulator for this
+    # device: the device card's own sentence, which says what to do.
+    if isinstance(exc, NoSimulatorError):
+        return str(exc)
+    if not isinstance(exc, AdapterUnavailable):
+        return None
+    if at_panel:
+        return (
+            f"{device or 'The equipment'} can't be reached: the network "
+            "connection to it is down. Contact support."
+        )
+    return str(exc)
+
+
+def _worded_device_state(exc: Exception, device: str) -> str | None:
+    # A commanded restart, refused while the device is still coming back.
+    # Same refusal as "not connected" and a different instruction: nobody
+    # needs to go and look at anything, they need to wait. Read off the
+    # attribute rather than the message so the sentence can be reworded
+    # without this branch quietly stopping to match.
+    restart_seconds = getattr(exc, "restart_seconds", None)
+    if restart_seconds is not None:
+        return _restarting_sentence(device, restart_seconds)
+    # A device put to sleep on purpose (sleeps_device): the same refusal,
+    # and the instruction is the wake command, which still works.
+    asleep_wake = getattr(exc, "asleep_wake", None)
+    if asleep_wake is not None:
+        return f"{device or 'The equipment'} is asleep. {asleep_wake} wakes it."
+    # Our own refusal is already a sentence somebody can read -- the device
+    # manager raises "Device 'x' is not connected" when a command is sent
+    # to a device that is not there. Wrapping that produced "Connection
+    # error for 'Ceiling Projector': Device 'projector' is not connected",
+    # which says the same thing twice and hands the reader an internal id
+    # they have never seen. It is the commonest failure a panel reports, so
+    # it is the sentence that has to be right.
+    if device and "not connected" in str(exc):
+        return f"{device} is not connected."
+    return None
+
+
+def _restarting_sentence(device: str, restart_seconds: Any) -> str | None:
+    if not device:
+        return None
+    unit = "second" if restart_seconds == 1 else "seconds"
+    return f"{device} is restarting. It should be back in about {restart_seconds} {unit}."
+
+
+# OS-level failures whose sentence needs nothing from the device.
+_ERRNO_SENTENCES = {
+    errno.ENETUNREACH: "Network unreachable. Check that the server has a valid network connection.",
+    errno.ENOSPC: "Disk is full. Free up disk space and try again.",
+    errno.EROFS: "File system is read-only. Check disk mount permissions.",
+}
+
+
+def _worded_os_error(exc: Exception, _device: str, host: str, _at_panel: bool) -> str | None:
     host_label = host or "the device"
-
-    # Connection refused
-    if isinstance(exc, ConnectionRefusedError):
+    err = getattr(exc, "errno", None)
+    # No route to host
+    if err == errno.EHOSTUNREACH or _matches_errno(exc, 113):
         return (
-            f"Could not connect to{device_label}. "
-            f"Check that the device is powered on and the IP address ({host_label}) is correct."
+            f"No route to host. Check that {host_label} is on the same network "
+            "and the IP address is correct."
         )
-
-    # Timeout
-    if isinstance(exc, (
-        TimeoutError, asyncio.TimeoutError,
-        httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout,
-    )):
-        target = f"{device} ({host})" if device and host else device or host or "The device"
+    # Address already in use
+    if err == errno.EADDRINUSE:
         return (
-            f"{target} did not respond in time. "
-            "Check its power, network connection and configured port, then retry."
+            f"Address already in use. Another process may be using the same port for {host_label}."
         )
+    # Permission denied (file or network)
+    if isinstance(exc, PermissionError):
+        return "Permission denied. Check credentials, file permissions, or firewall rules."
+    return _ERRNO_SENTENCES.get(err)
 
-    # Connection reset / broken pipe
-    if isinstance(exc, (ConnectionResetError, BrokenPipeError)):
-        return (
-            f"Lost connection to{device_label}. "
-            "The device closed the connection unexpectedly. It may have rebooted or the network dropped."
-        )
 
-    # Connection aborted
-    if isinstance(exc, ConnectionAbortedError):
-        return (
-            f"Connection to{device_label} was aborted. "
-            "The device or network terminated the connection."
-        )
+def _worded_value_error(exc: Exception, device: str, _host: str, at_panel: bool) -> str | None:
+    from openavc.core.device_manager import DeviceNotFoundError
 
-    # General connection error (catch-all for ConnectionError subclasses)
+    from openavc.drivers.base import WakeAddressError
+
+    if isinstance(exc, DeviceNotFoundError):
+        target = device or "The requested equipment"
+        return f"{target} is unavailable. Contact support."
+    # A wake with no usable MAC address: the device's setup, which only
+    # the Programmer can finish, so a panel says only that.
+    if isinstance(exc, WakeAddressError):
+        if at_panel:
+            return (
+                f"{device or 'The equipment'} can't be turned on until its "
+                "setup is finished. Contact support."
+            )
+        return exc.sentence(device)
+    return None
+
+
+def quoted_error(exc: Exception, device: str = "") -> str:
+    """``exc``'s own text, framed by its kind: what ``friendly_error`` says
+    when the platform wrote no sentence for it (``worded_error`` is None)."""
+    msg = str(exc)
     if isinstance(exc, ConnectionError):
-        msg = str(exc)
-        # A commanded restart, refused while the device is still coming back.
-        # Same refusal as "not connected" and a different instruction: nobody
-        # needs to go and look at anything, they need to wait. Read off the
-        # attribute rather than the message so the sentence can be reworded
-        # without this branch quietly stopping to match.
-        # A broadcast or multicast refused because the adapter chosen in Reach
-        # devices through has no address: the device is not what is missing,
-        # and the refusal already says what to do -- in Settings, which is
-        # the integrator's to open, not the room's.
-        from openavc.reach_devices import AdapterUnavailable
-
-        from openavc.core.device_manager import NoSimulatorError
-
-        # Refused because a running simulation has no simulator for this
-        # device: the device card's own sentence, which says what to do.
-        if isinstance(exc, NoSimulatorError):
-            return msg
-        if isinstance(exc, AdapterUnavailable):
-            if at_panel:
-                return (
-                    f"{device or 'The equipment'} can't be reached: the network "
-                    "connection to it is down. Contact support."
-                )
-            return msg
-        restart_seconds = getattr(exc, "restart_seconds", None)
-        if restart_seconds is not None:
-            unit = "second" if restart_seconds == 1 else "seconds"
-            return (
-                f"{device} is restarting. It should be back in about "
-                f"{restart_seconds} {unit}."
-            ) if device else msg
-        # A device put to sleep on purpose (sleeps_device): the same refusal,
-        # and the instruction is the wake command, which still works.
-        asleep_wake = getattr(exc, "asleep_wake", None)
-        if asleep_wake is not None:
-            target = device or "The equipment"
-            return f"{target} is asleep. {asleep_wake} wakes it."
-        # Our own refusal is already a sentence somebody can read -- the device
-        # manager raises "Device 'x' is not connected" when a command is sent
-        # to a device that is not there. Wrapping that produced "Connection
-        # error for 'Ceiling Projector': Device 'projector' is not connected",
-        # which says the same thing twice and hands the reader an internal id
-        # they have never seen. It is the commonest failure a panel reports, so
-        # it is the sentence that has to be right.
-        if "not connected" in msg:
-            return f"{device} is not connected." if device else msg
-        return f"Connection error for{device_label}: {msg}"
-
-    # OS-level network errors
-    if isinstance(exc, OSError):
-        err = getattr(exc, "errno", None)
-
-        # No route to host
-        if err == errno.EHOSTUNREACH or _matches_errno(exc, 113):
-            return (
-                f"No route to host. Check that {host_label} is on the same network "
-                "and the IP address is correct."
-            )
-
-        # Network unreachable
-        if err == errno.ENETUNREACH:
-            return (
-                "Network unreachable. Check that the server has a valid network connection."
-            )
-
-        # Address already in use
-        if err == errno.EADDRINUSE:
-            return (
-                f"Address already in use. Another process may be using the same port for {host_label}."
-            )
-
-        # Permission denied (file or network)
-        if isinstance(exc, PermissionError):
-            return (
-                "Permission denied. Check credentials, file permissions, or firewall rules."
-            )
-
-        # Disk-related errors
-        if err == errno.ENOSPC:
-            return "Disk is full. Free up disk space and try again."
-
-        if err == errno.EROFS:
-            return "File system is read-only. Check disk mount permissions."
-
-    # ValueError from our own code (e.g., "Device 'x' not found")
+        return _quoted_connection_error(exc, msg, device)
     if isinstance(exc, ValueError):
-        from openavc.core.device_manager import DeviceNotFoundError
-
-        from openavc.drivers.base import WakeAddressError
-
-        if isinstance(exc, DeviceNotFoundError):
-            target = device or "The requested equipment"
-            return f"{target} is unavailable. Contact support."
-        # A wake with no usable MAC address: the device's setup, which only
-        # the Programmer can finish, so a panel says only that.
-        if isinstance(exc, WakeAddressError):
-            if at_panel:
-                return (
-                    f"{device or 'The equipment'} can't be turned on until its "
-                    "setup is finished. Contact support."
-                )
-            return exc.sentence(device)
-        msg = str(exc)
         # Already human-readable messages from device_manager / macro_engine
-        if "not found" in msg or "not connected" in msg or "blocked" in msg:
-            return msg
-        return f"Invalid value: {msg}"
-
+        return msg if _reads_as_a_sentence(msg) else f"Invalid value: {msg}"
     # RuntimeError (e.g., conditional depth limit)
     if isinstance(exc, RuntimeError):
-        return str(exc)
-
+        return msg
     # Generic fallback: type name + message
     return f"Unexpected error: {exc}"
+
+
+# Words that mark a ValueError's text as the platform's own sentence.
+_OWN_SENTENCE_WORDS = ("not found", "not connected", "blocked")
+
+
+def _reads_as_a_sentence(msg: str) -> bool:
+    return any(word in msg for word in _OWN_SENTENCE_WORDS)
+
+
+def _quoted_connection_error(exc: Exception, msg: str, device: str) -> str:
+    if "not connected" in msg:
+        return msg
+    if getattr(exc, "restart_seconds", None) is not None:
+        return msg
+    device_label = f" '{device}'" if device else ""
+    return f"Connection error for{device_label}: {msg}"
+
+
+# What worded_error asks, in order: the first kind an exception is answers.
+# ConnectionError and TimeoutError are OSErrors, so they come before it.
+_WORDED: tuple[tuple[Any, Callable[[Exception, str, str, bool], str | None]], ...] = (
+    (CommandOutcomeError, _outcome_sentence),
+    (ConnectionRefusedError, _refused_sentence),
+    ((TimeoutError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout), _timed_out_sentence),
+    ((ConnectionResetError, BrokenPipeError), _reset_sentence),
+    (ConnectionAbortedError, _aborted_sentence),
+    (ConnectionError, _worded_connection_error),
+    (OSError, _worded_os_error),
+    (ValueError, _worded_value_error),
+)
 
 
 _SAVE_FAILED = "Could not save the project."
@@ -644,7 +704,3 @@ def _matches_errno(exc: Exception, code: int) -> bool:
         return True
     # Some platforms embed errno in the message string
     return bool(re.search(rf"\[Errno {code}\]", str(exc)))
-
-
-# Lazy import to avoid circular dependency at module level
-import asyncio  # noqa: E402

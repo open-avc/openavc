@@ -208,7 +208,8 @@ class StepWording:
         so a macro failure and a direct press failure read the same way
         whichever control ran them. A step that failed because a step inside
         it stopped (``StepFailed``) says what that step said. Any other step's
-        exception is the platform's or a plugin's own, and keeps its text.
+        exception is the platform's or a plugin's own: the Programmer's
+        ``error`` keeps its text, and the room's ``message`` never quotes it.
         """
         if isinstance(exc, StepFailed):
             return str(exc), exc.message
@@ -246,7 +247,23 @@ class StepWording:
                 else "The requested status was not reached in time."
             )
             return f"{message} Check the system and try again."
-        return self.device_message(str(step.get("device") or ""), exc)
+        device_id = str(step.get("device") or "")
+        if not device_id:
+            return self.deviceless_message(exc)
+        return self.device_message(device_id, exc)
+
+    @staticmethod
+    def deviceless_message(exc: Exception) -> str:
+        """A step with no device behind it (a plugin action, Emit Event, Run
+        Macro, a malformed Wait Until) that raised, for the room: the sentence
+        the platform wrote for that failure (``worded_error``), else what a
+        control whose script call raised says. Never the exception's own text,
+        which the Programmer reads in ``error``: nothing in it was written for
+        the room, and a plugin action's can hold a path or an address."""
+        from openavc.api.error_messages import worded_error
+        from openavc.core.script_engine import COULD_NOT_FINISH
+
+        return worded_error(exc, at_panel=True) or COULD_NOT_FINISH
 
     def device_message(self, device_id: str, exc: Exception) -> str:
         """``friendly_error`` with this device's name and host filled in.

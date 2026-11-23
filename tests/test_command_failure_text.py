@@ -24,6 +24,7 @@ import pytest
 
 from openavc.api import ws
 from openavc.api.error_messages import friendly_error
+from openavc.core.script_engine import COULD_NOT_FINISH
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.cloud.command_handler import CommandHandler
 from openavc.core.engine import Engine
@@ -376,7 +377,8 @@ async def test_the_conditional_depth_limit_keeps_its_sentence(engine):
     errors = _collect(engine, "macro.error.*")
     assert await engine.macros.execute("too_deep") == "failed"
     assert "Conditional nesting depth limit (5) exceeded" in step_errors[-1]["error"]
-    assert "Conditional nesting depth limit (5) exceeded" in step_errors[-1]["message"]
+    # The Programmer's sentence; the room is told the fixed one.
+    assert step_errors[-1]["message"] == COULD_NOT_FINISH
     assert "Conditional nesting depth limit (5) exceeded" in errors[0]["error"]
 
 

@@ -18,6 +18,7 @@ import pytest
 import openavc.core.macro_engine as macro_engine
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.script_engine import COULD_NOT_FINISH
 from openavc.core.state_store import StateStore
 
 
@@ -353,7 +354,8 @@ async def test_a_step_that_fails_under_stop_on_error_ends_the_run_in_those_words
         "macro_id": "m", "name": "M",
         "error": "step 1/2, group.command, command 'power_on', on group 'wall': "
                  "Device group 'wall' not found. Check that the group exists in your project.",
-        "message": "Device group 'wall' not found. Check that the group exists in your project.",
+        # The Programmer's sentence: the room cannot check the project.
+        "message": COULD_NOT_FINISH,
     })]
 
 
@@ -849,7 +851,46 @@ async def test_a_wait_until_with_no_condition_says_what_it_needs(
     ]}])
     assert await engine.execute("w") == "failed"
     assert errors[0][1]["error"] == "wait_until step requires a condition with 'key'"
-    assert errors[0][1]["message"].startswith("Invalid value: wait_until step requires")
+    # The room is never handed a step's own text: that is the Programmer's.
+    assert errors[0][1]["message"] == COULD_NOT_FINISH
+
+
+@pytest.mark.parametrize("raised", [
+    RuntimeError("Upload to /var/lib/acme/upload failed: 10.0.0.5 refused"),
+    ValueError("bad gain for acme at 10.0.0.5"),
+    ConnectionError("acme widget hub at 10.0.0.5 dropped"),
+    KeyError("token"),
+])
+async def test_a_step_with_no_device_tells_the_room_a_fixed_sentence(
+    engine: MacroEngine, events: EventBus, raised: Exception,
+) -> None:
+    """A plugin action's exception text can hold a path or an address, and
+    nothing in it was written for the room: the Programmer reads it, the room
+    is told what a control whose script call raised tells it."""
+    errors = _record(events, "macro.step_error.*")
+
+    async def action(_params, _context):
+        raise raised
+
+    engine.register_plugin_action("acme.upload", action, "acme_widget", "Upload to Acme")
+    engine.load_macros([{"id": "p", "name": "P", "steps": [{"action": "acme.upload"}]}])
+    assert await engine.execute("p") == "failed"
+    assert errors[0][1]["message"] == COULD_NOT_FINISH
+    assert "10.0.0.5" not in errors[0][1]["message"]
+    assert str(raised).strip("'") in errors[0][1]["error"]
+
+
+async def test_a_refused_emit_and_a_missing_macro_tell_the_room_the_fixed_sentence(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "e", "name": "E", "steps": [
+        {"action": "macro", "macro": "not_in_the_project"},
+        {"action": "event.emit", "event": "system.stopping"},
+    ]}])
+    await engine.execute("e")
+    assert [e[1]["message"] for e in errors] == [COULD_NOT_FINISH, COULD_NOT_FINISH]
+    assert "not_in_the_project" in errors[0][1]["error"]
 
 
 async def test_a_wait_until_that_times_out_says_how_long_and_on_what(
