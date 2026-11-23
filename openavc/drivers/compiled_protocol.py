@@ -580,7 +580,9 @@ def value_to_wire(value: Any, decl: Any) -> Any:
 # authored map follows: the exact key, then one apart from case, then one the
 # reading equals as a boolean or number. So a key YAML read as a number (an
 # unquoted ``01:`` is 1) still matches the reply "01", a quoted "01" matches
-# only "01", and a JSON ``true`` matches the key "true".
+# only the text "01" (two words compare as words) though a typed 1 (a JSON or
+# OSC number, an integer parameter) matches it as a number, and a JSON
+# ``true`` matches the key "true".
 
 
 def map_entry(value_map: Any, reading: Any) -> tuple[bool, Any]:

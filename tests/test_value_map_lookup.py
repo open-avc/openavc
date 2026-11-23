@@ -41,6 +41,7 @@ CASES: list[tuple[list[Any], Any, Any]] = [
     (["true", "false"], True, "true"),
     ([True, False], "on", True),
     (["1", "0"], 1.0, "1"),
+    (["01"], 1, "01"),            # a typed number meets a quoted key as a number
     (["1"], "1.0", None),
     (["a"], None, None),
 ]
