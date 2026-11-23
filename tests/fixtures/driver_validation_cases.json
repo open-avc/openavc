@@ -3165,6 +3165,28 @@
   },
   "transport": "osc"
  },
+ "command_param_name_no_placeholder": {
+  "commands": {
+   "set": {
+    "params": {
+     "1x": {
+      "label": "Zone",
+      "type": "integer"
+     }
+    },
+    "send": "Z{1x}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_param_offset_not_numeric": {
   "commands": {
    "noop": {
@@ -3763,6 +3785,28 @@
   "commands": [
    "noop"
   ],
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "config_field_name_no_placeholder": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "in-1": {
+    "label": "Input",
+    "type": "string"
+   }
+  },
   "id": "acme_widget",
   "name": "Acme Widget",
   "state_variables": {

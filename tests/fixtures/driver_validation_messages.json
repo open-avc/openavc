@@ -291,6 +291,9 @@
  "command_osc_args_not_list": [
   "Command 'beep': args must be a list"
  ],
+ "command_param_name_no_placeholder": [
+  "commands.set.params.1x: a {placeholder} cannot name it, so it is never filled in; use only letters, digits and underscores, starting with a letter or underscore"
+ ],
  "command_param_offset_not_numeric": [
   "Command 'noop' param 'x': the type must be integer, number or float to use offset"
  ],
@@ -377,6 +380,9 @@
  ],
  "commands_not_mapping": [
   "commands: must be a mapping"
+ ],
+ "config_field_name_no_placeholder": [
+  "config_schema.in-1: a {placeholder} cannot name it, so it is never filled in; use only letters, digits and underscores, starting with a letter or underscore"
  ],
  "config_learned_from_connection_field": [
   "Config field 'host': a connection field cannot be learned_from a state variable, because a reported value would change how the device is reached"

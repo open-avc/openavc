@@ -541,6 +541,10 @@ CASES: dict[str, Any] = {
         }}
     ),
     "command_query_for_empty": _d(commands={"chk": {"send": "S?", "query_for": ""}}),
+    "command_param_name_no_placeholder": _d(commands={"set": {
+        "send": "Z{1x}\r", "params": {"1x": {"type": "integer", "label": "Zone"}},
+    }}),
+    "config_field_name_no_placeholder": _d(config_schema={"in-1": {"type": "string", "label": "Input"}}),
     "command_confirm_bad_type": _d(commands={"chk": {"send": "S?", "confirm": 5}}),
     # A file goes on the wire only from a Python driver's own code.
     "command_file_param_yaml": _d(commands={"up": {

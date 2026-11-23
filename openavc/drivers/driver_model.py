@@ -29,9 +29,11 @@ What it holds so far:
 * ``problems`` also holds the fields of a push listener's frame parser the
   frame table refuses where push does not refuse them at every door
   (``framing_checks.push_frame_field_issues``), an ``auth:`` timeout of 0
-  or less, which every reader takes as the default (``auth_block``), and a
+  or less, which every reader takes as the default (``auth_block``), a
   command whose only form is an address or IR code left empty, which sends
-  nothing (``command_form.left_empty_forms``).
+  nothing (``command_form.left_empty_forms``), and a command parameter or
+  config field whose name no placeholder can carry, which is never filled in
+  (``spec.is_placeholder_name``).
 
 The rules worth knowing before changing anything here:
 
@@ -57,7 +59,7 @@ Vendored with the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,6 +67,7 @@ from openavc.drivers.auth_block import TIMEOUT_NOT_POSITIVE, auth_problems
 from openavc.drivers.command_form import FORM_LEFT_EMPTY, left_empty_forms
 from openavc.drivers.framing_checks import push_frame_field_issues
 from openavc.drivers.query_entry import OSC_MESSAGE, QueryEntry, read_query_entry
+from openavc.drivers.spec import is_placeholder_name
 
 YAML = "yaml"
 PYTHON = "python"
@@ -79,6 +82,17 @@ ORIGINS = (POLL, START_UP, THEN_QUERY, READ_BACK)
 
 # The code of a push listener's frame field the frame table refuses.
 FRAME_FIELD = "frame_field"
+
+# The code of a command parameter or config field whose name no placeholder
+# can carry (spec.PLACEHOLDER), and the words said there.
+PLACEHOLDER_NAME = "placeholder_name"
+_PLACEHOLDER_NAME_WORDS = (
+    "a {placeholder} cannot name it, so it is never filled in; use only letters, "
+    "digits and underscores, starting with a letter or underscore"
+)
+
+# The sections whose keys a placeholder fills from, beside each command's params.
+_CONFIG_SECTIONS = ("config_schema", "default_config", "config_derived")
 
 
 @dataclass(frozen=True)
@@ -164,6 +178,9 @@ def read_driver(definition: Mapping[str, Any], kind: str = YAML) -> DriverModel:
     ) + tuple(
         ModelProblem(place, FORM_LEFT_EMPTY, words)
         for place, words in left_empty_forms(definition.get("commands"))
+    ) + tuple(
+        ModelProblem(place, PLACEHOLDER_NAME, _PLACEHOLDER_NAME_WORDS)
+        for place in _unfillable_names(definition)
     )
     return DriverModel(YAML, definition, WireModel(queries), problems)
 
@@ -198,6 +215,27 @@ def sent_text(line: QueryLine) -> str | None:
     an entry that sends no text (no form, or a value that is not text)."""
     sent = line.entry.address if line.entry.form == OSC_MESSAGE else line.entry.send
     return sent if isinstance(sent, str) and sent else None
+
+
+def _unfillable_names(definition: Mapping[str, Any]) -> Iterator[str]:
+    """The place of each command parameter and config field whose name no
+    placeholder can carry, in file order: commands first, then config."""
+    commands = definition.get("commands")
+    for name, block in commands.items() if isinstance(commands, Mapping) else ():
+        params = block.get("params") if isinstance(block, Mapping) else None
+        yield from _unfillable_keys(params, f"commands.{name}.params")
+    for section in _CONFIG_SECTIONS:
+        yield from _unfillable_keys(definition.get(section), section)
+
+
+def _unfillable_keys(fields: Any, place: str) -> Iterator[str]:
+    """A key YAML did not read as text is the shape walk's to name ("put it
+    in quotes"), so only text keys are judged here."""
+    if isinstance(fields, Mapping):
+        yield from (
+            f"{place}.{key}" for key in fields
+            if isinstance(key, str) and not is_placeholder_name(key)
+        )
 
 
 def _query_lines(definition: Mapping[str, Any]) -> list[QueryLine]:

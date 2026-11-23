@@ -13,7 +13,8 @@ so its copy is held equal here.
 Both directions: a token a reader finds is one the fill fills, and a token
 the fill fills is one every reader finds. A ``{name}`` whose name is not an
 identifier (``{1x}``, ``{été}``, ``{in-1}``) is no placeholder to any of them:
-it goes out as typed.
+it goes out as typed, and the driver model refuses a parameter or config
+field so named at the author's doors.
 
 A ``sets:`` value names a parameter with the same token, bare (no format
 spec): ``spec.bare_placeholder``.
@@ -24,6 +25,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from openavc.audit.effects import _declared
 from openavc.audit.observe import recorded
@@ -34,7 +36,11 @@ from openavc.drivers import (
     spec,
     substitution_checks,
 )
+from openavc.drivers.avcdriver_semantic import check_driver_definition, validate_driver_definition
 from openavc.drivers.compiled_protocol import safe_substitute
+from openavc.drivers.driver_loader import read_driver_file
+from openavc.drivers import driver_model
+from openavc.drivers.driver_model import read_driver
 from openavc.drivers.inline_protocol import derive_command_params
 from openavc.drivers.push import push_port, resolve_push_value
 from openavc.drivers.push_block_checks import push_block_errors
@@ -216,6 +222,71 @@ def test_the_simulator_sets_from_a_bare_reference_only(value: str) -> None:
     else:
         # Not a reference: a literal, as the checker and the audit read it.
         assert handler.state_changes == {"level": ("literal", value)}
+
+
+# ── A name a placeholder cannot carry is refused where it is declared ──
+
+
+@pytest.mark.parametrize(
+    ("definition", "place"),
+    [
+        ({"commands": {"set": {"send": "Z{1x}\r", "params": {"1x": {"type": "integer"}}}}},
+         "commands.set.params.1x"),
+        ({"commands": {"set": {"send": "Q{été}\r", "params": {"été": {"type": "integer"}}}}},
+         "commands.set.params.été"),
+        ({"config_schema": {"in-1": {"type": "string"}}}, "config_schema.in-1"),
+        ({"default_config": {"2nd": 1}}, "default_config.2nd"),
+        ({"config_derived": {"a b": "{host}"}}, "config_derived.a b"),
+    ],
+)
+def test_the_model_names_a_name_no_placeholder_can_carry(definition: dict, place: str) -> None:
+    problems = [p for p in read_driver(definition).problems if p.code == driver_model.PLACEHOLDER_NAME]
+    assert [p.place for p in problems] == [place]
+
+
+def test_a_key_yaml_did_not_read_as_text_is_left_to_the_shape_walk() -> None:
+    # Its own words say to quote it; this would be a second message there.
+    model = read_driver({"commands": {"set": {"params": {True: {}, 2: {}}}}, "config_schema": {1.5: {}}})
+    assert [p for p in model.problems if p.code == driver_model.PLACEHOLDER_NAME] == []
+
+
+def test_names_a_placeholder_can_carry_are_no_problem() -> None:
+    model = read_driver({
+        "config_schema": {"host": {}, "Unit": {}, "_zone2": {}},
+        "default_config": {"host": "", "port": 23},
+        "config_derived": {"addr": "{host}"},
+        "commands": {"set": {"send": "{a}{B_2}", "params": {"a": {}, "B_2": {}}}},
+    })
+    assert [p for p in model.problems if p.code == driver_model.PLACEHOLDER_NAME] == []
+
+
+def test_a_name_no_placeholder_can_carry_is_refused_only_at_the_authors_doors(
+    tmp_path: Path,
+) -> None:
+    # Such a name was filled until the fill read the contract's token, so a
+    # driver saved with one passed every door: an installed copy keeps
+    # loading, named.
+    definition = {
+        "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+        "commands": {"set": {"send": "Z{1x}\r", "params": {"1x": {"type": "integer"}}}},
+    }
+    named = "commands.set.params.1x: a {placeholder} cannot name it"
+    assert any(e.startswith(named) for e in validate_driver_definition(definition, strict=True))
+    verdict = check_driver_definition(definition)
+    assert not any(named in e for e in verdict.errors), verdict.errors
+    assert any(e.startswith(named) for e in verdict.notices), verdict.notices
+
+    path = tmp_path / "acme_widget.avcdriver"
+    path.write_text(yaml.safe_dump(definition, allow_unicode=True), encoding="utf-8")
+    read = read_driver_file(path)
+    assert read.definition is not None, read.reasons
+    assert any(named in n for n in read.notices), read.notices
+
+
+def test_a_python_driver_names_no_placeholder_problem() -> None:
+    # Its class sends what it sends; no template fills its parameters.
+    info = {"commands": {"set": {"params": {"in-1": {"type": "integer"}}}}}
+    assert read_driver(info, kind="python").problems == ()
 
 
 def test_a_name_that_is_not_an_identifier_is_sent_as_typed() -> None:

@@ -287,15 +287,23 @@ PORT_OPEN_TRANSPORTS: tuple[str, ...] = ("tcp", "http")
 # samples. The simulator's send-template reader keeps a copy, held equal by
 # tests/test_placeholder_token.py because that module imports nothing outside
 # the standard library; the same test runs every reader over the same
-# templates in both directions.
+# templates in both directions. The driver model refuses a YAML parameter or
+# config field whose name no placeholder can carry (driver_model).
 _PLACEHOLDER_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
 PLACEHOLDER = re.compile(r"\{(" + _PLACEHOLDER_NAME + r")(?::([^{}]*))?\}")
+_IS_PLACEHOLDER_NAME = re.compile(_PLACEHOLDER_NAME)
 
 
 def placeholder_names(template: str) -> list[str]:
     """The name in each :data:`PLACEHOLDER` of ``template``, in order,
     repeats kept."""
     return [match.group(1) for match in PLACEHOLDER.finditer(template)]
+
+
+def is_placeholder_name(name: object) -> bool:
+    """Whether a :data:`PLACEHOLDER` can name ``name``: a parameter or config
+    field named otherwise is never filled into a template."""
+    return isinstance(name, str) and _IS_PLACEHOLDER_NAME.fullmatch(name) is not None
 
 
 def bare_placeholder(text: object) -> str | None:
