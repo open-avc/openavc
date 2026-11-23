@@ -14608,3 +14608,34 @@ const results = {};
     }
     process.stdout.write(JSON.stringify(results, null, 2), () => process.exit(0));
 })();
+
+// --- A picture that answers after the Image moved on ------------------------
+//
+// An Image with no picture of its own takes its <img> away for a state with
+// none and makes a new one for the next picture. The old one may still be
+// loading: its late answer is about a picture nobody sees any more.
+
+Object.assign(tests, {
+    a_picture_the_image_no_longer_shows_changes_nothing_when_it_answers() {
+        const look = { key: 'device.d.p', states: {
+            first: { button_image: 'assets://first.png' },
+            none: { bg_color: '#222222' },
+            second: { button_image: 'assets://second.png' },
+        } };
+        const m = levelMount({ id: 'pic', type: 'image', bindings: { show: { look } } },
+            { state: { 'device.d.connected': true, 'device.d.p': 'first' } });
+        const old = m.node().querySelector('img');
+        m.set('device.d.p', 'none');
+        m.set('device.d.p', 'second');
+        const now = m.node().querySelector('img');
+        const notes = () => [...m.node().children].filter((c) => c.textContent === 'Image not found' && c.style.display !== 'none').length;
+        assert(old && now && old !== now, 'the Image did not make a new <img> for its next picture');
+        now.dispatchEvent(new window.Event('load'));
+        old.dispatchEvent(new window.Event('error'));
+        assert(notes() === 0, `a late failure of the old picture put ${notes()} notes over the new one`);
+        assert(now.style.display !== 'none', 'the new picture was hidden by the old one failing');
+        now.dispatchEvent(new window.Event('error'));
+        old.dispatchEvent(new window.Event('load'));
+        assert(notes() === 1, `a late load of the old picture took away the note the new one needs (${notes()} notes)`);
+    },
+});

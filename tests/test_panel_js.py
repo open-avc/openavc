@@ -518,6 +518,8 @@ SCENARIOS = [
     "an_icon_that_is_not_text_draws_no_icon",
     # A look state with no icon takes the last state's icon away.
     "a_state_with_no_icon_takes_the_last_states_icon_away",
+    # A late answer from a picture the Image no longer shows changes nothing.
+    "a_picture_the_image_no_longer_shows_changes_nothing_when_it_answers",
 ]
 
 

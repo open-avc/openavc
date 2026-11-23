@@ -35,20 +35,28 @@ export function showPicture(node, elementDef, src) {
     img.src = url;
 }
 
-/** The Image's one <img>, first in it, shown once it loads and hidden behind the note when it cannot. */
+/**
+ * The Image's one <img>, first in it, shown once it loads and hidden behind the
+ * note when it cannot. Its answer counts only while it is still the Image's
+ * picture: one taken away for a state with none may still be loading, and its
+ * late load or failure says nothing about the picture showing now.
+ */
 function newPicture(node, elementDef) {
     const img = document.createElement('img');
     img.alt = elementDef.label || 'Panel image';
     img.loading = 'lazy';
     if (elementDef.object_fit) img.style.objectFit = elementDef.object_fit;
-    img.onload = () => {
+    const whileShown = (answer) => () => {
+        if (node._pictureImg === img) answer();
+    };
+    img.onload = whileShown(() => {
         img.style.display = '';
         dropNote(node);
-    };
-    img.onerror = () => {
+    });
+    img.onerror = whileShown(() => {
         img.style.display = 'none';
         showNote(node);
-    };
+    });
     node.prepend(img);
     node._pictureImg = img;
     return img;
