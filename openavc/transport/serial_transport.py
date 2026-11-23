@@ -50,6 +50,18 @@ except ImportError:
     HAS_SERIAL = False
 
 
+#: The open of each port still under way in a worker thread. One at a time:
+#: a thread cannot be stopped, so a retry against an adapter whose open never
+#: returns would otherwise start another each time, until the loop's shared
+#: worker threads are all stuck and everything else that uses them waits.
+_OPENING: dict[str, asyncio.Future] = {}
+
+
+def _forget_open(port: str, opening: asyncio.Future) -> None:
+    if _OPENING.get(port) is opening:
+        del _OPENING[port]
+
+
 def _close_if_opened(opening: asyncio.Future) -> None:
     """A port the worker thread opened after its connect gave up (a timeout,
     a cancel): closed as it lands, so the adapter is not held open by a
@@ -500,7 +512,11 @@ class SerialTransport:
         stalls (a USB adapter mid-enumeration, a driver that blocks) would
         otherwise hold the event loop, and every device, panel and timer
         with it, out of reach of the timeout. The thread cannot be stopped,
-        so a port it opens after the timeout is closed as it lands."""
+        so a port it opens after the timeout is closed as it lands, and while
+        an earlier open of the same port has not returned no other starts."""
+        earlier = _OPENING.get(self.port)
+        if earlier is not None and not earlier.done():
+            raise OSError(f"the last attempt to open {self.port} has not returned yet")
         opening = asyncio.ensure_future(asyncio.to_thread(
             serial.serial_for_url,
             self.port,
@@ -511,6 +527,8 @@ class SerialTransport:
             rtscts=self._rtscts,
             xonxoff=self._xonxoff,
         ))
+        _OPENING[self.port] = opening
+        opening.add_done_callback(lambda done, port=self.port: _forget_open(port, done))
         try:
             return await asyncio.wait_for(asyncio.shield(opening), timeout=self._timeout)
         except BaseException:

@@ -2,7 +2,6 @@
 
 import asyncio
 import threading
-import time
 
 import pytest
 import serial
@@ -380,27 +379,58 @@ def _ticking():
 async def test_a_stalled_port_open_leaves_the_loop_serving(monkeypatch):
     """An adapter whose open stalls must not stop every other device, panel
     and timer: the open runs in a worker thread, the loop keeps running, and
-    the transport's timeout fires on time."""
+    the transport's timeout fires while the open is still stuck."""
     port = _FakePort()
+    release = threading.Event()
 
     def _stall(*args, **kwargs):
-        time.sleep(0.6)
+        release.wait(5.0)
         return port
 
     monkeypatch.setattr(serial, "serial_for_url", _stall)
     ticks, tick = _ticking()
     ticker = asyncio.create_task(tick())
-    started = time.monotonic()
     try:
         with pytest.raises(ConnectionError, match="Failed to open serial port"):
-            await SerialTransport.create(
+            await asyncio.wait_for(SerialTransport.create(
                 "/dev/ttyACME0", baudrate=9600, on_data=lambda d: None, timeout=0.2,
-            )
-        elapsed = time.monotonic() - started
+            ), 5.0)
+        stalled = not release.is_set()
     finally:
         ticker.cancel()
-    assert elapsed < 0.5
+        release.set()
+    assert stalled
     assert ticks["n"] >= 5
+    await asyncio.to_thread(port.closed.wait, 2.0)
+
+
+async def test_retries_against_an_open_that_never_returns_start_one_thread(monkeypatch):
+    """A thread cannot be stopped, so each retry against an adapter whose open
+    never returns would park another in the loop's shared workers until none
+    is left for anything else. While one open of a port is under way, the
+    next attempt fails at once instead."""
+    port = _FakePort()
+    release = threading.Event()
+    calls = []
+
+    def _never(*args, **kwargs):
+        calls.append(args)
+        release.wait(5.0)
+        return port
+
+    monkeypatch.setattr(serial, "serial_for_url", _never)
+    try:
+        for _ in range(40):
+            with pytest.raises(ConnectionError):
+                await SerialTransport.create(
+                    "/dev/ttyACME1", baudrate=9600, on_data=lambda d: None, timeout=0.02,
+                )
+        assert await asyncio.wait_for(asyncio.to_thread(lambda: 1), 2.0) == 1
+        assert len(calls) == 1
+    finally:
+        release.set()
+    await asyncio.to_thread(port.closed.wait, 2.0)
+    assert port.closed.is_set()
 
 
 async def test_a_port_that_opens_after_the_timeout_is_closed(monkeypatch):
@@ -408,15 +438,19 @@ async def test_a_port_that_opens_after_the_timeout_is_closed(monkeypatch):
     gave up is closed as it lands, never left holding the adapter."""
     port = _FakePort()
 
+    release = threading.Event()
+
     def _late(*args, **kwargs):
-        time.sleep(0.3)
+        release.wait(5.0)
         return port
 
     monkeypatch.setattr(serial, "serial_for_url", _late)
     with pytest.raises(ConnectionError):
         await SerialTransport.create(
-            "/dev/ttyACME0", baudrate=9600, on_data=lambda d: None, timeout=0.1,
+            "/dev/ttyACME2", baudrate=9600, on_data=lambda d: None, timeout=0.05,
         )
+    assert not port.closed.is_set()
+    release.set()
     await asyncio.to_thread(port.closed.wait, 2.0)
     assert port.closed.is_set()
 
@@ -443,13 +477,13 @@ async def test_an_opened_port_carries_the_line_settings_and_reads(monkeypatch):
     monkeypatch.setattr(st.serial_asyncio, "connection_for_serial", _wrap)
     received = []
     transport = await SerialTransport.create(
-        "/dev/ttyACME0", baudrate=19200, on_data=received.append,
+        "/dev/ttyACME3", baudrate=19200, on_data=received.append,
         bytesize=7, parity="E", stopbits=2, rtscts=True, delimiter=b"\r",
     )
     try:
         assert transport.connected
         assert opened == {
-            "url": "/dev/ttyACME0", "baudrate": 19200, "bytesize": 7,
+            "url": "/dev/ttyACME3", "baudrate": 19200, "bytesize": 7,
             "parity": "E", "stopbits": 2, "rtscts": True, "xonxoff": False,
         }
         _wrap.protocol.data_received(b"PWR=ON\r")
