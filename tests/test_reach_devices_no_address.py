@@ -436,3 +436,37 @@ async def test_wake_on_lan_goes_out_from_the_adapters_169_254_address(chosen):
         ("169.254.7.7", "255.255.255.255", 9),
         ("169.254.7.7", "169.254.20.1", 9),
     ]
+
+
+async def test_a_serial_device_is_not_refused(chosen, monkeypatch):
+    """A serial line dials no network address, so the adapter chosen for
+    device traffic has nothing to do with it: the port opens as it would
+    with no adapter chosen."""
+    from openavc.drivers.base import BaseDriver
+    from openavc.transport import serial_transport
+
+    class AcmeSerialWidget(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_serial_widget_no_address_test", "name": "Acme Widget",
+            "manufacturer": "Acme", "category": "utility", "transport": "serial",
+            "default_config": {"port": "/dev/ttyACME0", "baudrate": 9600},
+            "commands": {}, "state_variables": {}, "config_schema": {},
+        }
+
+        async def send_command(self, command, params=None):
+            return None
+
+    opened = []
+
+    async def create(**kwargs):
+        opened.append(kwargs["port"])
+        return object()
+
+    monkeypatch.setattr(serial_transport.SerialTransport, "create", staticmethod(create))
+    chosen()
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+
+    driver = AcmeSerialWidget("widget", {"port": "/dev/ttyACME0"}, StateStore(), EventBus())
+    await driver._create_transport("serial")
+    assert opened == ["/dev/ttyACME0"]

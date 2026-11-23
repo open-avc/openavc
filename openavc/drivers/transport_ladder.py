@@ -65,6 +65,7 @@ from openavc.core.connection_fault import (
     no_serial_port_message,
 )
 from openavc.drivers.serial_line import SERIAL_LINE_SETTINGS, read_line_setting
+from openavc.drivers.spec import transport_traits
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
@@ -590,13 +591,16 @@ class TransportLadder:
         with _refusing_unusable(_FRAMING_UNUSABLE):
             frame_parser = self._create_frame_parser()
             delimiter = self._resolve_delimiter()
+        traits = transport_traits(transport_type)
         asked = _Asked(
             frame_parser=frame_parser,
             delimiter=delimiter,
-            # Reach devices through (if an adapter is chosen); never for a
-            # loopback host. The rule, and each transport's fallback port, are
-            # in transport/endpoint.py so a connection test dials the same way.
-            control_ip=self.local_address() or None,
+            # Reach devices through (if an adapter is chosen), for a transport
+            # that dials an address (a serial line has none to bind); never for
+            # a loopback host. The rule, and each transport's fallback port,
+            # are in transport/endpoint.py so a connection test dials the same
+            # way.
+            control_ip=(self.local_address() or None) if traits and traits.addressed else None,
         )
         build = _BUILDERS.get(transport_type) if isinstance(transport_type, str) else None
         if build is None:
