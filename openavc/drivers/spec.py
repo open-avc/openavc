@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 import ipaddress
 import re
+from typing import NamedTuple
 
 # --- top-level contract ------------------------------------------------------
 
@@ -60,26 +61,203 @@ PLATFORM_VERSION_PATTERN = r"^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}(?:-(?:alpha|bet
 TAG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 URL_PATTERN = r"^[Hh][Tt][Tt][Pp][Ss]?://"
 
-# Transports a YAML (.avcdriver) definition may declare. "bridge" is the
-# sentinel for a device that emits through a live bridge instance (an IR
-# device on an emitter port) rather than dialing a host of its own.
-YAML_TRANSPORTS: tuple[str, ...] = ("tcp", "serial", "udp", "http", "osc", "bridge")
+# --- transports --------------------------------------------------------------
 
-# Transports only a Python driver can use — they need driver code (message
-# routing hooks, session handling) that the declarative runtime doesn't model.
-# "snmp" is here because a request is an OID list, not a send string: the
-# declarative command/response model has nothing to substitute into and no
-# reply text to match, so a YAML mapping would be a different grammar rather
-# than a new value for this field.
-PYTHON_ONLY_TRANSPORTS: tuple[str, ...] = ("ssh", "mqtt", "snmp")
 
-# Transports a driver may list in its `transports:` interchangeable set (a
-# text protocol whose wire strings are byte-identical over the network or a
-# serial line). "bridge" is excluded — it is a routing sentinel, not a
-# medium the same strings could ride.
-INTERCHANGEABLE_TRANSPORTS: tuple[str, ...] = tuple(
-    t for t in YAML_TRANSPORTS if t != "bridge"
+class TransportTraits(NamedTuple):
+    """What one transport is and can do: a row of :data:`TRANSPORT_TRAITS`.
+
+    Each column answers one question a reader asks, for every transport, so
+    two readers asking the same question cannot get different lists, and a
+    new transport is one row rather than a name added to twenty lists.
+    """
+
+    #: A YAML (.avcdriver) definition may declare it. The rest need driver
+    #: code (message routing hooks, session handling) the declarative runtime
+    #: does not model. SNMP is one of those because a request is an OID list,
+    #: not a send string: the command and reply model has nothing to fill and
+    #: no reply text to match.
+    yaml: bool
+    #: A driver may list it in its `transports:` set (a text protocol whose
+    #: wire strings are byte-identical over the network or a serial line).
+    #: "bridge" is a routing sentinel, not a medium the same strings could
+    #: ride.
+    interchangeable: bool
+    #: Dials a network address of its own (the device's `host`): the Add
+    #: Device dialog's Network (IP) choice, Reach devices through, the address
+    #: a connected device holds on the network.
+    addressed: bool
+    #: The simulator server that stands in for the device: the transport's
+    #: own, or "tcp" for a byte pipe the simulator has no server for (the
+    #: driver is pointed at TCP while simulated), or None for a device that
+    #: opens nothing itself (it rides a bridge, which is simulated instead).
+    simulator: str | None
+    #: The device's replies arrive as one byte stream the driver splits, on
+    #: its line ending or a frame parser. A datagram transport frames one
+    #: message per packet.
+    byte_stream: bool
+    #: The form a line of text a driver sends takes on it: "raw" (the bytes
+    #: as written, framed by the command prefix and suffix), "osc" (an OSC
+    #: address), "http" (a request line), or None where a driver sends no
+    #: text lines (a bridge's IR codes, an MQTT topic, an SNMP OID).
+    line_form: str | None
+    #: The transport pairs every response with the request it answers, and
+    #: hands it back whole.
+    request_reply: bool
+    #: One message per packet and no connection to open (OSC in its default
+    #: UDP mode; a device may set OSC to TCP).
+    datagram: bool
+    #: Holds a session the device may refuse a second of, so a second
+    #: connection to the same place (the Driver Builder's Live Test beside a
+    #: running device) collides with the first.
+    holds_session: bool
+    #: The `auth:` block's login handshake runs on it: it swaps the frame
+    #: parser and types credentials over a raw byte stream.
+    sign_in: bool
+    #: The `liveness:` watchdog runs on it: the socket transports that can die
+    #: silently. HTTP polling already awaits every response; a bridge device
+    #: owns no transport.
+    liveness: bool
+    #: The poll loop drops a peer that answers no poll on it
+    #: (BaseDriver._watches_for_silence): a driver that polls, reads replies
+    #: and has no liveness probe goes `no_response` after `max_missed_polls`
+    #: polls that drew nothing. Serial stays out until the check has been
+    #: measured against a serial unit. HTTP and SNMP fail a request nobody
+    #: answers; ssh runs its own keep-alive (ServerAliveInterval,
+    #: transport/ssh.py); MQTT talks to a broker, so one device going quiet
+    #: behind it is the driver's call.
+    silence_check: bool
+    #: A YAML driver spaces its own lines on it (start-up, the poll, follow-up
+    #: and read-back queries, the liveness probe) when it declares no
+    #: `inter_command_delay` (ConfigurableDriver._pace_line), by
+    #: DEFAULT_LINE_GAP_S. With a delay set, the transport waits that long
+    #: after every write instead.
+    line_gap: bool
+    #: The transport waits `inter_command_delay` after each write itself and
+    #: the driver adds no gap of its own (the driver validator's poll-time
+    #: warning counts that delay alone).
+    delay_only: bool
+    #: Puts the device on a TCP port of its own, which is what lets a
+    #: `discovery.port_open` hint fire at all: the scan behind that hint is a
+    #: TCP connect sweep (discovery/port_scanner.py), so a driver whose
+    #: transports have none declares a hint the matcher can never match.
+    port_open: bool
+    #: Connecting is costly enough that a reconnect checks the address
+    #: cheaply first: ssh starts a program and negotiates keys, MQTT does a
+    #: TLS handshake, HTTP can carry an auth exchange. The rest connect about
+    #: as cheaply as a probe would, and on a one-session device an extra
+    #: socket is not free.
+    probe_first: bool
+    #: The YAML simulator pushes a notification on the control link itself:
+    #: TCP and serial to every connected client, UDP to the last peer it
+    #: heard from. HTTP and OSC have no control-link push, and the YAML
+    #: simulator serves no Python-only transport.
+    control_link_push: bool
+
+
+#: THE table of what each transport is: every reader of a transport's traits
+#: asks it (through its views below or :func:`transport_traits`), and the
+#: Programmer reads it from types.gen.ts. YAML transports first, in the order
+#: the schema lists them. tests/test_transport_traits.py holds each row
+#: complete, the platform's connection builders and simulator servers to it,
+#: and fails a module that writes a list of transports of its own.
+TRANSPORT_TRAITS: dict[str, TransportTraits] = {
+    "tcp": TransportTraits(
+        yaml=True, interchangeable=True, addressed=True, simulator="tcp",
+        byte_stream=True, line_form="raw", request_reply=False, datagram=False,
+        holds_session=True, sign_in=True, liveness=True, silence_check=True,
+        line_gap=True, delay_only=False, port_open=True, probe_first=False,
+        control_link_push=True,
+    ),
+    "serial": TransportTraits(
+        yaml=True, interchangeable=True, addressed=False, simulator="tcp",
+        byte_stream=True, line_form="raw", request_reply=False, datagram=False,
+        holds_session=True, sign_in=True, liveness=True, silence_check=False,
+        line_gap=True, delay_only=False, port_open=False, probe_first=False,
+        control_link_push=True,
+    ),
+    "udp": TransportTraits(
+        yaml=True, interchangeable=True, addressed=True, simulator="udp",
+        byte_stream=False, line_form="raw", request_reply=False, datagram=True,
+        holds_session=False, sign_in=False, liveness=True, silence_check=True,
+        line_gap=False, delay_only=True, port_open=False, probe_first=False,
+        control_link_push=True,
+    ),
+    "http": TransportTraits(
+        yaml=True, interchangeable=True, addressed=True, simulator="http",
+        byte_stream=False, line_form="http", request_reply=True, datagram=False,
+        holds_session=False, sign_in=False, liveness=False, silence_check=False,
+        line_gap=False, delay_only=True, port_open=True, probe_first=True,
+        control_link_push=False,
+    ),
+    "osc": TransportTraits(
+        yaml=True, interchangeable=True, addressed=True, simulator="osc",
+        byte_stream=False, line_form="osc", request_reply=False, datagram=True,
+        holds_session=False, sign_in=False, liveness=True, silence_check=True,
+        line_gap=False, delay_only=False, port_open=False, probe_first=False,
+        control_link_push=False,
+    ),
+    # The sentinel for a device that emits through a live bridge instance (an
+    # IR device on an emitter port) rather than dialing a host of its own.
+    "bridge": TransportTraits(
+        yaml=True, interchangeable=False, addressed=False, simulator=None,
+        byte_stream=False, line_form=None, request_reply=False, datagram=False,
+        holds_session=False, sign_in=False, liveness=False, silence_check=False,
+        line_gap=False, delay_only=False, port_open=False, probe_first=False,
+        control_link_push=False,
+    ),
+    "ssh": TransportTraits(
+        yaml=False, interchangeable=False, addressed=True, simulator="tcp",
+        byte_stream=True, line_form="raw", request_reply=False, datagram=False,
+        holds_session=True, sign_in=False, liveness=False, silence_check=False,
+        line_gap=False, delay_only=False, port_open=False, probe_first=True,
+        control_link_push=False,
+    ),
+    "mqtt": TransportTraits(
+        yaml=False, interchangeable=False, addressed=True, simulator="mqtt",
+        byte_stream=False, line_form=None, request_reply=False, datagram=False,
+        holds_session=False, sign_in=False, liveness=False, silence_check=False,
+        line_gap=False, delay_only=False, port_open=False, probe_first=True,
+        control_link_push=False,
+    ),
+    "snmp": TransportTraits(
+        yaml=False, interchangeable=False, addressed=True, simulator="snmp",
+        byte_stream=False, line_form=None, request_reply=True, datagram=True,
+        holds_session=False, sign_in=False, liveness=False, silence_check=False,
+        line_gap=False, delay_only=False, port_open=False, probe_first=False,
+        control_link_push=False,
+    ),
+}
+
+
+def transport_traits(transport: object) -> TransportTraits | None:
+    """The row for ``transport`` as written, or None for a name that is no
+    transport (a reader decides what an unknown one means for it)."""
+    return TRANSPORT_TRAITS.get(transport) if isinstance(transport, str) else None
+
+
+def transports_where(trait: str) -> tuple[str, ...]:
+    """The transports whose ``trait`` column is true, in the table's order."""
+    return tuple(name for name, row in TRANSPORT_TRAITS.items() if getattr(row, trait))
+
+
+def simulator_stand_in(transport: object) -> str | None:
+    """The simulator server a simulated device on ``transport`` is pointed
+    at in its place, or None when it is served on its own transport (or by
+    none: an unknown transport, or a bridge device)."""
+    row = transport_traits(transport)
+    if row is None or row.simulator in (None, transport):
+        return None
+    return row.simulator
+
+
+# The views the schema, the checks' messages and the Programmer read, each a
+# column of TRANSPORT_TRAITS in the table's order.
+YAML_TRANSPORTS: tuple[str, ...] = transports_where("yaml")
+PYTHON_ONLY_TRANSPORTS: tuple[str, ...] = tuple(
+    name for name, row in TRANSPORT_TRAITS.items() if not row.yaml
 )
+INTERCHANGEABLE_TRANSPORTS: tuple[str, ...] = transports_where("interchangeable")
 
 # Port kinds a bridge driver may advertise (bridge.ports[].kind). A serial
 # port vends a transparent TCP pass-through; ir/relay ports route commands
@@ -206,33 +384,16 @@ def secret_settings(schema: object) -> frozenset[str]:
     )
 
 # --- transports with extra constraints ---------------------------------------
+# Columns of TRANSPORT_TRAITS, named as the checks and their messages read them.
 
-# Transports the auth: login-handshake block supports (it swaps the frame
-# parser and types credentials over a raw byte stream).
-AUTH_TRANSPORTS: tuple[str, ...] = ("tcp", "serial")
+AUTH_TRANSPORTS: tuple[str, ...] = transports_where("sign_in")
 
 # Auth handshake types the runtime implements.
 AUTH_TYPES: tuple[str, ...] = ("telnet_login",)
 
-# Transports the liveness: watchdog supports (the socket transports that can
-# die silently; HTTP polling already awaits every response, bridge devices
-# own no transport).
-LIVENESS_TRANSPORTS: tuple[str, ...] = ("tcp", "serial", "udp", "osc")
-
-# The transports the poll loop watches for a peer that answers no poll
-# (BaseDriver._watches_for_silence): a driver that polls, reads replies and
-# has no liveness probe is dropped as `no_response` after max_missed_polls
-# polls that drew nothing. Serial stays out until the check has been measured
-# against a serial unit. HTTP and SNMP fail a request nobody answers; ssh runs
-# its own keep-alive (ServerAliveInterval, transport/ssh.py); MQTT talks to a
-# broker, so one device going quiet behind it is the driver's call.
-SILENCE_CHECK_TRANSPORTS: tuple[str, ...] = ("tcp", "udp", "osc")
-
-# The transports whose own lines (start-up, the poll, follow-up and read-back
-# queries, the liveness probe) a YAML driver spaces itself when it declares no
-# `inter_command_delay` (ConfigurableDriver._pace_line). With a delay set, the
-# transport waits that long after every write instead.
-LINE_GAP_TRANSPORTS: tuple[str, ...] = ("tcp", "serial")
+LIVENESS_TRANSPORTS: tuple[str, ...] = transports_where("liveness")
+SILENCE_CHECK_TRANSPORTS: tuple[str, ...] = transports_where("silence_check")
+LINE_GAP_TRANSPORTS: tuple[str, ...] = transports_where("line_gap")
 
 # Seconds between the lines a YAML driver sends on its own over
 # LINE_GAP_TRANSPORTS when it declares no `inter_command_delay`. Sent back to
@@ -259,15 +420,11 @@ DEFAULT_LINE_GAP_S = 0.05
 # the next poll, as every notice was before then_query.
 FOLLOW_UP_SETTLE_S = 2.0
 
-# Transports that put the device on a TCP port of its own, which is what makes
-# a `discovery.port_open` hint able to fire at all: the scan behind that hint is
-# a TCP connect sweep (discovery/port_scanner.py). A driver whose transports
-# miss this set entirely declares a hint the matcher can never match — inert,
-# and silently so, since the generic-port rule that already guards this field
-# only rejects ports that are too broad, never ports on the wrong protocol.
-# Kept here rather than in the validator so the rule reads off the registry
-# like every other one.
-PORT_OPEN_TRANSPORTS: tuple[str, ...] = ("tcp", "http")
+# The transports a `discovery.port_open` hint can fire on (the port_open
+# column). The generic-port rule that already guards that field only rejects
+# ports that are too broad, never ports on the wrong protocol, so the driver
+# validator warns of a hint on none of these.
+PORT_OPEN_TRANSPORTS: tuple[str, ...] = transports_where("port_open")
 
 # --- templates ---------------------------------------------------------------
 

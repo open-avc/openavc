@@ -605,12 +605,9 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
     ("DRIVER_ID_CHARS", _TEXT, lambda: spec.DRIVER_ID_CHARS,
      "The characters a driver id may hold, as the inside of a regular "
      "expression's character class (driverId.ts builds its checks from it)."),
-    ("YAML_TRANSPORTS", _LIST, lambda: spec.YAML_TRANSPORTS,
-     "Transports a YAML driver may declare."),
-    ("PYTHON_ONLY_TRANSPORTS", _LIST, lambda: spec.PYTHON_ONLY_TRANSPORTS,
-     "Transports that need a Python driver (no YAML surface)."),
     ("INTERCHANGEABLE_TRANSPORTS", _LIST, lambda: spec.INTERCHANGEABLE_TRANSPORTS,
-     "Values allowed in the transports: interchangeable list."),
+     "Values allowed in the transports: interchangeable list (the "
+     "interchangeable column of TRANSPORT_TRAITS)."),
     ("BRIDGE_PORT_KINDS", _LIST, lambda: spec.BRIDGE_PORT_KINDS,
      "Port kinds a bridge driver may advertise."),
     ("DRIVER_CATEGORY_IDS", _LIST, lambda: spec.CATEGORIES,
@@ -645,12 +642,8 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
      "Operators a visible_when condition accepts."),
     ("OSC_ARG_TYPES", _LIST, lambda: spec.OSC_ARG_TYPES,
      "OSC argument type tags the runtime can encode."),
-    ("AUTH_TRANSPORTS", _SET, lambda: spec.AUTH_TRANSPORTS,
-     "Transports the auth: login handshake supports."),
     ("AUTH_TYPES", _LIST, lambda: spec.AUTH_TYPES,
      "Auth handshake types the runtime implements."),
-    ("LIVENESS_TRANSPORTS", _SET, lambda: spec.LIVENESS_TRANSPORTS,
-     "Transports the liveness: watchdog supports."),
     ("PUSH_FRAME_PARSER_TYPES", _SET, lambda: spec.PUSH_FRAME_PARSER_TYPES,
      "Frame parsers a push: tcp_listener subscription may declare."),
     ("FRAME_PARSER_TYPES", _LIST, lambda: spec.FRAME_PARSER_TYPES,
@@ -711,6 +704,45 @@ def _push_keys_by_type() -> str:
     for ptype, keys in spec.PUSH_TYPE_KEYS.items():
         items = ", ".join(f'"{k}"' for k in sorted(keys))
         out += f"  {ptype}: new Set([{items}]),\n"
+    out += "};\n"
+    return out
+
+
+def _ts_value(value: Any) -> str:
+    """A table cell as TypeScript: a boolean, a string, or null."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return json.dumps(value)
+
+
+def _transport_traits() -> str:
+    """Emit THE transport table (spec.TRANSPORT_TRAITS), one row per
+    transport and one column per question, for transportTraits.ts."""
+    columns = spec.TransportTraits._fields
+    rows = spec.TRANSPORT_TRAITS.values()
+    out = _doc_block(
+        "What one transport is and can do: a row of TRANSPORT_TRAITS "
+        "(drivers/spec.py TransportTraits, where each column is explained).",
+        "",
+    )
+    out += "export interface TransportTraits {\n"
+    for column in columns:
+        flags = all(isinstance(getattr(row, column), bool) for row in rows)
+        ts_type = "boolean" if flags else "string | null"
+        out += f"  readonly {column}: {ts_type};\n"
+    out += "}\n\n"
+    out += _doc_block(
+        "What each transport is and can do, one row per transport "
+        "(drivers/spec.py TRANSPORT_TRAITS). Ask a column through "
+        "transportTraits.ts rather than listing transports by hand.",
+        "",
+    )
+    out += "export const TRANSPORT_TRAITS: Readonly<Record<string, TransportTraits>> = {\n"
+    for name, row in spec.TRANSPORT_TRAITS.items():
+        cells = ", ".join(f"{column}: {_ts_value(getattr(row, column))}" for column in columns)
+        out += f"  {name}: {{ {cells} }},\n"
     out += "};\n"
     return out
 
@@ -938,6 +970,7 @@ def render_types_ts() -> str:
         sections.append(_render_constant(name, shape, getter(), doc) + "\n")
     sections.append(_push_keys_by_type() + "\n")
     sections.append(_send_forms() + "\n")
+    sections.append(_transport_traits() + "\n")
     sections.append(_contract_keys() + "\n")
     sections.append(_serial_line_settings() + "\n")
 

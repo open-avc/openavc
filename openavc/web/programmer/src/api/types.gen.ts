@@ -11,13 +11,10 @@
  */
 export const DRIVER_ID_CHARS = "a-z0-9_";
 
-/** Transports a YAML driver may declare. */
-export const YAML_TRANSPORTS = ["tcp", "serial", "udp", "http", "osc", "bridge"] as const;
-
-/** Transports that need a Python driver (no YAML surface). */
-export const PYTHON_ONLY_TRANSPORTS = ["ssh", "mqtt", "snmp"] as const;
-
-/** Values allowed in the transports: interchangeable list. */
+/**
+ * Values allowed in the transports: interchangeable list (the interchangeable
+ * column of TRANSPORT_TRAITS).
+ */
 export const INTERCHANGEABLE_TRANSPORTS = ["tcp", "serial", "udp", "http", "osc"] as const;
 
 /** Port kinds a bridge driver may advertise. */
@@ -68,14 +65,8 @@ export const VISIBLE_WHEN_OPERATORS: ReadonlySet<string> = new Set(["!=", "<", "
 /** OSC argument type tags the runtime can encode. */
 export const OSC_ARG_TYPES = ["f", "i", "s", "h", "d", "T", "F", "N"] as const;
 
-/** Transports the auth: login handshake supports. */
-export const AUTH_TRANSPORTS: ReadonlySet<string> = new Set(["serial", "tcp"]);
-
 /** Auth handshake types the runtime implements. */
 export const AUTH_TYPES = ["telnet_login"] as const;
-
-/** Transports the liveness: watchdog supports. */
-export const LIVENESS_TRANSPORTS: ReadonlySet<string> = new Set(["osc", "serial", "tcp", "udp"]);
 
 /** Frame parsers a push: tcp_listener subscription may declare. */
 export const PUSH_FRAME_PARSER_TYPES: ReadonlySet<string> = new Set(["fixed_length", "length_prefix", "struct_frame"]);
@@ -142,6 +133,47 @@ export const SEND_FORM_ORIGINS = {
   command: ["ir", "udp", "osc", "http", "raw"],
   setting_write: ["osc", "http", "raw"],
 } as const;
+
+/**
+ * What one transport is and can do: a row of TRANSPORT_TRAITS (drivers/spec.py
+ * TransportTraits, where each column is explained).
+ */
+export interface TransportTraits {
+  readonly yaml: boolean;
+  readonly interchangeable: boolean;
+  readonly addressed: boolean;
+  readonly simulator: string | null;
+  readonly byte_stream: boolean;
+  readonly line_form: string | null;
+  readonly request_reply: boolean;
+  readonly datagram: boolean;
+  readonly holds_session: boolean;
+  readonly sign_in: boolean;
+  readonly liveness: boolean;
+  readonly silence_check: boolean;
+  readonly line_gap: boolean;
+  readonly delay_only: boolean;
+  readonly port_open: boolean;
+  readonly probe_first: boolean;
+  readonly control_link_push: boolean;
+}
+
+/**
+ * What each transport is and can do, one row per transport (drivers/spec.py
+ * TRANSPORT_TRAITS). Ask a column through transportTraits.ts rather than
+ * listing transports by hand.
+ */
+export const TRANSPORT_TRAITS: Readonly<Record<string, TransportTraits>> = {
+  tcp: { yaml: true, interchangeable: true, addressed: true, simulator: "tcp", byte_stream: true, line_form: "raw", request_reply: false, datagram: false, holds_session: true, sign_in: true, liveness: true, silence_check: true, line_gap: true, delay_only: false, port_open: true, probe_first: false, control_link_push: true },
+  serial: { yaml: true, interchangeable: true, addressed: false, simulator: "tcp", byte_stream: true, line_form: "raw", request_reply: false, datagram: false, holds_session: true, sign_in: true, liveness: true, silence_check: false, line_gap: true, delay_only: false, port_open: false, probe_first: false, control_link_push: true },
+  udp: { yaml: true, interchangeable: true, addressed: true, simulator: "udp", byte_stream: false, line_form: "raw", request_reply: false, datagram: true, holds_session: false, sign_in: false, liveness: true, silence_check: true, line_gap: false, delay_only: true, port_open: false, probe_first: false, control_link_push: true },
+  http: { yaml: true, interchangeable: true, addressed: true, simulator: "http", byte_stream: false, line_form: "http", request_reply: true, datagram: false, holds_session: false, sign_in: false, liveness: false, silence_check: false, line_gap: false, delay_only: true, port_open: true, probe_first: true, control_link_push: false },
+  osc: { yaml: true, interchangeable: true, addressed: true, simulator: "osc", byte_stream: false, line_form: "osc", request_reply: false, datagram: true, holds_session: false, sign_in: false, liveness: true, silence_check: true, line_gap: false, delay_only: false, port_open: false, probe_first: false, control_link_push: false },
+  bridge: { yaml: true, interchangeable: false, addressed: false, simulator: null, byte_stream: false, line_form: null, request_reply: false, datagram: false, holds_session: false, sign_in: false, liveness: false, silence_check: false, line_gap: false, delay_only: false, port_open: false, probe_first: false, control_link_push: false },
+  ssh: { yaml: false, interchangeable: false, addressed: true, simulator: "tcp", byte_stream: true, line_form: "raw", request_reply: false, datagram: false, holds_session: true, sign_in: false, liveness: false, silence_check: false, line_gap: false, delay_only: false, port_open: false, probe_first: true, control_link_push: false },
+  mqtt: { yaml: false, interchangeable: false, addressed: true, simulator: "mqtt", byte_stream: false, line_form: null, request_reply: false, datagram: false, holds_session: false, sign_in: false, liveness: false, silence_check: false, line_gap: false, delay_only: false, port_open: false, probe_first: true, control_link_push: false },
+  snmp: { yaml: false, interchangeable: false, addressed: true, simulator: "snmp", byte_stream: false, line_form: null, request_reply: true, datagram: true, holds_session: false, sign_in: false, liveness: false, silence_check: false, line_gap: false, delay_only: false, port_open: false, probe_first: false, control_link_push: false },
+};
 
 /**
  * Declared keys of every closed contract block, for the unknown-key check.
