@@ -359,6 +359,8 @@ Visibility conditions are evaluated client-side in the panel, so they respond in
 
 A **List** populates its rows either from the static items configured under **Basic**, or dynamically from state. In the **Items** card, enter a state **key pattern** (use `*` as a wildcard) to build rows from matching keys, for example `device.matrix.input_*_name` to list every input's name. Leave the card blank to use the static items.
 
+On a **Selectable** or **Multi-Select** list, a tapped row lights at once. With a **Selected item** binding, the row the device reports lights when its next reading arrives, so a device that picked something else shows that instead. A **Static** list takes no taps and lights the row its **Selected item** reports.
+
 ### Setting up a Matrix
 
 A **Matrix** is configured under **Basic**, not through the binding cards, and one of its settings decides whether it can show anything at all.

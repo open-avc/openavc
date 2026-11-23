@@ -9,13 +9,15 @@
  * panel registers it on the list's bindings as `_list` and asks
  * `rowsFromState` and `showListSelection` when state changes.
  *
- * Two rules light a row, and they differ: drawing the rows lights the picked
- * ones unless the list is static, while a new reading of the selection
- * (`showListSelection`) lights the row it names whatever the style. Both are
- * kept as they are. Which row a reading names is compare.js `pickKey`, as a
- * map's key is picked: the exact value, then one apart from case, then one
- * the reading equals as a boolean or number. A pick is kept by its row's
- * value as text (`rowKey`), so a row whose value is 0 is "0", never blank.
+ * The picked rows are lit, whatever the style: drawing the rows lights them,
+ * a tap on a selectable or multi-select row lights it at once (before the
+ * device answers), and a new reading of the selection (`showListSelection`)
+ * lights the row it names, taking over from a tap. A static list is read-only:
+ * it shows the row its selection reports and takes no tap. Which row a
+ * reading names is compare.js `pickKey`, as a map's key is picked: the exact
+ * value, then one apart from case, then one the reading equals as a boolean
+ * or number. A pick is kept by its row's value as text (`rowKey`), so a row
+ * whose value is 0 is "0", never blank.
  *
  * The page review reads this module's text for what a list reads off its
  * definition (tests/test_ui_page_review_mirrors.py credits it to the list's
@@ -66,7 +68,7 @@ export class ListControl {
         this.drawn = drawn;
         this.scrollArea.innerHTML = '';
         this._takeReportedPick(items);
-        for (const item of items) this.scrollArea.appendChild(this._row(item, items));
+        for (const item of items) this.scrollArea.appendChild(this._row(item));
         const activeRow = this.scrollArea.querySelector('.list-item.active');
         if (activeRow) activeRow.scrollIntoView({ block: 'nearest' });
     }
@@ -81,29 +83,30 @@ export class ListControl {
         if (row !== null) this.selectedValues.add(row);
     }
 
-    _row(item, items) {
+    _row(item) {
         const row = document.createElement('div');
         row.className = 'list-item';
         row.style.minHeight = this.itemHeight + 'rem';
         row.style.backgroundColor = this.itemBg;
         row.textContent = item.label || item.value || '';
         row.dataset.value = rowKey(item.value);
-        if (this.listStyle === 'static') return row;
         if (this.selectedValues.has(rowKey(item.value))) {
             row.style.backgroundColor = this.itemActiveBg;
             row.classList.add('active');
         }
-        row.addEventListener('click', () => this.tap(item, items));
+        if (this.listStyle !== 'static') row.addEventListener('click', () => this.tap(item));
         return row;
     }
 
     /** A tap on a row: the pick it makes, then `ui.select` with its value
-     *  (the list's action slot is `select`), then the rows again. */
-    tap(item, items) {
+     *  (the list's action slot is `select`), then the rows lit for the pick at
+     *  once -- painted, not drawn, since a draw would put the device's reading
+     *  back over the tap; its next reading takes over. */
+    tap(item) {
         if (this.listStyle === 'selectable') this._pickOnly(rowKey(item.value));
         else if (this.listStyle === 'multi_select') this._togglePick(rowKey(item.value));
         this.host.send({ type: 'ui.select', element_id: this.element.id, value: item.value });
-        this.draw(items);
+        paintPicks(this);
     }
 
     _pickOnly(value) {
@@ -142,14 +145,20 @@ export function rowsFromState(state, keyPattern) {
  */
 export function showListSelection(list, value, offline) {
     if (!offline && nothingToShow(value)) return;
-    const { scrollArea, itemBg, itemActiveBg, selectedValues } = list;
+    const { scrollArea, selectedValues } = list;
     const rows = [...scrollArea.querySelectorAll('.list-item')];
     selectedValues.clear();
     const picked = offline ? null : pickKey(rows.map((row) => row.dataset.value), value);
     if (picked !== null) selectedValues.add(picked);
-    rows.forEach((item) => {
-        const isActive = selectedValues.has(item.dataset.value);
-        item.style.backgroundColor = isActive ? itemActiveBg : itemBg;
-        item.classList.toggle('active', isActive);
-    });
+    paintPicks(list);
+}
+
+/** Each drawn row lit or not as the list's picks say. */
+function paintPicks(list) {
+    const { scrollArea, itemBg, itemActiveBg, selectedValues } = list;
+    for (const row of scrollArea.querySelectorAll('.list-item')) {
+        const isActive = selectedValues.has(row.dataset.value);
+        row.style.backgroundColor = isActive ? itemActiveBg : itemBg;
+        row.classList.toggle('active', isActive);
+    }
 }

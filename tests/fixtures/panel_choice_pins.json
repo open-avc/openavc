@@ -643,19 +643,34 @@
       },
       {},
       {
+        "c": {
+          "r.1.0@class": "list-item active",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.4@class": "list-item",
+          "r.1.4@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+        },
         "s": [
           "ui.select x \"a\""
-        ],
-        "si": [
-          "7|{\"block\":\"nearest\"}"
         ]
       },
       {
+        "c": {
+          "r.1.0@class": "list-item",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.4@class": "list-item active",
+          "r.1.4@style": "min-height: 2rem; background-color: rgb(66, 165, 245);"
+        },
         "s": [
           "ui.select x 7"
         ]
       },
       {
+        "c": {
+          "r.1.1@class": "list-item active",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.4@class": "list-item",
+          "r.1.4@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+        },
         "s": [
           "ui.select x 0"
         ]
@@ -664,16 +679,13 @@
         "c": {
           "r.1.0@class": "list-item active",
           "r.1.0@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
-          "r.1.4@class": "list-item",
-          "r.1.4@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+          "r.1.1@class": "list-item",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
         }
       },
       {
         "s": [
           "ui.select x \"a\""
-        ],
-        "si": [
-          "A|{\"block\":\"nearest\"}"
         ]
       },
       {}
@@ -757,22 +769,36 @@
       },
       {},
       {
-        "s": [
-          "ui.select x \"a\""
-        ]
-      },
-      {
-        "s": [
-          "ui.select x \"b\""
-        ]
-      },
-      {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        },
         "s": [
           "ui.select x \"a\""
         ]
       },
       {
         "c": {
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        },
+        "s": [
+          "ui.select x \"b\""
+        ]
+      },
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        },
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "c": {
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
           "r.0.2@class": "list-item active",
           "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
         }
@@ -965,15 +991,28 @@
         }
       },
       {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        },
         "s": [
           "ui.select x \"one\""
-        ],
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        },
         "si": [
           "Second|{\"block\":\"nearest\"}"
         ]
       },
-      {},
-      {},
       {
         "c": {
           "r.0.0@class": "list-item active",
@@ -1115,16 +1154,10 @@
         }
       },
       {
-        "s": [
-          "ui.select x \"a\""
-        ]
-      },
-      {
-        "s": [
-          "ui.select x \"b\""
-        ]
-      },
-      {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        },
         "s": [
           "ui.select x \"a\""
         ]
@@ -1132,7 +1165,23 @@
       {
         "c": {
           "r.0.1@class": "list-item active",
-          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        },
+        "s": [
+          "ui.select x \"b\""
+        ]
+      },
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        },
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "c": {
           "r.0.2@": "div class style data-value",
           "r.0.2@class": "list-item",
           "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
@@ -1185,8 +1234,8 @@
       {
         "c": {
           "r.0.0@": "div class style data-value",
-          "r.0.0@class": "list-item",
-          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
           "r.0.0@data-value": "a",
           "r.0.0#": "A",
           "r.0.1@": "div class style data-value",
@@ -1194,7 +1243,11 @@
           "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
           "r.0.1@data-value": "b",
           "r.0.1#": "B"
-        }
+        },
+        "si": [
+          "A|{\"block\":\"nearest\"}",
+          "A|{\"block\":\"nearest\"}"
+        ]
       },
       {}
     ],

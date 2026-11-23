@@ -7285,6 +7285,60 @@ const tests = {
     // taken through readings, the device going away and back, a person's
     // picks and typing, a refused press and a page redraw, compared whole with
     // panel_choice_pins.json (CHOICE_PINS below says how they were recorded).
+    list_tap_lights_the_tapped_row_at_once() {
+        // Before the device answers: the row tapped lights at once, on a list
+        // with a selection binding (its reading still on another row) and on
+        // one with none; a multi-select toggles; an action list lights nothing.
+        const lit = (m) => [...m.node().querySelectorAll('.list-item')]
+            .filter((row) => row.classList.contains('active')).map((row) => row.dataset.value);
+        const items = [{ value: 'a' }, { value: 'b' }, { value: 'c' }];
+        const bound = { show: { value: { key: CHOICE_KEY } } };
+        const live = { state: { 'device.d.connected': true, [CHOICE_KEY]: 'a' } };
+        const tap = (m, index) => m.node().querySelectorAll('.list-item')[index].click();
+
+        const reported = levelMount({ id: 'x', type: 'list', items, bindings: bound }, live);
+        assert(JSON.stringify(lit(reported)) === '["a"]', `reported at mount: ${lit(reported)}`);
+        tap(reported, 1);
+        assert(JSON.stringify(lit(reported)) === '["b"]', `bound list after a tap: ${lit(reported)}`);
+        reported.set(CHOICE_KEY, 'c');
+        assert(JSON.stringify(lit(reported)) === '["c"]', `the device's next reading takes over: ${lit(reported)}`);
+
+        const unbound = levelMount({ id: 'x', type: 'list', items }, live);
+        tap(unbound, 2);
+        assert(JSON.stringify(lit(unbound)) === '["c"]', `unbound list after a tap: ${lit(unbound)}`);
+        tap(unbound, 0);
+        assert(JSON.stringify(lit(unbound)) === '["a"]', `unbound list after a second tap: ${lit(unbound)}`);
+
+        const multi = levelMount({ id: 'x', type: 'list', list_style: 'multi_select', items }, live);
+        tap(multi, 0); tap(multi, 2);
+        assert(JSON.stringify(lit(multi)) === '["a","c"]', `multi-select after two taps: ${lit(multi)}`);
+        tap(multi, 0);
+        assert(JSON.stringify(lit(multi)) === '["c"]', `multi-select after a toggle off: ${lit(multi)}`);
+
+        const action = levelMount({ id: 'x', type: 'list', list_style: 'action', items }, live);
+        tap(action, 1);
+        assert(lit(action).length === 0, `action list after a tap: ${lit(action)}`);
+        assert(action.sent.length === 1 && action.sent[0].type === 'ui.select', 'the action tap sends');
+    },
+
+    list_static_shows_the_reported_row_through_a_redraw() {
+        // A read-only list lights the row its selection binding reports, at
+        // draw and after its rows are drawn again, and a tap does nothing.
+        const lit = (m) => [...m.node().querySelectorAll('.list-item')]
+            .filter((row) => row.classList.contains('active')).map((row) => row.dataset.value);
+        const m = levelMount({
+            id: 'x', type: 'list', list_style: 'static',
+            bindings: { show: { items: { source: 'state', key_pattern: 'var.st.*' }, value: { key: CHOICE_KEY } } },
+        }, { state: { 'device.d.connected': true, 'var.st.a': 'A', 'var.st.b': 'B', [CHOICE_KEY]: 'b' } });
+        assert(JSON.stringify(lit(m)) === '["b"]', `static at draw: ${lit(m)}`);
+        m.set('var.st.c', 'C');
+        assert(JSON.stringify(lit(m)) === '["b"]', `static after its rows are drawn again: ${lit(m)}`);
+        m.node().querySelectorAll('.list-item')[0].click();
+        assert(JSON.stringify(lit(m)) === '["b"]' && m.sent.length === 0, 'a tap on a static list does nothing');
+        m.set(CHOICE_KEY, 'a');
+        assert(JSON.stringify(lit(m)) === '["a"]', `static after a reading: ${lit(m)}`);
+    },
+
     choices_draw_show_and_send_as_today() {
         const got = {};
         const K = CHOICE_KEY;
@@ -7579,7 +7633,9 @@ function frameMount(def, { edit, answer, before, page } = {}) {
 //
 // Each is drawn on a page by levelMount's recorder, taken through
 // choiceReadings and then its own gestures, and compared with
-// panel_choice_pins.json, recorded from the code before they moved.
+// panel_choice_pins.json, recorded from the code before they moved, and
+// recorded again (PAINT_PINS_RECORD) when a tapped list row came to light at
+// once and a static list to light the row it reports.
 const CHOICE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_choice_pins.json'), 'utf8'));
 const CHOICE_KEY = 'device.d.v';
 
