@@ -15,7 +15,7 @@ import pytest
 from openavc.core.plugin_declarations import UNREAD, Declared, first_problem
 from openavc.core.plugin_import import find_plugin_class
 from openavc.core.plugin_manifest import validate_manifest
-from openavc.core.plugin_source import read_source
+from openavc.core.plugin_source import read_attribute, read_source
 
 _INFO = (
     '"id": "acme_widget", "name": "Acme Widget", "version": "1.0.0", '
@@ -208,6 +208,33 @@ def test_a_value_built_at_runtime_is_unread_and_the_rest_still_read(imported):
         k: v for k, v in held.info.items() if k not in ("name", "version", "platforms")
     }
     assert read.config_schema is UNREAD
+
+
+def test_one_attribute_reads_as_the_imported_class_holds_it(imported):
+    """``SURFACE_LAYOUT``, which the start does not judge, read the way the
+    declarations are: a module-level dict bound into the class included."""
+    text = _src(f"""
+        LAYOUT = {{"type": "matrix", "rows_state_pattern": "plugin.acme_widget.rx.*"}}
+
+        class AcmeWidgetPlugin:
+            PLUGIN_INFO = {{{_INFO}}}
+            SURFACE_LAYOUT = LAYOUT
+    """)
+    cls = imported(text)
+    assert read_attribute(text, "AcmeWidgetPlugin", "SURFACE_LAYOUT") == cls.SURFACE_LAYOUT
+
+
+def test_one_attribute_the_class_does_not_assign_or_builds_at_runtime():
+    text = _src(f"""
+        MODELS = ("Acme Pad",)
+
+        class AcmeWidgetPlugin:
+            PLUGIN_INFO = {{{_INFO}}}
+            SURFACE_LAYOUT = {{"type": "grid", "virtual_models": list(MODELS)}}
+    """)
+    assert read_attribute(text, "AcmeWidgetPlugin", "SURFACE_LAYOUT") is UNREAD
+    assert read_attribute(text, "AcmeWidgetPlugin", "EXTENSIONS") is None
+    assert read_attribute(text, "Elsewhere", "SURFACE_LAYOUT") is None
 
 
 def test_no_plugin_class_reads_as_none():

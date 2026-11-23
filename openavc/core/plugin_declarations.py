@@ -43,12 +43,17 @@ plugin's folder in ``plugin_repo/`` and its state (``plugin.<id>.``), so the
 installer asks it before it writes, the open file routes before they read, and
 the startup scan before it registers a class; the judge's id row asks it too.
 
-``platforms_problem`` is the one declaration rule that is not a row: whether
+``platforms_problem`` is a declaration rule that is not a row: whether
 the platform ids a plugin lists are ones OpenAVC knows (``PLATFORM_IDS``). A
 release that does not know an id yet must still start a plugin that also lists
 it, so the loader asks only the host check, whether this machine is listed
 (``platform_problem``). A check made before a plugin is published, which has
 no host to ask, asks ``platforms_problem`` instead.
+
+``surface_layout_problem`` (``core/plugin_extension_rules.py``'s) is not a
+row either: a ``SURFACE_LAYOUT`` is what the IDE draws, and a plugin whose
+layout it cannot draw still starts. ``validate.py`` asks it of the layout
+``plugin_source.read_attribute`` reads.
 
 Purity contract: standard library only (with ``plugin_handler_rules``,
 ``plugin_extension_rules`` and ``plugin_source``), so openavc-plugins can carry these modules and run the
@@ -68,6 +73,7 @@ from openavc.core.plugin_extension_rules import (
     EXTENSION_ID_FIELD as EXTENSION_ID_FIELD,
     VALID_EXTENSION_TYPES as VALID_EXTENSION_TYPES,
     extensions_problem as extensions_problem,
+    surface_layout_problem as surface_layout_problem,
 )
 from openavc.core.plugin_handler_rules import (
     HandlerProbe,

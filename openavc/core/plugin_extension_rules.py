@@ -1,6 +1,8 @@
 """THE rules for a plugin's ``EXTENSIONS``: the table of extension types, what
 an entry must be to be accepted, the page each context action is drawn on, and
-the characters a plugin element's names may hold.
+the characters a plugin element's names may hold. And THE rule for its
+``SURFACE_LAYOUT``: the fields each type of layout may say, a routing matrix's
+route key among them.
 
 A plugin adds views, device panels, status cards, context actions and panel
 elements to the IDE and the panel through ``EXTENSIONS``: a dict of those
@@ -35,6 +37,23 @@ panel's copy (``web/panel/panel.js``, ``renderPluginElement``) is held to it by
 (``plugin_declarations.is_plugin_id`` is narrower). The start does not ask it
 of a type: a plugin that declares a type the panel cannot draw starts, and the
 page review names each element of that type.
+
+``SURFACE_LAYOUT_FIELDS``: what a plugin's ``SURFACE_LAYOUT`` may say, by its
+``type``, each field and the kind of value it takes; ``surface_layout_problem``
+is the whole rule. A ``matrix`` layout draws its rows and columns from the
+state keys two patterns match, and names one route key per row
+(``route_state_pattern``, with ``{row}``) whose value names the source routed
+to it; a crosspoint is routed when that value names the source its column's
+own value names, compared by the matrix route rule (``ui/matrix_model.py``'s
+``route_matches``) in the layout's ``route_match`` mode
+(``SURFACE_ROUTE_MATCH_MODES``, its words, held to ``ROUTE_MATCH_MODES``
+there; ``SURFACE_ROUTE_MATCH_DEFAULT`` when it names none). The IDE draws the
+layout (``components/plugins/surface/``): its ``SurfaceLayout`` type and its
+default mode are held to the table by ``tests/test_plugin_extension_rules.py``.
+openavc-plugins' ``validate.py`` asks the rule, through
+``plugin_declarations``. The start does not: a plugin installed with a layout
+written before a field changed still starts, and its surface draws what this
+release can read of it.
 
 Purity contract: standard library only, like ``plugin_declarations``, which
 imports it; openavc-plugins' ``validate.py`` runs the vendored copy
@@ -73,6 +92,95 @@ PANEL_ELEMENT_NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
 def is_panel_element_name(value: Any) -> bool:
     """Whether the panel draws a plugin element with this plugin id or type."""
     return isinstance(value, str) and PANEL_ELEMENT_NAME_RE.fullmatch(value) is not None
+
+
+#: The words a matrix layout's ``route_match`` may say: the modes of the
+#: matrix route rule (``ROUTE_MATCH_MODES`` in ``ui/matrix_model.py``), named
+#: here rather than imported, since this module is vendored without it.
+SURFACE_ROUTE_MATCH_MODES = ("port", "exact")
+#: The mode a matrix layout that names none is compared in: the one that never
+#: lights a crosspoint from a number two source names share.
+SURFACE_ROUTE_MATCH_DEFAULT = "exact"
+
+_PAGES = {"supports_pages": "flag", "max_pages": "whole"}
+
+#: What a ``SURFACE_LAYOUT`` may say, by its ``type``: each field and its kind
+#: (``_KINDS``). ``type`` itself is the table's key.
+SURFACE_LAYOUT_FIELDS: dict[str, dict[str, str]] = {
+    "grid": {
+        "rows": "whole", "columns": "whole", "key_size_px": "whole", "key_spacing_px": "whole",
+        **_PAGES,
+        # A device-backed surface: the IDE draws only real units.
+        "requires_device": "flag", "device_label": "text", "virtual_models": "texts",
+        "network": "flag",
+    },
+    "strip": {"columns": "whole", "controls": "controls", **_PAGES},
+    "custom": {"width_px": "whole", "height_px": "whole", "controls": "controls", **_PAGES},
+    "matrix": {
+        "rows_label": "text", "columns_label": "text",
+        "rows_state_pattern": "key pattern", "columns_state_pattern": "key pattern",
+        "route_state_pattern": "row key", "route_match": "route match",
+        "presets": "flag",
+    },
+}
+
+#: The fields a layout of a type cannot be drawn without, and what each is.
+_REQUIRED_LAYOUT_FIELDS = {
+    "matrix": {
+        "rows_state_pattern": "the state keys, with *, the rows are drawn from",
+        "columns_state_pattern": "the state keys, with *, the columns are drawn from",
+        "route_state_pattern": "the state key, with {row}, whose value names the source routed to each row",
+    },
+}
+
+
+def _is_whole(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_list_of(value: Any, kind: type) -> bool:
+    return isinstance(value, list) and all(isinstance(item, kind) for item in value)
+
+
+#: Each kind of layout field: the words for it and whether a value is one.
+_KINDS: dict[str, tuple[str, Any]] = {
+    "flag": ("true or false", lambda v: isinstance(v, bool)),
+    "whole": ("a whole number", _is_whole),
+    "text": ("text", lambda v: isinstance(v, str)),
+    "texts": ("a list of text", lambda v: _is_list_of(v, str)),
+    "controls": ("a list of dicts", lambda v: _is_list_of(v, dict)),
+    "key pattern": ("a state key with *", lambda v: isinstance(v, str) and "*" in v),
+    "row key": ("a state key with {row}", lambda v: isinstance(v, str) and "{row}" in v),
+    "route match": (
+        "one of " + ", ".join(repr(m) for m in sorted(SURFACE_ROUTE_MATCH_MODES)),
+        lambda v: isinstance(v, str) and v in SURFACE_ROUTE_MATCH_MODES,
+    ),
+}
+
+
+def surface_layout_problem(layout: Any) -> str | None:
+    """What keeps the IDE from drawing a ``SURFACE_LAYOUT`` as written, or
+    None. A plugin that declares none has nothing to draw."""
+    if layout is None:
+        return None
+    if not isinstance(layout, dict):
+        return "SURFACE_LAYOUT must be a dict"
+    layout_type = layout.get("type")
+    fields = SURFACE_LAYOUT_FIELDS.get(layout_type) if isinstance(layout_type, str) else None
+    if fields is None:
+        known = ", ".join(repr(t) for t in sorted(SURFACE_LAYOUT_FIELDS))
+        return f"SURFACE_LAYOUT type {layout_type!r} is not one of {known}"
+    for field in layout:
+        if field != "type" and field not in fields:
+            return f"SURFACE_LAYOUT has {field!r}, which a {layout_type} layout does not have"
+    for field, meaning in _REQUIRED_LAYOUT_FIELDS.get(layout_type, {}).items():
+        if field not in layout:
+            return f"SURFACE_LAYOUT ({layout_type}) needs {field!r}: {meaning}"
+    for field, kind in fields.items():
+        words, fits = _KINDS[kind]
+        if field in layout and not fits(layout[field]):
+            return f"SURFACE_LAYOUT {field!r} must be {words}, not {layout[field]!r}"
+    return None
 
 
 def extensions_problem(value: Any) -> str | None:

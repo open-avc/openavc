@@ -5,7 +5,9 @@ door that must judge a plugin first (a plugin repository's CI, the installer
 before a download's dependencies) reads the module's text instead.
 ``read_source`` gives the same ``Declared`` the loader takes from the imported
 class (``plugin_declarations.Declared.of_class``), for
-``plugin_declarations.first_problem`` to judge.
+``plugin_declarations.first_problem`` to judge. ``read_attribute`` reads one
+more attribute of the class the same way, for a value the start does not
+judge (a ``SURFACE_LAYOUT``).
 
 Which class: the one the loader's ``plugin_class_in`` picks, the first
 top-level class by name whose ``PLUGIN_INFO`` is a dict with an ``id``.
@@ -111,6 +113,23 @@ def read_source(text: str) -> Declared | None:
         if found is not None:
             return found
     return None
+
+
+def read_attribute(text: str, class_name: str, name: str) -> Any:
+    """One attribute of a module's class ``class_name``, read as its
+    declarations are: None when the class assigns none (or the module has no
+    such class), ``UNREAD`` when the source builds it.
+
+    For a value the start does not judge, which ``read_source`` leaves out:
+    ``validate.py`` reads a plugin's ``SURFACE_LAYOUT`` with it, for
+    ``plugin_extension_rules.surface_layout_problem``. Raises as
+    ``read_source`` does.
+    """
+    tree = ast.parse(text)
+    found = _classes_by_name(tree).get(class_name)
+    if found is None:
+        return None
+    return _ClassReader(_Module(tree), *found).value(name)
 
 
 def _classes_by_name(tree: ast.Module) -> dict[str, tuple[int, ast.ClassDef]]:
@@ -310,6 +329,10 @@ class _ClassReader:
     def _unread_key(self, info: dict, where: str) -> None:
         info[UNREAD] = UNREAD
         self._unread.append(where)
+
+    def value(self, name: str) -> Any:
+        """One attribute, read as a declaration is."""
+        return self._declaration(name)
 
     def _declaration(self, name: str) -> Any:
         found = self._last(name)

@@ -1,6 +1,6 @@
-"""The rules for a plugin's EXTENSIONS (``core/plugin_extension_rules.py``), and
-the sides that ask them: the start, the serve, the page review, the panel and
-the IDE."""
+"""The rules for a plugin's EXTENSIONS and its SURFACE_LAYOUT
+(``core/plugin_extension_rules.py``), and the sides that ask them: the start,
+the serve, the page review, the panel and the IDE."""
 
 from __future__ import annotations
 
@@ -14,10 +14,15 @@ from openavc.core.plugin_extension_rules import (
     CONTEXT_ACTION_PAGES,
     EXTENSION_ID_FIELD,
     PANEL_ELEMENT_NAME_RE,
+    SURFACE_LAYOUT_FIELDS,
+    SURFACE_ROUTE_MATCH_DEFAULT,
+    SURFACE_ROUTE_MATCH_MODES,
     extensions_problem,
     is_panel_element_name,
+    surface_layout_problem,
 )
 from openavc.core.plugin_extensions import collect_extensions
+from openavc.ui.matrix_model import ROUTE_MATCH_MODES
 from openavc.ui.page_references import plugin_element_finding
 
 PANEL_JS = Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "panel.js"
@@ -132,3 +137,127 @@ def test_an_id_is_unique_within_its_plugin_and_type_only():
     assert extensions_problem({"views": [{"id": "main"}, {"id": "main"}]}) == (
         "views has duplicate id 'main'"
     )
+
+
+# --- a surface layout ---------------------------------------------------------
+
+ACME_MATRIX = {
+    "type": "matrix",
+    "rows_label": "Outputs",
+    "columns_label": "Inputs",
+    "rows_state_pattern": "plugin.acme_router.rx.*",
+    "columns_state_pattern": "plugin.acme_router.tx.*",
+    "route_state_pattern": "plugin.acme_router.source.{row}",
+    "route_match": "exact",
+    "presets": True,
+}
+
+ACME_GRID = {
+    "type": "grid", "rows": 2, "columns": 4, "key_size_px": 72, "key_spacing_px": 4,
+    "supports_pages": True, "max_pages": 10, "requires_device": True,
+    "device_label": "Acme Pad", "virtual_models": ["Acme Pad Mini"], "network": True,
+}
+
+
+@pytest.mark.parametrize("layout", [
+    None,
+    ACME_MATRIX,
+    {k: v for k, v in ACME_MATRIX.items() if k != "route_match"},
+    {**ACME_MATRIX, "route_match": "port"},
+    ACME_GRID,
+    {"type": "grid", "rows": 3, "columns": 5},
+    {"type": "strip", "columns": 8, "controls": [{"index": 0, "type": "fader"}]},
+    {"type": "custom", "width_px": 600, "height_px": 200, "controls": [{"id": "f1", "type": "fader"}]},
+], ids=["none", "matrix", "matrix-default-mode", "matrix-port-mode", "grid", "static-grid", "strip", "custom"])
+def test_a_layout_the_ide_draws(layout):
+    assert surface_layout_problem(layout) is None
+
+
+@pytest.mark.parametrize(("layout", "problem"), [
+    ([], "SURFACE_LAYOUT must be a dict"),
+    ({"rows": 2}, "SURFACE_LAYOUT type None is not one of 'custom', 'grid', 'matrix', 'strip'"),
+    ({"type": "dial"}, "SURFACE_LAYOUT type 'dial' is not one of 'custom', 'grid', 'matrix', 'strip'"),
+    (
+        {**ACME_MATRIX, "cell_state_pattern": "plugin.acme_router.route.{row}.{col}"},
+        "SURFACE_LAYOUT has 'cell_state_pattern', which a matrix layout does not have",
+    ),
+    (
+        {k: v for k, v in ACME_MATRIX.items() if k != "route_state_pattern"},
+        "SURFACE_LAYOUT (matrix) needs 'route_state_pattern': the state key, with {row}, "
+        "whose value names the source routed to each row",
+    ),
+    (
+        {**ACME_MATRIX, "route_state_pattern": "plugin.acme_router.source"},
+        "SURFACE_LAYOUT 'route_state_pattern' must be a state key with {row}, "
+        "not 'plugin.acme_router.source'",
+    ),
+    (
+        {**ACME_MATRIX, "rows_state_pattern": "plugin.acme_router.rx"},
+        "SURFACE_LAYOUT 'rows_state_pattern' must be a state key with *, not 'plugin.acme_router.rx'",
+    ),
+    (
+        {**ACME_MATRIX, "route_match": "fuzzy"},
+        "SURFACE_LAYOUT 'route_match' must be one of 'exact', 'port', not 'fuzzy'",
+    ),
+    ({**ACME_MATRIX, "presets": "yes"}, "SURFACE_LAYOUT 'presets' must be true or false, not 'yes'"),
+    ({**ACME_GRID, "rows": True}, "SURFACE_LAYOUT 'rows' must be a whole number, not True"),
+    ({**ACME_GRID, "rows": -1}, "SURFACE_LAYOUT 'rows' must be a whole number, not -1"),
+    ({**ACME_GRID, "device_label": 5}, "SURFACE_LAYOUT 'device_label' must be text, not 5"),
+    ({**ACME_GRID, "virtual_models": "Acme Pad"}, "SURFACE_LAYOUT 'virtual_models' must be a list of text, not 'Acme Pad'"),
+    ({"type": "strip", "controls": [5]}, "SURFACE_LAYOUT 'controls' must be a list of dicts, not [5]"),
+    ({"type": "grid", "controls": []}, "SURFACE_LAYOUT has 'controls', which a grid layout does not have"),
+])
+def test_a_layout_the_ide_cannot_draw_as_written(layout, problem):
+    assert surface_layout_problem(layout) == problem
+
+
+def test_the_declarations_judge_hands_on_the_layout_rule():
+    """validate.py asks it through plugin_declarations, as it asks the rest."""
+    assert plugin_declarations.surface_layout_problem is surface_layout_problem
+
+
+def test_the_start_does_not_ask_the_layout_rule():
+    """A layout the IDE cannot draw is not a reason to stop a plugin: one
+    installed before a layout field changed still starts."""
+    info = {
+        "id": "acme_router", "name": "Acme Router", "version": "1.0.0", "author": "Acme",
+        "description": "Routes.", "category": "integration", "license": "MIT",
+    }
+
+    class AcmeRouter:
+        PLUGIN_INFO = info
+        SURFACE_LAYOUT = {"type": "matrix", "cell_state_pattern": "plugin.acme_router.route.{row}.{col}"}
+
+    assert plugin_declarations.first_problem(plugin_declarations.Declared.of_class(AcmeRouter)) is None
+
+
+def test_the_layout_names_the_matrix_route_rules_modes():
+    assert list(SURFACE_ROUTE_MATCH_MODES) == list(ROUTE_MATCH_MODES)
+    assert SURFACE_ROUTE_MATCH_DEFAULT in ROUTE_MATCH_MODES
+    # The default never lights a crosspoint from a number two names share.
+    assert ROUTE_MATCH_MODES[SURFACE_ROUTE_MATCH_DEFAULT] is False
+
+
+SURFACE_TYPES_TS = (
+    Path(__file__).resolve().parents[1] / "openavc" / "web" / "programmer" / "src"
+    / "components" / "plugins" / "surface" / "types.ts"
+)
+ROUTING_HELPERS_TS = HELPERS_TS.with_name("routingMatrixHelpers.ts")
+
+
+def test_the_ides_layout_names_every_field_the_table_does():
+    """The IDE's ``SurfaceLayout`` holds the table's fields and no other."""
+    source = SURFACE_TYPES_TS.read_text(encoding="utf-8")
+    body = re.search(r"export interface SurfaceLayout \{(.*?)\n\}", source, re.S)
+    assert body, "types.ts declares no SurfaceLayout interface"
+    ide = set(re.findall(r"^\s+(\w+)\??:", body.group(1), re.M))
+    table = {"type"} | {field for fields in SURFACE_LAYOUT_FIELDS.values() for field in fields}
+    assert ide == table
+    kinds = re.search(r'type: ([^;]+);', body.group(1))
+    assert kinds and set(re.findall(r'"(\w+)"', kinds.group(1))) == set(SURFACE_LAYOUT_FIELDS)
+
+
+def test_the_ide_compares_in_the_tables_default_mode():
+    source = ROUTING_HELPERS_TS.read_text(encoding="utf-8")
+    found = re.findall(r'export const SURFACE_ROUTE_MATCH_DEFAULT[^=]*= "(\w+)";', source)
+    assert found == [SURFACE_ROUTE_MATCH_DEFAULT]
