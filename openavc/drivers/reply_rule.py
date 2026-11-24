@@ -202,7 +202,7 @@ def _json_mappings(
 
 
 def _names_a_state(entry: Any) -> bool:
-    """A ``mappings:`` entry a reader can write: one naming its state
+    """A ``mappings:`` entry a reader writes from, one naming its state
     variable. Any other entry reads nothing."""
     return isinstance(entry, dict) and isinstance(entry.get("state"), str) and bool(entry["state"])
 
@@ -235,24 +235,24 @@ def _regex_rule_mappings(
     return mappings, tuple(m for m in read if isinstance(m, SkippedMapping))
 
 
-def _set_mapping(state_key: Any, value_expr: Any, state_vars: Mapping[str, Any]) -> Any:
+def _set_mapping(name: Any, value_expr: Any, state_vars: Mapping[str, Any]) -> Any:
     """One ``set:`` shorthand item as a mapping: ``$N`` reads capture N, any
     other value is a literal; either way typed by the state variable, so a
     boolean fed ``set: {mute: "true"}`` stores True, not the string."""
-    var_type = _declared_type(state_vars, state_key)
+    var_type = _declared_type(state_vars, name)
     if not names_a_capture(value_expr):
-        return {"group": 0, "state": state_key, "value": value_expr, "type": var_type}
+        return {"group": 0, "state": name, "value": value_expr, "type": var_type}
     group = capture_group(value_expr)
     if group is None:
         # A $-reference that names no capture is an author typo. Capturing
         # group 0 (the whole match) would write a wrong value with no warning,
         # so it is skipped, and said. "$0" is the whole match when that is meant.
         return SkippedMapping(
-            str(state_key),
-            f"set-shorthand reference {value_expr!r} for state '{state_key}' is not a "
+            str(name),
+            f"set-shorthand reference {value_expr!r} for state '{name}' is not a "
             f"numeric group ($1, $2, ...); skipping this mapping",
         )
-    return {"group": group, "state": state_key, "type": var_type}
+    return {"group": group, "state": name, "type": var_type}
 
 
 def _listed_mapping(mp: Any, state_vars: Mapping[str, Any]) -> Any:
