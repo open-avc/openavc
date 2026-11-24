@@ -1,0 +1,48 @@
+{
+  "_doc": "Text rules in each of their forms. For each, the Driver Builder's rows (getMappings) and the rule it writes back from them unedited (buildResponse) are held to the driver's own reading (drivers/reply_rule.py): the rows name the variables the driver writes, in its order, and the rule written back reads exactly as the original does, in the forms listed. tests/test_response_builder_helpers.py runs them.",
+  "state_variables": {
+    "power": {"type": "boolean"},
+    "input": {"type": "string"},
+    "mode": {"type": "string"},
+    "level": {"type": "integer"},
+    "muted": {"type": "boolean"},
+    "label": {"type": "string"}
+  },
+  "cases": [
+    {
+      "name": "a mapped field in mappings and a plain one in set",
+      "rule": {"match": "P=(\\d) I=(\\w+)", "set": {"input": "$2"}, "mappings": [{"group": 1, "state": "power", "map": {"1": true, "0": false}}]},
+      "forms": ["mappings", "set"]
+    },
+    {
+      "name": "the driver guide's example",
+      "rule": {"match": "STATUS (\\d),(\\d+),([01])", "set": {"level": "$2", "muted": "$3"}, "mappings": [{"group": 1, "state": "mode", "map": {"0": "Low", "1": "High"}}]},
+      "forms": ["mappings", "set"]
+    },
+    {
+      "name": "a variable named in both takes the mappings entry",
+      "rule": {"match": "M(\\d) L(\\d+)", "set": {"mode": "$1", "level": "$2"}, "mappings": [{"group": 1, "state": "mode", "map": {"1": "High"}}]},
+      "forms": ["mappings", "set"]
+    },
+    {
+      "name": "a typed mappings entry that would fit set stays in mappings",
+      "rule": {"match": "L(\\d+)", "set": {"label": "fixed"}, "mappings": [{"group": 1, "state": "level", "type": "integer"}]},
+      "forms": ["mappings", "set"]
+    },
+    {
+      "name": "an empty mappings list beside a set",
+      "rule": {"match": "L(\\d+)", "set": {"level": "$1"}, "mappings": []},
+      "forms": ["set"]
+    },
+    {
+      "name": "set alone",
+      "rule": {"match": "L(\\d+) (\\w+)", "set": {"level": "$1", "label": "fixed"}},
+      "forms": ["set"]
+    },
+    {
+      "name": "mappings alone",
+      "rule": {"match": "L(\\d+)", "mappings": [{"group": 1, "state": "level"}]},
+      "forms": ["mappings"]
+    }
+  ]
+}

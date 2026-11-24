@@ -570,4 +570,58 @@ const jsonVars = {
   };
 }
 
+// --- a text rule's two forms: the shared cases, read and written back -------
+// The rows the editor shows and the rule it writes back unedited, for
+// test_response_builder_helpers.py to hold to the driver's own reading.
+{
+  const fs = require("fs");
+  const corpus = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "reply_rule_forms_cases.json"), "utf8"),
+  );
+  const vars = corpus.state_variables;
+  results.reply_rule_forms = corpus.cases.map((c) => {
+    const rows = H.getMappings(c.rule, vars);
+    return { rows, rebuilt: H.buildResponse(H.getPattern(c.rule), rows, c.rule, vars) };
+  });
+}
+{
+  // Editing the pattern of a rule with both forms keeps both: set: used to be
+  // dropped on every rebuild of such a rule.
+  const vars = { power: { type: "boolean" }, input: { type: "string" } };
+  const original = {
+    match: "P=(\\d) I=(\\w+)",
+    set: { input: "$2" },
+    mappings: [{ group: 1, state: "power", map: { 1: true, 0: false } }],
+  };
+  const rebuilt = H.buildResponse("PWR=(\\d) IN=(\\w+)", H.getMappings(original, vars), original, vars);
+  results.both_forms_survive_a_pattern_edit = {
+    pass:
+      rebuilt.match === "PWR=(\\d) IN=(\\w+)" &&
+      eq(rebuilt.set, { input: "$2" }) &&
+      eq(rebuilt.mappings, original.mappings),
+    detail: rebuilt,
+  };
+}
+{
+  // A row given a map moves to mappings:; a row added for a new variable is
+  // a mappings: entry; set: keeps the rest.
+  const vars = { level: { type: "integer" }, muted: { type: "boolean" }, mode: { type: "string" } };
+  const original = {
+    match: "S (\\d),(\\d+),([01])",
+    set: { level: "$2", muted: "$3" },
+    mappings: [{ group: 1, state: "mode", map: { 0: "Low" } }],
+  };
+  const rows = H.getMappings(original, vars).map((m) =>
+    m.state === "muted" ? { ...m, map: { 1: true, 0: false } } : m,
+  );
+  rows.push({ group: 1, state: "extra", type: "string" });
+  const rebuilt = H.buildResponse(original.match, rows, original, vars);
+  results.both_forms_rows_go_where_they_fit = {
+    pass:
+      eq(rebuilt.set, { level: "$2" }) &&
+      eq(rebuilt.mappings.map((m) => m.state), ["mode", "muted", "extra"]),
+    detail: rebuilt,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

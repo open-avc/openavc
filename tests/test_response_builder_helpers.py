@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from openavc.drivers.reply_rule import read_reply_rule
 from tests import gates
 
 # Repo root = openavc/ (this file is openavc/tests/test_response_builder_helpers.py).
@@ -107,6 +108,8 @@ SCENARIOS = [
     "json_number_float_equivalence",
     "after_json_rides_along_and_drops_on_json",
     "json_child_set_survives_and_prop_round_trips",
+    "both_forms_survive_a_pattern_edit",
+    "both_forms_rows_go_where_they_fit",
 ]
 
 
@@ -115,3 +118,24 @@ def test_response_builder_helper(helper_results: dict, scenario: str) -> None:
     assert scenario in helper_results, f"harness did not report {scenario}"
     outcome = helper_results[scenario]
     assert outcome["pass"], f"{scenario} failed: detail={outcome.get('detail')!r}"
+
+
+_FORMS_CASES = json.loads(
+    (OPENAVC_ROOT / "tests" / "fixtures" / "reply_rule_forms_cases.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize(
+    "index", range(len(_FORMS_CASES["cases"])), ids=[c["name"] for c in _FORMS_CASES["cases"]]
+)
+def test_the_builder_reads_and_writes_a_rule_as_the_driver_reads_it(helper_results: dict, index: int) -> None:
+    """The editor's rows name the variables the driver writes from a text
+    rule, in its order, and the rule it writes back unedited reads exactly as
+    the original does, in the forms the case lists (``drivers/reply_rule``)."""
+    case = _FORMS_CASES["cases"][index]
+    state_variables = _FORMS_CASES["state_variables"]
+    out = helper_results["reply_rule_forms"][index]
+    driver_reads = read_reply_rule(case["rule"], state_variables).mappings
+    assert [row["state"] for row in out["rows"]] == [m["state"] for m in driver_reads]
+    assert read_reply_rule(out["rebuilt"], state_variables).mappings == driver_reads
+    assert [form for form in ("mappings", "set") if form in out["rebuilt"]] == case["forms"]

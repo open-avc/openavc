@@ -34,20 +34,41 @@ export function getPattern(resp: DriverResponseDef): string {
   return resp.address ?? resp.match ?? "";
 }
 
-/** Read mappings, converting set: shorthand if needed. The runtime coerces a
- *  shorthand entry — capture reference or static literal — by the target
- *  state variable's DECLARED type, so the converted mapping carries that type
- *  rather than a hardcoded "string" (which misrepresented how the response is
- *  parsed). Static literal values are preserved verbatim (so round-trip
- *  doesn't lose them on edit). */
+/** Read a rule's rows as the driver reads them (reply_rule.py): a text
+ *  rule's `mappings:` entries first, then its `set:` shorthand's items, a
+ *  `set:` item for a state variable a `mappings:` entry names left out (the
+ *  `mappings:` entry wins). An OSC rule's rows are its `mappings:`, else its
+ *  `set:`. The runtime coerces a shorthand entry — capture reference or
+ *  static literal — by the target state variable's DECLARED type, so the
+ *  converted row carries that type rather than a hardcoded "string" (which
+ *  misrepresented how the response is parsed). Static literal values are
+ *  preserved verbatim (so round-trip doesn't lose them on edit). */
 export function getMappings(
   resp: DriverResponseDef,
   stateVariables: Record<string, StateVarDefLike | undefined>,
 ): DriverResponseMapping[] {
-  if (resp.mappings) return resp.mappings;
-  if (!resp.set) return [];
+  if (resp.address !== undefined) {
+    return resp.mappings ?? setRows(resp.set, stateVariables, new Set());
+  }
+  const listed = Array.isArray(resp.mappings) ? resp.mappings : [];
+  return [...listed, ...setRows(resp.set, stateVariables, mappedStates(listed))];
+}
+
+/** The state variables a rule's `mappings:` entries name. */
+function mappedStates(mappings: DriverResponseMapping[] | undefined): Set<string> {
+  return new Set((mappings ?? []).map((m) => m.state).filter((state): state is string => !!state));
+}
+
+/** A `set:` shorthand's items as rows, typed by their state variables, but
+ *  for the states in `leftOut`. */
+function setRows(
+  set: DriverResponseDef["set"],
+  stateVariables: Record<string, StateVarDefLike | undefined>,
+  leftOut: Set<string>,
+): DriverResponseMapping[] {
   const mappings: DriverResponseMapping[] = [];
-  for (const [stateKey, valueExpr] of Object.entries(resp.set)) {
+  for (const [stateKey, valueExpr] of Object.entries(set ?? {})) {
+    if (leftOut.has(stateKey)) continue;
     const type = declaredStateType(stateVariables, stateKey);
     if (typeof valueExpr === "string" && /^\$\d+$/.test(valueExpr)) {
       // Capture-group reference like "$1"
@@ -129,8 +150,39 @@ function setShorthand(mappings: DriverResponseMapping[]): Record<string, unknown
   return set;
 }
 
-/** Build a response def, preserving the original form (set: shorthand or
- *  mappings:) of the loaded response when the new mappings still fit.
+/** The rows of a text rule that carried both forms, written back into both:
+ *  a row goes back to `set:` when its state variable was a `set:` item (and
+ *  no `mappings:` entry named it), no other row writes that variable, and it
+ *  still fits the shorthand on its own; every other row is a `mappings:`
+ *  entry. So saving an edit keeps the file's own split, the one the driver
+ *  guide recommends: the mapped fields in `mappings:`, the plain ones in
+ *  `set:`. A form left with no rows is left out. */
+function bothForms(
+  mappings: DriverResponseMapping[],
+  original: DriverResponseDef,
+  stateVariables: Record<string, StateVarDefLike | undefined>,
+): Pick<DriverResponseDef, "mappings" | "set"> {
+  const mapped = mappedStates(original.mappings);
+  const fromSet = new Set(Object.keys(original.set ?? {}).filter((state) => !mapped.has(state)));
+  const rowsFor = new Map<string, number>();
+  for (const m of mappings) {
+    if (m.state) rowsFor.set(m.state, (rowsFor.get(m.state) ?? 0) + 1);
+  }
+  const backToSet = (m: DriverResponseMapping) =>
+    !!m.state &&
+    fromSet.has(m.state) &&
+    rowsFor.get(m.state) === 1 &&
+    canUseSetShorthand([m], stateVariables);
+  const plain = mappings.filter(backToSet);
+  const listed = mappings.filter((m) => !backToSet(m));
+  return {
+    ...(listed.length > 0 ? { mappings: listed } : {}),
+    ...(plain.length > 0 ? { set: setShorthand(plain) } : {}),
+  };
+}
+
+/** Build a response def, preserving the original form (set: shorthand,
+ *  mappings:, or both) of the loaded response when the new mappings still fit.
  *  `child_set`, `throttle`, `after_json`, `then_query`, and the json-rule
  *  keys (`json`, `require`) ride along untouched — rebuilding from a
  *  pattern/mapping edit must never drop the child routing, the rate limit,
@@ -180,6 +232,10 @@ export function buildResponse(
     const base: DriverResponseDef = { ...original };
     delete base.match;
     return { ...base, ...carry };
+  }
+  // A rule that carried both forms keeps both (the driver applies both).
+  if (original.set !== undefined && original.mappings !== undefined) {
+    return { match: pattern, ...bothForms(mappings, original, stateVariables), ...childSet, ...carry };
   }
   // Choose set: shorthand when (a) the original used it AND (b) the
   // current mapping shape still fits the shorthand. Otherwise fall back
