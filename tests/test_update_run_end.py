@@ -324,3 +324,66 @@ def test_cancelled_run_is_failed_not_cut_off(tmp_path):
     asyncio.run(go())
     _start(tmp_path, "0.41.0")
     assert _row(tmp_path)[2:] == ("failed", "Update cancelled")
+
+
+@pytest.mark.asyncio
+async def test_a_downgrade_the_cloud_sent_that_is_undone_reads_reverted(tmp_path):
+    """A downgrade the cloud sends is an update marked rollback, not a
+    rollback to the previous release: its row is an update's, and once it is
+    undone it reads reverted."""
+    import hashlib
+
+    mgr = _start(tmp_path, "0.42.0")
+    with patch("openavc.updater.manager.__version__", "0.42.0"), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups"), \
+         patch("openavc.updater.rollback.write_pending_marker"), \
+         patch.object(mgr, "_download_artifact", return_value=tmp_path / "a.tar.gz"), \
+         patch.object(mgr, "_verify_hash"), \
+         patch.object(mgr, "_download_sidecar_sig"), \
+         patch.object(mgr, "_end_process"):
+        result = await mgr.apply_cloud_update("0.41.0", URL, hashlib.sha256(b"x").hexdigest(), rollback=True)
+    assert result["success"] is True
+    assert _history(tmp_path)[0]["rollback"] is False
+
+    _start(tmp_path, "0.41.0")
+    assert _row(tmp_path)[2] == "success"
+    _start(tmp_path, "0.42.0")
+    assert _row(tmp_path) == ("0.42.0", "0.41.0", "rolled_back", "Update was reverted; running v0.42.0")
+
+
+@pytest.mark.parametrize(("running", "ended"), [
+    ("0.41.0", ("success", "")),
+    ("0.42.0", ("failed", "Rollback did not take effect: still running v0.42.0")),
+])
+@pytest.mark.asyncio
+async def test_a_rollback_whose_target_was_not_known_is_still_settled(tmp_path, running, ended):
+    with patch("openavc.updater.rollback.rollback_target_version", return_value=""):
+        mgr = _start(tmp_path, "0.42.0")
+        with patch("openavc.updater.rollback.can_rollback", return_value=True), \
+             patch("openavc.updater.rollback.perform_rollback", return_value=True), \
+             patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
+             patch("openavc.updater.backup.cleanup_old_backups"), \
+             patch("openavc.system_config.APP_DIR", tmp_path), \
+             patch("openavc.updater.manager.__version__", "0.42.0"), \
+             patch.object(mgr, "_end_process"):
+            assert (await mgr.rollback())["success"] is True
+
+    _start(tmp_path, running)
+    assert _row(tmp_path)[1:] == ("", *ended)
+
+
+def test_an_update_manager_that_cannot_be_made_does_not_stop_the_automatic_rollback(tmp_path):
+    """The new version's update manager is part of what may be broken: the
+    rollback that fixes it still runs."""
+    import openavc.main as main
+
+    rolled_back = []
+    with patch("openavc.updater.rollback.check_rollback_needed", return_value=True), \
+         patch("openavc.updater.manager.UpdateManager", side_effect=RuntimeError("broken")), \
+         patch("openavc.updater.rollback.restore_pre_update_data"), \
+         patch("openavc.core.device_logins.put_back_for_rollback"), \
+         patch("openavc.updater.rollback.perform_rollback", side_effect=lambda *a, **k: rolled_back.append(1)), \
+         patch.object(main.os, "_exit", side_effect=_Exited):
+        main._roll_back_a_failed_update(tmp_path)
+    assert rolled_back == [1]

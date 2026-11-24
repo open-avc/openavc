@@ -132,7 +132,15 @@ class UpdateRun:
         return run if run._readable() else None
 
     def _readable(self) -> bool:
-        return bool(self.target) and self.source in SOURCES and self.end in ENDS
+        """A run names its target, except a rollback whose target was not known."""
+        return (bool(self.target) or self.rollback) and self.source in SOURCES and self.end in ENDS
+
+    @property
+    def restores_previous(self) -> bool:
+        """A rollback to the earlier release this system kept: begun here, or
+        read from its history row (marked ``rollback``, which only a rollback's
+        row is; a downgrade the cloud sent is marked ``rollback`` as a target)."""
+        return self.source == PREVIOUS or (self.source == UNRECORDED and self.rollback)
 
     def stages(self, other: UpdateRun) -> bool:
         """This is the cloud's staged target, waiting or tried before, and
@@ -163,11 +171,12 @@ def _row_error(row: dict[str, Any]) -> str:
 
 
 def _row_run(row: dict[str, Any] | None) -> UpdateRun | None:
-    """The run an earlier release's history row describes, ended as it says."""
-    if row is None or not row.get("to_version"):
+    """The run an earlier release's history row describes, ended as it says
+    (a rollback's row may not know its target)."""
+    if row is None or not (row.get("to_version") or row.get("rollback")):
         return None
     return UpdateRun(
-        target=str(row["to_version"]), source=UNRECORDED,
+        target=str(row.get("to_version") or ""), source=UNRECORDED,
         from_version=str(row.get("from_version") or ""), end=row_end(row), error=_row_error(row),
         rollback=bool(row.get("rollback")), started=str(row.get("timestamp") or ""),
     )
@@ -238,11 +247,11 @@ def _pending_end(run: UpdateRun, running: str, helper: dict[str, Any] | None) ->
     set_aside = _set_aside(run, helper)
     if set_aside:
         return set_aside
-    kind = "Rollback" if run.source == PREVIOUS else "Update"
+    kind = "Rollback" if run.restores_previous else "Update"
     step = _STEPS_BEFORE_THE_EXIT.get(run.step)
     if step:
         return {"end": FAILED, "error": f"{kind} stopped while {step}: OpenAVC restarted before it was applied"}
-    if run.source == PREVIOUS:
+    if run.restores_previous:
         return {"end": FAILED, "error": f"Rollback did not take effect: still running v{running}"}
     return {"end": FAILED, "error": f"Update did not apply: expected v{run.target}, running v{running}"}
 
@@ -263,8 +272,9 @@ def _set_aside(run: UpdateRun, helper: dict[str, Any] | None) -> dict[str, str] 
 def _reverted(run: UpdateRun, running: str) -> bool:
     """An update that applied runs the version it left again: undone. Strictly
     back where it started, never merely off its target (a release's tag and
-    the version it bundles may differ), and never a rollback."""
-    if run.end != SUCCESS or run.rollback:
+    the version it bundles may differ), and never a rollback to the previous
+    release (a downgrade the cloud sent is an update)."""
+    if run.end != SUCCESS or run.restores_previous:
         return False
     if same_version(run.from_version, run.target):
         return False

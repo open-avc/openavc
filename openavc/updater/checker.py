@@ -53,9 +53,9 @@ def update_applied(running: str, from_version: str, to_version: str) -> bool:
 
     It did when the system runs the target, or no longer runs the version it
     left: a release's tag and the version it bundles have been allowed to
-    differ. A version that is empty says nothing. The history at load and
-    the pending marker at confirm both ask this, and the cloud decides it the
-    same way.
+    differ. A version that is empty says nothing. The start's settle asks
+    this (``update_run.settle``; confirming the start asks that settled end),
+    and the cloud decides it the same way.
     """
     return _runs(running, to_version) or _left(running, from_version)
 

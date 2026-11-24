@@ -204,7 +204,7 @@ class UpdateManager:
     def _begin(self, run: update_run.UpdateRun) -> None:
         """``run`` begins in this process, with a history row of its own,
         pending until it ends. The row first: a run never begins without it."""
-        self._add_history_entry(run.from_version, run.target, "pending", rollback=run.rollback)
+        self._add_history_entry(run.from_version, run.target, "pending", rollback=run.restores_previous)
         self.run_record.begin(run)
 
     def _write_end(self, run: update_run.UpdateRun | None) -> None:

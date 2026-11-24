@@ -62,7 +62,7 @@ Every update and rollback has an entry in **Update History** on the Updates view
 - **pending**, with the reason, while an update that could not be installed right now waits to be tried again.
 - **reverted**: the update was applied, then rolled back (see Automatic Rollback below).
 
-When the server restarts on the version it was already on, the Updates view shows the same reason. OpenAVC Cloud reads it too. This holds on a system running a version later than v0.41.0.
+When the server restarts on the version it was already on, the Updates view shows the same reason, and OpenAVC Cloud shows it for an update that failed or was reverted. This holds on a system running a version later than v0.41.0.
 
 ## What Gets Updated
 

@@ -2,9 +2,9 @@
 
 At the next start the updater decides how an update ended: it applied when
 the system runs the release it was sent to, or no longer runs the one it left.
-Two places make that call (the history at load, the pending marker at
-confirm) and a third corrects a row the automatic rollback undid. Each one
-compares versions, and ``0.41.0-rc1`` and ``0.41.0rc1`` are one version
+The start's settle makes that call once (``update_run.settle``, which also
+corrects a row the automatic rollback undid), and confirming the start asks
+its answer. It compares versions, and ``0.41.0-rc1`` and ``0.41.0rc1`` are one version
 (``openavc/utils/version_rule.py``); compared as text, a failed update from
 one spelling to a system reporting the other reads as applied.
 """
@@ -73,7 +73,7 @@ def test_reaching_the_target_in_another_spelling_applied():
     assert update_applied("0.41.0rc1", "", "0.41.0-rc1")
 
 
-# ── the history at load ─────────────────────────────────────────────────
+# ── the settle at start ─────────────────────────────────────────────────
 
 
 def _manager_with(tmp_path: Path, row: dict, running: str) -> UpdateManager:
@@ -123,7 +123,7 @@ def test_a_row_from_a_release_to_itself_spelled_another_way_is_left_alone(tmp_pa
     assert mgr._history[0]["status"] == "success"
 
 
-# ── the pending marker at confirm ───────────────────────────────────────
+# ── confirming the start, with the settle's answer ─────────────────────
 
 
 def test_a_marker_whose_update_did_not_move_the_system_is_not_confirmed(tmp_path, caplog):

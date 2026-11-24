@@ -340,10 +340,14 @@ def settle_before_rollback(data_dir: Path) -> None:
     version, which it reached (the update manager's start does,
     ``update_run.settle``): the version it goes back to then reads it as
     reverted, whatever release that is, even when the first start crashed
-    before it settled anything."""
-    from openavc.updater.manager import UpdateManager
+    before it settled anything. A settle that fails is logged: the rollback
+    goes on."""
+    try:
+        from openavc.updater.manager import UpdateManager
 
-    UpdateManager(data_dir=data_dir)
+        UpdateManager(data_dir=data_dir)
+    except Exception:
+        log.exception("Could not record the update before rolling it back")
 
 
 def confirm_startup(data_dir: Path, updates, went_without=()) -> None:
