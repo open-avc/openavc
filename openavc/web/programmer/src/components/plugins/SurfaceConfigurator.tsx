@@ -27,6 +27,7 @@ import { NoDeviceState } from "./surface/NoDeviceState";
 import { RoutingMatrix } from "./surface/RoutingMatrix";
 import { CustomSurface, GridSurface, PageTabs, StripSurface } from "./surface/StaticSurfaces";
 import { networkEntriesOf } from "./surface/deckHelpers";
+import { pluginNamespace } from "./pluginExtensionHelpers";
 import type { ButtonAssignment, SurfaceLayout } from "./surface/types";
 
 interface SurfaceConfiguratorProps {
@@ -48,7 +49,7 @@ export function SurfaceConfigurator({
   const [currentPage, setCurrentPage] = useState(0);
 
   const liveState = useConnectionStore((s) => s.liveState);
-  const statePrefix = `plugin.${pluginId}.`;
+  const statePrefix = pluginNamespace(pluginId);
   const deckSerials = String(liveState[`${statePrefix}deck_serials`] ?? "")
     .split(",")
     .filter(Boolean);

@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from openavc.core.event_bus import EVENTS, PLATFORM_EVENTS, PLATFORM_FEEDS, event_pattern
+from openavc.core.plugin_extension_rules import plugin_namespace
 
 REPO = Path(__file__).resolve().parent.parent
 PACKAGE = REPO / "openavc"
@@ -174,7 +175,19 @@ def _values(node: ast.AST, scopes: Scopes, depth: int = 0) -> set[str]:
         return _fstring_values(node, scopes, depth)
     if isinstance(node, ast.Name):
         return _name_values(node.id, scopes, depth)
+    if _is_namespace_call(node):
+        # A plugin's own names begin with its namespace, for any plugin.
+        return {plugin_namespace(ANY)}
     return {ANY}
+
+
+def _is_namespace_call(node: ast.AST) -> bool:
+    """``plugin_namespace(<id>)``, the one builder of a plugin's prefix."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "plugin_namespace"
+    )
 
 
 def _is_emit(node: ast.AST) -> bool:

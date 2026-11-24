@@ -8,6 +8,12 @@
 import type { PluginExtension } from "../../api/restClient";
 import { booleanWord } from "../shared/booleanWords";
 
+/** The prefix of every state key a plugin owns (`plugin_namespace` in
+ *  core/plugin_extension_rules.py, which holds this copy to it). */
+export function pluginNamespace(pluginId: string): string {
+  return `plugin.${pluginId}.`;
+}
+
 // Convert a glob-style pattern to an anchored RegExp.
 //
 // Replaces every `*` with `.*` (multi-segment, matches across `.`) and

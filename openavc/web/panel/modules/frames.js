@@ -63,7 +63,13 @@ export function grantOf(element) {
     };
 }
 
-/** A key in the namespace the frame owns outright (a plugin's `plugin.<id>.`). */
+/** The prefix of every state key a plugin owns (`plugin_namespace` in
+ *  core/plugin_extension_rules.py, which holds this copy to it). */
+export function pluginNamespace(pluginId) {
+    return `plugin.${pluginId}.`;
+}
+
+/** A key in the namespace the frame owns outright (a plugin's `pluginNamespace`). */
 function ownsKey(ownNamespace, key) {
     return !!ownNamespace && key.startsWith(ownNamespace);
 }

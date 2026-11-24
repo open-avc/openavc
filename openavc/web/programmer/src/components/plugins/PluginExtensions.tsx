@@ -32,6 +32,7 @@ import {
   contextActionPayload,
   contextActionName,
   contextActionConfirm,
+  pluginNamespace,
 } from "./pluginExtensionHelpers";
 import type { ContextActionPlace } from "./pluginExtensionHelpers";
 import { valueText } from "../shared/booleanWords";
@@ -514,7 +515,7 @@ export function PluginViewRenderer({ ext }: { ext: PluginExtension }) {
             // `||` not `??` — an empty-string state_pattern should fall
             // through to the plugin's namespace prefix instead of
             // bypassing the filter and leaking all state (A69).
-            statePattern={ext.state_pattern || `plugin.${ext.plugin_id}.*`}
+            statePattern={ext.state_pattern || `${pluginNamespace(ext.plugin_id)}*`}
             title={ext.label}
           />
         </div>

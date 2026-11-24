@@ -17,7 +17,7 @@ import { FaderControl, SliderControl } from './modules/level.js';
 import { boundedNumber, panelSetting } from './modules/project_values.js';
 import {
     FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
-    pushToFrames,
+    pluginNamespace, pushToFrames,
 } from './modules/frames.js';
 import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
 import { GaugeControl } from './modules/gauge.js';
@@ -2220,7 +2220,7 @@ class PanelApp {
             // namespace, and reaches that with no grant at all -- it is the
             // plugin's own data. Anything beyond it is granted per element,
             // exactly like a custom control's.
-            ownNamespace: `plugin.${pluginId}.`,
+            ownNamespace: pluginNamespace(pluginId),
         });
     }
 

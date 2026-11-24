@@ -55,6 +55,14 @@ openavc-plugins' ``validate.py`` asks the rule, through
 written before a field changed still starts, and its surface draws what this
 release can read of it.
 
+``plugin_namespace``: THE prefix every name a plugin owns starts with,
+``plugin.<id>.``: the state keys it may write, the events it emits, the tasks
+it runs, and so the keys an entry's state fields may name. Every builder asks
+it: ``plugin_api``, the loader, the serve, the context action route; the IDE's
+copy (``pluginExtensionHelpers.ts``, ``pluginNamespace``) and the panel's
+(``web/panel/modules/frames.js``, ``pluginNamespace``) are held to it, and no
+other place builds it, by ``tests/test_plugin_extension_rules.py``.
+
 Purity contract: standard library only, like ``plugin_declarations``, which
 imports it; openavc-plugins' ``validate.py`` runs the vendored copy
 (``scripts/vendor_platform_rules.py`` there).
@@ -75,6 +83,16 @@ EXTENSION_ID_FIELD = {
     "panel_elements": "type",
 }
 VALID_EXTENSION_TYPES = set(EXTENSION_ID_FIELD)
+
+def plugin_namespace(plugin_id: str) -> str:
+    """The prefix of every state key, event and task name the plugin owns."""
+    return f"plugin.{plugin_id}."
+
+
+def in_plugin_namespace(key: Any, plugin_id: str) -> bool:
+    """Whether a state key, event or task name is the plugin's own."""
+    return isinstance(key, str) and key.startswith(plugin_namespace(plugin_id))
+
 
 #: The page the IDE draws a context action on, by the action's ``context``.
 CONTEXT_ACTION_PAGES = {

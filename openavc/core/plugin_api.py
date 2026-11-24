@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
+from openavc.core.plugin_extension_rules import plugin_namespace
 from openavc.core.plugin_own_save import OwnSave
 from openavc.core.state_store import is_flat_primitive
 from openavc.utils.logger import get_logger
@@ -151,7 +152,7 @@ class PluginAPI:
         self._require("state_write")
 
         # Namespace enforcement — auto-prefix if bare key given
-        prefix = f"plugin.{self._plugin_id}."
+        prefix = plugin_namespace(self._plugin_id)
         if not key.startswith(prefix):
             key = f"{prefix}{key}"
 
@@ -237,7 +238,7 @@ class PluginAPI:
         Auto-prefixed: plugin.<plugin_id>.<event_name>
         """
         self._require("event_emit")
-        full_event = f"plugin.{self._plugin_id}.{event_name}"
+        full_event = f"{plugin_namespace(self._plugin_id)}{event_name}"
         await self._events.emit(full_event, payload)
 
     async def event_subscribe(self, pattern: str, callback: Callable) -> str:
@@ -611,7 +612,7 @@ class PluginAPI:
 
     def create_task(self, coro: Coroutine, name: str | None = None) -> asyncio.Task:
         """Create a managed background task. Automatically cancelled on stop."""
-        task_name = f"plugin.{self._plugin_id}.{name or 'task'}"
+        task_name = f"{plugin_namespace(self._plugin_id)}{name or 'task'}"
 
         async def _safe_wrapper():
             try:
@@ -655,7 +656,7 @@ class PluginAPI:
 
         task = asyncio.create_task(
             _periodic_loop(),
-            name=f"plugin.{self._plugin_id}.{name or task_id}",
+            name=f"{plugin_namespace(self._plugin_id)}{name or task_id}",
         )
         self._registry.track_task(task)
         self._registry.track_periodic_task(task_id)

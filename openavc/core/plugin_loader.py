@@ -43,6 +43,7 @@ from openavc.core.plugin_import import (
     purge_plugin_modules,
 )
 from openavc.core.plugin_declarations import platform_supported, plugin_id_problem
+from openavc.core.plugin_extension_rules import plugin_namespace
 from openavc.core.plugin_manifest import (
     validate_macro_actions as validate_macro_actions,
     validate_script_api as validate_script_api,
@@ -177,7 +178,7 @@ def _reap_named_tasks(plugin_id: str) -> None:
     through a stop, an uninstall and a reinstall). Nothing named for the plugin
     survives a stop.
     """
-    prefix = f"plugin.{plugin_id}."
+    prefix = plugin_namespace(plugin_id)
     for task in asyncio.all_tasks():
         name = task.get_name() or ""
         if name.startswith(prefix) and not task.done():
@@ -530,9 +531,9 @@ class PluginLoader:
                     "reason": f"Plugin '{plugin_id}' is not installed",
                 }
                 self._status[plugin_id] = "missing"
-                self._state.set(f"plugin.{plugin_id}.missing", True, source="system")
+                self._state.set(f"{plugin_namespace(plugin_id)}missing", True, source="system")
                 self._state.set(
-                    f"plugin.{plugin_id}.missing_reason",
+                    f"{plugin_namespace(plugin_id)}missing_reason",
                     f"Plugin '{plugin_id}' is not installed",
                     source="system",
                 )
@@ -583,7 +584,7 @@ class PluginLoader:
         }
         self._status[plugin_id] = "incompatible"
         self._clear_error(plugin_id)
-        self._state.set(f"plugin.{plugin_id}.incompatible", True, source="system")
+        self._state.set(f"{plugin_namespace(plugin_id)}incompatible", True, source="system")
         log.warning(
             f"Plugin '{plugin_id}' is not compatible with {self._platform_id}"
         )
@@ -591,14 +592,14 @@ class PluginLoader:
     def _clear_missing_state(self, plugin_id: str) -> None:
         """Drop missing-plugin tracking and its broadcast state keys."""
         self._missing_plugins.pop(plugin_id, None)
-        self._state.delete(f"plugin.{plugin_id}.missing")
-        self._state.delete(f"plugin.{plugin_id}.missing_reason")
+        self._state.delete(f"{plugin_namespace(plugin_id)}missing")
+        self._state.delete(f"{plugin_namespace(plugin_id)}missing_reason")
 
     def _clear_plugin_flags(self, plugin_id: str) -> None:
         """Drop incompatible/auto-disabled tracking and their state keys."""
         self._incompatible_plugins.pop(plugin_id, None)
-        self._state.delete(f"plugin.{plugin_id}.incompatible")
-        self._state.delete(f"plugin.{plugin_id}.auto_disabled")
+        self._state.delete(f"{plugin_namespace(plugin_id)}incompatible")
+        self._state.delete(f"{plugin_namespace(plugin_id)}auto_disabled")
 
     async def start_plugin(self, plugin_id: str, config: dict | None = None) -> bool:
         """Start a single plugin. Returns True on success.
@@ -809,7 +810,7 @@ class PluginLoader:
         self._auto_disabling.discard(plugin_id)
         # A normal stop clears the auto-disabled flag; auto-disable re-sets it
         # right after its own stop call, so the True it wants still survives.
-        self._state.delete(f"plugin.{plugin_id}.auto_disabled")
+        self._state.delete(f"{plugin_namespace(plugin_id)}auto_disabled")
 
     def _unregister_dispatch(self, plugin_id: str) -> None:
         """Take a plugin's macro actions and script API methods back."""
@@ -1254,7 +1255,7 @@ class PluginLoader:
                 f"callback failures",
             )
             self._state.set(
-                f"plugin.{plugin_id}.auto_disabled", True, source="system"
+                f"{plugin_namespace(plugin_id)}auto_disabled", True, source="system"
             )
             await self._events.emit(
                 "plugin.auto_disabled", {"plugin_id": plugin_id}

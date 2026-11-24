@@ -11,6 +11,7 @@ import { CollapsibleSection } from "../../driver-builder/CollapsibleSection";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
 import { BASE } from "../../../api/base";
+import { pluginNamespace } from "../pluginExtensionHelpers";
 import { AppearanceEditor } from "./AppearanceEditor";
 import { AutoPageEditor } from "./AutoPageEditor";
 import { BezelCanvas } from "./BezelCanvas";
@@ -37,7 +38,7 @@ export function DeckWorkbench({
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
-  const statePrefix = `plugin.${pluginId}.`;
+  const statePrefix = pluginNamespace(pluginId);
 
   const deckSerials = String(liveState[`${statePrefix}deck_serials`] ?? "")
     .split(",")

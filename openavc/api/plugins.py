@@ -25,6 +25,7 @@ from openavc.api.errors import api_error as _api_error
 from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, RenderRoute, admitted_category, endpoint_policy
 from openavc.core.host_policy import HostCategory
 from openavc.api.static_files import serve_static_file
+from openavc.core.plugin_extension_rules import plugin_namespace
 from openavc.core.plugin_config import (
     config_problems_added,
     config_save_applied,
@@ -498,7 +499,7 @@ async def emit_context_action(plugin_id: str, action_id: str, request: Request) 
         raise HTTPException(status_code=400, detail="Action payload must be a JSON object")
 
     # Emit as plugin event: plugin.<id>.action.<action_id>
-    event = f"plugin.{plugin_id}.action.{action_id}"
+    event = f"{plugin_namespace(plugin_id)}action.{action_id}"
     await engine.events.emit(event, payload)
 
     return {"status": "emitted", "event": event}

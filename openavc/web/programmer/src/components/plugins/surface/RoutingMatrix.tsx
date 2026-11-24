@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Trash2, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { crosspointRouted, matrixAxis, type MatrixAxisEntry } from "../routingMatrixHelpers";
+import { pluginNamespace } from "../pluginExtensionHelpers";
 import * as api from "../../../api/restClient";
 import { useAnchoredPanel } from "../../shared/AnchoredPanel";
 import type { SurfaceLayout } from "./types";
@@ -68,8 +69,8 @@ export function RoutingMatrix({
   const showPresets = layout.presets === true;
   const presets = (config?._presets as Record<string, unknown[]>) ?? {};
   const presetNames = Object.keys(presets);
-  const activePreset = String(liveState[`plugin.${pluginId}.active_preset`] ?? "");
-  const isDirty = Boolean(liveState[`plugin.${pluginId}.preset_dirty`]);
+  const activePreset = String(liveState[`${pluginNamespace(pluginId)}active_preset`] ?? "");
+  const isDirty = Boolean(liveState[`${pluginNamespace(pluginId)}preset_dirty`]);
 
   const handleRecallPreset = async (name: string) => {
     presetPanel.close();

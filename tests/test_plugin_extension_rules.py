@@ -18,7 +18,9 @@ from openavc.core.plugin_extension_rules import (
     SURFACE_ROUTE_MATCH_DEFAULT,
     SURFACE_ROUTE_MATCH_MODES,
     extensions_problem,
+    in_plugin_namespace,
     is_panel_element_name,
+    plugin_namespace,
     surface_layout_problem,
 )
 from openavc.core.plugin_extensions import collect_extensions
@@ -261,3 +263,60 @@ def test_the_ide_compares_in_the_tables_default_mode():
     source = ROUTING_HELPERS_TS.read_text(encoding="utf-8")
     found = re.findall(r'export const SURFACE_ROUTE_MATCH_DEFAULT[^=]*= "(\w+)";', source)
     assert found == [SURFACE_ROUTE_MATCH_DEFAULT]
+
+
+# --- The plugin.<id>. namespace -------------------------------------------------
+
+OPENAVC_PACKAGE = Path(__file__).resolve().parents[1] / "openavc"
+FRAMES_JS = PANEL_JS.parent / "modules" / "frames.js"
+PROGRAMMER_SRC = OPENAVC_PACKAGE / "web" / "programmer" / "src"
+
+
+def test_a_plugins_namespace():
+    assert plugin_namespace("acme_widget") == "plugin.acme_widget."
+    assert in_plugin_namespace("plugin.acme_widget.power", "acme_widget")
+    assert in_plugin_namespace("plugin.acme_widget.action.go", "acme_widget")
+    # The dot ends the id: another plugin whose id begins the same is not it.
+    assert not in_plugin_namespace("plugin.acme_widgets.power", "acme_widget")
+    assert not in_plugin_namespace("plugin.acme_widget", "acme_widget")
+    assert not in_plugin_namespace("device.proj.power", "acme_widget")
+    assert not in_plugin_namespace(None, "acme_widget")
+
+
+_JS_NAMESPACE = re.compile(
+    r"export function pluginNamespace\(pluginId[^)]*\)[^{]*\{\s*return `([^`]*)`;\s*\}"
+)
+
+
+@pytest.mark.parametrize("path", [FRAMES_JS, HELPERS_TS], ids=["panel", "ide"])
+def test_the_panel_and_the_ide_build_the_namespace_as_the_rule_does(path):
+    found = _JS_NAMESPACE.findall(path.read_text(encoding="utf-8"))
+    assert len(found) == 1, f"{path.name} declares no pluginNamespace(pluginId)"
+    assert found[0].replace("${pluginId}", "acme_widget") == plugin_namespace("acme_widget")
+
+
+def _web_sources():
+    for root, suffixes in ((PANEL_JS.parent, {".js"}), (PROGRAMMER_SRC, {".ts", ".tsx"})):
+        for path in root.rglob("*"):
+            if path.suffix in suffixes and ".test." not in path.name and path not in (FRAMES_JS, HELPERS_TS):
+                yield path
+
+
+def test_nothing_else_builds_a_plugins_namespace():
+    """Every builder asks the one rule (or the panel's or the IDE's copy of
+    it); a second copy could drift from it unseen."""
+    python_builder = re.compile(r"""f["']plugin\.\{[^}]+\}\.""")
+    web_builder = re.compile(r"plugin\.\$\{")
+    rules = OPENAVC_PACKAGE / "core" / "plugin_extension_rules.py"
+    found = [
+        f"{path.relative_to(OPENAVC_PACKAGE)}:{n}"
+        for path in OPENAVC_PACKAGE.rglob("*.py") if path != rules
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if python_builder.search(line)
+    ] + [
+        f"{path.relative_to(OPENAVC_PACKAGE)}:{n}"
+        for path in _web_sources()
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if web_builder.search(line)
+    ]
+    assert found == []

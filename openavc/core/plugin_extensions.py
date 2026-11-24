@@ -32,7 +32,11 @@ that logger's lines beside the plugin's own.
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.core.plugin_extension_rules import EXTENSION_ID_FIELD, extensions_problem
+from openavc.core.plugin_extension_rules import (
+    EXTENSION_ID_FIELD,
+    extensions_problem,
+    plugin_namespace,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.plugin_loader")
@@ -79,7 +83,7 @@ class _Source:
 
     @property
     def namespace(self) -> str:
-        return f"plugin.{self.plugin_id}."
+        return plugin_namespace(self.plugin_id)
 
 
 def collect_extensions(instances: dict[str, Any]) -> dict[str, list]:
