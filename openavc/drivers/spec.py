@@ -1011,13 +1011,6 @@ VALUE_UNKNOWN: dict = {
 # entries above carry the same names (tests/test_conversion_keys.py).
 CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset", "unknown")
 
-# The keys a command parameter converts through. A parameter is sent, never
-# read back as a reading, so it has no ``unknown``: that names a value the
-# device sends when it has no reading, and goes on the state variable a reply
-# sets (the definition walk refuses one on a parameter, and the runtime and
-# the simulator never read it there).
-PARAM_CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset")
-
 # Column types for a table config field: the scalar config types (a table
 # inside a table cell is not a thing).
 _COLUMN_TYPES: tuple[str, ...] = tuple(t for t in CONFIG_FIELD_TYPES if t != "table")
@@ -4103,12 +4096,7 @@ def platform_requirements(
             text[location] = version
 
     def walk(node: object, value: object, loc: str, depth: int = 0) -> None:
-        if not isinstance(node, dict) or depth > 40:
-            return
-        if node.get("enhancement_since"):
-            # Nothing inside an enhancement sets a floor: the driver runs
-            # correctly on a platform that ignores the field, so it does on
-            # one that acts on the field but not yet on something inside it.
+        if not _sets_floors(node, depth):
             return
         if "ref" in node:
             if node.get("since"):
@@ -4160,6 +4148,16 @@ def platform_requirements(
     ordered = sorted((loc, text[loc]) for loc in found)
     ordered.sort(key=lambda item: found[item[0]], reverse=True)
     return ordered
+
+
+def _sets_floors(node: object, depth: int) -> bool:
+    """Whether ``platform_requirements`` reads floors at ``node``: a node, not
+    too deep, and not an enhancement. Nothing inside an enhancement sets a
+    floor: the driver runs correctly on a platform that ignores the field, so
+    it does on one that acts on the field but not yet on something inside it."""
+    if not isinstance(node, dict) or depth > 40:
+        return False
+    return not node.get("enhancement_since")
 
 
 def required_platform_version(driver_def: object, tier: str = "yaml") -> str | None:

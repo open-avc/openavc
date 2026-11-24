@@ -138,7 +138,9 @@ def answered_outcome(status: Any) -> str | None:
     request and could not finish it), None below 400. A redirect is not
     followed, and counts as done as a 2xx does; anything that is not a status
     number carries no outcome."""
-    if not isinstance(status, int) or isinstance(status, bool) or status < 400:
+    if isinstance(status, bool) or not isinstance(status, int):
+        return None
+    if status < 400:
         return None
     return "rejected" if status < 500 else "failed"
 

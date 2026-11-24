@@ -177,20 +177,22 @@ def integer_id_range_error(id_format: Any, value: int) -> str | None:
     ``value`` is outside it, as a fragment each door frames (a command
     parameter refused before it is sent, a registration), or ``None``. A
     bound that is not a whole number reads as undeclared."""
-    id_format = id_format if isinstance(id_format, dict) else {}
-
-    def _bound(key: str) -> int | None:
-        raw = id_format.get(key)
-        if isinstance(raw, bool) or not isinstance(raw, int):
-            return None
-        return raw
-
-    low = _bound("min")
+    low = _whole_bound(id_format, "min")
     low = DEFAULT_MIN_CHILD_ID if low is None else low
-    high = _bound("max")
-    if low <= value and (high is None or value <= high):
+    high = _whole_bound(id_format, "max")
+    if high is None:
+        return None if value >= low else f"must be at least {low}"
+    if low <= value <= high:
         return None
-    return f"must be at least {low}" if high is None else f"must be between {low} and {high}"
+    return f"must be between {low} and {high}"
+
+
+def _whole_bound(id_format: Any, key: str) -> int | None:
+    """An ``id_format`` bound that is a whole number, else None."""
+    raw = id_format.get(key) if isinstance(id_format, dict) else None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None
+    return raw
 
 
 def child_display_name(

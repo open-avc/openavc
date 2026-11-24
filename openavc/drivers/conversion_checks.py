@@ -33,7 +33,14 @@ from collections.abc import Callable, Iterator
 from typing import Any, NamedTuple
 
 from openavc.drivers.setting_checks import python_setting_map_errors
-from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES, PARAM_CONVERSION_KEYS
+from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES
+
+# The keys a command parameter converts through. A parameter is sent, never
+# read back as a reading, so it has no ``unknown``: that names a value the
+# device sends when it has no reading, and goes on the state variable a reply
+# sets (``param_unknown_issues``; the runtime and the simulator never read it
+# on a parameter, ``compiled_protocol.param_conversion``).
+PARAM_CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset")
 
 # A conversion needs a number to work on, named as the message says it.
 _NUMERIC_WORDS = ", ".join(NUMERIC_TYPES[:-1]) + " or " + NUMERIC_TYPES[-1]
@@ -68,10 +75,23 @@ def value_conversion_issues(
         (site.place, message)
         for sites in _PLACES
         for site in sites(driver_def)
-        for message in _declaration_errors(
-            site.where, site.decl, python=python, in_action=site.in_action,
-            keys=CONVERSION_KEYS if python else site.keys,
-        )
+        for message in _declaration_errors(site, python=python)
+    ]
+
+
+def param_unknown_issues(driver_def: Any) -> list[tuple[str, str]]:
+    """Each command parameter that declares ``unknown``, by its place, with
+    THE sentence saying where it goes. Refused where a driver is written and
+    named where one loads (the definition walk); the unknown-key walk leaves
+    the key to it."""
+    if not isinstance(driver_def, dict):
+        return []
+    return [
+        (site.place, f"{site.where}: remove unknown. It marks a value the device sends "
+         "when it has no reading, so it goes on the state variable a reply sets, never "
+         "on a parameter.")
+        for site in _command_param_sites(driver_def)
+        if isinstance(site.decl, dict) and "unknown" in site.decl
     ]
 
 
@@ -151,16 +171,15 @@ def _entries(block: Any) -> list[tuple[Any, Any]]:
     return list(block.items()) if isinstance(block, dict) else []
 
 
-def _declaration_errors(
-    where: str, decl: Any, *, python: bool, in_action: bool,
-    keys: tuple[str, ...] = CONVERSION_KEYS,
-) -> list[str]:
-    """What one declaration is held to: nothing without a conversion key; on
-    the Python surface, its removal; on an action's parameter, the move to
-    the command's own; otherwise a numeric type and a scale that is not 0."""
+def _declaration_errors(site: _Site, *, python: bool) -> list[str]:
+    """What one declaration is held to: nothing without a conversion key (on
+    the Python surface every key is one, as nothing there converts); on the
+    Python surface, its removal; on an action's parameter, the move to the
+    command's own; otherwise a numeric type and a scale that is not 0."""
+    where, decl, in_action = site.where, site.decl, site.in_action
     if not isinstance(decl, dict):
         return []
-    present = [k for k in keys if k in decl]
+    present = [k for k in (CONVERSION_KEYS if python else site.keys) if k in decl]
     if not present:
         return []
     if python:
