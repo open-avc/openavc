@@ -168,7 +168,9 @@ class HttpCommands:
         if outcome is None:
             return
         log.warning(f"[{self.device_id}] {what} was answered HTTP {status}")
-        raise CommandOutcomeError(outcome)
+        error = CommandOutcomeError(outcome)
+        error.http_status = status
+        raise error
 
     async def _process_http_response(
         self, command: str, response: Any

@@ -297,3 +297,37 @@ async def test_a_driver_with_its_own_handlers_answers_http_as_its_author_wrote()
     ]})
     assert (await sim.respond_http(None, "POST", "/api/power", {}, "")).status == 200
     assert (await sim.respond_http(None, "GET", "/api/level", {}, "")).status == 404
+
+
+# ── Live Test names the status ──
+
+
+async def test_live_test_names_the_status_an_http_device_refused_with() -> None:
+    from aiohttp import web
+
+    from openavc.api.models import TestCommandRequest
+    from openavc.api.routes.driver_test import _test_via_configurable_driver
+
+    async def refuse(request: web.Request) -> web.Response:
+        return web.Response(status=404, text="no such path")
+
+    app = web.Application()
+    app.router.add_route("*", "/{tail:.*}", refuse)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        result = await _test_via_configurable_driver(TestCommandRequest(
+            host="127.0.0.1", port=str(port), transport="http",
+            definition=copy.deepcopy(BASE), command_name="power_on", timeout=2,
+        ))
+    finally:
+        await runner.cleanup()
+    assert result["success"] is False
+    assert result["error"] == (
+        "Send failed: The equipment could not accept the command. Check its current "
+        "status before trying again. (The device answered HTTP 404.)"
+    )
+    assert result["received"] == ["no such path"]

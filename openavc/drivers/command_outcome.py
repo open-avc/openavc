@@ -67,8 +67,13 @@ class CommandOutcomeError(RuntimeError):
     ``waited`` is how long the command was followed before it was reported
     unconfirmed, and says so in the sentence. ``message`` replaces the
     allowlisted sentence with the platform's or the driver's own; the code is
-    refused unless it is one of :data:`MESSAGES`.
+    refused unless it is one of :data:`MESSAGES`. ``http_status`` is the
+    status an HTTP answer carried when that is what raised it
+    (``answered_outcome``), for a door the driver's author reads (the
+    Driver Builder's Live Test); the sentence leaves it out.
     """
+
+    http_status: int | None = None
 
     def __init__(
         self, outcome: str, *, waited: float | None = None, message: str | None = None,

@@ -458,7 +458,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             note_contract_error(e)
             send_result = None
         except Exception as e:
-            error_text = f"Send failed: {e}"
+            error_text = f"Send failed: {e}{_answered(e)}"
             send_result = None
 
         # The command's read_back goes out on its own after the command; let
@@ -513,6 +513,13 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         "error": error_text,
         **heard.result_fields(),
     }
+
+
+def _answered(error: BaseException) -> str:
+    """The HTTP status a refused command was answered with, for the author
+    reading the test; nothing for any other failure."""
+    status = getattr(error, "http_status", None)
+    return f" (The device answered HTTP {status}.)" if status is not None else ""
 
 
 async def _dry_run_command(body: TestCommandRequest) -> dict:
