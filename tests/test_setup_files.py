@@ -27,7 +27,7 @@ ACTION = {
 class ImportDevice:
     DRIVER_INFO = {
         "id": "acme_import", "name": "Acme Import", "transport": "tcp",
-        "min_platform_version": "0.40.1", "commands": {}, "actions": [ACTION],
+        "min_platform_version": "0.41.0", "commands": {}, "actions": [ACTION],
     }
 
     def _set_setup_context(self, context):
@@ -120,9 +120,9 @@ def test_file_required_and_path_strings_never_reach_handler(tmp_path):
 def test_setup_files_have_their_own_compatibility_floor():
     assert python_driver_info_issues(ImportDevice.DRIVER_INFO) == []
     floors = dict(platform_requirements(ImportDevice.DRIVER_INFO))
-    assert floors["actions[0].params.project.type: file"] == "0.40.1"
+    assert floors["actions[0].params.project.type: file"] == "0.41.0"
     old = {**ImportDevice.DRIVER_INFO, "min_platform_version": "0.40.0"}
-    assert any("0.40.1" in issue for issue in python_driver_info_issues(old))
+    assert any("0.41.0" in issue for issue in python_driver_info_issues(old))
 
 
 async def test_partial_claim_is_returned_for_retry(tmp_path):

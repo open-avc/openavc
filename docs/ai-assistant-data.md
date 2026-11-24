@@ -25,7 +25,7 @@ What is never sent:
 
 One exception on 0.40.0: a stream key, password or PIN typed into a macro step or a control's
 action is saved in the project, so the assistant can read it with the macro or the page that
-holds it.
+holds it. From 0.41.0 it stays on the system too.
 
 Anything typed into the conversation is sent as typed, a password included. The assistant is
 instructed never to ask for a login in the chat.

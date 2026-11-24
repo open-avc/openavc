@@ -1582,7 +1582,7 @@
         },
         "params": {
           "type": "object",
-          "description": "Input dialog fields. For kind:\"command\", defaults to the promoted command's params. Setup actions may receive a CommandFile from a file picker from platform 0.40.1.",
+          "description": "Input dialog fields. For kind:\"command\", defaults to the promoted command's params. Setup actions may receive a CommandFile from a file picker from platform 0.41.0.",
           "additionalProperties": {
             "$ref": "#/$defs/actionParamEntry"
           }
@@ -3554,7 +3554,7 @@
             "child_id",
             "file"
           ],
-          "description": "The kind of value the parameter takes. Python drivers may also declare \"file\": a file the person picks on the device page, which the driver receives as a CommandFile. A command with a file parameter runs only from Send Command on the device page and from a Device Audit. Value \"file\" requires platform 0.40.1."
+          "description": "The kind of value the parameter takes. Python drivers may also declare \"file\": a file the person picks on the device page, which the driver receives as a CommandFile. A command with a file parameter runs only from Send Command on the device page and from a Device Audit. Value \"file\" requires platform 0.41.0."
         },
         "required": {
           "type": "boolean",

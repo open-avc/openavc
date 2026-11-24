@@ -2454,7 +2454,7 @@ DEFS = {
             },
             'params': {
                 'type': 'object',
-                'doc': 'Input dialog fields. For kind:"command", defaults to the promoted command\'s params. Setup actions may receive a CommandFile from a file picker from platform 0.40.1.',
+                'doc': 'Input dialog fields. For kind:"command", defaults to the promoted command\'s params. Setup actions may receive a CommandFile from a file picker from platform 0.41.0.',
                 'extra': {
                     'ref': 'actionParamEntry',
                 },
@@ -3838,7 +3838,7 @@ DEFS['actionParamEntry'] = {
         **DEFS['paramEntry']['fields'],
         'type': {
             **DEFS['paramEntry']['fields']['type'],
-            'since_values': {'file': '0.40.1'},
+            'since_values': {'file': '0.41.0'},
         },
     },
 }

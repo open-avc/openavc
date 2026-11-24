@@ -239,7 +239,7 @@ If your system is connected to OpenAVC Cloud, your integrator may manage updates
 - The portal counts an update as done once the system comes back on the new version. If it restarts on the version it left, or has not come back within half an hour, the portal says so, with the reason from this system's update history
 - They can set an update policy for your organization: manual, notify-only, or auto-update during a maintenance window
 
-The cloud sends an update only to a system that can install it by itself. A Docker container or a development checkout is skipped, and the portal says how it updates instead. In releases after OpenAVC 0.40.0, so is a copy started by hand rather than as its service, and a system whose product firmware carries its updates.
+The cloud sends an update only to a system that can install it by itself. A Docker container or a development checkout is skipped, and the portal says how it updates instead. From OpenAVC 0.41.0, so is a copy started by hand rather than as its service, and a system whose product firmware carries its updates.
 
 A fleet update installs only a newer version. A system already on the version it names, or on a newer one, is skipped when the update is sent, so one updated by hand while the fleet update waited for its turn is left alone. From OpenAVC 0.41.0 the system refuses such an update itself and the portal shows its answer: "Already on vX; a fleet update installs only a newer version". The exception is a rollback the cloud marks as one. An update staged from the cloud stops showing in the Updates view once the system runs that version or a newer one.
 

@@ -628,7 +628,7 @@ config_schema:
   `ids_from`) rebuilds that roster as soon as it is saved, the way **Refresh
   from Device** does. A count roster that already follows the device through
   `count_from_state` needs nothing more.
-- In releases after OpenAVC 0.40.0, a field a reply's `match` or OSC
+- From OpenAVC 0.41.0, a field a reply's `match` or OSC
   `address` names, or a `config_derived` template reads, takes effect as soon
   as it is saved too: the next reply is read with the new value, and the
   derived values are worked out again. Before that, replies were read with
@@ -1520,7 +1520,7 @@ Responses are checked in order. The first matching pattern wins.
   set: { meter_in: "$1", meter_out: "$2" }
 ```
 
-Don't throttle ordinary command replies or state-change notices: they arrive rarely, and a throttle only delays them. Works on regex, `json: true`, and OSC address rules alike, and a rule that routes to child entities gets a window per child. In releases after OpenAVC 0.40.0, a child the device takes off the roster takes its held frame with it, and a child added to the roster, or back on it, has its first frame written at once. Before platform 0.37.0 a frame inside the window was dropped rather than held, so the last value of a burst could stay unwritten until the next change.
+Don't throttle ordinary command replies or state-change notices: they arrive rarely, and a throttle only delays them. Works on regex, `json: true`, and OSC address rules alike, and a rule that routes to child entities gets a window per child. From OpenAVC 0.41.0, a child the device takes off the roster takes its held frame with it, and a child added to the roster, or back on it, has its first frame written at once. Before platform 0.37.0 a frame inside the window was dropped rather than held, so the last value of a burst could stay unwritten until the next change.
 
 **Ignoring a reading the device's current mode isn't using.** Some devices keep reporting a table that only one of their modes actually acts on. An HDMI matrix with an extracted-audio matrix is the usual case: it answers `GET OUT1 AS IN` with a stored assignment whether or not the audio ports are taking from it, so when the frame is set to keep audio with the video, that number describes nothing anyone can hear. Publish it anyway and every reader believes it — the panel names a source, an alert fires on it, a script branches on it.
 
@@ -1561,7 +1561,7 @@ responses:
 
 Each `set` value is the JSON field to read: a plain key, a dot path (`video.mode`), or a `{ key, type, map, contains }` object. Missing keys are left alone, and a key that lands on a list or object yields its length. A reply wrapped in a single-element array (`[{ ... }]` — some devices wrap every reply that way) is unwrapped to its object first; multi-element arrays are ambiguous and are not parsed. A reply that repeats a name keeps the values under every copy: two objects under one name are read as one, the later copy winning where both hold the same name, and any other repeat keeps its last value (platform 0.38.0 and earlier read only the last copy). You can add several `json: true` responses — they all run against every reply — and a body that isn't JSON falls through to your regex patterns. In the no-code Commands & Responses editor this is the "has a JSON field" response mode (one field per row).
 
-A `json: true` rule also takes the verbose `mappings:` list, one `{ state, key, type, map, contains }` entry per field; the editor writes this form when one field fills two state variables. A rule with a `mappings:` list does not read its `set:`. In releases after OpenAVC 0.40.0, an entry with no `type` takes its state variable's declared type, as a `set` value does; before, it stored the value as text.
+A `json: true` rule also takes the verbose `mappings:` list, one `{ state, key, type, map, contains }` entry per field; the editor writes this form when one field fills two state variables. A rule with a `mappings:` list does not read its `set:`. From OpenAVC 0.41.0, an entry with no `type` takes its state variable's declared type, as a `set` value does; before, it stored the value as text.
 
 **A list of flags becomes one boolean per flag with `contains`.** A device that reports its warnings as an array of names (`"warnings": ["NoLink", "LowBattery"]`) gives a trigger nothing to compare against: the length says how many, not which. `contains` stores whether the value at the key holds the given entry instead of the value itself — membership for an array, a key for an object, a substring for a string — so each flag lands in its own boolean a trigger or an alert rule can watch:
 
@@ -1626,7 +1626,7 @@ responses:
       - { send: "NAME? {child_id}\r", query_for: name }
 ```
 
-Each entry takes the forms a `polling.queries` entry takes: a query string or command name, `{ send, when, when_state, query_for }`, or `{ each_child, send }` for one query per child. In an entry sent once, `{child_id}` is the id of the child the rule's `child_set` writes, and `query_for` names one of that child type's variables; a rule that writes no child, or children of more than one type, is rejected. The queries are spaced like poll lines, and none are sent while `polling.when_state` holds the poll. A match that arrives while the rule's queries are going out, or within 2 seconds of the last one, sends nothing more (counted per child), so a device that answers the query with a line the same rule matches is asked once; the next poll reads anything that changes inside that window. In releases after OpenAVC 0.40.0, a child the device takes off the roster is not queried, even by queries already on their way, and a child added to the roster, or back on it, is read at once. The queries go out on every match, not only when a value changes: if a poll query's answer matches the rule (a poll that asks every output whether it is in service, in the example above), every poll sends them as well. When the device reports that value's changes by itself, ask it in `on_connect` instead of the poll. A query that reads back a value the rule has just written is rejected. Works on `match:` rules only. The simulator answers these queries the way it answers poll queries, so give each a `query_for`. Takes effect on platform 0.38.0 and does not raise `min_platform_version`: an older platform ignores `then_query` and still runs the driver, so keep the poll that reads these values, which is what reads them there.
+Each entry takes the forms a `polling.queries` entry takes: a query string or command name, `{ send, when, when_state, query_for }`, or `{ each_child, send }` for one query per child. In an entry sent once, `{child_id}` is the id of the child the rule's `child_set` writes, and `query_for` names one of that child type's variables; a rule that writes no child, or children of more than one type, is rejected. The queries are spaced like poll lines, and none are sent while `polling.when_state` holds the poll. A match that arrives while the rule's queries are going out, or within 2 seconds of the last one, sends nothing more (counted per child), so a device that answers the query with a line the same rule matches is asked once; the next poll reads anything that changes inside that window. From OpenAVC 0.41.0, a child the device takes off the roster is not queried, even by queries already on their way, and a child added to the roster, or back on it, is read at once. The queries go out on every match, not only when a value changes: if a poll query's answer matches the rule (a poll that asks every output whether it is in service, in the example above), every poll sends them as well. When the device reports that value's changes by itself, ask it in `on_connect` instead of the poll. A query that reads back a value the rule has just written is rejected. Works on `match:` rules only. The simulator answers these queries the way it answers poll queries, so give each a `query_for`. Takes effect on platform 0.38.0 and does not raise `min_platform_version`: an older platform ignores `then_query` and still runs the driver, so keep the poll that reads these values, which is what reads them there.
 
 Response patterns (and the `auth` prompt regexes) are validated when the driver loads: an invalid regex, or one with nested/overlapping quantifiers that can cause catastrophic backtracking against hostile device input (for example `(.+)+`, `(a|a)+`, `(foo|foobar)*`), is rejected and the driver won't load. Anchor and bound your patterns instead.
 
@@ -3215,7 +3215,7 @@ async def on_data_received(self, data: bytes) -> None:
 
 By the time `_close_session()` runs these tasks are already cancelled, so it has nothing to cancel for them. Never cancel a task you did not start: the platform's own work for the device (polling, the liveness probe, the cleanup after a drop) is not the driver's to end, and on OpenAVC 0.40.0 and earlier a driver that cancels the cleanup leaves the device offline after a drop until someone presses Reconnect.
 
-`spawn_task` arrived after OpenAVC 0.40.0, and the check that computes `min_platform_version` reads only what a driver declares, not the methods it calls. A driver that should still install on 0.40.0 or earlier asks for it, and there falls back to a set of its own that its `_close_session()` cancels:
+`spawn_task` arrived in OpenAVC 0.41.0, and the check that computes `min_platform_version` reads only what a driver declares, not the methods it calls. A driver that should still install on 0.40.0 or earlier asks for it, and there falls back to a set of its own that its `_close_session()` cancels:
 
 ```python
 def _spawn(self, coro):
@@ -3474,13 +3474,13 @@ async def run_setup_action(self, action_id, params, progress) -> dict:
 step log; `pct` is an optional 0–100. Inside a run — and only inside one — you
 can also `await self.request_config_update({...})` to persist new connection
 settings and `await self.request_reconnect()` to bring the device up on them.
-In releases after OpenAVC 0.40.0, a login among the saved settings is masked in
+From OpenAVC 0.41.0, a login among the saved settings is masked in
 the device's log from then on, and a roster your `child_entity_types` declares
 with `instances` `count_from` or `ids_from` naming one of them is rebuilt
 through your `refresh_children()`, as **Refresh from Device** does, when the
 device is connected.
 
-In releases after OpenAVC 0.40.0, a run is stopped when its device is removed,
+From OpenAVC 0.41.0, a run is stopped when its device is removed,
 when an edit or a driver update replaces the device, and when the system shuts
 down. Your handler is cancelled (`asyncio.CancelledError` arrives at whatever it
 is awaiting), the wizard says why the setup stopped, and anything the handler
@@ -3489,7 +3489,7 @@ still tries afterwards (`progress`, `request_config_update`,
 saving finishes first, so the settings it wrote are kept. Let the cancel through: close your own connection in a `finally`,
 and do not catch `CancelledError` to carry on.
 
-From OpenAVC 0.40.1, a setup action can also declare a `type: "file"`
+From OpenAVC 0.41.0, a setup action can also declare a `type: "file"`
 parameter, with `accept`, `max_bytes` and `required` just like a file command.
 The wizard uploads the selected file before starting the action. The handler
 receives a `CommandFile` in `params`, with `.name`, `.size`, `await file.read()`
@@ -3498,7 +3498,7 @@ that device, action and parameter and is deleted when the run finishes,
 fails or is cancelled. Copy only the information the device needs into its
 configuration. A password used only to decode an import should be a secret
 action parameter, not a saved device setting. Setup files require
-`min_platform_version: "0.40.1"`; ordinary file commands retain their 0.37.2 floor.
+`min_platform_version: "0.41.0"`; ordinary file commands retain their 0.37.2 floor.
 
 **Write the message for the person who pressed the button.** It is the whole
 report: what you reached, and any count they should sanity-check before they

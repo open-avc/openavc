@@ -49,6 +49,7 @@ is restored from the hosting provider's database backups, normally within one bu
   it sends hold a placeholder in place of each one. A system on an earlier version includes them
   in its copies until it is updated. One exception on 0.40.0: a stream key, password or PIN
   typed into a macro step or a control's action is saved in the project, so the copies include it.
+  From 0.41.0 it stays on the system too.
 
 ## Who at OpenAVC can reach your data
 

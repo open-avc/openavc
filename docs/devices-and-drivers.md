@@ -136,7 +136,7 @@ or an encrypted key export. Choose the file on your computer, enter any password
 the driver requests, and press **Start**. The wizard shows upload and setup
 progress, then the driver's result. OpenAVC removes the uploaded file when the
 run ends; the driver keeps the configuration or credentials needed to operate.
-Setup file imports require OpenAVC 0.40.1 or newer.
+Setup file imports require OpenAVC 0.41.0 or newer.
 
 If the page reloads while a setup runs, or OpenAVC restarts and asks you to sign
 in again, the device and its wizard open again afterwards in the same browser
