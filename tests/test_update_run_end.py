@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -303,7 +304,7 @@ def test_confirming_the_start_asks_the_end_the_start_settled(tmp_path, caplog):
     write_pending_marker(tmp_path, "0.41.0", "0.42.0")
     with patch("openavc.version.__version__", "0.42.0"), \
          caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
-        confirm_startup(tmp_path, False)
+        confirm_startup(tmp_path, SimpleNamespace(last_update_applied=False))
     assert "did not take effect" in caplog.text
     assert "confirmed successful" not in caplog.text
 

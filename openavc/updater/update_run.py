@@ -158,14 +158,17 @@ def row_end(row: dict[str, Any]) -> str:
     return _ROW_ENDS.get(row.get("status"), PENDING)
 
 
+def _row_error(row: dict[str, Any]) -> str:
+    return str(row.get("error") or "")
+
+
 def _row_run(row: dict[str, Any] | None) -> UpdateRun | None:
     """The run an earlier release's history row describes, ended as it says."""
     if row is None or not row.get("to_version"):
         return None
     return UpdateRun(
         target=str(row["to_version"]), source=UNRECORDED,
-        from_version=str(row.get("from_version") or ""), end=row_end(row),
-        error=str(row.get("error") or ""),
+        from_version=str(row.get("from_version") or ""), end=row_end(row), error=_row_error(row),
         rollback=bool(row.get("rollback")), started=str(row.get("timestamp") or ""),
     )
 
@@ -181,9 +184,9 @@ def ends_on(row: dict[str, Any] | None, run: UpdateRun | None) -> bool:
     """``row`` is ``run``'s own history row and says another end than it: the
     row the history rewrites to read the run's end. A staged target that
     waits has no row."""
-    if run is None or run.step == WAITING or not _describes(row, run):
+    if run is None or run.step == WAITING:
         return False
-    return (row_end(row), str(row.get("error") or "")) != (run.end, run.error)
+    return _describes(row, run) and (row_end(row), _row_error(row)) != (run.end, run.error)
 
 
 def _newest_row(history: list[Any]) -> dict[str, Any] | None:
@@ -247,7 +250,9 @@ def _pending_end(run: UpdateRun, running: str, helper: dict[str, Any] | None) ->
 def _set_aside(run: UpdateRun, helper: dict[str, Any] | None) -> dict[str, str] | None:
     """The end of an update the helper set aside, in its reason; pending while
     it tries again. None when it set aside no update to this run's target."""
-    if not helper or not same_version(str(helper.get("to_version") or ""), run.target):
+    if not helper:
+        return None
+    if not same_version(str(helper.get("to_version", "")), run.target):
         return None
     reason = helper.get("reason") or "the reason was not recorded"
     if helper.get("final"):
@@ -259,9 +264,11 @@ def _reverted(run: UpdateRun, running: str) -> bool:
     """An update that applied runs the version it left again: undone. Strictly
     back where it started, never merely off its target (a release's tag and
     the version it bundles may differ), and never a rollback."""
-    if run.end != SUCCESS or run.rollback or not run.from_version or not run.target:
+    if run.end != SUCCESS or run.rollback:
         return False
-    return not same_version(run.from_version, run.target) and same_version(running, run.from_version)
+    if same_version(run.from_version, run.target):
+        return False
+    return bool(run.from_version) and same_version(running, run.from_version)
 
 
 class RunRecord:

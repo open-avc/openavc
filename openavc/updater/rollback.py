@@ -335,7 +335,18 @@ class UpdateCannotUpdate(Exception):
     """The first start after an update went on without its update checks."""
 
 
-def confirm_startup(data_dir: Path, applied: bool, went_without=()) -> None:
+def settle_before_rollback(data_dir: Path) -> None:
+    """Settle the update the automatic rollback is about to undo, on the new
+    version, which it reached (the update manager's start does,
+    ``update_run.settle``): the version it goes back to then reads it as
+    reverted, whatever release that is, even when the first start crashed
+    before it settled anything."""
+    from openavc.updater.manager import UpdateManager
+
+    UpdateManager(data_dir=data_dir)
+
+
+def confirm_startup(data_dir: Path, updates, went_without=()) -> None:
     """Clear the pending-update marker once the engine is running.
 
     Called from ``main._initialize_engine`` the moment ``engine.start()``
@@ -349,9 +360,10 @@ def confirm_startup(data_dir: Path, applied: bool, went_without=()) -> None:
 
     The marker is always cleared (so the attempt counter can't trip on a later
     restart), but only an update that applied is logged as a success:
-    ``applied`` is how this start settled the last run (the update manager's
-    ``last_update_applied``, ``update_run.settle``), so a marker that survived
-    a *failed* apply (the helper aborted, version unchanged) never logs
+    ``updates`` is the update manager, whose ``last_update_applied`` is how
+    this start settled the last run (``update_run.settle``; None, as when the
+    update checks did not start, is not applied), so a marker that survived a
+    *failed* apply (the helper aborted, version unchanged) never logs
     "confirmed successful" against the target it never reached.
 
     A confirmed update is also when the update cache is trimmed to what can
@@ -371,7 +383,7 @@ def confirm_startup(data_dir: Path, applied: bool, went_without=()) -> None:
     clear_pending_marker(data_dir)
     from_version = marker.get("from_version", "")
     to_version = marker.get("to_version", "")
-    if applied:
+    if updates is not None and updates.last_update_applied:
         log.info(
             "Update confirmed successful after startup (v%s -> v%s)",
             from_version, __version__,

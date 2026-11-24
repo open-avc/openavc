@@ -155,7 +155,7 @@ export function UpdatesView() {
       closeProgress();
       actionRef.current = null;
       startVersionRef.current = "";
-      showError(sameVersionRestartSentence(useConnectionStore.getState().liveState, currentVersion));
+      showError(sameVersionRestartSentence(useConnectionStore.getState().liveState));
       api.getUpdateStatus().then(setStatus).catch(() => {});
       api.getUpdateHistory().then(setHistory).catch(() => {});
       return;

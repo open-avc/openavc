@@ -517,7 +517,7 @@ class TestConfirmStartup:
     ran."""
 
     def test_no_marker_is_a_noop(self, tmp_path):
-        confirm_startup(tmp_path, True)
+        confirm_startup(tmp_path, None)
         assert list(tmp_path.iterdir()) == []
 
     def test_reaching_the_target_clears_and_logs_success(self, tmp_path, caplog):

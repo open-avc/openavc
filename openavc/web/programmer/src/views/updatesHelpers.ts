@@ -94,14 +94,13 @@ export function healthProbeOutcome(
  * its Update History row says (`system.update_last_result*`). Without an end
  * to read, only that the version did not change.
  */
-export function sameVersionRestartSentence(
-  liveState: Record<string, unknown>,
-  version: string,
-): string {
-  const end = String(liveState["system.update_last_result"] ?? "");
+export function sameVersionRestartSentence(liveState: Record<string, unknown>): string {
+  const end = String(liveState["system.update_last_result"] ?? "success");
   const message = String(liveState["system.update_last_result_message"] ?? "");
-  if (end && end !== "success" && message) return message + ".";
-  return "The server restarted but the version did not change (still v" + version + "). Check Update History.";
+  const unsettled = end !== "success" && message !== "";
+  if (unsettled) return message + ".";
+  return "The server restarted but the version did not change (still v" +
+    String(liveState["system.version"] ?? "") + "). Check Update History.";
 }
 
 export interface HistoryEntryLike {
