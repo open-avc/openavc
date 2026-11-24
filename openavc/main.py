@@ -195,7 +195,12 @@ def _roll_back_a_failed_update(data_dir) -> None:
     if not check_rollback_needed(data_dir):
         return
     from pathlib import Path
+    from openavc.updater.manager import UpdateManager
     from openavc.updater.rollback import perform_rollback, restore_pre_update_data
+    # Settle the update on this version, which it reached, before leaving it,
+    # so the version it goes back to reads it as reverted, whatever release
+    # that is (an early crash can come before the start settles it).
+    UpdateManager(data_dir=data_dir, project_path=Path(config.PROJECT_PATH))
     # Restore user data from the pre-update backup BEFORE swapping the
     # code back: the rolled-back code may predate the running version's
     # project-format migrations, so the restore must run on this side.
@@ -385,7 +390,11 @@ async def _initialize_engine(app: FastAPI) -> None:
         with run.stage("confirming the last update"):
             if not firmware_host:
                 from openavc.updater.rollback import confirm_startup
-                confirm_startup(data_dir, went_without=run.problems)
+                manager = engine.update_manager
+                confirm_startup(
+                    data_dir, manager is not None and manager.last_update_applied,
+                    went_without=run.problems,
+                )
 
         await run.go_on(_DISCOVERY_DATA, _load_discovery_hints)
 

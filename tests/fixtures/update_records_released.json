@@ -1,6 +1,10 @@
 {
-  "written_by": ["0.40.0", "0.41.0-rc1"],
-  "about": "What the released updater leaves in the data folder for the next start to read: staged-update.json (stage_update) and the newest update-history.json row (_add_history_entry, as _load_history and _reconcile_reverted_update leave it). Each shape is copied from those releases' updater/manager.py; a release that writes another shape adds it here.",
+  "written_by": [
+    "0.40.0",
+    "0.41.0-rc1",
+    "0.41.0"
+  ],
+  "about": "What the released updater leaves in the data folder for the next start to read: staged-update.json (stage_update), the newest update-history.json row (_add_history_entry, as _load_history and _reconcile_reverted_update leave it) and, from v0.41.0, update-run.json (updater/update_run.py RunRecord), each with the row written beside it. Each shape is copied from those releases' updater/manager.py and updater/update_run.py; a release that writes another shape adds it here.",
   "staged": {
     "target_version": "0.41.0",
     "update_url": "https://github.com/open-avc/openavc/releases/download/v0.41.0/openavc-0.41.0-linux-x86_64.tar.gz",
@@ -77,6 +81,108 @@
       "error": "",
       "rollback": true,
       "timestamp": "2026-11-20T15:30:02.771904+00:00"
+    }
+  },
+  "run_files_0_41_0": {
+    "pushed_to_its_exit": {
+      "run": {
+        "format": 1,
+        "rollback": false,
+        "update_url": "https://github.com/open-avc/openavc/releases/download/v0.42.0/openavc-0.42.0-linux-x86_64.tar.gz",
+        "checksum_sha256": "3f1c9a0e5b7d2a4c6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d",
+        "error": "",
+        "target": "0.42.0",
+        "source": "pushed",
+        "step": "restarting",
+        "end": "pending",
+        "from_version": "0.41.0",
+        "started": "2026-11-25T09:00:01.120000+00:00"
+      },
+      "row": {
+        "from_version": "0.41.0",
+        "to_version": "0.42.0",
+        "status": "pending",
+        "error": "",
+        "rollback": false,
+        "timestamp": "2026-11-25T09:02:40.500000+00:00"
+      }
+    },
+    "checked_failed": {
+      "run": {
+        "format": 1,
+        "rollback": false,
+        "update_url": "",
+        "checksum_sha256": null,
+        "error": "Update failed: network blip",
+        "target": "0.42.0",
+        "source": "checked",
+        "step": "downloading",
+        "end": "failed",
+        "from_version": "0.41.0",
+        "started": "2026-11-25T09:00:01.120000+00:00"
+      },
+      "row": {
+        "from_version": "0.41.0",
+        "to_version": "0.42.0",
+        "status": "failed",
+        "error": "Update failed: network blip",
+        "rollback": false,
+        "timestamp": "2026-11-25T09:00:30.000000+00:00"
+      }
+    },
+    "rollback_to_its_exit": {
+      "run": {
+        "format": 1,
+        "rollback": true,
+        "update_url": "",
+        "checksum_sha256": null,
+        "error": "",
+        "target": "0.40.0",
+        "source": "previous",
+        "step": "restarting",
+        "end": "pending",
+        "from_version": "0.41.0",
+        "started": "2026-11-25T09:00:01.120000+00:00"
+      },
+      "row": {
+        "from_version": "0.41.0",
+        "to_version": "0.40.0",
+        "status": "success",
+        "error": "",
+        "rollback": true,
+        "timestamp": "2026-11-25T09:00:20.000000+00:00"
+      }
+    },
+    "rollback_failed": {
+      "run": {
+        "format": 1,
+        "rollback": true,
+        "update_url": "",
+        "checksum_sha256": null,
+        "error": "Rollback failed",
+        "target": "0.40.0",
+        "source": "previous",
+        "step": "applying",
+        "end": "failed",
+        "from_version": "0.41.0",
+        "started": "2026-11-25T09:00:01.120000+00:00"
+      },
+      "row": null
+    },
+    "staged_waiting": {
+      "run": {
+        "format": 1,
+        "rollback": false,
+        "update_url": "https://github.com/open-avc/openavc/releases/download/v0.42.0/openavc-0.42.0-linux-x86_64.tar.gz",
+        "checksum_sha256": "3f1c9a0e5b7d2a4c6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d",
+        "error": "",
+        "target": "0.42.0",
+        "source": "staged",
+        "step": "waiting",
+        "end": "pending",
+        "started": ""
+      },
+      "row": null
     }
   }
 }

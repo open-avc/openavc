@@ -23,6 +23,7 @@ import pytest
 
 from tests import gates
 
+from tests.helpers import settled_applied
 from openavc.updater.manager import UpdateManager
 from openavc.updater.platform import DeploymentType
 from openavc.updater.rollback import (
@@ -486,7 +487,7 @@ class TestAFailedStartupIsWhatAccumulates:
         assert check_rollback_needed(tmp_path) is False
         # The engine came up, so the update is confirmed and the marker goes
         with patch("openavc.version.__version__", "2.0.0"):
-            confirm_startup(tmp_path)
+            confirm_startup(tmp_path, settled_applied(tmp_path, "2.0.0"))
         # Whatever restarts the server after that finds nothing to trip over,
         # graceful or not
         assert check_rollback_needed(tmp_path) is False
@@ -516,14 +517,14 @@ class TestConfirmStartup:
     ran."""
 
     def test_no_marker_is_a_noop(self, tmp_path):
-        confirm_startup(tmp_path)
+        confirm_startup(tmp_path, True)
         assert list(tmp_path.iterdir()) == []
 
     def test_reaching_the_target_clears_and_logs_success(self, tmp_path, caplog):
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         with patch("openavc.version.__version__", "2.0.0"):
             with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
-                confirm_startup(tmp_path)
+                confirm_startup(tmp_path, settled_applied(tmp_path, "2.0.0"))
         assert read_pending_marker(tmp_path) is None
         assert "confirmed successful" in caplog.text
         assert "did not take effect" not in caplog.text
@@ -534,7 +535,7 @@ class TestConfirmStartup:
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         with patch("openavc.version.__version__", "2.0.1"):
             with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
-                confirm_startup(tmp_path)
+                confirm_startup(tmp_path, settled_applied(tmp_path, "2.0.1"))
         assert read_pending_marker(tmp_path) is None
         assert "confirmed successful" in caplog.text
 
@@ -545,7 +546,7 @@ class TestConfirmStartup:
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         with patch("openavc.version.__version__", "1.0.0"):
             with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
-                confirm_startup(tmp_path)
+                confirm_startup(tmp_path, settled_applied(tmp_path, "1.0.0"))
         assert read_pending_marker(tmp_path) is None
         assert "did not take effect" in caplog.text
         assert "confirmed successful" not in caplog.text
@@ -1639,7 +1640,7 @@ class TestFullLinuxUpdateLifecycle:
         marker = read_pending_marker(data_dir)
         assert marker is not None  # still present until the engine is up
         with patch("openavc.version.__version__", "2.0.0"):
-            confirm_startup(data_dir)
+            confirm_startup(data_dir, settled_applied(data_dir, "2.0.0"))
         assert read_pending_marker(data_dir) is None
 
         # --- Update complete. v2.0.0 running, no markers, clean state. ---

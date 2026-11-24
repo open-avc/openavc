@@ -88,6 +88,22 @@ export function healthProbeOutcome(
   return updateCompletionOutcome(startVersion, "", probedVersion, "", action);
 }
 
+/**
+ * What the Updates page says when the server restarted on the version it was
+ * on: how the update or rollback ended, as the server's start settled it and
+ * its Update History row says (`system.update_last_result*`). Without an end
+ * to read, only that the version did not change.
+ */
+export function sameVersionRestartSentence(
+  liveState: Record<string, unknown>,
+  version: string,
+): string {
+  const end = String(liveState["system.update_last_result"] ?? "");
+  const message = String(liveState["system.update_last_result_message"] ?? "");
+  if (end && end !== "success" && message) return message + ".";
+  return "The server restarted but the version did not change (still v" + version + "). Check Update History.";
+}
+
 export interface HistoryEntryLike {
   from_version: string;
   to_version: string;

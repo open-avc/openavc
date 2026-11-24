@@ -335,7 +335,7 @@ class UpdateCannotUpdate(Exception):
     """The first start after an update went on without its update checks."""
 
 
-def confirm_startup(data_dir: Path, went_without=()) -> None:
+def confirm_startup(data_dir: Path, applied: bool, went_without=()) -> None:
     """Clear the pending-update marker once the engine is running.
 
     Called from ``main._initialize_engine`` the moment ``engine.start()``
@@ -348,10 +348,11 @@ def confirm_startup(data_dir: Path, went_without=()) -> None:
     reverted good updates as a matter of course.
 
     The marker is always cleared (so the attempt counter can't trip on a later
-    restart), but only an update that actually changed the running version is
-    logged as a success. A marker that survived a *failed* apply (e.g. the
-    helper aborted, version unchanged) must not log "confirmed successful"
-    against the target it never reached.
+    restart), but only an update that applied is logged as a success:
+    ``applied`` is how this start settled the last run (the update manager's
+    ``last_update_applied``, ``update_run.settle``), so a marker that survived
+    a *failed* apply (the helper aborted, version unchanged) never logs
+    "confirmed successful" against the target it never reached.
 
     A confirmed update is also when the update cache is trimmed to what can
     still be used (``_trim_update_cache``).
@@ -370,9 +371,7 @@ def confirm_startup(data_dir: Path, went_without=()) -> None:
     clear_pending_marker(data_dir)
     from_version = marker.get("from_version", "")
     to_version = marker.get("to_version", "")
-    from openavc.updater.checker import update_applied
-
-    if update_applied(__version__, from_version, to_version):
+    if applied:
         log.info(
             "Update confirmed successful after startup (v%s -> v%s)",
             from_version, __version__,

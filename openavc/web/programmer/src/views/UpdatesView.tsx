@@ -7,7 +7,7 @@ import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api/restClient";
-import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
+import { deploymentLabel, updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay, sameVersionRestartSentence } from "./updatesHelpers";
 import { cardStyle, primaryBtn, secondaryBtn, sectionTitle } from "./updatesStyles";
 import { PanelSoftwareSection } from "./PanelSoftwareSection";
 import { UpdateWarnings, hasUpdateWarning } from "./UpdateWarnings";
@@ -155,10 +155,7 @@ export function UpdatesView() {
       closeProgress();
       actionRef.current = null;
       startVersionRef.current = "";
-      showError(
-        "The server restarted but the version did not change (still v" + currentVersion +
-        "). The update may not have applied. Check Update History.",
-      );
+      showError(sameVersionRestartSentence(useConnectionStore.getState().liveState, currentVersion));
       api.getUpdateStatus().then(setStatus).catch(() => {});
       api.getUpdateHistory().then(setHistory).catch(() => {});
       return;

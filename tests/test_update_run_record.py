@@ -129,6 +129,46 @@ def test_a_run_file_this_version_cannot_read_gives_way_to_the_history(tmp_path, 
     assert _run_file(tmp_path)["format"] == update_run.FORMAT
 
 
+RUNS = SHAPES["run_files_0_41_0"]
+LATER = {"from_version": "0.40.0", "to_version": "0.42.0", "status": "pending", "error": "",
+         "rollback": False, "timestamp": "2026-11-26T10:00:00+00:00"}
+
+
+@pytest.mark.parametrize(
+    ("shape", "later_rows", "running", "read"),
+    [
+        ("pushed_to_its_exit", [], "0.42.0", ("pushed", "0.41.0", "0.42.0", "success", "")),
+        ("pushed_to_its_exit", [], "0.41.0",
+         ("pushed", "0.41.0", "0.42.0", "failed", "Update did not apply: expected v0.42.0, running v0.41.0")),
+        ("checked_failed", [], "0.41.0", ("checked", "0.41.0", "0.42.0", "failed", "Update failed: network blip")),
+        # Rolled back to 0.40.0, which then updated to this version.
+        ("rollback_to_its_exit", [LATER], "0.42.0", ("unrecorded", "0.40.0", "0.42.0", "success", "")),
+        # A rollback v0.41.0 failed writes no row: the newest row is the last run.
+        ("rollback_failed", [ROWS["confirmed"]], "0.42.0", ("unrecorded", "0.41.0-rc1", "0.41.0", "success", "")),
+    ],
+)
+def test_a_run_file_the_released_v0_41_0_wrote_is_read_back(tmp_path, shape, later_rows, running, read):
+    _write(tmp_path, update_run.RUN_FILE, RUNS[shape]["run"])
+    rows = [RUNS[shape]["row"]] if RUNS[shape]["row"] else []
+    _write(tmp_path, "update-history.json", [*later_rows, *rows])
+
+    run = _start(tmp_path, running).run_record.run
+    assert (run.source, run.from_version, run.target, run.end, run.error) == read
+    assert (_history(tmp_path)[0]["status"], _run_file(tmp_path)["end"]) == (read[3], read[3])
+
+
+def test_a_staged_run_file_the_released_v0_41_0_wrote_still_waits(tmp_path):
+    waiting = RUNS["staged_waiting"]["run"]
+    _write(tmp_path, update_run.RUN_FILE, waiting)
+    _write(tmp_path, "staged-update.json", {
+        "target_version": waiting["target"], "update_url": waiting["update_url"],
+        "checksum_sha256": waiting["checksum_sha256"], "rollback": False,
+    })
+    run = _start(tmp_path, "0.41.0").run_record.run
+    assert (run.target, run.source, run.step) == ("0.42.0", "staged", "waiting")
+    assert _run_file(tmp_path) == waiting
+
+
 # ── Each way an update goes writes the run ──
 
 
@@ -311,7 +351,7 @@ async def test_staging_while_an_update_runs_leaves_the_run_in_flight(tmp_path):
 @pytest.mark.asyncio
 async def test_a_push_that_applies_drops_the_staged_target(tmp_path):
     """A staged target is gone once another update applies, a newer one too,
-    so the next start reads back the push, ended as its history row."""
+    so the next start reads back the push, settled as applied."""
     mgr = _start(tmp_path, "0.41.0")
     with patch("openavc.updater.manager.__version__", "0.41.0"):
         mgr.stage_update("0.43.0", URL, "ab" * 32)
@@ -362,7 +402,7 @@ async def test_a_rollback_that_fails_ends_failed(tmp_path):
 @pytest.mark.parametrize(
     ("running", "end"), [("0.42.0", "success"), ("0.41.0", "failed")],
 )
-async def test_the_next_start_ends_the_run_as_the_history_ends_its_row(tmp_path, running, end):
+async def test_the_next_start_settles_the_run_and_its_row_reads_that_end(tmp_path, running, end):
     await _apply_cloud(_start(tmp_path, "0.41.0"), tmp_path)
 
     run = _start(tmp_path, running).run_record.run

@@ -167,7 +167,7 @@ def test_history_marks_success_despite_tag_pyproject_skew(tmp_path):
     # Pending update FROM 0.13.0 TO release tag 0.15.0; running pyproject is 0.14.0.
     _write_history(mgr, {"from_version": "0.13.0", "to_version": "0.15.0", "status": "pending"})
     with patch("openavc.updater.manager.__version__", "0.14.0"):
-        mgr._load_history()
+        mgr._settle_at_start(None, None)
     assert mgr._history[0]["status"] == "success"  # version changed -> applied
 
 
@@ -175,7 +175,7 @@ def test_history_marks_failed_when_version_unchanged(tmp_path):
     mgr = _bare_manager(tmp_path)
     _write_history(mgr, {"from_version": "0.13.0", "to_version": "0.14.0", "status": "pending"})
     with patch("openavc.updater.manager.__version__", "0.13.0"):
-        mgr._load_history()
+        mgr._settle_at_start(None, None)
     assert mgr._history[0]["status"] == "failed"  # still on from_version -> really failed
 
 
@@ -235,6 +235,7 @@ def test_cleanup_failed_apply_clears_linux_instruction(tmp_path):
     with patch("openavc.updater.rollback.clear_pending_marker"), \
          patch("openavc.updater.manager.__version__", "0.13.0"), \
          patch.object(mgr, "_save_history"):
+        mgr._begin(update_run.UpdateRun("0.14.0", update_run.CHECKED, from_version="0.13.0"))
         mgr._cleanup_failed_apply("0.14.0", "boom")
     assert not (mgr._data_dir / "apply-update.json").exists()
     assert mgr._history[0]["status"] == "failed"

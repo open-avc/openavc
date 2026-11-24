@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from tests.helpers import settled_applied
 from openavc.updater import rollback
 from openavc.updater.rollback import (
     confirm_startup,
@@ -38,7 +39,7 @@ def _confirm(data_dir: Path, running: str, platform: str = "win32") -> None:
     with patch("openavc.version.__version__", running), \
          patch("openavc.updater.rollback.sys") as mock_sys:
         mock_sys.platform = platform
-        confirm_startup(data_dir)
+        confirm_startup(data_dir, settled_applied(data_dir, running))
 
 
 def _rollback_target(data_dir: Path, running: str) -> str:

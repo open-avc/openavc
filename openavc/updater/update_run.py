@@ -9,10 +9,10 @@ here (step ``WAITING``) and becomes the run when it goes ahead; another run
 takes its place.
 
 The manager (``updater/manager.py``) holds one ``RunRecord`` and writes it
-where it writes the staged record and the history row: a run begins as an
-update or rollback starts, takes each step the Updates page shows, and ends
-failed where a failed apply is cleaned up. A run that reached its exit is
-ended at the next start, as the update history ends its row.
+where it writes the staged record and the history row: a run begins, with a
+pending history row of its own, as an update or rollback starts, takes each
+step the Updates page shows, and ends failed where a failed apply is cleaned
+up. Any other run is settled at the next start (``settle``).
 
 **In flight** (``RunRecord.in_flight``): THE answer to whether an update or
 rollback is under way, from its start until it fails or the process ends,
@@ -25,11 +25,21 @@ from there its own exit ends the process. Each refusal names the run
 (``RunRecord.in_flight_sentence``).
 
 **Read back at start** (``RunRecord.read_at_start``): a staged record is the
-run waiting; otherwise the run file, unless a newer history row describes a
-different run, which is what an earlier release leaves (it writes the staged
-record and the history, never this file); otherwise the newest history row.
-The run's end is the newest row's when that row is this run. What is read is
-written back when it differs, so the file and the history agree from then on.
+run waiting; otherwise the run file, while the newest history row is its own
+(every run writes its row as it begins, so a newest row of another run is a
+later one, which an earlier release ran: it writes the history, never this
+file); otherwise the newest history row.
+
+**Settled at start** (``settle``): THE answer to how the last run ended,
+decided once, at the next start, from the version that runs: applied; failed,
+with the update helper's reason when it set the update aside, or because the
+run was cut off before its exit (its step short of ``RESTARTING``), or because
+the version did not move; rolled back, when an update that applied is undone
+(the automatic rollback settles the run on the new version before it leaves,
+so the version it goes back to reads it as reverted). An update the helper
+will try again stays pending, with the helper's reason. The history writes
+each run's end on the run's own row (the manager's ``_write_end``), and the
+Updates page and the cloud read it there.
 """
 
 from __future__ import annotations
@@ -41,6 +51,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from openavc.updater.checker import same_version, update_applied
 from openavc.utils.fileio import atomic_write_text
 
 log = logging.getLogger(__name__)
@@ -64,6 +75,11 @@ SOURCES = (CHECKED, STAGED, PUSHED, PREVIOUS, UNRECORDED)
 WAITING = "waiting"
 #: The step of a run that is applied and ends the process.
 RESTARTING = "restarting"
+#: The steps short of ``RESTARTING``, as a run cut off at one says it.
+_STEPS_BEFORE_THE_EXIT = {
+    "backing_up": "backing up", "downloading": "downloading",
+    "verifying": "verifying", "applying": "applying",
+}
 
 # How a run ended: the update history's words.
 PENDING = "pending"          # not ended yet
@@ -136,13 +152,20 @@ def _staged_run(staged: dict[str, Any]) -> UpdateRun:
     )
 
 
+def row_end(row: dict[str, Any]) -> str:
+    """A history row's status as a run's end (``ENDS``); a status no release
+    writes reads as pending."""
+    return _ROW_ENDS.get(row.get("status"), PENDING)
+
+
 def _row_run(row: dict[str, Any] | None) -> UpdateRun | None:
-    """The run an earlier release's history row describes."""
+    """The run an earlier release's history row describes, ended as it says."""
     if row is None or not row.get("to_version"):
         return None
     return UpdateRun(
         target=str(row["to_version"]), source=UNRECORDED,
-        from_version=str(row.get("from_version") or ""),
+        from_version=str(row.get("from_version") or ""), end=row_end(row),
+        error=str(row.get("error") or ""),
         rollback=bool(row.get("rollback")), started=str(row.get("timestamp") or ""),
     )
 
@@ -154,34 +177,13 @@ def _describes(row: dict[str, Any] | None, run: UpdateRun) -> bool:
     )
 
 
-def _moment(text: Any) -> datetime | None:
-    try:
-        moment = datetime.fromisoformat(str(text))
-    except ValueError:
-        return None
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-
-
-def _replaced_by(row: dict[str, Any] | None, run: UpdateRun) -> bool:
-    """A later run than ``run`` wrote ``row``: an earlier release ran it,
-    which writes no run file. A moment that cannot be read replaces nothing."""
-    if row is None or _describes(row, run):
+def ends_on(row: dict[str, Any] | None, run: UpdateRun | None) -> bool:
+    """``row`` is ``run``'s own history row and says another end than it: the
+    row the history rewrites to read the run's end. A staged target that
+    waits has no row."""
+    if run is None or run.step == WAITING or not _describes(row, run):
         return False
-    written, started = _moment(row.get("timestamp")), _moment(run.started)
-    return written is not None and started is not None and written > started
-
-
-def _own_row(row: dict[str, Any] | None, run: UpdateRun) -> bool:
-    """``row`` is ``run``'s own: a staged target that waits has none."""
-    return run.step != WAITING and _describes(row, run)
-
-
-def _ended_as(run: UpdateRun | None, row: dict[str, Any] | None) -> UpdateRun | None:
-    """``run`` with the end its history row says, when the row is its own."""
-    if run is None or not _own_row(row, run):
-        return run
-    end = _ROW_ENDS.get(row.get("status"), run.end)
-    return replace(run, end=end, error=str(row.get("error") or ""))
+    return (row_end(row), str(row.get("error") or "")) != (run.end, run.error)
 
 
 def _newest_row(history: list[Any]) -> dict[str, Any] | None:
@@ -190,23 +192,76 @@ def _newest_row(history: list[Any]) -> dict[str, Any] | None:
 
 
 def _still_saved(saved: UpdateRun | None, row: dict[str, Any] | None) -> bool:
-    """The run file's run is still the last run: one that went ahead, with no
-    later run's row after it."""
+    """The run file's run is still the last run: one that went ahead, whose
+    own row is the newest (or the history has none). A run the released
+    v0.41.0 failed or cut off has no row of its own, and the newest row is
+    read in its place."""
     if saved is None or saved.step == WAITING:
         return False
-    return not _replaced_by(row, saved)
+    return row is None or _describes(row, saved)
 
 
-def _read_back(
-    saved: UpdateRun | None, staged: dict[str, Any] | None, row: dict[str, Any] | None,
+def _kept_at_start(
+    last: UpdateRun | None, saved: UpdateRun | None, staged: dict[str, Any] | None,
 ) -> UpdateRun | None:
-    """Which run a start reads back (the module's docstring says why)."""
-    if staged:
-        waiting = _staged_run(staged)
-        return saved if saved is not None and saved.stages(waiting) else waiting
-    if _still_saved(saved, row):
-        return saved
-    return _row_run(row)
+    """The run a start keeps: a staged target waits (as the last run, when
+    that was a try at it, or as the run file has it waiting); otherwise the
+    last run."""
+    if not staged:
+        return last
+    waiting = _staged_run(staged)
+    return next((run for run in (last, saved) if run is not None and run.stages(waiting)), waiting)
+
+
+def settle(run: UpdateRun | None, running: str, helper: dict[str, Any] | None = None) -> UpdateRun | None:
+    """How ``run``, read back at a start, ended, on a system running
+    ``running`` (the module's docstring says how). ``helper`` is the update
+    the update helper set aside to try again (``manager.get_deferred_update``),
+    or None. A staged target that waits, and a run already ended that was not
+    undone since, come back as they are."""
+    if run is None or run.step == WAITING:
+        return run
+    if run.end == PENDING:
+        return replace(run, **_pending_end(run, running, helper))
+    if _reverted(run, running):
+        return replace(run, end=ROLLED_BACK, error=f"Update was reverted; running v{running}")
+    return run
+
+
+def _pending_end(run: UpdateRun, running: str, helper: dict[str, Any] | None) -> dict[str, str]:
+    """The end and sentence of a run that had not ended when the process did."""
+    if update_applied(running, run.from_version, run.target):
+        return {"end": SUCCESS, "error": ""}
+    set_aside = _set_aside(run, helper)
+    if set_aside:
+        return set_aside
+    kind = "Rollback" if run.source == PREVIOUS else "Update"
+    step = _STEPS_BEFORE_THE_EXIT.get(run.step)
+    if step:
+        return {"end": FAILED, "error": f"{kind} stopped while {step}: OpenAVC restarted before it was applied"}
+    if run.source == PREVIOUS:
+        return {"end": FAILED, "error": f"Rollback did not take effect: still running v{running}"}
+    return {"end": FAILED, "error": f"Update did not apply: expected v{run.target}, running v{running}"}
+
+
+def _set_aside(run: UpdateRun, helper: dict[str, Any] | None) -> dict[str, str] | None:
+    """The end of an update the helper set aside, in its reason; pending while
+    it tries again. None when it set aside no update to this run's target."""
+    if not helper or not same_version(str(helper.get("to_version") or ""), run.target):
+        return None
+    reason = helper.get("reason") or "the reason was not recorded"
+    if helper.get("final"):
+        return {"end": FAILED, "error": f"Update did not apply ({reason}); install v{run.target} again once that is fixed"}
+    return {"end": PENDING, "error": f"Update not applied yet ({reason}); it is tried again at the next start"}
+
+
+def _reverted(run: UpdateRun, running: str) -> bool:
+    """An update that applied runs the version it left again: undone. Strictly
+    back where it started, never merely off its target (a release's tag and
+    the version it bundles may differ), and never a rollback."""
+    if run.end != SUCCESS or run.rollback or not run.from_version or not run.target:
+        return False
+    return not same_version(run.from_version, run.target) and same_version(running, run.from_version)
 
 
 class RunRecord:
@@ -222,21 +277,25 @@ class RunRecord:
         self._in_flight = False
 
     def read_at_start(
-        self, staged: dict[str, Any] | None, history: list[Any],
+        self, staged: dict[str, Any] | None, history: list[Any], running: str,
+        helper: dict[str, Any] | None = None,
     ) -> UpdateRun | None:
-        """Read the run back (the module's docstring says how) and keep it.
+        """Read the last run back and settle it (the module's docstring says
+        how), keep it, and return it settled, for its history row.
 
         ``staged`` is the staged record still to install (``None`` when there
-        is none); ``history`` the update history, newest row first, with its
-        newest row already ended for this start.
+        is none), which then waits as the run kept; ``history`` the update
+        history, newest row first; ``running`` the version this start runs;
+        ``helper`` the update the helper set aside (``settle``).
         """
         saved = self._read()
         row = _newest_row(history)
-        run = _ended_as(_read_back(saved, staged, row), row)
+        last = settle(saved if _still_saved(saved, row) else _row_run(row), running, helper)
+        run = _kept_at_start(last, saved, staged)
         if run != saved:
             self._keep(run)
         self.run = run
-        return run
+        return last
 
     @property
     def in_flight(self) -> bool:

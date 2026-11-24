@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.helpers import settled_applied
 from openavc.updater import rollback
 from openavc.updater.rollback import confirm_startup, read_pending_marker, write_pending_marker
 
@@ -38,7 +39,7 @@ def _confirm(data_dir: Path, running: str = "0.41.0", platform: str = "linux") -
     with patch("openavc.version.__version__", running), \
          patch("openavc.updater.rollback.sys") as mock_sys:
         mock_sys.platform = platform
-        confirm_startup(data_dir)
+        confirm_startup(data_dir, settled_applied(data_dir, running))
 
 
 def _record(data_dir: Path, name: str, archive: str) -> None:

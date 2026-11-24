@@ -53,6 +53,17 @@ That update is not lost. It is set aside and tried again the next time the syste
 
 After the third attempt nothing tries again on its own. The Updates view keeps saying so, and installing the update again from that page starts over.
 
+### Update History
+
+Every update and rollback has an entry in **Update History** on the Updates view, from the moment it starts. The entry reads **pending** until the update or rollback ends, and is settled when the server next starts, by the version it is running:
+
+- **success**: the update's new version is running, or, for a rollback, the version it went back to.
+- **failed**, with the reason: the download or its check failed; the system restarted or lost power before the update was applied, naming the step it was on; the update could not be installed after its third attempt (see above); or a rollback did not take effect and the system is still on the version it was leaving.
+- **pending**, with the reason, while an update that could not be installed right now waits to be tried again.
+- **reverted**: the update was applied, then rolled back (see Automatic Rollback below).
+
+When the server restarts on the version it was already on, the Updates view shows the same reason. OpenAVC Cloud reads it too. This holds on a system running a version later than v0.41.0.
+
 ## What Gets Updated
 
 Only the application code is updated. Your data is kept:
@@ -174,11 +185,11 @@ If the new version fails to start twice in a row, the server automatically resto
 
 An update counts as good the moment the new version finishes starting up, so restarting or power-cycling the system after an update never undoes it. Only a version that cannot get itself running is rolled back. One part of starting up counts on its own: if the new version starts without its update checks, it could not take the update that fixes it, so that start counts as failed and the update is rolled back the same way. Any other part that fails to start, such as a plugin or a script, is named by the Programmer when it opens and leaves the update in place.
 
-When an update is rolled back, its entry in Update History changes to **reverted**. The history always describes the version you are actually on.
+When an update is rolled back, its entry in Update History changes to **reverted**. The history always describes the version you are actually on. For an update to a version later than v0.41.0, this holds even when the new version stopped too early in its first start to record anything.
 
 ### Manual Rollback
 
-From the Updates view, scroll to the **Rollback** section and click **Rollback to vX.Y.Z**. This restores the previous application code and restarts the server. Your projects, drivers, and configuration are preserved as they are — manual rollback does not rewind your project data.
+From the Updates view, scroll to the **Rollback** section and click **Rollback to vX.Y.Z**. This restores the previous application code and restarts the server. Your projects, drivers, and configuration are preserved as they are. Manual rollback does not rewind your project data.
 
 On Windows, rollback runs an installer kept in `C:\ProgramData\OpenAVC\update-cache`. Once an update has started up, that folder holds two installers: the running version's and the version the update came from, which is the one **Rollback** restores. Older installers are deleted.
 

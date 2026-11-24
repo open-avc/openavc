@@ -31,7 +31,6 @@ from openavc.updater.checker import (
     not_newer_refusal,
     same_version,
     still_an_update,
-    update_applied,
 )
 from openavc.updater import update_run
 from openavc.updater.history import note_an_older_version
@@ -66,6 +65,8 @@ class UpdateManager:
     #: ("" otherwise); set once at startup (updater/history.py).
     _older_than_last_update = ""
     _run_record: update_run.RunRecord | None = None
+    #: The last run as this start settled it (``update_run.settle``).
+    _settled: update_run.UpdateRun | None = None
 
     @property
     def run_record(self) -> update_run.RunRecord:
@@ -115,26 +116,24 @@ class UpdateManager:
                     self._set_state("system." + ("update_staged_version" if key == "staged_version" else key), value)
             return
 
-        # Load update history
-        self._load_history()
+        staged = self.get_staged_update()
+        deferred = self.get_deferred_update()
+        self._settle_at_start(staged, deferred)
         self._publish_last_result()
         self._older_than_last_update = note_an_older_version(self._history, __version__)
 
         # Re-surface a cloud-staged update across restarts. The staged record
         # persists on disk, but state keys don't — without this the IDE would
         # lose sight of a staged update the moment the server restarts.
-        staged = self.get_staged_update()
         if staged:
             self._set_state(
                 "system.update_staged_version", staged.get("target_version", "")
             )
         self._publish_install_version(staged)
-        self.run_record.read_at_start(staged, self._history)
 
         # An update update-helper.sh could not apply and set aside to retry.
         # Say so once per start: this is the only signal that a box which looks
         # entirely healthy is not running the release somebody installed on it.
-        deferred = self.get_deferred_update()
         if deferred:
             log.warning(
                 "Update to v%s has not been applied (%s); %d attempt(s) so far, "
@@ -181,75 +180,50 @@ class UpdateManager:
             try:
                 self._history = json.loads(history_path.read_text(encoding="utf-8"))
             except (ValueError, OSError) as e:  # not JSON, or not text at all
-                # Log rather than silently swallow: a corrupt history skips the
-                # pending->success/failed reconciliation below, so a real update
-                # would otherwise vanish from history with no trace.
+                # Log rather than silently swallow: a corrupt history loses
+                # every row, and the last run's end with it.
                 log.warning("Could not read update history (%s); starting fresh", e)
                 self._history = []
+        if not isinstance(self._history, list):
+            self._history = []
 
-        if self._history and self._history[0].get("status") == "pending":
-            expected = self._history[0].get("to_version", "")
-            from_version = self._history[0].get("from_version", "")
-            # Reaching `expected` is not required: it is the release tag while
-            # __version__ comes from the bundled pyproject, and a tag/pyproject
-            # skew would otherwise mark a genuinely-applied update as failed.
-            if update_applied(__version__, from_version, expected):
-                self._history[0]["status"] = "success"
-                # What actually ran, which a release tag may not name.
-                self._history[0]["running_version"] = __version__
-                if expected and not same_version(__version__, expected):
-                    self._history[0]["note"] = (
-                        f"Applied; running v{__version__} (release tag v{expected})"
-                    )
-                log.info("Confirmed update succeeded (running v%s)", __version__)
-            else:
-                self._history[0]["status"] = "failed"
-                self._history[0]["error"] = (
-                    f"Update did not apply: expected v{expected}, running v{__version__}"
-                )
-                log.warning("Update to v%s failed — still running v%s", expected, __version__)
-            self._save_history()
+    def _settle_at_start(self, staged: dict[str, Any] | None, deferred: dict[str, Any] | None) -> None:
+        """Load the history, settle how the last run ended (``update_run.settle``,
+        with the staged target and the update the helper set aside) and write
+        that end on its row."""
+        self._load_history()
+        self._settled = self.run_record.read_at_start(staged, self._history, __version__, deferred)
+        self._write_end(self._settled)
+
+    @property
+    def last_update_applied(self) -> bool:
+        """The last update or rollback, settled at this start, applied
+        (``update_run.settle``): what confirming the start asks."""
+        return self._settled is not None and self._settled.end == update_run.SUCCESS
+
+    def _begin(self, run: update_run.UpdateRun) -> None:
+        """``run`` begins in this process, with a history row of its own,
+        pending until it ends. The row first: a run never begins without it."""
+        self._add_history_entry(run.from_version, run.target, "pending", rollback=run.rollback)
+        self.run_record.begin(run)
+
+    def _write_end(self, run: update_run.UpdateRun | None) -> None:
+        """Write how ``run`` ended on its own history row, the newest (every
+        run writes its row as it begins). A row that already says it is left
+        as it is."""
+        row = self._history[0] if self._history and isinstance(self._history[0], dict) else None
+        if not update_run.ends_on(row, run):
             return
-
-        self._reconcile_reverted_update()
-
-    def _reconcile_reverted_update(self) -> None:
-        """Stop the newest history row claiming an update that was undone.
-
-        An automatic rollback restores the previous version and exits; nothing
-        goes back to correct the row for the update it just reverted, so the
-        Updates page went on reporting "v0.31.0 -> v0.32.0  success" on a panel
-        sitting at v0.31.0. That is the only part of this a customer sees, and
-        it is why "it says it updated but it didn't" was the report.
-
-        The correction is made from the end state — we are running the version
-        the update started from, so it did not stick — rather than announced by
-        the rollback path on its way out. A rollback that is initiated may
-        still not apply (a missing snapshot, an aborted helper), and a row
-        claiming a revert that never happened is the same lie pointed the other
-        way. Only the newest row is looked at: older ones describe versions
-        long gone, about which the running version says nothing.
-        """
-        if not self._history:
-            return
-        row = self._history[0]
-        if row.get("status") not in ("success", "applied") or row.get("rollback"):
-            return
-        from_version = row.get("from_version", "")
-        to_version = row.get("to_version", "")
-        # Strictly back where we started. Not merely "not on the target": a
-        # release tag and the bundled pyproject version are allowed to differ,
-        # and treating that skew as a revert would invent one on every restart.
-        if not from_version or not to_version or same_version(from_version, to_version):
-            return
-        if not same_version(__version__, from_version):
-            return
-
-        row["status"] = "rolled_back"
-        row["error"] = f"Update was reverted; running v{__version__}"
-        log.warning(
-            "Update to v%s was reverted — running v%s; correcting update history",
-            to_version, __version__,
+        if run.end == update_run.SUCCESS and update_run.row_end(row) != update_run.SUCCESS:
+            # What actually ran, which a release tag may not name.
+            row["running_version"] = __version__
+            if not same_version(__version__, run.target):
+                row["note"] = f"Applied; running v{__version__} (release tag v{run.target})"
+        row["status"], row["error"] = run.end, run.error
+        log.log(
+            logging.INFO if run.end == update_run.SUCCESS else logging.WARNING,
+            "Update history: v%s -> v%s %s%s", run.from_version, run.target, run.end,
+            f" ({run.error})" if run.error else "",
         )
         self._save_history()
 
@@ -641,7 +615,7 @@ class UpdateManager:
         if not updates_itself(self._deployment_type):
             return self_update_refusal(self._deployment_type, release.version)
 
-        self.run_record.begin(update_run.UpdateRun(release.version, update_run.CHECKED, from_version=__version__))
+        self._begin(update_run.UpdateRun(release.version, update_run.CHECKED, from_version=__version__))
         self._set_state("system.update_error", "")
 
         try:
@@ -699,7 +673,7 @@ class UpdateManager:
         from urllib.parse import urlparse
         parsed = urlparse(update_url)
 
-        self.run_record.begin(update_run.UpdateRun(
+        self._begin(update_run.UpdateRun(
             target_version, update_run.PUSHED, from_version=__version__, rollback=rollback,
             update_url=update_url, checksum_sha256=checksum_sha256,
         ))
@@ -773,9 +747,9 @@ class UpdateManager:
 
     async def _apply_artifact(self, artifact_path: Path, to_version: str, source: str) -> None:
         """An update's last steps, its file downloaded and verified: apply it
-        the way this install type does, record it "pending" (confirmed at the
-        next start, when the new version runs), drop a staged target (this
-        update installs it, or replaces it), and end the process."""
+        the way this install type does, drop a staged target (this update
+        installs it, or replaces it), and end the process. Its history row
+        stays pending until the next start settles it."""
         self._step("applying")
         if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
             await asyncio.to_thread(self._apply_windows, artifact_path, to_version)
@@ -784,7 +758,6 @@ class UpdateManager:
                                        DeploymentType.ANDROID_APPLIANCE):
             self._apply_linux(artifact_path, to_version)
 
-        self._add_history_entry(__version__, to_version, "pending")
         self.clear_staged_update()
         self._step("restarting")
         log.info("Update to v%s applied (%s), restarting...", to_version, source)
@@ -1046,8 +1019,8 @@ class UpdateManager:
 
         Clears the pending-update marker (so a later restart doesn't trigger a
         false rollback against a stale from_version) and the Linux apply
-        instruction (so the root helper can't re-consume it), records the
-        failure in history, and surfaces the error in state.
+        instruction (so the root helper can't re-consume it), ends the run's
+        history row failed, and surfaces the error in state.
         """
         from openavc.updater.rollback import clear_pending_marker
         # First, so the run is never left in flight by a step below.
@@ -1059,7 +1032,7 @@ class UpdateManager:
         self._clear_linux_apply_instruction()
         self._set_state("system.update_status", "error")
         self._set_state("system.update_error", error_msg)
-        self._add_history_entry(__version__, to_version, "failed", error_msg)
+        self._write_end(self.run_record.run)
 
     def _end_process(self, source: str, last=None) -> None:
         """End the process for the update or rollback just applied, through
@@ -1115,7 +1088,7 @@ class UpdateManager:
         # Resolve the actual target version up front so history can record a
         # real version instead of a placeholder.
         target_version = rollback_target_version(APP_DIR)
-        self.run_record.begin(update_run.UpdateRun(
+        self._begin(update_run.UpdateRun(
             target_version, update_run.PREVIOUS, from_version=__version__, rollback=True,
         ))
         try:
@@ -1165,9 +1138,6 @@ class UpdateManager:
             self._rollback_failed("Rollback failed")
             return {"success": False, "error": "Rollback failed. Check server logs."}
 
-        self._add_history_entry(
-            __version__, target_version, "success", rollback=True,
-        )
         self._step("restarting")
         # On Windows the installer perform_rollback scheduled starts the
         # earlier version; elsewhere the helper applies the rollback as
@@ -1179,6 +1149,7 @@ class UpdateManager:
         self.run_record.fail(error)
         self._set_state("system.update_status", "error")
         self._set_state("system.update_error", error)
+        self._write_end(self.run_record.run)
 
     def get_status(self) -> dict[str, Any]:
         """Get current update status."""

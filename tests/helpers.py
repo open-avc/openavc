@@ -222,3 +222,18 @@ def refusing_tcp_port() -> Iterator[int]:
     finally:
         holder.close()
         listener.close()
+
+
+def settled_applied(data_dir, running: str) -> bool:
+    """Whether the start settles the update the pending-update marker names
+    as applied, on a system running ``running`` (``update_run.settle``, which
+    the update manager asks at start and hands to ``confirm_startup``)."""
+    from openavc.updater import update_run
+    from openavc.updater.rollback import read_pending_marker
+
+    marker = read_pending_marker(data_dir) or {}
+    run = update_run.UpdateRun(
+        str(marker.get("to_version", "")), update_run.CHECKED, update_run.RESTARTING,
+        from_version=str(marker.get("from_version", "")),
+    )
+    return update_run.settle(run, running).end == update_run.SUCCESS

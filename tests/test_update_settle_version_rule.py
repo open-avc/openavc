@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.helpers import settled_applied
 from openavc.updater.checker import same_version, update_applied
 from openavc.updater.manager import UpdateManager
 from openavc.updater.rollback import confirm_startup, read_pending_marker, write_pending_marker
@@ -129,7 +130,7 @@ def test_a_marker_whose_update_did_not_move_the_system_is_not_confirmed(tmp_path
     write_pending_marker(tmp_path, "0.41.0-rc1", "0.41.0")
     with patch("openavc.version.__version__", "0.41.0rc1"):
         with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
-            confirm_startup(tmp_path)
+            confirm_startup(tmp_path, settled_applied(tmp_path, "0.41.0rc1"))
     assert read_pending_marker(tmp_path) is None
     assert "did not take effect" in caplog.text
     assert "confirmed successful" not in caplog.text
@@ -139,5 +140,5 @@ def test_a_marker_whose_target_runs_in_another_spelling_is_confirmed(tmp_path, c
     write_pending_marker(tmp_path, "", "0.41.0-rc1")
     with patch("openavc.version.__version__", "0.41.0rc1"):
         with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
-            confirm_startup(tmp_path)
+            confirm_startup(tmp_path, settled_applied(tmp_path, "0.41.0rc1"))
     assert "confirmed successful" in caplog.text
