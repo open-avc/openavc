@@ -32,7 +32,9 @@ element's two names, its plugin id and its type (letters, digits, underscore
 and hyphen). The panel loads ``/api/plugins/<id>/panel/<type>.html`` and draws
 its unconfigured placeholder when either name holds anything else. The page
 review (``ui/page_references.py``) asks this rule to name such an element; the
-panel's copy (``web/panel/panel.js``, ``renderPluginElement``) is held to it by
+panel's copy (``web/panel/panel.js``, ``renderPluginElement``) and the UI
+Builder's (``pluginExtensionHelpers.ts``, ``drawablePanelElements``: its
+palette offers no element the panel would not draw) are held to it by
 ``tests/test_plugin_extension_rules.py``. Every plugin id passes it
 (``plugin_declarations.is_plugin_id`` is narrower). The start does not ask it
 of a type: a plugin that declares a type the panel cannot draw starts, and the

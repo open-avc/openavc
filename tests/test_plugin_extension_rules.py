@@ -456,3 +456,26 @@ def test_the_ide_draws_the_renderers_the_table_names():
     panels = re.findall(r'panel\.renderer === "(\w+)"', _slot(source, "export function DevicePanelSlot("))
     assert sorted(views) == sorted(EXTENSION_RENDERERS["views"])
     assert sorted(panels) == sorted(EXTENSION_RENDERERS["device_panels"])
+
+
+def _same_characters(js_class: str) -> list[str]:
+    rule = PANEL_ELEMENT_NAME_RE.pattern
+    assert rule.endswith("]+")
+    js, ours = re.compile(js_class), re.compile(rule[:-1])
+    return [hex(code) for code in range(0x10000)
+            if bool(js.fullmatch(chr(code))) != bool(ours.fullmatch(chr(code)))]
+
+
+def test_the_palette_offers_only_names_the_panel_draws():
+    """The UI Builder's palette leaves out a plugin element the panel would
+    only ever draw as a placeholder: its copy of the rule takes the same
+    characters, and it tests both names."""
+    source = HELPERS_TS.read_text(encoding="utf-8")
+    literals = re.findall(r"const PANEL_ELEMENT_NAME = /\^(\[[^\]]+\])\+\$/;", source)
+    assert len(literals) == 1, "pluginExtensionHelpers.ts declares no PANEL_ELEMENT_NAME /^[...]+$/"
+    assert _same_characters(literals[0]) == []
+    body = source[source.index("export function drawablePanelElements("):]
+    body = body[:body.index("\n}\n")]
+    assert "PANEL_ELEMENT_NAME.test(e.plugin_id)" in body and "PANEL_ELEMENT_NAME.test(e.type" in body
+    palette = (PROGRAMMER_SRC / "components" / "ui-builder" / "ElementPalette.tsx").read_text(encoding="utf-8")
+    assert "drawablePanelElements(" in palette

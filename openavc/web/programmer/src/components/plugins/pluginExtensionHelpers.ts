@@ -14,6 +14,18 @@ export function pluginNamespace(pluginId: string): string {
   return `plugin.${pluginId}.`;
 }
 
+/** What the panel accepts in a plugin element's plugin id and type
+ *  (`PANEL_ELEMENT_NAME_RE` in core/plugin_extension_rules.py, which holds
+ *  this copy to it); it draws a placeholder for any other name. */
+const PANEL_ELEMENT_NAME = /^[A-Za-z0-9_-]+$/;
+
+/** The plugin elements the panel draws, in the order they are served. */
+export function drawablePanelElements(elements: PluginExtension[]): PluginExtension[] {
+  return elements.filter(
+    (e) => PANEL_ELEMENT_NAME.test(e.plugin_id) && PANEL_ELEMENT_NAME.test(e.type ?? ""),
+  );
+}
+
 // Convert a glob-style pattern to an anchored RegExp.
 //
 // Replaces every `*` with `.*` (multi-segment, matches across `.`) and
