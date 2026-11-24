@@ -90,8 +90,7 @@ def boot(monkeypatch, tmp_path):
         stopping=False,
         events=SimpleNamespace(on=Mock(), emit=AsyncMock()),
         get_status=Mock(return_value={"local_ip": ""}),
-        start_failed=Mock(),
-        update_manager=SimpleNamespace(last_update_applied=True, restart_refusal=lambda: ""),
+        start_failed=Mock(), update_manager=SimpleNamespace(last_update_applied=True, restart_refusal=str),
     )
     monkeypatch.setattr(main, "engine", engine)
     monkeypatch.setattr(
