@@ -928,7 +928,6 @@ def test_a_listed_plugin_and_its_details(loader):
         "has_config_schema": True, "has_surface_layout": True, "has_extensions": True,
         "has_macro_actions": True, "has_script_api": True,
         "config_schema": {"a": {"type": "string"}},
-        "extensions": {"views": [{"id": "v"}]},
         "surface_layout": {"rows": 1},
         "macro_actions": {"acme_widget.go": {"label": "Go", "params": []}},
         "script_api": {"go": {"doc": "Goes."}},

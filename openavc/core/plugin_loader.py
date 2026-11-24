@@ -211,10 +211,13 @@ def _without_handlers(declared: dict) -> dict:
 
 
 # The class-level declarations get_plugin_info hands on, in order, when the
-# class has them: (result key, attribute, how it is shown).
+# class has them: (result key, attribute, how it is shown). EXTENSIONS is not
+# among them: its one exit is the served list (core/plugin_extensions.py),
+# which holds each entry to the rule and the plugin's namespace. A
+# SURFACE_LAYOUT is handed on as written, as the start accepts it: the IDE
+# draws what it can read of one, and validate.py refuses one it cannot.
 _DESCRIBED = (
     ("config_schema", "CONFIG_SCHEMA", _as_written),
-    ("extensions", "EXTENSIONS", _as_written),
     ("surface_layout", "SURFACE_LAYOUT", _as_written),
     ("macro_actions", "MACRO_ACTIONS", _without_handlers),
     ("script_api", "SCRIPT_API", _without_handlers),

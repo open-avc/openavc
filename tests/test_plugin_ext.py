@@ -1190,3 +1190,22 @@ class TestMediaPathsReachTheRateLimiter:
         with _pytest.raises(ValueError):
             mount_plugin_router(app, "demo_video", router, media_paths=["NOTAVERB /x"])
 
+
+
+def test_a_plugins_extensions_reach_a_reader_by_one_exit():
+    """The extensions endpoint serves what the rule accepts and holds each
+    state field to the plugin's namespace; the plugin's details do not hand
+    the declaration on as written beside it."""
+    loader = _make_loader()
+
+    class LeakyPlugin:
+        PLUGIN_INFO = _info("acme_leak")
+        EXTENSIONS = {"views": [{"id": "v", "label": "V", "renderer": "state_table",
+                                 "state_pattern": "device.*"}]}
+
+    register_plugin_class(LeakyPlugin)
+    loader._instances = {"acme_leak": LeakyPlugin()}
+    assert loader.get_all_extensions()["views"][0]["state_pattern"] == "plugin.acme_leak.*"
+    info = loader.get_plugin_info("acme_leak")
+    assert "extensions" not in info
+    assert info["has_extensions"] is True
