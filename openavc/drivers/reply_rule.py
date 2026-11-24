@@ -10,7 +10,8 @@ takes as written.
   (text) rule.
 * ``mappings``: the flat mappings it writes, with both of a rule's forms read
   once. A regex rule keeps its ``mappings:`` entries, then its ``set:``
-  shorthand's items, each typed by its state variable unless it says
+  shorthand's items, a variable named in both taking the ``mappings:``
+  entry's reading, each typed by its state variable unless it says
   otherwise, with each capture reference read as a number (``capture_ref``).
   A json rule reads its ``mappings:`` entries, or its ``set:`` items when it
   has none, as value specs (``json_value_spec``). An OSC rule's
@@ -217,11 +218,19 @@ def _regex_rule_mappings(
     A rule may carry both ``mappings:`` (the detailed form, the only one that
     takes a value map) and the ``set:`` shorthand, and routinely needs to: the
     moment one captured field needs a map, the author writes ``mappings:`` for
-    it and ``set:`` for the plain ones. Both are kept, ``mappings:`` first."""
-    read = [_listed_mapping(mp, state_vars) for mp in listed_mappings(rule)]
+    it and ``set:`` for the plain ones. Both are kept, ``mappings:`` first.
+    A state variable a ``mappings:`` entry names is that entry's, as the
+    driver guide says, so a ``set:`` item for it is left out, even when the
+    entry names no capture."""
+    listed = listed_mappings(rule)
+    named = {mp["state"] for mp in listed if _names_a_state(mp)}
+    read = [_listed_mapping(mp, state_vars) for mp in listed]
     set_map = rule.get("set")
     if isinstance(set_map, dict):
-        read += [_set_mapping(name, value, state_vars) for name, value in set_map.items()]
+        read += [
+            _set_mapping(name, value, state_vars)
+            for name, value in set_map.items() if name not in named
+        ]
     mappings = tuple(m for m in read if not isinstance(m, SkippedMapping))
     return mappings, tuple(m for m in read if isinstance(m, SkippedMapping))
 

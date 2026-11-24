@@ -595,7 +595,7 @@ def test_regex_rule_mappings_and_set_merge_in_order(caplog):
     rule = {
         "match": "V(\\d+) P(\\w+) U{unit}",
         "mappings": [shared_mapping, {"group": 2, "state": "power", "type": "string"}, "odd", {"group": 3}],
-        "set": {"power": "$2", "label": "fixed", "volume": "$x", "missing": "$0"},
+        "set": {"power": "$2", "label": "fixed", "volume": "$x", "missing": "$0", "zone": "$y"},
         "then_query": ["Q1", "Q2"],
         "only_when": {},
         "after_json": True,
@@ -604,12 +604,13 @@ def test_regex_rule_mappings_and_set_merge_in_order(caplog):
         compiled = _compile([rule])
     pattern, mappings, children, throttle, condition, follow = compiled.responses[0]
     assert pattern.pattern == "V(\\d+) P(\\w+) U7"
+    # power and volume are named by a mappings: entry, so their set: items are
+    # left out: the mappings: entry wins.
     assert mappings == [
         {"group": 1, "state": "volume", "type": "integer", "convert": {"scale": 0.5}},
         {"group": 2, "state": "power", "type": "string"},
         "odd",
         {"group": 3},
-        {"group": 2, "state": "power", "type": "boolean"},
         {"group": 0, "state": "label", "value": "fixed", "type": "string"},
         {"group": 0, "state": "missing", "type": "string"},
     ]
@@ -619,7 +620,7 @@ def test_regex_rule_mappings_and_set_merge_in_order(caplog):
     assert compiled.after_json_responses == [compiled.responses[0]]
     assert compiled.after_json_responses[0] is compiled.responses[0]
     assert caplog.messages == [
-        "[acme1] set-shorthand reference '$x' for state 'volume' is not a numeric "
+        "[acme1] set-shorthand reference '$y' for state 'zone' is not a numeric "
         "group ($1, $2, ...); skipping this mapping"
     ]
 

@@ -188,3 +188,57 @@ def test_a_changed_setting_compiles_again_from_the_same_model():
     drv._config_changed({"unit"})
     assert drv._compiled_responses[0][0].pattern == "P2(\\d)"
     assert drv._reply_model() is model
+
+
+# ── a state variable named in both forms ──
+# The driver guide says the mappings: entry wins. The driver used to apply the
+# set: item after it, so the set: item's value was the one left in state.
+
+_BOTH = {
+    "id": "acme_widget",
+    "name": "Acme Widget",
+    "transport": "tcp",
+    "commands": {},
+    "state_variables": {"mode": {"type": "string"}, "level": {"type": "integer"}},
+    "responses": [
+        {
+            "match": "M(\\d) L(\\d+)",
+            "mappings": [{"group": 1, "state": "mode", "map": {"1": "High", "0": "Low"}}],
+            "set": {"mode": "$1", "level": "$2"},
+        }
+    ],
+}
+
+
+async def test_a_state_named_in_both_forms_takes_the_mappings_entry():
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    drv = create_configurable_driver_class(_BOTH)("acme1", {}, state, events)
+    await drv.on_data_received(b"M1 L42")
+    assert state.get("device.acme1.mode") == "High"
+    assert state.get("device.acme1.level") == 42
+
+
+def test_the_set_item_for_a_state_the_mappings_name_is_left_out():
+    rule = _BOTH["responses"][0]
+    assert read_reply_rule(rule, _BOTH["state_variables"]).mappings == (
+        {"group": 1, "state": "mode", "map": {"1": "High", "0": "Low"}, "type": "string"},
+        {"group": 2, "state": "level", "type": "integer"},
+    )
+
+
+def test_the_set_item_is_left_out_even_when_the_mappings_entry_names_no_capture():
+    rule = {"match": "M(\\d)", "mappings": [{"group": "$x", "state": "mode"}], "set": {"mode": "$1"}}
+    read = read_reply_rule(rule, _STATE_VARS)
+    assert read.mappings == ()
+    assert [skipped.state for skipped in read.skipped] == ["mode"]
+
+
+def test_a_skipped_mapping_is_said_at_each_compile_naming_the_device(caplog):
+    model = read_driver({"responses": [{"match": "P(\\d)", "set": {"power": "$x"}}]})
+    with caplog.at_level("WARNING"):
+        compile_driver(model, {}, device_id="acme1")
+    assert caplog.messages == [
+        "[acme1] set-shorthand reference '$x' for state 'power' is not a numeric group "
+        "($1, $2, ...); skipping this mapping"
+    ]
