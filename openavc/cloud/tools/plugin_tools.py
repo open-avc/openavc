@@ -20,6 +20,7 @@ import re
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_change, apply_tool_edit
+from openavc.core.plugin_extension_rules import plugin_namespace
 from openavc.utils.log_redaction import (
     keep_masked_secrets,
     mask_secrets_by_name,
@@ -323,12 +324,13 @@ class PluginToolsMixin:
             schema = getattr(plugin_class, "CONFIG_SCHEMA", {}) or {}
             setup_fields = get_plugin_setup_fields(schema)
 
-            # If plugin has a surface layout, include it and the standard
-            # surface button config format so the AI knows how to write it.
+            # A surface layout, and how that kind of surface is written: a
+            # surface with buttons by its config's buttons array, a routing
+            # matrix by its plugin's actions.
             surface_layout = getattr(plugin_class, "SURFACE_LAYOUT", None)
             if surface_layout:
                 result["surface_layout"] = surface_layout
-                result["buttons_format"] = SURFACE_BUTTONS_FORMAT
+                result.update(surface_format(surface_layout, plugin_id))
 
             # Plugin-specific AI guidance (optional, declared by plugin author)
             ai_guide = getattr(plugin_class, "AI_GUIDE", None)
@@ -448,6 +450,33 @@ class PluginToolsMixin:
 # sent by get_plugin_config with any plugin that declares a SURFACE_LAYOUT. The
 # Surface Configurator writes this format; the platform documents it once so
 # the AI can configure any surface plugin without plugin-specific hardcoding.
+#: The SURFACE_LAYOUT types whose surface is set by the config's buttons array.
+BUTTON_LAYOUTS = ("grid", "strip", "custom")
+
+MATRIX_SURFACE_FORMAT = """\
+A matrix surface is the plugin's routing grid. It is drawn from live state, not \
+from the config, and has no buttons array: its rows are the destinations \
+rows_state_pattern matches, its columns the sources columns_state_pattern matches, \
+and route_state_pattern (with {{row}}) names the state key whose value is the source \
+routed to each row. Clicking a crosspoint emits {namespace}action.route, or \
+{namespace}action.unroute when it is routed, with the payload \
+{{"row": <the row's token>, "col": <the column's token>}}, each token the * part \
+of its key. To route from a macro or script, emit that event.
+"""
+
+
+def surface_format(layout: Any, plugin_id: str) -> dict[str, str]:
+    """How a surface of this layout's type is written, for the assistant:
+    the button format for one with buttons, the routing for a matrix,
+    nothing for a type this release does not draw."""
+    layout_type = layout.get("type") if isinstance(layout, dict) else None
+    if layout_type in BUTTON_LAYOUTS:
+        return {"buttons_format": SURFACE_BUTTONS_FORMAT}
+    if layout_type == "matrix":
+        return {"surface_format": MATRIX_SURFACE_FORMAT.format(namespace=plugin_namespace(plugin_id))}
+    return {}
+
+
 SURFACE_BUTTONS_FORMAT = """\
 Control surface buttons are stored in a top-level "buttons" array (NOT under "pages").
 Each entry in the array represents one physical button:

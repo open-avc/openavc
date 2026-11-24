@@ -3053,3 +3053,66 @@ async def test_enable_plugin_answers_with_the_config_masked(handler, mock_agent,
     # The plugin started with the real config.
     started = mock_engine.plugin_loader.start_plugin.call_args[0][1]
     assert started["password"] == "hunter2-broker"
+
+
+def _surface_plugin(plugin_id, layout):
+    from openavc.core.plugin_loader import register_plugin_class
+
+    cls = type("AcmeSurface", (), {
+        "PLUGIN_INFO": {"id": plugin_id, "name": "Acme Surface", "version": "1.0.0"},
+        "CONFIG_SCHEMA": {}, "SURFACE_LAYOUT": layout,
+    })
+    register_plugin_class(cls)
+
+
+async def _surface_answer(handler, mock_engine, plugin_id):
+    from openavc.core.project_loader import PluginConfig
+
+    mock_engine.project.plugins = {plugin_id: PluginConfig(enabled=True, config={})}
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        return await handler._get_plugin_config({"plugin_id": plugin_id})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("layout", [
+    {"type": "grid", "rows": 3, "columns": 5},
+    {"type": "strip", "columns": 8, "controls": [{"index": 0, "type": "fader"}]},
+    {"type": "custom", "width_px": 600, "height_px": 200, "controls": []},
+], ids=["grid", "strip", "custom"])
+async def test_a_surface_with_buttons_is_handed_the_button_format(handler, mock_engine, layout):
+    from openavc.cloud.tools.plugin_tools import SURFACE_BUTTONS_FORMAT
+
+    _surface_plugin("acme_pad", layout)
+    result = await _surface_answer(handler, mock_engine, "acme_pad")
+    assert result["surface_layout"] == layout
+    assert result["buttons_format"] == SURFACE_BUTTONS_FORMAT
+    assert "surface_format" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_routing_matrix_is_handed_how_it_routes_not_the_button_format(handler, mock_engine):
+    """A matrix is drawn from live state and routes by its plugin's actions;
+    it has no buttons array to write."""
+    layout = {
+        "type": "matrix", "rows_state_pattern": "plugin.acme_router.rx.*.name",
+        "columns_state_pattern": "plugin.acme_router.tx.*.name",
+        "route_state_pattern": "plugin.acme_router.route.{row}",
+    }
+    _surface_plugin("acme_router", layout)
+    result = await _surface_answer(handler, mock_engine, "acme_router")
+    assert result["surface_layout"] == layout
+    assert "buttons_format" not in result
+    words = result["surface_format"]
+    assert "plugin.acme_router.action.route" in words
+    assert "plugin.acme_router.action.unroute" in words
+    assert '"row"' in words and '"col"' in words
+    assert "no buttons" in words
+
+
+def test_every_layout_type_has_a_format_for_the_assistant():
+    from openavc.cloud.tools.plugin_tools import surface_format
+    from openavc.core.plugin_extension_rules import SURFACE_LAYOUT_FIELDS
+
+    for layout_type in SURFACE_LAYOUT_FIELDS:
+        assert surface_format({"type": layout_type}, "acme_pad"), layout_type
+    assert surface_format({"type": "dial"}, "acme_pad") == {}
