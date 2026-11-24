@@ -55,6 +55,11 @@ row either: a ``SURFACE_LAYOUT`` is what the IDE draws, and a plugin whose
 layout it cannot draw still starts. ``validate.py`` asks it of the layout
 ``plugin_source.read_attribute`` reads.
 
+``extension_entries_problem`` (``plugin_extension_rules``') is not a row for
+the same reason: an entry the IDE or the panel draws otherwise than written
+(a field its type does not have, a state field outside the plugin's
+namespace) still starts. ``validate.py`` asks it of ``EXTENSIONS``.
+
 Purity contract: standard library only (with ``plugin_handler_rules``,
 ``plugin_extension_rules`` and ``plugin_source``), so openavc-plugins can carry these modules and run the
 rules in its CI without installing OpenAVC
@@ -72,6 +77,7 @@ from typing import Any, Callable, Iterator
 from openavc.core.plugin_extension_rules import (
     EXTENSION_ID_FIELD as EXTENSION_ID_FIELD,
     VALID_EXTENSION_TYPES as VALID_EXTENSION_TYPES,
+    extension_entries_problem as extension_entries_problem,
     extensions_problem as extensions_problem,
     surface_layout_problem as surface_layout_problem,
 )

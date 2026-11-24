@@ -158,8 +158,6 @@ export interface PluginExtension {
   plugin_name: string;
   renderer?: string;
   state_pattern?: string;
-  schema_key?: string;
-  config_scope?: string;
   match?: Record<string, unknown>;
   metrics?: { key: string; label: string; format: string }[];
   context?: string;
@@ -168,7 +166,6 @@ export interface PluginExtension {
   confirm?: string;
   // panel_elements specific
   type?: string;
-  renderer_url?: string;
   /** How big the element is when dropped, as a percentage of the page. */
   default_size?: { w: number; h: number };
   config_schema?: Array<{

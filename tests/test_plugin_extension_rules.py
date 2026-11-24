@@ -12,11 +12,14 @@ import pytest
 from openavc.core import plugin_declarations
 from openavc.core.plugin_extension_rules import (
     CONTEXT_ACTION_PAGES,
+    EXTENSION_FIELDS,
     EXTENSION_ID_FIELD,
+    EXTENSION_RENDERERS,
     PANEL_ELEMENT_NAME_RE,
     SURFACE_LAYOUT_FIELDS,
     SURFACE_ROUTE_MATCH_DEFAULT,
     SURFACE_ROUTE_MATCH_MODES,
+    extension_entries_problem,
     extensions_problem,
     in_plugin_namespace,
     is_panel_element_name,
@@ -320,3 +323,136 @@ def test_nothing_else_builds_a_plugins_namespace():
         if web_builder.search(line)
     ]
     assert found == []
+
+
+# --- The fields of an entry ----------------------------------------------------
+
+ACME_ELEMENT = {
+    "type": "acme_meter", "label": "Acme Meter", "renderer": "iframe",
+    "default_size": {"w": 25, "h": 20}, "sandbox_permissions": ["allow-same-origin"],
+    "allow_features": ["fullscreen"], "ext_auth": True,
+    "config_schema": [
+        {"key": "title", "label": "Title", "type": "string", "default": ""},
+        {"key": "feed", "label": "Feed", "type": "select", "options_source": "plugin.acme_widget.feeds"},
+    ],
+}
+
+
+@pytest.mark.parametrize("extensions", [
+    {"views": [{"id": "monitor", "label": "Monitor", "icon": "activity", "renderer": "state_table",
+                "state_pattern": "plugin.acme_widget.*"}]},
+    {"views": [{"id": "surface", "label": "Surface", "renderer": "surface"}]},
+    {"device_panels": [{"id": "channels", "label": "Channels", "match": {"driver_id": "acme_*"},
+                        "renderer": "state_table",
+                        "state_pattern": "plugin.acme_widget.device.{device_id}.*"}]},
+    {"status_cards": [{"id": "status", "label": "Acme", "icon": "activity", "metrics": [
+        {"key": "plugin.acme_widget.connected", "label": "Connected", "format": "boolean"}]}]},
+    {"context_actions": [{"id": "scan", "label": "Scan", "context": "global",
+                          "event": "action.scan", "confirm": "Scan now?"}]},
+    {"context_actions": [{"id": "ping", "label": "Ping", "context": "device",
+                          "event": "action.ping", "match": {"driver_id": "acme_*"}}]},
+    {"panel_elements": [ACME_ELEMENT]},
+    # What the start refuses is the start's to say.
+    {"views": "notalist"},
+], ids=["view", "surface-view", "device-panel", "status-card", "global-action", "device-action",
+        "panel-element", "refused-at-start"])
+def test_an_entry_drawn_as_written(extensions):
+    assert extension_entries_problem(extensions, "acme_widget") is None
+
+
+@pytest.mark.parametrize(("extensions", "problem"), [
+    ({"views": [{"id": "v", "label": "V"}]}, "views[0] needs 'renderer'"),
+    ({"views": [{"id": "v", "renderer": "chart"}]},
+     "views[0] 'renderer' must be one of 'surface', 'state_table', 'log', 'video_streams'"),
+    ({"device_panels": [{"id": "d", "renderer": "surface"}]},
+     "device_panels[0] 'renderer' must be one of 'state_table', 'log'"),
+    ({"views": [{"id": "v", "renderer": "state_table", "state_pattern": "device.*"}]},
+     "views[0] 'state_pattern' must name the plugin's own state (plugin.acme_widget.*)"),
+    ({"views": [{"id": "v", "renderer": "log", "state_pattern": "plugin.acme_widgets.*"}]},
+     "views[0] 'state_pattern' must name the plugin's own state (plugin.acme_widget.*)"),
+    ({"status_cards": [{"id": "c", "metrics": [{"key": "device.proj.power", "label": "Power"}]}]},
+     "status_cards[0] metrics[0] key 'device.proj.power' is not one of the plugin's own state "
+     "keys (plugin.acme_widget.*)"),
+    ({"status_cards": [{"id": "c", "metrics": {"key": "plugin.acme_widget.x"}}]},
+     "status_cards[0] 'metrics' must be a list of dicts"),
+    ({"panel_elements": [{**ACME_ELEMENT, "config_schema": [
+        {"key": "feed", "type": "select", "options_source": "var.feeds"}]}]},
+     "panel_elements[0] config_schema[0] options_source 'var.feeds' is not one of the plugin's "
+     "own state keys (plugin.acme_widget.*)"),
+    ({"panel_elements": [{**ACME_ELEMENT, "config_schema": [{"label": "No key"}]}]},
+     "panel_elements[0] config_schema[0] needs a 'key' (string)"),
+    ({"panel_elements": [{**ACME_ELEMENT, "type": "acme:meter"}]},
+     "panel_elements[0] 'type' must be letters, digits, _ and - only"),
+    ({"panel_elements": [{**ACME_ELEMENT, "capabilities": ["state_read"]}]},
+     "panel_elements[0] has 'capabilities', which a panel_elements entry does not have"),
+    ({"panel_elements": [{**ACME_ELEMENT, "renderer_url": "/x.html"}]},
+     "panel_elements[0] has 'renderer_url', which a panel_elements entry does not have"),
+    ({"panel_elements": [{**ACME_ELEMENT, "default_size": {"w": 25}}]},
+     """panel_elements[0] 'default_size' must be {"w": N, "h": N}, each above 0"""),
+    ({"panel_elements": [{**ACME_ELEMENT, "ext_auth": "yes"}]},
+     "panel_elements[0] 'ext_auth' must be true or false"),
+    ({"context_actions": [{"id": "a", "context": "room"}]},
+     "context_actions[0] 'context' must be one of 'global', 'device', 'plugin'"),
+], ids=["view-no-renderer", "view-renderer", "panel-renderer", "pattern-outside", "pattern-other-plugin",
+        "metric-outside", "metrics-not-list", "options-source-outside", "setting-no-key",
+        "element-type", "capabilities", "renderer-url", "default-size", "ext-auth", "context"])
+def test_an_entry_drawn_otherwise_than_written(extensions, problem):
+    assert extension_entries_problem(extensions, "acme_widget") == problem
+
+
+def test_the_start_does_not_ask_the_entry_rule():
+    """An entry drawn otherwise than written is not a reason to stop a
+    plugin: one installed before a field changed still starts."""
+    info = {
+        "id": "acme_widget", "name": "Acme Widget", "version": "1.0.0", "author": "Acme",
+        "description": "Widgets.", "category": "integration", "license": "MIT",
+    }
+
+    class AcmeWidget:
+        PLUGIN_INFO = info
+        EXTENSIONS = {"panel_elements": [{"type": "acme_meter", "capabilities": ["state_read"]}]}
+
+    assert extension_entries_problem(AcmeWidget.EXTENSIONS, "acme_widget") is not None
+    assert plugin_declarations.first_problem(plugin_declarations.Declared.of_class(AcmeWidget)) is None
+    assert plugin_declarations.extension_entries_problem is extension_entries_problem
+
+
+def test_every_type_has_its_fields_and_its_naming_field_among_them():
+    assert set(EXTENSION_FIELDS) == set(EXTENSION_ID_FIELD)
+    for ext_type, id_field in EXTENSION_ID_FIELD.items():
+        assert id_field in EXTENSION_FIELDS[ext_type]
+    assert set(EXTENSION_RENDERERS) <= set(EXTENSION_FIELDS)
+
+
+PLUGIN_CLIENT_TS = PROGRAMMER_SRC / "api" / "pluginClient.ts"
+PLUGIN_EXTENSIONS_TSX = HELPERS_TS.with_name("PluginExtensions.tsx")
+#: What the serve adds to each entry it hands on.
+SERVED_FIELDS = {"plugin_id", "plugin_name"}
+#: The fields only the panel reads, which the IDE's type leaves out.
+PANEL_ONLY_FIELDS = {"sandbox_permissions", "allow_features", "ext_auth"}
+
+
+def test_the_ides_extension_type_names_only_fields_a_plugin_may_send():
+    """A field the IDE's ``PluginExtension`` reads that no entry may hold is
+    one nothing writes; one the table has that it leaves out is the panel's."""
+    source = PLUGIN_CLIENT_TS.read_text(encoding="utf-8")
+    body = re.search(r"export interface PluginExtension \{(.*?)\n\}", source, re.S)
+    assert body, "pluginClient.ts declares no PluginExtension interface"
+    ide = set(re.findall(r"^  (\w+)\??:", body.group(1), re.M))
+    table = {field for fields in EXTENSION_FIELDS.values() for field in fields}
+    assert ide - SERVED_FIELDS - table == set()
+    assert table - ide == PANEL_ONLY_FIELDS
+    assert SERVED_FIELDS <= ide
+
+
+def _slot(source: str, start: str) -> str:
+    body = source[source.index(start):]
+    return body[:body.index("\n}\n")]
+
+
+def test_the_ide_draws_the_renderers_the_table_names():
+    source = PLUGIN_EXTENSIONS_TSX.read_text(encoding="utf-8")
+    views = re.findall(r'case "(\w+)":', _slot(source, "export function PluginViewRenderer("))
+    panels = re.findall(r'panel\.renderer === "(\w+)"', _slot(source, "export function DevicePanelSlot("))
+    assert sorted(views) == sorted(EXTENSION_RENDERERS["views"])
+    assert sorted(panels) == sorted(EXTENSION_RENDERERS["device_panels"])
