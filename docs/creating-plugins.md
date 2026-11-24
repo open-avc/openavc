@@ -14,7 +14,7 @@ Plugins can add their own views to the sidebar (below the standard sections). Th
 
 ### Status Cards
 
-Plugins can add status cards to the Dashboard. These show key metrics (connection status, message counts, device counts) as compact cards alongside the standard system status.
+Plugins can add status cards to the Dashboard. These show key metrics (connection status, message counts, device counts) as compact cards alongside the standard system status. Each metric shows one of the plugin's own state keys (`plugin.<plugin_id>.<name>`); a metric that names any other key is left off the card.
 
 ### Device Panels
 
@@ -80,13 +80,16 @@ EXTENSIONS = {
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `type` | Yes | Element type name, unique within this plugin (another plugin may use the same one). Letters, digits, underscores and hyphens only: the panel draws a placeholder for any other name. **This also names the renderer file** — the panel loads `panel/<type>.html` (see note below). |
+| `type` | Yes | Element type name, unique within this plugin (another plugin may use the same one). Letters, digits, underscores and hyphens only: the Element Palette does not offer an element with any other name, and the panel draws a placeholder for one already on a page. **This also names the renderer file** — the panel loads `panel/<type>.html` (see note below). |
 | `label` | Yes | Human-readable name shown in the Element Palette |
-| `renderer` | Yes | Always `"iframe"` |
+| `renderer` | No | `"iframe"`, the only renderer a panel element has |
 | `default_size` | Yes | How big the element is when dropped, as a percentage of the page it lands on: `{"w": N, "h": N}`. The UI Builder uses this on drop and on click-to-add; if you omit it the element falls back to roughly a third of the page wide by a bit over a third tall. |
 | `config_schema` | No | Array of configuration fields shown in the UI Builder Properties panel. Field types match plugin config (see "Config field types" below): `string`, `text`, `integer`, `float`, `boolean`, `select`, `state_key`, `device_ref`, `macro_ref`. See "Select options" below for static vs. dynamic dropdowns. |
 | `sandbox_permissions` | No | Extra `iframe.sandbox` tokens beyond the default `allow-scripts`. See "Iframe Permissions" below for the whitelist. |
 | `allow_features` | No | Permissions-Policy tokens applied via the iframe's `allow` attribute. See "Iframe Permissions" below for the whitelist. |
+| `ext_auth` | No | `true` when the element's page calls your plugin's own `/ext/*` routes: the panel hands it a token for them in `openavc:init` (see "postMessage API" below). |
+
+An element may hold only these fields. `validate.py` in the plugin library refuses any other, so a misspelled field is caught before you publish.
 
 **Renderer file:** the panel loads `panel/<type>.html` for each element — an element with `type: "status_display"` loads `panel/status_display.html` from your plugin directory. Name the HTML file to match the element's `type`. (There is no separate URL field; the file name is the contract.)
 
@@ -114,7 +117,7 @@ A `select` field can populate its dropdown from a static list or from runtime st
  "options": ["contain", "cover"], "default": "contain"}
 ```
 
-**Dynamic options from state** — list driven by a plugin state key. State values must be flat primitives, so the plugin publishes the option list as a JSON-encoded string of `[{"value": ..., "label": ...}, ...]`:
+**Dynamic options from state** — list driven by one of the plugin's own state keys (`plugin.<plugin_id>.<name>`; an `options_source` naming any other key is ignored). State values must be flat primitives, so the plugin publishes the option list as a JSON-encoded string of `[{"value": ..., "label": ...}, ...]`:
 
 ```python
 {"key": "stream_id", "label": "Stream", "type": "select",
