@@ -173,7 +173,9 @@ def _row_error(row: dict[str, Any]) -> str:
 def _row_run(row: dict[str, Any] | None) -> UpdateRun | None:
     """The run an earlier release's history row describes, ended as it says
     (a rollback's row may not know its target)."""
-    if row is None or not (row.get("to_version") or row.get("rollback")):
+    if row is None:
+        return None
+    if not (row.get("to_version") or row.get("rollback")):
         return None
     return UpdateRun(
         target=str(row.get("to_version") or ""), source=UNRECORDED,
