@@ -124,17 +124,29 @@ def page_starts(ids: list[Any], page_size: Any) -> list[Any]:
     One rule for the runtime that sends the queries, the simulator that
     answers them and the validator that counts them.
     """
-    if (
-        isinstance(page_size, bool)
-        or not isinstance(page_size, int)
-        or page_size < 2
-    ):
+    if not _pages(page_size):
         return list(ids)
-    if not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+    if not ids or not all(_whole(i) for i in ids):
         return list(ids)[::page_size]
-    starts: list[Any] = []
+    return _stretch_starts(sorted(ids), page_size)
+
+
+def _whole(value: Any) -> bool:
+    """A whole number, never a boolean."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _pages(page_size: Any) -> bool:
+    """Whether ``page_size`` pages a query: a whole number of 2 or more."""
+    return _whole(page_size) and page_size >= 2
+
+
+def _stretch_starts(ids: list[int], page_size: int) -> list[int]:
+    """The lowest of ``ids`` (sorted), then each first id at or past the end
+    of the page before it."""
+    starts: list[int] = []
     next_start: int | None = None
-    for local_id in sorted(ids):
+    for local_id in ids:
         if next_start is None or local_id >= next_start:
             starts.append(local_id)
             next_start = local_id + page_size
@@ -190,9 +202,7 @@ def integer_id_range_error(id_format: Any, value: int) -> str | None:
 def _whole_bound(id_format: Any, key: str) -> int | None:
     """An ``id_format`` bound that is a whole number, else None."""
     raw = id_format.get(key) if isinstance(id_format, dict) else None
-    if isinstance(raw, bool) or not isinstance(raw, int):
-        return None
-    return raw
+    return raw if _whole(raw) else None
 
 
 def child_display_name(
@@ -241,19 +251,23 @@ def child_display_name(
     text = "" if project_label is None else str(project_label).strip()
     if text:
         return text
-
     state = child_state or {}
-    field = (type_def or {}).get("label_field")
-    if isinstance(field, str) and field.strip():
-        reported = state.get(field.strip())
-        # A bool is never a name; it means the driver pointed label_field at
-        # a flag, which is an authoring mistake rather than an empty name.
-        if reported is not None and not isinstance(reported, bool):
-            name = str(reported).strip()
-            if name:
-                return name
+    return _reported_name(state, type_def) or _name_text(state.get("label"))
 
-    seeded = state.get("label")
-    if seeded is None or isinstance(seeded, bool):
+
+def _reported_name(state: dict[str, Any], type_def: dict[str, Any] | None) -> str:
+    """The name the device reports, in the variable the type's
+    ``label_field`` names; "" when it names none or the device has none."""
+    field = (type_def or {}).get("label_field")
+    if not isinstance(field, str) or not field.strip():
         return ""
-    return str(seeded).strip()
+    return _name_text(state.get(field.strip()))
+
+
+def _name_text(value: Any) -> str:
+    """A value as a child's name, "" for none. A bool is never a name; it
+    means the driver pointed label_field at a flag, which is an authoring
+    mistake rather than an empty name."""
+    if value is None or isinstance(value, bool):
+        return ""
+    return str(value).strip()
