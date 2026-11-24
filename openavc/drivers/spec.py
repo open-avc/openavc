@@ -1010,6 +1010,10 @@ VALUE_UNKNOWN: dict = {
 # conversion_checks refuses where nothing would apply them. The registry
 # entries above carry the same names (tests/test_conversion_keys.py).
 CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset", "unknown")
+# A command parameter's: it is sent, never read as a reading, so it has no
+# unknown, which goes on the state variable a reply sets
+# (conversion_checks.param_unknown_issues, compiled_protocol.param_conversion).
+PARAM_CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset")
 
 # Column types for a table config field: the scalar config types (a table
 # inside a table cell is not a thing).

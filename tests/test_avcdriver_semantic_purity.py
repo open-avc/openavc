@@ -69,6 +69,7 @@ ALLOWED = {
     "openavc.drivers.substitution_checks",
     "openavc.drivers.tagged_errors",
     "openavc.drivers.transport_choice",
+    "openavc.drivers.unknown_keys",
     "openavc.drivers.usable_number",
     "openavc.drivers.yaml_text",
     "openavc.utils",

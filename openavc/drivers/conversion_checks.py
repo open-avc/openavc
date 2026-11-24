@@ -33,14 +33,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, NamedTuple
 
 from openavc.drivers.setting_checks import python_setting_map_errors
-from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES
-
-# The keys a command parameter converts through. A parameter is sent, never
-# read back as a reading, so it has no ``unknown``: that names a value the
-# device sends when it has no reading, and goes on the state variable a reply
-# sets (``param_unknown_issues``; the runtime and the simulator never read it
-# on a parameter, ``compiled_protocol.param_conversion``).
-PARAM_CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset")
+from openavc.drivers.spec import CONVERSION_KEYS, NUMERIC_TYPES, PARAM_CONVERSION_KEYS
 
 # A conversion needs a number to work on, named as the message says it.
 _NUMERIC_WORDS = ", ".join(NUMERIC_TYPES[:-1]) + " or " + NUMERIC_TYPES[-1]

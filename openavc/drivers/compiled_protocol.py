@@ -55,7 +55,7 @@ from openavc.drivers.child_routes import (
 )
 from openavc.drivers.json_value_spec import FLAT, LISTED, Place, json_value_mapping
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
-from openavc.drivers.conversion_checks import PARAM_CONVERSION_KEYS
+from openavc.drivers.spec import PARAM_CONVERSION_KEYS
 from openavc.drivers.spec import (
     NUMERIC_TYPES,
     PLACEHOLDER,
@@ -501,7 +501,7 @@ def conversion_of(decl: Any, keys: tuple[str, ...] = CONVERSION_KEYS) -> dict[st
 
 def param_conversion(decl: Any) -> dict[str, Any] | None:
     """THE conversion a command parameter declares: its scale and offset,
-    never an ``unknown`` (``conversion_checks.PARAM_CONVERSION_KEYS``), or None."""
+    never an ``unknown`` (``spec.PARAM_CONVERSION_KEYS``), or None."""
     return conversion_of(decl, PARAM_CONVERSION_KEYS)
 
 
