@@ -95,7 +95,8 @@ def test_a_command_with_no_send_or_a_passthrough_builds_nothing(caplog):
         "passthru": {"send": "{command}\r", "params": {"command": {"type": "string"}}},
         "udp_no_payload": {"udp": {"magic_packet": True}},
     })
-    assert _views(sim) == []
+    # An HTTP command is matched by its request, whatever its body.
+    assert [(v["name"], v["pattern"]) for v in _views(sim)] == [("http_only", r"^GET /x(?:\|.*)?$")]
     assert [(r.name, r.getMessage()) for r in caplog.records if r.levelno >= logging.WARNING] == []
 
 

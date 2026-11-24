@@ -218,13 +218,15 @@ def test_polled_command_answers_with_the_json_fields():
 
 def test_command_not_marked_poll_gets_no_status_reply():
     sim = _sim(HTTP_DEF, HTTP_CONFIG)
-    assert sim.handle_command(b"POST /api/reboot") is None
+    # Carried out, with nothing to say: an empty answer, no status body.
+    assert sim.handle_command(b"POST /api/reboot") == b""
 
 
 def test_polled_command_without_json_fields_is_not_answered():
     config = {"commands": HTTP_CONFIG["commands"]}
     sim = _sim(HTTP_DEF, config)
-    assert sim.handle_command(b"GET /api/status") is None
+    # No status body none of its responses read, only an empty answer.
+    assert sim.handle_command(b"GET /api/status") == b""
 
 
 async def test_the_driver_reads_the_polled_reply():

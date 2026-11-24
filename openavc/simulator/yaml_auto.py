@@ -55,9 +55,10 @@ from urllib.parse import unquote
 import yaml
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.http_commands import request_target
 from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
 from openavc.drivers.send_framing import framed_send
-from openavc.drivers.spec import bare_placeholder, without_null_sections
+from openavc.drivers.spec import bare_placeholder, placeholder_names, without_null_sections
 from openavc.drivers.transport_choice import declared_transport, effective_transport
 from openavc.drivers.usable_number import usable_number
 from openavc.drivers.compiled_protocol import (
@@ -1079,7 +1080,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # with the line ending the dispatch strips (send_regex).
         config = self._instance_config()
 
-        for cmd_name, cmd_def in self._driver_def.get("commands", {}).items():
+        for cmd_name, cmd_def in self._commands_to_build():
             authored = cmd_name in self._authored_commands
             template = _framed_send(cmd_def, self._driver_def, config, authored=authored)
             wire = self._command_wire(cmd_name, template, cmd_def, config)
@@ -1095,6 +1096,19 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
                     "Auto-sim %s: could not infer behavior for command '%s'",
                     self.driver_id, cmd_name,
                 )
+
+    def _commands_to_build(self) -> list[tuple[str, dict]]:
+        """The commands that get a handler here: each one, except an HTTP
+        request when the driver's simulator: section writes handlers of its
+        own, which answer HTTP the way its author wrote them (a request they
+        leave unmatched is the device's 404)."""
+        commands = self._driver_def.get("commands", {})
+        section = self._driver_def.get("simulator")
+        own = isinstance(section, dict) and bool(section.get("command_handlers"))
+        return [
+            (name, cmd_def) for name, cmd_def in commands.items()
+            if not (own and command_form(cmd_def) == "http")
+        ]
 
     @staticmethod
     def _command_wire(
@@ -1121,8 +1135,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # Convert send template to regex — the shared inversion of the
         # same placeholder shapes the runtime substitutes on send.
         pattern_str = send_regex(send_template, params)
+        body = ""
+        if command_form(cmd_def) == "http":
+            body, params = _HTTP_BODY, _params_in_line(send_template, params)
         try:
-            pattern = re.compile(f"^{pattern_str}$")
+            pattern = re.compile(f"^{pattern_str}{body}$", re.S)
         except re.error:
             logger.warning("Invalid regex from command '%s': %s", cmd_name, pattern_str)
             return None
@@ -1710,16 +1727,51 @@ _HANDLER_CHAIN: tuple[_HandlerFamily, ...] = (
 def _framed_send(cmd_def: dict, definition: dict, config: dict, *, authored: bool = False) -> Any:
     """The text a command puts on the wire: a line framed as the driver
     frames it (``send_framing.framed_send``; a command the device authored
-    was framed at the merge), or a udp: payload, which the side channel
-    sends unframed; falsy when it sends neither a line nor a datagram
-    (``command_form``)."""
+    was framed at the merge), a udp: payload, which the side channel sends
+    unframed, or an HTTP request's line (``_http_request_line``); falsy when
+    it sends none of them (``command_form``)."""
     form = command_form(cmd_def)
+    if form == "http":
+        return _http_request_line(cmd_def)
     if form == "udp":
         udp_def = cmd_def["udp"]
         return (udp_def.get("payload") or "") if isinstance(udp_def, dict) else ""
     if form != "raw":
         return ""
     return cmd_def["send"] if authored else framed_send(definition, config, cmd_def)
+
+
+def _http_request_line(cmd_def: dict) -> str:
+    """An HTTP command's request as ``respond_http`` writes its line, up to
+    the body: ``METHOD /path``, its ``query_params`` after a ``?`` (they take
+    the place of a query written in the path, as the driver's HTTP client
+    sends them). The body is matched as anything (``_HTTP_BODY``): the client
+    writes JSON compactly, so the body as written is not what arrives."""
+    method, path = request_target(cmd_def)
+    query = cmd_def.get("query_params")
+    if isinstance(query, dict) and query:
+        words = "&".join(f"{key}={_query_word(value)}" for key, value in query.items())
+        path = f"{path.split('?', 1)[0]}?{words}"
+    return f"{method} {path}"
+
+
+def _query_word(value: Any) -> str:
+    """A query value as the request carries it: a boolean as true / false."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+#: What may follow an HTTP command's request line: its body, whatever it holds.
+_HTTP_BODY = r"(?:\|.*)?"
+
+
+def _params_in_line(line: str, params: Any) -> dict:
+    """The params an HTTP request line captures, in the order it holds them,
+    which is how its captures are numbered: one written only in the body
+    has no capture to read."""
+    declared = params if isinstance(params, dict) else {}
+    return {name: declared[name] for name in dict.fromkeys(placeholder_names(line)) if name in declared}
 
 
 def _raised_to(value: Any, low: float | None) -> Any:

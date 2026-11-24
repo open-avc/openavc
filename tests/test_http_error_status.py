@@ -226,3 +226,74 @@ def test_a_byte_link_command_with_nothing_to_say_stays_silent() -> None:
     sim = YAMLAutoSimulator(device_id="sim1", config={}, driver_def=definition)
     assert sim.handle_command(b"PWR 1") is None
     assert sim.get_state("gain") == 1
+
+
+# ── A declared HTTP command needs no simulator handler of its own ──
+
+
+async def test_the_simulator_answers_a_declared_http_command_it_has_no_handler_for() -> None:
+    sim = _simulator()
+    assert (await sim.respond_http(None, "POST", "/api/power", {}, "")).status == 200
+    assert (await sim.respond_http(None, "GET", "/api/level", {}, "")).status == 200
+
+
+async def test_a_declared_http_commands_body_is_matched_whatever_its_spacing() -> None:
+    sim = _simulator(commands={
+        "set_gain": {"label": "Set Gain", "method": "PUT", "path": "/api/gain",
+                     "body": '{"gain": {gain}}', "params": {"gain": {"type": "integer"}}},
+    })
+    assert (await sim.respond_http(None, "PUT", "/api/gain", {}, '{"gain":5}')).status == 200
+
+
+async def test_a_declared_http_commands_query_and_path_values_are_matched() -> None:
+    sim = _simulator(commands={
+        "set_input": {"label": "Set Input", "method": "GET", "path": "/cgi/{zone}/input",
+                      "query_params": {"value": "{input}", "save": True},
+                      "params": {"zone": {"type": "integer"}, "input": {"type": "integer"}}},
+    })
+    response = await sim.respond_http(None, "GET", "/cgi/2/input?value=3&save=true", {}, "")
+    assert response.status == 200
+
+
+async def test_a_generic_http_devices_own_commands_are_answered() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    definitions = Path(__file__).resolve().parent.parent / "openavc" / "drivers" / "definitions"
+    definition = yaml.safe_load((definitions / "generic_http.avcdriver").read_text(encoding="utf-8"))
+    config = {"commands": {
+        "power_on": {"label": "Power On", "method": "POST", "path": "/api/power"},
+        "set_level": {"label": "Set Level", "method": "PUT", "path": "/api/level/{level}"},
+    }}
+    sim = YAMLAutoSimulator("g1", config=config, driver_def=definition)
+    assert (await sim.respond_http(None, "POST", "/api/power", {}, "")).status == 200
+    assert (await sim.respond_http(None, "PUT", "/api/level/5", {}, "")).status == 200
+
+
+async def test_a_declared_http_command_sent_to_a_running_simulator_is_done() -> None:
+    sim = _simulator()
+    await sim.start(0)
+    try:
+        cls = create_configurable_driver_class(copy.deepcopy(BASE))
+        state = StateStore()
+        events = EventBus()
+        state.set_event_bus(events)
+        driver = cls("dev1", {"host": "127.0.0.1", "port": sim.port}, state, events)
+        await driver.connect()
+        try:
+            response = await driver.send_command("power_on")
+            assert response.status_code == 200
+        finally:
+            await driver.disconnect()
+    finally:
+        await sim.stop()
+
+
+async def test_a_driver_with_its_own_handlers_answers_http_as_its_author_wrote() -> None:
+    """A request its handlers leave unmatched stays the device's 404."""
+    sim = _simulator(simulator={"command_handlers": [
+        {"receive": r"POST /api/power", "respond": "OK"},
+    ]})
+    assert (await sim.respond_http(None, "POST", "/api/power", {}, "")).status == 200
+    assert (await sim.respond_http(None, "GET", "/api/level", {}, "")).status == 404

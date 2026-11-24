@@ -352,9 +352,10 @@ def test_the_simulator_reads_each_command_in_its_form(case: dict) -> None:
     payload = udp.get("payload") if form == "udp" and isinstance(udp, dict) else None
     sent = block.get("send") if form == "raw" else None
 
-    # The simulator's handlers are built from a line or a datagram's payload;
-    # the validator samples lines only.
-    assert (yaml_auto._framed_send(block, {}, {}) or None) == (sent or payload)
+    # The simulator's handlers are built from a line, a datagram's payload or
+    # an HTTP request's line; the validator samples lines only.
+    expected = yaml_auto._http_request_line(block) if form == "http" else (sent or payload)
+    assert (yaml_auto._framed_send(block, {}, {}) or None) == expected
     assert (send_coverage._framed_send(block, {}, {}) or None) == (sent or None)
 
     probes = driver_sends._command_probes({"go": block}, UNIT, {})

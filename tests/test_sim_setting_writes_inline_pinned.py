@@ -357,7 +357,9 @@ def test_an_inline_http_device_answers_its_poll_commands_with_one_json_body():
     sim._state.update({"power": "on", "level": 3, "top": None, "dots": 1})
     body = sim.handle_command(b"GET /api/7/status|ignored")
     assert body == b'{"data": {"power": "on", "level": 3}, "nokey": ""}'
-    assert sim.handle_command(b"GET /api/7 8/status") is None
+    # Not the status poll's (its id holds no space): the command itself is
+    # answered, with nothing to say.
+    assert sim.handle_command(b"GET /api/7 8/status") == b""
     assert sim.handle_command(b"POST /p|") == body
 
 
