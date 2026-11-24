@@ -61,6 +61,14 @@ def body_parts(text: str) -> tuple[Any, bytes | None]:
         return None, text.encode("utf-8")
 
 
+def answered_note(error: BaseException) -> str:
+    """For a door the driver's author reads (the Driver Builder's Live
+    Test): the HTTP status a refused command was answered with, as a
+    sentence to follow the outcome's; nothing for any other failure."""
+    status = getattr(error, "http_status", None)
+    return f" (The device answered HTTP {status}.)" if status is not None else ""
+
+
 class HttpCommands:
     """HTTP commands, for ``ConfigurableDriver``."""
 

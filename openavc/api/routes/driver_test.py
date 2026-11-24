@@ -50,7 +50,7 @@ from openavc.drivers.contract_events import (
 from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.dry_run import display_text
-from openavc.drivers.http_commands import request_target
+from openavc.drivers.http_commands import answered_note, request_target
 from openavc.drivers.reply_guard import rule_failure_sentence
 from openavc.drivers.send_shape import osc_arg_tag, osc_arg_text
 from openavc.core.device_config import (
@@ -458,7 +458,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             note_contract_error(e)
             send_result = None
         except Exception as e:
-            error_text = f"Send failed: {e}{_answered(e)}"
+            error_text = f"Send failed: {e}{answered_note(e)}"
             send_result = None
 
         # The command's read_back goes out on its own after the command; let
@@ -513,13 +513,6 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         "error": error_text,
         **heard.result_fields(),
     }
-
-
-def _answered(error: BaseException) -> str:
-    """The HTTP status a refused command was answered with, for the author
-    reading the test; nothing for any other failure."""
-    status = getattr(error, "http_status", None)
-    return f" (The device answered HTTP {status}.)" if status is not None else ""
 
 
 async def _dry_run_command(body: TestCommandRequest) -> dict:
