@@ -619,16 +619,7 @@ class UpdateManager:
         self._set_state("system.update_error", "")
 
         try:
-            # Step 1: Backup (to_thread: zips the whole data dir, and the
-            # room is still live while the update runs)
-            self._step("backing_up")
-            from openavc.updater.backup import create_backup, cleanup_old_backups
-            backup_path = await asyncio.to_thread(
-                create_backup, self._data_dir, __version__,
-                project_path=self._project_path,
-            )
-            await asyncio.to_thread(cleanup_old_backups, self._data_dir)
-            log.info("Pre-update backup created: %s", backup_path)
+            backup_path = await self._back_up()
 
             # Step 2: Download + verify checksum
             self._step("downloading")
@@ -680,16 +671,7 @@ class UpdateManager:
         self._set_state("system.update_error", "")
 
         try:
-            # Step 1: Backup (to_thread: zips the whole data dir, and the
-            # room is still live while the update runs)
-            self._step("backing_up")
-            from openavc.updater.backup import create_backup, cleanup_old_backups
-            backup_path = await asyncio.to_thread(
-                create_backup, self._data_dir, __version__,
-                project_path=self._project_path,
-            )
-            await asyncio.to_thread(cleanup_old_backups, self._data_dir)
-            log.info("Pre-update backup created: %s", backup_path)
+            backup_path = await self._back_up()
 
             # Step 2: Download from cloud-provided URL.
             # Sanitize the URL-derived filename to a safe basename — it reaches
@@ -744,6 +726,19 @@ class UpdateManager:
             log.exception(error_msg)
             self._cleanup_failed_apply(target_version, error_msg)
             return {"success": False, "error": error_msg}
+
+    async def _back_up(self) -> Path:
+        """Step 1 of every update and rollback: the backup it takes before
+        it changes anything (``backup.back_up_first``, which raises
+        ``BackupFailed`` when it could not be made, so the run stops). In a
+        thread: it zips the whole data folder, and the room is still live."""
+        self._step("backing_up")
+        from openavc.updater.backup import back_up_first
+        made = await asyncio.to_thread(
+            back_up_first, self._data_dir, __version__, project_path=self._project_path,
+        )
+        log.info("Pre-update backup created: %s", made)
+        return made
 
     async def _apply_artifact(self, artifact_path: Path, to_version: str, source: str) -> None:
         """An update's last steps, its file downloaded and verified: apply it
@@ -1102,21 +1097,15 @@ class UpdateManager:
             return {"success": False, "error": "Rollback failed. Check server logs."}
 
     async def _roll_back(self, target_version: str) -> dict[str, Any]:
-        """The rollback's steps, its run begun."""
+        """The rollback's steps, its run begun. One whose backup could not
+        be made stops before anything changes, as an update does."""
+        from openavc.updater.backup import BackupFailed
         from openavc.updater.rollback import perform_rollback
 
-        # Create a backup of current state before rolling back
-        self._step("backing_up")
         try:
-            from openavc.updater.backup import create_backup, cleanup_old_backups
-            await asyncio.to_thread(
-                create_backup, self._data_dir, __version__,
-                project_path=self._project_path,
-            )
-            # Rotate like the apply paths (don't leave rollback backups unbounded)
-            await asyncio.to_thread(cleanup_old_backups, self._data_dir)
-        except Exception as e:
-            log.warning("Pre-rollback backup failed: %s", e)
+            await self._back_up()
+        except BackupFailed as e:
+            return self._rollback_failed(f"Rollback failed: {e}")
 
         # Drop any cloud-staged update before rolling back: it targets the very
         # version we're abandoning, and an Install would otherwise install it
@@ -1145,11 +1134,14 @@ class UpdateManager:
         self._end_process("rollback", last=self._put_logins_back)
         return {"success": True, "message": "Rollback initiated, server will restart"}
 
-    def _rollback_failed(self, error: str) -> None:
+    def _rollback_failed(self, error: str) -> dict[str, Any]:
+        """End the rollback's run failed with ``error``; the answer that
+        says so."""
         self.run_record.fail(error)
         self._set_state("system.update_status", "error")
         self._set_state("system.update_error", error)
         self._write_end(self.run_record.run)
+        return {"success": False, "error": error}
 
     def get_status(self) -> dict[str, Any]:
         """Get current update status."""

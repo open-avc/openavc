@@ -599,6 +599,13 @@ def _save_why(exc: Exception) -> str:
 def _worded_save_why(exc: Exception) -> str | None:
     if isinstance(exc, PermissionError):
         return _SAVE_REFUSED
+    return worded_write_failure(exc)
+
+
+def worded_write_failure(exc: BaseException) -> str | None:
+    """Why a file could not be written, for a full disk or a read-only file
+    system, with no path and none of the operating system's text; None for
+    any other failure."""
     if isinstance(exc, OSError):
         return _SAVE_FAILURES.get(getattr(exc, "errno", None))
     return None

@@ -58,7 +58,7 @@ After the third attempt nothing tries again on its own. The Updates view keeps s
 Every update and rollback has an entry in **Update History** on the Updates view, from the moment it starts. The entry reads **pending** until the update or rollback ends, and is settled when the server next starts, by the version it is running:
 
 - **success**: the update's new version is running, or, for a rollback, the version it went back to.
-- **failed**, with the reason: the download or its check failed; the system restarted or lost power before the update was applied, naming the step it was on; the update could not be installed after its third attempt (see above); or a rollback did not take effect and the system is still on the version it was leaving.
+- **failed**, with the reason: the backup taken first could not be made; the download or its check failed; the system restarted or lost power before the update was applied, naming the step it was on; the update could not be installed after its third attempt (see above); or a rollback did not take effect and the system is still on the version it was leaving.
 - **pending**, with the reason, while an update that could not be installed right now waits to be tried again.
 - **reverted**: the update was applied, then rolled back (see Automatic Rollback below).
 
@@ -77,7 +77,9 @@ A project saved by an earlier release is brought up to date the first time it lo
 
 A project saved by a later version loads too, after a rollback or when a project is sent to a system running an older version. A setting that holds a choice this version does not know, such as a trigger type added later, is kept as it is: that trigger does not fire here, and an Overlap, a page's Contents, a background picture's Size or a layout's orientation works as its default. The Dashboard lists each one where it is, once; a save here keeps them, and the later version reads them again. A value an earlier version saved past a range this one keeps is changed to the nearest value that works, whichever version saved the project. This needs the version you go back to to be later than v0.40.0.
 
-A backup zip is created before every update, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
+A backup zip is created before every update and every rollback, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
+
+If the backup cannot be made, for example because the disk is full, the update or rollback stops before anything changes and the Updates view says why. Free some disk space and try again. This holds on a system running a version later than v0.41.0.
 
 ## Deployment Types
 

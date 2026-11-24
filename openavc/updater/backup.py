@@ -5,6 +5,14 @@ Creates a zip archive of user data (projects, drivers, plugins,
 system.json) before applying an update, so it can be restored if
 the update fails.
 
+**The backup before a run.** ``back_up_first`` is the rule every update
+and every rollback follows before it changes anything: the backup is made,
+or the run stops (``BackupFailed``, a sentence that names the reason and
+the remedy, never a path). A rollback stops too: it restores no project
+data, so this zip is the only copy of the projects as the newer version
+left them. Trimming the old backups after it is best-effort, so a trim
+that fails never stops a run whose backup was made.
+
 **Owner-only.** The data folder's ``backups/`` holds what the platform backs
 up on its own: each pre-update zip (the projects tree, so a paired system's
 cloud key in ``cloud.json``) and the Project Library's zip taken before its
@@ -44,6 +52,40 @@ log = logging.getLogger(__name__)
 #: ``{"projects": {"<path below the tree>": "<where it leads>"}, ...}``.
 #: Older backups have none, and are restored as they always were.
 LINKS_MEMBER = "links.json"
+
+#: What a run says when its backup could not be made, before the reason.
+NOT_BACKED_UP = "the projects and settings could not be backed up first."
+#: The reason when this module has no words for the failure.
+SEE_THE_LOG = "The Programmer's Log has the details."
+
+
+class BackupFailed(RuntimeError):
+    """The backup before an update or a rollback could not be made; its
+    text is the sentence the run ends with, after "Update failed: " or
+    "Rollback failed: "."""
+
+
+def back_up_first(
+    data_dir: Path,
+    current_version: str,
+    project_path: Path | None = None,
+) -> Path:
+    """The backup an update or a rollback takes before it changes
+    anything (``create_backup``), then the old ones trimmed to the newest
+    five. Returns the backup made; raises ``BackupFailed`` when it could not
+    be made. A trim that fails is logged, and the run goes on."""
+    from openavc.api.error_messages import worded_write_failure
+
+    try:
+        made = create_backup(data_dir, current_version, project_path=project_path)
+    except Exception as exc:
+        log.exception("The backup before the update or rollback could not be made")
+        raise BackupFailed(f"{NOT_BACKED_UP} {worded_write_failure(exc) or SEE_THE_LOG}") from exc
+    try:
+        cleanup_old_backups(data_dir)
+    except Exception:
+        log.exception("The old pre-update backups could not be trimmed")
+    return made
 
 
 def create_backup(
