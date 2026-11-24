@@ -25,6 +25,7 @@ import {
 import { ELEMENT_TYPES, type ElementTypeInfo } from "./uiBuilderHelpers";
 import { usePluginStore } from "../../store/pluginStore";
 import { drawablePanelElements } from "../plugins/pluginExtensionHelpers";
+import type { PluginExtension } from "../../api/restClient";
 
 const ICONS: Record<string, React.ReactNode> = {
   button: <MousePointerClick size={16} />,
@@ -54,6 +55,13 @@ const CATEGORIES = [
   { key: "navigation" as const, label: "Navigation" },
 ];
 
+/** The plugin elements the panel can draw: one it cannot would only ever be
+ *  a placeholder. */
+function useDrawablePanelElements(): PluginExtension[] {
+  const served = usePluginStore((s) => s.extensions.panel_elements);
+  return useMemo(() => drawablePanelElements(served), [served]);
+}
+
 export function ElementPalette({
   disabled,
   disabledNote,
@@ -65,9 +73,7 @@ export function ElementPalette({
   disabledNote?: string;
   onAdd?: (type: string) => void;
 }) {
-  const servedElements = usePluginStore((s) => s.extensions.panel_elements);
-  // Only what the panel can draw: an element it cannot is a placeholder forever.
-  const panelElements = useMemo(() => drawablePanelElements(servedElements), [servedElements]);
+  const panelElements = useDrawablePanelElements();
   const [search, setSearch] = useState("");
 
   const filteredTypes = search

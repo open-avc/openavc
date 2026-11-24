@@ -298,11 +298,15 @@ def test_the_panel_and_the_ide_build_the_namespace_as_the_rule_does(path):
     assert found[0].replace("${pluginId}", "acme_widget") == plugin_namespace("acme_widget")
 
 
+def _is_web_source(path, suffixes):
+    if path.suffix not in suffixes or ".test." in path.name:
+        return False
+    return path not in (FRAMES_JS, HELPERS_TS)
+
+
 def _web_sources():
     for root, suffixes in ((PANEL_JS.parent, {".js"}), (PROGRAMMER_SRC, {".ts", ".tsx"})):
-        for path in root.rglob("*"):
-            if path.suffix in suffixes and ".test." not in path.name and path not in (FRAMES_JS, HELPERS_TS):
-                yield path
+        yield from (path for path in root.rglob("*") if _is_web_source(path, suffixes))
 
 
 def test_nothing_else_builds_a_plugins_namespace():

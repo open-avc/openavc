@@ -341,13 +341,20 @@ def _element_settings_problem(value: Any, plugin_id: str) -> str | None:
     if not isinstance(value, list) or not all(isinstance(f, dict) for f in value):
         return "must be a list of dicts"
     for i, setting in enumerate(value):
-        if not isinstance(setting.get("key"), str) or not setting["key"]:
-            return f"[{i}] needs a 'key' (string)"
-        source = setting.get("options_source")
-        if source is not None and not in_plugin_namespace(source, plugin_id):
-            return (f"[{i}] options_source {source!r} is not one of the plugin's own state "
-                    f"keys ({plugin_namespace(plugin_id)}*)")
+        problem = _setting_problem(setting, plugin_id)
+        if problem:
+            return f"[{i}] {problem}"
     return None
+
+
+def _setting_problem(setting: dict, plugin_id: str) -> str | None:
+    if not _is_text(setting.get("key")) or not setting["key"]:
+        return "needs a 'key' (string)"
+    source = setting.get("options_source")
+    if source is None or in_plugin_namespace(source, plugin_id):
+        return None
+    return (f"options_source {source!r} is not one of the plugin's own state "
+            f"keys ({plugin_namespace(plugin_id)}*)")
 
 
 def _is_size(value: Any) -> bool:
