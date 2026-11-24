@@ -134,6 +134,8 @@ class UpdateChecker:
 
         Returns:
             ReleaseInfo if a newer version is available, None otherwise.
+            Either way it is kept as ``last_result``, so a check that failed
+            or found nothing leaves no earlier release for an Install.
         """
         self._last_check_error = ""
 
@@ -149,21 +151,14 @@ class UpdateChecker:
                 response.raise_for_status()
                 releases = response.json()
         except httpx.HTTPStatusError as e:
-            self._last_check_error = f"GitHub API returned {e.response.status_code}"
-            log.warning("Update check failed: %s", self._last_check_error)
-            return None
+            return self._failed(f"GitHub API returned {e.response.status_code}")
         except httpx.RequestError as e:
-            self._last_check_error = internet_failure(e, "api.github.com") or f"Network error: {e}"
-            log.warning("Update check failed: %s", self._last_check_error)
-            return None
+            return self._failed(internet_failure(e, "api.github.com") or f"Network error: {e}")
         except Exception as e:
-            self._last_check_error = f"Unexpected error: {e}"
-            log.warning("Update check failed: %s", self._last_check_error)
-            return None
+            return self._failed(f"Unexpected error: {e}")
 
         if not isinstance(releases, list):
-            self._last_check_error = "Invalid response from GitHub API"
-            return None
+            return self._failed("Invalid response from GitHub API")
 
         # An empty list is a failure, not an answer. This repo has releases, so
         # zero of them means the API did not tell us the truth -- and on
@@ -175,11 +170,7 @@ class UpdateChecker:
         # it was current on the day a new version shipped. Say the check failed
         # instead, so the Updates view offers a retry rather than reassurance.
         if not releases:
-            self._last_check_error = (
-                "GitHub returned no releases, so the check could not be completed"
-            )
-            log.warning("Update check failed: %s", self._last_check_error)
-            return None
+            return self._failed("GitHub returned no releases, so the check could not be completed")
 
         # Find the best candidate release
         best: dict[str, Any] | None = None
@@ -234,8 +225,17 @@ class UpdateChecker:
         self._last_check_result = info
         return info
 
+    def _failed(self, error: str) -> None:
+        """End a check that failed with ``error``. The release an earlier
+        check found goes with it: the Updates page offers no Install after a
+        failed check, and REST's apply and the status read the same answer."""
+        self._last_check_error = error
+        self._last_check_result = None
+        log.warning("Update check failed: %s", error)
+
     @property
     def last_result(self) -> ReleaseInfo | None:
+        """The update the last check found; None when it found none or failed."""
         return self._last_check_result
 
     @property
