@@ -13,13 +13,16 @@ elements through ``EXTENSIONS``: a dict of those types, each a list of entries.
   declaration the rule accepts, none of one it refuses (logged), and two
   plugins' entries of the same id both, since every reader finds an entry by
   its plugin first. One plugin's declaration never takes the endpoint down for
-  every other plugin. Each entry's ``state_pattern`` is held inside its
-  plugin's ``plugin.<id>.`` namespace, so a plugin's sidebar cannot read
-  unrelated state. A panel element's iframe grant is cut down to
+  every other plugin. Each state field of an entry is held inside its plugin's
+  namespace (``plugin_extension_rules.plugin_namespace``), so a plugin's
+  sidebar, card or element settings cannot read unrelated state: a
+  ``state_pattern`` outside it becomes the namespace's own, and a status
+  card's metric or a panel element setting's ``options_source`` outside it
+  is left off, logged. A panel element's iframe grant is cut down to
   ``ALLOWED_SANDBOX_PERMISSIONS`` and ``ALLOWED_ALLOW_FEATURES`` (the panel
-  sets the iframe's ``sandbox`` and ``allow`` attributes from it) and carries
-  the plugin's capabilities, which the panel's iframe bridge checks a request
-  against.
+  sets the iframe's ``sandbox`` and ``allow`` attributes from it). What a
+  frame may reach is the element's own grant, never the plugin's
+  capabilities, so those are not served.
 
 ``sandbox_permissions`` is that same cut-down sandbox grant, summed over the
 panel elements a plugin would be served: what the plugin list shows as part of
@@ -35,6 +38,7 @@ from typing import Any
 from openavc.core.plugin_extension_rules import (
     EXTENSION_ID_FIELD,
     extensions_problem,
+    in_plugin_namespace,
     plugin_namespace,
 )
 from openavc.utils.logger import get_logger
@@ -79,7 +83,6 @@ class _Source:
 
     plugin_id: str
     name: str
-    info: dict
 
     @property
     def namespace(self) -> str:
@@ -106,8 +109,7 @@ def _collect_plugin(plugin_id: str, plugin_class: type, result: dict[str, list])
     extensions = _accepted_extensions(plugin_id, plugin_class)
     if not extensions:
         return
-    info = plugin_class.PLUGIN_INFO
-    source = _Source(plugin_id, info.get("name", plugin_id), info)
+    source = _Source(plugin_id, plugin_class.PLUGIN_INFO.get("name", plugin_id))
     for ext_type, entries in result.items():
         entries.extend(_served_entry(source, ext_type, ext) for ext in extensions.get(ext_type, []))
 
@@ -133,14 +135,57 @@ def _served_entry(source: _Source, ext_type: str, ext: dict) -> dict:
         safe_ext["state_pattern"] = sanitize_state_pattern(
             pattern, source.plugin_id, source.namespace
         )
+    if "metrics" in safe_ext:
+        safe_ext["metrics"] = _own_keys(source.plugin_id, safe_ext["metrics"], "key", "metric")
     if ext_type == "panel_elements":
-        safe_ext["sandbox_permissions"] = _sandbox_tokens(source.plugin_id, safe_ext)
-        safe_ext["allow_features"] = sanitize_token_list(
-            safe_ext.get("allow_features"), ALLOWED_ALLOW_FEATURES,
-            source.plugin_id, "allow_features",
-        )
-        safe_ext["capabilities"] = list(source.info.get("capabilities", []))
+        _serve_panel_element(source.plugin_id, safe_ext)
     return safe_ext
+
+
+def _serve_panel_element(plugin_id: str, safe_ext: dict) -> None:
+    safe_ext["sandbox_permissions"] = _sandbox_tokens(plugin_id, safe_ext)
+    safe_ext["allow_features"] = sanitize_token_list(
+        safe_ext.get("allow_features"), ALLOWED_ALLOW_FEATURES, plugin_id, "allow_features",
+    )
+    if "config_schema" in safe_ext:
+        safe_ext["config_schema"] = _own_options(plugin_id, safe_ext["config_schema"])
+
+
+def _dicts(plugin_id: str, items: Any, what: str) -> list[dict]:
+    if not isinstance(items, list):
+        log.warning("Plugin '%s' %s list is not a list (%r); serving none", plugin_id, what, items)
+        return []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _own_keys(plugin_id: str, items: Any, field: str, what: str) -> list[dict]:
+    """The items whose ``field`` is one of the plugin's own state keys."""
+    kept = []
+    for item in _dicts(plugin_id, items, what):
+        if in_plugin_namespace(item.get(field), plugin_id):
+            kept.append(item)
+        else:
+            log.warning(
+                "Plugin '%s' %s %s %r is outside its namespace; leaving it off",
+                plugin_id, what, field, item.get(field),
+            )
+    return kept
+
+
+def _own_options(plugin_id: str, settings: Any) -> list[dict]:
+    """A panel element's settings, each ``options_source`` outside the
+    plugin's namespace left off (the setting stays, with no options read)."""
+    served = []
+    for setting in _dicts(plugin_id, settings, "config_schema"):
+        source = setting.get("options_source")
+        if source is not None and not in_plugin_namespace(source, plugin_id):
+            log.warning(
+                "Plugin '%s' setting %r options_source %r is outside its namespace; leaving it off",
+                plugin_id, setting.get("key"), source,
+            )
+            setting = {k: v for k, v in setting.items() if k != "options_source"}
+        served.append(setting)
+    return served
 
 
 def sandbox_permissions(plugin_id: str, plugin_class: type) -> list[str]:

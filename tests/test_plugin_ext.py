@@ -701,57 +701,71 @@ def test_ext_auth_flag_passes_through_extensions():
     assert panel_elements[0]["sandbox_permissions"] == ["allow-same-origin"]
 
 
-def test_panel_element_surfaces_capabilities():
-    """panel_elements carry the plugin's declared capabilities so the panel
-    iframe bridge can gate openavc:action requests against them."""
+def _info(plugin_id, **extra):
+    return {
+        "id": plugin_id, "name": plugin_id.upper(), "version": "1.0.0", "author": "T",
+        "description": "d", "category": "utility", "license": "MIT", **extra,
+    }
+
+
+def test_a_panel_element_is_served_without_the_plugins_capabilities():
+    """What a frame may reach is the element's own grant (Can reach in the UI
+    Builder); a plugin's capabilities gate its Python API, so the panel is
+    not handed them."""
     loader = _make_loader()
 
     class CapPlugin:
-        PLUGIN_INFO = {
-            "id": "cp",
-            "name": "CP",
-            "version": "1.0.0",
-            "author": "T",
-            "description": "d",
-            "category": "utility",
-            "license": "MIT",
-            "capabilities": ["device_command", "state_write"],
-        }
-        EXTENSIONS = {
-            "panel_elements": [
-                {"type": "widget", "label": "W", "renderer": "iframe", "renderer_url": "panel/w.html"}
-            ]
-        }
+        PLUGIN_INFO = _info("cp", capabilities=["device_command", "state_write"])
+        EXTENSIONS = {"panel_elements": [{"type": "widget", "label": "W", "renderer": "iframe"}]}
 
     loader._instances = {"cp": CapPlugin()}
     panel_elements = loader.get_all_extensions()["panel_elements"]
-    assert panel_elements[0]["capabilities"] == ["device_command", "state_write"]
+    assert "capabilities" not in panel_elements[0]
 
 
-def test_panel_element_capabilities_default_empty():
-    """A plugin that declares no capabilities surfaces an empty list (not None),
-    so the panel treats it as 'no actions permitted'."""
+def test_a_status_card_is_served_only_the_plugins_own_metrics(caplog):
+    """A metric names one of the plugin's own state keys; one outside its
+    namespace is left off the card, logged."""
     loader = _make_loader()
 
-    class NoCapPlugin:
-        PLUGIN_INFO = {
-            "id": "ncp",
-            "name": "NCP",
-            "version": "1.0.0",
-            "author": "T",
-            "description": "d",
-            "category": "utility",
-            "license": "MIT",
-        }
-        EXTENSIONS = {
-            "panel_elements": [
-                {"type": "widget", "label": "W", "renderer": "iframe", "renderer_url": "panel/w.html"}
-            ]
-        }
+    class CardPlugin:
+        PLUGIN_INFO = _info("acme_card")
+        EXTENSIONS = {"status_cards": [{"id": "status", "label": "Acme", "metrics": [
+            {"key": "plugin.acme_card.connected", "label": "Connected", "format": "boolean"},
+            {"key": "device.projector.password", "label": "Leak", "format": "string"},
+            {"key": "plugin.acme_cards.count", "label": "Neighbour", "format": "number"},
+            "notadict",
+        ]}]}
 
-    loader._instances = {"ncp": NoCapPlugin()}
-    panel_elements = loader.get_all_extensions()["panel_elements"]
-    assert panel_elements[0]["capabilities"] == []
+    loader._instances = {"acme_card": CardPlugin()}
+    with caplog.at_level("WARNING"):
+        card = loader.get_all_extensions()["status_cards"][0]
+    assert [m["key"] for m in card["metrics"]] == ["plugin.acme_card.connected"]
+    assert "device.projector.password" in caplog.text
+    # The declaration itself is untouched.
+    assert len(CardPlugin.EXTENSIONS["status_cards"][0]["metrics"]) == 4
+
+
+def test_a_panel_element_setting_reads_options_only_from_the_plugins_state(caplog):
+    loader = _make_loader()
+
+    class ElementPlugin:
+        PLUGIN_INFO = _info("acme_el")
+        EXTENSIONS = {"panel_elements": [{"type": "meter", "label": "Meter", "config_schema": [
+            {"key": "feed", "label": "Feed", "type": "select", "options_source": "plugin.acme_el.feeds"},
+            {"key": "other", "label": "Other", "type": "select", "options_source": "var.secret_list"},
+            {"key": "title", "label": "Title", "type": "string"},
+        ]}]}
+
+    loader._instances = {"acme_el": ElementPlugin()}
+    with caplog.at_level("WARNING"):
+        element = loader.get_all_extensions()["panel_elements"][0]
+    settings = {f["key"]: f for f in element["config_schema"]}
+    assert settings["feed"]["options_source"] == "plugin.acme_el.feeds"
+    assert "options_source" not in settings["other"]
+    assert settings["title"] == {"key": "title", "label": "Title", "type": "string"}
+    assert "var.secret_list" in caplog.text
+    assert ElementPlugin.EXTENSIONS["panel_elements"][0]["config_schema"][1]["options_source"] == "var.secret_list"
 
 
 # ═══════════════════════════════════════════════════════════

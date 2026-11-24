@@ -781,7 +781,6 @@ def test_the_extensions_each_type_receives(loader, caplog):
             "sandbox_permissions": ["allow-forms"],
             "allow_features": [],
             "state_pattern": "plugin.acme_a.level",
-            "capabilities": ["state_read"],
             **base,
         }],
     }
