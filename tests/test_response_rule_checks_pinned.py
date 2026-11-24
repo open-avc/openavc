@@ -907,19 +907,10 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'json_child_set_state_key_as_writt
                         "Response 0: child_set[0]: missing 'id' (a capture ref like $1, a literal, "
                         'or {group, map})'),
                        ('responses[0]',
-                        "Response 0: child_set[2]: id: '$x' is not a numeric capture ref ($1, $2, "
-                        '...)'),
-                       ('responses[0]',
-                        "Response 0: child_set[3]: id: '$' is not a numeric capture ref ($1, $2, "
-                        '...)'),
-                       ('responses[0]',
                         'Response 0: child_set[4]: id: capture ref must be $1 or higher'),
                        ('responses[0]',
                         "Response 0: child_set[5]: id: capture ref $3 exceeds the pattern's 2 "
                         'group(s)'),
-                       ('responses[0]',
-                        "Response 0: child_set[9]: id group: '$z' is not a numeric capture ref "
-                        '($1, $2, ...)'),
                        ('responses[0]',
                         "Response 0: child_set[11]: id group: capture ref $9 exceeds the pattern's "
                         '2 group(s)'),
@@ -978,9 +969,6 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'json_child_set_state_key_as_writt
                           ('responses[0]',
                            "Response 0: child_set[4]: state 'level': capture ref $5 exceeds the "
                            "pattern's 2 group(s)"),
-                          ('responses[0]',
-                           "Response 0: child_set[5]: state 'level': '$q' is not a numeric capture "
-                           'ref ($1, $2, ...)'),
                           ('responses[0]',
                            "Response 0: child_set[8]: state prop 'nope' is not declared in "
                            'child_entity_types.zone.state_variables'),

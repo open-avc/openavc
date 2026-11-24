@@ -102,12 +102,14 @@ def test_regex_child_set_compiles_every_id_form_in_order(caplog):
         (("group", 0), None),
         (("group", 1), {"0": "a", "1": "b"}),
         (("group", 2), None),
-        (("group", 3), None),
         (("literal", 4), None),
         (("literal", "main"), None),
     ]
-    assert [list(e) for e in out] == [["type", "id", "id_map", "props"]] * 7
-    assert caplog.messages == []
+    assert [list(e) for e in out] == [["type", "id", "id_map", "props"]] * 6
+    # Number text without its dollar sign is not a capture ref (capture_ref).
+    assert caplog.messages == [
+        "[acme1] child_set: id group '3' is not a capture ref; skipping entry",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -142,7 +144,7 @@ def test_regex_child_set_props_every_form(caplog):
                 "id": "$1",
                 "state": {
                     "level": "$2",
-                    "name": {"group": "2", "map": {"1": "One"}},
+                    "name": {"group": "$2", "map": {"1": "One"}},
                     "online": "$3",
                     "odd": "$2",
                     "undeclared": {"value": 5, "type": "integer", "map": "nope"},
@@ -187,7 +189,8 @@ def test_regex_child_set_bad_props_are_skipped_one_with_a_warning(caplog):
     )
     assert out[0]["props"] == [{"prop": "label", "group": 2, "type": "string"}]
     assert caplog.messages == [
-        "[acme1] child_set: state 'online' ref '$x' is not a numeric capture ref; skipping"
+        "[acme1] child_set: state 'level' group 'x' is not a numeric capture ref; skipping",
+        "[acme1] child_set: state 'online' ref '$x' is not a numeric capture ref; skipping",
     ]
 
 
@@ -469,14 +472,23 @@ def test_child_list_carries_the_id_map(caplog):
         ({"id": {"map": {1: 2}}}, "[acme1] child_list: id {'map': {1: 2}} is not a capture ref of the item; skipping"),
         ({"id": 0}, "[acme1] child_list: id 0 is not a capture ref of the item; skipping"),
         ({"start": "x"}, "[acme1] child_list: start 'x' is not a number or a capture ref; skipping"),
-        ({"state": {"level": {"group": "x"}}}, "[acme1] child_list: no usable state; skipping"),
+        # An item's values are read by child_set's reader, which names a
+        # value it skips before the block says it has none.
+        ({"state": {"level": {"group": "x"}}}, [
+            "[acme1] child_set: state 'level' group 'x' is not a numeric capture ref; skipping",
+            "[acme1] child_list: no usable state; skipping",
+        ]),
+        ({"state": {"level": {"group": "1"}}}, [
+            "[acme1] child_set: state 'level' group '1' is not a numeric capture ref; skipping",
+            "[acme1] child_list: no usable state; skipping",
+        ]),
         ({"state": None}, "[acme1] child_list: no usable state; skipping"),
     ],
 )
 def test_child_list_bad_block_warns_and_adds_nothing(caplog, over, message):
     block = {"type": "zone", "element": r"(\d+)", "state": {"level": "$1"}, **over}
     assert _child_list(block, caplog) == []
-    assert caplog.messages == [message]
+    assert caplog.messages == (message if isinstance(message, list) else [message])
 
 
 def test_child_list_rides_after_the_rule_child_set_entries(caplog):

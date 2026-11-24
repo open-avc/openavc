@@ -246,10 +246,12 @@ class TextReplies:
     def _text_reading(self, match: re.Match[str], mapping: dict[str, Any]) -> Any:
         """One flat mapping's value: its literal ``value:``, else its capture
         (through its ``json_path`` when it has one, which benefits HTTP/TCP
-        JSON replies as it does OSC's), mapped and converted."""
+        JSON replies as it does OSC's), mapped and converted. The compile
+        has read the capture's number (``capture_ref``), the whole match
+        where the entry names none."""
         if "value" in mapping:
             return self._convert_declared(mapping["value"], mapping.get("type", "string"))
-        raw_value = _group(match, mapping.get("group", 0))
+        raw_value = _group(match, mapping["group"])
         if raw_value is None:
             return _UNREAD
         json_path = mapping.get("json_path")
@@ -298,7 +300,7 @@ class TextReplies:
     def _text_prop(self, pm: dict[str, Any], match: re.Match[str]) -> Any:
         if "value" in pm:
             return self._convert_declared(pm["value"], pm.get("type", "string"))
-        raw_value = _group(match, pm.get("group", 0))
+        raw_value = _group(match, pm["group"])
         if raw_value is None:
             return _UNREAD
         return self._mapped_reading(raw_value, pm, self._convert_value)

@@ -27,6 +27,9 @@ ALLOWED = {
     # What a json rule's value spec compiles to, in a flat set: and a child;
     # both of the above call it. Standard library only.
     "openavc.drivers.json_value_spec",
+    # THE capture-reference reading: which capture of a match a text rule
+    # names; child_routes and compiled_protocol ask it. Standard library only.
+    "openavc.drivers.capture_ref",
     # The driver contract's constant tables. Stdlib-only (ipaddress + re) and
     # already vendored into openavc-drivers, so it travels everywhere this
     # module does. compiled_protocol needs it for the reserved child props:

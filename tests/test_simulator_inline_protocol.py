@@ -244,3 +244,29 @@ async def test_the_driver_reads_the_polled_reply():
     await driver.on_data_received(reply)
     assert state.get("device.g1.occupied") is True
     assert state.get("device.g1.lux") == 300
+
+
+# ── A regex row that names no capture group ────────────────────────────────
+
+
+async def test_a_regex_row_with_no_group_reads_its_first_capture_in_the_driver_and_the_simulator():
+    # The device page's regex row defaults to the first capture; a file
+    # driver's mappings: entry that names none reads the whole match. The
+    # inline protocol writes the group out, so both readers take capture 1.
+    config = {
+        "delimiter": "\r",
+        "commands": {},
+        "responses": [
+            {"mode": "regex", "pattern": r"LVL (\d+)", "state": "level", "type": "integer"},
+        ],
+    }
+    sim = _sim(GENERIC_DEF, config)
+    assert sim.handle_command(b"LVL 42") == b"LVL 42\r"
+    assert sim.get_state("level") == 42
+    state = StateStore()
+    state.set_event_bus(EventBus())
+    driver = create_configurable_driver_class(GENERIC_DEF)(
+        "g1", {"host": "127.0.0.1", "port": 5000, **config}, state, EventBus(),
+    )
+    await driver.on_data_received(b"LVL 42")
+    assert driver.get_state("level") == 42

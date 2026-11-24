@@ -987,7 +987,8 @@
   "Response 1: after_json applies to regex rules; an OSC address rule never runs after a json rule"
  ],
  "response_after_json_without_a_json_rule": [
-  "Response 0: after_json has no effect: no response rule in this driver is json: true"
+  "Response 0: after_json has no effect: no response rule in this driver is json: true",
+  "Response 0: set 'power': capture ref $1 exceeds the pattern's 0 group(s)"
  ],
  "response_json_child_set_entry_not_mapping": [
   "Response 0: child_set[0]: must be a mapping"

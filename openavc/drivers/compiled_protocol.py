@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from openavc.core.condition_eval import match_key, value_words
+from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.child_routes import (
     compile_child_list,
     compile_child_set,
@@ -924,14 +925,13 @@ def _set_mapping(
     boolean fed ``set: {mute: "true"}`` stores True, not the string."""
     var_def = state_vars.get(state_key, {})
     var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-    if not (isinstance(value_expr, str) and value_expr.startswith("$")):
+    if not names_a_capture(value_expr):
         return {"group": 0, "state": state_key, "value": value_expr, "type": var_type}
-    try:
-        group = int(value_expr[1:])
-    except ValueError:
-        # A non-numeric $-reference is an author typo. Capturing group 0 (the
-        # whole match) would write a wrong value with no warning, so it is
-        # skipped, and said. "$0" is the whole match when that is meant.
+    group = capture_group(value_expr)
+    if group is None:
+        # A $-reference that names no capture is an author typo. Capturing
+        # group 0 (the whole match) would write a wrong value with no warning,
+        # so it is skipped, and said. "$0" is the whole match when that is meant.
         log.warning(
             "[%s] set-shorthand reference %r for state "
             "'%s' is not a numeric group ($1, $2, ...); "
@@ -940,6 +940,31 @@ def _set_mapping(
         )
         return None
     return {"group": group, "state": state_key, "type": var_type}
+
+
+def _listed_mapping(mp: Any, state_vars: dict[str, Any], device_id: str) -> Any:
+    """A ``mappings:`` entry typed by its state variable, with the capture its
+    ``group`` names read as a number (``capture_ref``; none is the whole
+    match). None, said, for a group that names no capture; an entry that
+    writes a literal ``value:`` or no state variable is kept as written."""
+    mp = _typed_mapping(mp, state_vars)
+    if not _reads_a_capture(mp):
+        return mp
+    group = capture_group(mp.get("group"))
+    if group is None:
+        log.warning(
+            "[%s] mappings: group %r for state '%s' is not a numeric capture ref "
+            "($1, $2, ...); skipping this mapping", device_id, mp.get("group"), mp["state"],
+        )
+        return None
+    return {**mp, "group": group}
+
+
+def _reads_a_capture(mp: Any) -> bool:
+    """A ``mappings:`` entry naming a state variable and no literal value."""
+    if not isinstance(mp, dict) or "value" in mp:
+        return False
+    return bool(mp.get("state"))
 
 
 def build_regex_mappings(
@@ -954,7 +979,11 @@ def build_regex_mappings(
     an explicit entry still wins for a state named in both. The json twin is
     ``build_json_mappings``.
     """
-    mappings = [_typed_mapping(mp, state_vars) for mp in listed_mappings(resp)]
+    mappings = [
+        mapping for mapping in (
+            _listed_mapping(mp, state_vars, device_id) for mp in listed_mappings(resp)
+        ) if mapping is not None
+    ]
     set_map = resp.get("set")
     if isinstance(set_map, dict):
         for state_key, value_expr in set_map.items():

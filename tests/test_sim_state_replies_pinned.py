@@ -15,7 +15,6 @@ import pytest
 
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from openavc.simulator.state_replies import first_read_back as _first_read_back
-from openavc.simulator.reply_rules import ref_number as _ref_number
 
 
 def _sim(**overrides) -> YAMLAutoSimulator:
@@ -166,8 +165,12 @@ def test_first_read_back_a_later_line_with_no_rule_is_skipped():
     [("$2", 2), (2, 2), ("$0", None), (0, None), (-1, None), (True, None),
      ("2", None), ("$x", None), (None, None), (2.0, None)],
 )
-def test_ref_number(ref, expected):
-    assert _ref_number(ref) == expected
+def test_a_list_capture_is_read_as_the_runtime_reads_it(ref, expected):
+    # The simulator reads a child_list's capture refs through the runtime's
+    # reader (child_routes.list_capture over capture_ref).
+    from openavc.drivers.child_routes import list_capture
+
+    assert list_capture(ref) == expected
 
 
 # ── child variables ──

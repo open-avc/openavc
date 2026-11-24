@@ -932,7 +932,7 @@ Leave `presence` off unless the roster's steady state on a bare unit is blank. A
 
 The roster is built from the config field at connect, then re-sized as soon as the state variable arrives, and again whenever it changes. The config field stays the offline fallback, so a device that never reports (or reports zero) still comes up with a sensible roster. Add `learned_from:` naming the same state variable on that config field and the count the device reports is also saved into the field, so the project matches the hardware once it has been reached (see `config_schema` entry above). `count_from_state` goes with `count_from` only; it is not a fifth roster source. `count`, `ids` and `ids_from` fix the roster, so beside any of them it is refused when you validate or save the driver (a driver already installed with one still loads, its roster comes from that source alone, and its entry under **Installed** says what to change).
 
-Route response captures into child state with `child_set:` on a response entry. `id` is a capture reference (`$1`) or a literal; each state value is a capture reference or a literal, coerced by the child property's declared type:
+Route response captures into child state with `child_set:` on a response entry. `id` is a capture reference (`$1`) or a literal; each state value is a capture reference or a literal, coerced by the child property's declared type. A capture reference is a `$` followed directly by the capture's number (`$1`, `$2`, no space or sign); in the long `{ group, map }` forms below, `group:` takes the number alone or the same `$N`:
 
 ```yaml
 responses:

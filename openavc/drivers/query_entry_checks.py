@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from openavc.drivers.capture_ref import names_a_capture
 from openavc.drivers.declared_names import (
     DeclaredSections,
     config_field_names,
@@ -155,7 +156,7 @@ class ListReads:
 
     def _add(self, spec: dict[str, Any]) -> None:
         start = spec.get("start")
-        places_a_page = "id" in spec or (isinstance(start, str) and start.startswith("$"))
+        places_a_page = "id" in spec or names_a_capture(start)
         child_type = spec.get("type")
         self._type_paged[child_type] = (
             self._type_paged.get(child_type, False) or places_a_page

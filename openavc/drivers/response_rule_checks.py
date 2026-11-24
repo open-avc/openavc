@@ -27,7 +27,10 @@ The runtime's twin is ``child_routes.py``, which compiles the same entries and
 skips what it cannot read; refusing them here is what tells the author why.
 
 Which key a json value spec names is ``json_value_spec``'s reading, the one
-the runtime compiles with; these checks judge the key as written.
+the runtime compiles with; these checks judge the key as written. Which
+capture a reference names is ``capture_ref``'s, the runtime's reading; a
+reference that names none, and every flat one, is judged at the author's
+doors (``capture_ref_checks``).
 
 Purity contract, as for ``avcdriver_semantic``: standard library, the sibling
 contract modules and the stdlib-only regex-safety helper. The module is
@@ -40,6 +43,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from openavc.drivers.capture_ref import capture_group, names_a_capture
+from openavc.drivers.capture_ref_checks import capture_count, ref_range_errors
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import child_writable_props, declared_id_kind
@@ -271,7 +276,7 @@ def _text_rule_errors(
         )
     child_set = rule.get("child_set")
     if child_set is not None:
-        routes = _TextRoutes(_group_count(pattern))
+        routes = _TextRoutes(capture_count(pattern))
         errors += routes.child_set_errors(where, child_set, child_types)
     return errors
 
@@ -300,10 +305,6 @@ def _reads_as_int(value: Any) -> bool:
     runtime's rule (``child_ids.coerce_child_local_id``; a type with no
     ``id_format`` has integer ids)."""
     return coerce_child_local_id(None, value) is not None
-
-
-def _is_capture_ref(value: Any) -> bool:
-    return isinstance(value, str) and value.startswith("$")
 
 
 def _scalar_id(value: Any) -> bool:
@@ -413,35 +414,27 @@ class _TextRoutes(_Routes):
             return self._group_errors(where, child_id.get("group")) + _id_map_errors(
                 where, child_id.get("map"), child_type, id_kind
             )
-        if _is_capture_ref(child_id):
+        if names_a_capture(child_id):
             return self._ref_errors(f"{where}: id", child_id)
         return []
 
     def _group_errors(self, where: str, group: Any) -> list[str]:
-        if _is_capture_ref(group):
+        if names_a_capture(group):
             return self._ref_errors(f"{where}: id group", group)
         if isinstance(group, int) and not isinstance(group, bool):
-            return self._ref_errors(f"{where}: id group", f"${group}")
+            return ref_range_errors(f"{where}: id group", group, self.groups)
         return [f"{where}: id group must be a capture ref (1, 2, ... or '$1')"]
 
     def value_errors(self, where: str, prop: Any, value: Any) -> list[str]:
-        if _is_capture_ref(value):
+        if names_a_capture(value):
             return self._ref_errors(f"{where}: state '{prop}'", value)
         return []
 
     def _ref_errors(self, where: str, ref: str) -> list[str]:
-        try:
-            group = int(ref[1:])
-        except ValueError:
-            return [f"{where}: {ref!r} is not a numeric capture ref ($1, $2, ...)"]
-        if group < 1:
-            return [f"{where}: capture ref must be $1 or higher"]
-        if self.groups is not None and group > self.groups:
-            return [
-                f"{where}: capture ref ${group} exceeds the pattern's "
-                f"{self.groups} group(s)"
-            ]
-        return []
+        # One that names no capture the runtime skips, and capture_ref_checks
+        # names at the author's doors, so a driver holding one still loads.
+        group = capture_group(ref)
+        return [] if group is None else ref_range_errors(where, group, self.groups)
 
 
 class _OscRoutes(_Routes):
@@ -469,7 +462,7 @@ class _OscRoutes(_Routes):
             return self._segment_errors(where, child_id.get("segment")) + _id_map_errors(
                 where, child_id.get("map"), child_type, id_kind
             )
-        if _is_capture_ref(child_id):
+        if names_a_capture(child_id):
             return [
                 f"{where}: OSC rules have no capture groups; use {{segment: N}} "
                 f"for the id, {{arg: N}} for values"
@@ -492,7 +485,7 @@ class _OscRoutes(_Routes):
         return []
 
     def value_errors(self, where: str, prop: Any, value: Any) -> list[str]:
-        if _is_capture_ref(value):
+        if names_a_capture(value):
             return [
                 f"{where}: state '{prop}': OSC rules have no capture groups; use "
                 f"{{arg: N}}"
@@ -532,7 +525,7 @@ class _JsonRoutes(_Routes):
     def id_errors(
         self, where: str, child_id: Any, child_type: str, id_kind: Any
     ) -> list[str]:
-        if isinstance(child_id, dict) or _is_capture_ref(child_id):
+        if isinstance(child_id, dict) or names_a_capture(child_id):
             return [
                 f"{where}: a json rule has no captures or address segments, so id "
                 f"must be a literal child id (got {child_id!r})"
@@ -549,7 +542,7 @@ class _JsonRoutes(_Routes):
     def value_errors(self, where: str, prop: Any, value: Any) -> list[str]:
         if isinstance(value, dict):
             return _json_spec_errors(where, prop, value)
-        if _is_capture_ref(value):
+        if names_a_capture(value):
             return [
                 f"{where}: state '{prop}': a json rule has no capture groups; use a "
                 f"JSON path"
@@ -585,28 +578,6 @@ def _json_spec_errors(where: str, prop: Any, spec: dict[str, Any]) -> list[str]:
 # --- child_list ----------------------------------------------------------------------------
 
 
-def _capture_number(ref: Any) -> int | None:
-    """``"$2"`` or ``2`` as 2; None for anything else, a bool included."""
-    if isinstance(ref, bool):
-        return None
-    if isinstance(ref, int):
-        return ref
-    if isinstance(ref, str) and re.fullmatch(r"\$\d+", ref):
-        return int(ref[1:])
-    return None
-
-
-def _group_count(pattern: Any) -> int | None:
-    """Capture groups in a pattern, or None when it does not compile as
-    written (a {config} placeholder substituted at runtime, say)."""
-    if not isinstance(pattern, str) or not pattern:
-        return None
-    try:
-        return re.compile(pattern).groups
-    except re.error:
-        return None
-
-
 def _child_list_errors(
     where: str, spec: Any, pattern: Any, child_types: dict[str, Any]
 ) -> list[str]:
@@ -620,7 +591,7 @@ def _child_list_errors(
     type_def = child_types.get(child_type) if isinstance(child_type, str) else None
     if not isinstance(type_def, dict):
         return [f"{where}: type {child_type!r} is not a declared child_entity_type"]
-    return _ListCheck(where, spec, type_def, _group_count(pattern)).errors()
+    return _ListCheck(where, spec, type_def, capture_count(pattern)).errors()
 
 
 def _maps_scalar_ids(id_map: Any) -> bool:
@@ -656,7 +627,7 @@ class _ListCheck:
         return self.found
 
     def _ref(self, label: str, ref: Any, groups: int | None, of: str) -> None:
-        number = _capture_number(ref)
+        number = capture_group(ref, default=None)
         if number is None or number < 1:
             self.found.append(f"{self.where}: {label} must be a capture ref ($1, $2, ...)")
         elif groups is not None and number > groups:
@@ -758,7 +729,7 @@ class _ListCheck:
                     f"{self.where}: state prop '{prop}' is not declared in "
                     f"child_entity_types.{self.spec.get('type')}.state_variables"
                 )
-            if _is_capture_ref(value):
+            if names_a_capture(value):
                 self._ref(f"state '{prop}'", value, self.element_groups, "the element")
             elif isinstance(value, dict):
                 self._state_spec(prop, value)

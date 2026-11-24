@@ -54,6 +54,7 @@ from urllib.parse import unquote
 
 import yaml
 
+from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.command_form import command_form
 from openavc.drivers.http_commands import request_target
 from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
@@ -1355,10 +1356,13 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """Apply an inline response's state changes for an incoming command and
         echo the command back as the device's confirmation."""
         for state_key, src in set_dict.items():
-            if isinstance(src, str) and src.startswith("$"):
+            if names_a_capture(src):
+                group = capture_group(src)
+                if group is None:
+                    continue
                 try:
-                    value: Any = m.group(int(src[1:]))
-                except (ValueError, IndexError):
+                    value: Any = m.group(group)
+                except IndexError:
                     continue
                 value = self._from_wire(state_key, value)
             else:

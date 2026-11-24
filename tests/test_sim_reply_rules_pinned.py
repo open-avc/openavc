@@ -128,7 +128,7 @@ def test_a_child_capture_a_mapped_capture_and_a_static_value():
         {"type": "output", "id": "$1", "state": {
             "input": "$2",
             "mute": {"group": 3, "map": {"1": True, "0": False}},
-            "level": {"group": "4"},
+            "level": {"group": "$4"},
             "audio": {"value": 7},
         }},
     ]}], child_entity_types=_OUTPUT)
@@ -164,7 +164,6 @@ def test_an_expression_that_names_nothing_leaves_an_empty_table():
     ("$1", "Out{child_id} In{value}", None),
     ({"group": "$1"}, "Out{child_id} In{value}", None),
     ({"group": 1, "map": {"A": 1, "B": 2}}, "Out{child_id} In{value}", {"1": "A", "2": "B"}),
-    ({"group": True}, "Out{child_id} In{value}", None),
 ])
 def test_a_child_id_is_a_capture_reference_with_its_map_reversed(cid, expected_template, expected_map):
     sim = _sim([{"match": "Out(\\w+) In(\\d+)", "child_set": [
@@ -175,7 +174,9 @@ def test_a_child_id_is_a_capture_reference_with_its_map_reversed(cid, expected_t
     }
 
 
-@pytest.mark.parametrize("cid", ["$x", {"group": "z"}, {"map": {"A": 1}}, "2", 2, None])
+@pytest.mark.parametrize("cid", [
+    "$x", "$ 1", {"group": "z"}, {"group": True}, {"group": "1"}, {"map": {"A": 1}}, "2", 2, None,
+])
 def test_a_child_id_that_names_no_capture_gives_nothing(cid):
     sim = _sim([{"match": "Out(\\w+) In(\\d+)", "child_set": [
         {"type": "output", "id": cid, "state": {"input": "$2"}},
@@ -265,7 +266,9 @@ def test_a_list_by_id_and_by_place():
     (3, "L {list}", 3),
     (True, "L {list}", 1),
     ("$9", None, None),
-    ("x", "L {list}", 1),
+    # The runtime refuses a start that names no capture, so it is not modelled.
+    ("x", None, None),
+    ("$0", None, None),
 ])
 def test_a_list_start_is_a_number_or_a_capture_of_the_reply(start, outer, first):
     sim = _sim([{"match": "L (.*)", "child_list": {
@@ -322,14 +325,18 @@ def test_the_first_list_rule_for_a_variable_wins():
     }
 
 
-def test_a_mapping_with_a_value_is_not_reversed_and_one_with_no_group_reads_the_first():
+def test_a_mapping_with_a_value_is_not_reversed_and_one_with_no_group_reads_the_whole_match():
+    # The runtime reads a mapping that names no group as the whole match, "M1",
+    # which no reply can carry as the value, so there is none to model.
     sim = _sim([{"match": "M(\\d)", "mappings": [
         {"group": 1, "state": "fixed", "value": "on", "map": {"1": "other"}},
         {"state": "nogroup", "map": {"1": "one"}},
+        {"group": "$1", "state": "long", "map": {"1": "one"}},
     ]}])
     assert _flat(sim) == {
         "fixed": (None, [], {}),
-        "nogroup": ("M{value}", [], {"one": "M1"}),
+        "nogroup": (None, [], {}),
+        "long": ("M{value}", [], {"one": "M1"}),
     }
 
 

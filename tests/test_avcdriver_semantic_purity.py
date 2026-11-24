@@ -34,6 +34,8 @@ ALLOWED = {
     "openavc.drivers.action_checks",
     "openavc.drivers.auth_block",
     "openavc.drivers.avcdriver_semantic",
+    "openavc.drivers.capture_ref",
+    "openavc.drivers.capture_ref_checks",
     "openavc.drivers.child_fault_checks",
     "openavc.drivers.child_ids",
     "openavc.drivers.child_type_checks",

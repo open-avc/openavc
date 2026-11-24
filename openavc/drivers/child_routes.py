@@ -4,7 +4,8 @@ A rule routes what a reply carries into child-entity state. Each wire form says
 in its own way where the child id and each value come from:
 
 - a regex rule (``compile_child_set``): capture groups, written ``$N`` or
-  ``{group: N}``; the id may also be a literal;
+  ``{group: N | $N}`` and read by ``capture_ref``; the id may also be a
+  literal;
 - an OSC rule (``compile_osc_child_set``): no captures, so the id is an address
   segment (``{segment: N}``) or a literal, and a value is a positional argument
   (``{arg: N}``) or a literal;
@@ -35,8 +36,12 @@ A malformed entry is skipped, most with a warning; the loader reports the same
 shapes up front, so a catalog driver never gets here wrong. Pure for the same
 reason as ``compiled_protocol``, which calls it: the simulator and the validator
 import that module directly, so this one takes nothing beyond the standard
-library, ``spec``, ``json_value_spec`` and the logger
+library, ``spec``, ``json_value_spec``, ``capture_ref`` and the logger
 (``tests/test_compiled_protocol_purity.py``).
+
+The auto-simulator reads a ``child_list:``'s list, id and start through the
+readers here (``list_capture``, ``list_id``, ``list_start``), so it models
+exactly the lists the runtime fills.
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ import re
 from collections.abc import Callable
 from typing import Any, NamedTuple
 
+from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.json_value_spec import CHILD, json_value_mapping
 from openavc.drivers.spec import CHILD_RESERVED_PROP_SCHEMA
 from openavc.utils.logger import get_logger
@@ -104,6 +110,17 @@ def _id_map(cid: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _source_index(source: str, raw: Any) -> int | None:
+    """A long form's source as its number: a regex ``group`` is a capture
+    reference (``$N`` or ``N``, ``capture_ref``), an OSC ``arg`` a position."""
+    if source == "group":
+        return capture_group(raw, default=None)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _long_form(
     prop: str, expr: dict[str, Any], var_type: str, source: str
 ) -> dict[str, Any] | None:
@@ -112,10 +129,10 @@ def _long_form(
     neither, or its source is not a number."""
     pm: dict[str, Any] = {"prop": prop, "type": expr.get("type", var_type)}
     if source in expr:
-        try:
-            pm[source] = int(expr[source])
-        except (TypeError, ValueError):
+        index = _source_index(source, expr[source])
+        if index is None:
             return None
+        pm[source] = index
     elif "value" in expr:
         pm["value"] = expr["value"]
     else:
@@ -123,11 +140,6 @@ def _long_form(
     if isinstance(expr.get("map"), dict):
         pm["map"] = expr["map"]
     return pm
-
-
-def _names_a_capture(expr: Any) -> bool:
-    """``$N`` text: a reference to a regex capture group."""
-    return isinstance(expr, str) and expr.startswith("$")
 
 
 def _static(prop: str, expr: Any, var_type: str) -> dict[str, Any]:
@@ -187,19 +199,9 @@ def _compile_entries(
 # ── Regex rules: capture groups ──
 
 
-def _group_ref(raw: Any) -> int | None:
-    """A long-form id's ``group``: ``N`` or ``"$N"`` as its number, else None."""
-    if isinstance(raw, str) and raw.startswith("$"):
-        raw = raw[1:]
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
-
-
 def _regex_long_id(cid: dict[str, Any], device_id: str) -> dict[str, Any] | None:
     """``{group: N | $N, map}``: the capture holding the wire id, translated."""
-    group = _group_ref(cid.get("group"))
+    group = capture_group(cid.get("group"), default=None)
     if group is None:
         log.warning(
             f"[{device_id}] child_set: id group "
@@ -212,21 +214,21 @@ def _regex_long_id(cid: dict[str, Any], device_id: str) -> dict[str, Any] | None
 
 def _regex_ref_id(cid: str, device_id: str) -> dict[str, Any] | None:
     """``$N``: the capture holding the child id."""
-    try:
-        return {"id": ("group", int(cid[1:])), "id_map": None}
-    except ValueError:
+    group = capture_group(cid)
+    if group is None:
         log.warning(
             f"[{device_id}] child_set: id {cid!r} is not a "
             f"numeric capture ref ($1, $2, ...); skipping entry"
         )
         return None
+    return {"id": ("group", group), "id_map": None}
 
 
 def _regex_id(cid: Any, device_id: str) -> dict[str, Any] | None:
     """``$N``, ``{group: N | $N, map}``, or a literal id."""
     if isinstance(cid, dict):
         return _regex_long_id(cid, device_id)
-    if _names_a_capture(cid):
+    if names_a_capture(cid):
         return _regex_ref_id(cid, device_id)
     if cid is not None:
         return {"id": ("literal", cid), "id_map": None}
@@ -239,18 +241,37 @@ def _regex_prop(
 ) -> dict[str, Any] | None:
     """``$N``, the ``{group | value, type, map}`` long form, or a literal."""
     if isinstance(expr, dict):
-        return _long_form(prop, expr, var_type, "group")
-    if _names_a_capture(expr):
-        try:
-            group = int(expr[1:])
-        except ValueError:
-            log.warning(
-                f"[{device_id}] child_set: state '{prop}' ref "
-                f"{expr!r} is not a numeric capture ref; skipping"
-            )
-            return None
-        return {"prop": prop, "group": group, "type": var_type}
+        return _regex_long_prop(prop, expr, var_type, device_id)
+    if names_a_capture(expr):
+        return _regex_ref_prop(prop, expr, var_type, device_id)
     return _static(prop, expr, var_type)
+
+
+def _regex_long_prop(
+    prop: str, expr: dict[str, Any], var_type: str, device_id: str
+) -> dict[str, Any] | None:
+    """``{group | value, type, map}``; a group that names no capture is said."""
+    pm = _long_form(prop, expr, var_type, "group")
+    if pm is None and expr.get("group") is not None:
+        log.warning(
+            f"[{device_id}] child_set: state '{prop}' group "
+            f"{expr['group']!r} is not a numeric capture ref; skipping"
+        )
+    return pm
+
+
+def _regex_ref_prop(
+    prop: str, expr: str, var_type: str, device_id: str
+) -> dict[str, Any] | None:
+    """``$N``: the capture holding the value; one that names none is said."""
+    group = capture_group(expr)
+    if group is None:
+        log.warning(
+            f"[{device_id}] child_set: state '{prop}' ref "
+            f"{expr!r} is not a numeric capture ref; skipping"
+        )
+        return None
+    return {"prop": prop, "group": group, "type": var_type}
 
 
 _REGEX = _Form(_regex_id, _regex_prop)
@@ -283,7 +304,7 @@ def _osc_id(cid: Any, device_id: str) -> dict[str, Any] | None:
             )
             return None
         return {"id": ("segment", segment), "id_map": _id_map(cid)}
-    if cid is None or _names_a_capture(cid):
+    if cid is None or names_a_capture(cid):
         log.warning(
             f"[{device_id}] child_set: OSC rules have no capture "
             f"groups, so id must be {{segment: N}} or a literal "
@@ -300,7 +321,7 @@ def _osc_prop(
     capture to name, so it is refused."""
     if isinstance(expr, dict):
         return _long_form(prop, expr, var_type, "arg")
-    if _names_a_capture(expr):
+    if names_a_capture(expr):
         log.warning(
             f"[{device_id}] child_set: state '{prop}': OSC "
             f"rules have no capture groups; use {{arg: N}}. Skipping"
@@ -328,7 +349,7 @@ def compile_osc_child_set(
 
 def _json_id(cid: Any, device_id: str) -> dict[str, Any] | None:
     """A literal child id; a body has no capture for ``$N`` to name."""
-    if cid is None or _names_a_capture(cid):
+    if cid is None or names_a_capture(cid):
         log.warning(
             f"[{device_id}] child_set: a json rule has no captures, "
             f"so id must be a literal child id (got {cid!r}); skipping entry"
@@ -369,24 +390,12 @@ class _Refused(Exception):
     """A ``child_list:`` block that cannot compile; the message says why."""
 
 
-def _capture_ref(raw: Any) -> int | None:
-    """``"$3"`` or ``3`` as the capture number, None for anything else.
-
-    Stricter than the ``child_set`` refs (``_group_ref`` and the ``$N`` forms,
-    which take ``$0``, the whole match, and a negative): each is the rule its
-    form has always compiled by, so making them one would change what a
-    hand-installed driver compiles to."""
-    if isinstance(raw, bool):
-        return None
-    if isinstance(raw, int):
-        return raw if raw >= 1 else None
-    if isinstance(raw, str) and raw.startswith("$"):
-        try:
-            group = int(raw[1:])
-        except ValueError:
-            return None
-        return group if group >= 1 else None
-    return None
+def list_capture(raw: Any) -> int | None:
+    """A list's capture, its item id's or its page start's: ``"$3"`` or ``3``
+    (``capture_ref``), 1 or more, else None. A list names a capture of its own;
+    the whole match (``$0``) is never one, though an item's value may read it."""
+    group = capture_group(raw, default=None)
+    return group if group is not None and group >= 1 else None
 
 
 def _list_element(raw: dict[str, Any]) -> re.Pattern[str]:
@@ -400,35 +409,45 @@ def _list_element(raw: dict[str, Any]) -> re.Pattern[str]:
     return element
 
 
-def _list_id(raw: dict[str, Any]) -> tuple[int | None, dict[str, Any] | None]:
-    """The item capture naming each child and its map, ``(None, None)`` when the
-    items are children by their place; refused when it names no capture."""
-    cid = raw.get("id")
+def list_id(cid: Any) -> tuple[int | None, dict[str, Any] | None] | None:
+    """A list's ``id``: the item capture naming each child and its map,
+    ``(None, None)`` when the items are children by their place, None when it
+    names no capture of the item."""
     if cid is None:
         return None, None
     if isinstance(cid, dict):
-        id_group, id_map = _capture_ref(cid.get("group")), _id_map(cid)
+        id_group, id_map = list_capture(cid.get("group")), _id_map(cid)
     else:
-        id_group, id_map = _capture_ref(cid), None
-    if id_group is None:
-        raise _Refused(f"id {cid!r} is not a capture ref of the item; skipping")
-    return id_group, id_map
+        id_group, id_map = list_capture(cid), None
+    return None if id_group is None else (id_group, id_map)
 
 
-def _list_start(raw: dict[str, Any]) -> tuple[str, int]:
-    """Where the numbering starts: a number, or a capture of the reply's
-    (``$N``); 1 for anything else that is not text."""
-    raw_start = raw.get("start", 1)
+def list_start(raw_start: Any) -> tuple[str, int] | None:
+    """A list's ``start``, where the numbering starts: ``("literal", N)`` for
+    a number, ``("group", N)`` for a capture of the reply's (``$N``), and
+    ``("literal", 1)`` for anything else that is not text. None for text that
+    names no capture."""
     if isinstance(raw_start, str):
-        group = _capture_ref(raw_start)
-        if group is None:
-            raise _Refused(
-                f"start {raw_start!r} is not a number or a capture ref; skipping"
-            )
-        return ("group", group)
+        group = list_capture(raw_start)
+        return None if group is None else ("group", group)
     if isinstance(raw_start, int) and not isinstance(raw_start, bool):
         return ("literal", raw_start)
     return ("literal", 1)
+
+
+def _list_id(raw: dict[str, Any]) -> tuple[int | None, dict[str, Any] | None]:
+    read = list_id(raw.get("id"))
+    if read is None:
+        raise _Refused(f"id {raw.get('id')!r} is not a capture ref of the item; skipping")
+    return read
+
+
+def _list_start(raw: dict[str, Any]) -> tuple[str, int]:
+    raw_start = raw.get("start", 1)
+    start = list_start(raw_start)
+    if start is None:
+        raise _Refused(f"start {raw_start!r} is not a number or a capture ref; skipping")
+    return start
 
 
 def _child_list(
@@ -438,7 +457,7 @@ def _child_list(
     ctype = raw.get("type")
     if not isinstance(child_types.get(ctype), dict):
         raise _Refused(f"unknown child type {ctype!r}; skipping")
-    group = _capture_ref(raw.get("group", 1))
+    group = list_capture(raw.get("group", 1))
     if group is None:
         raise _Refused(f"group {raw.get('group')!r} is not a capture ref; skipping")
     element = _list_element(raw)

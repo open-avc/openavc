@@ -21,6 +21,13 @@ differs by table, as the pins hold it:
 
 A table is created when a rule names its variable, before the rule's value is
 judged, so a variable whose rules give nothing usable has an empty table.
+
+Every capture reference is read as the runtime reads it (``capture_ref``), so
+a ``mappings:`` entry that names no group is the whole match, as it is on the
+equipment, and has no reply to model; a ``child_list:``'s list, item id and
+start are read by the runtime's own readers (``child_routes``), so a list the
+runtime refuses is not modelled. A reply slot is a numbered capture, so a
+value read from the whole match (``$0``) has no reply either.
 """
 
 from __future__ import annotations
@@ -31,6 +38,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.condition_eval import value_words
+from openavc.drivers.capture_ref import capture_group, names_a_capture
+from openavc.drivers.child_routes import list_capture, list_id, list_start
 from openavc.drivers.compiled_protocol import conversion_of
 from openavc.simulator.reply_templates import (
     emit_literal,
@@ -57,24 +66,13 @@ def reversed_ids(raw_map: Any) -> dict[str, str] | None:
     return None
 
 
-def ref_number(ref: Any) -> int | None:
-    """``"$2"`` or ``2`` as 2; None for anything else."""
-    if isinstance(ref, bool):
-        return None
-    if isinstance(ref, int):
-        return ref if ref >= 1 else None
-    if isinstance(ref, str) and re.fullmatch(r"\$\d+", ref):
-        return int(ref[1:]) or None
-    return None
-
-
 def mappings_to_set(mappings: list[dict]) -> dict[str, Any]:
     """Convert canonical response mappings to the simulator's ``set`` shorthand.
 
     The flat reader understands ``match`` + ``set`` (state → a literal value
     or a ``$N`` capture), so an inline response (which normalizes to ``match``
     + ``mappings``) is remapped here: a fixed ``value`` becomes the literal, a
-    ``group`` becomes ``$<n>``.
+    ``group`` becomes ``$<n>`` (``$0``, the whole match, when it names none).
     """
     out: dict[str, Any] = {}
     for m in mappings:
@@ -83,16 +81,22 @@ def mappings_to_set(mappings: list[dict]) -> dict[str, Any]:
         state = m.get("state")
         if not state:
             continue
-        out[str(state)] = m["value"] if "value" in m else f"${m.get('group', 1)}"
+        out[str(state)] = m["value"] if "value" in m else _as_ref(m.get("group", 0))
     return out
 
 
-def _number(text: Any) -> int | None:
-    """``int(text)``, None when it is no whole number."""
-    try:
-        return int(text)
-    except (TypeError, ValueError):
-        return None
+def _as_ref(group: Any) -> str:
+    """A ``mappings:`` group as the ``set:`` shorthand's ``$N``: a reference
+    already written that way is kept, a number gains its ``$``, so one that
+    names no capture still reads as none."""
+    return group if names_a_capture(group) else f"${group}"
+
+
+def _slot(ref: Any) -> int | None:
+    """The capture a reply's ``{value}`` slot takes: the one ``ref`` names
+    (``capture_ref``), when it is a numbered capture (1 or more)."""
+    group = capture_group(ref, default=None)
+    return group if group else None
 
 
 # ── flat variables ──
@@ -160,9 +164,9 @@ class _FlatRule:
         """A ``$N`` on a pattern with captures is the template with that
         capture as the value (a reference that is no number gives none); any
         other value is the pattern's literal text, filed under the value."""
-        if bool(re.search(r"\(.*\)", self.pattern)) and set_value.startswith("$"):
-            group = _number(set_value[1:]) or 0
-            template = emit_template(self.pattern, group) if group > 0 else None
+        if bool(re.search(r"\(.*\)", self.pattern)) and names_a_capture(set_value):
+            group = _slot(set_value)
+            template = emit_template(self.pattern, group) if group else None
             if template:
                 sr.add_template(template, rule_pattern(self.pattern, group))
             return
@@ -175,10 +179,8 @@ class _FlatRule:
         token -> the friendly word), so the template would put the friendly
         word on the wire: file each friendly value under the reply with its
         wire token in the mapping's capture instead."""
-        group = _number(mapping.get("group", 1))
-        if group is None:
-            return
-        template = emit_template(self.pattern, group) if group > 0 else None
+        group = _slot(capture_group(mapping.get("group")))
+        template = emit_template(self.pattern, group) if group else None
         sr = tables.get(str(mapping["state"])) if template else None
         if sr is None:
             return
@@ -259,13 +261,10 @@ def _child_set_id_group(entry: dict) -> tuple[int | None, dict[str, str] | None]
     device's own id form back on the wire."""
     cid = entry.get("id")
     if isinstance(cid, dict):
-        gref = cid.get("group")
-        if isinstance(gref, str) and gref.startswith("$"):
-            gref = gref[1:]
-        group = _number(gref)
+        group = capture_group(cid.get("group"), default=None)
         return (None, None) if group is None else (group, reversed_ids(cid.get("map")))
-    if isinstance(cid, str) and cid.startswith("$"):
-        return _number(cid[1:]), None
+    if names_a_capture(cid):
+        return capture_group(cid), None
     return None, None
 
 
@@ -281,8 +280,8 @@ class _ChildValue:
         self.wire_id_map = wire_id_map
 
     def read_into(self, sr: ChildStateResponse, expr: Any) -> None:
-        if isinstance(expr, str) and expr.startswith("$"):
-            group = _number(expr[1:])
+        if names_a_capture(expr):
+            group = capture_group(expr)
             if group is not None:
                 self._template(sr, group)
         elif isinstance(expr, dict):
@@ -292,7 +291,7 @@ class _ChildValue:
 
     def _read_long_form(self, sr: ChildStateResponse, expr: dict) -> None:
         if "group" in expr:
-            group = _number(expr["group"])
+            group = capture_group(expr["group"], default=None)
             if group is not None:
                 self._capture(sr, group, expr.get("map"))
         elif "value" in expr:
@@ -358,43 +357,35 @@ def _list_rule(resp: Any, child_types: dict) -> tuple[dict, str] | None:
     return (spec, pattern) if isinstance(spec.get("state"), dict) else None
 
 
-def _list_start(spec: dict) -> tuple[int | None, int]:
-    """Where the numbering starts: the reply's capture holding it (``$N``),
-    and the number used when the reply says nothing (1 for anything that is
-    not a number)."""
-    raw_start = spec.get("start", 1)
-    start_group = ref_number(raw_start) if isinstance(raw_start, str) else None
-    plain = isinstance(raw_start, int) and not isinstance(raw_start, bool)
-    return start_group, raw_start if plain else 1
-
-
-def _list_id(cid: Any) -> tuple[int | None, dict[str, str] | None]:
-    """The item capture naming each child (``$N``, or ``{group, map}``) and
-    the local-id -> wire-id map; (None, None) when the items are children by
-    their place."""
-    if isinstance(cid, dict):
-        return ref_number(cid.get("group")), reversed_ids(cid.get("map"))
-    return ref_number(cid), None
-
-
-def _names_no_capture(cid: Any, id_group: int | None) -> bool:
-    """An id the rule gives that names no capture of the item."""
-    return cid is not None and id_group is None
+def _list_place(spec: dict) -> tuple[int, int | None, dict[str, str] | None, int, int | None] | None:
+    """How a list rule places its items, read by the runtime's readers: the
+    reply's list capture, the item's id capture (None by place), the
+    local-id -> wire-id map, and the start (its capture, else its number);
+    None when the runtime refuses the list, its id or its start."""
+    list_group = list_capture(spec.get("group", 1))
+    cid = spec.get("id")
+    read_id = list_id(cid)
+    start = list_start(spec.get("start", 1))
+    if None in (list_group, read_id, start):
+        return None
+    id_wire_map = reversed_ids(cid.get("map")) if isinstance(cid, dict) else None
+    kind, value = start
+    start_group = value if kind == "group" else None
+    return list_group, read_id[0], id_wire_map, (1 if kind == "group" else value), start_group
 
 
 def _read_list_frame(resp: Any, child_types: dict) -> _ListFrame | None:
-    """What one ``child_list`` rule says about the whole list; None when its
-    list or id names no capture, or its reply cannot be modelled."""
+    """What one ``child_list`` rule says about the whole list; None when the
+    runtime refuses its list, id or start, or its reply cannot be modelled."""
     rule = _list_rule(resp, child_types)
     if rule is None:
         return None
     spec, pattern = rule
-    list_group = ref_number(spec.get("group", 1))
-    cid = spec.get("id")
-    id_group, id_wire_map = _list_id(cid)
-    start_group, start = _list_start(spec)
-    if list_group is None or _names_no_capture(cid, id_group):
+    place = _list_place(spec)
+    if place is None:
         return None
+    list_group, id_group, id_wire_map, start, start_group = place
+    cid = spec.get("id")
     outer_slots = {list_group: "{list}"}
     if cid is None and start_group is not None:
         outer_slots[start_group] = "{start}"
@@ -410,17 +401,17 @@ def _read_list_frame(resp: Any, child_types: dict) -> _ListFrame | None:
 def _list_value(expr: Any) -> tuple[int | None, dict[str, str] | None] | None:
     """A list variable's item capture and its device words (value -> word,
     the first word for a value winning); None for a static value."""
-    if isinstance(expr, str) and expr.startswith("$"):
-        return ref_number(expr), None
+    if names_a_capture(expr):
+        return _slot(expr), None
     if not (isinstance(expr, dict) and "group" in expr):
         return None
     raw_map = expr.get("map")
     if not (isinstance(raw_map, dict) and raw_map):
-        return ref_number(expr.get("group")), None
+        return _slot(expr.get("group")), None
     words: dict[str, str] = {}
     for word, value in raw_map.items():
         words.setdefault(value_words(value), str(word))
-    return ref_number(expr.get("group")), words
+    return _slot(expr.get("group")), words
 
 
 @dataclass
