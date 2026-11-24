@@ -56,3 +56,46 @@ async def test_the_runtime_reads_the_simulated_reply_back_as_the_value_it_was():
     drv = create_configurable_driver_class(_DEFINITION)("acme1", {}, state, events)
     await drv.on_data_received(reply.encode())
     assert state.get("device.acme1.power") is True
+
+
+# A broad status rule with both forms, ahead of a rule that reads one of its
+# variables alone: the simulator reports that variable with the narrow rule, so
+# reading the reply writes nothing else (the broad line would also report
+# input 0).
+_NARROW_AFTER_BROAD = {
+    **_DEFINITION,
+    "state_variables": {
+        "input": {"type": "integer"},
+        "audio_mute": {"type": "boolean"},
+        "video_mute": {"type": "boolean"},
+    },
+    "responses": [
+        {
+            "match": r"In(\d+) A([01]) V([01])",
+            "set": {"input": "$1"},
+            "mappings": [
+                {"group": 2, "state": "audio_mute", "map": {"1": True, "0": False}},
+                {"group": 3, "state": "video_mute", "map": {"1": True, "0": False}},
+            ],
+        },
+        {"match": r"A([01])", "mappings": [{"group": 1, "state": "audio_mute", "map": {"1": True, "0": False}}]},
+    ],
+}
+
+
+def test_a_rule_reading_one_variable_reports_it_before_a_broader_rule():
+    sim = YAMLAutoSimulator("s1", {}, driver_def=_NARROW_AFTER_BROAD)
+    audio = sim._state_responses["audio_mute"]
+    assert (audio.format(True), audio.format(False)) == ("A1", "A0")
+    assert sim._state_responses["video_mute"].format(True) == "In0 A0 V1"
+
+
+async def test_the_narrow_reply_writes_only_its_own_variable():
+    reply = YAMLAutoSimulator("s1", {}, driver_def=_NARROW_AFTER_BROAD)._format_state_reply("audio_mute", True)
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    drv = create_configurable_driver_class(_NARROW_AFTER_BROAD)("acme1", {}, state, events)
+    written: dict = {}
+    drv.set_state = lambda key, value: written.__setitem__(key, value)
+    drv._read_text_reply(reply)
+    assert written == {"audio_mute": True}

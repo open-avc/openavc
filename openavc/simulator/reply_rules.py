@@ -15,7 +15,9 @@ differs by table, as the pins hold it:
 
 - flat: the templates in rule order (the first is the template, the rest are
   alternates the reply falls back on); a fixed-text reply is the LAST rule's,
-  a map reversal's the FIRST's.
+  a map reversal's the FIRST's among rules reading one variable, else the
+  first's, so a mapped value is not reported with a broad line that reports
+  the rule's other variables too.
 - child: rules whose ``child_set`` names one variable bind before broader
   ones, then rule order; a value's reply and the id map are the first's.
 - list: the first rule for a variable.
@@ -36,7 +38,7 @@ value read from the whole match (``$0``) has no reply either.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -114,13 +116,21 @@ def flat_replies(
     so there is no literal to rebuild a reply from; an OSC address rule is
     read elsewhere (``osc_addresses``)."""
     tables: dict[str, StateResponse] = {}
-    for resp_def in responses:
-        if not isinstance(resp_def, dict):
-            continue
-        rule = read_reply_rule(resp_def)
-        if rule.form == REGEX:
-            _FlatRule(resp_def, rule.mappings).read_into(tables, var_def_for)
+    rules = list(_text_rules(responses))
+    for rule in rules:
+        rule.read_values(tables, var_def_for)
+    for rule in sorted(rules, key=lambda rule: not rule.reads_one_variable):
+        rule.reverse_maps(tables)
     return tables
+
+
+def _text_rules(responses: Any) -> Iterator[_FlatRule]:
+    """Each text rule, in file order, read for the flat variables it sets."""
+    for resp_def in responses:
+        if isinstance(resp_def, dict):
+            rule = read_reply_rule(resp_def)
+            if rule.form == REGEX:
+                yield _FlatRule(resp_def, rule.mappings)
 
 
 def _reversible(mapping: Any) -> bool:
@@ -133,38 +143,62 @@ def _reversible(mapping: Any) -> bool:
 class _FlatRule:
     """One text rule read for the flat variables it sets: the flat mappings
     it writes (``reply_rule``), read as a ``set:``, with the mappings whose
-    ``map:`` must be reversed."""
+    ``map:`` must be reversed.
+
+    A rule is read in two passes, so that a value a broad rule maps is not
+    reported with the broad rule's line (which reports its other variables
+    too) when a narrower rule maps it: in file order, its templates (the
+    first is the template, the rest alternates) and fixed-text replies (the
+    last rule's wins); then, a rule reading one variable before broader ones
+    and otherwise in file order, its map reversals (the first's wins), as the
+    child tables bind."""
 
     def __init__(self, resp_def: dict, mappings: tuple[Any, ...]) -> None:
-        self.pattern = resp_def.get("match", "")
+        pattern = resp_def.get("match", "")
+        # A pattern that is not text gives no reply (the checker names it).
+        self.pattern = pattern if isinstance(pattern, str) else ""
         self.set_dict = mappings_to_set(list(mappings))
         self.map_reversals = [m for m in mappings if _reversible(m)]
+        self.has_captures = bool(re.search(r"\(.*\)", self.pattern))
 
-    def read_into(
+    @property
+    def reads_one_variable(self) -> bool:
+        return len(self.set_dict) == 1
+
+    def read_values(
         self, tables: dict[str, StateResponse], var_def_for: Callable[[str], dict]
     ) -> None:
+        """A table for each variable the rule writes, and its value: a ``$N``
+        on a pattern with captures is the template with that capture as the
+        value (a reference that is no number gives none); any other value is
+        the pattern's literal text, filed under the value."""
         for state_key, set_value in self.set_dict.items():
             if state_key not in tables:
                 tables[state_key] = StateResponse(
                     state_key, conversion_of(var_def_for(state_key))
                 )
             self._read_value(tables[state_key], value_words(set_value))
+
+    def reverse_maps(self, tables: dict[str, StateResponse]) -> None:
         for mapping in self.map_reversals:
             self._reverse_map(tables, mapping)
 
     def _read_value(self, sr: StateResponse, set_value: str) -> None:
-        """A ``$N`` on a pattern with captures is the template with that
-        capture as the value (a reference that is no number gives none); any
-        other value is the pattern's literal text, filed under the value."""
-        if bool(re.search(r"\(.*\)", self.pattern)) and names_a_capture(set_value):
-            group = _slot(set_value)
-            template = emit_template(self.pattern, group) if group else None
-            if template:
-                sr.add_template(template, rule_pattern(self.pattern, group))
+        if self._is_template(set_value):
+            self._add_template(sr, set_value)
             return
         literal = emit_literal(self.pattern)
         if literal:
             sr.value_map[set_value] = literal
+
+    def _is_template(self, set_value: str) -> bool:
+        return self.has_captures and names_a_capture(set_value)
+
+    def _add_template(self, sr: StateResponse, set_value: str) -> None:
+        group = _slot(set_value)
+        template = emit_template(self.pattern, group) if group else None
+        if template:
+            sr.add_template(template, rule_pattern(self.pattern, group))
 
     def _reverse_map(self, tables: dict[str, StateResponse], mapping: dict) -> None:
         """A mapping's ``map:`` stores the friendly value in state (the wire
