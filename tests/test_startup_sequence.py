@@ -91,7 +91,6 @@ def boot(monkeypatch, tmp_path):
         events=SimpleNamespace(on=Mock(), emit=AsyncMock()),
         get_status=Mock(return_value={"local_ip": ""}),
         start_failed=Mock(),
-        # How the start settled the last update (the update manager's answer).
         update_manager=SimpleNamespace(last_update_applied=True, restart_refusal=lambda: ""),
     )
     monkeypatch.setattr(main, "engine", engine)
