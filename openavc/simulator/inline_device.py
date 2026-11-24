@@ -39,7 +39,7 @@ from collections.abc import Callable
 from typing import Any
 
 from openavc.drivers.command_form import command_form
-from openavc.drivers.compiled_protocol import build_json_mappings
+from openavc.drivers.reply_rule import read_reply_rule
 from openavc.drivers.inline_protocol import (
     declare_command_params,
     derive_state_vars_from_responses,
@@ -129,7 +129,7 @@ def json_fields(driver_def: dict) -> list[dict]:
     fields: list[dict] = []
     for resp in driver_def.get("responses") or []:
         if isinstance(resp, dict) and resp.get("json"):
-            fields.extend(m for m in build_json_mappings(resp, state_vars) if _answered(m))
+            fields.extend(m for m in read_reply_rule(resp, state_vars).mappings if _answered(m))
     return fields
 
 

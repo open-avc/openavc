@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from openavc.drivers.compiled_protocol import compile_driver
+from openavc.drivers.driver_model import read_driver
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
 _ZONE = {
@@ -42,7 +43,7 @@ def _compile(responses: list[dict[str, Any]], **over: Any):
         "responses": responses,
     }
     definition.update(over)
-    return compile_driver(definition, {"unit": "7"}, device_id="acme1")
+    return compile_driver(read_driver(definition), {"unit": "7"}, device_id="acme1")
 
 
 def _regex_children(child_set: Any, caplog) -> list[dict[str, Any]]:
@@ -709,8 +710,8 @@ def test_compile_leaves_the_definition_alone():
             {"address": "/v", "mappings": [{"state": "volume", "arg": 0}]},
         ],
     }
-    first = compile_driver(definition, {})
-    second = compile_driver(definition, {})
+    first = compile_driver(read_driver(definition), {})
+    second = compile_driver(read_driver(definition), {})
     assert mapping == {"group": 1, "state": "volume"}
     assert definition["responses"][1]["mappings"] == [{"state": "volume", "arg": 0}]
     assert first.responses[0][1] is not second.responses[0][1]
@@ -718,7 +719,7 @@ def test_compile_leaves_the_definition_alone():
 
 
 def test_a_definition_with_no_responses_or_child_types_compiles_empty():
-    compiled = compile_driver({}, {})
+    compiled = compile_driver(read_driver({}), {})
     assert (compiled.responses, compiled.osc_responses, compiled.json_responses, compiled.after_json_responses) == (
         [], [], [], [],
     )

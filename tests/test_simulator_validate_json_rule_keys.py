@@ -2,7 +2,7 @@
 
 A ``json: true`` rule reads a body's fields through its value specs. The
 validator asks whether a simulated notification is a body the driver reads,
-and it answers from the keys the compile gives the rules (``build_json_mappings``
+and it answers from the keys the compile gives the rules (``reply_rule``
 and ``json_value_spec``), so a spec naming no key reads its state variable's
 own name, a ``set:`` beside a non-empty ``mappings:`` list is not read, and a
 shorthand that is not text is read as text, all as the runtime reads them.

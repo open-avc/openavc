@@ -22,6 +22,7 @@ from openavc.drivers.compiled_protocol import (
     value_to_wire,
 )
 from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_model import read_driver
 from openavc.drivers.driver_loader import validate_driver_definition
 from openavc.drivers.python_info import python_driver_info_issues
 from openavc.drivers.spec import platform_requirements
@@ -246,7 +247,7 @@ async def test_an_osc_rule_stores_the_real_value():
 
 def test_compiled_rules_carry_the_conversion_without_touching_the_definition():
     definition = copy.deepcopy(RECEIVER)
-    compiled = compile_driver(definition, {})
+    compiled = compile_driver(read_driver(definition), {})
     gain_rule = compiled.responses[0][1][0]
     assert gain_rule["convert"] == {"offset": -18}
     child_prop = compiled.responses[5][2][0]["props"][0]

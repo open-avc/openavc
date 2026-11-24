@@ -59,6 +59,7 @@ from openavc.drivers.base import (
 from openavc.drivers.command_form import command_form
 from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.declared_roster import DeclaredRoster
+from openavc.drivers.driver_model import DriverModel, read_driver
 from openavc.drivers.http_commands import HttpCommands
 from openavc.drivers.http_credential import HttpCredential
 from openavc.drivers.inline_merge import InlineMerge
@@ -216,15 +217,27 @@ class ConfigurableDriver(
     def _compile_replies(self) -> None:
         """The receive side's tables (regex / OSC-address / JSON-body rules,
         incl. throttle state and compiled child_set routing): the shared
-        compile in compiled_protocol, run per instance so the tables embed
-        this instance's config substitutions."""
+        compile in compiled_protocol over the driver's model, run per
+        instance so the tables embed this instance's config substitutions."""
         compiled = compiled_protocol.compile_driver(
-            self._definition, self.config, device_id=self.device_id
+            self._reply_model(), self.config, device_id=self.device_id
         )
         self._compiled_responses = compiled.responses
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
         self._after_json_responses = compiled.after_json_responses
+
+    def _reply_model(self) -> DriverModel:
+        """The model the reply rules compile from (``driver_model``): the
+        driver file's, read once for its class by the factory, or this
+        device's own, read once here, when its protocol was merged over the
+        file (``inline_merge``). Config-free, so a changed setting compiles
+        again from the same model."""
+        model = getattr(self, "_driver_model", None)
+        if model is None or model.definition is not self._definition:
+            model = read_driver(self._definition)
+            self._driver_model = model
+        return model
 
     def _config_changed(self, changed: set[str]) -> None:
         """Settings changed while the device runs (``BaseDriver``'s hook):
@@ -604,7 +617,8 @@ def create_configurable_driver_class(
     Factory: create a ConfigurableDriver subclass from a JSON definition.
 
     Returns a new class with the correct DRIVER_INFO and _definition
-    attributes, ready to be registered in the driver registry. A null
+    attributes and the definition's model (``_driver_model``, which its reply
+    rules compile from), ready to be registered in the driver registry. A null
     top-level section is read as absent (``spec.without_null_sections``), so
     no reader of the definition meets one.
     """
@@ -616,5 +630,6 @@ def create_configurable_driver_class(
         {
             "DRIVER_INFO": driver_info,
             "_definition": driver_def,
+            "_driver_model": read_driver(driver_def),
         },
     )

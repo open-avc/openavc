@@ -18,7 +18,7 @@ its own way, so each is its own reader and none is a variant of another:
 
 These are the validator's own readings of the rules. The runtime reads replies
 in ``openavc.drivers.text_replies`` and ``openavc.drivers.json_replies``. A JSON
-rule's keys are the ones the compile reads (``build_json_mappings`` for its
+rule's keys are the ones the compile reads (``reply_rule``'s reading for its
 flat mappings, ``json_value_spec`` for a child's value specs), so a spec naming
 no key counts its state variable's own name, and each is cut to the top-level
 name a body must carry; whether the body also passes the rule's ``require:``
@@ -32,12 +32,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.drivers.compiled_protocol import (
-    build_json_mappings,
-    parse_json_reply,
-    safe_substitute,
-)
+from openavc.drivers.compiled_protocol import parse_json_reply, safe_substitute
 from openavc.drivers.json_value_spec import CHILD, json_value_mapping
+from openavc.drivers.reply_rule import JSON, read_reply_rule, rule_form
 from openavc.drivers.line_ending import decode_delimiter, reply_line_ending
 from openavc.transport.binary_helpers import received_text
 
@@ -93,8 +90,8 @@ def compile_response_patterns(responses: list, config: dict) -> list[re.Pattern]
 
 def _flat_keys(resp: dict) -> Iterator[Any]:
     """The keys of the rule's flat mappings, as the compile reads them: its
-    ``mappings:`` entries, else its ``set:`` items (``build_json_mappings``)."""
-    for mapping in build_json_mappings(resp, {}):
+    ``mappings:`` entries, else its ``set:`` items (``reply_rule``)."""
+    for mapping in read_reply_rule(resp).mappings:
         yield mapping["key"]
 
 
@@ -127,7 +124,9 @@ def _top_level_keys(resp: dict) -> Iterator[str]:
 
 
 def _is_json_rule(resp: Any) -> bool:
-    return isinstance(resp, dict) and bool(resp.get("json"))
+    """A rule the runtime reads as a JSON body (``reply_rule.rule_form``):
+    ``json: true`` with no OSC ``address:``."""
+    return isinstance(resp, dict) and rule_form(resp) == JSON
 
 
 def json_rule_keys(responses: list) -> set[str]:

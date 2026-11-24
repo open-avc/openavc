@@ -194,7 +194,7 @@ export function buildResponse(
 // ── json: true rules ──
 // A json rule parses the whole reply body as a JSON object; every set /
 // mappings entry reads one field from it (dot path). The runtime half is
-// build_json_mappings + _apply_json_responses (compiled_protocol.py /
+// reply_rule.read_reply_rule + _apply_json_responses (reply_rule.py /
 // configurable.py) — these helpers mirror the exact shapes it accepts.
 
 /** One editable row of a `json: true` rule: state variable ← JSON field. */
@@ -226,7 +226,7 @@ export function coercionTypesEquivalent(a: string, b: string): boolean {
 }
 
 /** Read the rows of a `json: true` rule, mirroring the runtime's
- *  build_json_mappings (json_value_spec.py): a non-empty `mappings` list
+ *  reading of a json rule (reply_rule.py): a non-empty `mappings` list
  *  wins (entries carry {state, key, type?, map?}, the field named by `key`
  *  alone); otherwise each `set` entry is a string JSON path or a
  *  {key|path, type, map} spec whose path defaults to the state name. Either

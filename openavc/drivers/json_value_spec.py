@@ -5,7 +5,7 @@ A json response rule says what to read out of a body with a value spec: a JSON
 path written plainly, or the long form ``{key | path, type, map, contains}``,
 ``key`` winning over ``path``. A rule's flat ``set:`` reads one into a state
 variable and its ``mappings:`` list entries the same way
-(``compiled_protocol.build_json_mappings``), a json ``child_set:`` entry's
+(``reply_rule.read_reply_rule``), a json ``child_set:`` entry's
 ``state:`` into a child's prop (``child_routes``). All three compile it here,
 so a new field on the spec is one edit to the compile; what the runtime does
 with the compiled mapping is ``json_replies.read_json_mapping``.

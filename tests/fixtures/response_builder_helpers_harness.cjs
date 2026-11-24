@@ -313,7 +313,7 @@ const results = {};
 }
 
 // --- json: true rules: row loading + minimal re-serialization ---------------
-// Mirrors build_json_mappings (compiled_protocol.py): a non-empty mappings
+// Mirrors a json rule's reading (reply_rule.py): a non-empty mappings
 // list wins; set values are string paths or {key|path, type, map} specs;
 // both forms default the type to the declared one.
 const jsonVars = {

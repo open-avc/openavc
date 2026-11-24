@@ -28,8 +28,10 @@ from typing import Any
 
 import pytest
 
-from openavc.drivers.compiled_protocol import build_json_mappings, compile_driver
+from openavc.drivers.compiled_protocol import compile_driver
 from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_model import read_driver
+from openavc.drivers.reply_rule import read_reply_rule
 
 _STATE_VARS: dict[str, Any] = {
     "power": {"type": "boolean"},
@@ -50,13 +52,18 @@ _ZONE = {
 }
 
 
+def _json_mappings(rule: dict[str, Any], state_variables: Any) -> list[dict[str, Any]]:
+    """The flat mappings a json rule reads (``reply_rule``)."""
+    return list(read_reply_rule(rule, state_variables).mappings)
+
+
 def _flat(set_map: Any, **rule: Any) -> list[dict[str, Any]]:
     """The flat mappings a json rule with this ``set:`` compiles to."""
     definition = {
         "state_variables": _STATE_VARS,
         "responses": [{"json": True, "set": set_map, **rule}],
     }
-    return compile_driver(definition, {}, device_id="acme1").json_responses[0][0]
+    return compile_driver(read_driver(definition), {}, device_id="acme1").json_responses[0][0]
 
 
 def _child(state: Any) -> list[dict[str, Any]]:
@@ -68,7 +75,7 @@ def _child(state: Any) -> list[dict[str, Any]]:
             {"json": True, "child_set": [{"type": "zone", "id": 1, "state": state}]}
         ],
     }
-    children = compile_driver(definition, {}, device_id="acme1").json_responses[0][4]
+    children = compile_driver(read_driver(definition), {}, device_id="acme1").json_responses[0][4]
     return children[0]["props"] if children else []
 
 
@@ -247,14 +254,14 @@ def test_set_items_compile_in_the_order_written():
 
 def test_explicit_mappings_win_and_set_is_not_read():
     mapping = {"state": "power", "key": "p"}
-    out = build_json_mappings(
+    out = _json_mappings(
         {"json": True, "mappings": [mapping], "set": {"level": "v"}}, _STATE_VARS
     )
     assert _items(out) == [[("state", "power"), ("key", "p"), ("type", "boolean")]]
 
 
 def test_an_empty_mappings_list_lets_set_be_read():
-    out = build_json_mappings({"json": True, "mappings": [], "set": {"level": "v"}}, _STATE_VARS)
+    out = _json_mappings({"json": True, "mappings": [], "set": {"level": "v"}}, _STATE_VARS)
     assert _items(out) == [[("state", "level"), ("key", "v"), ("type", "integer")]]
 
 
@@ -269,7 +276,7 @@ def test_an_empty_mappings_list_lets_set_be_read():
 
 
 def _listed(*entries: Any) -> list[dict[str, Any]]:
-    return build_json_mappings({"json": True, "mappings": list(entries)}, _STATE_VARS)
+    return _json_mappings({"json": True, "mappings": list(entries)}, _STATE_VARS)
 
 
 @pytest.mark.parametrize("name, declared", [("level", "integer"), ("power", "boolean")])
@@ -341,7 +348,7 @@ def test_an_entry_that_names_no_state_variable_compiles_to_nothing():
 
 def test_a_mappings_list_that_names_no_state_variable_still_keeps_set_from_being_read():
     rule = {"json": True, "mappings": ["junk", {"key": "k"}], "set": {"level": "v"}}
-    assert build_json_mappings(rule, _STATE_VARS) == []
+    assert _json_mappings(rule, _STATE_VARS) == []
 
 
 def test_a_mappings_entry_compiles_to_a_new_dict():
@@ -375,11 +382,11 @@ async def test_a_mappings_entry_with_no_type_stores_its_variables_type_from_a_re
 
 @pytest.mark.parametrize("set_map", [None, "pwr", ["pwr"], 3])
 def test_a_set_that_is_not_an_object_compiles_to_nothing(set_map):
-    assert build_json_mappings({"json": True, "set": set_map}, _STATE_VARS) == []
+    assert _json_mappings({"json": True, "set": set_map}, _STATE_VARS) == []
 
 
-def test_build_json_mappings_takes_any_state_variables_reading():
-    out = build_json_mappings({"json": True, "set": {"power": {"key": "p"}}}, {})
+def test_a_json_rule_takes_any_state_variables_reading():
+    out = _json_mappings({"json": True, "set": {"power": {"key": "p"}}}, {})
     assert _items(out) == [[("state", "power"), ("key", "p"), ("type", "string"), ("map", None)]]
 
 
@@ -388,7 +395,7 @@ def test_a_converted_flat_mapping_is_a_new_dict_with_the_conversion_last():
         "state_variables": {"level": {"type": "integer", "scale": 0.5}},
         "responses": [{"json": True, "set": {"level": {"key": "v", "map": {"0": "1"}}}}],
     }
-    out = compile_driver(definition, {}).json_responses[0][0]
+    out = compile_driver(read_driver(definition), {}).json_responses[0][0]
     assert _items(out) == [
         [
             ("state", "level"),
@@ -411,10 +418,10 @@ def test_a_contains_mapping_takes_no_conversion(form):
     spec = {"key": "v", "contains": 3}
     if form == "flat":
         definition["responses"] = [{"json": True, "set": {"level": spec}}]
-        out = compile_driver(definition, {}).json_responses[0][0]
+        out = compile_driver(read_driver(definition), {}).json_responses[0][0]
     else:
         definition["responses"] = [
             {"json": True, "child_set": [{"type": "zone", "id": 1, "state": {"level": spec}}]}
         ]
-        out = compile_driver(definition, {}).json_responses[0][4][0]["props"]
+        out = compile_driver(read_driver(definition), {}).json_responses[0][4][0]["props"]
     assert "convert" not in out[0]

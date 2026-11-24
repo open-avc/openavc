@@ -14,6 +14,7 @@ from openavc.drivers.compiled_protocol import (
     compile_driver,
     split_send_frames,
 )
+from openavc.drivers.driver_model import read_driver
 from openavc.simulator.send_templates import (
     send_param_specs,
     send_regex,
@@ -315,7 +316,7 @@ def test_compile_driver_builds_all_three_tables():
             {"json": True, "require": "serial", "set": {"volume": "vol"}},
         ],
     }
-    compiled = compile_driver(definition, {"unit": "A"}, device_id="acme_1")
+    compiled = compile_driver(read_driver(definition), {"unit": "A"}, device_id="acme_1")
 
     assert len(compiled.responses) == 2
     pattern, mappings, child_mappings, throttle, _gate, follow_ups = compiled.responses[0]
@@ -354,8 +355,8 @@ def test_compile_driver_copies_mapping_lists_per_call():
     definition = {
         "responses": [{"match": "X(\\d+)", "mappings": [{"group": 1, "state": "v"}]}],
     }
-    a = compile_driver(definition, {})
-    b = compile_driver(definition, {})
+    a = compile_driver(read_driver(definition), {})
+    b = compile_driver(read_driver(definition), {})
     assert a.responses[0][1] == b.responses[0][1]
     assert a.responses[0][1] is not b.responses[0][1]
     assert a.responses[0][1] is not definition["responses"][0]["mappings"]
@@ -369,7 +370,7 @@ def test_compile_driver_skips_invalid_regex_and_keeps_rule_order():
             {"match": "OK(\\d+)", "set": {"v": "$1"}},
         ],
     }
-    compiled = compile_driver(definition, {})
+    compiled = compile_driver(read_driver(definition), {})
     assert [p.pattern for p, *_rest in compiled.responses] == ["OK(\\d+)"]
 
 
@@ -382,7 +383,7 @@ def test_compile_driver_files_after_json_rules_into_their_own_table():
             {"match": "ERR (.+)", "set": {"err": "$1"}, "after_json": True},
         ],
     }
-    compiled = compile_driver(definition, {})
+    compiled = compile_driver(read_driver(definition), {})
     # The flagged rule stays in the ordinary table (it is eligible when no
     # json rule applied) and is the only entry in the after-json view.
     assert [p.pattern for p, *_r in compiled.responses] == ["OK(\\d+)", "ERR (.+)"]
@@ -419,7 +420,7 @@ def test_compile_driver_compiles_a_json_child_set_by_literal_id_and_path():
             },
         ],
     }
-    compiled = compile_driver(definition, {})
+    compiled = compile_driver(read_driver(definition), {})
 
     assert compiled.json_responses[0][4] == [
         {
@@ -453,7 +454,7 @@ def test_compile_driver_drops_a_json_child_set_that_cannot_route():
             },
         ],
     }
-    compiled = compile_driver(definition, {})
+    compiled = compile_driver(read_driver(definition), {})
     assert compiled.json_responses[0][4] == []
 
 

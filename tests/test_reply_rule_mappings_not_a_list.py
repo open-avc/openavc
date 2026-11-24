@@ -14,11 +14,9 @@ from typing import Any
 
 import pytest
 
-from openavc.drivers.compiled_protocol import (
-    build_json_mappings,
-    build_regex_mappings,
-    compile_driver,
-)
+from openavc.drivers.compiled_protocol import compile_driver
+from openavc.drivers.driver_model import read_driver
+from openavc.drivers.reply_rule import read_reply_rule
 from openavc.drivers.configurable import create_configurable_driver_class
 
 _STATE_VARS: dict[str, Any] = {"power": {"type": "boolean", "label": "Power"}}
@@ -47,7 +45,7 @@ def _driver(state, events, transport: str, rule: dict[str, Any]):
 @pytest.mark.parametrize("written", _NOT_A_LIST)
 def test_a_text_rule_reads_its_set_beside_a_mappings_that_is_not_a_list(written):
     rule = {"match": "^PWR (\\d)$", "mappings": written, "set": {"power": "$1"}}
-    assert build_regex_mappings(rule, _STATE_VARS) == [
+    assert list(read_reply_rule(rule, _STATE_VARS).mappings) == [
         {"group": 1, "state": "power", "type": "boolean"}
     ]
 
@@ -55,7 +53,7 @@ def test_a_text_rule_reads_its_set_beside_a_mappings_that_is_not_a_list(written)
 @pytest.mark.parametrize("written", _NOT_A_LIST)
 def test_a_json_rule_reads_its_set_beside_a_mappings_that_is_not_a_list(written):
     rule = {"json": True, "mappings": written, "set": {"power": "p"}}
-    assert build_json_mappings(rule, _STATE_VARS) == [
+    assert list(read_reply_rule(rule, _STATE_VARS).mappings) == [
         {"state": "power", "key": "p", "type": "boolean"}
     ]
 
@@ -66,7 +64,7 @@ def test_an_osc_rule_with_a_mappings_that_is_not_a_list_compiles_to_no_mappings(
         "state_variables": _STATE_VARS,
         "responses": [{"address": "/acme/power", "mappings": written}],
     }
-    rule = compile_driver(definition, {}, device_id="acme1").osc_responses[0]
+    rule = compile_driver(read_driver(definition), {}, device_id="acme1").osc_responses[0]
     assert rule[0] == "/acme/power" and rule[1] == []
 
 

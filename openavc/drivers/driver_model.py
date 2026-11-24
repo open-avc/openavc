@@ -11,8 +11,10 @@ Who asks it: the checker, for what the author's doors refuse
 sit (the walk's query part, ``substitution_checks``); the simulator, for the
 lines it answers (``simulator/reread_queries``, ``query_handlers``) and the
 validator's sets (``simulator/driver_sends``); the Device Audit, for the
-commands a poll runs (``audit/command_catalog``). The runtime reads one query
-entry at a time through the leaf, ``query_entry``.
+commands a poll runs (``audit/command_catalog``); the runtime, for its reply
+rules (``ConfigurableDriver``, once per driver file and again for a device
+whose own protocol is merged over it). The runtime reads one query entry at a
+time through the leaf, ``query_entry``.
 
 What it holds so far:
 
@@ -22,6 +24,11 @@ What it holds so far:
   ``read_back`` text, in that order (the order the checker reports them),
   each read by ``query_entry.read_query_entry``. A reader that judges each
   place reads these.
+* ``wire.replies``: every response rule, in file order (``ReplyRule``), each
+  read by ``reply_rule.read_reply_rule``: its form, the flat mappings it
+  writes with both of a rule's forms read once, and the parts a reader takes
+  as written. The runtime's compile reads these
+  (``compiled_protocol.compile_driver``).
 * ``query_lines``: the same lines grouped by what they send (``SentLine``):
   each line once, in the order first sent, with every entry that sends it.
   A reader that answers or covers each line reads these, each with its
@@ -54,7 +61,7 @@ The rules worth knowing before changing anything here:
   rule reads through the model yet has no member here.
 
 Pure: the standard library, ``spec`` and the leaves it composes (``query_entry``,
-``framing_checks``, ``auth_block``, ``command_form``, ``yaml_text``), with
+``reply_rule``, ``framing_checks``, ``auth_block``, ``command_form``, ``yaml_text``), with
 absolute ``openavc.`` imports (``tests/test_avcdriver_semantic_purity.py``).
 Vendored with the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 """
@@ -69,6 +76,7 @@ from openavc.drivers.auth_block import TIMEOUT_NOT_POSITIVE, auth_problems
 from openavc.drivers.command_form import FORM_LEFT_EMPTY, left_empty_forms
 from openavc.drivers.framing_checks import push_frame_field_issues
 from openavc.drivers.query_entry import OSC_MESSAGE, QueryEntry, read_query_entry
+from openavc.drivers.reply_rule import ReplyRule, read_reply_rule
 from openavc.drivers.spec import is_placeholder_name
 from openavc.drivers.yaml_text import reply_map_problems
 
@@ -150,6 +158,7 @@ class WireModel:
     """What a YAML driver sends and reads, before any device's config."""
 
     queries: tuple[QueryLine, ...]
+    replies: tuple[ReplyRule, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -173,7 +182,20 @@ def read_driver(definition: Mapping[str, Any], kind: str = YAML) -> DriverModel:
     if kind == PYTHON:
         return DriverModel(PYTHON, definition, None, ())
     queries = tuple(_query_lines(definition))
-    return DriverModel(YAML, definition, WireModel(queries), _problems(definition, queries))
+    wire = WireModel(queries, _replies(definition))
+    return DriverModel(YAML, definition, wire, _problems(definition, queries))
+
+
+def _replies(definition: Mapping[str, Any]) -> tuple[ReplyRule, ...]:
+    """Each response rule, read, in file order; an entry that is not a
+    mapping, or a section that is not a list, is the checker's to name."""
+    responses = definition.get("responses")
+    state_variables = definition.get("state_variables")
+    return tuple(
+        read_reply_rule(rule, state_variables)
+        for rule in (responses if isinstance(responses, list) else ())
+        if isinstance(rule, Mapping)
+    )
 
 
 def _problems(definition: Mapping[str, Any], queries: tuple[QueryLine, ...]) -> tuple[ModelProblem, ...]:
