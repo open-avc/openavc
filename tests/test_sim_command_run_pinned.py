@@ -252,7 +252,7 @@ def test_a_child_reply_without_an_addressed_child_is_the_flat_one():
 
 def test_a_reply_variable_named_nothing_answers_nothing():
     sim = _sim(responses=[{"match": "E(\\d+)", "set": {"": "$1"}}])
-    assert "" in sim._state_responses
+    assert "" not in sim._state_responses
     assert _run(sim, _h("E", state_changes={}, response_var=""), "E") is None
 
 

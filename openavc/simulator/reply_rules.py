@@ -1,8 +1,9 @@
 """Reading a driver's response rules into a generated simulator's reply tables.
 
 The tables are ``state_replies``' (how a value goes back on the wire); this
-module is what fills them: a flat variable's ``StateResponse`` from each
-rule's ``set:`` (or the ``mappings:`` the Driver Builder writes), a child
+module is what fills them: a flat variable's ``StateResponse`` from the flat
+mappings each text rule writes, read as the runtime reads them
+(``reply_rule``: its ``mappings:`` and its ``set:``, both kept), a child
 variable's ``ChildStateResponse`` from each ``child_set:``, and a
 ``ChildListAnswer`` from each ``child_list:``. A rule is read backwards: its
 pattern becomes the reply, with the value's capture as the ``{value}`` slot
@@ -19,8 +20,10 @@ differs by table, as the pins hold it:
   ones, then rule order; a value's reply and the id map are the first's.
 - list: the first rule for a variable.
 
-A table is created when a rule names its variable, before the rule's value is
-judged, so a variable whose rules give nothing usable has an empty table.
+A table is created for each variable a rule writes (what the runtime reads
+from it, ``reply_rule``), before the rule's value is judged, so a variable
+whose rules give no usable reply has an empty table; one a rule names only
+with a reference that names no capture has none, as the runtime writes none.
 
 Every capture reference is read as the runtime reads it (``capture_ref``), so
 a ``mappings:`` entry that names no group is the whole match, as it is on the
@@ -41,6 +44,7 @@ from openavc.core.condition_eval import value_words
 from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.child_routes import list_capture, list_id, list_start
 from openavc.drivers.compiled_protocol import conversion_of
+from openavc.drivers.reply_rule import REGEX, read_reply_rule
 from openavc.simulator.reply_templates import (
     emit_literal,
     emit_template,
@@ -105,26 +109,18 @@ def _slot(ref: Any) -> int | None:
 def flat_replies(
     responses: Any, var_def_for: Callable[[str], dict]
 ) -> dict[str, StateResponse]:
-    """Each flat variable's StateResponse, from every rule that sets it."""
+    """Each flat variable's StateResponse, from every text rule that sets it.
+    A JSON-body rule fills state from a parsed object, not a regex template,
+    so there is no literal to rebuild a reply from; an OSC address rule is
+    read elsewhere (``osc_addresses``)."""
     tables: dict[str, StateResponse] = {}
     for resp_def in responses:
-        # A JSON-body rule fills state from a parsed object, not a regex
-        # template, so there is no literal to rebuild a reply from.
-        if resp_def.get("json"):
+        if not isinstance(resp_def, dict):
             continue
-        _FlatRule(resp_def).read_into(tables, var_def_for)
+        rule = read_reply_rule(resp_def)
+        if rule.form == REGEX:
+            _FlatRule(resp_def, rule.mappings).read_into(tables, var_def_for)
     return tables
-
-
-def _mappings_as_set(resp_def: dict, set_dict: Any, pattern: Any) -> list | None:
-    """A rule's ``mappings:`` when they stand in for its set: no ``set:``, a
-    pattern, and no address (an address rule is OSC's, read elsewhere)."""
-    if set_dict or not pattern:
-        return None
-    mappings = resp_def.get("mappings")
-    if resp_def.get("address") or not isinstance(mappings, list):
-        return None
-    return mappings
 
 
 def _reversible(mapping: Any) -> bool:
@@ -135,18 +131,14 @@ def _reversible(mapping: Any) -> bool:
 
 
 class _FlatRule:
-    """One response rule read for the flat variables it sets: its ``set:``,
-    or its ``mappings:`` read as one, with the mappings whose ``map:`` must
-    be reversed."""
+    """One text rule read for the flat variables it sets: the flat mappings
+    it writes (``reply_rule``), read as a ``set:``, with the mappings whose
+    ``map:`` must be reversed."""
 
-    def __init__(self, resp_def: dict) -> None:
+    def __init__(self, resp_def: dict, mappings: tuple[Any, ...]) -> None:
         self.pattern = resp_def.get("match", "")
-        self.set_dict = resp_def.get("set", {})
-        self.map_reversals: list[dict] = []
-        mappings = _mappings_as_set(resp_def, self.set_dict, self.pattern)
-        if mappings is not None:
-            self.set_dict = mappings_to_set(mappings)
-            self.map_reversals = [m for m in mappings if _reversible(m)]
+        self.set_dict = mappings_to_set(list(mappings))
+        self.map_reversals = [m for m in mappings if _reversible(m)]
 
     def read_into(
         self, tables: dict[str, StateResponse], var_def_for: Callable[[str], dict]

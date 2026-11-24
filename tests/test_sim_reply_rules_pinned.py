@@ -84,11 +84,12 @@ def test_a_mappings_rule_is_read_as_a_set_and_its_maps_are_reversed():
             {"group": 0, "state": "zero", "map": {"1": "one"}},
         ]},
     ])
+    # "bad" names no capture, so the runtime writes nothing from it and the
+    # simulator has no reply for it either.
     assert _flat(sim) == {
         "power": ("PWR{value}", [], {"on": "PWR1", "off": "PWR0"}),
         "source": ("SRC{value}", [], {}),
         "ready": (None, [], {"true": "READY"}),
-        "bad": (None, [], {}),
         "zero": (None, [], {}),
     }
 
@@ -102,22 +103,23 @@ def test_a_capture_reference_picks_its_group_and_a_bad_one_gives_nothing():
     assert _flat(sim) == {
         "vol": ("V{value} M0", [], {"5": "LIT"}),
         "mode": ("V0 M{value}", [], {}),
-        "zed": (None, [], {}),
         "zero": (None, [], {}),
     }
 
 
-def test_a_mapping_rule_with_a_set_reads_the_set_alone():
+def test_a_rule_with_both_forms_reads_its_mappings_then_its_set():
     sim = _sim([
         {"match": "P(\\d)", "set": {"p": "$1"},
          "mappings": [{"group": 1, "state": "q", "map": {"1": "x"}}]},
     ])
-    assert set(_flat(sim)) == {"p"}
+    assert _flat(sim) == {
+        "q": ("P{value}", [], {"x": "P1"}),
+        "p": ("P{value}", [], {}),
+    }
 
 
-def test_a_flat_rule_that_is_not_a_dict_raises():
-    with pytest.raises(AttributeError):
-        _sim(["MATCH"])
+def test_a_flat_rule_that_is_not_a_dict_is_passed_over():
+    assert _flat(_sim(["MATCH"])) == {}
 
 
 # ── child variables ──
@@ -224,12 +226,7 @@ def test_a_child_mapped_value_keeps_the_first_reply_and_the_first_id_map():
     "not a rule",
 ])
 def test_a_malformed_child_rule_is_passed_over(rule):
-    sim = _sim([rule], child_entity_types=_OUTPUT) if isinstance(rule, dict) else None
-    if sim is None:
-        with pytest.raises(AttributeError):
-            _sim([rule], child_entity_types=_OUTPUT)
-        return
-    assert _child(sim) == {}
+    assert _child(_sim([rule], child_entity_types=_OUTPUT)) == {}
 
 
 def test_no_child_types_reads_no_child_rules():
