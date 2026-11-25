@@ -295,6 +295,54 @@ async def test_a_replace_whose_reload_fails_puts_the_previous_project_back(hall,
     assert _saves_values(hall)
 
 
+async def test_a_value_the_opened_project_sets_as_it_starts_is_kept(hall, tmp_path, monkeypatch):
+    """Its variables are seeded from what it brings before its triggers
+    run, as at a start, so a value a startup trigger sets stays and is
+    saved."""
+    library_id = _library_lobby(tmp_path, monkeypatch)
+    reconcile = hall._reconcile
+
+    async def a_startup_trigger_sets_the_level(run) -> None:
+        await reconcile(run)
+        if hall.project.project.name == "Lobby":
+            hall.state.set("var.level", 5, source="trigger")
+
+    hall._reconcile = a_startup_trigger_sets_the_level
+
+    resp = await _open_lobby(hall, library_id, monkeypatch)
+
+    assert resp.status_code == 200, resp.text
+    assert hall.state.get("var.level") == 5
+    assert _saved(hall.project_path.parent) == {"var.level": 5}
+
+
+async def test_a_swap_that_stops_part_way_leaves_nothing_for_the_next_start_to_undo(hall, tmp_path, monkeypatch):
+    """A rename refused part way (a file held open) puts back the ones made
+    and removes the marker, so the next start does not put the backup back
+    over what was saved since."""
+    library_id = _library_lobby(tmp_path, monkeypatch)
+    rename = project_swap._rename_on_disk
+    calls = {"n": 0}
+
+    def refused_once(src: Path, dst: Path) -> None:
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise PermissionError(13, "The file is in use")
+        rename(src, dst)
+
+    monkeypatch.setattr(project_swap, "_rename_on_disk", refused_once)
+
+    resp = await _open_lobby(hall, library_id, monkeypatch)
+
+    assert resp.status_code == 500, resp.text
+    assert resp.json()["code"] == "not_applied"
+    _hall_as_it_was(hall)
+    assert _saves_values(hall)
+    hall.persister.stop()
+    assert project_recovery.load_or_recover(hall.project_path).project.name == "Hall"
+    assert _saved(hall.project_path.parent)["var.level"] == 42
+
+
 async def test_the_marker_names_the_backup_and_is_on_disk_before_the_first_rename(hall, tmp_path, monkeypatch):
     library_id = _library_lobby(tmp_path, monkeypatch)
     folder = hall.project_path.parent

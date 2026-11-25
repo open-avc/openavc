@@ -95,7 +95,11 @@ class StatePersister:
             log.warning("Could not quarantine state.json: %s", e)
 
     def start(self, persistent_keys: set[str]) -> None:
-        """Subscribe to changes on the given state keys."""
+        """Subscribe to changes on the given state keys, in place of any it
+        held (a key-set update made while stopped subscribes too)."""
+        for sub_id in self._sub_ids:
+            self._state_store.unsubscribe(sub_id)
+        self._sub_ids.clear()
         self._persistent_keys = persistent_keys
         self._stopped = False
         for key in persistent_keys:
@@ -107,10 +111,10 @@ class StatePersister:
             log.info(f"Watching {len(persistent_keys)} persistent variable(s)")
 
     def resume(self, persistent_keys: set[str]) -> None:
-        """Start again after a ``stop`` that nothing replaced state.json
-        behind (a project replace refused before its swap): watching
-        ``persistent_keys``, and the values the store holds written now,
-        since one changed while stopped was not."""
+        """Start again after a ``stop`` (a project replace, which seeded the
+        store from the state.json it put in place, or put the previous one
+        back): watching ``persistent_keys``, and the values the store holds
+        written now, since one changed while stopped was not."""
         self.start(persistent_keys)
         self._write()
 

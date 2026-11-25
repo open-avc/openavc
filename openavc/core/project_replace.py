@@ -19,12 +19,14 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
    values (``state.json``) and the start's notice (``recovery.json``)
    included; the marker removed. A power cut in between has the next start
    put the backup back (``core/project_recovery``);
-5. the project file loaded and applied as a load is, with one announcement.
-   When that fails, the files before it are swapped back under the marker
-   and the project before it loaded again, and the failure is raised as
-   ``ProjectNotAppliedError``;
-6. whatever happened, the persister started again on the state.json now on
-   disk, its values put in the store.
+5. the project file loaded and applied as a load is, with one announcement,
+   its variables seeded from its state.json (or their defaults) by the
+   load's variables stage, before its triggers run, as at a start. When
+   that fails, the files before it are swapped back under the marker and
+   the project before it loaded again, the variables back as they were,
+   and the failure is raised as ``ProjectNotAppliedError``;
+6. whatever happened, the persister started again, and the values the
+   store holds written out.
 
 ``Engine.replace_project`` is the other way a whole project comes in: it
 keeps the files beside the project and the saved values, which is right for
@@ -190,66 +192,75 @@ class ProjectReplaceMixin:
 
     async def _replace_staged(self, prepared: PreparedProject, staged: project_swap.Staged, taken: Path | None):
         """Steps 3 to 6: the persister stopped, the swap under the marker,
-        the load, and the persister started again on what is on disk."""
+        the load, and the persister started again on what the store holds."""
         project_dir = self.project_path.parent
         backup = backup_manager.backup_id(project_dir, taken) if taken is not None else None
-        swapped = replaced = False
         if self.persister:
             self.persister.stop()
         try:
-            self._swap_under_marker(staged.swap_in, backup)
-            swapped = True
+            self._swap_under_marker(staged, staged.swap_in, backup)
             if prepared.after_swap is not None:
                 prepared.after_swap(self.project_path)
             outcome = await self._load_replaced(staged, backup)
-            replaced = True
             self.keep_update_notes(prepared.notes, replace=True)
             project_recovery.publish(self.state, project_dir)
             if prepared.on_replaced is not None:
                 prepared.on_replaced()
             return outcome
         finally:
-            self._restart_persister(swapped, replaced)
+            self._restart_persister()
 
-    def _swap_under_marker(self, swap: Callable[[], None], backup: str | None) -> None:
-        """``swap`` with the marker on disk before it and removed after. A
-        swap that fails has put back what it moved; it is raised as not
-        applied."""
+    def _swap_under_marker(self, staged: project_swap.Staged, swap: Callable[[], None], backup: str | None) -> None:
+        """``swap`` with the marker on disk before it, removed once the live
+        entries are one whole project: the swap done, or every rename of a
+        failed one undone. Kept when an undo failed too, so the next start
+        puts the backup back. A failure is raised as not applied."""
         from openavc.core.project_changes import ProjectNotAppliedError
         from openavc.core.project_loader import ProjectSaveError
 
         project_dir = self.project_path.parent
         try:
             project_swap.write_marker(project_dir, backup)
-            swap()
+            try:
+                swap()
+            except OSError:
+                if not staged.partway:
+                    project_swap.clear_marker(project_dir)
+                raise
             project_swap.clear_marker(project_dir)
         except OSError as error:
             raise ProjectNotAppliedError(ProjectSaveError(error)) from error
 
     async def _load_replaced(self, staged: project_swap.Staged, backup: str | None):
-        """The swapped-in project file loaded and applied as a load is,
-        announced once. When that fails, the files before it are swapped
-        back and the project before it loaded again, so what runs is what
-        the files hold, and the first failure is raised."""
+        """The swapped-in project file loaded and applied as a load is, its
+        variables seeded from the state.json swapped in (the variables
+        stage, before the triggers run), announced once. When that fails,
+        the files before it are swapped back and the project before it
+        loaded again, so what runs is what the files hold, and the first
+        failure is raised."""
         from openavc.core.project_changes import ProjectNotAppliedError
         from openavc.core.project_diff import ProjectOrigin
 
+        self._values_coming_in = self.persister.load() if self.persister else {}
         try:
             incoming = load_project(self.project_path)
             return await self._apply_project_locked(incoming, ProjectOrigin.LOAD, persist=False)
         except Exception as failure:
             log.error("The replacing project could not be loaded; putting the previous one back", exc_info=True)
-            self._swap_under_marker(staged.swap_back, backup)
+            self._values_coming_in = None
+            self._swap_under_marker(staged, staged.swap_back, backup)
             await self._reload_after_failed_replace()
             if isinstance(failure, ProjectNotAppliedError):
                 raise
             raise ProjectNotAppliedError(failure) from failure
+        finally:
+            self._values_coming_in = None
 
     async def _reload_after_failed_replace(self) -> None:
         """The project before a replace that failed, loaded from its files
-        again: the failed apply put the runtime back, but against the
-        incoming files. Logged, never raised: the caller raises the first
-        failure."""
+        again: the failed apply put the runtime and the variables back, but
+        against the incoming files. Logged, never raised: the caller raises
+        the first failure."""
         from openavc.core.project_diff import ProjectOrigin
 
         try:
@@ -258,17 +269,13 @@ class ProjectReplaceMixin:
         except Exception:
             log.exception("The previous project could not be loaded again after a failed replace")
 
-    def _restart_persister(self, swapped: bool, replaced: bool) -> None:
-        """The persister started again: after a swap, on the state.json now
-        on disk, its values put in the store (``reload_persisted_state``;
-        once the incoming project runs, every variable seeded as a start
-        seeds it); otherwise on the values the store holds, written out,
-        since the file never changed."""
+    def _restart_persister(self) -> None:
+        """The persister started again on the running project's saved
+        variables, whatever happened, and the values the store holds written
+        out: the incoming project's, seeded from its state.json and set by
+        its triggers since, or the previous project's, put back."""
         persister = self.persister
         if persister is None:
-            return
-        if swapped:
-            self.reload_persisted_state(replaced=replaced)
             return
         from openavc.core.project_variables import persistent_var_keys
 

@@ -17,7 +17,6 @@ import pytest
 
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
-from openavc.core.state_persister import StatePersister
 
 ENGINE_LOG = "openavc.core.engine"
 
@@ -302,32 +301,3 @@ def test_seeding_writes_as_the_system(tmp_path):
     keys = eng._init_variable_values({"var.b": "saved", "var.a": "ignored"})
     assert keys == {"var.b"}
     assert seen == [("var.a", "x", "system"), ("var.b", "saved", "system")]
-
-
-# ── after a backup restore ──
-
-
-def test_reload_persisted_state_restores_only_persistent_variables(tmp_path):
-    eng = _engine(tmp_path, [
-        {"id": "kept", "type": "string", "default": "d1", "persist": True},
-        {"id": "missing", "type": "string", "default": "d2", "persist": True},
-        {"id": "live", "type": "string", "default": "d3"},
-    ])
-    (tmp_path / "state.json").write_text(json.dumps({"var.kept": "restored"}), encoding="utf-8")
-    eng.persister = StatePersister(tmp_path / "state.json", eng.state)
-    eng.state.set("var.live", "running", source="ui")
-    eng.state.set("var.missing", "stale", source="ui")
-    eng.reload_persisted_state()
-    assert eng.state.get("var.kept") == "restored"
-    assert eng.state.get("var.missing") == "d2"
-    assert eng.state.get("var.live") == "running"
-    assert eng.persister._persistent_keys == {"var.kept", "var.missing"}
-    eng.persister.stop()
-
-
-def test_reload_persisted_state_without_a_persister_does_nothing(tmp_path):
-    eng = _engine(tmp_path, [{"id": "a", "type": "string", "default": "d", "persist": True}])
-    eng.persister = None
-    eng.state.set("var.a", "running", source="ui")
-    eng.reload_persisted_state()
-    assert eng.state.get("var.a") == "running"

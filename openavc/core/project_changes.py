@@ -303,6 +303,10 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
 
         # Reload serialization
         self._reload_lock = asyncio.Lock()
+        # The saved values of a whole project replacing the running one,
+        # while it loads (core/project_replace): the variables stage seeds
+        # from them.
+        self._values_coming_in: dict | None = None
         # How many holders of the lock are running hooks under it now
         # (_running_hooks): a bookkeeping change made meanwhile is queued.
         self._hook_runs = 0

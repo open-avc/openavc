@@ -523,7 +523,7 @@ def _refresh_starter_bundles(lib: Path) -> None:
     Only `bundle.zip`, and only for ids this release actually ships a template
     for. The library's `project.avc` is never touched, so a starter the user
     has edited keeps their edits: the bundle supplies drivers, not content
-    (`open_from_library` reads content from `project.avc` and calls
+    (`prepare_open` reads content from `project.avc` and calls
     `_install_bundled_from_library` for the drivers).
     """
     for zip_file in sorted(_SEED_DIR.glob("*.zip")):
@@ -570,7 +570,7 @@ def ensure_starter_projects() -> None:
     # Seed .zip bundles (just extract project.avc, scripts, and assets
     # into the library — drivers are NOT installed here. They get
     # installed when the user actually opens the project, because the
-    # open_from_library flow handles bundled driver installation.)
+    # prepare_open flow handles bundled driver installation.)
     for zip_file in sorted(_SEED_DIR.glob("*.zip")):
         project_id = sanitize_id(zip_file.stem)
         if (lib / project_id / "project.avc").exists():

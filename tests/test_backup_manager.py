@@ -417,37 +417,6 @@ class TestBackupHardening:
         assert results[0].reason == "Pre-restore backup"
 
 
-def test_reload_persisted_state_applies_restore(tmp_path: Path):
-    """After a restore, reload_persisted_state re-loads state.json into the
-    store (and falls back to a variable's default when the backup had no value),
-    so the persister can't write stale pre-restore values back over the restore."""
-    from openavc.core.engine import Engine
-    from openavc.core.project_loader import ProjectConfig, ProjectMeta, VariableConfig
-    from openavc.core.state_persister import StatePersister
-
-    project_path = tmp_path / "project.avc"
-    project_path.write_text('{"project": {"id": "p", "name": "P"}}', encoding="utf-8")
-    engine = Engine(str(project_path))
-    engine.project = ProjectConfig(
-        project=ProjectMeta(id="p", name="P"),
-        variables=[
-            VariableConfig(id="vol", default=0, persist=True),
-            VariableConfig(id="bright", default=10, persist=True),
-        ],
-    )
-    engine.persister = StatePersister(tmp_path / "state.json", engine.state)
-    # Pre-restore in-memory values that should NOT survive.
-    engine.state.set("var.vol", 1, source="system")
-    engine.state.set("var.bright", 2, source="system")
-    # The restored state.json carries vol but not bright.
-    (tmp_path / "state.json").write_text('{"var.vol": 77}', encoding="utf-8")
-
-    engine.reload_persisted_state()
-
-    assert engine.state.get("var.vol") == 77          # restored value applied
-    assert engine.state.get("var.bright") == 10       # absent -> variable default
-
-
 # ---------------------------------------------------------------------------
 # A nested asset survives the round trip
 #

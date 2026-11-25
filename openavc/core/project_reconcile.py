@@ -224,26 +224,34 @@ class ProjectReconcileMixin:
         """Nothing to undo: a cancelled macro run is not resumed."""
 
     async def _follow_variables(self, run: ReconcileRun) -> None:
+        """The variables as the project now holds them. A whole project
+        replacing the running one with its files (``core/project_replace``)
+        hands in the values its state.json holds (``_values_coming_in``):
+        every variable starts from them or its default, as at a start, and
+        before the stages after this one (the triggers) run."""
         persister = self.persister
         run.variables_before = (
             self.state.get_namespace("var."),
             persister.persistent_keys if persister else None,
         )
+        if self._values_coming_in is not None:
+            self._init_variable_values(self._values_coming_in)
         self._reconcile_variables()
 
     async def _restore_variables(self, run: ReconcileRun) -> None:
-        """A key the change deleted comes back with its value and a key it
-        seeded goes; the persister watches the keys it watched, and
-        state.json is written now, so a value the change pruned from the file
-        is back in it before a restart could read it."""
+        """Every key back on the value it had: a key the change deleted or
+        set comes back, and a key it seeded goes; the persister watches the
+        keys it watched, and state.json is written now, so a value the change
+        pruned from the file is back in it before a restart could read it."""
         if run.variables_before is None:
             return
         before, persisted = run.variables_before
         now = self.state.get_namespace("var.")
         for var_id in now.keys() - before.keys():
             self.state.delete(f"var.{var_id}")
-        for var_id in before.keys() - now.keys():
-            self.state.set(f"var.{var_id}", before[var_id], source="system")
+        for var_id, value in before.items():
+            if var_id not in now or now[var_id] != value:
+                self.state.set(f"var.{var_id}", value, source="system")
         if self.persister and persisted is not None:
             self.persister.restore_keys(persisted)
 

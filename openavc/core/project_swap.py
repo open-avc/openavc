@@ -99,6 +99,13 @@ class Staged:
     def aside(self) -> Path:
         return self.work / "old"
 
+    @property
+    def partway(self) -> bool:
+        """Whether renames are left made: after a ``swap_in``, all of them;
+        after a failed swap whose undo also failed, some. False when the
+        live entries are the ones before the swap."""
+        return bool(self._done)
+
     def _rename(self, src: Path, dst: Path) -> None:
         _rename_on_disk(src, dst)
         self._done.append((src, dst))
