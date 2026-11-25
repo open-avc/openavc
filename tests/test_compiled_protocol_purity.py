@@ -34,6 +34,10 @@ ALLOWED = {
     # which the driver model holds and the compile reads. Standard library,
     # capture_ref and json_value_spec only.
     "openavc.drivers.reply_rule",
+    # THE placeholder fill (safe_substitute, and fill_pattern for a reply
+    # pattern), which the compile fills with and re-exports. Standard
+    # library and spec only.
+    "openavc.drivers.pattern_fill",
     # The driver contract's constant tables. Stdlib-only (ipaddress + re) and
     # already vendored into openavc-drivers, so it travels everywhere this
     # module does. compiled_protocol needs it for the reserved child props:

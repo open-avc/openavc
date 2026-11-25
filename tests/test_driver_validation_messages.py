@@ -1151,6 +1151,12 @@ CASES: dict[str, Any] = {
     "response_placeholder_names_nothing": _d(
         responses=[{"match": "ZONE {zone_count}", "set": {"power": "true"}}]
     ),
+    # Compiles as written (an escaped brace) and not once the default is in:
+    # a setting's value goes in as literal text, and \x needs hex digits.
+    "response_pattern_fails_under_the_defaults": _d(
+        default_config={"unit": "x"},
+        responses=[{"match": r"A\{unit}PWR (on|off)", "set": {"power": "$1"}}],
+    ),
 }
 
 

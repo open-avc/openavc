@@ -4,12 +4,15 @@
 (``openavc.drivers.configurable``), the auto-generated device simulator
 (``openavc.simulator.yaml_auto``), and the driver/simulator validator
 (``openavc.simulator.validate``). The helpers here are the pieces those interpreters
-must agree on byte-for-byte — placeholder substitution, a declared state
-variable's default, reading a device's JSON, value coercion and conversion, a
-value's map word, send_frame packet framing, and delimiter decoding. Each
-interpreter used to carry its own copy, and a copy that drifts shows up as a
-simulator that answers a command differently than the real device would — so
-they live here once instead.
+must agree on byte-for-byte — a declared state variable's default, reading a
+device's JSON, value coercion and conversion, a value's map word, send_frame
+packet framing, and delimiter decoding. Each interpreter used to carry its own
+copy, and a copy that drifts shows up as a simulator that answers a command
+differently than the real device would — so they live here once instead.
+Placeholder substitution is ``openavc.drivers.pattern_fill``'s, which the
+checker reads too; ``safe_substitute`` and ``derive_config`` are re-exported
+here, and a reply pattern is filled through its ``fill_pattern``, a config
+value going in as literal text.
 
 ``compile_driver(model, config, device_id)`` is the per-instance half of a
 driver's model (``openavc.drivers.driver_model``): it turns the model's reply
@@ -32,7 +35,7 @@ and read_back queries the simulator answers (``reread_queries``).
 
 Pure on purpose: stdlib plus ``openavc.transport.binary_helpers``, the driver
 contract's tables (``openavc.drivers.spec``, directly and through ``child_routes``),
-``json_value_spec``, ``reply_rule``, the map lookup every authored map follows
+``json_value_spec``, ``reply_rule``, ``pattern_fill``, the map lookup every authored map follows
 (``openavc.core.condition_eval``, itself pure) and the logger only — the same contract as
 ``openavc.drivers.inline_protocol``, and for the same reason: the simulator
 runs as a separate process and imports this
@@ -56,14 +59,18 @@ from openavc.drivers.child_routes import (
     compile_json_child_set,
     compile_osc_child_set,
 )
+# THE placeholder fill is pattern_fill's, pure so the checker's vendored copy
+# reads it too; safe_substitute and derive_config are re-exported for this
+# module's many callers.
+from openavc.drivers.pattern_fill import derive_config as derive_config
+from openavc.drivers.pattern_fill import fill_pattern
+from openavc.drivers.pattern_fill import safe_substitute as safe_substitute
 from openavc.drivers.reply_rule import JSON, OSC, ReplyRule
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
 from openavc.drivers.spec import PARAM_CONVERSION_KEYS
 from openavc.drivers.spec import (
     NUMERIC_TYPES,
-    PLACEHOLDER,
     REAL_TYPES,
-    placeholder_names,
     value_type_traits_or_text,
 )
 from openavc.drivers.usable_number import usable_number
@@ -78,106 +85,6 @@ if TYPE_CHECKING:
     from openavc.drivers.driver_model import DriverModel
 
 log = get_logger(__name__)
-
-
-# ── Placeholder substitution ──
-
-
-def safe_substitute(template: str, params: dict[str, Any]) -> str:
-    """
-    Substitute {name} and {name:spec} placeholders with values from params.
-
-    The placeholder is the driver contract's token, ``spec.PLACEHOLDER``, so
-    a name that is not an identifier (``{1x}``) is left as typed, as every
-    reader of the template reads it. Only replaces {name} where name is a
-    key in params. An optional
-    ``:format_spec`` (Python format-spec mini-language) formats the value —
-    e.g. ``{preset:02d}`` zero-pads and ``{addr:04X}`` hex-formats, both
-    common in device protocols. A numeric spec applied to a numeric string
-    coerces it first, so a param that arrives as ``"5"`` still pads to
-    ``"05"``. Literal JSON braces and unknown placeholders are left
-    untouched, and an invalid spec leaves the placeholder verbatim rather
-    than raising — this avoids the problem with Python's str.format()
-    choking on JSON body strings.
-    """
-    def replacer(match: re.Match) -> str:
-        key = match.group(1)
-        if key not in params:
-            return match.group(0)  # Leave unmatched {name} as-is
-        spec = match.group(2)
-        if not spec:
-            return str(params[key])
-        formatted = _formatted(params[key], spec)
-        # Unformattable — leave the placeholder verbatim so a bad spec
-        # is visible to the author instead of crashing the send.
-        return match.group(0) if formatted is None else formatted
-
-    return PLACEHOLDER.sub(replacer, template)
-
-
-def _formatted(value: Any, spec: str) -> str | None:
-    """``value`` formatted by ``spec``, else the first number it stands for
-    that the spec takes (``_spec_retries``); None when none does. The retries
-    run while the first refusal is being handled, so anything one of them
-    raises is chained to it."""
-    try:
-        return format(value, spec)
-    except (ValueError, TypeError):
-        return _first_retry_taken(value, spec)
-
-
-def _first_retry_taken(value: Any, spec: str) -> str | None:
-    """The first of ``_spec_retries(value)`` that ``spec`` formats, or None."""
-    for number in _spec_retries(value):
-        try:
-            return format(number, spec)
-        except (ValueError, TypeError):
-            continue
-    return None
-
-
-def _spec_retries(value: Any) -> Iterator[Any]:
-    """What a format spec that refused ``value`` is tried with next, in order.
-
-    An integer spec ('d'/'x'/'X'/'o'/'b') rejects a float even when it's
-    whole (26.0), which is exactly what a scaled slider value is, so a
-    whole-number float is tried as an int and {vol:d} renders "26". A numeric
-    spec applied to a numeric string is tried with it as an int, then as a
-    float, so '02d' works on "5". A conversion that fails is skipped."""
-    if isinstance(value, float) and value.is_integer():
-        conversions: tuple[Any, ...] = (int,)
-    elif isinstance(value, str):
-        conversions = (int, float)
-    else:
-        return
-    for conv in conversions:
-        try:
-            number = conv(value)
-        except (ValueError, TypeError):
-            continue
-        yield number
-
-
-def derive_config(config: dict[str, Any], derived: Any) -> None:
-    """Populate ``config`` in place with values derived from other fields.
-
-    ``derived`` is the driver's optional top-level ``config_derived`` map of
-    ``{name: template}``. Each template is substituted against config; if any
-    ``{field}`` it references resolves to an empty/missing value, the derived
-    value is ``""`` — so an optional prefixed segment simply disappears.
-    Entries are processed in declaration order, so a later template may
-    reference an earlier derived name.
-    """
-    if not isinstance(derived, dict):
-        return
-    for name, template in derived.items():
-        if not isinstance(template, str):
-            continue
-        refs = placeholder_names(template)
-        if any(not str(config.get(f, "") or "").strip() for f in refs):
-            config[name] = ""
-        else:
-            config[name] = safe_substitute(template, config)
 
 
 # ── Declared state-variable defaults ──
@@ -862,14 +769,15 @@ def _json_rule(rule: ReplyRule, instance: _Instance) -> JsonRule:
 
 def _regex_rule(rule: ReplyRule, instance: _Instance) -> RegexRule | None:
     """A regex rule for TCP/serial/UDP/HTTP data, its pattern filled from the
-    instance's config; None when it has no ``match:``. Raises ``re.error`` for
+    instance's config, each value as literal text (``fill_pattern``); None
+    when it has no ``match:``. Raises ``re.error`` for
     a pattern that does not compile. A mapping the rule names that no reader
     writes is said here, once the pattern compiles, as each compile reads it."""
     resp = rule.written
     raw_pattern = resp.get("match", "")
     if not raw_pattern:
         return None
-    pattern = re.compile(safe_substitute(raw_pattern, instance.config))
+    pattern = re.compile(fill_pattern(raw_pattern, instance.config))
     device_id, child_types = instance.device_id, instance.child_types
     for skipped in rule.skipped:
         log.warning("[%s] %s", device_id, skipped.words)

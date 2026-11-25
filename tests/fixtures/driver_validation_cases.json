@@ -9889,6 +9889,33 @@
   },
   "transport": "osc"
  },
+ "response_pattern_fails_under_the_defaults": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "unit": "x"
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "A\\{unit}PWR (on|off)",
+    "set": {
+     "power": "$1"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "response_placeholder_names_nothing": {
   "commands": {
    "noop": {

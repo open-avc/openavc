@@ -1630,7 +1630,7 @@ Each entry takes the forms a `polling.queries` entry takes: a query string or co
 
 Response patterns (and the `auth` prompt regexes) are validated when the driver loads: an invalid regex, or one with nested/overlapping quantifiers that can cause catastrophic backtracking against hostile device input (for example `(.+)+`, `(a|a)+`, `(foo|foobar)*`), is rejected and the driver won't load. Anchor and bound your patterns instead.
 
-**Config values in patterns**: You can use config value placeholders like `{level_control}` in response patterns. They are resolved when the driver connects. This is useful for protocols like QSC Q-SYS where responses include user-configured control names.
+**Config values in patterns**: You can use config value placeholders like `{level_control}` in response patterns, with a format spec if you need one (`{set_id:02d}`). They are resolved when the driver connects. This is useful for protocols like QSC Q-SYS where responses include user-configured control names. The value goes in as plain text, never as regex: a control named `Gain.1 (L)` matches exactly `Gain.1 (L)`, so a name with a dot, a bracket or a plus sign needs no escaping by whoever types it. Write the regex around the placeholder, not through it: `\{unit}` or a group name built from a placeholder becomes something else once the value is in. When the driver is saved or checked, each pattern is tried with the driver's `default_config` filled in, and one that does not compile then is refused; a driver already installed with one still loads, and the pattern is named on its Installed entry.
 
 #### Value maps
 
@@ -4519,7 +4519,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 4. **Type coercion mismatch.** If the type is `integer` but the captured value is `"abc"`, it falls back to storing the raw string and logs a warning. Check that the captured text is actually numeric.
 
-5. **Config placeholders in patterns.** If your response pattern uses config values like `{level_control}`, make sure the config field exists and has a value. These are substituted before the regex is compiled.
+5. **Config placeholders in patterns.** If your response pattern uses config values like `{level_control}`, make sure the config field exists and has a value. These are substituted before the regex is compiled, as plain text: a value's `.` matches a dot, not any character.
 6. **Wrong port or wrong driver.** When three polls in a row bring replies that no response rule reads, the device log has a warning naming the last reply, or saying that none of them ends the way the driver expects.
 
 ### Commands not sending or silently failing

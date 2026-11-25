@@ -1,6 +1,6 @@
 """The ``{name}`` placeholder token has one home, ``spec.PLACEHOLDER``.
 
-The runtime fills it (``compiled_protocol.safe_substitute``) and every other
+The runtime fills it (``pattern_fill.safe_substitute``) and every other
 reader of a template reads the same token: the placeholder check, a udp:
 port's config field, the runtime's warning for a token that survives
 substitution, push's port, group and path, the simulator's command matcher
@@ -31,8 +31,8 @@ from openavc.audit.effects import _declared
 from openavc.audit.observe import recorded
 from openavc.drivers import (
     command_checks,
-    compiled_protocol,
     configurable,
+    pattern_fill,
     spec,
     substitution_checks,
 )
@@ -53,7 +53,8 @@ from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
 def test_every_reader_takes_the_token_from_spec() -> None:
-    assert compiled_protocol.PLACEHOLDER is spec.PLACEHOLDER
+    assert pattern_fill.PLACEHOLDER is spec.PLACEHOLDER
+    assert pattern_fill.placeholder_names is spec.placeholder_names
     assert substitution_checks.placeholder_names is spec.placeholder_names
     assert configurable.placeholder_names is spec.placeholder_names
     assert command_checks.bare_placeholder is spec.bare_placeholder

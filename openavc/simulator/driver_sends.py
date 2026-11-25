@@ -1,7 +1,8 @@
 """What a YAML driver sends, as the simulator's dispatcher receives it, for the validator.
 
-The config a device's templates are filled from is read here once, for the
-simulated device and the validator alike (``effective_config``): the
+The config a device's templates are filled from is read once, for the
+simulated device and the validator alike (``effective_config``, the
+placeholder fill's reading in ``drivers/pattern_fill``, re-exported here): the
 driver's defaults, the device's own settings over them, then the
 ``config_derived`` values, as the running driver holds its config. The
 auto-generated simulator (``yaml_auto``) fills a command's send with it
@@ -41,31 +42,14 @@ from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
-from openavc.drivers.compiled_protocol import derive_config, safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
+from openavc.drivers.pattern_fill import effective_config as effective_config
+from openavc.drivers.pattern_fill import fill_pattern, safe_substitute
 from openavc.drivers.spec import placeholder_names
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import without_escaped_line_endings
-
-
-def effective_config(driver_def: dict, config: dict | None = None) -> dict:
-    """The config a device's templates are filled from, as the running
-    driver holds it: the driver's ``default_config``, the device's own
-    settings over it (``config``; none for the validator, which knows no
-    device), then the ``config_derived`` values worked out from both.
-
-    The derivation is the runtime's own (``derive_config``), run last as the
-    driver runs it, so a derived template whose referenced fields are all
-    non-empty is substituted, otherwise the derived value is "" (an optional
-    prefix segment simply disappears). A new dict each call, so a caller may
-    change its copy.
-    """
-    merged = dict(driver_def.get("default_config") or {})
-    merged.update(config or {})
-    derive_config(merged, driver_def.get("config_derived"))
-    return merged
 
 
 def with_config(template: Any, config: dict, params: Any = None) -> Any:
@@ -87,11 +71,12 @@ def with_config(template: Any, config: dict, params: Any = None) -> Any:
 
 def filled_rules(responses: Any, config: dict) -> Any:
     """The response rules as the driver compiles them: each rule's
-    ``match:`` pattern and OSC ``address:`` with the config filled in
-    (``compiled_protocol``'s regex and OSC rules), so the simulator answers
-    with the text the driver's rule reads and at the address it listens on.
-    Each filled rule is a copy; a rule that is not a mapping, and a section
-    that is not a list, are as written."""
+    ``match:`` pattern with the config filled in as literal text
+    (``fill_pattern``) and its OSC ``address:`` with the config's text
+    (``safe_substitute``), as ``compiled_protocol``'s regex and OSC rules
+    fill them, so the simulator answers with the text the driver's rule reads
+    and at the address it listens on. Each filled rule is a copy; a rule that
+    is not a mapping, and a section that is not a list, are as written."""
     if not isinstance(responses, list):
         return responses
     return [_filled_rule(rule, config) for rule in responses]
@@ -101,8 +86,8 @@ def _filled_rule(rule: Any, config: dict) -> Any:
     if not isinstance(rule, dict):
         return rule
     filled = {
-        key: safe_substitute(rule[key], config)
-        for key in ("match", "address")
+        key: fill(rule[key], config)
+        for key, fill in (("match", fill_pattern), ("address", safe_substitute))
         if isinstance(rule.get(key), str) and "{" in rule[key]
     }
     return {**rule, **filled} if filled else rule

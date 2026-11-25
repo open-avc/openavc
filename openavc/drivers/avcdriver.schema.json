@@ -1897,7 +1897,7 @@
         "match": {
           "type": "string",
           "minLength": 1,
-          "description": "Regex matched against incoming text. Capture groups extract values."
+          "description": "Regex matched against incoming text. Capture groups extract values. A {config_field} placeholder (format spec allowed, as {set_id:02d}) puts in the device's setting as literal text, never as regex."
         },
         "address": {
           "type": "string",

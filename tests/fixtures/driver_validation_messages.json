@@ -1040,6 +1040,9 @@
  "response_osc_address_no_slash": [
   "Response 0: OSC address must start with '/'"
  ],
+ "response_pattern_fails_under_the_defaults": [
+  "responses[0].match: with the default settings filled in, the pattern does not compile (incomplete escape \\x at position 1); a setting's value goes in as literal text, so a {placeholder} cannot finish an escape or a group's name"
+ ],
  "response_placeholder_names_nothing": [
   "responses[0].match: '{zone_count}' resolves to nothing. It names no config field (only config values substitute here), so the pattern would look for it as written"
  ],

@@ -40,9 +40,11 @@ What it holds so far:
   command whose only form is an address or IR code left empty, which sends
   nothing (``command_form.left_empty_forms``), and a command parameter or
   config field whose name no placeholder can carry, which is never filled in
-  (``spec.is_placeholder_name``), and a reply map's key, or a value it writes
+  (``spec.is_placeholder_name``), a reply map's key, or a value it writes
   where its variable holds text, that YAML did not read as text
-  (``yaml_text``).
+  (``yaml_text``), and a regex rule's pattern that compiles as written and not
+  once the driver's declared defaults are filled in, each as literal text
+  (``pattern_fill``).
 
 The rules worth knowing before changing anything here:
 
@@ -61,7 +63,8 @@ The rules worth knowing before changing anything here:
   rule reads through the model yet has no member here.
 
 Pure: the standard library, ``spec`` and the leaves it composes (``query_entry``,
-``reply_rule``, ``framing_checks``, ``auth_block``, ``command_form``, ``yaml_text``), with
+``reply_rule``, ``framing_checks``, ``auth_block``, ``command_form``, ``yaml_text``,
+``pattern_fill``), with
 absolute ``openavc.`` imports (``tests/test_avcdriver_semantic_purity.py``).
 Vendored with the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 """
@@ -75,8 +78,9 @@ from typing import Any
 from openavc.drivers.auth_block import TIMEOUT_NOT_POSITIVE, auth_problems
 from openavc.drivers.command_form import FORM_LEFT_EMPTY, left_empty_forms
 from openavc.drivers.framing_checks import push_frame_field_issues
+from openavc.drivers.pattern_fill import effective_config, unfillable_pattern
 from openavc.drivers.query_entry import OSC_MESSAGE, QueryEntry, read_query_entry
-from openavc.drivers.reply_rule import ReplyRule, read_reply_rule
+from openavc.drivers.reply_rule import REGEX, ReplyRule, read_reply_rule, rule_form
 from openavc.drivers.spec import is_placeholder_name
 from openavc.drivers.yaml_text import reply_map_problems
 
@@ -105,6 +109,15 @@ _PLACEHOLDER_NAME_WORDS = (
 # The code of a reply map's key, or a value it writes where its variable holds
 # text, that YAML did not read as text (yaml_text).
 NOT_TEXT = "not_text"
+
+# The code of a reply pattern that compiles as written and not once the
+# declared defaults are filled in (pattern_fill), and the words said there.
+PATTERN_FILL = "pattern_fill"
+_PATTERN_FILL_WORDS = (
+    "with the default settings filled in, the pattern does not compile ({error}); "
+    "a setting's value goes in as literal text, so a {{placeholder}} cannot finish "
+    "an escape or a group's name"
+)
 
 # The sections whose keys a placeholder fills from, beside each command's params.
 _CONFIG_SECTIONS = ("config_schema", "default_config", "config_derived")
@@ -211,6 +224,7 @@ def _problems(definition: Mapping[str, Any], queries: tuple[QueryLine, ...]) -> 
         (FORM_LEFT_EMPTY, left_empty_forms(definition.get("commands"))),
         (PLACEHOLDER_NAME, ((place, _PLACEHOLDER_NAME_WORDS) for place in _unfillable_names(definition))),
         (NOT_TEXT, reply_map_problems(definition)),
+        (PATTERN_FILL, _unfillable_patterns(definition)),
     )
     for code, issues in sources:
         found += [ModelProblem(place, code, words) for place, words in issues]
@@ -247,6 +261,24 @@ def sent_text(line: QueryLine) -> str | None:
     an entry that sends no text (no form, or a value that is not text)."""
     sent = line.entry.address if line.entry.form == OSC_MESSAGE else line.entry.send
     return sent if isinstance(sent, str) and sent else None
+
+
+def _unfillable_patterns(definition: Mapping[str, Any]) -> Iterator[tuple[str, str]]:
+    """The place and words of each regex rule's pattern that compiles as
+    written and not once the driver's declared defaults are filled in
+    (``pattern_fill.unfillable_pattern``), in file order. A ``default_config``
+    that is no mapping is the shape walk's to name, and gives no defaults to
+    try a pattern with."""
+    responses = definition.get("responses")
+    defaults = definition.get("default_config")
+    if not isinstance(responses, list) or not isinstance(defaults, (Mapping, type(None))):
+        return
+    config = effective_config(definition)
+    for i, rule in enumerate(responses):
+        if isinstance(rule, Mapping) and rule_form(rule) == REGEX:
+            error = unfillable_pattern(rule.get("match"), config)
+            if error is not None:
+                yield f"responses[{i}].match", _PATTERN_FILL_WORDS.format(error=error)
 
 
 def _unfillable_names(definition: Mapping[str, Any]) -> Iterator[str]:

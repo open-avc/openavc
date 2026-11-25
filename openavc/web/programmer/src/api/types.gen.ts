@@ -847,7 +847,11 @@ export interface DriverResponseDef {
    * string at key holds the given value (platform 0.34.0).
    */
   json?: boolean;
-  /** Regex matched against incoming text. Capture groups extract values. */
+  /**
+   * Regex matched against incoming text. Capture groups extract values. A
+   * {config_field} placeholder (format spec allowed, as {set_id:02d}) puts in
+   * the device's setting as literal text, never as regex.
+   */
   match?: string;
   /** OSC address pattern (must start with /). Supports fnmatch wildcards. */
   address?: string;

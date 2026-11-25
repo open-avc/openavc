@@ -1,7 +1,7 @@
 """Whether a driver reads what its simulator sends: its reply rules, as the simulator validator reads them.
 
 A driver reads a reply with its response rules. A regex rule searches the text
-(its ``{config_field}`` placeholders filled in first), and a ``json: true``
+(its ``{config_field}`` placeholders filled in first, as literal text), and a ``json: true``
 rule reads a body that is a JSON object carrying a key the rule maps. A driver
 on a delimited transport splits what arrives on its own terminator before
 either is asked. ``ReplyRules`` holds the three, read once per check.
@@ -32,8 +32,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.drivers.compiled_protocol import parse_json_reply, safe_substitute
+from openavc.drivers.compiled_protocol import parse_json_reply
 from openavc.drivers.json_value_spec import CHILD, json_value_mapping
+from openavc.drivers.pattern_fill import fill_pattern
 from openavc.drivers.reply_rule import JSON, read_reply_rule, rule_form
 from openavc.drivers.line_ending import decode_delimiter, reply_line_ending
 from openavc.transport.binary_helpers import received_text
@@ -72,15 +73,17 @@ def response_lines(response_text: str, delimiter: str | None = None) -> list[str
 
 
 def compile_response_patterns(responses: list, config: dict) -> list[re.Pattern]:
-    """The rules' ``match:`` patterns with the config filled in, compiled. A
-    rule with no pattern, or one that does not compile, is passed over; a
-    rule that is not a mapping raises."""
+    """The rules' ``match:`` patterns with the config filled in as the driver
+    fills them (``fill_pattern``, a value as literal text), compiled. A rule
+    with no pattern, or one that does not compile (which the checker refuses
+    where a driver is written), is passed over; a rule that is not a mapping
+    raises."""
     patterns = []
     for resp in responses:
         pattern_str = resp.get("match", "")
         if not pattern_str:
             continue
-        pattern_str = safe_substitute(pattern_str, config)
+        pattern_str = fill_pattern(pattern_str, config)
         try:
             patterns.append(re.compile(pattern_str))
         except re.error:

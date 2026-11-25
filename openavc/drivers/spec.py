@@ -549,8 +549,9 @@ PORT_OPEN_TRANSPORTS: tuple[str, ...] = transports_where("port_open")
 # digits and underscores, not starting with a digit), so a literal JSON body,
 # `{"vol": {level}}`, matches only on the real placeholder and never on the
 # brace that opens the object, and `{1x}` or `{été}` is no placeholder at all:
-# it goes out as typed. The runtime fills exactly these
-# (compiled_protocol.safe_substitute, push's resolve_push_value), and every
+# it goes out as typed. The runtime fills exactly these (pattern_fill's
+# safe_substitute, and its fill_pattern for a reply pattern, a value as literal
+# text; push's resolve_push_value), and every
 # reader of a template reads them: the placeholder check (substitution_checks),
 # a udp: port's config field and a sets: reference (bare_placeholder), the
 # runtime's warning for one that survives substitution
@@ -2573,7 +2574,7 @@ DEFS = {
             'match': {
                 'type': 'string',
                 'min_len': 1,
-                'doc': 'Regex matched against incoming text. Capture groups extract values.',
+                'doc': 'Regex matched against incoming text. Capture groups extract values. A {config_field} placeholder (format spec allowed, as {set_id:02d}) puts in the device\'s setting as literal text, never as regex.',
             },
             'address': {
                 'type': 'string',
