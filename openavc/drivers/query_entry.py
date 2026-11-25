@@ -36,8 +36,16 @@ runtime's expansion (``query_entries``, the OSC start-up in
 (``simulator/query_handlers.query_kind``). The Driver Builder's
 ``queryEntryHelpers.ts`` still reads an entry for itself.
 
-Pure: the standard library and ``spec`` only. Vendored with the driver
-contract (openavc-drivers' catalog CI, openavc-sdk).
+THE fill of a query line for one child is here too (``fill_child_line``):
+the runtime's per-child poll lines (``query_entries``) and follow-ups
+(``rereads``), the simulator's per-child handlers
+(``simulator/query_handlers``) and the simulator validator's samples
+(``simulator/driver_sends.child_sample``, which ``osc_coverage`` asks) all
+fill ``{child_id}`` through it.
+
+Pure: the standard library, ``spec`` and the placeholder fill
+(``pattern_fill``) only. Vendored with the driver contract (openavc-drivers'
+catalog CI, openavc-sdk).
 """
 
 from __future__ import annotations
@@ -45,6 +53,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.drivers.pattern_fill import safe_substitute
 from openavc.drivers.spec import QUERY_ENTRY_REASONS
 
 LINE = "line"
@@ -116,6 +125,22 @@ def _reason_missing(entry: dict[str, Any]) -> QueryProblem | None:
     if any(key in entry for key in QUERY_ENTRY_REASONS):
         return None
     return _long_line()
+
+
+def fill_child_line(line: str, local_id: Any) -> str:
+    """THE fill of a query line for one child: ``{child_id}`` given the
+    child's id through its format spec (``{child_id:02d}`` pads), as the
+    runtime sends it; every other placeholder is left for the sender's own
+    fill from the config.
+
+    ``local_id`` is the child's id as its type reads it: a registered
+    child's local id, or a roster's id read through the type's
+    ``id_format`` (the simulator's ``child_roster.wire_id``). No id map
+    is applied: a reply rule's id map reads the device's id into the local
+    one and has no send side, so a query names a child by its local id. A
+    spec that cannot format the id (a numeric spec on a string id) leaves
+    the placeholder as typed, as ``pattern_fill.safe_substitute`` does."""
+    return safe_substitute(line, {"child_id": local_id})
 
 
 def _long_line() -> QueryProblem:

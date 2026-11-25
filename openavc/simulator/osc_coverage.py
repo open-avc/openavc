@@ -10,12 +10,15 @@ config filled in, and three checks ask it:
 * ``check_osc_command_coverage``: each command's address with its
   parameters' sample values (``driver_sends.command_sample``), else the shape
   of every address the template can produce.
-* ``check_osc_poll_coverage``: each poll query, ``{child_id}`` given as 1
-  (written that way only: a format spec is left in place).
-* ``check_osc_read_back_coverage``: each command's ``read_back`` lines, every
+* ``check_osc_poll_coverage``: each poll query, its ``{child_id}`` given the
+  sample child (``driver_sends.child_sample``).
+* ``check_osc_read_back_coverage``: each command's ``read_back`` lines, its
+  ``{child_id}`` given the sample child the same way, then every other
   placeholder given as 1.
 
-The three sample a placeholder differently; each says how above. A text
+A query's child is sampled as a text driver's is (``driver_sends.query_line``
+asks the same sample), through the runtime's own child line fill, so a
+format spec (``{child_id:02d}``) is applied as the driver applies it. A text
 driver's lines are ``send_coverage``'s.
 """
 
@@ -29,6 +32,7 @@ from typing import Any
 from openavc.drivers.command_form import command_form
 from openavc.drivers.spec import PLACEHOLDER
 from openavc.simulator.driver_sends import (
+    child_sample,
     command_sample,
     effective_config,
     entry_text,
@@ -165,7 +169,7 @@ def check_osc_poll_coverage(
             continue
         if query_text in commands:
             continue  # runs as that command; command coverage checks it
-        sample = addresses.filled(query_text).replace("{child_id}", "1")
+        sample = child_sample(addresses.filled(query_text))
         if not addresses.answers(sample):
             result.error(
                 "poll_coverage",
@@ -179,9 +183,11 @@ def check_osc_read_back_coverage(
     """Check every OSC address a command's ``read_back`` sends is answered
     by the simulator. ``true`` sends the command's own address, which
     command coverage checks; a read-back naming a command is that
-    command's. A parameter in the address takes a sample value."""
+    command's. ``{child_id}`` takes the sample child through its format
+    spec (``driver_sends.child_sample``); every other parameter in the
+    address takes 1."""
     for line in _read_back_lines(commands):
-        sample = PLACEHOLDER.sub("1", addresses.filled(line))
+        sample = PLACEHOLDER.sub("1", child_sample(addresses.filled(line)))
         if not addresses.answers(sample):
             result.error(
                 "poll_coverage",

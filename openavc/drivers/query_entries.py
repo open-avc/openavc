@@ -7,9 +7,10 @@ The rules worth knowing before changing anything here:
   ``query_entry.read_query_entry``. A string goes as written. ``{send}`` is
   a plain line in dict form so it can carry a gate; ``{each_child: <type>,
   send}`` is one line per registered child of that type, ``{child_id}``
-  filled with its unpadded local id (``{child_id:02d}`` pads), or one per page
-  of children with ``page_size``. Other ``{placeholders}`` are left for the
-  sender's config substitution. Anything else is skipped with a warning
+  filled with its unpadded local id (``{child_id:02d}`` pads) by THE child
+  line fill (``query_entry.fill_child_line``), or one per page of children
+  with ``page_size``. Other ``{placeholders}`` are left for the sender's
+  config substitution. Anything else is skipped with a warning
   (OSC start-up skips one silently, below).
 * **Two gates.** ``when: <config field>`` runs an entry only while that
   field reads as on (an integrator's checkbox for a chatty subscription), and
@@ -50,7 +51,14 @@ from typing import Any, Callable
 from openavc.core.condition_eval import reads_as_on
 from openavc.drivers import compiled_protocol
 from openavc.drivers.child_ids import page_starts
-from openavc.drivers.query_entry import EACH_CHILD, LINE, SEND, QueryEntry, read_query_entry
+from openavc.drivers.query_entry import (
+    EACH_CHILD,
+    LINE,
+    SEND,
+    QueryEntry,
+    fill_child_line,
+    read_query_entry,
+)
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -89,7 +97,6 @@ class QueryEntries:
     _definition: dict[str, Any]
     get_state: Callable[[str], Any]
     list_children: Callable[[str], list[Any]]
-    _safe_substitute: Callable[[str, dict[str, Any]], str]
     _pace_line: Callable[..., Any]
 
     # Whether the last poll was held back by polling.when_state, so the log
@@ -152,10 +159,7 @@ class QueryEntries:
             )
             return []
         children = page_starts(self.list_children(ctype), entry.page_size)
-        return [
-            self._safe_substitute(template, {"child_id": local_id})
-            for local_id in children
-        ]
+        return [fill_child_line(template, local_id) for local_id in children]
 
     def _state_gate_open(self, gate: Any) -> bool:
         """Whether a ``when_state:`` gate lets its entry (or the whole poll)

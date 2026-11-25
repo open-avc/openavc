@@ -28,7 +28,9 @@ entry names none), then the start-up entries that declare their variable; a
 start-up block mixes reads with arming writes, so nothing is inferred there.
 The list, page and per-child handlers are built from ``every_query_entry``
 whenever the roster changes, lists first: a page names its first child the way
-a per-child query does. The order is the order a line is offered to them, and
+a per-child query does, each line filled as the runtime fills it (THE child
+line fill, ``query_entry.fill_child_line``, given the roster's id through the
+type's ``id_format``). The order is the order a line is offered to them, and
 the first that matches answers.
 
 What a list read covers is ``ListQueryHandler.covers``. The answers themselves
@@ -43,9 +45,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.child_ids import page_starts
-from openavc.drivers.compiled_protocol import safe_substitute
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
-from openavc.drivers.query_entry import EACH_CHILD, OSC_MESSAGE, QueryEntry, read_query_entry
+from openavc.drivers.query_entry import (
+    EACH_CHILD,
+    OSC_MESSAGE,
+    QueryEntry,
+    fill_child_line,
+    read_query_entry,
+)
 from openavc.simulator.child_roster import wire_id
 from openavc.simulator.command_names import infer_state_var
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
@@ -301,7 +308,7 @@ def _page_reads(
         return
     ids = [children.wire_id(ctype, cid) for cid in children.ids(ctype)]
     for first in page_starts(ids, page):
-        wire = wire_line(safe_substitute(template, {"child_id": first}))
+        wire = wire_line(fill_child_line(template, first))
         if wire:
             yield ListQueryHandler(_line_pattern(wire), ctype, query_for, str(first), page)
 
@@ -321,7 +328,7 @@ def _each_child_reads(
     if not (_filled(template) and _filled(query_for)):
         return
     for cid in children.ids(ctype):
-        wire = wire_line(safe_substitute(template, {"child_id": children.wire_id(ctype, cid)}))
+        wire = wire_line(fill_child_line(template, children.wire_id(ctype, cid)))
         if wire:
             yield ChildQueryHandler(_line_pattern(wire), ctype, cid, query_for)
 

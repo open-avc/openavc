@@ -322,8 +322,10 @@ def _modules_loaded(module: str) -> set[str]:
 
 
 def test_the_query_entry_reader_stays_a_leaf() -> None:
+    # The contract and the placeholder fill its child line fill fills with.
     assert _modules_loaded("openavc.drivers.query_entry") == {
         "openavc", "openavc.drivers", "openavc.drivers.spec", "openavc.drivers.query_entry",
+        "openavc.drivers.pattern_fill",
     }
 
 

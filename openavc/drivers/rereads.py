@@ -52,7 +52,7 @@ from typing import Any, Callable
 
 from openavc.drivers.child_registration import ChildRegistrations, registered_since
 from openavc.drivers.command_form import command_form
-from openavc.drivers.query_entry import EACH_CHILD, read_query_entry
+from openavc.drivers.query_entry import EACH_CHILD, fill_child_line, read_query_entry
 from openavc.drivers.spec import FOLLOW_UP_SETTLE_S, placeholder_names, transport_traits
 from openavc.transport.pacing import sleep_at_least
 from openavc.utils.logger import get_logger
@@ -124,7 +124,6 @@ class Rereads:
     _send_command: Callable[..., Any]
     _push_params: Callable[[], dict[str, Any]]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
-    _safe_substitute: Callable[[str, dict[str, Any]], str]
     _child_registrations: Callable[[list[Any]], ChildRegistrations]
     _holds_registration: Callable[[Any, Any], bool]
     _registrations_made: Callable[[], int]
@@ -212,8 +211,9 @@ class Rereads:
         of the child it reads (None for a line that names none): expanded as
         a poll entry is (``each_child``, ``when``, ``when_state``,
         ``page_size``), then, outside ``each_child``, ``{child_id}`` filled
-        with each child the rule wrote. With none written (an id the roster
-        does not hold), such a line is not sent."""
+        with each child the rule wrote, by its local id (THE child line
+        fill, ``query_entry.fill_child_line``). With none written (an id the
+        roster does not hold), such a line is not sent."""
         lines = self._expand_query(entry)
         if read_query_entry(entry).form == EACH_CHILD:
             return [(line, None) for line in lines]
@@ -221,7 +221,7 @@ class Rereads:
         for line in lines:
             if "child_id" in placeholder_names(line):
                 out.extend(
-                    (self._safe_substitute(line, {"child_id": local_id}), local_id)
+                    (fill_child_line(line, local_id), local_id)
                     for local_id in child_ids
                 )
             else:

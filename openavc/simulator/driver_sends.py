@@ -32,8 +32,11 @@ and the follow-ups and read-backs are those no earlier entry already sends
 (``reread_queries``).
 
 An OSC driver's addresses are read by ``osc_coverage``, which takes its
-samples and config from here; its child-id sample is its own (the
-``{child_id}`` text only), which a query line here does not share.
+samples and config from here, its child sample included: every check
+samples a query's child as ``child_sample`` does, the first child
+(``SAMPLE_CHILD_ID``) through the runtime's own child line fill
+(``query_entry.fill_child_line``), so ``{child_id:02d}`` is checked as the
+``01`` the driver sends.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ from openavc.drivers.command_form import command_form
 from openavc.drivers.driver_model import POLL, START_UP, read_driver
 from openavc.drivers.pattern_fill import effective_config as effective_config
 from openavc.drivers.pattern_fill import fill_pattern, safe_substitute
+from openavc.drivers.query_entry import fill_child_line
 from openavc.drivers.spec import placeholder_names
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.transport_choice import declared_transport
@@ -112,6 +116,17 @@ def _as_dispatched(text: str) -> str:
     return without_escaped_line_endings(text.rstrip("\r\n"))
 
 
+#: The child a query's ``{child_id}`` is sampled with: the first.
+SAMPLE_CHILD_ID = 1
+
+
+def child_sample(text: str) -> str:
+    """A query line with its ``{child_id}`` given the sample child as the
+    runtime fills a child's line (``query_entry.fill_child_line``: through
+    its format spec), every other placeholder left as it is."""
+    return fill_child_line(text, SAMPLE_CHILD_ID)
+
+
 def query_line(query_text: str, config: dict, transport: str) -> str:
     """A query string as it reaches the simulator's dispatcher.
 
@@ -120,8 +135,7 @@ def query_line(query_text: str, config: dict, transport: str) -> str:
     path expanded to the ``GET /path`` line the HTTP simulator dispatches —
     without that last one every raw-path poll looks unanswered.
     """
-    sample = safe_substitute(safe_substitute(query_text, config), {"child_id": 1})
-    sample = _as_dispatched(sample)
+    sample = _as_dispatched(child_sample(safe_substitute(query_text, config)))
     if transport == "http" and sample.startswith("/"):
         sample = f"GET {sample}"
     return sample
