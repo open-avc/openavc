@@ -129,11 +129,6 @@ cp "$REPO_ROOT/installer/openavc-privileged-helper.sh" "$STAGE_DIR/01-install-op
 cp "$REPO_ROOT/installer/firewall-sync.sh" "$STAGE_DIR/01-install-openavc/files/firewall-sync.sh"
 cp "$REPO_ROOT/installer/openavc.service" "$STAGE_DIR/01-install-openavc/files/openavc.service"
 
-# Stage the canonical starter project (openavc/seed/default/ is the single
-# source of truth every deployment target ships; the image must not carry a
-# committed fork).
-cp "$REPO_ROOT/openavc/seed/default/project.avc" "$STAGE_DIR/01-install-openavc/files/project.avc"
-
 # --- Configure pi-gen ---
 
 echo ""

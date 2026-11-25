@@ -1,8 +1,8 @@
 #!/bin/bash
 # OpenAVC .pkg postinstall — runs as root after OpenAVC.app is in /Applications.
 #
-# Creates the data + log dirs, seeds the default project, installs the
-# LaunchDaemon, and starts the server. This is the step that makes the .pkg a
+# Creates the data + log dirs, installs the LaunchDaemon, and starts the
+# server, whose first start puts the starter project in place. This is the step that makes the .pkg a
 # one-double-click install for a background service: the user never touches a
 # plist or a sudo command.
 
@@ -13,17 +13,12 @@ DATA_DIR="${OPENAVC_DATA_DIR:-/Library/Application Support/OpenAVC}"
 LOG_DIR="${OPENAVC_LOG_DIR:-/Library/Logs/OpenAVC}"
 DAEMON_PLIST="/Library/LaunchDaemons/com.openavc.server.plist"
 AGENT_PLIST="/Library/LaunchAgents/com.openavc.menubar.plist"
-SEED="$APP/Contents/Resources/server/_internal/projects/default/project.avc"
-DEST="$DATA_DIR/projects/default"
 
 mkdir -p "$DATA_DIR" "$LOG_DIR"
 
-# Seed the default project only if the user doesn't already have one (an
-# upgrade or reinstall must never clobber a live project).
-if [ ! -f "$DEST/project.avc" ] && [ -f "$SEED" ]; then
-    mkdir -p "$DEST"
-    cp "$SEED" "$DEST/project.avc"
-fi
+# The starter project is put in place by the server's first start, never
+# here: a reinstall over a system whose project file went missing must leave
+# the server to start the project's newest backup instead.
 
 # What the server left for its next start (an update staged or set aside to
 # try again, a rollback) is dropped now that this release is in place, by the

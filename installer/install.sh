@@ -928,18 +928,9 @@ setup_data_dir() {
     mkdir -p "$DATA_DIR"/{projects/default,backups,logs}
     mkdir -p "$LOG_DIR"
 
-    # Seed default project if not present. The starter project ships inside
-    # the package; a release from before that keeps it under installer/seed/.
-    if [ ! -f "$DATA_DIR/projects/default/project.avc" ]; then
-        for seed in "$INSTALL_DIR/openavc/seed/default/project.avc" \
-                    "$INSTALL_DIR/installer/seed/default/project.avc"; do
-            if [ -f "$seed" ]; then
-                cp "$seed" "$DATA_DIR/projects/default/project.avc"
-                info "Seeded default project"
-                break
-            fi
-        done
-    fi
+    # The starter project is put in place by the server's first start, never
+    # here: a re-run over a system whose project file went missing must leave
+    # the server to start the project's newest backup instead.
 
     # Set ownership
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR"

@@ -194,12 +194,11 @@ PYPROJECT_PATH = APP_DIR / "pyproject.toml"
 # The canonical starter project a first run starts from, the one file every
 # install type ships: inside the package, so a checkout, a pip-installed wheel,
 # the Linux and Pi tarballs and the Docker image all carry it at the same place.
-# The frozen PyInstaller bundle copies it to projects/default/ (openavc.spec),
-# where the Windows installer and the macOS package read it at install. Used
-# as a runtime seed when the configured project path is missing, so seeding
-# does not depend on how the data dir was provided (notably a bind-mounted
-# Docker /data, which shadows the seed cp'd into the image layer; only named
-# volumes inherit image content).
+# The frozen PyInstaller bundle copies it to projects/default/ (openavc.spec).
+# No installer copies it into the data folder: the start puts it in place when
+# the configured project file is missing and no backup of the project opens
+# (core/project_recovery), so a first start is the same however the data dir
+# was provided (a bind-mounted Docker /data included).
 SEED_PROJECT_PATH = PACKAGE_DIR / "seed" / "default" / "project.avc"
 _SEED_PROJECT_CANDIDATES = (
     SEED_PROJECT_PATH,

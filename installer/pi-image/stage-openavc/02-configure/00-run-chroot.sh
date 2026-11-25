@@ -288,11 +288,11 @@ if [ -e /etc/xdg/autostart/piwiz.desktop ]; then
     errors=$((errors + 1))
 fi
 
-# The starter project is installed by the 01-install stage from the seed the
-# build staged out of openavc/seed/default/. Missing/empty means the image
-# would boot with no project at all.
-if [ ! -s "$DATA_DIR/projects/default/project.avc" ]; then
-    echo "FATAL: seed project missing or empty at $DATA_DIR/projects/default/project.avc"
+# The server's first start puts the starter project in place, from the copy
+# inside its own package. None found means the image would boot on an empty
+# Recovery Project.
+if ! runuser -u "$OPENAVC_USER" -- sh -c 'cd /opt/openavc && ./venv/bin/python -c "import sys; from openavc.system_config import get_seed_project_path; sys.exit(get_seed_project_path() is None)"'; then
+    echo "FATAL: the server finds no starter project in /opt/openavc"
     errors=$((errors + 1))
 fi
 

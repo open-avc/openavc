@@ -1,13 +1,12 @@
-"""Guards for the Pi image's starter project seeding.
+"""Guards for the starter project every install type starts on.
 
-Every deployment target must ship the canonical starter project from
-``openavc/seed/default/`` — never a fork. The Pi image used to commit its
-own copy under the pi-gen stage's ``files/`` directory, which silently
-drifted (it was still on a pre-``device_groups`` schema while every other
-target shipped the current seed). Both build paths (the release workflow and
-the local ``build.sh``) now stage the canonical seed into ``files/`` at build
-time, exactly like ``update-helper.sh`` and ``openavc.service``, and the
-staged copy is gitignored so a fork can't be committed again.
+The one starter is ``openavc/seed/default/``, inside the package, and the
+server's first start puts it in place (``core/project_recovery``). No
+installer copies it into the data folder: a reinstall over a system whose
+project file went missing would put the starter there before the server
+could start the project's newest backup. The Pi image used to commit its own
+copy, which drifted, and then staged the package's at build time; it now
+ships an empty project folder and checks that the server finds its starter.
 
 These are text-level guards (like test_installer_spec.py) because the image
 itself only builds on Linux CI.
@@ -24,8 +23,6 @@ from tests import gates
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-pi.yml"
-BUILD_SH = REPO_ROOT / "installer" / "pi-image" / "build.sh"
 STAGE_DIR = REPO_ROOT / "installer" / "pi-image" / "stage-openavc"
 RUN_SH = STAGE_DIR / "01-install-openavc" / "00-run.sh"
 CHROOT_SH = STAGE_DIR / "02-configure" / "00-run-chroot.sh"
@@ -63,6 +60,18 @@ def _render_info_box(*lines: str) -> list[str]:
 CANONICAL_SEED = "openavc/seed/default/project.avc"
 STAGED_SEED = "installer/pi-image/stage-openavc/01-install-openavc/files/project.avc"
 
+#: Every file that installs or builds an install type's data folder.
+INSTALLERS = (
+    "installer/setup.iss",
+    "installer/install-service.bat",
+    "installer/install.sh",
+    "installer/macos/scripts/postinstall",
+    "installer/pi-image/stage-openavc/01-install-openavc/00-run.sh",
+    "installer/pi-image/build.sh",
+    ".github/workflows/release-pi.yml",
+    "Dockerfile",
+)
+
 
 def test_the_seed_ships_inside_the_package():
     """A pip-installed wheel carries only the package, so the one seed every
@@ -75,10 +84,9 @@ def test_the_seed_ships_inside_the_package():
     assert system_config.get_seed_project_path() == system_config.SEED_PROJECT_PATH
 
 
-def test_only_install_sh_still_names_the_old_seed_path():
-    """The seed moved out of installer/seed/. install.sh still names the old
-    path, after the new one, for a release tarball from before the move; any
-    other reader of it would find nothing and ship no starter project."""
+def test_nothing_reads_the_old_seed_path():
+    """The seed moved out of installer/seed/, and no installer reads a seed
+    any more."""
     gates.skip_or_fail(
         gates.GIT, None if shutil.which("git") else "git not installed"
     )
@@ -93,31 +101,18 @@ def test_only_install_sh_still_names_the_old_seed_path():
         gates.GIT, None if proc.returncode in (0, 1) else "not a git checkout"
     )
     readers = set(proc.stdout.split()) - {"tests/test_pi_image_seed.py"}
-    assert readers == {"installer/install.sh"}, f"still reading installer/seed/: {sorted(readers)}"
-    text = (REPO_ROOT / "installer" / "install.sh").read_text(encoding="utf-8")
-    assert text.index(f'"$INSTALL_DIR/{CANONICAL_SEED}"') < text.index(
-        '"$INSTALL_DIR/installer/seed/default/project.avc"'
-    ), "install.sh must try the package's seed before the old path"
+    assert readers == set(), f"still reading installer/seed/: {sorted(readers)}"
 
 
-def test_release_workflow_stages_canonical_seed():
-    """The CI pipeline must copy the canonical seed into the stage files/."""
-    text = WORKFLOW.read_text(encoding="utf-8")
-    assert CANONICAL_SEED in text, (
-        f"release-pi.yml does not stage {CANONICAL_SEED} — the image would "
-        "build without the canonical starter project"
-    )
-    assert STAGED_SEED in text, (
-        f"release-pi.yml does not stage the seed to {STAGED_SEED}"
-    )
-
-
-def test_local_build_stages_canonical_seed():
-    """build.sh mirrors the CI staging for local (Linux) image builds."""
-    text = BUILD_SH.read_text(encoding="utf-8")
-    assert CANONICAL_SEED in text, (
-        f"build.sh does not stage {CANONICAL_SEED} into the stage files dir"
-    )
+@pytest.mark.parametrize("installer", INSTALLERS)
+def test_no_installer_puts_the_starter_project_in_place(installer):
+    """The server's first start does, after it has read the backups. A
+    project file an installer names is the path it hands the server, and
+    nothing else."""
+    text = (REPO_ROOT / installer).read_text(encoding="utf-8")
+    assert "seed/default" not in text and "SeedDefaultProject" not in text
+    copies = [line.strip() for line in text.splitlines() if "project.avc" in line and "OPENAVC_PROJECT" not in line]
+    assert copies == [], f"{installer} still puts the starter project in place"
 
 
 def test_no_forked_seed_is_tracked():
@@ -144,6 +139,7 @@ def test_no_forked_seed_is_tracked():
 
 
 def test_staged_seed_is_gitignored():
+    """A copy an older build staged is never committed."""
     text = GITIGNORE.read_text(encoding="utf-8")
     assert STAGED_SEED in text, (
         ".gitignore must cover the build-time staged seed so a fork can't "
@@ -151,15 +147,12 @@ def test_staged_seed_is_gitignored():
     )
 
 
-def test_image_installs_staged_seed_unconditionally():
-    """00-run.sh must install the staged seed, and must not hide a missing
-    one behind an existence guard — a build without the seed should fail
-    loudly, not produce an image with no starter project."""
+def test_image_ships_an_empty_project_folder():
+    """The project folder is there, owned by the service once the chroot
+    stage hands it the data folder, with no project file in it."""
     text = RUN_SH.read_text(encoding="utf-8")
-    assert "project.avc" in text, "00-run.sh no longer installs the seed project"
-    assert 'if [ -f "$FILES_DIR/project.avc" ]' not in text, (
-        "00-run.sh hides a missing staged seed behind an existence guard"
-    )
+    assert 'mkdir -p "${ROOTFS_DIR}/var/lib/openavc/projects/default"' in text
+    assert "project.avc" not in text
 
 
 def test_chroot_has_no_dead_seed_fallback():
@@ -173,12 +166,13 @@ def test_chroot_has_no_dead_seed_fallback():
     )
 
 
-def test_build_verification_checks_seed():
-    """The image build's hard-check block must verify the seeded project
-    actually landed, so a staging regression aborts the build."""
+def test_build_verification_checks_the_server_finds_its_starter():
+    """The image build's hard-check block asks the server's own reader of
+    the starter, as the service user, so an image whose first start would
+    find none aborts the build."""
     text = CHROOT_SH.read_text(encoding="utf-8")
-    assert '! -s "$DATA_DIR/projects/default/project.avc"' in text, (
-        "00-run-chroot.sh build verification does not check the seed project"
+    assert "get_seed_project_path() is None" in text, (
+        "00-run-chroot.sh build verification does not check the server finds its starter project"
     )
 
 

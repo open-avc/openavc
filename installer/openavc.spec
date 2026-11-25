@@ -42,8 +42,8 @@ datas = [
     # Themes
     (str(PROJECT_ROOT / 'openavc' / 'themes'), 'openavc/themes'),
     # Clean starter project (not the dev project which may have cloud pairing,
-    # assets, etc.). Lands at projects/default/, where setup.iss,
-    # install-service.bat and the macOS postinstall copy it from.
+    # assets, etc.). Lands at projects/default/, where the server's first
+    # start reads it (system_config._SEED_PROJECT_CANDIDATES).
     (str(PROJECT_ROOT / 'openavc' / 'seed' / 'default'), 'projects/default'),
     # User templates
     (str(PROJECT_ROOT / 'user_templates'), 'user_templates'),

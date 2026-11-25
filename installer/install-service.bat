@@ -78,12 +78,9 @@ if not exist "%DATA_DIR%\logs" mkdir "%DATA_DIR%\logs"
 if not exist "%DATA_DIR%\projects\default" mkdir "%DATA_DIR%\projects\default"
 if not exist "%DATA_DIR%\backups" mkdir "%DATA_DIR%\backups"
 
-REM Seed default project if not present
-if not exist "%DATA_DIR%\projects\default\project.avc" (
-    if exist "%INSTALL_DIR%\_internal\projects\default\project.avc" (
-        copy "%INSTALL_DIR%\_internal\projects\default\project.avc" "%DATA_DIR%\projects\default\project.avc" >nul
-    )
-)
+REM The starter project is put in place by the server's first start, never
+REM here: a reinstall over a system whose project file went missing must leave
+REM the server to start the project's newest backup instead.
 
 REM Restrict the data folder to the service and administrators, at every
 REM install and update, so an update also fixes a system installed before

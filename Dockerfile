@@ -96,9 +96,9 @@ COPY installer/openavc.service ./installer/openavc.service
 # created under /data at first start by the runtime — keeping them off
 # the container image guarantees user-installed content survives an image
 # pull (the old /app/{driver,plugin}_repo layout was wiped by every
-# `docker compose up -d` with a new image).
+# `docker compose up -d` with a new image). The starter project is put in
+# place by the first start too, however /data is provided.
 RUN mkdir -p /data/projects/default /data/backups /data/logs \
-    && cp openavc/seed/default/project.avc /data/projects/default/project.avc \
     && chown -R openavc:openavc /data /app
 
 USER openavc

@@ -531,21 +531,9 @@ begin
     MergeServiceEnvironment(PreviousServiceEnvironment, Fresh));
 end;
 
-// Seed default project to data directory if not already present
-procedure SeedDefaultProject();
-var
-  DataDir: String;
-  SrcDir: String;
-begin
-  DataDir := ExpandConstant('{commonappdata}\OpenAVC\projects\default');
-  SrcDir := ExpandConstant('{app}\_internal\projects\default');
-  if not DirExists(DataDir) then
-  begin
-    ForceDirectories(DataDir);
-    // Copy default project
-    CopyFile(SrcDir + '\project.avc', DataDir + '\project.avc', False);
-  end;
-end;
+// The starter project is put in place by the server's first start, never
+// here: a reinstall over a system whose project file went missing must leave
+// the server to start the project's newest backup instead.
 
 // Cache the running installer for future rollback.
 // Without this, the first update has no cached installer to roll back to.
@@ -567,7 +555,6 @@ begin
   if CurStep = ssPostInstall then
   begin
     AddFirewallRule();
-    SeedDefaultProject();
     CacheInstallerForRollback();
   end;
   // An install with its wizard showing starts the tray from [Run] instead.

@@ -52,12 +52,9 @@ mkdir -p "${ROOTFS_DIR}/var/lib/openavc"
 install -m 644 "$FILES_DIR/default-system.json" \
     "${ROOTFS_DIR}/var/lib/openavc/system.json"
 
-# Copy seed project (staged from openavc/seed/default/ by the release
-# workflow / build.sh — fail the build if staging didn't happen rather than
-# shipping an image with no starter project)
+# The project folder, empty: the server's first start puts the starter
+# project in place (02-configure checks the server can find it).
 mkdir -p "${ROOTFS_DIR}/var/lib/openavc/projects/default"
-install -m 644 "$FILES_DIR/project.avc" \
-    "${ROOTFS_DIR}/var/lib/openavc/projects/default/project.avc"
 
 # Copy mDNS service definition
 install -m 644 "$FILES_DIR/openavc-http.service.avahi" \
