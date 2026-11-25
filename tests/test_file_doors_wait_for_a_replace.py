@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import threading
 import zipfile
 from pathlib import Path
@@ -237,6 +238,13 @@ NEW_THEME = {**THEME, "id": "new-look", "name": "New look"}
 CHANGED_THEME = {**THEME, "variables": {"panel_bg": "#222222"}}
 CHANGED_SCRIPT = "# the hall's script, changed\n"
 
+
+def _as_text(text: str) -> bytes:
+    """What a door that saves ``text`` as a text file leaves on disk: each
+    line ending the platform's own (``\\r\\n`` on Windows)."""
+    return text.replace("\n", os.linesep).encode()
+
+
 #: Each door that writes a file, how the test sends it, and what it writes.
 WRITES = {
     "asset upload": (
@@ -245,7 +253,7 @@ WRITES = {
     ),
     "custom control saved": (
         lambda engine: ui_files.write_ui_file("default", "new/index.html", _body({"content": "<p>new</p>"})),
-        "ui/new/index.html", b"<p>new</p>",
+        "ui/new/index.html", _as_text("<p>new</p>"),
     ),
     "custom control dropped": (
         lambda engine: ui_files.upload_ui_file("default", _upload("index.html", b"<p>dropped</p>"), "new"),
@@ -259,27 +267,27 @@ WRITES = {
     ),
     "theme created": (
         lambda engine: themes.create_theme(dict(NEW_THEME)),
-        "themes/new-look.json", json.dumps(NEW_THEME, indent=4).encode(),
+        "themes/new-look.json", _as_text(json.dumps(NEW_THEME, indent=4)),
     ),
     "theme changed": (
         lambda engine: themes.update_theme("hall-look", json.loads(json.dumps(CHANGED_THEME))),
-        "themes/hall-look.json", json.dumps(CHANGED_THEME, indent=4).encode(),
+        "themes/hall-look.json", _as_text(json.dumps(CHANGED_THEME, indent=4)),
     ),
     "theme imported": (
         lambda engine: themes.import_theme(_upload("new.avctheme", json.dumps(NEW_THEME).encode()), False),
-        "themes/new-look.json", json.dumps(NEW_THEME, indent=4).encode(),
+        "themes/new-look.json", _as_text(json.dumps(NEW_THEME, indent=4)),
     ),
     "script source saved": (
         lambda engine: scripts.save_script_source("main", _body({"source": CHANGED_SCRIPT})),
-        "scripts/main.py", CHANGED_SCRIPT.encode(),
+        "scripts/main.py", _as_text(CHANGED_SCRIPT),
     ),
     "assistant writes a custom control": (
         lambda engine: _assistant(engine)._write_ui_file({"path": "new/index.html", "content": "<p>ai</p>"}),
-        "ui/new/index.html", b"<p>ai</p>",
+        "ui/new/index.html", _as_text("<p>ai</p>"),
     ),
     "assistant changes a script's source": (
         lambda engine: _assistant(engine)._update_script_source({"script_id": "main", "source": CHANGED_SCRIPT}),
-        "scripts/main.py", CHANGED_SCRIPT.encode(),
+        "scripts/main.py", _as_text(CHANGED_SCRIPT),
     ),
 }
 
