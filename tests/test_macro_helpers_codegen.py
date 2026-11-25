@@ -14,8 +14,8 @@ Covers the audit findings fixed in the macroHelpers.ts group:
   comparisons route through compare() so string-stored numerics behave like
   the macro engine instead of raising TypeError; trigger/cron/name/id text is
   escaped so hostile values can't break or break OUT of the generated source;
-  $-params resolve via state.get() like the engine (and payloads stay
-  verbatim, also like the engine); JS true/false/null become Python literals;
+  $-params, state.set values and event payloads resolve like the engine;
+  JS true/false/null become Python literals;
   device.command honors skip_if_offline and group.command skips offline
   members.
 """
@@ -312,8 +312,9 @@ class TestValueGeneration:
         assert r.devices.sent[0] == ("proj", "set_preset", {"level": 7, "static": 5})
         # state.set value resolved
         assert r.state.data["var.active_source"] == "cam1"
-        # event payload NOT resolved (macro engine passes payloads verbatim)
-        assert r.events.emitted == [("source.changed", {"ref": "$var.src", "n": 1})]
+        # event payload resolved, as the macro engine resolves it
+        # (MacroSteps._emit_event)
+        assert r.events.emitted == [("source.changed", {"ref": "cam1", "n": 1})]
         # group.command params resolved for each member
         group_sends = [s for s in r.devices.sent if s[1] == "gcmd"]
         assert group_sends == [
@@ -367,6 +368,7 @@ class TestTriggerContext:
         handler = self._handlers(r, "state")["var.power"]
         asyncio.run(handler("var.power", "off", "on"))
         assert r.state.data["var.got_new"] == "on"
+        assert r.events.emitted == [("custom.seen", {"v": "on"})]
         assert r.devices.sent == [
             ("amp", "set", {"level": "on", "src": None}),
             ("unless_off", "go", None),

@@ -602,9 +602,9 @@ function _generateStepLines(
         );
         break;
       case "event.emit": {
-        // Payload values are passed through verbatim — the macro engine does
-        // not resolve $-references in event payloads.
-        const payload = step.payload ? `, ${_pyValue(step.payload, false)}` : "";
+        // A payload's top-level $ references resolve, as the macro engine
+        // resolves them (MacroSteps._emit_event).
+        const payload = step.payload ? `, ${_pyParamsDict(step.payload)}` : "";
         lines.push(`${indent}await events.emit("${_pyEscape(step.event ?? "")}"${payload})`);
         break;
       }

@@ -81,8 +81,8 @@ gen("injection", {
   name: EVIL_NAME,
 });
 
-// --- $-references: params and state.set values resolve like the macro
-// engine; event payloads do NOT (the engine passes payloads verbatim) ---
+// --- $-references: params, state.set values and event payloads resolve like
+// the macro engine (top level only) ---
 gen("dollar_params", {
   id: "m3",
   name: "Dollar Params",
@@ -207,6 +207,7 @@ gen("trigger_context", {
       then_steps: [{ action: "state.set", key: "var.branch", value: "then" }],
       else_steps: [{ action: "state.set", key: "var.branch", value: "else" }],
     },
+    { action: "event.emit", event: "custom.seen", payload: { v: "$trigger.new_value" } },
   ],
   triggers: [
     { type: "state_change", enabled: true, state_key: "var.power" },
