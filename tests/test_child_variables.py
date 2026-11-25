@@ -72,8 +72,8 @@ def test_the_simulator_types_a_property_every_child_has_as_the_runtime_does():
 def test_no_module_but_the_reading_adds_the_properties_itself():
     root = Path(openavc.__file__).parent
     readers = sorted(
-        str(path.relative_to(root)) for path in root.rglob("*.py")
-        if str(path.relative_to(root)) not in {"drivers/spec.py", "drivers/declared_names.py"}
+        path.relative_to(root).as_posix() for path in root.rglob("*.py")
+        if path.relative_to(root).as_posix() not in {"drivers/spec.py", "drivers/declared_names.py"}
         and "CHILD_RESERVED_PROP_SCHEMA" in path.read_text(encoding="utf-8")
     )
     assert readers == []

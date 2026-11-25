@@ -345,8 +345,8 @@ def test_no_other_module_reads_the_flag_itself():
     root = Path(openavc.__file__).parent
     allowed = {"drivers/command_model.py", "drivers/command_checks.py"}
     readers = sorted(
-        str(path.relative_to(root)) for path in root.rglob("*.py")
-        if str(path.relative_to(root)) not in allowed
+        path.relative_to(root).as_posix() for path in root.rglob("*.py")
+        if path.relative_to(root).as_posix() not in allowed
         and 'get("available_offline")' in path.read_text(encoding="utf-8")
     )
     assert readers == []

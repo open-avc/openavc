@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -245,23 +246,33 @@ def test_an_upload_the_import_cannot_decode_is_refused_and_writes_nothing(driver
 # --- the Code view -----------------------------------------------------------------
 
 
-@pytest.fixture
-def code_view(tmp_path, monkeypatch):
+_MODULE = "openavc_driver_acme_widget"
+
+
+@contextmanager
+def _code_view_folder(tmp_path, monkeypatch):
     """The Code view's folder. A driver it creates is imported and registered:
-    both are put back afterwards, so no later test finds the module or the
-    class."""
+    both are put back afterwards (the module as any earlier test left it), so
+    no later test finds the module or the class."""
     import openavc.system_config as system_config
 
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     monkeypatch.setattr(system_config, "DRIVER_REPO_DIR", repo)
     monkeypatch.setattr(registry, "_DRIVER_REGISTRY", dict(registry._DRIVER_REGISTRY))
-    module = "openavc_driver_acme_widget"
-    before = sys.modules.pop(module, None)
-    yield repo
-    sys.modules.pop(module, None)
-    if before is not None:
-        sys.modules[module] = before
+    before = sys.modules.pop(_MODULE, None)
+    try:
+        yield repo
+    finally:
+        sys.modules.pop(_MODULE, None)
+        if before is not None:
+            sys.modules[_MODULE] = before
+
+
+@pytest.fixture
+def code_view(tmp_path, monkeypatch):
+    with _code_view_folder(tmp_path, monkeypatch) as repo:
+        yield repo
 
 
 async def test_the_code_view_opens_a_latin_1_driver_as_text(code_view):
@@ -344,6 +355,14 @@ async def test_a_new_driver_is_written_in_the_encoding_its_coding_line_names(cod
     assert (code_view / "acme_widget.py").read_bytes() == _latin_1_driver()
 
 
-def test_the_code_view_leaves_no_driver_module_behind():
-    """Runs after the test above: the driver it created is not still imported."""
-    assert "openavc_driver_acme_widget" not in sys.modules
+async def test_the_code_view_leaves_no_driver_module_behind(tmp_path, monkeypatch):
+    """A driver the Code view creates is imported, and afterwards the module
+    table reads as it did before, whatever an earlier test left there."""
+    from openavc.api.models import PythonDriverCreateRequest
+    from openavc.api.routes import python_drivers as routes
+
+    before = sys.modules.get(_MODULE)
+    with _code_view_folder(tmp_path, monkeypatch):
+        await routes.create_python_driver(PythonDriverCreateRequest(id="acme_widget", source=_driver()))
+        assert _MODULE in sys.modules
+    assert sys.modules.get(_MODULE) is before
