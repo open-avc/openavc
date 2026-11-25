@@ -5,9 +5,9 @@ the macro editor showed nothing, and the Test button guessed.
 """
 
 import json
-import time
 from urllib.request import Request, urlopen
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import expect
 
 
@@ -38,13 +38,21 @@ def test_the_trigger_card_and_the_macro_editor_say_why(server_factory, page):
     page.goto(f"{server.base_url}/programmer/#macros")
     page.get_by_text("Lights On", exact=True).click(timeout=15_000)
 
-    # The trigger fires once, then its own Cooldown refuses the next change.
+    # The trigger fires once, then its own Cooldown refuses every change after.
+    # The card hears only a skip sent while its socket is up, so changes go on
+    # until one is heard.
     _set(server, "var.level", 1)
-    time.sleep(0.5)
-    _set(server, "var.level", 2)
-    expect(
-        page.get_by_text("Skipped: The trigger's Cooldown had not passed since it last fired.")
-    ).to_be_visible(timeout=10_000)
+    skipped = page.get_by_text(
+        "Skipped: The trigger's Cooldown had not passed since it last fired."
+    )
+    for level in range(2, 40):
+        _set(server, "var.level", level)
+        try:
+            skipped.wait_for(state="visible", timeout=500)
+            break
+        except PlaywrightTimeout:
+            continue
+    expect(skipped).to_be_visible()
 
     # The macro has run, so its own Cooldown refuses Test, which says why.
     page.get_by_role("button", name="Test", exact=True).click()
@@ -53,3 +61,6 @@ def test_the_trigger_card_and_the_macro_editor_say_why(server_factory, page):
     # And the editor keeps it under the steps, as it would for a refusal at
     # any other door.
     expect(page.get_by_text(f"Skipped: {reason}")).to_be_visible()
+    # A second press straight after is the server's to refuse, and says so.
+    page.get_by_role("button", name="Test", exact=True).click()
+    expect(page.get_by_text("Too many requests", exact=False).first).to_be_visible(timeout=10_000)

@@ -567,11 +567,6 @@ class MacroEngine(MacroSteps):
 
     async def _report_skipped(self, macro_id: str, name: str, reason: dict[str, str]) -> None:
         log.info(f"Macro '{name}' skipped — {reason['message']}")
-        # Kept for the task the refused start ran in, so execute_detached can
-        # hand its operator door the same reason (RunEnd).
-        task = asyncio.current_task()
-        if task is not None:
-            self._refusals[task] = reason
         # A run that never starts is still an outcome somebody asked for.
         # Every other way a run ends has a lifecycle event; without this
         # one a caller waiting on the outcome (the WebSocket's
@@ -583,6 +578,12 @@ class MacroEngine(MacroSteps):
             f"macro.skipped.{macro_id}",
             {"macro_id": macro_id, "name": name, "reason": reason["message"], **reason},
         )
+        # Kept for the task the refused start ran in, so execute_detached can
+        # hand its operator door the same reason (RunEnd). After the event,
+        # so this start's reason is the last one written for its task.
+        task = asyncio.current_task()
+        if task is not None:
+            self._refusals[task] = reason
 
     async def _report_completed(
         self, macro_id: str, name: str, task: asyncio.Task | None, failed_steps: int,

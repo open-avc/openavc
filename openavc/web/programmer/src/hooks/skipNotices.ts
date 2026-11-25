@@ -26,7 +26,7 @@ const HANDLERS: Record<string, (msg: Message) => void> = {
     const store = useLogStore.getState();
     const triggerId = msg.trigger_id as string;
     // Whatever it was waiting in (a delay, a debounce, the queue) has ended.
-    store.setTriggerPending(triggerId, null);
+    if (triggerId in store.triggerPending) store.setTriggerPending(triggerId, null);
     store.setTriggerSkip(triggerId, noteOf(msg));
   },
   "macro.skipped": (msg) => {
