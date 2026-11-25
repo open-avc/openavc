@@ -24,6 +24,10 @@ ALLOWED = {
     # What a rule's child_set: / child_list: compile to; compile_driver calls
     # it, and it is held to the same closure.
     "openavc.drivers.child_routes",
+    # THE reading of a child type's variables (child_variables: its own and
+    # the properties every child has), which child_routes types a child's
+    # values by. Standard library and spec only.
+    "openavc.drivers.declared_names",
     # What a json rule's value spec compiles to, in a flat set: and a child;
     # both of the above call it. Standard library only.
     "openavc.drivers.json_value_spec",

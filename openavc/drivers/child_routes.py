@@ -52,7 +52,7 @@ from typing import Any, NamedTuple
 
 from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.json_value_spec import CHILD, json_value_mapping
-from openavc.drivers.spec import CHILD_RESERVED_PROP_SCHEMA
+from openavc.drivers.declared_names import child_variables
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -83,9 +83,9 @@ def _declared_type(var_def: Any) -> str:
 def _child_vars(
     child_types: dict[str, Any], ctype: Any, device_id: str
 ) -> dict[str, Any] | None:
-    """The variables an entry's values are typed by, or None (warned) when the
-    driver declares no such child type. The reserved props come first so a
-    type that declares one of its own keeps its own."""
+    """The variables an entry's values are typed by (``declared_names.
+    child_variables``: the type's own and the properties every child has),
+    or None (warned) when the driver declares no such child type."""
     tdef = child_types.get(ctype)
     if not isinstance(tdef, dict):
         log.warning(
@@ -93,10 +93,7 @@ def _child_vars(
             f"{ctype!r}; skipping entry"
         )
         return None
-    return {
-        **CHILD_RESERVED_PROP_SCHEMA,
-        **(tdef.get("state_variables") or {}),
-    }
+    return child_variables(tdef)
 
 
 def _id_map(cid: dict[str, Any]) -> dict[str, Any] | None:

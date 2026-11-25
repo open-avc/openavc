@@ -151,6 +151,32 @@ def test_a_declared_command_addressed_to_a_child():
     )]
 
 
+def test_a_property_every_child_has_is_the_addressed_childs():
+    """A command addressed to one child may name the properties every child
+    has (``online``, ``label``, ...) in ``sets:`` and ``query_for``, as the
+    checker allows: the simulator writes and answers the child's, never a
+    device variable of the same name."""
+    sim = _sim({
+        "mark_online": {
+            "send": "ON{output}",
+            "params": {"output": {"type": "child_id", "child_type": "output"}},
+            "sets": {"online": True},
+        },
+        "query_online": {
+            "send": "Q{output}",
+            "params": {"output": {"type": "child_id", "child_type": "output"}},
+            "query_for": "online",
+        },
+    }, child_entity_types={"output": {"state_variables": {"input": {"type": "integer"}}}})
+    assert _views(sim) == [
+        _h("mark_online", r"^ON(\d+)$", state_changes={"online": ("literal", True)},
+           response_var="online", child_type="output", child_id_group=1,
+           child_state_keys={"online"}, response_is_child=True),
+        _h("query_online", r"^Q(\d+)$", response_var="online", child_type="output",
+           child_id_group=1, response_is_child=True),
+    ]
+
+
 def test_a_declared_child_command_whose_id_is_not_in_the_template_routes_flat():
     sim = _sim({"set_in": {
         "send": "IN {input}",

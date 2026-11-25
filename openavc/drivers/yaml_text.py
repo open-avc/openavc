@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from openavc.drivers.spec import CHILD_RESERVED_PROP_SCHEMA
+from openavc.drivers.declared_names import child_variables
 
 NOT_TEXT = (
     "YAML reads bare on/off/yes/no/true/false as booleans and bare "
@@ -69,7 +69,7 @@ def _value_specs(
         # A text rule's set: takes no map (refused as such where it is checked).
         yield from _named_specs(f"{place}.set", rule.get("set"), state_vars)
     for where, entry in _child_entries(place, rule):
-        variables = {**CHILD_RESERVED_PROP_SCHEMA, **_child_variables(child_types, entry.get("type"))}
+        variables = child_variables(_child_type(child_types, entry.get("type")))
         yield from _named_specs(f"{where}.state", entry.get("state"), variables)
 
 
@@ -101,9 +101,9 @@ def _child_entries(place: str, rule: Mapping[str, Any]) -> Iterator[tuple[str, M
         yield f"{place}.child_list", child_list
 
 
-def _child_variables(child_types: Mapping[str, Any], child_type: Any) -> Mapping[str, Any]:
-    type_def = child_types.get(child_type) if isinstance(child_type, str) else None
-    return _mapping(type_def.get("state_variables")) if isinstance(type_def, Mapping) else {}
+def _child_type(child_types: Mapping[str, Any], child_type: Any) -> Any:
+    """The child type an entry names, as declared (None for none)."""
+    return child_types.get(child_type) if isinstance(child_type, str) else None
 
 
 def _declared_type(variables: Mapping[str, Any], name: Any) -> Any:

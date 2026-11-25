@@ -58,10 +58,10 @@ from openavc.core.state_store import StateStore
 from openavc.drivers.child_ids import integer_id_range_error
 from openavc.drivers.child_registration import ChildRegistration
 from openavc.drivers.contract_events import CHILD_UNREGISTERED
+from openavc.drivers.declared_names import child_variables
 from openavc.drivers.spec import (
     CHILD_DRIVER_FAULT_CODES,
     CHILD_PRESENCE_MODES,
-    CHILD_RESERVED_PROP_SCHEMA,
     CHILD_RESERVED_PROPS,
 )
 from openavc.utils.logger import get_logger
@@ -238,17 +238,10 @@ class ChildEntities(ChildRegistration):
     #
     # The names are the contract, so they live in drivers/spec.py (which
     # avcdriver_semantic.py can see and openavc-drivers vendors); this is the
-    # runtime's handle on them, and the list _effective_child_schema injects.
+    # runtime's handle on them. The definition each gets when the driver has
+    # not declared it itself, and how a declared one keeps its own wording,
+    # is declared_names.child_variables, which _effective_child_schema asks.
     _CHILD_RESERVED_PROPS: tuple[str, ...] = CHILD_RESERVED_PROPS
-
-    # The definition each reserved prop gets when the driver has not declared
-    # it itself. A driver that DOES declare one keeps its own (its label, help
-    # and cloud_priority), which is how a driver adds wording without taking
-    # the key over. Lives in spec.py because the child_set: compiler needs the
-    # same types -- see CHILD_RESERVED_PROP_SCHEMA there.
-    _CHILD_RESERVED_PROP_SCHEMA: dict[str, dict[str, Any]] = (
-        CHILD_RESERVED_PROP_SCHEMA
-    )
 
     def _init_child_entities(self) -> None:
         """The empty registry, set up by ``BaseDriver.__init__``."""
@@ -421,18 +414,11 @@ class ChildEntities(ChildRegistration):
         (which may be empty for a dynamic type) is used.
         """
         type_def = self._child_type_def(child_type)
-        declared: dict[str, dict[str, Any]] | None = None
         if type_def.get("dynamic") and local_id is not None:
-            declared = self._child_schemas.get((child_type, local_id))
-        if declared is None:
-            declared = dict(type_def.get("state_variables", {}))
-        else:
-            declared = dict(declared)
-        for prop in self._CHILD_RESERVED_PROPS:
-            declared.setdefault(
-                prop, dict(self._CHILD_RESERVED_PROP_SCHEMA[prop])
-            )
-        return declared
+            supplied = self._child_schemas.get((child_type, local_id))
+            if supplied is not None:
+                type_def = {"state_variables": supplied}
+        return child_variables(type_def)
 
     def _format_child_id(self, child_type: str, local_id: int | str) -> str:
         """Validate ``local_id`` against the declared id_format and return

@@ -56,6 +56,7 @@ import yaml
 
 from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.command_form import command_form
+from openavc.drivers.declared_names import child_variables, child_writable_props
 from openavc.drivers.http_commands import request_target
 from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
 from openavc.drivers.send_framing import framed_send
@@ -1163,13 +1164,16 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             and pdef.get("child_type") in self._child_types()
         ]
         if len(child_id_params) != 1:
-            return _ChildAddress(None, None, None, {})
+            return _ChildAddress(None, None, None, {}, frozenset())
         param_name, cpdef = child_id_params[0]
         ctype = cpdef.get("child_type")
         child_vars = self._child_vars(ctype)
         # Param map: local id -> wire token; the sim sees the wire token and
         # needs the local id back.
-        return _ChildAddress(param_name, ctype, reversed_ids(cpdef.get("map")), child_vars)
+        return _ChildAddress(
+            param_name, ctype, reversed_ids(cpdef.get("map")), child_vars,
+            frozenset(child_writable_props(self._child_types().get(ctype))),
+        )
 
     def _build_settings_handlers(self) -> None:
         """Answer a ``device_settings`` write the way a command is answered
@@ -1593,10 +1597,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _var_def_for_key(self, state_key: str) -> dict:
         """Variable definition for a flat key, or for a dotted child key
-        ("<type>.<id>.<prop>") the child type's own declaration."""
+        ("<type>.<id>.<prop>") the child's variable as the runtime reads it
+        (``declared_names.child_variables``: its type's own declaration, or
+        a property every child has)."""
         parts = state_key.split(".")
         if len(parts) == 3:
-            var_def = self._child_vars(parts[0]).get(parts[2])
+            var_def = child_variables(self._child_types().get(parts[0])).get(parts[2])
             if isinstance(var_def, dict):
                 return var_def
         var_def = self._driver_def.get("state_variables", {}).get(state_key)
@@ -1796,12 +1802,16 @@ def _lowered_to(value: Any, high: float | None) -> Any:
 
 class _ChildAddress(NamedTuple):
     """The child a command addresses: its one child_id param, that param's
-    child type, the wire -> local id map, and the type's variables."""
+    child type, the wire -> local id map, the type's variables, and the keys
+    a declared ``sets:`` or ``query_for`` may name as the child's: those
+    variables and the properties every child has, as the checker reads them
+    (``declared_names.child_writable_props``)."""
 
     param_name: str | None
     child_type: str | None
     wire_map: dict[str, str] | None
     child_vars: dict[str, dict]
+    writable: frozenset[str]
 
 
 def _infers_nothing(handler: CommandHandler) -> bool:
@@ -1822,6 +1832,7 @@ class _CommandRead:
         self.child_type = address.child_type
         self.child_wire_map = address.wire_map
         self.child_vars = address.child_vars
+        self.child_writable = address.writable
         self.child_id_group = 0
         self.state_changes: dict[str, Any] = {}
         self.child_state_keys: set[str] = set()
@@ -1913,10 +1924,10 @@ class _CommandRead:
     def _declared_set(self, var_name: str, set_value: Any, param_groups: dict[str, int]) -> None:
         """One ``sets:`` entry: a ``{param}`` reference writes that param's
         capture, anything else is a literal."""
-        # On a child-addressed command the child type's own variables win
-        # the name; flat vars stay reachable for names the child type
-        # doesn't declare.
-        if self.child_type and var_name in self.child_vars:
+        # On a child-addressed command the child's own keys (its type's
+        # variables and the properties every child has) win the name; flat
+        # vars stay reachable for any other name.
+        if self.child_type and var_name in self.child_writable:
             self.child_state_keys.add(var_name)
         ref = bare_placeholder(set_value)
         if ref is None:
@@ -1933,7 +1944,7 @@ class _CommandRead:
     def _reports_child_variable(self, declared_query_for: Any) -> bool:
         if self.response_var in self.child_state_keys:
             return True
-        return bool(declared_query_for) and self.response_var in self.child_vars
+        return bool(declared_query_for) and self.response_var in self.child_writable
 
     # ── A command that declares nothing: read from its names ──
 

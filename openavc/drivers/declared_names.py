@@ -21,7 +21,7 @@ from __future__ import annotations
 import difflib
 from typing import Any
 
-from openavc.drivers.spec import CHILD_RESERVED_PROPS, CONFIG_FIELD_SOURCES
+from openavc.drivers.spec import CHILD_RESERVED_PROP_SCHEMA, CONFIG_FIELD_SOURCES
 
 # Placeholder key standing in for a mapping whose KEYS were built at runtime
 # rather than written out. A YAML definition can never contain one: the reader
@@ -128,23 +128,38 @@ def declared_id_kind(type_def: dict[str, Any]) -> Any:
     return id_format.get("type", "integer")
 
 
-def child_writable_props(type_def: Any) -> set[str]:
-    """Every property a driver may write on a child of this type.
+def child_variables(type_def: Any) -> dict[str, Any]:
+    """THE reading of a child type's variables: its declared
+    ``state_variables``, then each property every child has that the type
+    does not declare itself (``online``, ``label``, ``offline_reason``,
+    ``offline_detail``: ``spec.CHILD_RESERVED_PROP_SCHEMA``), a copy of each.
 
-    The declared ``state_variables`` PLUS the reserved keys the platform
-    injects at runtime (``online``, ``label``, ``offline_reason``,
-    ``offline_detail``). The checks that need this used to compare against the
-    raw declaration alone, so a YAML driver reporting presence, which is the
-    single commonest thing a child roster does, was told the key it was
-    writing did not exist. The runtime always allowed it
-    (``BaseDriver._effective_child_schema`` injects the same names), so this
-    was the static half refusing what the live half accepts: the driver
-    worked, and ``python -m openavc.drivers.check``, the Driver Builder and
-    catalog CI all said it was broken.
-    """
+    A type that declares one of them keeps its own (its label, its help).
+    The runtime's schema of a child (``BaseDriver._effective_child_schema``),
+    a reply rule's typing of a child's values (``child_routes``), the
+    checker's reading of a child's reply map (``yaml_text``), the commands it
+    lets a child-addressed command set (:func:`child_writable_props`) and the
+    simulator (``yaml_auto``) all ask this, so a child's ``online`` is a flag
+    wherever it is read."""
     declared = type_def.get("state_variables") if isinstance(type_def, dict) else None
-    names = set(declared) if isinstance(declared, dict) else set()
-    return names | set(CHILD_RESERVED_PROPS)
+    variables = dict(declared) if isinstance(declared, dict) else {}
+    for name, spec in CHILD_RESERVED_PROP_SCHEMA.items():
+        variables.setdefault(name, dict(spec))
+    return variables
+
+
+def child_writable_props(type_def: Any) -> set[str]:
+    """Every property a driver may write on a child of this type: its
+    variables as :func:`child_variables` reads them.
+
+    The checks that need this used to compare against the raw declaration
+    alone, so a YAML driver reporting presence, which is the single commonest
+    thing a child roster does, was told the key it was writing did not exist,
+    while the runtime always allowed it: the driver worked, and
+    ``python -m openavc.drivers.check``, the Driver Builder and catalog CI all
+    said it was broken.
+    """
+    return set(child_variables(type_def))
 
 
 def declared_enum_values(decl: dict[str, Any]) -> list[str] | None:
