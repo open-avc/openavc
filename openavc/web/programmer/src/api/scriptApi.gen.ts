@@ -369,12 +369,12 @@ export const SCRIPT_API_MEMBERS: Record<string, ScriptApiName[]> = {
       "name": "execute",
       "kind": "function",
       "signature": "(macro_id: str)",
-      "returns": "None",
+      "returns": "str",
       "awaited": true,
       "insertText": "execute(\"${1:macro_id}\")",
       "decorator": "",
-      "summary": "Run a macro by its id and wait for its last step. The wait counts toward the 30 second limit on a handler or timer, so use start for a long macro.",
-      "example": "await macros.execute(\"system_on\")"
+      "summary": "Run a macro by its id, wait for its last step, and get back how it ended: \"completed\", \"failed\", \"cancelled\" or \"skipped\". The wait counts toward the 30 second limit on a handler or timer, so use start for a long macro.",
+      "example": "if await macros.execute(\"system_on\") != \"completed\":\n    log.warning(\"System On did not finish cleanly\")"
     },
     {
       "name": "start",

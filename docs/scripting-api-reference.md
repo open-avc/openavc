@@ -172,7 +172,7 @@ Run named macros.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `await macros.execute(macro_id)` | `None` | Run a macro by ID and wait for its last step. The wait counts toward the 30-second limit on a handler or timer callback. |
+| `await macros.execute(macro_id)` | `str` | Run a macro by ID and wait for its last step. Returns how the run ended: `"completed"` (every step ran), `"failed"` (at least one step did not), `"cancelled"` (it was stopped partway) or `"skipped"` (it never started; `macro.skipped` says why). The wait counts toward the 30-second limit on a handler or timer callback. |
 | `macros.start(macro_id)` | `None` | Start a macro by ID and return at once (no `await`). The macro runs to its last step however long it takes. Call it from a handler or timer, not from a script's top level. |
 
 Both raise `ValueError` for a macro that is not in the project.

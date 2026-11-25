@@ -336,7 +336,26 @@ macros.start(macro_id)           # start it and continue at once (no await)
 
 Both run a macro by its ID. A macro that is not in the project raises `ValueError`.
 
-Use `await macros.execute(...)` when the next line of your script needs the macro to have finished. The wait counts toward the 30-second limit on every async handler and timer callback: a macro still running at 30 seconds is stopped partway, its remaining steps never run, and the log shows the handler as timed out.
+Use `await macros.execute(...)` when the next line of your script needs the macro to have finished. It gives back how the run ended, as one of four words:
+
+| Result | What happened |
+|--------|---------------|
+| `"completed"` | Every step ran. |
+| `"failed"` | At least one step did not. With **Continue on Error** (the default) the macro still ran the steps after it. |
+| `"cancelled"` | The macro was stopped partway: somebody cancelled it, or another macro in its cancel group started. |
+| `"skipped"` | The macro never started, so nothing was sent. The `macro.skipped` event says why (see [Event Types](#event-types)). |
+
+```python
+from openavc import log, macros, on_event
+
+@on_event("ui.press.btn_start")
+async def start_presentation(event):
+    outcome = await macros.execute("system_on")
+    if outcome != "completed":
+        log.warning(f"System On ended {outcome}")
+```
+
+The wait counts toward the 30-second limit on every async handler and timer callback: a macro still running at 30 seconds is stopped partway, its remaining steps never run, the handler stops at that `await` without running the lines after it, and the log shows the handler as timed out.
 
 Use `macros.start(...)` for anything longer, such as a shutdown that waits for a projector to cool or a computer to turn off. It returns at once, the way a panel button's Macro action does, and the macro runs to its last step on its own, even if the script is reloaded.
 

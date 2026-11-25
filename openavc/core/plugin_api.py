@@ -281,10 +281,12 @@ class PluginAPI:
 
     # ──── Actions ────
 
-    async def macro_execute(self, macro_id: str) -> None:
-        """Execute a macro by ID. Requires: macro_execute."""
+    async def macro_execute(self, macro_id: str) -> str:
+        """Execute a macro by ID and return how it ended: ``completed``,
+        ``failed``, ``cancelled`` or ``skipped`` (``MacroEngine.execute``).
+        Requires: macro_execute."""
         self._require("macro_execute")
-        await self._macros.execute(macro_id)
+        return await self._macros.execute(macro_id)
 
     async def device_command(
         self, device_id: str, command: str, params: dict | None = None

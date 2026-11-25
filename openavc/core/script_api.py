@@ -396,7 +396,9 @@ class _MacroProxy:
         self._engine = engine
 
     @_leashed_async
-    async def execute(self, macro_id: str) -> None:
+    async def execute(self, macro_id: str) -> str:
+        """Run a macro and wait for it; returns how it ended, the word every
+        door reports (``MacroEngine.execute``)."""
         if self._engine is None:
             raise RuntimeError("Script API not configured — macro proxy not bound")
         # Carry the macro call chain across the script boundary: a handler
@@ -405,7 +407,7 @@ class _MacroProxy:
         # caught by the engine's circular/depth guards instead of resetting
         # them. Outside any macro this is an empty chain (normal behavior).
         from openavc.core.macro_engine import active_call_chain
-        await self._engine.execute(macro_id, _call_chain=active_call_chain())
+        return await self._engine.execute(macro_id, _call_chain=active_call_chain())
 
     @_leashed
     def start(self, macro_id: str) -> None:

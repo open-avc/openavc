@@ -149,9 +149,12 @@ HELP: dict[str, Help] = {
     ),
     # --- macros ---
     "macros.execute": Help(
-        "Run a macro by its id and wait for its last step. The wait counts toward "
-        "the 30 second limit on a handler or timer, so use start for a long macro.",
-        'await macros.execute("system_on")',
+        "Run a macro by its id, wait for its last step, and get back how it ended: "
+        "\"completed\", \"failed\", \"cancelled\" or \"skipped\". The wait counts "
+        "toward the 30 second limit on a handler or timer, so use start for a long "
+        "macro.",
+        'if await macros.execute("system_on") != "completed":\n'
+        '    log.warning("System On did not finish cleanly")',
     ),
     "macros.start": Help(
         "Start a macro by its id and carry on at once, without waiting. It runs to "
