@@ -299,15 +299,15 @@ def test_loading_and_driving_the_panel_asks_for_nothing_that_is_not_there(
 # A start that failed is shown on the glass by the server's own page
 # ---------------------------------------------------------------------------
 
-def _start_on_its_port(handle, log_path: Path) -> subprocess.Popen:
-    """Another server process for ``handle``'s project and data folder, on
-    the same port, the way the computer's service manager starts the next one
-    after a stop. Nothing starts it again when it ends."""
+def _start_on_its_port(handle, log_path: Path, project: Path | None = None) -> subprocess.Popen:
+    """Another server process for ``handle``'s data folder and project (or
+    ``project``), on the same port, the way the computer's service manager
+    starts the next one after a stop. Nothing starts it again when it ends."""
     env = {
         **os.environ,
         "OPENAVC_PORT": str(urlparse(handle.base_url).port),
         "OPENAVC_BIND": "127.0.0.1",
-        "OPENAVC_PROJECT": str(handle.project_path),
+        "OPENAVC_PROJECT": str(project or handle.project_path),
         "OPENAVC_DATA_DIR": str(handle.data_dir),
         "OPENAVC_E2E_CONTROL_FILE": str(handle.control_file),
         "OPENAVC_CLOUD_ENABLED": "false",
@@ -334,25 +334,22 @@ def _stop(proc: subprocess.Popen) -> None:
 
 def test_a_failed_start_shows_its_reason_on_the_panel_then_the_room_again(served_panel) -> None:
     """The room page would otherwise stay up, offline, with no reason. The
-    server is stopped and started again on its port with a project that
-    cannot be loaded (a folder where the file was); the panel, reconnecting,
-    is turned away for a failed start and loads its page again, which is the
+    server is stopped and started again on its port with a project whose
+    folder is a file, so no project can be loaded there or put in its place
+    (a project file that will not load is replaced by a backup or the
+    Recovery Project, and the room starts); the panel, reconnecting, is
+    turned away for a failed start and loads its page again, which is the
     server's own page with the reason. Once a start succeeds, that page loads
     the panel again by itself."""
     page = served_panel.page
     handle = served_panel.handle
-    project = handle.project_path
-    root = project.parent
-    good = project.read_bytes()
+    root = handle.project_path.parent
     page.evaluate("() => { window.__sameDocument = true; }")
 
     _stop(handle.process)
-    project.unlink()
-    project.mkdir()
-    # So no start restores a backup over the folder.
-    if (root / "backups").exists():
-        (root / "backups").rename(root / "backups-aside")
-    failing = _start_on_its_port(handle, root / "server-failed.log")
+    not_a_folder = root / "not-a-folder"
+    not_a_folder.write_text("")
+    failing = _start_on_its_port(handle, root / "server-failed.log", project=not_a_folder / "project.avc")
     try:
         expect(page.locator("#message")).to_have_text("OpenAVC could not start", timeout=30_000)
         expect(page.locator("#error")).to_contain_text("project")
@@ -361,8 +358,6 @@ def test_a_failed_start_shows_its_reason_on_the_panel_then_the_room_again(served
     finally:
         _stop(failing)
 
-    project.rmdir()
-    project.write_bytes(good)
     fixed = _start_on_its_port(handle, root / "server-fixed.log")
     try:
         served_panel.element("btn_laptop").wait_for(state="visible", timeout=30_000)
