@@ -102,6 +102,28 @@ async def test_a_preempted_run_returns_cancelled_to_its_caller():
     assert await first == "cancelled"
 
 
+async def test_a_run_preempting_its_own_macro_starts_after_the_old_one_ends():
+    # The IDE keeps one progress record per macro: the preempted run's end has
+    # to come first, or it would clear the new run's progress.
+    engine, events, _state = _engine([{**LONG, "id": "on", "name": "On", "cancel_group": "power"}])
+    seen: list[str] = []
+
+    async def _on(event, _payload):
+        seen.append(event)
+
+    events.on("macro.*", _on)
+    first = asyncio.create_task(engine.execute("on"))
+    await _until(lambda: engine.is_macro_running("on"))
+    second = asyncio.create_task(engine.execute("on"))
+
+    assert await first == "cancelled"
+    assert await second == "completed"
+    lifecycle = [e for e in seen if e.split(".")[1] in ("started", "cancelled", "completed")]
+    assert lifecycle == [
+        "macro.started.on", "macro.cancelled.on", "macro.started.on", "macro.completed.on",
+    ]
+
+
 # --- anyone else's cancel stops the caller ---------------------------------------
 
 

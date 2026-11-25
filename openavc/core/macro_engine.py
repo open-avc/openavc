@@ -457,17 +457,19 @@ class MacroEngine(MacroSteps):
             return "skipped"
 
         # From the claim on, everything is inside the try: a cancel that lands
-        # while the start is announced, or while a preempted run unwinds, ends
+        # while a preempted run unwinds, or while the start is announced, ends
         # this run and gives its slot back like one that lands mid-step.
         try:
+            # Wait for preempted tasks to fully unwind before we start sending
+            # commands — A50. Before the start is announced, too: a client
+            # that keeps one progress record per macro (the IDE) must hear a
+            # preempted run of the same macro end before this one starts.
+            await self._drain_cancelled(cancelled)
             log.info(f"Executing macro '{name}' ({len(steps)} steps)")
             await self.events.emit(
                 f"macro.started.{macro_id}",
                 {"macro_id": macro_id, "name": name, "total_steps": len(steps)},
             )
-            # Wait for preempted tasks to fully unwind before we start sending
-            # commands — A50.
-            await self._drain_cancelled(cancelled)
             failed_steps = await self.execute_steps(
                 steps, context, macro_id, stop_on_error, _call_chain=_call_chain
             )

@@ -105,9 +105,9 @@ async def test_a_macro_started_from_every_runs_past_the_handler_limit(room):
 
 async def test_execute_from_every_is_still_cut_off_at_the_handler_limit(room):
     """A script timer that awaits a long macro: the limit cancels the run
-    partway, and the timer reports it. The macro swallows the cancellation (it
-    ends as "cancelled"), so before the limit checked for that the cut-off left
-    no error at all, only the macro's own "was cancelled" log line."""
+    partway, and the timer reports it. The macro ends as "cancelled" and passes
+    the limit's cancel on, so the timer stops at the await and the limit
+    reports it as timed out."""
     state, macros, scripts, project_dir, errors = room
     _load(scripts, project_dir, """\
         from openavc import every, macros

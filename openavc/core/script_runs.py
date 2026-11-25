@@ -122,9 +122,10 @@ async def run_within_handler_limit(awaitable: Any, limit: float) -> None:
             raise HandlerTimedOut() from None
         raise
     # The limit cancelled the body and something inside it caught the
-    # cancellation and returned, so asyncio raised nothing. An awaited macro
-    # does exactly that (it ends as "cancelled"), and without this a macro cut
-    # off halfway left no error against the script that ran it.
+    # cancellation and returned, so asyncio raised nothing: the script's own
+    # `except asyncio.CancelledError`, say. (An awaited macro passes the
+    # limit's cancel on: only a cancel the macro engine made is a run's
+    # outcome.) Without this the cut-off would leave no error at all.
     if scope.expired():
         raise HandlerTimedOut()
 
