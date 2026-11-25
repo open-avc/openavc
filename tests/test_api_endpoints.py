@@ -106,6 +106,12 @@ def _make_mock_engine():
 
     engine.apply_project_edit = AsyncMock(side_effect=_fake_apply_edit)
 
+    # The ui.definition frame as the engine builds it, around the stand-in's
+    # panel_ui, so a socket's handshake sends what a real one does.
+    from openavc.core.engine import Engine
+
+    engine.panel_definition_frame = lambda: Engine.panel_definition_frame(engine)
+
     return engine
 
 
