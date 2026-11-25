@@ -487,6 +487,64 @@ async def test_delay_recheck_cancels(trigger_engine, macro_engine, core):
     await trigger_engine.stop()
 
 
+def _delayed_pattern_trigger(trigger_engine, macro_engine, operator, value=None):
+    macro_engine.load_macros([{
+        "id": "test_macro",
+        "name": "Test",
+        "steps": [{"action": "state.set", "key": "var.fired", "value": True}],
+    }])
+    trigger_engine.load_triggers([{
+        "id": "test_macro",
+        "name": "Test",
+        "triggers": [{
+            "id": "trg_1",
+            "type": "state_change",
+            "enabled": True,
+            "state_key": "device.*.power",
+            "state_operator": operator,
+            "state_value": value,
+            "delay_seconds": 0.1,
+        }],
+    }])
+
+
+async def test_delay_recheck_on_a_pattern_reads_the_key_that_changed(
+    trigger_engine, macro_engine, core,
+):
+    """A delayed trigger watching a pattern re-checks the key that changed,
+    so a match that still holds after the delay fires."""
+    state, _events = core
+    _delayed_pattern_trigger(trigger_engine, macro_engine, "eq", "on")
+    await trigger_engine.start()
+
+    state.set("device.acme_widget.power", "on", source="test")
+    await asyncio.sleep(0.3)
+
+    assert state.get("var.fired") is True
+    await trigger_engine.stop()
+
+
+async def test_delay_recheck_on_a_pattern_sees_the_key_revert(
+    trigger_engine, macro_engine, core,
+):
+    """A key under the pattern that turns back during the delay ends the fire,
+    for an operator a missing value would have satisfied too."""
+    state, events = core
+    skipped = []
+    events.on("trigger.skipped", lambda _e, p: skipped.append(p))
+    _delayed_pattern_trigger(trigger_engine, macro_engine, "falsy")
+    await trigger_engine.start()
+
+    state.set("device.acme_widget.power", False, source="test")
+    await asyncio.sleep(0.03)
+    state.set("device.acme_widget.power", True, source="test")
+    await asyncio.sleep(0.3)
+
+    assert state.get("var.fired") is None
+    assert skipped == [{"trigger_id": "trg_1", "reason": "state_reverted"}]
+    await trigger_engine.stop()
+
+
 # --- Circular prevention ---
 
 

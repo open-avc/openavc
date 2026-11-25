@@ -606,11 +606,14 @@ class TriggerEngine:
 
             # Re-check triggering condition for state_change triggers
             if t.get("type") == "state_change":
-                state_key = t.get("state_key", "")
+                # The key that changed, which for a trigger watching a
+                # pattern (device.*.power) is one key under it: the pattern
+                # itself is no key, and reads as nothing.
+                changed_key = context.get("key", t.get("state_key", ""))
                 op = t.get("state_operator") or "any"  # see _on_state_change
                 target = t.get("state_value")
                 if op != "any":
-                    current = read_operand(state_key, state=self.state, from_context=False)
+                    current = read_operand(changed_key, state=self.state, from_context=False)
                     try:
                         matched = eval_operator(op, current, target)
                     except ValueError:
