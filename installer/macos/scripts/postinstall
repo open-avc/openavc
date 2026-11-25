@@ -8,9 +8,9 @@
 
 set -u
 
-APP="/Applications/OpenAVC.app"
-DATA_DIR="/Library/Application Support/OpenAVC"
-LOG_DIR="/Library/Logs/OpenAVC"
+APP="${OPENAVC_APP:-/Applications/OpenAVC.app}"
+DATA_DIR="${OPENAVC_DATA_DIR:-/Library/Application Support/OpenAVC}"
+LOG_DIR="${OPENAVC_LOG_DIR:-/Library/Logs/OpenAVC}"
 DAEMON_PLIST="/Library/LaunchDaemons/com.openavc.server.plist"
 AGENT_PLIST="/Library/LaunchAgents/com.openavc.menubar.plist"
 SEED="$APP/Contents/Resources/server/_internal/projects/default/project.avc"
@@ -24,6 +24,10 @@ if [ ! -f "$DEST/project.avc" ] && [ -f "$SEED" ]; then
     mkdir -p "$DEST"
     cp "$SEED" "$DEST/project.avc"
 fi
+
+# The services are the installed app's alone: a sandbox run (OPENAVC_APP
+# pointed elsewhere, as the tests do) installs and starts none.
+[ "$APP" = "/Applications/OpenAVC.app" ] || exit 0
 
 # Install the LaunchDaemon and (re)load it.
 cp "$APP/Contents/Resources/com.openavc.server.plist" "$DAEMON_PLIST"
