@@ -16,6 +16,9 @@ artifacts every other surface consumes:
 * ``openavc/web/simulator/src/store/controls.gen.ts`` — the Simulator UI's
   ``ControlDef`` union, one interface per control type it draws
   (``contract_gen_sim_ts``).
+* ``openavc/web/panel/modules/truth_words.gen.js`` — the panel's copy of the
+  words that mean true and false (``drivers/truth_words.py``), which
+  ``modules/compare.js`` reads; the IDE's copy is in ``types.gen.ts``.
 
 Regenerate after any spec change:
 
@@ -267,6 +270,28 @@ def render_schema(tier: str) -> str:
     return json.dumps(build_schema(tier), indent=2, ensure_ascii=False) + "\n"
 
 
+def render_panel_truth_words() -> str:
+    """The panel's module of the words that mean true and false."""
+    from openavc.drivers.truth_words import FALSE_WORDS, TRUE_WORDS
+
+    def words(name: str, listed: tuple[str, ...]) -> str:
+        quoted = ", ".join(f"'{word}'" for word in listed)
+        return f"export const {name} = new Set([{quoted}]);\n"
+
+    return (
+        "// GENERATED FILE - DO NOT EDIT.\n"
+        "// Rendered from openavc/drivers/truth_words.py.\n"
+        "// Regenerate with:  python -m openavc.drivers.contract_gen\n"
+        "// A test compares this file against a fresh render, so hand edits fail CI.\n"
+        "//\n"
+        "// The words that mean true and false, read trimmed and apart from case;\n"
+        "// a number reads by value, non-zero true (modules/compare.js truthOf).\n"
+        "\n"
+        + words("TRUE_WORDS", TRUE_WORDS)
+        + words("FALSE_WORDS", FALSE_WORDS)
+    )
+
+
 def artifacts(repo_root: Path) -> dict[Path, str]:
     """Map of output path -> rendered content for every generated artifact."""
     from openavc.drivers.contract_gen_sim_ts import render_controls_ts
@@ -281,6 +306,8 @@ def artifacts(repo_root: Path) -> dict[Path, str]:
             render_types_ts(),
         repo_root / "openavc" / "web" / "simulator" / "src" / "store" / "controls.gen.ts":
             render_controls_ts(),
+        repo_root / "openavc" / "web" / "panel" / "modules" / "truth_words.gen.js":
+            render_panel_truth_words(),
     }
 
 

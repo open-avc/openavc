@@ -599,8 +599,8 @@ One rule, the one macro and trigger conditions use, for everything on the panel:
 
 - **Words compare apart from case**: `"On"` matches a device reporting `"ON"`.
 - **A boolean compares with the words and numbers that mean it**: `true` matches
-  `"true"`, `"on"`, `"yes"` and any number but 0; `false` matches `"false"`,
-  `"off"`, `"no"` and 0.
+  `"true"`, `"on"`, `"yes"`, `"enabled"` and any number but 0; `false` matches
+  `"false"`, `"off"`, `"no"`, `"disabled"` and 0, in any case.
 - **A number compares by value with a number written as text**: `5` matches
   `"5"`, `"5.0"` and `" 5 "`. Two values both written as text compare as words,
   so `"5"` is not `"5.0"`.

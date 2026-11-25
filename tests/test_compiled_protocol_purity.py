@@ -53,6 +53,10 @@ ALLOWED = {
     "openavc.core",
     "openavc.core.condition_eval",
     "openavc.core.monitors",
+    # THE words that mean true and false: every wire form reads a boolean
+    # through it, and the condition rule does too. Standard library and
+    # core.monitors only.
+    "openavc.drivers.truth_words",
     "openavc.transport",
     "openavc.transport.binary_helpers",
     "openavc.utils",

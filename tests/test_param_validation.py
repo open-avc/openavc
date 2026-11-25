@@ -39,14 +39,15 @@ def test_a_setting_refuses_no_value() -> None:
     [
         (True, True), (False, False), (1, True), (0, False), (1.0, True),
         (" YES ", True), ("On", True), ("1", True), ("no", False), (" off", False),
-        ("0", False), ("FALSE", False),
+        ("0", False), ("FALSE", False), ("Enabled", True), ("disabled", False),
+        (2, True), (-1, True), (0.5, True), ("00", False),
     ],
 )
 def test_a_boolean_setting_takes_the_usual_spellings(value, expected) -> None:
     assert validate_device_setting_value("k", {"type": "boolean"}, value) is expected
 
 
-@pytest.mark.parametrize("value", [2, -1, 0.5, "maybe", "", [1], {"a": 1}])
+@pytest.mark.parametrize("value", ["maybe", "", "nan", float("nan"), [1], {"a": 1}])
 def test_a_boolean_setting_refuses_anything_else(value) -> None:
     with pytest.raises(DeviceSettingValueError) as caught:
         validate_device_setting_value("k", {"type": "boolean"}, value)

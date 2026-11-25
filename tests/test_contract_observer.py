@@ -88,10 +88,10 @@ async def test_values_that_did_not_convert_are_reported():
     assert mismatch["state"] == "volume" and mismatch["value"] == "loud"
 
     events.clear()
-    # A flag the device spelled some other way is stored as False, silently.
+    # A flag the device spelled some other way is stored as no value.
     await driver.on_data_received(b"PWR=STANDBY\r")
     assert events == [(
-        COERCION_FAILURE, {"raw": "STANDBY", "type": "boolean", "stored": False},
+        COERCION_FAILURE, {"raw": "STANDBY", "type": "boolean", "stored": None},
     )]
     events.clear()
     await driver.on_data_received(b"PWR=01\r")

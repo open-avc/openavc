@@ -23,6 +23,7 @@
  */
 
 import { asNumber } from './readings.js';
+import { FALSE_WORDS, TRUE_WORDS } from './truth_words.gen.js';
 
 /** A reader that acts makes no decision on a reading that has not arrived. */
 export const DECIDE = 'decide';
@@ -43,9 +44,6 @@ export const OPERATOR_SPELLINGS = new Map([
     ['greater_or_equal', 'gte'], ['less_or_equal', 'lte'],
 ]);
 
-const TRUE_WORDS = new Set(['true', '1', 'yes', 'on']);
-const FALSE_WORDS = new Set(['false', '0', 'no', 'off']);
-
 /** Not arrived: no reading reported yet, a key deleted, or a null. */
 const notArrived = (value) => value === undefined || value === null;
 
@@ -55,17 +53,19 @@ function numberOf(value) {
     return asNumber(value);
 }
 
-/** A reading as a boolean: a boolean, one of the words, or a number by
- *  value, non-zero true. Null where it is none of those. */
-function booleanOf(value) {
+/** A reading as true or false, or null where it is neither: the rule of
+ *  openavc/drivers/truth_words.py, whose words truth_words.gen.js carries.
+ *  A boolean is itself; a word trimmed and apart from case; a number by
+ *  value, non-zero true. */
+export function truthOf(value) {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') {
-        const low = value.toLowerCase();
-        if (TRUE_WORDS.has(low)) return true;
-        if (FALSE_WORDS.has(low)) return false;
+        const word = value.trim().toLowerCase();
+        if (TRUE_WORDS.has(word)) return true;
+        if (FALSE_WORDS.has(word)) return false;
     }
     const number = asNumber(value);
-    return number === null ? null : number !== 0;
+    return number === null || !Number.isFinite(number) ? null : number !== 0;
 }
 
 /** Both sides read by `reader`, or null when either reads as nothing. */
@@ -79,7 +79,7 @@ function bothAs(reader, actual, target) {
  *  else as words apart from case. */
 function same(actual, target) {
     const asBooleans = (typeof actual === 'boolean' || typeof target === 'boolean')
-        && bothAs(booleanOf, actual, target);
+        && bothAs(truthOf, actual, target);
     if (asBooleans) return asBooleans[0] === asBooleans[1];
     const asNumbers = typeof actual !== typeof target && bothAs(numberOf, actual, target);
     if (asNumbers) return asNumbers[0] === asNumbers[1];

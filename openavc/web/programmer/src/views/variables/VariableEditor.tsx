@@ -11,6 +11,7 @@ import {
 } from "../../api/monitorHelpers";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
+import { readTruth } from "../../api/conditionEval";
 import { getScriptReferences } from "../../api/restClient";
 import { setStateValue } from "../../api/stateClient";
 import type { VariableConfig, ScriptReference } from "../../api/types";
@@ -27,17 +28,14 @@ import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { quotedValueText, valueText } from "../../components/shared/booleanWords";
 
 /**
- * Coerce an existing default to a concrete boolean using the same true-set as
- * the runtime (`_coerce_bool` in condition_eval.py, and configurable.py's
- * `raw.lower() in (1/true/yes/on)`). JS `Boolean()` treats any non-empty string
- * as true, so switching a variable to boolean would flip "false"/"0"/"off" to
- * true — this reads them as false, matching how the runtime interprets them.
+ * Coerce an existing default to a concrete boolean by the runtime's words
+ * that mean true and false (`readTruth`, drivers/truth_words.py). JS
+ * `Boolean()` treats any non-empty string as true, so switching a variable to
+ * boolean would flip "false"/"0"/"off" to true; a value that is neither reads
+ * as false.
  */
 function coerceToBool(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
-  return false;
+  return readTruth(value) === true;
 }
 
 /**

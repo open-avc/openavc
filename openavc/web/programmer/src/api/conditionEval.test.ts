@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { DECIDE, SURFACE, evalOperator, matchKey, type ConditionMode } from "./conditionEval";
+import { DECIDE, SURFACE, evalOperator, matchKey, readTruth, type ConditionMode } from "./conditionEval";
 
 type Case = {
   name: string;
@@ -69,5 +69,17 @@ describe("matchKey picks the key the runtime picks", () => {
 
   it("picks from a map's own keys, which JavaScript lists number-like first", () => {
     expect(matchKey(Object.keys({ on: 1, "1": 2 }), true)).toBe("1");
+  });
+});
+
+// The words that mean true and false (openavc/drivers/truth_words.py), over
+// the corpus tests/test_truth_words.py runs through read_truth and the panel.
+const TRUTH_CASES: [unknown, boolean | null][] = JSON.parse(
+  readFileSync(resolve(corpusPath, "..", "truth_word_cases.json"), "utf-8"),
+).cases;
+
+describe("readTruth reads what the runtime reads", () => {
+  it.each(TRUTH_CASES.map((c) => [JSON.stringify(c[0]), c] as const))("%s", (_name, c) => {
+    expect(readTruth(c[0])).toBe(c[1]);
   });
 });

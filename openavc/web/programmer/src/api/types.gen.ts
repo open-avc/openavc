@@ -105,6 +105,18 @@ export const CHILD_RESERVED_PROPS: ReadonlySet<string> = new Set(["label", "offl
  */
 export const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([22, 80, 443, 8000, 8080, 8443, 8888]);
 
+/**
+ * The words that mean true, trimmed and apart from case
+ * (drivers/truth_words.py; conditionEval.ts readTruth reads them).
+ */
+export const TRUE_WORDS: ReadonlySet<string> = new Set(["enabled", "on", "true", "yes"]);
+
+/**
+ * The words that mean false, trimmed and apart from case
+ * (drivers/truth_words.py; conditionEval.ts readTruth reads them).
+ */
+export const FALSE_WORDS: ReadonlySet<string> = new Set(["disabled", "false", "no", "off"]);
+
 /** The keys each push type accepts (unknown keys are rejected at load). */
 export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
   multicast: new Set(["group", "port", "type"]),

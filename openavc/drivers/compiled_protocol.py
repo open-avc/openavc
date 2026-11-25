@@ -68,6 +68,7 @@ from openavc.drivers.pattern_fill import safe_substitute as safe_substitute
 from openavc.drivers.reply_rule import JSON, OSC, ReplyRule
 from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
 from openavc.drivers.spec import PARAM_CONVERSION_KEYS
+from openavc.drivers.truth_words import read_truth
 from openavc.drivers.spec import (
     NUMERIC_TYPES,
     REAL_TYPES,
@@ -205,44 +206,10 @@ def parse_json_reply(text: str | bytes) -> Any:
 #
 # A value the device sent, read as the type its state variable declares: one
 # reading per wire form (text, a parsed JSON body, an OSC argument), each a
-# ``_WireForm`` row below. The boolean token is the one rule all three share.
-
-_TRUE_WORDS = frozenset({"true", "yes", "on"})
-_FALSE_WORDS = frozenset({"false", "no", "off"})
-
-
-def is_bool_token(raw: Any) -> bool:
-    """True when ``coerce_bool_token`` reads ``raw`` rather than defaulting:
-    a true/false word or a number. Anything else becomes False unannounced."""
-    text = str(raw).strip().lower()
-    if text in _TRUE_WORDS or text in _FALSE_WORDS:
-        return True
-    try:
-        float(text)
-    except ValueError:
-        return False
-    return True
-
-
-def coerce_bool_token(raw: Any) -> bool:
-    """Read a device's boolean token.
-
-    Devices spell a flag three ways: a word (``on``), a bare digit (``1``),
-    or a fixed-width field (``01``). The padded form is normal in protocols
-    whose fields are all the same width, so a numeric token is read by its
-    value rather than matched against a list of spellings — matching would
-    make ``01`` false, the opposite of what the device said, with nothing
-    logged and nothing to notice.
-    """
-    text = str(raw).strip().lower()
-    if text in _TRUE_WORDS:
-        return True
-    if text in _FALSE_WORDS:
-        return False
-    try:
-        return float(text) != 0.0
-    except ValueError:
-        return False
+# ``_WireForm`` row below. A boolean is read the same way in all three, by
+# the one rule for the words that mean true and false
+# (``truth_words.read_truth``): a value it does not read is no reading (None),
+# which the driver writes as no value and reports (``reply_values``).
 
 
 def _numbers(
@@ -257,8 +224,9 @@ def _numbers(
 @dataclass(frozen=True)
 class _WireForm:
     """How one wire form's values are read as a state variable's declared
-    type. The three forms share the type names and the boolean token, and
-    differ on purpose in what each field below holds."""
+    type. The three forms share the type names and read a boolean alike
+    (``truth_words.read_truth``), and differ on purpose in what each field
+    below holds."""
 
     #: The reader for each number type.
     numbers: dict[str, Callable[[Any], Any]]
@@ -267,7 +235,6 @@ class _WireForm:
     absorbs: tuple[type[Exception], ...]
     #: What a number that will not convert becomes, given (value, type).
     unconverted: Callable[[Any, str], Any]
-    boolean: Callable[[Any], Any]
     #: A string, an enum, or a type the form has no reader for.
     text: Callable[[Any], Any]
 
@@ -277,7 +244,7 @@ def _coerce(value: Any, value_type: str, form: _WireForm) -> Any:
     compared, never hashed: a hand-written type that is not a name (a list)
     reads as text rather than raising."""
     if value_type == "boolean":
-        return form.boolean(value)
+        return read_truth(value)
     reader = next((read for name, read in form.numbers.items() if value_type == name), None)
     if reader is None:
         return form.text(value)
@@ -297,7 +264,6 @@ _TEXT = _WireForm(
     numbers=_numbers(int, float),
     absorbs=(ValueError,),
     unconverted=_kept_and_said,
-    boolean=coerce_bool_token,
     text=lambda raw: raw,
 )
 
@@ -349,7 +315,6 @@ _JSON = _WireForm(
     numbers=_numbers(_json_integer, _json_number),
     absorbs=(TypeError, ValueError),
     unconverted=_text_and_said,
-    boolean=lambda value: value if isinstance(value, bool) else coerce_bool_token(value),
     text=_json_text,
 )
 
@@ -366,23 +331,12 @@ def coerce_json_value(value: Any, value_type: str) -> Any:
     return _coerce(value, value_type, _JSON)
 
 
-def _osc_boolean(value: Any) -> bool:
-    """An OSC argument as a flag: a bool as it is, a number by its value,
-    anything else as a boolean token."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    return coerce_bool_token(value)
-
-
 #: An OSC argument, already typed by its type tag: a number that will not
 #: convert is passed on as it came, and nothing is said.
 _OSC = _WireForm(
     numbers=_numbers(int, float),
     absorbs=(ValueError, TypeError),
     unconverted=lambda value, _value_type: value,
-    boolean=_osc_boolean,
     text=lambda value: str(value) if value is not None else None,
 )
 

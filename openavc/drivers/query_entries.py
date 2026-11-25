@@ -182,8 +182,14 @@ class QueryEntries:
         if actual is None:
             return True
         var_type = _var_def(declared, var).get("type", "string")
+        # A value that reads as nothing in the variable's type (a word on
+        # neither true/false list, for a boolean) holds no gate open.
         allowed = [
-            compiled_protocol.coerce_json_value(v, var_type) for v in _gate_values(wanted)
+            coerced
+            for coerced in (
+                compiled_protocol.coerce_json_value(v, var_type) for v in _gate_values(wanted)
+            )
+            if coerced is not None
         ]
         return compiled_protocol.coerce_json_value(actual, var_type) in allowed
 

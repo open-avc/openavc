@@ -17,9 +17,10 @@ ends in the same two questions, answered here once:
   a reason), whose rules that module states; ``_place_child`` decides it and
   tells a contract observer what that module says is told.
 
-When a value does not convert, the coercer keeps it as it came or reads it
-as False, which is right for the room and invisible to the author, so a
-contract observer (a device audit, the Driver Builder's test) is told.
+When a value does not convert, the coercer keeps it as it came, or for a
+boolean writes no value (a word on neither of ``truth_words``' lists), which
+is invisible to the author, so a contract observer (a device audit, the
+Driver Builder's test) is told.
 
 ``ReplyValues`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``,
@@ -56,17 +57,13 @@ from openavc.utils.logger import get_logger
 log = get_logger("openavc.drivers.configurable")
 
 
-def _boolean_unread(raw: Any) -> bool:
-    return not isinstance(raw, bool) and not compiled_protocol.is_bool_token(raw)
-
-
 # Per declared type: did the coercer fail to read the raw value? A type not
 # listed here (string) always reads.
 _COERCION_FAILED: dict[str, Callable[[Any, Any], bool]] = {
     "integer": lambda raw, coerced: not isinstance(coerced, int),
     "float": lambda raw, coerced: not isinstance(coerced, (int, float)),
     "number": lambda raw, coerced: not isinstance(coerced, (int, float)),
-    "boolean": lambda raw, coerced: _boolean_unread(raw),
+    "boolean": lambda raw, coerced: coerced is None,
 }
 
 

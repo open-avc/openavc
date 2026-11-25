@@ -25,8 +25,8 @@ from typing import Any
 from openavc.audit.changes import state_label
 from openavc.audit.observe import recorded
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
 from openavc.drivers.spec import bare_placeholder
+from openavc.drivers.truth_words import read_truth
 
 @dataclass
 class Readout:
@@ -46,17 +46,17 @@ def same_value(expected: Any, actual: Any) -> bool:
     """Does a reported value say what a command's declared effect says?
 
     The device may say it its own way (``"on"`` or ``1`` for ``true``, ``"40"``
-    for ``40``, another case), so a flag is read as a flag, a number as a
-    number, and anything else as text.
+    for ``40``, another case), so a flag is read by the words that mean true
+    and false (``drivers/truth_words``), a number as a number, and anything
+    else as text.
     """
     if actual is None:
         return False
     if actual == expected:
         return True
     if isinstance(expected, bool) or isinstance(actual, bool):
-        if is_bool_token(expected) and is_bool_token(actual):
-            return coerce_bool_token(expected) == coerce_bool_token(actual)
-        return False
+        flags = read_truth(expected), read_truth(actual)
+        return None not in flags and flags[0] == flags[1]
     try:
         return float(expected) == float(actual)
     except (TypeError, ValueError):

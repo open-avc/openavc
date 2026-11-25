@@ -20,6 +20,7 @@
  */
 
 import { asNumber } from "./monitorHelpers";
+import { FALSE_WORDS, TRUE_WORDS } from "./types.gen";
 
 /** A reader that acts (a macro, a trigger) makes no decision on a reading
  *  that has not arrived: never equal, never not-equal. The default. */
@@ -66,23 +67,19 @@ function coerceNumeric(value: unknown): number | null {
   return asNumber(value);
 }
 
-function coerceBool(value: unknown): boolean | null {
+/** A value read as true or false, or null when it is neither: the rule of
+ *  openavc/drivers/truth_words.py, whose words types.gen.ts carries. A
+ *  boolean is itself; a word trimmed and apart from case (on, true, yes,
+ *  enabled; off, false, no, disabled); a number by value, non-zero true. */
+export function readTruth(value: unknown): boolean | null {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
-    const low = value.toLowerCase();
-    if (low === "true" || low === "1" || low === "yes" || low === "on") return true;
-    if (low === "false" || low === "0" || low === "no" || low === "off") return false;
+    const word = value.trim().toLowerCase();
+    if (TRUE_WORDS.has(word)) return true;
+    if (FALSE_WORDS.has(word)) return false;
   }
-  return null;
-}
-
-/** A reading as a boolean for comparing with one: a boolean, one of the
- *  words, or a number by value, non-zero true. */
-function asBool(value: unknown): boolean | null {
-  const word = coerceBool(value);
-  if (word !== null) return word;
   const number = asNumber(value);
-  return number === null ? null : number !== 0;
+  return number === null || !Number.isFinite(number) ? null : number !== 0;
 }
 
 /** Python's bool(): only None, False, 0 and "" are false (NaN is true). */
@@ -120,8 +117,8 @@ function ordering(order: Order, actual: unknown, target: unknown): boolean {
 /** Equal as booleans when one side is a boolean and both read as one; else null. */
 function booleansEqual(actual: unknown, target: unknown): boolean | null {
   if (typeof actual !== "boolean" && typeof target !== "boolean") return null;
-  const a = asBool(actual);
-  const t = asBool(target);
+  const a = readTruth(actual);
+  const t = readTruth(target);
   return a === null || t === null ? null : a === t;
 }
 

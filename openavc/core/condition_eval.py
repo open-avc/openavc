@@ -7,14 +7,15 @@ conditional steps, a trigger's guards, a panel press the server resolves
 ``match_key`` is also every driver value map's lookup (a reply's, a device
 setting's and a command parameter's), asked by the driver runtime and the
 simulator through ``drivers/compiled_protocol.map_entry``; this module stays
-standard-library-only (and ``core.monitors``) for them, since the simulator
-and the driver validator import it.
+standard-library-only (and ``core.monitors`` and ``drivers.truth_words``) for
+them, since the simulator and the driver validator import it.
 The rule, in the order it is applied:
 
 - a reading that has not arrived (None) is never equal; what it does to
   not-equal is the reader's mode (``MODES``, below);
-- a boolean on either side compares both as booleans: the words that mean
-  true and false, and a number by value, non-zero true;
+- a boolean on either side compares both as booleans
+  (``drivers/truth_words``: the words that mean true and false, trimmed and
+  apart from case, and a number by value, non-zero true);
 - values of different types compare as numbers when both read as one
   (``core/monitors.py``'s ``as_number``: trimmed digits, a sign, a point, an
   exponent; never "1_000", "inf" or "nan", which compare as text);
@@ -24,7 +25,9 @@ The rule, in the order it is applied:
 
 Copied twice, and nowhere else: ``conditionEval.ts`` in the Programmer (the
 trigger editor's "Evaluated now", the page reviews) and the panel's
-``modules/compare.js``. All three run
+``modules/compare.js``, both reading the words that mean true and false from
+files generated from ``drivers/truth_words`` (``types.gen.ts``,
+``truth_words.gen.js``). All three run
 ``tests/fixtures/condition_parity_cases.json`` in both modes
 (``tests/test_condition_parity.py``, ``conditionEval.test.ts``,
 ``tests/test_panel_condition_parity.py``): a change here goes into both
@@ -39,6 +42,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from openavc.core.monitors import as_number
+from openavc.drivers.truth_words import read_truth
 
 #: A reader that acts (a macro, a trigger, a reply gate, an alert) makes no
 #: decision on a reading that has not arrived: never equal, never not-equal,
@@ -90,43 +94,16 @@ def _finite_number(value: Any) -> float | None:
     return number if number is not None and math.isfinite(number) else None
 
 
-_TRUE_WORDS = ("true", "1", "yes", "on")
-_FALSE_WORDS = ("false", "0", "no", "off")
-
-
-def _coerce_bool(value: Any) -> bool | None:
-    """Normalize boolean-like words: the config switches ``reads_as_on`` reads."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        low = value.lower()
-        if low in _TRUE_WORDS:
-            return True
-        if low in _FALSE_WORDS:
-            return False
-    return None
-
-
-def _as_bool(value: Any) -> bool | None:
-    """A reading as a boolean for comparing with one: a boolean, one of the
-    words, or a number by value, non-zero true (a device's 2 holds against
-    ``true``). None where it is none of those."""
-    as_word = _coerce_bool(value)
-    if as_word is not None:
-        return as_word
-    number = _finite_number(value)
-    return None if number is None else number != 0
-
-
 def reads_as_on(value: Any) -> bool:
     """A config value read as an on/off switch.
 
-    A bool, or a word ``_coerce_bool`` knows ("yes", "off", "1"), says what it
-    says; anything else counts by plain truthiness, so an unset field (None)
-    or an empty one is off. The integrator's opt-in checkboxes a driver
-    declares (a ``when:`` on a poll query or a push registration) read this.
+    A bool, a word or a number says what it says (``drivers/truth_words``:
+    "disabled", "00" and "0.0" are off); anything else counts by plain
+    truthiness, so an unset field (None) or an empty one is off. The
+    integrator's opt-in checkboxes a driver declares (a ``when:`` on a poll
+    query or a push registration) read this.
     """
-    as_bool = _coerce_bool(value)
+    as_bool = read_truth(value)
     return bool(value) if as_bool is None else as_bool
 
 
@@ -181,7 +158,7 @@ def _booleans_equal(actual: Any, target: Any) -> bool | None:
     """Equal as booleans, when one side is a boolean and both read as one; else None."""
     if not (isinstance(actual, bool) or isinstance(target, bool)):
         return None
-    a_bool, t_bool = _as_bool(actual), _as_bool(target)
+    a_bool, t_bool = read_truth(actual), read_truth(target)
     return None if a_bool is None or t_bool is None else a_bool == t_bool
 
 

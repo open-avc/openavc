@@ -543,8 +543,11 @@ def test_boolean_reads_a_zero_padded_flag_by_its_value():
         assert reader("off", "boolean") is False, reader.__name__
         assert reader("true", "boolean") is True, reader.__name__
         assert reader("False", "boolean") is False, reader.__name__
-        # Anything the device sends that is neither is still false.
-        assert reader("standby", "boolean") is False, reader.__name__
+        # So do enabled and disabled.
+        assert reader("Enabled", "boolean") is True, reader.__name__
+        assert reader("disabled", "boolean") is False, reader.__name__
+        # Anything the device sends that is neither is no reading, never off.
+        assert reader("standby", "boolean") is None, reader.__name__
 
 
 # ── parse_json_reply ──

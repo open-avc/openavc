@@ -73,8 +73,9 @@ def test_a_float_variable_holds_a_number():
 
 
 @pytest.mark.parametrize("text, expected", [
-    ("01", True), ("2", True), ("1.0", True), (" on ", True),
-    ("00", False), ("0", False), ("off", False), ("", False),
+    ("01", True), ("2", True), ("1.0", True), (" on ", True), ("Enabled", True),
+    ("00", False), ("0", False), ("off", False), ("disabled", False),
+    ("", None), ("standby", None),
 ])
 def test_a_boolean_is_read_by_its_token(text, expected):
     sim = _sim({"mute": {"type": "boolean", "label": "Mute"}})

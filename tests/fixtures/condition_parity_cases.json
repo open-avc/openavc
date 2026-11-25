@@ -164,6 +164,55 @@
       "expected": true
     },
     {
+      "name": "enabled is true",
+      "op": "eq",
+      "actual": "enabled",
+      "target": true,
+      "expected": true
+    },
+    {
+      "name": "disabled is false",
+      "op": "eq",
+      "actual": "Disabled",
+      "target": false,
+      "expected": true
+    },
+    {
+      "name": "disabled is not true",
+      "op": "eq",
+      "actual": "disabled",
+      "target": true,
+      "expected": false
+    },
+    {
+      "name": "a word is read trimmed",
+      "op": "eq",
+      "actual": " on ",
+      "target": true,
+      "expected": true
+    },
+    {
+      "name": "a padded zero is false",
+      "op": "eq",
+      "actual": "00",
+      "target": false,
+      "expected": true
+    },
+    {
+      "name": "a word on neither list is not true",
+      "op": "eq",
+      "actual": "standby",
+      "target": true,
+      "expected": false
+    },
+    {
+      "name": "a word on neither list is not false",
+      "op": "eq",
+      "actual": "standby",
+      "target": false,
+      "expected": false
+    },
+    {
       "name": "a fraction is true",
       "op": "ne",
       "actual": 0.5,
@@ -735,6 +784,15 @@
       ],
       "reading": null,
       "expected": null
+    },
+    {
+      "name": "a boolean reads enabled and disabled",
+      "keys": [
+        "enabled",
+        "disabled"
+      ],
+      "reading": false,
+      "expected": "disabled"
     }
   ]
 }

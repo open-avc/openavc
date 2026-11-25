@@ -56,6 +56,7 @@ from typing import Any
 
 from openavc.core.device_config import apply_config_delta
 from openavc.drivers.spec import NUMERIC_TYPES, is_secret_setting
+from openavc.drivers.truth_words import read_truth
 from openavc.drivers.usable_number import number_value, usable_number
 from openavc.utils.logger import get_logger
 
@@ -112,14 +113,8 @@ def accepted_value(field_def: dict[str, Any], value: Any) -> tuple[bool, Any]:
     if ftype in NUMERIC_TYPES:
         return _accepted_number(field_def, ftype, value)
     if ftype == "boolean":
-        if isinstance(value, bool):
-            return True, value
-        text = str(value).strip().lower()
-        if text in ("true", "1", "on", "yes"):
-            return True, True
-        if text in ("false", "0", "off", "no"):
-            return True, False
-        return False, None
+        flag = read_truth(value)
+        return (False, None) if flag is None else (True, flag)
     if ftype == "table":
         return False, None
     return True, str(value).strip()

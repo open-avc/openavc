@@ -27,7 +27,7 @@ import textwrap
 from dataclasses import dataclass
 from typing import Any, Callable, NamedTuple
 
-from openavc.drivers import serial_line, spec, ts_type_check
+from openavc.drivers import serial_line, spec, truth_words, ts_type_check
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
@@ -668,6 +668,12 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
     ("DISALLOWED_OPEN_PORTS", _NUM_SET, lambda: spec.DISALLOWED_OPEN_PORTS,
      "Ports a discovery port_open hint may not use (they match every "
      "web/SSH host)."),
+    ("TRUE_WORDS", _SET, lambda: truth_words.TRUE_WORDS,
+     "The words that mean true, trimmed and apart from case "
+     "(drivers/truth_words.py; conditionEval.ts readTruth reads them)."),
+    ("FALSE_WORDS", _SET, lambda: truth_words.FALSE_WORDS,
+     "The words that mean false, trimmed and apart from case "
+     "(drivers/truth_words.py; conditionEval.ts readTruth reads them)."),
 )
 
 

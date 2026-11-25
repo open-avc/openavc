@@ -3,6 +3,7 @@
 // The editor component imports these; keep this file free of React/DOM
 // imports. Mirrors configSchemaHelpers.ts / responseBuilderHelpers.ts.
 
+import { readTruth } from "../../api/conditionEval";
 import { valueTypeTraits } from "../shared/valueTypeTraits";
 
 export interface SimErrorMode {
@@ -118,9 +119,10 @@ export function applyErrorModeBehavior(
 
 /** A value typed for a state variable (its Initial State, an error mode's
  *  set_state) read as the variable's declared type: a real number, a whole
- *  one, true or false, else the text as typed. */
+ *  one, true or false (a word or number that means true is true, anything
+ *  else false: `readTruth`), else the text as typed. */
 export function coerceSimStateValue(varType: string | undefined, raw: string): unknown {
-  if (varType === "boolean") return raw.toLowerCase() === "true";
+  if (varType === "boolean") return readTruth(raw) === true;
   const traits = valueTypeTraits(varType);
   if (traits?.numeric) return (traits.real ? parseFloat(raw) : parseInt(raw)) || 0;
   return raw;

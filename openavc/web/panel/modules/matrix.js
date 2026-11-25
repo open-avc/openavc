@@ -25,6 +25,7 @@
  * drawn: `orientation` (of the arrangement being drawn) and `remPx`.
  */
 
+import { truthOf } from './compare.js';
 import { styleSize } from './project_values.js';
 
 // How far a finger may travel on a matrix crosspoint before the gesture stops
@@ -74,8 +75,6 @@ const MATRIX_TILE_MIN_H_EM = 3.25;
 const LOCKED_ICON = '🔒';
 const UNLOCKED_ICON = '🔓';
 
-// What a lock variable reads as "locked", besides `true` itself.
-const LOCKED_WORDS = new Set(['true', '1', 'on', 'locked', 'yes']);
 
 const NUMBER_TEXT = /^[+-]?\d+(?:\.\d+)?$/;
 
@@ -205,11 +204,11 @@ export function sourceReports(src) {
         ? src.value : src.report_value;
 }
 
-/** Whether a lock variable's value means "locked". */
+/** Whether a lock variable's value means "locked": anything that reads as
+ *  true (compare.js truthOf), or the word "locked". */
 export function lockEngaged(v) {
-    if (typeof v === 'boolean') return v;
     if (v === null || v === undefined) return false;
-    return LOCKED_WORDS.has(String(v).trim().toLowerCase());
+    return truthOf(v) === true || String(v).trim().toLowerCase() === 'locked';
 }
 
 /** The source a device's report names, or null when it names none of them. */

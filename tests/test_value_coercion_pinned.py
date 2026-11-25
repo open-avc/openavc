@@ -7,7 +7,8 @@ or a static value), ``coerce_json_value`` for a parsed JSON body and
 differ on purpose at the edges: what each does with a value that will not
 convert, which exceptions it absorbs, whether it warns, and what a bool or a
 None becomes. These pin every branch of all three, their warnings, the
-boolean-token reader they share, and the inverse of a setting's ``map``
+boolean reader they share (``truth_words.read_truth``, whose own table is
+``tests/test_truth_words.py``), and the inverse of a setting's ``map``
 (``value_for_map_word``). On an invented Acme device.
 """
 
@@ -19,13 +20,12 @@ import math
 import pytest
 
 from openavc.drivers.compiled_protocol import (
-    coerce_bool_token,
     coerce_json_value,
     coerce_osc_value,
     coerce_value,
-    is_bool_token,
     value_for_map_word,
 )
+from openavc.drivers.truth_words import read_truth
 
 _LOGGER = "openavc.drivers.compiled_protocol"
 
@@ -46,7 +46,7 @@ def _typed(value):
         ("2.5", "number", (2.5, "float")),
         ("01", "boolean", (True, "bool")),
         ("on", "boolean", (True, "bool")),
-        ("abc", "boolean", (False, "bool")),
+        ("abc", "boolean", (None, "NoneType")),
         ("abc", "string", ("abc", "str")),
         ("abc", "enum", ("abc", "str")),
         ("abc", "acme_kind", ("abc", "str")),
@@ -92,7 +92,7 @@ def test_text_only_absorbs_a_value_error(value_type):
         (True, "boolean", (True, "bool")),
         ("01", "boolean", (True, "bool")),
         (0, "boolean", (False, "bool")),
-        ("x", "boolean", (False, "bool")),
+        ("x", "boolean", (None, "NoneType")),
         (True, "integer", (1, "int")),
         (False, "integer", (0, "int")),
         (5, "integer", (5, "int")),
@@ -194,8 +194,8 @@ def test_json_integer_keeps_a_large_whole_number_exact():
         (2.5, "boolean", (True, "bool")),
         ("on", "boolean", (True, "bool")),
         ("01", "boolean", (True, "bool")),
-        ("x", "boolean", (False, "bool")),
-        (None, "boolean", (False, "bool")),
+        ("x", "boolean", (None, "NoneType")),
+        (None, "boolean", (None, "NoneType")),
         (5, "string", ("5", "str")),
         (None, "string", (None, "NoneType")),
         (True, "string", ("True", "str")),
@@ -209,35 +209,34 @@ def test_osc_is_read_as_its_declared_type(value, value_type, expected, caplog):
     assert caplog.records == []
 
 
-# ── The boolean token all three read ──
+# ── The boolean reading all three share ──
 
 
 @pytest.mark.parametrize(
-    "raw, is_token, value",
+    "raw, value",
     [
-        ("true", True, True),
-        ("YES", True, True),
-        (" on ", True, True),
-        ("off", True, False),
-        ("No", True, False),
-        ("1", True, True),
-        ("01", True, True),
-        ("0", True, False),
-        ("-0.0", True, False),
-        ("1e3", True, True),
-        ("nan", True, True),
-        ("inf", True, True),
-        ("abc", False, False),
-        ("", False, False),
-        (None, False, False),
-        (True, True, True),
-        (False, True, False),
-        (5, True, True),
+        ("true", True),
+        ("YES", True),
+        (" on ", True),
+        ("off", False),
+        ("No", False),
+        ("1", True),
+        ("01", True),
+        ("0", False),
+        ("-0.0", False),
+        ("1e3", True),
+        ("nan", None),
+        ("inf", None),
+        ("abc", None),
+        ("", None),
+        (None, None),
+        (True, True),
+        (False, False),
+        (5, True),
     ],
 )
-def test_the_boolean_token(raw, is_token, value):
-    assert is_bool_token(raw) is is_token
-    assert coerce_bool_token(raw) is value
+def test_the_boolean_reading(raw, value):
+    assert read_truth(raw) is value
 
 
 # ── A device's word back to the setting value (the inverse of map) ──

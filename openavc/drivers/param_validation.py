@@ -43,14 +43,8 @@ from typing import Any
 
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import NUMERIC_TYPES, is_secret_setting
+from openavc.drivers.truth_words import read_truth
 from openavc.drivers.usable_number import usable_number
-
-# Tuples, not sets: a declared type is whatever the definition holds, and a
-# membership test must not raise on an unhashable one (spec.NUMERIC_TYPES is a
-# tuple for the same reason).
-_TRUE_WORDS = ("true", "1", "yes", "on")
-_FALSE_WORDS = ("false", "0", "no", "off")
-
 
 class CommandParamError(ValueError):
     """A command parameter value failed the driver's declared validation
@@ -213,8 +207,8 @@ def validate_device_setting_value(key: str, sdef: Any, value: Any) -> Any:
 
     Returns the coerced value; raises :class:`DeviceSettingValueError` with a
     user-facing message. Mirrors the IDE editor's rules so no caller can push
-    past them: boolean → a real bool (tolerant of "true"/"false"/0/1 for REST
-    callers), integer/number → numeric honoring ``min``/``max``, declared
+    past them: boolean → a real bool (a word or number that means true or
+    false, ``drivers/truth_words``, for REST callers), integer/number → numeric honoring ``min``/``max``, declared
     ``values`` → membership, accepting a {value, label} entry's
     label and normalizing to the wire value (settings are persisted device config — there is
     no forgiving-free-text rationale like command pickers), string → trimmed,
@@ -235,19 +229,14 @@ def validate_device_setting_value(key: str, sdef: Any, value: Any) -> Any:
 
 
 def _setting_boolean(refused: _Refused, value: Any) -> bool:
-    """A boolean setting's value as a real bool."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and value in (0, 1):
-        return bool(value)
-    word = value.strip().lower() if isinstance(value, str) else None
-    if word in _TRUE_WORDS:
-        return True
-    if word in _FALSE_WORDS:
-        return False
-    raise DeviceSettingValueError(
-        f"{refused.where} must be true or false{refused.got(repr(value))}"
-    )
+    """A boolean setting's value as a real bool, read by the words that mean
+    true and false (``drivers/truth_words``); anything else is refused."""
+    flag = read_truth(value)
+    if flag is None:
+        raise DeviceSettingValueError(
+            f"{refused.where} must be true or false{refused.got(repr(value))}"
+        )
+    return flag
 
 
 def _setting_number(
