@@ -8,9 +8,12 @@ the device reports then. Each declared value is ``confirmed``, ``different``
 cannot tell), and ``no_value`` when it names a parameter nobody gave. A
 status query's ``query_for`` value is read the same way.
 
-A value the device says its own way still counts (:func:`same_value`): ``"on"``
-or ``1`` for ``true``, ``"40"`` for ``40``, another case. The settings step
-reads a value it wrote back by the same rule.
+A value the device says its own way still counts (:func:`effect_holds`):
+``"on"`` or ``1`` for ``true``, ``"40"`` for ``40``, another case
+(:func:`same_value`). On a variable a device setting reads back through, a
+value the setting's declaration reads as the one declared counts too, as the
+platform confirms a write of that setting (``audit/setting_reading``): an
+option's label for its value.
 
 On a command with exactly one ``child_id`` parameter, a key the child type
 declares means that child's variable (the child's own name wins, as in the
@@ -24,6 +27,7 @@ from typing import Any
 
 from openavc.audit.changes import state_label
 from openavc.audit.observe import recorded
+from openavc.audit.setting_reading import Setting, setting_says, settings_by_variable
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.spec import bare_placeholder
 from openavc.drivers.truth_words import read_truth
@@ -64,6 +68,17 @@ def same_value(expected: Any, actual: Any) -> bool:
     return str(expected).strip().lower() == str(actual).strip().lower()
 
 
+def effect_holds(expected: Any, actual: Any, setting: Setting | None) -> bool:
+    """Does a reported value say what a command's declared effect says? By
+    :func:`same_value`, or, when the variable is a device setting's
+    (``setting``), as the setting reads it: a command is not a write of the
+    setting, so its declaration adds the forms it knows and takes none
+    away."""
+    if same_value(expected, actual):
+        return True
+    return setting is not None and setting_says(setting, expected, actual) is True
+
+
 def declared_effects(
     entry: dict[str, Any], params: dict[str, Any], driver: Any,
 ) -> list[dict[str, Any]]:
@@ -99,30 +114,48 @@ def judged_effects(
     """Each value ``trial`` declares it sets, with what the device reports
     now and the outcome."""
     out = []
+    settings = settings_by_variable(readout.info)
     for effect in declared_effects(entry, trial.params, readout.driver):
         key = effect["state_key"]
-        now = readout.state.get(key)
-        outcome = effect_outcome(effect, now, trial.before.get(key), key in readout.changed)
+        reading = VariableReading(
+            now=readout.state.get(key), before=trial.before.get(key),
+            changed=key in readout.changed, setting=settings.get(key),
+        )
         out.append({
-            **effect, "label": state_label(readout.info, key), "value": recorded(now),
-            "outcome": outcome,
+            **effect, "label": state_label(readout.info, key), "value": recorded(reading.now),
+            "outcome": effect_outcome(effect, reading),
         })
     return out
 
 
-def effect_outcome(effect: dict[str, Any], now: Any, before: Any, changed: bool) -> str:
-    """One declared value against what the device reports now (``now``),
-    what it read as the command was sent (``before``), and whether it
-    changed inside the window."""
+@dataclass(frozen=True)
+class VariableReading:
+    """A declared value's variable as a command's window closed: what it
+    reads now, what it read as the command was sent, whether it changed
+    inside the window, and the device setting it reads back through, if one
+    does."""
+
+    now: Any
+    before: Any
+    changed: bool
+    setting: Setting | None = None
+
+    def says(self, expected: Any, value: Any) -> bool:
+        return effect_holds(expected, value, self.setting)
+
+
+def effect_outcome(effect: dict[str, Any], reading: VariableReading) -> str:
+    """One declared value against what its variable reads (``reading``)."""
     if not effect["has_value"]:
         return "no_value"
-    if same_value(effect["expected"], now):
-        if not changed and same_value(effect["expected"], before):
+    expected = effect["expected"]
+    if reading.says(expected, reading.now):
+        if not reading.changed and reading.says(expected, reading.before):
             return "already"
         return "confirmed"
-    if now is None:
+    if reading.now is None:
         return "not_reported"
-    return "different" if changed else "unchanged"
+    return "different" if reading.changed else "unchanged"
 
 
 def query_answer(

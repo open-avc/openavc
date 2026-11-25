@@ -86,8 +86,14 @@ _CONFIRM_MAX_WINDOW = 600.0
 _CONFIRM_POLL_STEP = 0.25
 
 
-def _readback_confirms(key: str, sdef: Any, expected: Any, actual: Any) -> bool:
+def readback_confirms(key: str, sdef: Any, expected: Any, actual: Any) -> bool:
     """Does a device's reported value agree with the setting we wrote?
+
+    THE rule for it: a queued write's confirmation, a live write's
+    (``await_setting_readback``), and every comparison the Device Audit makes
+    on a variable a setting reads back through (``audit/setting_reading``).
+    ``expected`` is the value as written, after
+    ``validate_device_setting_value``; ``actual`` the device's report.
 
     ``None`` is the platform's "declared, never reported" (see
     ``BaseDriver._init_state_variables``) and is never a confirmation.
@@ -95,9 +101,10 @@ def _readback_confirms(key: str, sdef: Any, expected: Any, actual: Any) -> bool:
     Otherwise the device is allowed to report the same value in its own form —
     ``"70"`` for ``70``, ``"on"`` for ``True``, an enum's label for its wire
     value — so the read-back is put through the setting's own declared schema,
-    the same coercion the write went through. A value that schema refuses
-    (out of range, not in ``values``) falls back to a plain text comparison
-    rather than counting as a mismatch on a technicality.
+    the same coercion the write went through. A report that schema refuses
+    (out of range, not in ``values``) or reads as another value is compared
+    as text, apart from case and surrounding spaces, rather than counting as
+    a mismatch on a technicality.
     """
     if actual is None:
         return False
@@ -167,7 +174,7 @@ class _ReadbackWatch:
     def take_confirmed(self) -> None:
         """Move each setting the device now reports as written to ``confirmed``."""
         for key, (state_key, expected) in list(self.outstanding.items()):
-            if _readback_confirms(
+            if readback_confirms(
                 key, self.defs.get(key), expected, self.driver.get_state(state_key)
             ):
                 self.confirmed.append(key)
@@ -323,7 +330,7 @@ class PendingSettingsMixin:
     ) -> tuple[bool, Any]:
         """Wait for a device setting just written to read back.
 
-        The rule a queued write is confirmed by (:func:`_readback_confirms`
+        The rule a queued write is confirmed by (:func:`readback_confirms`
         within :meth:`_confirm_window`), for a caller that wrote the setting
         live and wants to know the same thing: ``(True, value)`` once the
         device reports ``expected`` (in its own form, if it likes), else
@@ -734,7 +741,7 @@ class PendingSettingsMixin:
         deadline = time.monotonic() + (window if timeout is None else min(window, timeout))
         while True:
             actual = driver.get_state(state_key)
-            if _readback_confirms(key, sdef, expected, actual):
+            if readback_confirms(key, sdef, expected, actual):
                 return True, actual
             if time.monotonic() >= deadline or self._device_lost(device_id, driver):
                 return False, actual

@@ -89,13 +89,14 @@ from openavc.audit.command_window import DONE, SENDING, WATCHING, WindowListener
 from openavc.audit.effects import (
     Readout,
     declared_effects,
+    effect_holds,
     judged_effects,
     query_answer,
-    same_value,
 )
 from openavc.audit.exchange import frames_in, own_send, refusals, unmatched_replies
 from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, recorded
 from openavc.audit.session import AuditError, error_sentence
+from openavc.audit.setting_reading import settings_by_variable
 from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.drivers.command_files import CommandFile, DeviceFile
 from openavc.drivers.secret_params import secret_params_of
@@ -603,11 +604,14 @@ class CommandPass:
         entry = self._declaration(trial)
         state = sandbox.device_state()
         fresh = sandbox.written_after(trial.returned_seq)
-        for effect in declared_effects(entry, trial.params, self._driver()):
+        driver = self._driver()
+        settings = settings_by_variable(getattr(driver, "DRIVER_INFO", None) or {})
+        for effect in declared_effects(entry, trial.params, driver):
             if not effect["has_value"]:
                 continue
             key = effect["state_key"]
-            if key not in fresh and not same_value(effect["expected"], state.get(key)):
+            holds = effect_holds(effect["expected"], state.get(key), settings.get(key))
+            if key not in fresh and not holds:
                 return False
         return True
 

@@ -21,7 +21,7 @@ import pytest
 
 from openavc.core import device_manager, pending_settings
 from openavc.core.device_manager import DeviceManager
-from openavc.core.pending_settings import _readback_confirms
+from openavc.core.pending_settings import readback_confirms
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver
@@ -482,7 +482,7 @@ async def test_window_is_capped():
     ],
 )
 def test_readback_agreement(sdef, expected, actual, agrees):
-    assert _readback_confirms("k", sdef, expected, actual) is agrees
+    assert readback_confirms("k", sdef, expected, actual) is agrees
 
 
 # ── A live write waits by the same rule ─────────────────────────────────────

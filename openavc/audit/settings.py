@@ -21,6 +21,11 @@ has, and puts back any setting still changed when the driver stops: Test
 another driver, Connect again, Finish, Cancel or a timeout. "Put it back"
 retries a restore that did not read back.
 
+Whether the device shows a value (the one asked for is there already, a
+write the device never reported, a fresh read that says what was there) is
+read by the rule that confirms the write (``readback_confirms``), so a
+device that reports an option's label shows its value.
+
 A write counts as sent from the moment it starts, so an audit that ends while
 the device has not reported it back yet still puts the old value back; so does
 a write whose call failed after bytes had gone to the device. The value put
@@ -41,9 +46,9 @@ from typing import TYPE_CHECKING, Any
 
 from openavc.audit.command_catalog import command_catalog
 from openavc.audit.commands import QUERY_WINDOW_SECONDS
-from openavc.audit.effects import same_value
 from openavc.audit.observe import command_sent_nothing, recorded
 from openavc.audit.session import AuditError, error_sentence
+from openavc.core.pending_settings import readback_confirms
 from openavc.drivers.base import validate_device_setting_value
 from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
@@ -161,6 +166,10 @@ class SettingsPass:
             raise AuditError(NOT_CONNECTED_YET)
         return listen
 
+    def _declaration(self, key: str) -> Any:
+        """The device setting ``key`` as the driver declares it, or None."""
+        return (self._definitions().get("device_settings") or {}).get(key)
+
     def _definitions(self) -> dict[str, Any]:
         listen = self.run.listen
         driver = listen.sandbox.driver if listen is not None else None
@@ -227,13 +236,13 @@ class SettingsPass:
             ))
         if not entry["can_write"]:
             raise AuditError(entry["reason"])
-        sdef = (self._definitions().get("device_settings") or {}).get(key)
+        sdef = self._declaration(key)
         try:
             typed = validate_device_setting_value(key, sdef, value)
         except ValueError as exc:
             raise AuditError(str(exc)) from exc
         original = listen.sandbox.device_state().get(entry["state_key"])
-        if same_value(typed, original):
+        if readback_confirms(key, sdef, typed, original):
             raise AuditError(SAME_VALUE.format(label=entry["label"], value=_value_text(original)))
         try:
             restore_value = validate_device_setting_value(key, sdef, original)
@@ -302,12 +311,12 @@ class SettingsPass:
         it goes (the caller holds it before anything is sent)."""
         sandbox = self.run.listen.sandbox
         started = half["at"]
-        sdef = (self._definitions().get("device_settings") or {}).get(key) or {}
+        sdef = self._declaration(key) or {}
         state_key = sdef.get("state_key", key) if isinstance(sdef, dict) else key
         # Already showing the value written (a restore after a write the
         # device never reported): the read-back passes at once and proves
         # nothing unless the device reports again.
-        held = same_value(value, sandbox.device_state().get(state_key))
+        held = readback_confirms(key, sdef, value, sandbox.device_state().get(state_key))
         mark = sandbox.state.seq
         try:
             await sandbox.manager.set_device_setting(sandbox.device_id, key, value)
@@ -341,7 +350,7 @@ class SettingsPass:
         query for it: the last poll may be older than a change made at the
         device since."""
         sandbox = self.run.listen.sandbox
-        sdef = (self._definitions().get("device_settings") or {}).get(trial.key) or {}
+        sdef = self._declaration(trial.key) or {}
         state_key = sdef.get("state_key", trial.key) if isinstance(sdef, dict) else trial.key
         query = next((
             c for c in command_catalog(sandbox.driver)
@@ -369,7 +378,9 @@ class SettingsPass:
                f"back {_value_text(trial.original)}, the value it last reported."),
             run=self.run.index, setting=trial.key,
         )
-        if fresh is None or same_value(fresh, trial.original):
+        # The value it would put back, said another way (a label for its
+        # value) or not at all: nothing moved at the device.
+        if fresh is None or readback_confirms(trial.key, sdef, trial.restore_value, fresh):
             return
         trial.original = fresh
         trial.restore_value = validate_device_setting_value(trial.key, sdef, fresh)
@@ -387,7 +398,9 @@ class SettingsPass:
                     "setting.written", trial.write["error"], run=self.run.index, setting=trial.key,
                 )
                 return
-            if same_value(trial.value, trial.original):
+            if readback_confirms(
+                trial.key, self._declaration(trial.key), trial.value, trial.original,
+            ):
                 # Changed at the device to the value asked for: nothing to write.
                 trial.write = {"at": time.time(), "error": SAME_VALUE.format(
                     label=trial.label, value=_value_text(trial.original),

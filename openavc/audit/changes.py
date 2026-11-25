@@ -15,7 +15,11 @@ Two readings of the device's state, both for the person to act on:
   ``on_its_own`` rather than left out, so the person can tell the two apart.
 
 A value is "the same" only when it is equal and of the same type: ``1`` and
-``True`` are different readings of the device.
+``True`` are different readings of the device. On a variable a device setting
+reads back through, two readings the setting's declaration writes as one
+value are the same too (``audit/setting_reading``): an option's label and its
+value, ``"on"`` and ``True`` for a flag. A free-text value that changed only
+in case has still changed.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from openavc.audit.observe import is_platform_key, recorded
+from openavc.audit.setting_reading import Setting, setting_reads_alike, settings_by_variable
 
 
 def state_label(info: dict[str, Any], key: str) -> str:
@@ -60,8 +65,10 @@ def final_values(table: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _same(before: Any, now: Any) -> bool:
-    return before == now and type(before) is type(now)
+def _same(before: Any, now: Any, setting: Setting | None) -> bool:
+    if before == now and type(before) is type(now):
+        return True
+    return setting is not None and setting_reads_alike(setting, before, now)
 
 
 def moved_values(
@@ -72,6 +79,7 @@ def moved_values(
     how many times it changed, and whether it was already changing before
     the command was sent (``already_moving``)."""
     moving = set(already_moving)
+    settings = settings_by_variable(info)
     out: dict[str, dict[str, Any]] = {}
     for change in changes:
         key = change["key"]
@@ -89,7 +97,7 @@ def moved_values(
     for item in out.values():
         # It ended where it began (a reconnect re-reading it, a pulse): not
         # something the command left changed.
-        item["went_back"] = _same(item["first"], item["last"])
+        item["went_back"] = _same(item["first"], item["last"], settings.get(item["key"]))
     return list(out.values())
 
 
@@ -115,13 +123,14 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     info = _driver_info(run, listen)
     movers = _Movers.of(trials)
     unwatched = getattr(run, "unwatched", None) or {}
+    settings = settings_by_variable(info)
     out = []
     for key in sorted(now):
         value = now[key]
         if is_platform_key(key) or value is None:
             continue
         before = baseline.get(key)
-        if _same(before, value):
+        if _same(before, value, settings.get(key)):
             continue
         out.append({
             "key": key,
