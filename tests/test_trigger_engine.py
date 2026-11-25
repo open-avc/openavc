@@ -535,8 +535,9 @@ async def test_delay_recheck_on_a_pattern_sees_the_key_revert(
     _delayed_pattern_trigger(trigger_engine, macro_engine, "falsy")
     await trigger_engine.start()
 
+    # The second write turns the key back inside the delay; it does not match
+    # itself, so it leaves the pending fire to its re-check.
     state.set("device.acme_widget.power", False, source="test")
-    await asyncio.sleep(0.03)
     state.set("device.acme_widget.power", True, source="test")
     await asyncio.sleep(0.3)
 

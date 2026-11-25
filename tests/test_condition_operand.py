@@ -208,8 +208,12 @@ async def test_a_wait_until_is_handed_no_firing_context(_id, key, values, contex
             values, context,
         )
         statuses = [p.get("status") for p in progress if p.get("action") == "wait_until"]
-        met_at_once = "satisfied" in statuses and "waiting" not in statuses
-        assert met_at_once == _expected(reads["empty"], probe), (probe, statuses)
+        if _expected(reads["empty"], probe):
+            assert "satisfied" in statuses and "waiting" not in statuses, (probe, statuses)
+        else:
+            # Neither the first check, the change listener nor the check after
+            # subscribing found it met.
+            assert statuses[-1] == "timeout" and "satisfied" not in statuses, (probe, statuses)
 
 
 # --- a trigger's guard ---------------------------------------------------------
