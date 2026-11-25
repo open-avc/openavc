@@ -79,7 +79,7 @@ A project saved by a later version loads too, after a rollback or when a project
 
 A backup zip is created before every update and every rollback, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
 
-If the backup cannot be made, for example because the disk is full, the update or rollback stops before anything changes and the Updates view says why. Free some disk space and try again. This holds on a system running a version later than v0.41.0.
+If the backup cannot be made, for example because the disk is full, the update or rollback stops before anything changes and the Updates view says why. Free up disk space and try again. This holds on a system running a version later than v0.41.0.
 
 ## Deployment Types
 
