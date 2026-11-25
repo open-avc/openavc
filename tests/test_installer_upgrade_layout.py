@@ -91,6 +91,9 @@ def _run_install_files(tmp_path: Path, install_dir: Path) -> subprocess.Complete
         INSTALL_DIR={install_dir!s}
         ARCHIVE_PATH={archive!s}
         SERVICE_NAME=openavc-test-not-a-real-service
+        UPDATE_FILE={tmp_path!s}/apply-update.json
+        RETRY_FILE={tmp_path!s}/apply-update.retry
+        ROLLBACK_FILE={tmp_path!s}/apply-rollback
         install_files
     """
     return subprocess.run(

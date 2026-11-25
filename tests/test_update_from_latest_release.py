@@ -547,6 +547,9 @@ def test_this_tree_installs_the_latest_release_over_an_install_of_it(tmp_path, r
         INSTALL_DIR="{app}"
         SERVICE_FILE="{unit}"
         ARCHIVE_PATH="{download}"
+        UPDATE_FILE="{tmp_path}/apply-update.json"
+        RETRY_FILE="{tmp_path}/apply-update.retry"
+        ROLLBACK_FILE="{tmp_path}/apply-rollback"
         install_files
         install_service
     """

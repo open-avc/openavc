@@ -135,6 +135,8 @@ class Box:
         )
         self.path = f"{stubs}:/usr/bin:/bin:/usr/sbin:/sbin"
         self.functions = _sourceable(tmp_path)
+        self.data = tmp_path / "var" / "lib" / "openavc"
+        self.data.mkdir(parents=True)
 
     def run(self, steps: str, archive: Path | None = None, python: str = "python3") -> subprocess.CompletedProcess:
         script = f"""
@@ -144,6 +146,10 @@ class Box:
             SERVICE_FILE="{self.unit}"
             SERVICE_NAME=openavc
             OPENAVC_PROC_STATUS="{self.status}"
+            DATA_DIR="{self.data}"
+            UPDATE_FILE="{self.data}/apply-update.json"
+            RETRY_FILE="{self.data}/apply-update.retry"
+            ROLLBACK_FILE="{self.data}/apply-rollback"
             ARCHIVE_PATH="{archive or ''}"
             PYTHON_BIN="{python}"
             {steps}
@@ -263,6 +269,49 @@ def test_a_fresh_install_is_unpacked_with_no_copy_to_roll_back_to(tmp_path):
     assert (box.app / "update-helper.sh").is_file()
     assert not box.previous.exists()
     assert "stop openavc" not in box.systemctl()
+
+
+# What the server left for its next start: an update staged, one set aside to
+# try again, a rollback.
+INSTRUCTIONS = ("apply-update.json", "apply-update.retry", "apply-rollback")
+
+
+def _leave_instructions(box: Box) -> None:
+    (box.data / "apply-update.json").write_text('{"artifact": "/var/lib/openavc/old.tar.gz", "to_version": "1.5.0"}')
+    (box.data / "apply-update.retry").write_text(
+        '{"artifact": "/var/lib/openavc/old.tar.gz", "to_version": "1.5.0", "attempts": 1, "reason": "x", "final": false}'
+    )
+    (box.data / "apply-rollback").write_text("")
+
+
+@pytest.mark.parametrize("fixture", ["reinstall", "fresh"])
+def test_the_release_installed_drops_what_the_server_left_for_its_next_start(tmp_path, fixture):
+    """Left there, the first start's update helper would apply that update
+    over the release just installed, making the release just installed the
+    copy Rollback restores, or roll it back at once."""
+    box = Box(tmp_path)
+    if fixture == "reinstall":
+        _make_install(box.app)
+    _leave_instructions(box)
+    archive = _make_archive(tmp_path / "openavc-2.0.0-linux-amd64.tar.gz")
+
+    proc = box.run("install_files", archive)
+    assert proc.returncode == 0, _output(proc)
+    left = [name for name in INSTRUCTIONS if (box.data / name).exists()]
+    assert not left, f"{left} survived the install, for the next start to act on"
+
+
+def test_a_refused_release_leaves_what_the_server_left_for_its_next_start(tmp_path):
+    """The install it was left for is the one still there."""
+    box = Box(tmp_path)
+    _make_install(box.app)
+    _leave_instructions(box)
+    archive = tmp_path / "openavc-2.0.0-linux-amd64.tar.gz"
+    archive.write_bytes(b"not a gzip archive")
+
+    proc = box.run("install_files", archive)
+    assert proc.returncode != 0, _output(proc)
+    assert all((box.data / name).exists() for name in INSTRUCTIONS), _output(proc)
 
 
 # --- The unit ----------------------------------------------------------------

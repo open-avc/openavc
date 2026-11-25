@@ -28,7 +28,8 @@
 # It also decides what happens to the instructions the server leaves for the
 # start (apply_instructions): a rollback asked for wins over an update, and an
 # update that failed for a reason a later start could fix is set aside and
-# tried again (defer_update), up to MAX_UPDATE_ATTEMPTS. A release that is at
+# tried again (defer_update), up to MAX_UPDATE_ATTEMPTS, and a release that
+# install.sh installs drops them all (drop_instructions). A release that is at
 # fault (it does not unpack, or is not a release this install can run) is
 # dropped; one that was good when this install could not take it (no room
 # for the staging folder, the older copy or the install could not be moved)
@@ -321,5 +322,20 @@ apply_instructions() {
     if [ -f "$UPDATE_FILE" ]; then
         "$on_update"
     fi
+    return 0
+}
+
+# Drop every instruction the server left for the next start (an update staged
+# or set aside to try again, and a rollback), once install.sh has put a release
+# in place. Somebody chose that release just now, as a newly staged update wins
+# over a deferred one: left there, the next start would apply the older update
+# over it, making it the copy kept to roll back to, or roll it back at once.
+drop_instructions() {
+    local file dropped=""
+    for file in "$UPDATE_FILE" "$RETRY_FILE" "$ROLLBACK_FILE"; do
+        [ -e "$file" ] || continue
+        rm -f "$file" && dropped="$dropped ${file##*/}"
+    done
+    [ -z "$dropped" ] || echo "$LOG_TAG: dropped what the server left for its next start:$dropped"
     return 0
 }
