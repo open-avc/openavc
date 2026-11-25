@@ -76,6 +76,10 @@ cp -a "$FROZEN" "$APP/Contents/Resources/server"
 cp -a "$MENUBAR_FROZEN" "$APP/Contents/Resources/menubar"
 cp installer/openavc-macos-run.sh "$APP/Contents/MacOS/openavc-macos-run.sh"
 chmod 755 "$APP/Contents/MacOS/openavc-macos-run.sh"
+# The apply library the wrapper applies an update with, read from beside it.
+# The signing step below signs it like the wrapper.
+cp installer/apply-lib.sh "$APP/Contents/MacOS/apply-lib.sh"
+chmod 644 "$APP/Contents/MacOS/apply-lib.sh"
 # CFBundleExecutable — what opening the app from Finder actually does. It
 # restarts the menu bar LaunchAgent, which is the only way back to the icon
 # after "Quit Menu Bar App". The server's run wrapper stays where it is

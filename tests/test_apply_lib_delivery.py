@@ -73,6 +73,25 @@ def test_every_install_tree_archive_packs_the_library(label: str) -> None:
     )
 
 
+def test_the_mac_bundle_carries_the_library_beside_its_wrapper() -> None:
+    """The fourth road: on a Mac the LaunchDaemon runs the wrapper inside the
+    installed OpenAVC.app, which reads the library from its own folder, so
+    build-macos.sh puts it there in every bundle (the .pkg's and the update
+    tarball's are the same bundle)."""
+    build = (REPO_ROOT / "installer" / "build-macos.sh").read_text(encoding="utf-8")
+    assert f'cp {LIBRARY} "$APP/Contents/MacOS/apply-lib.sh"' in build, (
+        "build-macos.sh no longer copies the library beside the wrapper in the bundle; "
+        "a Mac on that bundle applies no update"
+    )
+    assert 'cp installer/openavc-macos-run.sh "$APP/Contents/MacOS/openavc-macos-run.sh"' in build, (
+        "the wrapper moved inside the bundle; put the library beside it"
+    )
+    wrapper = (REPO_ROOT / "installer" / "openavc-macos-run.sh").read_text(encoding="utf-8")
+    assert '"$WRAPPER_DIR/apply-lib.sh"' in wrapper, (
+        "openavc-macos-run.sh no longer reads apply-lib.sh beside itself; find where it reads it now"
+    )
+
+
 def test_the_helper_reads_the_library_from_its_own_install() -> None:
     """The premise of the pack lists: the helper sources the library from
     installer/ beside itself, which is where these archives put it."""

@@ -1284,9 +1284,9 @@ class TestHelperScriptDeferredUpdateRetry:
         re-consumed on an unrelated restart. A deferred update kept under that
         name would be swept away before it could ever be retried, so the two
         names must stay different -- and the sweep must not learn this one."""
-        helper = HELPER_SCRIPT.read_text(encoding="utf-8")
-        match = re.search(r'^RETRY_FILE="\$DATA_DIR/(\S+)"', helper, re.MULTILINE)
-        assert match, "update-helper.sh no longer defines RETRY_FILE"
+        library = (HELPER_SCRIPT.parent / "apply-lib.sh").read_text(encoding="utf-8")
+        match = re.search(r'^RETRY_FILE="\$DATA_DIR/(\S+)"', library, re.MULTILINE)
+        assert match, "apply-lib.sh no longer defines RETRY_FILE"
         record_name = match.group(1)
         assert record_name != "apply-update.json"
 
@@ -1718,6 +1718,9 @@ class TestHelperScriptKeepsTheRollbackCopy:
         assert (app_dir / "venv" / "lib" / "site.py").exists()
         assert not Path(str(app_dir) + ".new").exists()
         assert not (data_dir / "apply-update.json").exists()
+        # The release was good; this install could not take it now.
+        deferred = _read_deferred(data_dir)
+        assert (deferred["to_version"], deferred["attempts"], deferred["final"]) == ("2.0.0", 1, False)
 
     @pytest.mark.skipif(
         os.name != "posix" or os.geteuid() == 0,
@@ -1739,6 +1742,8 @@ class TestHelperScriptKeepsTheRollbackCopy:
         assert _read_version(app_dir) == "1.0.0"
         assert not (previous / "app").exists()
         assert not Path(str(app_dir) + ".new").exists()
+        deferred = _read_deferred(data_dir)
+        assert (deferred["to_version"], deferred["attempts"], deferred["final"]) == ("2.0.0", 1, False)
 
     def test_without_its_library_the_helper_applies_nothing_and_says_so(self, tmp_path, update_tarball):
         data_dir, app_dir, previous = _install_with_a_previous_copy(tmp_path)
@@ -1753,6 +1758,20 @@ class TestHelperScriptKeepsTheRollbackCopy:
         assert _read_version(app_dir) == "1.0.0"
         assert _read_version(previous) == "0.9.0"
         assert "apply-lib.sh" in result.stdout
+
+    def test_without_its_library_a_rollback_still_applies(self, tmp_path):
+        """A release that shipped without the library can still be left."""
+        data_dir, app_dir, _previous = _install_with_a_previous_copy(tmp_path)
+        alone = tmp_path / "alone" / "update-helper.sh"
+        alone.parent.mkdir()
+        shutil.copy2(HELPER_SCRIPT, alone)
+        (data_dir / "apply-rollback").write_text("")
+
+        result = _run_helper(data_dir, app_dir, script=alone)
+
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "0.9.0"
+        assert "rollback complete" in result.stdout
 
 
 # ===========================================================================
@@ -1903,8 +1922,13 @@ def _arm_bundle(app: Path) -> Path:
     return priv
 
 
-def _run_mac_wrapper(data_dir: Path, app: Path) -> subprocess.CompletedProcess:
-    """Run the actual openavc-macos-run.sh (config is all env vars)."""
+def _run_mac_wrapper(
+    data_dir: Path, app: Path, *, script: Path = MAC_WRAPPER_SCRIPT,
+) -> subprocess.CompletedProcess:
+    """Run the actual openavc-macos-run.sh (config is all env vars); pass
+    ``script`` to run a copy of it from somewhere else. The script's own path
+    is converted for Git Bash too: the wrapper finds its library beside
+    itself."""
     assert _BASH_PATH is not None, "bash not found"
     _fixup_instruction_paths(data_dir)
     if sys.platform == "win32":
@@ -1915,7 +1939,7 @@ def _run_mac_wrapper(data_dir: Path, app: Path) -> subprocess.CompletedProcess:
     env = {**os.environ, "PYTHON": sys.executable,
            "OPENAVC_DATA_DIR": data_arg, "OPENAVC_APP": app_arg}
     return subprocess.run(
-        [_BASH_PATH, str(MAC_WRAPPER_SCRIPT)],
+        [_BASH_PATH, _as_bash_path(script)],
         capture_output=True,
         text=True,
         timeout=HELPER_TIMEOUT,
@@ -2002,6 +2026,166 @@ class TestMacWrapperSignatureGate:
         result = _run_mac_wrapper(data_dir, app)
         assert result.returncode == 0
         assert _read_bundle_version(app) == "2.0.0"
+
+
+def _mac_install_with_a_previous_copy(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A v1.0.0 bundle that an earlier update left a v0.9.0 copy beside, in a
+    folder of its own (the tests make that folder read-only). The data folder's
+    name has a space in it, as the installed one does.
+
+    Returns (data_dir, app, previous)."""
+    data_dir = tmp_path / "Application Support"
+    data_dir.mkdir()
+    app = tmp_path / "Applications" / "OpenAVC.app"
+    _build_fake_bundle(app, "1.0.0")
+    previous = Path(str(app) + ".previous")
+    _build_fake_bundle(previous, "0.9.0")
+    return data_dir, app, previous
+
+
+def _stage_mac_update(data_dir: Path, tarball: Path, to_version: str = "2.0.0") -> None:
+    instruction = {"artifact": str(tarball), "from_version": "1.0.0", "to_version": to_version}
+    (data_dir / "apply-update.json").write_text(json.dumps(instruction))
+
+
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
+class TestMacWrapperAppliesThroughTheLibrary:
+    """The wrapper applies an update by the apply library the Linux helper
+    uses, so a Mac and a Linux box treat an update and a rollback asked
+    together, and an update that could not be taken now, the same way. On a
+    Mac these run under /bin/bash, which is bash 3.2."""
+
+    def test_a_rollback_asked_with_an_update_wins_and_drops_the_update(self, tmp_path):
+        data_dir, app, previous = _mac_install_with_a_previous_copy(tmp_path)
+        tarball = _build_bundle_tarball(tmp_path / "staging", "2.0.0")
+        _stage_mac_update(data_dir, tarball)
+        (data_dir / "apply-rollback").write_text("")
+
+        result = _run_mac_wrapper(data_dir, app)
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _read_bundle_version(app) == "0.9.0", (
+            "the update was applied before the rollback, which then undid only the update"
+        )
+        assert not (data_dir / "apply-update.json").exists()
+        assert not (data_dir / "apply-update.retry").exists()
+        assert not (data_dir / "apply-rollback").exists()
+        assert "openavc-server stub v0.9.0" in result.stdout
+
+    def test_an_update_keeps_the_running_bundle_to_roll_back_to(self, tmp_path):
+        data_dir, app, previous = _mac_install_with_a_previous_copy(tmp_path)
+        _stage_mac_update(data_dir, _build_bundle_tarball(tmp_path / "staging", "2.0.0"))
+
+        result = _run_mac_wrapper(data_dir, app)
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _read_bundle_version(app) == "2.0.0"
+        assert _read_bundle_version(previous) == "1.0.0"
+        assert not Path(str(app) + ".new").exists()
+        assert not (data_dir / "apply-update.json").exists()
+        assert "openavc-server stub v2.0.0" in result.stdout
+
+    def test_an_archive_that_is_not_a_bundle_is_dropped_before_anything_moves(self, tmp_path):
+        data_dir, app, previous = _mac_install_with_a_previous_copy(tmp_path)
+        wrong = tmp_path / "staging" / "openavc-2.0.0-macos-arm64.tar.gz"
+        wrong.parent.mkdir()
+        (tmp_path / "staging" / "OpenAVC.app" / "Contents").mkdir(parents=True)
+        with tarfile.open(wrong, "w:gz") as tar:
+            tar.add(tmp_path / "staging" / "OpenAVC.app", arcname="OpenAVC.app")
+        _stage_mac_update(data_dir, wrong)
+
+        result = _run_mac_wrapper(data_dir, app)
+
+        assert result.returncode == 0
+        assert _read_bundle_version(app) == "1.0.0"
+        assert _read_bundle_version(previous) == "0.9.0"
+        assert not Path(str(app) + ".new").exists()
+        assert not (data_dir / "apply-update.json").exists()
+        assert not (data_dir / "apply-update.retry").exists(), "a release at fault is never retried"
+
+    @pytest.mark.skipif(
+        os.name != "posix" or os.geteuid() == 0,
+        reason="needs a folder its own owner cannot write; root writes anywhere",
+    )
+    def test_an_update_this_mac_could_not_take_now_is_tried_again_at_the_next_start(self, tmp_path):
+        data_dir, app, previous = _mac_install_with_a_previous_copy(tmp_path)
+        _stage_mac_update(data_dir, _build_bundle_tarball(tmp_path / "staging", "2.0.0"))
+        applications = app.parent
+        applications.chmod(0o555)
+        try:
+            first = _run_mac_wrapper(data_dir, app)
+        finally:
+            applications.chmod(0o755)
+
+        assert first.returncode == 0, first.stdout + first.stderr
+        assert "openavc-server stub v1.0.0" in first.stdout
+        assert _read_bundle_version(app) == "1.0.0"
+        assert _read_bundle_version(previous) == "0.9.0"
+        assert not (data_dir / "apply-update.json").exists()
+        deferred = _read_deferred(data_dir)
+        assert deferred["to_version"] == "2.0.0"
+        assert deferred["attempts"] == 1
+        assert deferred["final"] is False
+        assert deferred["reason"]
+
+        second = _run_mac_wrapper(data_dir, app)
+
+        assert second.returncode == 0, second.stdout + second.stderr
+        assert _read_bundle_version(app) == "2.0.0"
+        assert _read_bundle_version(previous) == "1.0.0"
+        assert not (data_dir / "apply-update.retry").exists()
+        assert "openavc-server stub v2.0.0" in second.stdout
+
+    def test_without_its_library_the_wrapper_applies_nothing_and_still_starts(self, tmp_path):
+        data_dir, app, previous = _mac_install_with_a_previous_copy(tmp_path)
+        alone = tmp_path / "alone" / "openavc-macos-run.sh"
+        alone.parent.mkdir()
+        shutil.copy2(MAC_WRAPPER_SCRIPT, alone)
+        _stage_mac_update(data_dir, _build_bundle_tarball(tmp_path / "staging", "2.0.0"))
+
+        result = _run_mac_wrapper(data_dir, app, script=alone)
+
+        assert result.returncode == 0
+        assert _read_bundle_version(app) == "1.0.0"
+        assert _read_bundle_version(previous) == "0.9.0"
+        assert "apply-lib.sh" in result.stdout
+        assert "openavc-server stub v1.0.0" in result.stdout
+
+    def test_without_its_library_a_rollback_still_applies(self, tmp_path):
+        """A bundle that shipped without the library can still be left."""
+        data_dir, app, _previous = _mac_install_with_a_previous_copy(tmp_path)
+        alone = tmp_path / "alone" / "openavc-macos-run.sh"
+        alone.parent.mkdir()
+        shutil.copy2(MAC_WRAPPER_SCRIPT, alone)
+        (data_dir / "apply-rollback").write_text("")
+
+        result = _run_mac_wrapper(data_dir, app, script=alone)
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _read_bundle_version(app) == "0.9.0"
+        assert "rollback complete" in result.stdout
+
+
+class TestTheLibraryKeepsToBash32:
+    """macOS runs the wrapper under /bin/bash, bash 3.2, with ``set -u``, and
+    the test jobs' bash is a newer one. In bash 3.2 an empty array expanded as
+    ``"${NAME[@]}"`` under ``set -u`` is an unbound variable, which ends the
+    wrapper partway through a swap; the Mac carries no folders across, so its
+    PRESERVE_DIRS is empty."""
+
+    def test_every_array_expansion_survives_an_empty_array(self):
+        library = (HELPER_SCRIPT.parent / "apply-lib.sh").read_text(encoding="utf-8")
+        code = "\n".join(line for line in library.splitlines() if not line.lstrip().startswith("#"))
+        expansions = list(re.finditer(r'"\$\{(\w+)\[@\]\}"', code))
+        assert expansions, "apply-lib.sh expands no array -- this test is stale"
+        unguarded = [
+            m.group(0) for m in expansions
+            if not code[:m.start()].endswith(f"${{{m.group(1)}[@]+")
+        ]
+        assert not unguarded, (
+            f"{unguarded} in apply-lib.sh fail under bash 3.2's set -u when the array is "
+            'empty; write ${NAME[@]+"${NAME[@]}"}'
+        )
 
 
 class TestMacBundleCarriesTrustedKeys:

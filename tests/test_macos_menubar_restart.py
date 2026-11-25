@@ -110,7 +110,7 @@ def mac(tmp_path):
             out, err = tmp_path / "stdout.txt", tmp_path / "stderr.txt"
             with out.open("w") as stdout, err.open("w") as stderr:
                 done = subprocess.run(
-                    [_BASH_PATH, str(MAC_WRAPPER)],
+                    [_BASH_PATH, _bash_path(MAC_WRAPPER)],
                     stdout=stdout, stderr=stderr, timeout=60, env=environment,
                 )
             assert done.returncode == 0, err.read_text()

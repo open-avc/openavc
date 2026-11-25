@@ -166,7 +166,7 @@ class SandboxedMac:
         if loaded_bind is not None:
             environment["OPENAVC_BIND"] = loaded_bind
         done = subprocess.run(
-            [_BASH_PATH, str(MAC_WRAPPER)],
+            [_BASH_PATH, bash_path(MAC_WRAPPER)],
             capture_output=True, text=True, timeout=60, env=environment,
         )
         assert done.returncode == 0, done.stderr

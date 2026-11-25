@@ -7,10 +7,13 @@
 # .app under /Applications), then exec's the server. A clean server exit 0
 # (self-update / cloud restart) and a crash both bring launchd back here.
 #
-# It mirrors the Linux update-helper.sh swap/recovery logic. macOS differences:
-# the "app dir" is the OpenAVC.app bundle; there is no venv to preserve and no
-# user content inside the bundle (data lives under OPENAVC_DATA_DIR), so the
-# swap is a plain bundle replace.
+# An update is applied by the apply library the Linux update-helper.sh uses
+# (apply-lib.sh, beside this script in the bundle): the order of the steps,
+# the copy kept to roll back to, a rollback winning over an update asked with
+# it, and an update set aside to retry. macOS differences: the "app dir" is
+# the OpenAVC.app bundle; there is no venv to preserve and no user content
+# inside the bundle (data lives under OPENAVC_DATA_DIR), so nothing is carried
+# across the swap.
 #
 # The script MUST always end by exec'ing the server, even when an apply step
 # fails, so a bad instruction can never take the service down.
@@ -66,11 +69,41 @@ MSG
     exit 1
 fi
 
+# The apply library, from this script's own folder: Contents/MacOS in the
+# bundle, installer/ in the source tree. A bundle without it applies no update
+# and says so; it still rolls back.
+case "${BASH_SOURCE[0]}" in
+    */*) WRAPPER_DIR="${BASH_SOURCE[0]%/*}" ;;
+    *) WRAPPER_DIR=. ;;
+esac
+APPLY_LIB=""
+# shellcheck source=apply-lib.sh
+if [ -f "$WRAPPER_DIR/apply-lib.sh" ] && . "$WRAPPER_DIR/apply-lib.sh"; then
+    APPLY_LIB="$WRAPPER_DIR/apply-lib.sh"
+fi
+
+# The bundle holds nothing the release does not ship, so a swap carries no
+# folder across.
+# shellcheck disable=SC2034  # read by the apply library
+PRESERVE_DIRS=()
+
 # A candidate bundle is usable only if it carries the server executable.
 # (Frozen binaries live in Contents/Resources/, not Contents/MacOS/ — see the
 # build script for why.)
 is_app_valid() {
     [ -x "$1/Contents/Resources/server/openavc-server" ]
+}
+
+# What the apply library asks of the staged bundle before anything that runs
+# moves: made root's, then carrying the server. The library's extract already
+# makes the extracting user the owner, which is root here, but the requirement
+# is stated outright rather than inferred from who ran the script: the
+# LaunchDaemon runs this bundle's server as root, so a bundle a local account
+# could write would hand that account root. A .pkg install writes root:wheel
+# itself.
+root_and_check_bundle() {
+    chown -R root:wheel "$1" 2>/dev/null || true
+    is_app_valid "$1"
 }
 
 # Verify an update artifact's detached signature against the trusted public
@@ -193,68 +226,13 @@ handle_update() {
     fi
 
     echo "$LOG_TAG: applying update to v$TO_VER from $ARTIFACT"
-    PREVIOUS="$APP.previous"
-    STAGING="$APP.new"
 
-    # 1. Extract the new release into a clean staging dir (no stragglers from
-    #    the running install). The tarball carries OpenAVC.app at its root.
-    rm -rf "$STAGING"
-    if ! mkdir -p "$STAGING"; then
-        echo "$LOG_TAG: could not create staging dir, skipping"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-    #    --no-same-owner is a privilege boundary, not tidiness. This runs as
-    #    root, and root tar RESTORES the uid/gid recorded in the archive. The
-    #    release tarball is built on a CI runner whose build user is uid 501,
-    #    so without this the swapped-in bundle lands owned by whichever local
-    #    account happens to hold uid 501 -- and the LaunchDaemon then execs a
-    #    root binary that an unprivileged user can overwrite. A .pkg install
-    #    writes root:wheel correctly; only this path was affected.
-    if ! tar xzf "$ARTIFACT" -C "$STAGING" --no-same-owner; then
-        echo "$LOG_TAG: extraction failed, leaving current install untouched"
-        rm -rf "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-    NEW_APP="$STAGING/OpenAVC.app"
-    #    Belt and braces: --no-same-owner makes the extracting user the owner,
-    #    which is root here, but state the requirement outright rather than
-    #    inferring it from who ran the script.
-    chown -R root:wheel "$NEW_APP" 2>/dev/null || true
-    if ! is_app_valid "$NEW_APP"; then
-        echo "$LOG_TAG: staged bundle is invalid, leaving current install untouched"
-        rm -rf "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
+    # Unpack the release into $APP.new and check it, keep the running bundle as
+    # $APP.previous and swap (apply-lib.sh has the order, what each failure
+    # leaves, and whether the instruction is dropped or set aside to retry).
+    # The tarball carries OpenAVC.app at its root.
+    apply_update "$APP" OpenAVC.app root_and_check_bundle || return
 
-    # 2. Snapshot the current bundle so rollback has a complete copy.
-    rm -rf "$PREVIOUS"
-    if ! cp -a "$APP" "$PREVIOUS"; then
-        echo "$LOG_TAG: snapshot to $PREVIOUS failed, skipping update"
-        rm -rf "$PREVIOUS" "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-
-    # 3. Swap: remove the old bundle (already snapshotted) and promote staging.
-    if ! rm -rf "$APP"; then
-        echo "$LOG_TAG: could not remove old bundle, recovering from snapshot"
-        mv "$PREVIOUS" "$APP" 2>/dev/null || echo "$LOG_TAG: recovery failed; manual fix required"
-        rm -rf "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-    if ! mv "$NEW_APP" "$APP"; then
-        echo "$LOG_TAG: could not promote new bundle, recovering from snapshot"
-        mv "$PREVIOUS" "$APP" 2>/dev/null || echo "$LOG_TAG: recovery failed; manual fix required"
-        rm -rf "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-
-    rm -rf "$STAGING"
     rm -f "$UPDATE_FILE"
     echo "$LOG_TAG: update to v$TO_VER applied"
     restart_menu_bar_after_swap
@@ -262,9 +240,10 @@ handle_update() {
 
 handle_rollback() {
     PREVIOUS="$APP.previous"
-    # Refuse to promote a missing or partial snapshot (a prior cp -a could have
-    # been interrupted) — that would crash the service with nothing to fall
-    # back to. Mirrors update-helper.sh's integrity guard.
+    # Refuse to promote a missing or partial snapshot (an earlier release's
+    # wrapper made it with cp -a, which can be interrupted) — that would crash
+    # the service with nothing to fall back to. Mirrors update-helper.sh's
+    # integrity guard.
     if [ ! -d "$PREVIOUS" ] || ! is_app_valid "$PREVIOUS"; then
         echo "$LOG_TAG: no valid previous bundle at $PREVIOUS, cannot rollback"
         rm -f "$ROLLBACK_FILE"
@@ -357,8 +336,15 @@ add_stop_bound() {
 
 FIRMWARE_HOST="${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}"
 if [ "${OPENAVC_FIRMWARE_HOST+x}" != x ] && [ ! -e "$FIRMWARE_HOST" ] && [ ! -L "$FIRMWARE_HOST" ]; then
-    [ -f "$UPDATE_FILE" ] && handle_update
-    [ -f "$ROLLBACK_FILE" ] && handle_rollback
+    # Which instruction is acted on, and what becomes of the others, is the
+    # apply library's (apply_instructions).
+    if [ -n "$APPLY_LIB" ]; then
+        apply_instructions handle_update handle_rollback
+    else
+        [ -f "$UPDATE_FILE" ] &&
+            echo "$LOG_TAG: $WRAPPER_DIR/apply-lib.sh is missing, so no update can be applied; reinstall OpenAVC"
+        [ -f "$ROLLBACK_FILE" ] && handle_rollback
+    fi
     if launch_settings_readable; then
         drop_earlier_installer_bind
         add_stop_bound

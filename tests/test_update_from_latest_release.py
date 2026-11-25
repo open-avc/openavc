@@ -581,3 +581,41 @@ def test_the_released_macos_wrapper_installs_this_tree_and_can_roll_back(
     assert "rollback complete" in rolled_back.stdout, output
     assert _server_line(rolled_back) == f"openavc-server {released.tag}", output
     assert wrapper.read_bytes() == released.file("installer/openavc-macos-run.sh")
+
+
+def test_the_wrapper_this_tree_installs_applies_the_next_update(
+    tmp_path, released, this_tree, key, stubs,
+):
+    """After the swap the wrapper that runs is this tree's, from inside the
+    bundle this tree built, reading what it applies an update with from beside
+    itself, which only build-macos.sh put there."""
+    applications, data = tmp_path / "Applications", tmp_path / "data"
+    applications.mkdir()
+    data.mkdir()
+    subprocess.run(["tar", "-xzf", str(released.macos_tarball), "-C", str(applications)], check=True)
+    app = applications / "OpenAVC.app"
+    trusted = app / "Contents" / "Resources" / "trusted-keys" / "test-signing.pem"
+    shutil.copy2(key[1], trusted)
+    env = _script_env(
+        stubs,
+        OPENAVC_APP=str(app),
+        OPENAVC_DATA_DIR=str(data),
+        OPENAVC_LAUNCHCTL=str(stubs / "launchctl"),
+        OPENAVC_CONSOLE_UID=CONSOLE_UID,
+    )
+    wrapper = _in_bundle(app, _launchd_program(released.file("installer/com.openavc.server.plist")))
+    _stage_update(data, this_tree.macos_tarball, released.version, this_tree.version)
+    handed_over = _run_script(wrapper, env=env)
+    assert f"update to v{this_tree.version} applied" in handed_over.stdout, handed_over.stdout
+    first = _files(app)
+
+    # The tarball carries the release's trusted keys, not this test's.
+    shutil.copy2(key[1], trusted)
+    _stage_update(data, this_tree.macos_tarball, this_tree.version, this_tree.version)
+    again = _run_script(wrapper, env=env)
+    output = f"{again.stdout}\n{again.stderr}"
+    assert again.returncode == 0, output
+    assert f"update to v{this_tree.version} applied" in again.stdout, output
+    assert _server_line(again) == "openavc-server this tree", output
+    trusted_name = trusted.relative_to(app).as_posix()
+    assert _files(app.with_name("OpenAVC.app.previous")) == first | {trusted_name}, output

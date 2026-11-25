@@ -25,6 +25,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MACOS_RUN = REPO_ROOT / "installer" / "openavc-macos-run.sh"
+APPLY_LIB = REPO_ROOT / "installer" / "apply-lib.sh"
 LINUX_HELPER = REPO_ROOT / "installer" / "update-helper.sh"
 
 
@@ -32,6 +33,12 @@ LINUX_HELPER = REPO_ROOT / "installer" / "update-helper.sh"
 def macos_script() -> str:
     assert MACOS_RUN.is_file(), f"missing {MACOS_RUN}"
     return MACOS_RUN.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def apply_lib() -> str:
+    assert APPLY_LIB.is_file(), f"missing {APPLY_LIB}"
+    return APPLY_LIB.read_text(encoding="utf-8")
 
 
 def _tar_extract_lines(script: str) -> list[str]:
@@ -43,32 +50,46 @@ def _tar_extract_lines(script: str) -> list[str]:
     ]
 
 
-class TestMacOSExtractOwnership:
-    def test_the_script_extracts_exactly_once(self, macos_script):
-        # Guards the assertions below: if a second extract appears, it needs the
-        # same treatment and this file should fail until someone looks.
-        assert len(_tar_extract_lines(macos_script)) == 1
+def _function_body(script: str, name: str) -> str:
+    start = script.index(f"{name}() {{")
+    return script[start:script.index("\n}\n", start)]
 
-    def test_extract_does_not_restore_archive_ownership(self, macos_script):
-        line = _tar_extract_lines(macos_script)[0]
+
+class TestMacOSExtractOwnership:
+    """The wrapper applies an update through the apply library: the library
+    extracts, and the check the wrapper hands it roots the staged bundle."""
+
+    def test_the_wrapper_extracts_nothing_itself(self, macos_script):
+        # Guards the assertions below: an extract of the wrapper's own needs
+        # the same treatment and this file should fail until someone looks.
+        assert _tar_extract_lines(macos_script) == []
+
+    def test_the_library_extracts_exactly_once(self, apply_lib):
+        assert len(_tar_extract_lines(apply_lib)) == 1
+
+    def test_extract_does_not_restore_archive_ownership(self, apply_lib):
+        line = _tar_extract_lines(apply_lib)[0]
         assert "--no-same-owner" in line, (
             "root tar restores the archive's uid/gid; without --no-same-owner the "
             "swapped-in bundle is owned by the CI builder's uid and the root "
             "daemon runs a binary an unprivileged user can overwrite"
         )
 
-    def test_staged_bundle_is_chowned_to_root_before_promotion(self, macos_script):
-        assert "chown -R root:wheel" in macos_script, (
+    def test_staged_bundle_is_chowned_to_root_by_the_check(self, macos_script):
+        check = _function_body(macos_script, "root_and_check_bundle")
+        assert "chown -R root:wheel" in check, (
             "state the ownership requirement outright rather than inferring it "
             "from who happens to run the script"
         )
 
-    def test_chown_happens_before_the_swap(self, macos_script):
-        # A chown after `mv` would leave a window where the promoted bundle is
-        # user-owned, and would miss entirely on any early-return path.
-        chown_at = macos_script.index("chown -R root:wheel")
-        swap_at = macos_script.index('mv "$NEW_APP" "$APP"')
-        assert chown_at < swap_at
+    def test_the_check_is_what_the_wrapper_applies_an_update_with(self, macos_script):
+        assert 'apply_update "$APP" OpenAVC.app root_and_check_bundle' in macos_script
+
+    def test_the_library_runs_the_check_before_the_swap(self, apply_lib):
+        # A chown after the swap would leave a window where the promoted bundle
+        # is user-owned, and would miss entirely on any early-return path.
+        release = _function_body(apply_lib, "apply_release")
+        assert release.index('"$check" "$staged"') < release.index("apply_swap")
 
 
 class TestLinuxStillHandlesIt:

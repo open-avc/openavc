@@ -131,7 +131,7 @@ class UpdateManager:
             )
         self._publish_install_version(staged)
 
-        # An update update-helper.sh could not apply and set aside to retry.
+        # An update the root helper could not apply and set aside to retry.
         # Say so once per start: this is the only signal that a box which looks
         # entirely healthy is not running the release somebody installed on it.
         if deferred:
@@ -788,10 +788,12 @@ class UpdateManager:
         return self._data_dir / "apply-update.retry"
 
     def get_deferred_update(self) -> dict[str, Any] | None:
-        """Return the update update-helper.sh set aside to retry, if any.
+        """Return the update the root helper set aside to retry, if any.
 
-        The helper (root, before this process exists) defers an update whose
-        dependency sync or venv rebuild failed, so the next start tries again
+        The helper (update-helper.sh, or openavc-macos-run.sh on macOS; root,
+        before this process exists) defers an update that failed for a reason
+        about the box at that moment (a dependency sync or venv rebuild, a
+        swap that could not be made), so the next start tries again
         instead of leaving the box on the version it was trying to leave. That
         is invisible from here otherwise: the install still works, the server
         reports healthy, and the only trace is a line in a boot log nobody
@@ -978,11 +980,12 @@ class UpdateManager:
         Shared by the Linux and macOS self-update paths — both drop a tarball
         and a root-run helper swaps it in before the server relaunches:
         - Linux: update-helper.sh (systemd ExecStartPre=-+, bypasses
-          ProtectSystem=strict) backs up /opt/openavc, extracts, rebuilds venv.
+          ProtectSystem=strict) unpacks and checks the release, keeps
+          /opt/openavc as /opt/openavc.previous, swaps, syncs the venv.
         - macOS: openavc-macos-run.sh (the LaunchDaemon's wrapper, runs as
-          root) snapshots OpenAVC.app -> OpenAVC.app.previous and swaps in the
-          new app tree.
-        Both read this same apply-update.json. After this method returns, the
+          root) does the same with OpenAVC.app -> OpenAVC.app.previous.
+        Both read this same apply-update.json and apply it through
+        installer/apply-lib.sh. After this method returns, the
         caller ends the process through the restart door (``_end_process``),
         so the service manager relaunches and the helper applies the staged
         update.

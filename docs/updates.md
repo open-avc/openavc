@@ -47,7 +47,7 @@ On macOS, the OpenAVC menu bar item restarts on the new version when an update o
 
 ### If an update cannot be installed right now
 
-On Linux, the Raspberry Pi image and appliance hardware, an update is applied by a privileged step that runs just before the server starts. Part of that step downloads the new version's Python dependencies, which needs internet access at that moment. If it cannot get them, or the Python environment cannot be rebuilt, the system is put back exactly as it was and keeps running the version it was on.
+On Linux, the Raspberry Pi image, appliance hardware and macOS, an update is applied by a privileged step that runs just before the server starts. On Linux, the Pi and appliance hardware, part of that step downloads the new version's Python dependencies, which needs internet access at that moment. If it cannot get them, or the Python environment cannot be rebuilt, the system is put back exactly as it was and keeps running the version it was on. The same happens on all of them, macOS included, when the new version checks out but cannot be put in place, for example because the copy an earlier update kept for Rollback cannot be removed: the system keeps running the version it was on. That holds for an update from a version later than v0.41.0.
 
 That update is not lost. It is set aside and tried again the next time the system restarts, up to three times, so a system that was offline or on a network with blocked DNS at the wrong moment picks it up by itself once the network is working. Until it succeeds, the Updates view says which version has not been installed and what stopped it.
 
