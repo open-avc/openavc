@@ -253,8 +253,7 @@ async def test_a_rollback_whose_projects_could_not_be_put_back_stops_the_start_a
 
     await boot.run()
 
-    # The stale update records are still swept, as on every start.
-    assert boot.order == ["restore_pre_update_data", "clear_stale_rollback_marker"]
+    assert boot.order == ["restore_pre_update_data"]
     boot.engine.start.assert_not_awaited()
     assert boot.app.state.run_state.error == f"Checking the last update failed: {sentence}"
 

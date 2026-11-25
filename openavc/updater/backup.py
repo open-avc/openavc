@@ -42,12 +42,14 @@ so a link in them is left out, as an export leaves it out.
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import os
 import shutil
 import zipfile
 import zlib
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -169,40 +171,43 @@ def _write_update_archive(
 ) -> None:
     """Every member of an update's backup (``create_backup``), written into
     ``zf``, with the links each project tree holds recorded last."""
-    links: dict[str, dict[str, str]] = {}
-    # The projects tree. User backups (backup_manager writes
-    # {project_dir}/backups/ inside it) are skipped: embedding up to 15
-    # already-compressed backup zips per update multiplies disk and CPU cost
-    # for zero restore value.
-    projects_dir = data_dir / "projects"
-    if projects_dir.exists():
-        files, links["projects"] = _project_files(projects_dir, backup_dir)
-        for file_path in files:
-            if not _in_user_backups(file_path, projects_dir):
-                zf.write(file_path, file_path.relative_to(data_dir).as_posix())
-
-    # The community drivers, the themes and the plugins, without following a
-    # link: a rollback never restores these, and a linked plugin or driver is
-    # somebody's working copy that lives elsewhere. A project kept at the data
-    # root has its own themes here, which go into external-project/ with the
-    # project and come back with it.
-    for tree in ("driver_repo", "themes", "plugin_repo"):
-        for file_path in files_below(data_dir / tree):
-            zf.write(file_path, file_path.relative_to(data_dir).as_posix())
-
-    for name in _DATA_ROOT_FILES:
-        if (data_dir / name).exists():
-            zf.write(data_dir / name, name)
-
+    links = {"projects": _write_projects_tree(zf, data_dir, backup_dir)}
+    _write_system_files(zf, data_dir)
     # Projects outside data_dir, and directly at its root, are not reached by
     # the projects/ walk. The data-root case selects only project entries,
     # never the supervisor, update cache or backups.
     if project_path is not None and project_path.exists():
         links["external-project"] = _backup_extra_project(zf, project_path, data_dir)
-
     recorded = {tree: found for tree, found in links.items() if found}
     if recorded:
         zf.writestr(LINKS_MEMBER, json.dumps(recorded, indent=2, sort_keys=True))
+
+
+def _write_projects_tree(zf: zipfile.ZipFile, data_dir: Path, backup_dir: Path) -> dict[str, str]:
+    """The ``projects/`` tree, links followed; returns the links it holds.
+    User backups (backup_manager writes {project_dir}/backups/ inside it) are
+    skipped: embedding up to 15 already-compressed backup zips per update
+    multiplies disk and CPU cost for zero restore value."""
+    projects_dir = data_dir / "projects"
+    if not projects_dir.exists():
+        return {}
+    files, links = _project_files(projects_dir, backup_dir)
+    for file_path in files:
+        if not _in_user_backups(file_path, projects_dir):
+            zf.write(file_path, file_path.relative_to(data_dir).as_posix())
+    return links
+
+
+def _write_system_files(zf: zipfile.ZipFile, data_dir: Path) -> None:
+    """The community drivers, the themes and the plugins, without following
+    a link: a rollback never restores these, and a linked plugin or driver
+    is somebody's working copy that lives elsewhere. A project kept at the
+    data root has its own themes here, which go into external-project/ with
+    the project and come back with it. Then the files at the data root."""
+    trees = [files_below(data_dir / tree) for tree in ("driver_repo", "themes", "plugin_repo")]
+    root_files = [data_dir / name for name in _DATA_ROOT_FILES if (data_dir / name).exists()]
+    for file_path in [*itertools.chain.from_iterable(trees), *root_files]:
+        zf.write(file_path, file_path.relative_to(data_dir).as_posix())
 
 
 def _in_user_backups(file_path: Path, root: Path) -> bool:
@@ -378,33 +383,60 @@ def restore_user_data(
     the rest has been. The next attempt at the same backup keeps what this
     one set aside (``ASIDE_RECORD``).
     """
-    zf = _opened(backup_path)
-    failed: list[OSError] = []
+    with _opened(backup_path) as zf:
+        job = _Restore(zf, backup_path.name, _recorded_links(zf))
+        restored = _restore_trees(job, data_dir, project_path)
+    if job.failed:
+        raise RestoreFailed(job.failed[0])
+    return restored
+
+
+@dataclass
+class _Restore:
+    """One restore of a pre-update backup (``restore_user_data``): the open
+    zip, the backup's name, which names what it sets aside
+    (``ASIDE_RECORD``), the links it recorded in each tree, and each file it
+    could not write back."""
+
+    zf: zipfile.ZipFile
+    backup: str
+    links: dict[str, dict[str, str]]
+    failed: list[OSError] = field(default_factory=list)
+
+
+@dataclass
+class _ProjectsTree:
+    """The ``projects/`` tree a restore puts back: the archived files below
+    ``projects/``, and the links the backup recorded in it."""
+
+    job: _Restore
+    data_dir: Path
+    members: list
+
+    @property
+    def links(self) -> dict[str, str]:
+        return self.job.links.get("projects", {})
+
+    @property
+    def live(self) -> Path:
+        return self.data_dir / "projects"
+
+    @property
+    def aside(self) -> Path:
+        return self.data_dir / "projects.pre-rollback"
+
+
+def _restore_trees(job: _Restore, data_dir: Path, project_path: Path | None) -> bool:
+    """The projects tree, then a project kept outside it, each put back from
+    the backup; True when anything was."""
+    members = [i for i in job.zf.infolist() if not i.is_dir()]
     restored = False
-    with zf:
-        members = [i for i in zf.infolist() if not i.is_dir()]
-        project_members = [i for i in members if i.filename.startswith("projects/")]
-        external_members = [
-            i for i in members if i.filename.startswith("external-project/")
-        ]
-        links = _recorded_links(zf)
-
-        if project_members:
-            restored |= _restore_projects_tree(
-                zf, project_members, data_dir, links.get("projects", {}),
-                backup=backup_path.name, failed=failed,
-            )
-
-        if external_members and project_path is not None:
-            external_dir, root_names = _extra_project_tree(project_path, data_dir)
-            if external_dir is not None:
-                restored |= _restore_external_files(
-                    zf, _selected_external_members(external_members, root_names),
-                    external_dir, links.get("external-project", {}), failed=failed,
-                )
-
-    if failed:
-        raise RestoreFailed(failed[0])
+    projects = [i for i in members if i.filename.startswith("projects/")]
+    if projects:
+        restored |= _restore_projects_tree(_ProjectsTree(job, data_dir, projects))
+    external = [i for i in members if i.filename.startswith("external-project/")]
+    if external and project_path is not None:
+        restored |= _restore_external_files(job, external, data_dir, project_path)
     return restored
 
 
@@ -561,26 +593,18 @@ def _member_relpath(name: str, prefix: str) -> Path | None:
     return p
 
 
-def _restore_projects_tree(
-    zf: zipfile.ZipFile, members: list, data_dir: Path, links: dict[str, str] | None = None,
-    *, backup: str, failed: list[OSError],
-) -> bool:
+def _restore_projects_tree(tree: _ProjectsTree) -> bool:
     """Swap data_dir/projects for the archived tree, keeping the old one aside.
 
-    ``links`` is what the backup recorded for this tree. When ``projects/``
-    itself is one of them, it is restored through the link instead of
-    swapped: renaming it would leave a plain folder where the link was.
-    ``backup`` names the backup (``ASIDE_RECORD``); a file that could not be
-    written back goes in ``failed``.
+    When ``projects/`` itself is a link the backup recorded, it is restored
+    through the link instead of swapped: renaming it would leave a plain
+    folder where the link was.
     """
-    links = links or {}
-    live = data_dir / "projects"
-    aside = data_dir / "projects.pre-rollback"
+    live, aside = tree.live, tree.aside
+    if "." in tree.links and _still_leads_to(live, tree.links["."]):
+        return _restore_tree_through_link(tree)
 
-    if "." in links and _still_leads_to(live, links["."]):
-        return _restore_tree_through_link(zf, members, data_dir, links, backup=backup, failed=failed)
-
-    if not _swapped_in(zf, members, data_dir, backup, failed):
+    if not _swapped_in(tree):
         return False
 
     # A projects/ that was itself a link the backup did not record (made since,
@@ -595,7 +619,7 @@ def _restore_projects_tree(
             "folder, and the link is kept at %s", aside,
         )
     else:
-        _put_links_back(zf, members, live, aside, links, failed)
+        _put_links_back(tree)
 
     # User backups are excluded from the archive — carry them over from the
     # displaced tree so a rollback doesn't lose them. Not from behind a link
@@ -607,45 +631,66 @@ def _restore_projects_tree(
     return True
 
 
-def _swapped_in(zf: zipfile.ZipFile, members: list, data_dir: Path, backup: str, failed: list[OSError]) -> bool:
+def _swapped_in(tree: _ProjectsTree) -> bool:
     """The archived tree in place at ``projects/``, the tree there kept at
-    ``projects.pre-rollback``. True once it is: by this attempt, or by an
-    earlier attempt at the same backup, whose aside is kept (an earlier
-    attempt that could not put the projects back when its swap failed has
-    them put back first). False, with the error in ``failed``, when the swap
-    failed and the projects were put back as they were."""
-    live = data_dir / "projects"
-    aside = data_dir / "projects.pre-rollback"
-    if aside.exists() and _aside_is_from(data_dir, backup):
-        if live.exists():
+    ``projects.pre-rollback``. True once it is, by this attempt or by an
+    earlier attempt at the same backup, whose aside is kept; False, the
+    error in the restore's failures, when it is not."""
+    try:
+        if _swapped_earlier(tree):
             return True
-        try:
-            os.replace(aside, live)
-        except OSError as e:
-            log.exception("Could not put projects/ back from %s", aside)
-            failed.append(e)
-            return False
-    staging = data_dir / "projects.restore-tmp"
+    except OSError as e:
+        log.exception("Could not put projects/ back from %s", tree.aside)
+        tree.job.failed.append(e)
+        return False
+    return _swap(tree)
+
+
+def _swapped_earlier(tree: _ProjectsTree) -> bool:
+    """Whether an earlier attempt at the same backup swapped the tree in
+    already. One that could not put the projects back when its swap failed
+    has them put back here first, for this attempt to swap again. Raises
+    the ``OSError``."""
+    if not (tree.aside.exists() and _aside_is_from(tree.data_dir, tree.job.backup)):
+        return False
+    if tree.live.exists():
+        return True
+    os.replace(tree.aside, tree.live)
+    return False
+
+
+def _swap(tree: _ProjectsTree) -> bool:
+    """Stage the archived tree, set the live one aside and put the staged
+    one in its place. False, the projects put back as they were and the
+    error in the restore's failures, when any step fails."""
+    live, aside = tree.live, tree.aside
+    staging = tree.data_dir / "projects.restore-tmp"
     shutil.rmtree(staging, ignore_errors=True)
     try:
-        _extract(zf, members, "projects/", staging)
-        # Swap: displaced tree survives at projects.pre-rollback.
-        _clear_aside_for(data_dir, aside, backup)
+        _extract(tree.job.zf, tree.members, "projects/", staging)
+        _clear_aside_for(tree.data_dir, aside, tree.job.backup)
         if live.exists():
             os.replace(live, aside)
         os.replace(staging, live)
     except OSError as e:
         log.exception("Failed to restore projects/ from pre-update backup")
-        failed.append(e)
-        # Put the live tree back if the swap displaced it without finishing.
-        if not live.exists() and aside.exists():
-            try:
-                os.replace(aside, live)
-            except OSError:
-                log.exception("Could not put original projects/ back after failed restore")
+        tree.job.failed.append(e)
+        _put_projects_back(live, aside)
         shutil.rmtree(staging, ignore_errors=True)
         return False
     return True
+
+
+def _put_projects_back(live: Path, aside: Path) -> None:
+    """The live tree moved back from ``aside`` when a failed swap displaced
+    it without finishing. One that cannot be is logged, and is put back by
+    the next attempt (``_swapped_earlier``)."""
+    if live.exists() or not aside.exists():
+        return
+    try:
+        os.replace(aside, live)
+    except OSError:
+        log.exception("Could not put original projects/ back after failed restore")
 
 
 def _extract(zf: zipfile.ZipFile, members: list, prefix: str, dest: Path) -> None:
@@ -699,10 +744,7 @@ def _backups_dirs(root: Path) -> list[Path]:
     return found
 
 
-def _put_links_back(
-    zf: zipfile.ZipFile, members: list, live: Path, aside: Path, links: dict[str, str],
-    failed: list[OSError],
-) -> None:
+def _put_links_back(tree: _ProjectsTree) -> None:
     """Put each recorded link back where the swap left a plain copy of it.
 
     The swap moved the live tree, links and all, to ``aside`` and put the
@@ -711,28 +753,28 @@ def _put_links_back(
     the failed update wrote there. A link the backup recorded that still
     leads where it did is moved back, and its archived files are written
     through it, the versions they replace kept under ``aside``; a file that
-    could not be goes in ``failed``. A link an earlier attempt at the same
-    backup moved back has its files written through it again. A link that
-    is gone, leads elsewhere now, or cannot be reached keeps the copy, so the
-    project is there either way.
+    could not be goes in the restore's failures. A link an earlier attempt
+    at the same backup moved back has its files written through it again. A
+    link that is gone, leads elsewhere now, or cannot be reached keeps the
+    copy, so the project is there either way.
     """
+    links = tree.links
     for rel in sorted(links):
         if rel == "." or any(rel.startswith(f"{outer}/") for outer in links if outer != "."):
             continue  # the tree itself, or a link inside another: restored through that one
         rel_path = _member_relpath(f"projects/{rel}", "projects/")
         if rel_path is None:
             continue
-        if not _link_in_place(live / rel_path, aside / rel_path, rel, links[rel]):
-            continue
-        _write_through_link(zf, members, live, aside, rel_path, links, failed)
-        log.warning("Put the link projects/%s back and restored its files through it", rel)
+        if _link_in_place(tree.live / rel_path, tree.aside / rel_path, rel, links[rel]):
+            _write_through_link(tree, rel_path)
+            log.warning("Put the link projects/%s back and restored its files through it", rel)
 
 
 def _link_in_place(copy: Path, link: Path, rel: str, target: str) -> bool:
-    """The recorded link ``projects/<rel>`` moved from ``link`` (in the
-    displaced tree) back to ``copy``, where the swap left a plain copy. True
-    once it is there, also when an earlier attempt put it there; False, the
-    copy kept, when it cannot be."""
+    """The recorded link ``projects/<rel>`` at ``copy``, where the swap left
+    a plain copy: True once it is there, also when an earlier attempt put
+    it there; False, the copy kept, when it cannot be moved back from
+    ``link`` in the displaced tree."""
     if _still_leads_to(copy, target):
         return True
     if not _still_leads_to(link, target):
@@ -741,6 +783,12 @@ def _link_in_place(copy: Path, link: Path, rel: str, target: str) -> bool:
             "leads elsewhere now, or cannot be reached", rel,
         )
         return False
+    return _move_link_back(link, copy, rel)
+
+
+def _move_link_back(link: Path, copy: Path, rel: str) -> bool:
+    """``link`` moved to ``copy``, the plain copy there removed. False, the
+    copy kept, when the move fails."""
     held = copy.with_name(f"{copy.name}.restore-copy")
     try:
         if os.path.lexists(copy):
@@ -762,61 +810,55 @@ def _link_in_place(copy: Path, link: Path, rel: str, target: str) -> bool:
     return True
 
 
-def _write_through_link(
-    zf: zipfile.ZipFile, members: list, live: Path, aside: Path, rel_path: Path,
-    links: dict[str, str], failed: list[OSError],
-) -> None:
+def _write_through_link(tree: _ProjectsTree, rel_path: Path) -> None:
     """The archived files below the link ``projects/<rel_path>``, written
     through it, the versions they replace kept under ``aside``."""
     prefix = f"projects/{rel_path.as_posix()}"
-    for info in members:
+    for info in tree.members:
         if info.filename != prefix and not info.filename.startswith(f"{prefix}/"):
             continue
         member = _member_relpath(info.filename, "projects/")
         if member is None:
             continue
         below = member.relative_to(rel_path)
-        if _unrecorded_link(live, rel_path / below, links):
+        if _unrecorded_link(tree.live, rel_path / below, tree.links):
             log.warning("Not restoring %s through a link the backup did not record", info.filename)
             continue
         try:
-            _write_through(zf, info, live / rel_path / below, aside / rel_path / below)
+            _write_through(tree.job.zf, info, tree.live / rel_path / below, tree.aside / rel_path / below)
         except OSError as e:
             log.exception("Could not restore %s through its link", info.filename)
-            failed.append(e)
+            tree.job.failed.append(e)
 
 
-def _restore_tree_through_link(
-    zf: zipfile.ZipFile, members: list, data_dir: Path, links: dict[str, str],
-    *, backup: str, failed: list[OSError],
-) -> bool:
+def _restore_tree_through_link(tree: _ProjectsTree) -> bool:
     """Restore a ``projects/`` that is itself a link, file by file through it.
 
     The versions replaced are kept under ``projects.pre-rollback``, which an
     earlier attempt at the same backup leaves as it is (``ASIDE_RECORD``).
     Like an external project folder, files made after the backup stay where
-    they are. A file that could not be written back goes in ``failed``.
+    they are. A file that could not be written back goes in the restore's
+    failures.
     """
-    live = data_dir / "projects"
-    aside = data_dir / "projects.pre-rollback"
+    live, aside = tree.live, tree.aside
     try:
-        _clear_aside_for(data_dir, aside, backup)
+        _clear_aside_for(tree.data_dir, aside, tree.job.backup)
     except OSError as e:
         log.exception("Could not clear %s; projects/ was not restored", aside)
-        failed.append(e)
+        tree.job.failed.append(e)
         return False
-    for member in members:
+    for member in tree.members:
         rel = _member_relpath(member.filename, "projects/")
         if rel is None:
             continue
-        if _unrecorded_link(live, rel, links):
+        if _unrecorded_link(live, rel, tree.links):
             log.warning("Not restoring %s through a link the backup did not record", member.filename)
             continue
         try:
-            _write_through(zf, member, live / rel, aside / rel)
+            _write_through(tree.job.zf, member, live / rel, aside / rel)
         except OSError as e:
             log.exception("Failed to restore %s through the projects link", member.filename)
-            failed.append(e)
+            tree.job.failed.append(e)
     log.warning(
         "Restored projects/ through its link from pre-update backup (replaced files kept at %s)",
         aside,
@@ -824,20 +866,22 @@ def _restore_tree_through_link(
     return True
 
 
-def _restore_external_files(
-    zf: zipfile.ZipFile, members: list, external_dir: Path, links: dict[str, str] | None = None,
-    *, failed: list[OSError],
-) -> bool:
-    """Overwrite external project files in place from the archive.
+def _restore_external_files(job: _Restore, members: list, data_dir: Path, project_path: Path) -> bool:
+    """Overwrite external project files in place from the archive: the
+    whole folder of a project kept outside ``data_dir``, or the project's own
+    entries of one kept at its root (``_extra_project_tree``).
 
     A file reached through links the backup recorded, each still leading
     where it did, is written where it really lives, so a linked file stays a
     link rather than being replaced by a plain one. A file that could not be
-    written goes in ``failed``, and the rest are still written.
+    written goes in the restore's failures, and the rest are still written.
     """
-    links = links or {}
+    external_dir, root_names = _extra_project_tree(project_path, data_dir)
+    if external_dir is None:
+        return False
+    links = job.links.get("external-project", {})
     restored = False
-    for member in members:
+    for member in _selected_external_members(members, root_names):
         rel = _member_relpath(member.filename, "external-project/")
         if rel is None:
             continue
@@ -845,13 +889,13 @@ def _restore_external_files(
         through = bool(links) and _has_link(external_dir, rel) and not _unrecorded_link(external_dir, rel, links)
         try:
             if through:
-                restored |= _write_through(zf, member, target, None)
+                restored |= _write_through(job.zf, member, target, None)
             else:
-                _write_in_place(zf, member, target)
+                _write_in_place(job.zf, member, target)
                 restored = True
         except OSError as e:
             log.exception("Failed to restore external project file %s", target)
-            failed.append(e)
+            job.failed.append(e)
     if restored:
         log.warning("Restored external project files from pre-update backup: %s", external_dir)
     return restored
