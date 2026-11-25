@@ -505,6 +505,19 @@ class TestAFailedStartupIsWhatAccumulates:
         # (crash during startup: confirm_startup never runs)
         assert check_rollback_needed(tmp_path) is True
 
+    def test_an_update_that_never_applied_is_not_rolled_back(self, tmp_path, caplog):
+        """The update helper refused the release (a damaged archive, say), so
+        the box still runs the version it was leaving, with the copy an
+        earlier update kept beside it. Two failed starts of that version are
+        not the update's to undo: a rollback would install that older copy, a
+        version the box had already left behind."""
+        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
+        with patch("openavc.version.__version__", "1.0.0"):
+            with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
+                assert check_rollback_needed(tmp_path) is False
+                assert check_rollback_needed(tmp_path) is False
+        assert "never applied" in caplog.text
+
     def test_recording_an_attempt_without_a_marker_is_a_noop(self, tmp_path):
         assert record_startup_attempt(tmp_path) == 0
         assert list(tmp_path.iterdir()) == []

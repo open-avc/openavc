@@ -598,12 +598,30 @@ def check_rollback_needed(data_dir: Path) -> bool:
     soon as it does), so the count here is a count of failed startups, not of
     restarts. Returns True at 2 within one OS boot — see
     ``record_startup_attempt`` for why the boot matters.
+
+    Never for an update that did not apply (``checker.update_applied``): the
+    update helper refuses a release it cannot apply before anything moves,
+    leaving the version that was running and the copy an earlier update kept,
+    so a rollback then would install that older copy rather than undo the
+    update.
     """
+    from openavc.updater.checker import update_applied
+    from openavc.version import __version__
+
     marker = read_pending_marker(data_dir)
     if marker is None:
         return False
 
     attempts = record_startup_attempt(data_dir)
+    from_version = str(marker.get("from_version") or "")
+    to_version = str(marker.get("to_version") or "")
+    if attempts >= 2 and not update_applied(__version__, from_version, to_version):
+        log.warning(
+            "v%s has failed to start again, but the update to v%s never applied, "
+            "so there is nothing to roll back.",
+            __version__, to_version,
+        )
+        return False
     if attempts >= 2:
         log.error(
             "Server has failed to start after update (%s -> %s). "
