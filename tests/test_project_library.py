@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 import openavc.core.project_library as plib
+from openavc.core import project_unit
 from openavc.core.project_library import (
     sanitize_id,
     list_projects,
@@ -1277,7 +1278,7 @@ def _seed_live_trees(project_dir: Path) -> None:
 def _live_tree_files(project_dir: Path) -> set[str]:
     return {
         str(f.relative_to(project_dir))
-        for tree in plib.PROJECT_FILE_TREES
+        for tree in project_unit.FILE_TREES
         for f in (project_dir / tree).rglob("*")
         if f.is_file()
     }

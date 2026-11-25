@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from openavc import config
-from openavc.core import asset_tree, theme_tree
+from openavc.core import asset_tree, project_unit, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.core import login_bundle, project_drivers, project_update
 from openavc.core.device_logins import (
@@ -141,16 +141,9 @@ def _copy_tree(src: Path, dest: Path) -> None:
         shutil.copy2(f, target)
 
 
-#: The file trees that belong to the live project rather than to its .avc, and
-#: are served from ``project_path.parent``: uploaded images and audio, custom
-#: controls, and saved themes. Anything that REPLACES the live project replaces
-#: all three, because a file left behind belongs to a project that is no longer
-#: loaded and shows up in the new one's asset list.
-PROJECT_FILE_TREES = ("assets", "ui", "themes")
-
-
 def replace_project_trees(project_dir: Path, source_dir: Path | None) -> None:
-    """Swap the live project's file trees for ``source_dir``'s.
+    """Swap the live project's file trees (``project_unit.FILE_TREES``) for
+    ``source_dir``'s.
 
     ``source_dir`` None clears them, which is what starting a blank project
     wants. One helper for both callers on purpose: opening a library project
@@ -158,13 +151,13 @@ def replace_project_trees(project_dir: Path, source_dir: Path | None) -> None:
     inherited the previous project's images, custom controls and themes while
     its scripts were correctly cleared.
     """
-    for tree in PROJECT_FILE_TREES:
+    for tree in project_unit.FILE_TREES:
         active_tree = project_dir / tree
         if active_tree.exists():
             shutil.rmtree(active_tree, ignore_errors=True)
         if source_dir is None:
             continue
-        if tree == "themes":
+        if tree == project_unit.THEMES_DIR:
             theme_tree.copy_tree(source_dir / tree, active_tree)
         else:
             _copy_tree(source_dir / tree, active_tree)

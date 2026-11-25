@@ -43,7 +43,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from openavc.core import asset_tree, theme_tree
+from openavc.core import asset_tree, project_unit, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import plain_file_in
@@ -279,22 +279,32 @@ def _write_archive(archive: Path, project_file: Path, meta: dict, logins: str | 
             zf.writestr(ARCHIVE_LOGINS, logins)
 
 
+#: How each of the project's file trees (``project_unit.FILE_TREES``) is
+#: written into a backup: what the tree may hold is its own module's.
+_TREE_ENTRIES: dict[str, Callable[[Path], list[tuple[str, Path]]]] = {
+    project_unit.ASSETS_DIR: asset_tree.zip_entries,
+    project_unit.UI_DIR: zip_entries,
+    project_unit.THEMES_DIR: theme_tree.zip_entries,
+}
+
+
 def _beside_members(project_dir: Path) -> Iterator[tuple[str, Path]]:
     """(archive path, file) for what a backup carries from beside the
-    project file: the scripts, each tree with its folders intact, state.json.
+    project file (``core/project_unit``): the scripts, each tree with its
+    folders intact, state.json.
 
     Assets used to be a non-recursive iterdir(), so a nested one was not
     flattened but absent from the backup, the one failure a backup must not
     have; one custom control is a folder, so ui/ cannot be flattened on the
     way in or out."""
-    for f in (project_dir / "scripts").glob("*.py"):
-        yield f"scripts/{f.name}", f
-    yield from asset_tree.zip_entries(project_dir / "assets")
-    yield from zip_entries(project_dir / "ui")
-    yield from theme_tree.zip_entries(project_dir / "themes")
-    state_file = project_dir / "state.json"
+    scripts = project_unit.SCRIPTS_DIR
+    for f in (project_dir / scripts).glob("*.py"):
+        yield f"{scripts}/{f.name}", f
+    for tree in project_unit.FILE_TREES:
+        yield from _TREE_ENTRIES[tree](project_dir / tree)
+    state_file = project_dir / project_unit.STATE_FILE
     if state_file.is_file():
-        yield "state.json", state_file
+        yield project_unit.STATE_FILE, state_file
 
 
 def _free_name(backup_d: Path, base: str) -> Path:

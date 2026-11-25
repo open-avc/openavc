@@ -43,6 +43,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from openavc.core.project_unit import BESIDE_PROJECT
 from openavc.utils.fileio import make_private, private_dir
 from openavc.utils.paths import files_below, is_link
 
@@ -109,8 +110,9 @@ def create_backup(
     recorded in ``links.json``; see the module docstring.
 
     A project directly in ``data_dir`` uses that same archive prefix, but
-    only its named file, state.json, scripts/, assets/ and ui/ are included.
-    The rest of the data root belongs to the system, not the project.
+    only its named file and what ``core/project_unit`` lists beside it are
+    included. The rest of the data root belongs to the system, not the
+    project.
 
     Returns the path to the created backup file.
     """
@@ -149,6 +151,8 @@ def create_backup(
             # The community drivers, the themes and the plugins, without
             # following a link: a rollback never restores these, and a linked
             # plugin or driver is somebody's working copy that lives elsewhere.
+            # A project kept at the data root has its own themes here, which
+            # go into external-project/ with the project and come back with it.
             for tree in ("driver_repo", "themes", "plugin_repo"):
                 for file_path in files_below(data_dir / tree):
                     arcname = file_path.relative_to(data_dir).as_posix()
@@ -293,7 +297,8 @@ def _extra_project_tree(
     """Project tree needing the external-project archive, and its entry filter.
 
     An external directory is carried whole. The data root carries only the
-    project's own entries; both backup and rollback use this selection.
+    project's own entries (``core/project_unit``); both backup and rollback
+    use this selection.
     Other locations inside data_dir retain the regular projects/ handling.
     """
     try:
@@ -302,7 +307,7 @@ def _extra_project_tree(
     except OSError:
         return None, None
     if project_path.parent == data_dir:
-        return data_dir, {project_path.name, "state.json", "scripts", "assets", "ui"}
+        return data_dir, {project_path.name, *BESIDE_PROJECT}
     try:
         project_path.relative_to(data_dir)
     except ValueError:
