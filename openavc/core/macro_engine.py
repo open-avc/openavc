@@ -124,6 +124,24 @@ class _StartGuards(NamedTuple):
         )
 
 
+class RunEnd(NamedTuple):
+    """How one run ended, as an operator door tells the person who asked.
+
+    ``outcome`` is ``execute``'s word, or ``running`` from
+    ``execute_detached``. ``reason`` is a ``skipped`` run's alone: the
+    ``macro_text.skip_reason`` (``code`` and ``message``) its
+    ``macro.skipped`` event carried.
+    """
+
+    outcome: str
+    reason: dict[str, str] | None = None
+
+    def answer(self) -> dict[str, str]:
+        """The fields a door's reply carries: ``status``, and for a run the
+        macro refused its ``code`` and ``message``."""
+        return {"status": self.outcome, **(self.reason or {})}
+
+
 class MacroEngine(MacroSteps):
     """Executes named macros — ordered sequences of actions with optional delays."""
 
@@ -386,6 +404,7 @@ class MacroEngine(MacroSteps):
     async def execute(
         self, macro_id: str, context: dict[str, Any] | None = None,
         _call_chain: frozenset[str] | None = None, *, _subroutine: bool = False,
+        _why: dict[str, str] | None = None,
     ) -> str:
         """
         Execute a macro by ID. Returns how the run ended.
@@ -409,6 +428,8 @@ class MacroEngine(MacroSteps):
                 detect circular/recursive calls without blocking independent
                 concurrent chains.
             _subroutine: Internal — set by a Run Macro step only.
+            _why: Internal — filled with the ``skip_reason`` of a start the
+                macro refuses, for ``execute_detached``'s ``RunEnd``.
         """
         _call_chain = self._chain_into(macro_id, _call_chain)
         macro = self._macros[macro_id]
@@ -427,6 +448,8 @@ class MacroEngine(MacroSteps):
         if blocked is not None:
             _active_call_chain.reset(_chain_token)
             await self._report_skipped(macro_id, name, blocked)
+            if _why is not None:
+                _why.update(blocked)
             return "skipped"
 
         try:  # from the claim on, so any cancel ends the run and frees its slot
@@ -634,6 +657,7 @@ class MacroEngine(MacroSteps):
         context: dict[str, Any] | None = None,
         *,
         _call_chain: frozenset[str] | None = None,
+        _why: dict[str, str] | None = None,
     ) -> asyncio.Task:
         """Run a macro in its own task and return that task at once.
 
@@ -644,13 +668,15 @@ class MacroEngine(MacroSteps):
         point -- a script's timer that awaited a long macro was cut off at the
         handler limit partway through the steps.
 
+        The task's result is ``execute``'s word; ``_why`` is ``execute``'s.
+
         Raises ``ValueError`` for a macro that does not exist or would
         re-enter ``_call_chain``, before the task exists, so the caller hears
         it. Needs a running event loop.
         """
         self._refuse_start(macro_id, _call_chain or frozenset())
         task = asyncio.create_task(
-            self.execute(macro_id, context, _call_chain=_call_chain)
+            self.execute(macro_id, context, _call_chain=_call_chain, _why=_why)
         )
         self._detached.add(task)
         task.add_done_callback(self._detached.discard)
@@ -663,13 +689,13 @@ class MacroEngine(MacroSteps):
         context: dict[str, Any] | None = None,
         *,
         wait_seconds: float | None = None,
-    ) -> str:
+    ) -> RunEnd:
         """Run a macro in its own task, waiting only ``wait_seconds`` for it.
 
-        Returns what ``execute`` reported — ``completed``, ``failed``,
-        ``cancelled`` or ``skipped`` — when the macro finished inside that
-        window, and ``"running"`` when it did not. The macro keeps going
-        either way — nothing here cancels it.
+        Returns the ``RunEnd`` the run reported (``completed``, ``failed``,
+        ``cancelled``, or ``skipped`` with the reason the macro refused it)
+        when the macro finished inside that window, and ``running`` when it
+        did not. The macro keeps going either way — nothing here cancels it.
 
         This is the shape the OPERATOR doors need: the IDE's run button and
         the cloud AI's ``run_macro``, where a person asked for a macro and is
@@ -693,7 +719,8 @@ class MacroEngine(MacroSteps):
         if wait_seconds is None:
             wait_seconds = OPERATOR_RUN_WAIT_SECONDS
 
-        task = self.start(macro_id, context)
+        why: dict[str, str] = {}
+        task = self.start(macro_id, context, _why=why)
         try:
             # shield, so the timeout ends the WAIT and not the macro.
             await asyncio.wait_for(asyncio.shield(task), timeout=wait_seconds)
@@ -702,9 +729,9 @@ class MacroEngine(MacroSteps):
                 f"Macro '{macro_id}' is still running after {wait_seconds:.0f}s "
                 f"— answering the caller and letting it continue"
             )
-            return "running"
+            return RunEnd("running")
         # The outcome the run reported, not the fact that awaiting it returned.
         # `executed` was the only word this ever said, and it said it for a
         # macro whose every step failed and for one that was cancelled out from
         # under the caller.
-        return task.result()
+        return RunEnd(task.result(), why or None)

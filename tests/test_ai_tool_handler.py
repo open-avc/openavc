@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.macro_engine import RunEnd
 from openavc.cloud.protocol import (
     AI_TOOL_CALL, AI_TOOL_RESULT,
     build_ai_tool_result_payload, _now_iso,
@@ -181,7 +182,7 @@ async def test_execute_macro(handler, mock_agent):
     # Mock engine with macros
     mock_engine = MagicMock()
     mock_engine.macros = MagicMock()
-    mock_engine.macros.execute_detached = AsyncMock(return_value="executed")
+    mock_engine.macros.execute_detached = AsyncMock(return_value=RunEnd("completed"))
 
     with patch("openavc.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
         msg = _make_tool_call_msg("execute_macro", {"macro_id": "all_off"})
@@ -198,7 +199,7 @@ async def test_execute_macro_rate_limited(handler, mock_agent):
     matching the REST /macros/{id}/execute guard and sharing its window."""
     mock_engine = MagicMock()
     mock_engine.macros = MagicMock()
-    mock_engine.macros.execute_detached = AsyncMock(return_value="executed")
+    mock_engine.macros.execute_detached = AsyncMock(return_value=RunEnd("completed"))
 
     with patch("openavc.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
         await _handle_and_wait(handler, _make_tool_call_msg(

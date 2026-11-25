@@ -193,7 +193,7 @@ async def test_the_depth_cap_is_reported_the_same_way(macros):
 async def test_the_operator_door_reports_the_outcome(macros):
     macros.load_macros([_boom()])
 
-    assert await macros.execute_detached("m") == "failed"
+    assert (await macros.execute_detached("m")).outcome == "failed"
 
 
 async def test_the_operator_door_still_says_running_for_a_long_macro(macros):
@@ -206,7 +206,7 @@ async def test_the_operator_door_still_says_running_for_a_long_macro(macros):
         "steps": [{"action": "delay", "seconds": 30}],
     }])
 
-    assert await macros.execute_detached("slow", wait_seconds=0.05) == "running"
+    assert (await macros.execute_detached("slow", wait_seconds=0.05)).outcome == "running"
 
     await macros.cancel("slow")
 

@@ -73,10 +73,10 @@ async def _drain(engine) -> None:
 async def test_a_macro_waiting_forever_answers_running(engine):
     engine.load_macros([_waiting_macro()])
     try:
-        status = await asyncio.wait_for(
+        end = await asyncio.wait_for(
             engine.execute_detached("m_wait", wait_seconds=0.05), timeout=5
         )
-        assert status == "running"
+        assert end.outcome == "running"
         assert engine.is_macro_running("m_wait")
     finally:
         await _drain(engine)
@@ -86,7 +86,7 @@ async def test_answering_does_not_cancel_the_macro(engine):
     """The point of the fix: the caller stops waiting, the room does not."""
     engine.load_macros([_waiting_macro()])
     try:
-        assert await engine.execute_detached("m_wait", wait_seconds=0.05) == "running"
+        assert (await engine.execute_detached("m_wait", wait_seconds=0.05)).outcome == "running"
         assert engine.state.get("var.finished") is None
 
         # The projector finally comes on, long after the request answered.
@@ -110,7 +110,7 @@ async def test_an_ordinary_macro_still_answers_its_outcome(engine):
         "steps": [{"action": "state.set", "key": "var.done", "value": True}],
     }])
     try:
-        assert await engine.execute_detached("m_quick", wait_seconds=5) == "completed"
+        assert (await engine.execute_detached("m_quick", wait_seconds=5)).outcome == "completed"
         assert engine.state.get("var.done") is True
     finally:
         await _drain(engine)

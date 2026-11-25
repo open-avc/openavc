@@ -3,6 +3,7 @@
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit, merge_forward_compat
+from openavc.core.macro_engine import RunEnd
 from openavc.core.monitors import drop_monitors_for_variable
 from openavc.core.value_resolver import embedded_refs
 from openavc.utils.logger import get_logger
@@ -33,7 +34,9 @@ def _restore_meaningful_nulls(steps: list[dict[str, Any]]) -> None:
 #: door it was asked through -- so running the macro and firing the trigger that
 #: fires it get the same explanation instead of two drifting copies. A
 #: `completed` run has no entry on purpose: a note on every answer is a note
-#: nobody reads.
+#: nobody reads. Why a `skipped` run did not start is not written here: its
+#: note ends with the reason table's sentence (`macro_text.SKIP_REASONS`) for
+#: the `code` the answer carries (`_run_answer`).
 _RUN_NOTES = {
     "running": (
         "The macro started and is still running — it is waiting on a step (a "
@@ -50,11 +53,22 @@ _RUN_NOTES = {
         "never ran: either somebody cancelled it, or another macro in the same "
         "cancel_group preempted it."
     ),
-    "skipped": (
-        "The macro did not start at all — its own overlap or cooldown guard "
-        "refused this run. Nothing was sent to any device."
-    ),
+    "skipped": "The macro did not start, so nothing was sent to any device.",
 }
+
+
+def _run_answer(end: RunEnd, **ids: str) -> dict[str, Any]:
+    """What the AI is told about one run: ``status``, the ids it was asked
+    with, a skipped run's ``code``, and the note on what the outcome means,
+    which for a skipped run ends with its code's sentence."""
+    result: dict[str, Any] = {"status": end.outcome, **ids}
+    note = _RUN_NOTES.get(end.outcome)
+    if end.reason:
+        result["code"] = end.reason["code"]
+        note = f"{note} {end.reason['message']}"
+    if note:
+        result["note"] = note
+    return result
 
 
 #: The types a variable may have, each with what its default may be. A boolean
@@ -503,14 +517,10 @@ class MacroToolsMixin:
                 # Bounded, same as the IDE's run button: a macro may wait for a
                 # device indefinitely, and an AI turn spent holding that open
                 # would end in a timeout reported as a failed macro.
-                status = await engine.macros.execute_detached(macro_id)
+                end = await engine.macros.execute_detached(macro_id)
             except ValueError as e:
                 return {"error": str(e)}
-            result: dict = {"status": status, "macro_id": macro_id}
-            note = _RUN_NOTES.get(status)
-            if note:
-                result["note"] = note
-            return result
+            return _run_answer(end, macro_id=macro_id)
         return {"error": "Macro engine not available"}
 
     async def _cancel_macro(self, input: dict) -> Any:
@@ -542,17 +552,13 @@ class MacroToolsMixin:
             return {"error": "Too many requests — wait a moment before testing the same trigger again."}
         engine = self._get_engine()
         if engine and engine.triggers:
-            outcome = await engine.triggers.test_trigger(trigger_id)
-            if outcome is None:
+            end = await engine.triggers.test_trigger(trigger_id)
+            if end is None:
                 return {"error": f"Trigger '{trigger_id}' not found"}
             # Firing a trigger runs a macro, so how that run ended means the
             # same thing here as it does through run_macro. This answered
             # "fired" for a macro whose every step failed.
-            result: dict = {"status": outcome, "trigger_id": trigger_id}
-            note = _RUN_NOTES.get(outcome)
-            if note:
-                result["note"] = note
-            return result
+            return _run_answer(end, trigger_id=trigger_id)
         return {"error": "Trigger engine not available"}
 
     async def _check_references(self, input: dict) -> Any:

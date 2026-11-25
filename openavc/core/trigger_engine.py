@@ -18,6 +18,7 @@ from openavc.core.project_loader import TriggerConfig, reads_as
 from openavc.core.macro_engine import (
     _QUEUE_MAX_WAIT_SECONDS,
     _QUEUE_POLL_SECONDS as _QUEUE_POLL_INTERVAL,
+    RunEnd,
 )
 from openavc.core.macro_text import skip_reason
 from openavc.core.value_resolver import TRIGGER_PREFIX, read_operand
@@ -912,13 +913,14 @@ class TriggerEngine:
             })
         return result
 
-    async def test_trigger(self, trigger_id: str) -> str | None:
+    async def test_trigger(self, trigger_id: str) -> RunEnd | None:
         """Fire a trigger's macro immediately, bypassing conditions.
 
-        Returns how the run ended — ``completed``, ``failed``, ``cancelled``,
-        ``skipped``, or ``running`` when it is still going after the operator
-        wait — and ``None`` when there is nothing to fire, which is what the
-        doors answer 404 off. It said ``fired`` for a macro whose every step
+        Returns how the run ended, the macro engine's ``RunEnd`` —
+        ``completed``, ``failed``, ``cancelled``, ``skipped`` with the reason
+        the macro refused it, or ``running`` when it is still going after the
+        operator wait — and ``None`` when there is nothing to fire, which is
+        what the doors answer 404 off. It said ``fired`` for a macro whose every step
         failed, which is the same lie the macro door used to tell.
         """
         ts = self._triggers.get(trigger_id)
@@ -947,7 +949,7 @@ class TriggerEngine:
             # meant a `wait_until` with no timeout — the documented shape for
             # "wait for the projector" — held the request until the socket
             # died. The macro keeps running either way.
-            outcome = await self.macros.execute_detached(ts.macro_id)
+            end = await self.macros.execute_detached(ts.macro_id)
         except ValueError:
             log.warning(f"Trigger {trigger_id} test: macro '{ts.macro_id}' not found")
             return None
@@ -958,7 +960,7 @@ class TriggerEngine:
                 "macro_id": ts.macro_id,
                 "macro_name": ts.macro_name,
                 "trigger_type": "test",
-                "outcome": outcome,
+                "outcome": end.outcome,
             },
         )
-        return outcome
+        return end

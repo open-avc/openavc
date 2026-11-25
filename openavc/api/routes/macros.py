@@ -28,8 +28,9 @@ async def execute_macro(macro_id: str) -> dict[str, Any]:
 
     ``status`` is how the run ended: ``completed``, ``failed`` (at least one
     step did not run, whether or not the macro carried on past it),
-    ``cancelled``, ``skipped`` (it never started; ``macro.skipped`` says why),
-    or ``running`` when it is still going after the operator wait.
+    ``cancelled``, ``skipped`` (it never started; ``code`` and ``message`` say
+    why, as its ``macro.skipped`` event does), or ``running`` when it is still
+    going after the operator wait.
     All of those are a 200 — the request succeeded; what it reports is how the
     macro went. A 4xx/5xx here means the request itself could not be served.
     """
@@ -51,14 +52,14 @@ async def execute_macro(macro_id: str) -> dict[str, Any]:
         # wait forever (`wait_until` with no timeout), and holding the request
         # for that told the caller a running macro had failed as soon as some
         # client or proxy gave up on the socket.
-        status = await engine.macros.execute_detached(macro_id)
+        end = await engine.macros.execute_detached(macro_id)
     except ValueError as e:
         raise _api_error(404, str(e))
     except Exception as e:
         # The traceback goes to the log (which the IDE streams live) rather than
         # into the toast — a failing step's exception is rarely a sentence.
         raise _api_error(500, f"Macro '{macro_id}' failed to run — see the log for details.", exc=e)
-    return {"status": status, "macro_id": macro_id}
+    return {**end.answer(), "macro_id": macro_id}
 
 
 @router.post("/macros/{macro_id}/cancel")
@@ -177,11 +178,12 @@ async def test_trigger(trigger_id: str) -> dict[str, Any]:
     ``status`` is how the run ended — the same words `POST
     /macros/{id}/execute` answers with, for the same reason: this said
     ``fired`` for a macro whose every step failed. A 404 means there was
-    nothing to fire.
+    nothing to fire. A ``skipped`` answer carries ``code`` and ``message``,
+    the macro's reason for refusing the run.
     """
     _rate_limit_test(f"test_trigger:{trigger_id}")
     engine = _get_engine()
-    outcome = await engine.triggers.test_trigger(trigger_id)
-    if outcome is None:
+    end = await engine.triggers.test_trigger(trigger_id)
+    if end is None:
         raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found")
-    return {"status": outcome, "trigger_id": trigger_id}
+    return {**end.answer(), "trigger_id": trigger_id}
