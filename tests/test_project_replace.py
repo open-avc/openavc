@@ -274,6 +274,48 @@ async def test_a_blank_project_brings_none_of_the_previous_values_or_notice(hall
     assert [b.reason for b in backup_manager.list_backups(hall.project_path)] == ["Before creating blank project"]
 
 
+# --- What an open tab hears ------------------------------------------------------
+
+
+async def _restore(engine: Engine, tmp_path: Path, monkeypatch) -> httpx.Response:
+    folder = engine.project_path.parent
+    kept = backup_manager.create_backup(engine.project_path, "Manual backup")
+    async with _client(engine, monkeypatch) as client:
+        return await client.post(f"/api/backups/{backup_manager.backup_id(folder, kept)}/restore")
+
+
+async def _open(engine: Engine, tmp_path: Path, monkeypatch) -> httpx.Response:
+    return await _open_lobby(engine, _library_lobby(tmp_path, monkeypatch), monkeypatch)
+
+
+async def _blank(engine: Engine, tmp_path: Path, monkeypatch) -> httpx.Response:
+    async with _client(engine, monkeypatch) as client:
+        return await client.post("/api/project/create-blank", json={"project_name": "Blank"})
+
+
+async def _import(engine: Engine, tmp_path: Path, monkeypatch) -> httpx.Response:
+    async with _client(engine, monkeypatch) as client:
+        return await client.put("/api/project?mode=import", json={
+            "openavc_version": CURRENT_VERSION,
+            "project": {"id": "lobby", "name": "Lobby"},
+            "variables": [LEVEL],
+        })
+
+
+@pytest.mark.parametrize("door", [_restore, _open, _blank, _import], ids=["restore", "open", "blank", "import"])
+async def test_every_replace_tells_an_open_tab_once(hall, tmp_path, monkeypatch, door):
+    """An open tab hears a whole project replaced as it hears any change:
+    one ``project.reloaded`` with the new revision, and no other project
+    message, whichever door replaced it."""
+    hall.broadcast_ws.reset_mock()
+
+    resp = await door(hall, tmp_path, monkeypatch)
+
+    assert resp.status_code == 200, resp.text
+    told = [call.args[0]["type"] for call in hall.broadcast_ws.await_args_list]
+    assert [kind for kind in told if kind.startswith("project.")] == ["project.reloaded"]
+
+
 async def test_a_replace_whose_reload_fails_puts_the_previous_project_back(hall, tmp_path, monkeypatch):
     library_id = _library_lobby(tmp_path, monkeypatch)
     reconcile = hall._reconcile

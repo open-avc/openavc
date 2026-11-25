@@ -78,9 +78,9 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     "ui.definition": _EVERYONE,
     "ui.navigate": _EVERYONE,
     "ui.files": _EVERYONE,
-    # The project's revision after a save, and a project replaced outright.
+    # The project's revision after a save, a reload or a whole project
+    # replaced.
     "project.reloaded": _EVERYONE,
-    "project.replaced": _EVERYONE,
     # A macro's run (a panel's button follows its progress). A failure reaches
     # a panel as the room's sentence (``PANEL_COPIES``).
     "macro.started": _EVERYONE,

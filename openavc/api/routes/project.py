@@ -902,13 +902,9 @@ async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
         await _follow_bundled_drivers(opened)
 
     # Backed up first, under the project lock; with no backup the open is
-    # refused, nothing changed (core/project_replace).
+    # refused, nothing changed (core/project_replace). Open tabs hear it as
+    # project.reloaded, as every replace announces.
     await engine.replace_with(prepared)
-    await engine.broadcast_ws({
-        "type": "project.replaced",
-        "project_name": data.project_name,
-        "source": "library",
-    })
     # Told again once the opened project runs, so the devices the driver
     # lists name on each driver are the opened project's.
     await announce()
@@ -948,11 +944,6 @@ async def create_blank(request: Request) -> dict[str, Any]:
     # refused, nothing cleared.
     project = create_blank_project(project_id, project_name)
     await engine.replace_with(project_replace.blank(project))
-    await engine.broadcast_ws({
-        "type": "project.replaced",
-        "project_name": project_name,
-        "source": "blank",
-    })
     return {"status": "created", "project_name": project_name}
 
 
