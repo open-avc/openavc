@@ -9,7 +9,8 @@ validator's checks used to sample a child id three ways of their own (a bare
 ``{child_id}`` only, or every placeholder as ``1`` with the spec dropped), so
 an OSC driver whose poll or read-back names ``{child_id:02d}`` was reported
 as unanswered though the runtime sends ``/ch/01/mute`` and the simulator
-answers it.
+answers it. A poll query's child is now sampled through the fill, and a
+read-back with its command's parameters, as the runtime fills each.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ import yaml
 
 from openavc.drivers.query_entry import fill_child_line
 from openavc.simulator.driver_sends import SAMPLE_CHILD_ID, child_sample, query_line
-from openavc.simulator.validate import validate_yaml_driver
+from openavc.simulator.osc_coverage import OscAddresses, check_osc_read_back_coverage
+from openavc.simulator.validate import ValidationResult, validate_yaml_driver
 
 
 # ── The fill ──
@@ -113,6 +115,32 @@ def test_an_osc_read_back_naming_a_formatted_child_id_is_answered(tmp_path) -> N
     assert _coverage(tmp_path, _osc_driver()) == []
 
 
+def test_an_osc_read_back_is_sampled_with_its_commands_parameters(tmp_path) -> None:
+    # The runtime fills a read-back from the command's own parameters, so a
+    # child parameter named anything ({ch:02d}) is sampled as the command
+    # is, its format spec applied, and so is a level parameter.
+    definition = _osc_driver(responses=[
+        {"address": "/ch/01/mute", "set": {"mute": "$1"}},
+        {"address": "/ch/01/mix/03/level", "set": {"mute": "$1"}},
+    ])
+    definition["commands"] = {
+        "mute": {
+            "address": "/ch/{ch:02d}/mute",
+            "params": {"ch": {"type": "child_id", "child_type": "channel"}},
+            "read_back": "/ch/{ch:02d}/mute",
+        },
+        "send_level": {
+            "address": "/ch/{ch:02d}/mix/{bus:02d}/level",
+            "params": {
+                "ch": {"type": "child_id", "child_type": "channel"},
+                "bus": {"type": "integer", "min": 3, "max": 8},
+            },
+            "read_back": "/ch/{ch:02d}/mix/{bus:02d}/level",
+        },
+    }
+    assert _coverage(tmp_path, definition) == []
+
+
 def test_an_osc_poll_the_simulator_does_not_answer_is_named_as_the_runtime_sends_it(tmp_path) -> None:
     definition = _osc_driver(polling={"interval": 5, "queries": ["/ch/{child_id:02d}/level"]})
     assert _coverage(tmp_path, definition) == [
@@ -125,4 +153,21 @@ def test_an_osc_read_back_the_simulator_does_not_answer_is_named_as_the_runtime_
     definition["commands"]["mute"]["read_back"] = "/ch/{child_id:02d}/level"
     assert _coverage(tmp_path, definition) == [
         "error: No simulator handler matches OSC read_back query: '/ch/01/level'",
+    ]
+
+
+def test_an_osc_read_back_beside_a_malformed_parameter_is_still_checked() -> None:
+    # The checker refuses a parameter that is not a mapping; the read-back
+    # check still checks the line, that parameter's placeholder sampled as 1
+    # and the others through their format specs.
+    definition = _osc_driver()
+    commands = {"mute": {
+        "address": "/ch/{child_id:02d}/mute",
+        "params": {"child_id": {"type": "child_id", "child_type": "channel"}, "level": "integer"},
+        "read_back": "/ch/{child_id:02d}/{level}",
+    }}
+    result = ValidationResult("acme_widget.avcdriver", "acme_widget", "yaml")
+    check_osc_read_back_coverage(result, commands, OscAddresses([], definition["responses"], definition))
+    assert [i.message for i in result.issues] == [
+        "No simulator handler matches OSC read_back query: '/ch/01/1'",
     ]

@@ -12,13 +12,14 @@ config filled in, and three checks ask it:
   of every address the template can produce.
 * ``check_osc_poll_coverage``: each poll query, its ``{child_id}`` given the
   sample child (``driver_sends.child_sample``).
-* ``check_osc_read_back_coverage``: each command's ``read_back`` lines, its
-  ``{child_id}`` given the sample child the same way, then every other
-  placeholder given as 1.
+* ``check_osc_read_back_coverage``: each command's ``read_back`` lines, with
+  the command's parameters' sample values (``driver_sends.parameter_sample``),
+  as the runtime fills a read-back from the command's own parameters.
 
-A query's child is sampled as a text driver's is (``driver_sends.query_line``
-asks the same sample), through the runtime's own child line fill, so a
-format spec (``{child_id:02d}``) is applied as the driver applies it. A text
+Each sample is filled as the runtime fills that line, so a format spec
+(``{child_id:02d}``, ``{ch:02d}``) is applied as the driver applies it: a
+poll query's child through the runtime's own child line fill (the sample
+``driver_sends.query_line`` asks too), a read-back like its command. A text
 driver's lines are ``send_coverage``'s.
 """
 
@@ -37,6 +38,7 @@ from openavc.simulator.driver_sends import (
     effective_config,
     entry_text,
     filled_rules,
+    parameter_sample,
     with_config,
 )
 from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
@@ -56,6 +58,7 @@ class OscAddresses:
     (``driver_sends.filled_rules``)."""
 
     def __init__(self, sim_handlers: list, responses: list, driver_def: dict):
+        self._driver_def = driver_def
         self._config = effective_config(driver_def)
         self._patterns = [
             *_addresses(sim_handlers), *_addresses(filled_rules(responses, self._config)),
@@ -66,6 +69,13 @@ class OscAddresses:
         placeholder one of ``params`` is named for left for it
         (``driver_sends.with_config``)."""
         return with_config(template, self._config, params)
+
+    def sampled(self, template: str, params: dict) -> str:
+        """A template with the config and its parameters' sample values
+        filled in through their format specs, as the runtime fills a
+        command's (``driver_sends.parameter_sample``); a placeholder naming
+        neither is given 1."""
+        return PLACEHOLDER.sub("1", parameter_sample(template, params, self._driver_def))
 
     def answers(self, address: str) -> bool:
         """Whether the simulator answers this address. The console's own
@@ -183,11 +193,12 @@ def check_osc_read_back_coverage(
     """Check every OSC address a command's ``read_back`` sends is answered
     by the simulator. ``true`` sends the command's own address, which
     command coverage checks; a read-back naming a command is that
-    command's. ``{child_id}`` takes the sample child through its format
-    spec (``driver_sends.child_sample``); every other parameter in the
-    address takes 1."""
-    for line in _read_back_lines(commands):
-        sample = PLACEHOLDER.sub("1", child_sample(addresses.filled(line)))
+    command's. The command's parameters in the address take their sample
+    values through their format specs (``OscAddresses.sampled``), as the
+    runtime fills the read-back from the command's own parameters; a
+    placeholder no parameter or config field fills takes 1."""
+    for line, params in _read_back_lines(commands):
+        sample = addresses.sampled(line, params)
         if not addresses.answers(sample):
             result.error(
                 "poll_coverage",
@@ -195,8 +206,15 @@ def check_osc_read_back_coverage(
             )
 
 
-def _read_back_lines(commands: Any) -> Iterator[str]:
-    """Each command's read-back query lines, command by command."""
+def _read_back_lines(commands: Any) -> Iterator[tuple[str, dict]]:
+    """Each command's read-back query lines, command by command, each with
+    the command's parameters (a parameter that is not a mapping, which the
+    checker refuses, is left out and its placeholder sampled as 1)."""
     for cmd_def in (commands or {}).values():
         if isinstance(cmd_def, dict):
-            yield from read_back_query_lines(cmd_def, commands)
+            params = cmd_def.get("params")
+            params = {
+                name: pdef for name, pdef in params.items() if isinstance(pdef, dict)
+            } if isinstance(params, dict) else {}
+            for line in read_back_query_lines(cmd_def, commands):
+                yield line, params

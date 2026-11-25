@@ -32,11 +32,12 @@ and the follow-ups and read-backs are those no earlier entry already sends
 (``reread_queries``).
 
 An OSC driver's addresses are read by ``osc_coverage``, which takes its
-samples and config from here, its child sample included: every check
-samples a query's child as ``child_sample`` does, the first child
-(``SAMPLE_CHILD_ID``) through the runtime's own child line fill
-(``query_entry.fill_child_line``), so ``{child_id:02d}`` is checked as the
-``01`` the driver sends.
+samples and config from here: a poll query's child as ``query_line`` samples
+a text driver's, the first child (``SAMPLE_CHILD_ID``) through the runtime's
+own child line fill (``child_sample``, over ``query_entry.fill_child_line``),
+so ``{child_id:02d}`` is checked as the ``01`` the driver sends; a command
+and its read-back with the command's parameters (``command_sample``, and
+``parameter_sample`` for a read-back, a placeholder naming no parameter given 1).
 """
 
 from __future__ import annotations
@@ -151,10 +152,17 @@ def command_sample(template: str, params: dict, driver_def: dict) -> str | None:
     format spec exactly the way the runtime send path does (numeric strings
     coerce before formatting).
     """
+    sample = parameter_sample(template, params, driver_def)
+    return None if _left_unfilled(template, sample) else sample
+
+
+def parameter_sample(template: str, params: dict, driver_def: dict) -> str:
+    """``command_sample``'s line before its last question: the config and
+    each parameter's sample value filled in, a placeholder naming neither
+    left as typed."""
     filled = with_config(template, effective_config(driver_def), params)
     test_values = {name: _test_value(param_def) for name, param_def in params.items()}
-    sample = _as_dispatched(safe_substitute(filled, test_values))
-    return None if _left_unfilled(template, sample) else sample
+    return _as_dispatched(safe_substitute(filled, test_values))
 
 
 def _test_value(param_def: dict) -> str:
