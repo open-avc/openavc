@@ -7,6 +7,20 @@ the update fails. The zip is written and the old ones trimmed by the core
 every backup shares (``utils/backup_zip``); which of a project's files at the
 data root it carries is ``core/project_unit``'s list.
 
+**What it carries, and what a rollback puts back.** The projects folder
+whole, and a project kept elsewhere under ``external-project/``: the whole
+folder of one outside the data folder, or the project's own entries of one
+at the data root (``core/project_unit``), with the system's own files beside
+it. An automatic rollback puts these back, except the system's own files
+beside a project (``project_unit.SYSTEM_BESIDE_PROJECT``: the cloud pairing,
+the instance id), which it leaves as the system has them now. Then the data
+folder's own trees and files (``_SYSTEM_TREES``, ``_DATA_ROOT_FILES``),
+carried for a person to open by hand and never put back. Nothing else in the
+data folder is carried: the Project Library, plugin data, the login key, the
+TLS certificate, the time zone, the update history and the rest are left as
+they are by an update and by a rollback. ``docs/updates.md`` has the table,
+and ``tests/test_what_each_backup_holds.py`` runs every backup against it.
+
 **A restore that cannot finish** (``restore_user_data``). The backup is read
 through first, so one that cannot be opened or read changes nothing
 (``BackupNotReadable``). A file it holds that cannot be written back is
@@ -53,7 +67,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from openavc.core.project_unit import BESIDE_PROJECT
+from openavc.core.project_unit import BESIDE_PROJECT, FILE_TREES, SCRIPTS_DIR, SYSTEM_BESIDE_PROJECT
 from openavc.utils.backup_zip import keep_newest, write_zip
 from openavc.utils.fileio import atomic_write_text, make_private, private_dir
 from openavc.utils.paths import files_below, is_link
@@ -123,9 +137,9 @@ def create_backup(
 ) -> Path:
     """Create a pre-update backup of user data.
 
-    Archives: projects/, driver_repo/, plugin_repo/, themes/, system.json,
-    cloud.json, panel_devices.json, device_logins.json (never its key).
-    Stores in:
+    Archives what the module docstring says: projects/, a project kept
+    elsewhere, driver_repo/, plugin_repo/, system.json, panel_devices.json
+    and device_logins.json (never its key). Stores in:
     {data_dir}/backups/pre-update-v{version}-{timestamp}.zip
 
     When ``project_path`` points outside ``data_dir`` (set via
@@ -159,11 +173,16 @@ def create_backup(
     return backup_path
 
 
+#: The data folder's own trees an update's backup carries, a link in them
+#: left out. A rollback puts neither back: a driver or plugin installed since
+#: stays installed.
+_SYSTEM_TREES = ("driver_repo", "plugin_repo")
+
 #: The files at the data root an update's backup carries. ``panel_devices.json``
 #: and ``device_logins.json`` (never its key: the copy opens only on the system
 #: it was sealed on) are carried like ``system.json``, and a rollback restores
 #: none of them: an approval or a login should not roll back with the code.
-_DATA_ROOT_FILES = ("system.json", "cloud.json", "panel_devices.json", "device_logins.json")
+_DATA_ROOT_FILES = ("system.json", "panel_devices.json", "device_logins.json")
 
 
 def _write_update_archive(
@@ -199,12 +218,11 @@ def _write_projects_tree(zf: zipfile.ZipFile, data_dir: Path, backup_dir: Path) 
 
 
 def _write_system_files(zf: zipfile.ZipFile, data_dir: Path) -> None:
-    """The community drivers, the themes and the plugins, without following
-    a link: a rollback never restores these, and a linked plugin or driver
-    is somebody's working copy that lives elsewhere. A project kept at the
-    data root has its own themes here, which go into external-project/ with
-    the project and come back with it. Then the files at the data root."""
-    trees = [files_below(data_dir / tree) for tree in ("driver_repo", "themes", "plugin_repo")]
+    """The community drivers and the plugins, without following a link: a
+    rollback never restores these, and a linked plugin or driver is
+    somebody's working copy that is kept elsewhere. Then the files at the
+    data root."""
+    trees = [files_below(data_dir / tree) for tree in _SYSTEM_TREES]
     root_files = [data_dir / name for name in _DATA_ROOT_FILES if (data_dir / name).exists()]
     for file_path in [*itertools.chain.from_iterable(trees), *root_files]:
         zf.write(file_path, file_path.relative_to(data_dir).as_posix())
@@ -303,8 +321,9 @@ def _extra_project_tree(
     """Project tree needing the external-project archive, and its entry filter.
 
     An external directory is carried whole. The data root carries only the
-    project's own entries (``core/project_unit``); both backup and rollback
-    use this selection.
+    project's own entries (``core/project_unit``) and the system's own files
+    beside it, which a rollback never writes back (``_put_back``); both
+    backup and rollback use this selection.
     Other locations inside data_dir retain the regular projects/ handling.
     """
     try:
@@ -313,7 +332,7 @@ def _extra_project_tree(
     except OSError:
         return None, None
     if project_path.parent == data_dir:
-        return data_dir, {project_path.name, *BESIDE_PROJECT}
+        return data_dir, {project_path.name, *BESIDE_PROJECT, *SYSTEM_BESIDE_PROJECT}
     try:
         project_path.relative_to(data_dir)
     except ValueError:
@@ -431,13 +450,37 @@ def _restore_trees(job: _Restore, data_dir: Path, project_path: Path | None) -> 
     the backup; True when anything was."""
     members = [i for i in job.zf.infolist() if not i.is_dir()]
     restored = False
-    projects = [i for i in members if i.filename.startswith("projects/")]
+    projects = _put_back(members, "projects/")
     if projects:
         restored |= _restore_projects_tree(_ProjectsTree(job, data_dir, projects))
-    external = [i for i in members if i.filename.startswith("external-project/")]
+    external = _put_back(members, "external-project/")
     if external and project_path is not None:
         restored |= _restore_external_files(job, external, data_dir, project_path)
     return restored
+
+
+#: The folders in a project's folder whose files are all the project's
+#: (``core/project_unit``), and the project backups.
+_PROJECT_OWN_FOLDERS = frozenset((SCRIPTS_DIR, *FILE_TREES, "backups"))
+
+
+def _system_file(rel: PurePosixPath | Path) -> bool:
+    """Whether ``rel``, a path below a project tree, is one of the system's
+    own files beside a project (``project_unit.SYSTEM_BESIDE_PROJECT``). One
+    of the same name inside the project's own folders, a custom control's
+    file, is the project's."""
+    return rel.name in SYSTEM_BESIDE_PROJECT and not _PROJECT_OWN_FOLDERS.intersection(rel.parts[:-1])
+
+
+def _put_back(members: list, prefix: str) -> list:
+    """The archived files below ``prefix`` a rollback writes back: every one
+    but the system's own files beside a project, which it leaves as the
+    system has them now (the module docstring). The projects folder's swap
+    takes the live ones into the folder it swaps in (``_take_live_system_files``)."""
+    return [
+        i for i in members
+        if i.filename.startswith(prefix) and not _system_file(PurePosixPath(i.filename[len(prefix):]))
+    ]
 
 
 def _opened(backup_path: Path) -> zipfile.ZipFile:
@@ -679,6 +722,7 @@ def _swap(tree: _ProjectsTree) -> bool:
     shutil.rmtree(staging, ignore_errors=True)
     try:
         _extract(tree.job.zf, tree.members, "projects/", staging)
+        _take_live_system_files(tree, staging)
         _clear_aside_for(tree.data_dir, aside, tree.job.backup)
         if live.exists():
             os.replace(live, aside)
@@ -690,6 +734,22 @@ def _swap(tree: _ProjectsTree) -> bool:
         shutil.rmtree(staging, ignore_errors=True)
         return False
     return True
+
+
+def _take_live_system_files(tree: _ProjectsTree, staging: Path) -> None:
+    """The system's own files beside each project in the live tree, links
+    followed, copied into ``staging`` where they are now, so the tree swapped
+    in holds the pairing the system has rather than the one it had before the
+    update. Raises the ``OSError``."""
+    if not tree.live.exists():
+        return
+    files, _links = _project_files(tree.live, tree.data_dir / "backups")
+    for path in files:
+        rel = path.relative_to(tree.live)
+        if _system_file(rel):
+            target = staging / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
 
 
 def _put_projects_back(live: Path, aside: Path) -> None:

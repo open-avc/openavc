@@ -8,10 +8,11 @@ import tempfile
 from pathlib import Path
 
 import openavc.config as cfg
+from openavc.core.project_unit import CLOUD_PAIRING_FILE
 
 log = logging.getLogger(__name__)
 
-CLOUD_CONFIG_FILE = "cloud.json"
+CLOUD_CONFIG_FILE = CLOUD_PAIRING_FILE
 
 
 def _config_path() -> Path:

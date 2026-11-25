@@ -34,6 +34,7 @@ from pathlib import Path
 from time import time
 from typing import Any, TYPE_CHECKING
 
+from openavc.core.project_unit import INSTANCE_ID_FILE
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import is_local_destination
 from openavc.version import __version__ as _platform_version
@@ -192,7 +193,7 @@ def _send_bound(payload: bytes, source: str, target: tuple[str, int]) -> None:
 
 def get_or_create_instance_id(project_path: Path) -> str:
     """Return a persistent instance UUID, creating one on first run."""
-    id_file = project_path.parent / ".instance_id"
+    id_file = project_path.parent / INSTANCE_ID_FILE
     if id_file.exists():
         instance_id = id_file.read_text(encoding="utf-8").strip()
         if instance_id:

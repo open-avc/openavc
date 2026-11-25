@@ -21,11 +21,16 @@ tree may hold and how its files are written into a zip or copied is the
 tree's own module's: ``core/asset_tree`` for ``assets/``, ``core/custom_ui``
 for ``ui/``, ``core/theme_tree`` for ``themes/``.
 
-Not in the list: the ``backups/`` folder itself, and the record of what the
+Not in the list: the ``backups/`` folder itself; the record of what the
 last start had to do to get a project (``core/project_recovery``'s
 ``recovery.json``), which belongs to the start rather than to the project:
-no backup holds it, and a replace moves it aside with the project it is
-about (``core/project_swap``).
+no project backup holds it, and a replace moves it aside with the project it
+is about (``core/project_swap``); and the system's own files kept in the
+project's folder (``SYSTEM_BESIDE_PROJECT``), which no project backup,
+export or replace touches. An update's backup carries the project's whole
+folder when the project has one of its own, so it holds all of these, and
+a rollback puts back everything but the system's own files
+(``updater/backup``).
 """
 
 from __future__ import annotations
@@ -52,3 +57,14 @@ FILE_TREES = (ASSETS_DIR, UI_DIR, THEMES_DIR)
 
 #: Everything beside the project file that belongs to the project.
 BESIDE_PROJECT = (SCRIPTS_DIR, *FILE_TREES, STATE_FILE)
+
+#: This system's pairing with OpenAVC Cloud (``cloud/config``).
+CLOUD_PAIRING_FILE = "cloud.json"
+#: This system's instance id (``core/isc``).
+INSTANCE_ID_FILE = ".instance_id"
+
+#: The system's own files, kept in the project's folder but not the
+#: project's: a project replaced keeps them, and so does a rollback, which
+#: puts the projects back as they were before an update but never these. A
+#: pairing made or removed since the update stays as it is.
+SYSTEM_BESIDE_PROJECT = (CLOUD_PAIRING_FILE, INSTANCE_ID_FILE)

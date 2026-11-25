@@ -74,6 +74,7 @@ import time
 from pathlib import Path
 
 from openavc.core.device_sync import add_devices, work_out_each
+from openavc.core.project_unit import INSTANCE_ID_FILE
 from openavc.core.script_engine import ScriptEngine
 from openavc.core.start_stages import GoOn, StartRun
 from openavc.core.stop_stages import StopRun
@@ -149,7 +150,7 @@ def _settle_panel_access(sys_config, project_dir: Path) -> None:
     # core/panel_devices.settle_access_default has the rule.
     from openavc.core.panel_devices import settle_access_default
 
-    settle_access_default(sys_config, project_dir / ".instance_id")
+    settle_access_default(sys_config, project_dir / INSTANCE_ID_FILE)
 
 
 def _settle_who_can_connect(sys_config, project_dir: Path) -> None:

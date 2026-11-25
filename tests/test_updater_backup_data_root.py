@@ -24,6 +24,7 @@ def test_data_root_project_survives_automatic_rollback(tmp_path, project_name):
         "scripts/start.py": "# original script",
         "assets/nested/logo.svg": "<svg/>",
         "ui/meter/index.html": "original custom control",
+        "themes/house.json": '{"id": "house"}',
     }
     unrelated = {
         "supervisor/state.json": "supervisor state",
@@ -37,6 +38,8 @@ def test_data_root_project_survives_automatic_rollback(tmp_path, project_name):
 
     backup = create_backup(data, "0.7.0", project_path=project)
     with zipfile.ZipFile(backup) as archive:
+        # The project's themes once, with the project, never again as a
+        # system folder of the data root.
         assert set(archive.namelist()) == {
             "system.json", *(f"external-project/{name}" for name in project_files),
         }
