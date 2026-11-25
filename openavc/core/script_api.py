@@ -397,8 +397,6 @@ class _MacroProxy:
 
     @_leashed_async
     async def execute(self, macro_id: str) -> str:
-        """Run a macro and wait for it; returns how it ended, the word every
-        door reports (``MacroEngine.execute``)."""
         if self._engine is None:
             raise RuntimeError("Script API not configured — macro proxy not bound")
         # Carry the macro call chain across the script boundary: a handler

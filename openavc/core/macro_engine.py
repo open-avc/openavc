@@ -9,15 +9,8 @@ This module holds the loaded macros, device groups and plugin actions, and
 decides each run's start and end: whether it may start (the circular-call and
 depth guards, the macro's own overlap and cooldown), whom it preempts in its
 cancel_group, how it ended (``completed``, ``failed``, ``cancelled``,
-``skipped``) and the lifecycle event that says so.
-
-THE rule for whose cancel a run reports: a run executes in its caller's task,
-so a cancel of that task is either the engine's own (``cancel``,
-``cancel_all``, a cancel_group preemption), which is the run's outcome and
-which ``execute`` consumes and returns as ``cancelled``, or anybody else's (a
-script handler's time limit, the macro whose event the handler was answering),
-which stops the caller too: the run still ends on ``macro.cancelled`` and the
-cancel goes on up. Running the steps themselves
+``skipped``) and the lifecycle event that says so; whose cancel is an
+outcome is ``run_cancels``. Running the steps themselves
 is ``macro_steps.MacroSteps``, which this class inherits; what a step says to
 people is ``macro_text``; a group's fan-out is ``group_command``.
 
@@ -30,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-import weakref
 from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 
@@ -39,6 +31,7 @@ from openavc.core.group_command import DeviceGroups, GroupCommand
 from openavc.core.macro_steps import MacroSteps
 from openavc.core.macro_text import StepWording, skip_reason, stopped_message
 from openavc.core.project_loader import MacroConfig, reads_as
+from openavc.core.run_cancels import RunCancels
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
 
@@ -174,11 +167,7 @@ class MacroEngine(MacroSteps):
         # script/plugin/AI dispatch all leave every in-flight invocation
         # individually trackable and cancellable (A51).
         self._running: dict[str, set[asyncio.Task]] = {}
-        # task -> how many cancels the engine itself made of it (``_stop``),
-        # which the run in it consumes as its outcome (``_reports_cancel``).
-        self._own_cancels: weakref.WeakKeyDictionary[asyncio.Task, int] = (
-            weakref.WeakKeyDictionary()
-        )
+        self._cancels = RunCancels()  # every cancel this engine makes of a run
         # Set by the shutdown before it cancels the macros (close): no macro
         # starts after, so a trigger fire still on its way cannot start one
         # while the devices let go. A project loaded again opens it.
@@ -260,7 +249,7 @@ class MacroEngine(MacroSteps):
         if not tasks:
             return False
         for task in tasks:
-            self._stop(task)
+            self._cancels.stop(task)
         pending: set[asyncio.Task] = set()
         try:
             _done, pending = await asyncio.wait(tasks, timeout=_CANCEL_GRACE_SECONDS)
@@ -287,7 +276,7 @@ class MacroEngine(MacroSteps):
         if not all_tasks:
             return
         for task in all_tasks:
-            self._stop(task)
+            self._cancels.stop(task)
         pending: set[asyncio.Task] = set()
         try:
             _done, pending = await asyncio.wait(all_tasks, timeout=_CANCEL_GRACE_SECONDS)
@@ -333,9 +322,7 @@ class MacroEngine(MacroSteps):
         if not cancelled:
             return
         tasks = [t for _, t in cancelled]
-        # A cancel of THIS run while it waits is not swallowed: it ends the
-        # run, as it would one step later.
-        await asyncio.wait(tasks, timeout=2.0)
+        await asyncio.wait(tasks, timeout=2.0)  # a cancel of THIS run ends it
 
     def load_macros(self, macros: list[dict[str, Any]]) -> None:
         """Register macro definitions from the project config."""
@@ -405,25 +392,15 @@ class MacroEngine(MacroSteps):
 
         One of ``completed`` (every step ran), ``failed`` (at least one step
         did not, whether or not the run carried on past it), ``cancelled``
-        (the engine cancelled it mid-run — a ``POST /cancel``, a cancel_group
-        preemption, a shutdown), or ``skipped`` (a ``macro_text.SKIP_REASONS``
-        refusal; ``macro.skipped`` says which). A cancel of the caller's own
-        task is not an outcome: the run ends on ``macro.cancelled`` and the
-        ``CancelledError`` goes on up (the module docstring has the rule).
+        (the engine cancelled it mid-run; anybody else's cancel goes on up,
+        ``run_cancels``), or ``skipped`` (``macro.skipped`` says why).
 
-        It REPORTS rather than raises, and that is the point. The outer
-        catch-all isolates a macro's failure from whatever fired it: a trigger,
-        a panel press, a script and a plugin must not inherit it. But isolation
-        was being done by silence — every one of those endings returned None,
-        so the operator door answered ``executed`` for all four and a run whose
-        every step failed was indistinguishable from a clean one. A caller that
-        ignores the return value behaves exactly as before.
-
-        A Run Macro step's call is different and still raises (``_subroutine``):
-        a subroutine's failure belongs to the step that awaited it. A call
-        that only carries a chain (a script answering an event a running macro
-        emitted) is not a step of that macro: the chain's guards apply to it,
-        and it is told the outcome like any other caller.
+        It REPORTS rather than raises, so a macro's failure never reaches what
+        started it (a trigger, a press, a script, a plugin), which is told the
+        outcome instead. A Run Macro step's call (``_subroutine``) still
+        raises: a subroutine's failure belongs to the step that awaited it. A
+        call that only carries a chain (a script answering a running macro's
+        event) is told the outcome; the chain's guards still apply to it.
 
         Args:
             macro_id: The macro to execute.
@@ -433,10 +410,6 @@ class MacroEngine(MacroSteps):
                 concurrent chains.
             _subroutine: Internal — set by a Run Macro step only.
         """
-        # An awaited subroutine must return its failure/cancellation to the
-        # calling step. Only the outer invocation owns the event-only outcome;
-        # swallowing it here would let dependent parent steps keep running.
-        nested_call = _subroutine
         _call_chain = self._chain_into(macro_id, _call_chain)
         macro = self._macros[macro_id]
         # Publish the chain to this task's context so handler tasks spawned
@@ -456,14 +429,10 @@ class MacroEngine(MacroSteps):
             await self._report_skipped(macro_id, name, blocked)
             return "skipped"
 
-        # From the claim on, everything is inside the try: a cancel that lands
-        # while a preempted run unwinds, or while the start is announced, ends
-        # this run and gives its slot back like one that lands mid-step.
-        try:
+        try:  # from the claim on, so any cancel ends the run and frees its slot
             # Wait for preempted tasks to fully unwind before we start sending
-            # commands — A50. Before the start is announced, too: a client
-            # that keeps one progress record per macro (the IDE) must hear a
-            # preempted run of the same macro end before this one starts.
+            # commands — A50 — and before the start is announced, so a client
+            # keeping one record per macro (the IDE) hears the old run end first.
             await self._drain_cancelled(cancelled)
             log.info(f"Executing macro '{name}' ({len(steps)} steps)")
             await self.events.emit(
@@ -477,7 +446,7 @@ class MacroEngine(MacroSteps):
         except asyncio.CancelledError:
             log.info(f"Macro '{name}' was cancelled")
             await self._announce_end(macro_id, name, task, "cancelled")
-            if nested_call or not self._reports_cancel(task):
+            if not self._cancels.reported(task, subroutine=_subroutine):
                 raise
             return "cancelled"
         except Exception as e:  # Catch-all: isolates macro execution errors
@@ -485,7 +454,7 @@ class MacroEngine(MacroSteps):
             await self._announce_end(
                 macro_id, name, task, "error", error=str(e), message=stopped_message(e),
             )
-            if nested_call:
+            if _subroutine:  # its failure is the calling step's
                 raise
             return "failed"
         finally:
@@ -568,25 +537,8 @@ class MacroEngine(MacroSteps):
         cancelled = self._collect_group_targets(cancel_group, exclude_task=task)
         for mid, t in cancelled:
             log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
-            self._stop(t)
+            self._cancels.stop(t)
         return cancelled
-
-    def _stop(self, task: asyncio.Task) -> None:
-        """Cancel a run's task as the engine, so the run reports the cancel as
-        its outcome rather than passing it on (``_reports_cancel``)."""
-        if task.cancel():
-            self._own_cancels[task] = self._own_cancels.get(task, 0) + 1
-
-    def _reports_cancel(self, task: asyncio.Task | None) -> bool:
-        """Whether the cancel a run just ended on is its outcome: every cancel
-        pending on ``task`` was the engine's own. Those are consumed here
-        (``uncancel``), so the caller carries on clean. A cancel of the caller
-        itself is left pending, and the run passes it on."""
-        if task is None:
-            return True
-        for _ in range(self._own_cancels.pop(task, 0)):
-            task.uncancel()
-        return task.cancelling() == 0
 
     async def _report_skipped(self, macro_id: str, name: str, reason: dict[str, str]) -> None:
         log.info(f"Macro '{name}' skipped — {reason['message']}")
