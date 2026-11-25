@@ -60,6 +60,7 @@ from openavc.drivers.command_files import (
     returns_file_sentence,
     takes_file_sentence,
 )
+from openavc.drivers.command_model import offline_capable
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import file_param_names, is_file_command
 from openavc.utils.log_redaction import REDACTED, get_secret_registry
@@ -286,10 +287,10 @@ async def send_file_command(
 
 def available_offline(driver: Any, command: str) -> bool:
     """True when the command declares ``available_offline``: it may run with
-    no live connection. An unknown command, or one without the flag, is not
-    offline-capable (the connected gate applies)."""
-    cmd_def = command_definition(driver, command)
-    return cmd_def is not None and bool(cmd_def.get("available_offline"))
+    no live connection (``command_model.offline_capable``). An unknown
+    command, or one without the flag, is not offline-capable (the connected
+    gate applies)."""
+    return offline_capable(command_definition(driver, command))
 
 
 def validate_command_params(

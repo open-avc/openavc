@@ -294,3 +294,58 @@ def test_explicit_availability_still_wins_over_the_flag():
     }
     resolved = resolve_device_actions(info)
     assert resolved[0]["availability"] == "offline"
+
+
+# ── one reading of the flag ──────────────────────────────────────────────────
+
+# A command's flag as written, and whether it runs with the device offline.
+_FLAG_CASES = [
+    ({"available_offline": True}, True),
+    ({"available_offline": False}, False),
+    ({}, False),
+    ({"available_offline": None}, False),
+    ({"available_offline": 1}, True),
+    ({"available_offline": 0}, False),
+    ({"available_offline": "yes"}, True),
+    ({"available_offline": ""}, False),
+]
+
+
+@pytest.mark.parametrize("flag,offline", _FLAG_CASES)
+def test_every_reader_reads_the_flag_one_way(flag, offline):
+    """The send gate, a promoted button and the Device Audit's command list
+    read a command's ``available_offline`` by one reading
+    (``command_model.offline_capable``)."""
+    from types import SimpleNamespace as NS
+
+    from openavc.audit.command_catalog import command_catalog
+    from openavc.core.command_gates import available_offline
+    from openavc.drivers.command_model import offline_capable, read_command
+
+    cdef = {"label": "Wake", **flag}
+    info = {"commands": {"wake": cdef}, "quick_actions": ["wake"]}
+    driver = NS(DRIVER_INFO=info, config={})
+    assert offline_capable(cdef) is offline
+    assert read_command("wake", cdef).available_offline is offline
+    assert available_offline(driver, "wake") is offline
+    (button,) = resolve_device_actions(info)
+    assert (button["availability"] == "always") is offline
+    (entry,) = command_catalog(driver)
+    assert entry["available_offline"] is offline
+
+
+def test_no_other_module_reads_the_flag_itself():
+    """Only ``command_model`` reads a command's ``available_offline``; the
+    checker's wake rule judges the value as written, which is its own."""
+    from pathlib import Path
+
+    import openavc
+
+    root = Path(openavc.__file__).parent
+    allowed = {"drivers/command_model.py", "drivers/command_checks.py"}
+    readers = sorted(
+        str(path.relative_to(root)) for path in root.rglob("*.py")
+        if str(path.relative_to(root)) not in allowed
+        and 'get("available_offline")' in path.read_text(encoding="utf-8")
+    )
+    assert readers == []

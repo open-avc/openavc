@@ -73,7 +73,7 @@ def _entry(
         "query_for": query_for,
         "polled": name in polled,
         "sets": dict(_typed(cdef, "sets", dict, {})),
-        "available_offline": bool(cdef.get("available_offline")),
+        "available_offline": command.available_offline,
         # Whole seconds the runtime holds the device away for; 0 for none.
         "restarts_device_for": command.restarts_device_for or 0,
         "needs_input": command.needs_input,

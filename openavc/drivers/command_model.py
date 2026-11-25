@@ -37,6 +37,13 @@ a draft no server has read, has the one copy (``commandConfirmMessage`` in
 ``restarts_device_for`` is ``restart_window``'s reading, so the window the
 audit watches is the one the runtime opens.
 
+``offline_capable`` is THE reading of a command's ``available_offline``: any
+true value (the platform has always read the flag this way), so the send
+gate (``command_gates.available_offline``), a promoted button's availability
+(``actions``) and the audit's command list (``CommandModel.available_offline``)
+let the same commands through while the device is offline. The checker's
+wake rule judges the value as written (``true``), which is its own question.
+
 Never logs and never raises: a declaration that is not a mapping reads as one
 that declares nothing.
 """
@@ -70,13 +77,15 @@ class CommandModel:
     """One command, read. ``confirm`` is what a person sending it by hand is
     asked first (``confirm_sentence``; None for nothing); ``restarts_device_for``
     the whole seconds sending it takes the device away, from 1 to 600 (None for
-    none)."""
+    none); ``available_offline`` whether it runs with no live connection
+    (``offline_capable``)."""
 
     name: str
     needs_input: bool
     moves_a_file: bool
     confirm: str | None
     restarts_device_for: int | None
+    available_offline: bool = False
 
     @property
     def sendable_without_asking(self) -> bool:
@@ -95,7 +104,15 @@ def read_command(name: str, cdef: Any) -> CommandModel:
         moves_a_file=is_file_command(cdef),
         confirm=_own_confirm(name, cdef),
         restarts_device_for=restart_seconds(cdef.get("restarts_device_for")),
+        available_offline=offline_capable(cdef),
     )
+
+
+def offline_capable(cdef: Any) -> bool:
+    """Whether a command runs with no live connection (``available_offline``
+    set to any true value); a declaration that is not a mapping declares
+    nothing."""
+    return isinstance(cdef, dict) and bool(cdef.get("available_offline"))
 
 
 def confirm_sentence(confirm: Any, label: Any) -> str | None:

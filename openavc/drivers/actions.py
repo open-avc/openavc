@@ -63,7 +63,12 @@ from typing import Any
 
 from openavc.core.web_ui_probe import web_ui_url_for_http_config
 from openavc.drivers.avcdriver_semantic import validate_actions as validate_actions
-from openavc.drivers.command_model import confirm_sentence, driver_sentence, sets_its_own_confirm
+from openavc.drivers.command_model import (
+    confirm_sentence,
+    driver_sentence,
+    offline_capable,
+    sets_its_own_confirm,
+)
 from openavc.drivers.spec import ACTION_KINDS, AVAILABILITIES, is_file_command
 from openavc.drivers.transport_choice import effective_transport
 from openavc.utils.logger import get_logger
@@ -87,7 +92,7 @@ def _command_availability(cmd: Any) -> str:
     both promotion styles (an explicit ``kind: command`` action that doesn't
     set its own availability, and ``quick_actions`` sugar).
     """
-    if isinstance(cmd, dict) and cmd.get("available_offline"):
+    if offline_capable(cmd):
         return "always"
     return _DEFAULT_AVAILABILITY
 
