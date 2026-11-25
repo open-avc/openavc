@@ -48,11 +48,13 @@ def backup(target, zipped, forbidden=False):
 
 @pytest.mark.parametrize("zipped", [False, True])
 def test_allowed_restore_targets_configured_file_and_composes_local_equipment(host, zipped):
-    path, expected = backup(host, zipped)
+    path, _ = backup(host, zipped)
     restore_from_backup(path, host)
-    assert json.loads(host.read_text()) == expected
+    # Written as every restore writes it: migrated, this unit's equipment in.
+    written = json.loads(host.read_text())
+    assert (written["project"]["id"], written["project"]["name"]) == ("hall", "Restored")
     assert (host.parent / "project.avc").read_bytes() == b"unrelated project sentinel"
-    composed = InstalledEquipment.from_environment().compose(ProjectConfig(**expected))
+    composed = InstalledEquipment.from_environment().compose(ProjectConfig(**written))
     local = next(device for device in composed.devices if device.id == "local")
     assert local.driver == DRIVER and local.config == {"integration": "acme_amplifier"}
 
@@ -85,7 +87,7 @@ def test_large_backup_uses_the_same_restore_path_and_hardware_protection(host, f
         assert not (host.parent / "state.json").exists()
     else:
         restore_from_backup(path, host)
-        assert host.read_bytes() == raw
+        assert json.loads(host.read_text())["project"]["name"] == "Restored"
         assert json.loads((host.parent / "state.json").read_text()) == {"saved": 42}
         composed = InstalledEquipment.from_environment().compose(ProjectConfig(**data))
         assert next(device for device in composed.devices if device.id == "local").driver == DRIVER

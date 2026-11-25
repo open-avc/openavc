@@ -139,7 +139,7 @@ def test_a_backup_that_will_not_restore_is_passed_over_for_the_next_one(
 ):
     """Backups are tried newest first; one that fails is logged and the next
     one is tried, and the record names the one that loaded."""
-    from openavc.core import backup_manager
+    from openavc.core import project_replace
 
     monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     project_path = _project_path(tmp_path)
@@ -151,16 +151,16 @@ def test_a_backup_that_will_not_restore_is_passed_over_for_the_next_one(
     newest, older = backups[0].filename, backups[1].filename
     project_path.write_text("{not json", encoding="utf-8")
 
-    real_restore = backup_manager.restore_from_backup
+    real_replace = project_replace.replace_files
     tried: list[str] = []
 
-    def restore(backup_path, target):
-        tried.append(backup_path.name)
+    def replace(prepared, target, **kwargs):
+        tried.append(prepared.spare.name)
         if len(tried) == 1:
             raise OSError("disk said no")
-        return real_restore(backup_path, target)
+        return real_replace(prepared, target, **kwargs)
 
-    monkeypatch.setattr(backup_manager, "restore_from_backup", restore)
+    monkeypatch.setattr(project_replace, "replace_files", replace)
     eng = Engine(str(project_path))
     with caplog.at_level(logging.WARNING, logger=ENGINE_LOG):
         project = eng._load_project_safe()
