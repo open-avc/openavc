@@ -8,9 +8,11 @@ replaces it asks this list which entries are the project's, rather than
 naming them itself, so an entry the project gains is carried by every door
 or by none:
 
-- a project backup, the zip under Backups (``core/backup_manager``);
+- a project backup, the zip under Backups (``core/backup_manager``), and
+  the one a start takes of what it is about to replace (``set_aside``);
 - the swap when a whole project replaces the live one, a restore, an open
-  from the library and a blank project (``core/project_swap``);
+  from the library, a blank project, and a start's starter, restored backup
+  or Recovery Project (``core/project_swap``);
 - the backup an update or a rollback takes of a project kept at the data
   root, where the system's own files sit beside it (``updater/backup``).
 

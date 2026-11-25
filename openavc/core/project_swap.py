@@ -1,8 +1,9 @@
 """THE swap of a project's files on disk for another project's, and the
 "replace in progress" marker a start reads first.
 
-A replace (``core/project_replace``) and a start's restore of a backup
-(``core/backup_manager.restore_from_backup``) stage what comes in, in a
+A replace (``core/project_replace``), and a start's starter, restored
+backup or Recovery Project (``core/project_recovery``, through
+``project_replace.replace_files``), stage what comes in, in a
 working folder beside the project file (``WORK_DIR``), then swap each entry
 the project is made of (``core/project_unit``, the project file and the
 start's notice, ``recovery.json``, included) by renames: the live entry is
