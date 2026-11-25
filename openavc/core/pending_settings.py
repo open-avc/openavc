@@ -62,6 +62,8 @@ log = get_logger("openavc.core.device_manager")
 
 # A key a queue does not hold, told apart from one it holds as None.
 _NOT_HELD = object()
+# A report the setting's declaration refuses.
+_NOT_READ = object()
 
 
 # A queued write used to be cleared the moment ``set_device_setting`` returned
@@ -101,21 +103,31 @@ def readback_confirms(key: str, sdef: Any, expected: Any, actual: Any) -> bool:
     Otherwise the device is allowed to report the same value in its own form —
     ``"70"`` for ``70``, ``"on"`` for ``True``, an enum's label for its wire
     value — so the read-back is put through the setting's own declared schema,
-    the same coercion the write went through. A report that schema refuses
-    (out of range, not in ``values``) or reads as another value is compared
-    as text, apart from case and surrounding spaces, rather than counting as
-    a mismatch on a technicality.
+    the same coercion the write went through. A report the schema reads as
+    another of the setting's declared ``values`` is that option, never the
+    one written, even one that differs only in case. Anything else (a
+    report the schema refuses, free text) is compared as text, apart from
+    case and surrounding spaces, rather than counting as a mismatch on a
+    technicality.
     """
     if actual is None:
         return False
     if actual == expected:
         return True
     try:
-        if validate_device_setting_value(key, sdef, actual) == expected:
-            return True
+        read = validate_device_setting_value(key, sdef, actual)
     except Exception:
-        pass
+        read = _NOT_READ
+    if read == expected:
+        return True
+    if read is not _NOT_READ and _names_options(sdef):
+        return False  # another of the setting's own options
     return str(actual).strip().lower() == str(expected).strip().lower()
+
+
+def _names_options(sdef: Any) -> bool:
+    """A declaration that lists the values a setting takes."""
+    return isinstance(sdef, dict) and isinstance(sdef.get("values"), list) and bool(sdef["values"])
 
 
 def readback_state_key(key: str, sdef: Any, state_vars: Any) -> Any:

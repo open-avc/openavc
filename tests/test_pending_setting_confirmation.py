@@ -479,6 +479,15 @@ async def test_window_is_capped():
         # rather than counting as a mismatch on a technicality.
         ({"type": "integer", "min": 0, "max": 100}, 70, "700", False),
         (None, "x", "x", True),
+        # A report in another case still agrees: free text, and an option
+        # the declaration does not name in that case.
+        ({"type": "string"}, "Lobby", "lobby", True),
+        ({"type": "enum", "values": ["HDMI1", "DP"]}, "HDMI1", "hdmi1", True),
+        # Another option the declaration names never does, even one that
+        # differs only in case.
+        ({"type": "enum", "values": ["HDMI", "hdmi"]}, "HDMI", "hdmi", False),
+        ({"type": "enum", "values": [{"value": "a", "label": "Input A"}, {"value": "A"}]},
+         "a", "A", False),
     ],
 )
 def test_readback_agreement(sdef, expected, actual, agrees):
