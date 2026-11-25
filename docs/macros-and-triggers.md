@@ -207,39 +207,33 @@ Dynamic references also work on the **Set Variable** step's value field. This le
 
 The same `$` picker now appears on UI Builder bindings, so a touch panel button or slider can read a variable or device state the same way a macro step does. See [UI Builder](ui-builder.md) for the binding-side picker.
 
+### Reading what ran the macro
+
+A macro can read what ran it as `$trigger.<field>`: in a step's value, through the **What ran this macro** group of the `$` picker, or as the key of a **Conditional** or **Skip this step if...** condition (`trigger.new_value`).
+
+| What ran the macro | What the macro can read |
+|--------------------|-------------------------|
+| A state change trigger | `$trigger.key` (the state key that changed), `$trigger.old_value`, `$trigger.new_value` |
+| An event trigger | `$trigger.event` (the event's name), and every field of the event |
+| A schedule trigger | `$trigger.trigger_type` (`schedule`), `$trigger.cron` |
+| A startup trigger | `$trigger.trigger_type` (`startup`) |
+| A control that runs the macro | `$trigger.tag`, `$trigger.element` (the control's ID), `$trigger.value`, `$trigger.input`, `$trigger.output`, `$trigger.mute` |
+| Fire now in the trigger list | Nothing |
+
+An event's fields keep the names its sender gave them. An **Emit Event** step with the payload field `source` gives the macro `$trigger.source`, and a device error (`device.error.<device_id>`) gives `$trigger.device_id` and `$trigger.error`. To use one, type it into the picker's search box: `trigger.source`.
+
+A macro run by a **Run Macro** step reads what ran the macro that called it. Run any other way (the **Test** button, a script, the API), `$trigger.*` reads as empty.
+
 ### One macro for a row of buttons
 
-A control hands the macro it runs a few facts about itself, read the same way
-as a trigger's:
-
-| Reference | What it is |
-|-----------|-----------|
-| `$trigger.tag` | The **Tag** you gave the control in the UI Builder |
-| `$trigger.element` | The control's ID, whether or not it has a tag |
-| `$trigger.value` | The touched value, for a control that carries one (a slider's position) |
-
-So nine buttons tagged `1` through `9` can share one macro:
+A control gives the macro it runs its **Tag** as `$trigger.tag`, so nine buttons tagged `1` through `9` can share one macro:
 
 ```json
 {"action": "device.command", "device": "switcher", "command": "select_input",
  "params": {"input": "$trigger.tag"}}
 ```
 
-Set the Tag in the properties panel of the UI Builder. It is free text, so
-`1`, `hdmi2` and `row_3` all work. A control with no tag still reports its ID,
-and a macro run from the Macros view or on a schedule has no control behind it,
-so all three resolve to nothing there.
-
-### Reading the trigger that fired the macro
-
-When a macro is run by a trigger, it can read what fired it through the **Trigger event** group in the dynamic-value picker:
-
-- For an **event** trigger: `$trigger.event` (the event name) and `$trigger.data` / `$trigger.raw` (the payload, for example the bytes a device sent back).
-- For a **state change** trigger: `$trigger.new_value`, `$trigger.old_value`, and `$trigger.key` (which state key changed).
-
-For example, a trigger that fires when a device sends an unsolicited message can run a macro that stores the received text with a **Set Variable** step set to `$trigger.data`, or branches on it in an **If** step (condition key `trigger.data`). This makes "when this arrives, do that" automations possible without writing a script.
-
-These references only resolve when the macro is run by a trigger. If you run the same macro directly (from a button, the API, or another macro), `$trigger.*` reads as empty.
+Set the Tag in the properties panel of the UI Builder. It is free text, so `1`, `hdmi2` and `row_3` all work. A control with no tag still gives its ID as `$trigger.element`.
 
 ## Cancel Groups
 

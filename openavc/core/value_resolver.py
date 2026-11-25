@@ -10,8 +10,9 @@ Three rules that share one question, what a name means at run time:
   state-change trigger's own test. A ``trigger.<field>`` key is the firing
   context's field at a site that reads the context, and any other key is the
   state store's value.
-- ``FIRING_CONTEXT_FIELDS``: the fields each producer puts in that context,
-  which a ``trigger.<field>`` key and a ``$trigger.<field>`` reference read.
+- ``FIRING_CONTEXTS``: the fields each producer puts in that context, which a
+  ``trigger.<field>`` key and a ``$trigger.<field>`` reference read, and what
+  each holds. The IDE's picker and trigger editor list them from it.
 
 A ``$``-prefixed string is a runtime value reference. The same sigil is used by
 two authoring surfaces — UI Builder bindings (which deliver a UI-event value)
@@ -42,7 +43,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
 log = logging.getLogger(__name__)
 
@@ -50,27 +51,65 @@ log = logging.getLogger(__name__)
 #: context through: ``trigger.new_value`` is the context's ``new_value``.
 TRIGGER_PREFIX = "trigger."
 
-#: The fields each producer of a run puts in its firing context. A child
-#: macro run by a Run Macro step reads its parent's context; a run started
-#: any other way (the Run button, the API, a script, a plugin) has none.
-FIRING_CONTEXT_FIELDS: dict[str, tuple[str, ...]] = {
-    # A state-change trigger: the key that changed and its two values.
-    "state_change": ("key", "old_value", "new_value"),
-    # An event trigger: the event's name, and every field of the event's own
-    # payload beside it (CONTEXT_CARRIES_PAYLOAD).
-    "event": ("event",),
-    "schedule": ("trigger_type", "cron"),
-    "startup": ("trigger_type",),
-    # A control's macro action: the press's own values, then the control's
-    # tag and id (``core/ui_events.py``).
-    "press": ("value", "input", "output", "mute", "tag", "element"),
-    # Fire now in the trigger list.
-    "fire_now": (),
-}
+class ContextField(NamedTuple):
+    """One field of a firing context: its name, read as ``trigger.<name>``,
+    and what it holds, in the words the IDE shows beside it."""
 
-#: The producers whose context also holds fields the source names as it
-#: fires, beyond the ones ``FIRING_CONTEXT_FIELDS`` lists.
-CONTEXT_CARRIES_PAYLOAD: frozenset[str] = frozenset({"event"})
+    name: str
+    description: str
+
+
+class FiringContext(NamedTuple):
+    """What one producer of a run puts in the run's firing context."""
+
+    #: What ran the macro, as the IDE and the docs name it.
+    name: str
+    fields: tuple[ContextField, ...]
+    #: The context also holds every field of the event's own payload, under
+    #: the names its sender gave them.
+    carries_payload: bool = False
+
+
+_TRIGGER_TYPE = ContextField("trigger_type", 'The kind of trigger, "schedule" or "startup"')
+
+#: The fields each producer of a run puts in its firing context, keyed by the
+#: producer: a trigger's own type, ``press`` for a control's macro action and
+#: ``fire_now`` for Fire now in the trigger list. A field's name has one
+#: description wherever it appears. A child macro run by a Run Macro step
+#: reads its parent's context; a run started any other way (the Run button,
+#: the API, a script, a plugin, the AI assistant) has none.
+#: ``python -m openavc.core.firing_context_gen`` renders this into the IDE,
+#: and ``tests/test_firing_context_fields.py`` holds every producer to it.
+FIRING_CONTEXTS: dict[str, FiringContext] = {
+    "state_change": FiringContext("A state change trigger", (
+        ContextField("key", "The state key that changed"),
+        ContextField("old_value", "Its value before the change"),
+        ContextField("new_value", "Its value after the change"),
+    )),
+    "event": FiringContext("An event trigger", (
+        ContextField("event", "The name of the event that fired"),
+    ), carries_payload=True),
+    "schedule": FiringContext("A schedule trigger", (
+        _TRIGGER_TYPE,
+        ContextField("cron", "The trigger's schedule, as a cron expression"),
+    )),
+    "startup": FiringContext("A startup trigger", (_TRIGGER_TYPE,)),
+    # The press's own values, then the control's tag and id
+    # (``core/ui_events.py``).
+    "press": FiringContext("A control that runs the macro", (
+        ContextField(
+            "value",
+            "The value the user just set: a slider's position, a select's "
+            "choice, the digits entered",
+        ),
+        ContextField("input", "The routed input number, on a matrix route"),
+        ContextField("output", "The routed or muted output number, on a matrix route or mute"),
+        ContextField("mute", "true when muting, false when unmuting, on a matrix mute"),
+        ContextField("tag", "The Tag you gave the control in the UI Builder"),
+        ContextField("element", "The control's ID"),
+    )),
+    "fire_now": FiringContext("Fire now in the trigger list", ()),
+}
 
 
 def read_operand(

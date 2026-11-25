@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-react";
 import { PROJECT_VALUES } from "../../api/projectValues.gen";
+import { FIRING_CONTEXTS, type FiringContext } from "../../api/firingContext.gen";
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -56,6 +57,7 @@ export function TriggerEditor({ trigger, onChange }: TriggerEditorProps) {
       {trigger.type === "startup" && (
         <StartupEditor trigger={trigger} onChange={update} />
       )}
+      <MacroCanRead type={trigger.type} />
 
       {/* Conditions (shared) */}
       <ConditionsEditor
@@ -649,6 +651,35 @@ function StartupEditor({
       <div style={hintStyle}>
         Wait for devices to connect before executing.
       </div>
+    </div>
+  );
+}
+
+// --- What the macro can read ---
+
+/** The firing context each trigger type hands its macro, keyed by the type. */
+const CONTEXT_BY_TYPE: Readonly<Record<string, FiringContext>> = FIRING_CONTEXTS;
+
+/** The `$trigger.<field>` values this trigger type hands its macro, from the
+ *  firing context's table (value_resolver's FIRING_CONTEXTS, generated). */
+export function MacroCanRead({ type }: { type: string }) {
+  const context = CONTEXT_BY_TYPE[type];
+  if (!context || context.fields.length === 0) return null;
+  return (
+    <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
+      The macro can read{" "}
+      {context.fields.map((field, i) => (
+        <span key={field.name}>
+          {i > 0 && (i === context.fields.length - 1 && !context.carries_payload ? " and " : ", ")}
+          <code title={field.description}>$trigger.{field.name}</code>
+        </span>
+      ))}
+      {context.carries_payload && (
+        <>
+          , and every field of the event as <code>$trigger.&lt;name&gt;</code>
+        </>
+      )}
+      .
     </div>
   );
 }

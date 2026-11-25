@@ -8,7 +8,7 @@ import type { VariableConfig } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CopyButton } from "./CopyButton";
-import { groupLabel } from "./variableKeyPickerHelpers";
+import { groupLabel, triggerFieldRows, typedTriggerFieldRow } from "./variableKeyPickerHelpers";
 import { UI_OVERRIDE_PROPERTIES } from "./uiOverrideProperties";
 import { showError } from "../../store/toastStore";
 import { getDevice, listChildEntities } from "../../api/restClient";
@@ -84,9 +84,9 @@ interface VariableKeyPickerProps {
    *  meaningful where the picked key is written to, and it would otherwise
    *  bury the project's own variables under one row per control per property. */
   showUiOverrides?: boolean;
-  /** Also offer $trigger.<field> refs (the event payload / state-change
-   *  snapshot of the trigger that fired the macro). Only meaningful in macro
-   *  step/condition editors, where the macro may be run by a trigger. */
+  /** Also offer $trigger.<field> refs: what the trigger or control that ran
+   *  the macro handed over. Only meaningful in macro step/condition editors,
+   *  where the runtime reads the run's firing context. */
   showTriggerContext?: boolean;
   /** UI-event tokens this binding can deliver ($value/$input/$output/$mute),
    *  scoped to the binding slot. When non-empty, they appear as a top "This
@@ -105,17 +105,12 @@ interface VariableKeyPickerProps {
  *  memo for every existing caller). */
 const NO_EVENT_CONTEXT: { key: string; label: string }[] = [];
 
-/** $trigger.<field> refs a macro can read when it is fired by a trigger. The
- *  available fields depend on the trigger type (event vs state-change); the
- *  picker shows the full set and the group note explains the constraint. */
-const TRIGGER_CONTEXT_KEYS: { key: string; label: string }[] = [
-  { key: "trigger.event", label: "event: the event name (event triggers)" },
-  { key: "trigger.data", label: "data: received/parsed payload (event triggers)" },
-  { key: "trigger.raw", label: "raw: raw bytes payload (event triggers)" },
-  { key: "trigger.new_value", label: "new_value: the new value (state-change triggers)" },
-  { key: "trigger.old_value", label: "old_value: the previous value (state-change triggers)" },
-  { key: "trigger.key", label: "key: the state key that changed (state-change triggers)" },
-];
+/** $trigger.<field> refs a macro can read: every field the firing context's
+ *  table lists, each saying what hands it over. */
+const TRIGGER_FIELD_ROWS = triggerFieldRows();
+
+const TRIGGER_GROUP_DESC =
+  "Empty when the macro is run with Test or from a script. Type trigger.<name> for a field of the event.";
 
 interface KeyEntry {
   key: string;
@@ -333,17 +328,11 @@ export function VariableKeyPicker({
       }
     }
 
-    // Trigger context refs ($trigger.<field>) — only where a value may be run
-    // by a trigger (macro step / condition editors), gated by the prop.
+    // Trigger context refs ($trigger.<field>) — only where the runtime reads
+    // the run's firing context (macro step / condition editors), gated by the prop.
     if (showTriggerContext) {
-      for (const t of TRIGGER_CONTEXT_KEYS) {
-        entries.push({
-          key: t.key,
-          label: t.label,
-          group: "trigger",
-          groupDesc:
-            "The event or state change that fired this macro. Only resolves when the macro is run by a trigger.",
-        });
+      for (const row of TRIGGER_FIELD_ROWS) {
+        entries.push({ ...row, group: "trigger", groupDesc: TRIGGER_GROUP_DESC });
       }
     }
 
@@ -474,7 +463,13 @@ export function VariableKeyPicker({
       }
     >
       {({ search, close }) => {
-        const filteredEntries = filterEntries(allEntries, search);
+        // A field of an event's own payload is named by typing it.
+        const typedRow = showTriggerContext ? typedTriggerFieldRow(search) : null;
+        const typedEntries: KeyEntry[] =
+          typedRow && !allEntries.some((e) => e.key === typedRow.key)
+            ? [{ ...typedRow, group: "trigger", groupDesc: TRIGGER_GROUP_DESC }]
+            : [];
+        const filteredEntries = [...filterEntries(allEntries, search), ...typedEntries];
         const groups = groupEntries(filteredEntries);
         return (
           <>

@@ -51,7 +51,7 @@ labelCase("label_variables_default", "variables", undefined, "Project Variables"
 labelCase("label_device", "device:proj", "Projector", "Device: Projector");
 labelCase("label_system", "system", undefined, "System");
 labelCase("label_ui_element", "ui:btn1", "Main Page", "UI: Main Page");
-labelCase("label_trigger", "trigger", undefined, "Trigger event");
+labelCase("label_trigger", "trigger", undefined, "What ran this macro");
 
 // THE fix: plugin and orphan-ui groups get their own headers, not "Project Variables".
 labelCase("label_plugin", "plugin:myplug", "myplug", "Plugin: myplug");

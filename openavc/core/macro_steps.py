@@ -292,14 +292,14 @@ class MacroSteps:
     def _resolve_value(self, value: Any, context: dict[str, Any] | None = None) -> Any:
         """Resolve a $-reference to its current value.
 
-        ``$trigger.<field>`` reads from the firing trigger's context — the event
-        payload or state-change snapshot passed into ``execute()`` — so a
-        triggered macro can act on what arrived/changed (e.g. ``$trigger.data``
-        for an event payload field, ``$trigger.new_value`` for a state change).
-        Any other ``$<state_key>`` reads from the state store, through the
-        resolver the UI bindings use (``openavc.core.value_resolver``), so an
-        unknown state key warns the same way. When a macro runs directly (no
-        trigger context), ``$trigger.*`` resolves to None.
+        ``$trigger.<field>`` reads from the run's firing context passed into
+        ``execute()``, whose fields ``value_resolver.FIRING_CONTEXTS`` lists by
+        what ran the macro (``$trigger.new_value`` for a state change, a field
+        of the event's own payload for an event). Any other ``$<state_key>``
+        reads from the state store, through the resolver the UI bindings use
+        (``openavc.core.value_resolver``), so an unknown state key warns the
+        same way. A run with no context (the Test button, a script) resolves
+        ``$trigger.*`` to None.
         """
         return resolve_ref(value, state=self.state, trigger_ctx=context)
 
