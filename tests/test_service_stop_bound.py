@@ -9,8 +9,8 @@ server handles; one left at its own default cut the stop short (launchd's
 5 s, NSSM's 1.5 s after its Ctrl+C) or waited long past it on a process that
 could not exit (systemd's 90 s).
 
-- Linux and the Pi: the systemd unit, install.sh's copy of it and the unit
-  the deployment guide prints (an update puts the shipped one on every
+- Linux and the Pi: the systemd unit, which install.sh installs, and the
+  unit the deployment guide prints (an update puts the shipped one on every
   install at its next start: update-helper.sh).
 - Windows: NSSM's stop methods, set by install-service.bat at every install
   and update.
@@ -48,7 +48,6 @@ from tests.macos_launch_settings import MAC_WRAPPER, sandboxed_mac
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = REPO_ROOT / "installer"
 UNIT = INSTALLER / "openavc.service"
-INSTALL_SH = INSTALLER / "install.sh"
 DEPLOYMENT_GUIDE = REPO_ROOT / "docs" / "deployment.md"
 INSTALL_SERVICE_BAT = INSTALLER / "install-service.bat"
 COMPOSE_FILES = [INSTALLER / "docker-compose.yml", INSTALLER / "docker-compose.multi-room.yml"]
@@ -132,12 +131,6 @@ async def test_an_open_request_cannot_hold_the_engine_stop(monkeypatch):
 # -- Linux and the Pi ----------------------------------------------------------
 
 
-def _inline_unit() -> str:
-    body = re.search(r"<< 'UNIT'\n(.*?)\nUNIT\n", INSTALL_SH.read_text(encoding="utf-8"), re.S)
-    assert body, "install.sh no longer writes an inline unit heredoc -- this parser is stale"
-    return body.group(1)
-
-
 def _guide_unit() -> str:
     text = DEPLOYMENT_GUIDE.read_text(encoding="utf-8")
     body = re.search(r"```ini\n# /etc/systemd/system/openavc\.service\n(.*?)```", text, re.S)
@@ -147,7 +140,6 @@ def _guide_unit() -> str:
 
 _UNITS = {
     "installer/openavc.service": lambda: UNIT.read_text(encoding="utf-8"),
-    "install.sh's inline copy": _inline_unit,
     "the deployment guide's unit": _guide_unit,
 }
 

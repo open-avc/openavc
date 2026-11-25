@@ -168,7 +168,8 @@ def test_the_macos_daemon_says_it_is_one():
     assert daemon["EnvironmentVariables"]["OPENAVC_SERVICE_MANAGED"] == "1"
 
 
-@pytest.mark.parametrize("unit", ["openavc.service", "install.sh"])
-def test_the_linux_units_say_so_beside_systemds_own_signal(unit):
-    text = (INSTALLER / unit).read_text(encoding="utf-8")
+def test_the_linux_unit_says_so_beside_systemds_own_signal():
+    """install.sh installs the shipped unit and every update keeps it, so it
+    is the one copy."""
+    text = (INSTALLER / "openavc.service").read_text(encoding="utf-8")
     assert re.search(r"^Environment=OPENAVC_SERVICE_MANAGED=1$", text, re.MULTILINE)

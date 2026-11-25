@@ -83,6 +83,8 @@ curl -sSL https://get.openavc.com | sudo bash
 
 This installs OpenAVC to `/opt/openavc`, creates a systemd service, and starts the server. Data is stored in `/var/lib/openavc`. The service starts automatically on boot.
 
+Run the same command on a machine that already has OpenAVC to upgrade it to the latest release. Your data stays, and the version it replaced can be restored with **Rollback** on the Programmer's Updates page. If the release cannot be installed, the machine stays on the version it had.
+
 The installer pulls in everything OpenAVC needs from your distro's package manager: Python 3.11+, `python3-venv`, `python3-pip`, `ca-certificates`, and `tar`. On a desktop or standard server image these are usually already present. On minimal cloud or container images you may need `curl` (or `wget`) installed before you can run the command above:
 
 ```bash

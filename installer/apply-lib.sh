@@ -34,13 +34,20 @@
 # for the staging folder, the older copy or the install could not be moved)
 # is set aside.
 #
+# On Linux it also decides what a swap carries across (LINUX_KEPT_DIRS) and
+# the systemd unit written for the host (host_unit), so a re-run of install.sh
+# and an update leave the same install behind.
+#
 # Sourced by update-helper.sh (Linux, the Raspberry Pi, appliance hardware),
 # from the installer/ folder of the install it belongs to, and by the macOS
-# wrapper, openavc-macos-run.sh, from beside it in the bundle. It keeps to
-# bash 3.2 under set -u and to what the BSD and GNU tar, cp and mv share,
-# which is what macOS has. The caller sets DATA_DIR before sourcing it, and
-# UPDATE_FILE, ROLLBACK_FILE, PYTHON and LOG_TAG before calling it. Messages
-# go to stdout, prefixed with $LOG_TAG.
+# wrapper, openavc-macos-run.sh, from beside it in the bundle. install.sh,
+# which is fetched and run on its own, carries a copy of this file, generated
+# by scripts/embed_apply_lib.py and held to it byte for byte by
+# tests/test_apply_lib_delivery.py. It keeps to bash 3.2 under set -u and to
+# what the BSD and GNU tar, cp, mv and sed share, which is what macOS has. The
+# caller sets DATA_DIR before sourcing it, and UPDATE_FILE, ROLLBACK_FILE,
+# PYTHON and LOG_TAG before calling it. Messages go to stdout, prefixed with
+# $LOG_TAG.
 
 # Where an update set aside to try again is kept. Not apply-update.json: the
 # server deletes any of those that survives to its startup, so an update kept
@@ -61,6 +68,54 @@ RETRY_ATTEMPTS=0
 # not take it now, with the reason, a literal, in APPLY_FAILURE.
 APPLY_NOT_NOW=2
 APPLY_FAILURE=""
+
+# The folders inside a Linux install (/opt/openavc) that no release ships, so
+# a swap there, by the update helper or by a re-run of install.sh, copies each
+# into the new release (the callers' PRESERVE_DIRS). venv is the Python
+# environment built at install time. driver_repo and plugin_repo are where
+# installed drivers and plugins lived before they moved to the data folder;
+# they are carried so the server's first start on the new release
+# (openavc/system_config.migrate_legacy_repos) can still move what is in them.
+# scripts holds the launchers the Raspberry Pi image places (the on-screen
+# display, the first-boot and boot-info helpers), which the next start would
+# otherwise not find. A folder an install does not have is skipped.
+# shellcheck disable=SC2034  # read by the callers
+LINUX_KEPT_DIRS=(venv driver_repo plugin_repo scripts)
+
+# The comment the AmbientCapabilities line of the unit becomes on a host whose
+# capability bounding set lacks CAP_NET_RAW (host_unit says why). The update
+# helper rewrites the installed unit, and schedules a restart, whenever what it
+# builds differs from it, so these words are written by this file alone, and
+# the latest release's are the ones an install.sh run leaves for its helper
+# (tests/test_update_from_latest_release.py holds the two the same).
+CAP_NET_RAW_OFF='# AmbientCapabilities=CAP_NET_RAW  (disabled: CAP_NET_RAW unavailable here)'
+
+# Whether this host can grant CAP_NET_RAW, capability 13, the one the unit's
+# AmbientCapabilities line asks for: bit 13 of the bounding-set mask in
+# /proc/self/status (OPENAVC_PROC_STATUS, for the tests). Present when the mask
+# cannot be read: every systemd host has it, so only a container started with
+# the capability dropped reads absent.
+host_has_cap_net_raw() {
+    local capbnd
+    capbnd=$(awk '/^CapBnd:/ {print $2}' "${OPENAVC_PROC_STATUS:-/proc/self/status}" 2>/dev/null) || return 0
+    [ -n "$capbnd" ] || return 0
+    (( (0x$capbnd >> 13) & 1 ))
+}
+
+# Write the systemd unit for this host to TARGET: SOURCE, the unit the release
+# ships, as it is, or with its AmbientCapabilities line made a comment where
+# the host cannot grant CAP_NET_RAW. systemd refuses to start a unit asking for
+# a capability outside the bounding set, so the line would leave the service
+# unable to start; without it the server starts and only discovery's ping
+# sweep is limited (mDNS, SSDP and adding a device by its address still work).
+host_unit() {
+    local source="$1" target="$2"
+    if host_has_cap_net_raw; then
+        cp "$source" "$target"
+    else
+        sed "s/^AmbientCapabilities=CAP_NET_RAW.*/$CAP_NET_RAW_OFF/" "$source" > "$target"
+    fi
+}
 
 # Unpack ARTIFACT into a fresh, empty STAGING directory. Root extracting a tar
 # restores the owners recorded in it, which are accounts on the machine that

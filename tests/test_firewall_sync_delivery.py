@@ -30,7 +30,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HELPER = REPO_ROOT / "installer" / "firewall-sync.sh"
 UNIT = REPO_ROOT / "installer" / "openavc.service"
-INSTALL_SH = REPO_ROOT / "installer" / "install.sh"
 RELEASE_YML = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 # Every build path that has to carry the file. The release archives are checked
@@ -82,14 +81,6 @@ def _exec_start_pre(unit_text: str) -> list[tuple[str, str]]:
     return [(m.group("prefixes"), m.group("cmd")) for m in _EXEC_START_PRE.finditer(unit_text)]
 
 
-def _inline_fallback_unit() -> str:
-    """The unit install.sh writes when installer/openavc.service is missing."""
-    source = INSTALL_SH.read_text(encoding="utf-8")
-    body = re.search(r"<< 'UNIT'\n(.*?)\nUNIT\n", source, re.S)
-    assert body, "install.sh no longer writes an inline unit heredoc -- this parser is stale"
-    return body.group(1)
-
-
 def test_the_helper_is_where_everything_expects_it() -> None:
     assert HELPER.is_file(), f"{HELPER} is missing -- this whole module points at the wrong file"
 
@@ -130,9 +121,8 @@ def test_the_build_path_carries_the_firewall_helper(label: str) -> None:
 # --- and something has to run it ---------------------------------------------
 
 def test_the_shipped_unit_runs_the_helper_at_every_start() -> None:
-    """This is the unit that matters: install.sh installs it and
-    update-helper.sh's sync_unit enforces it on every existing install. The
-    inline fallback in install.sh is reached only when this file is absent."""
+    """The one unit: install.sh installs it and update-helper.sh's sync_unit
+    enforces it on every existing install."""
     commands = [cmd for _, cmd in _exec_start_pre(UNIT.read_text(encoding="utf-8"))]
     assert any(c.endswith("/firewall-sync.sh") for c in commands), (
         "installer/openavc.service has no ExecStartPre for firewall-sync.sh, so the helper "
@@ -141,21 +131,9 @@ def test_the_shipped_unit_runs_the_helper_at_every_start() -> None:
     )
 
 
-def test_the_inline_fallback_unit_agrees_with_the_shipped_one() -> None:
-    """Two units that disagree about what runs at start is worse than one gap:
-    which behaviour you get depends on whether a file happened to be there."""
-    shipped = {cmd for _, cmd in _exec_start_pre(UNIT.read_text(encoding="utf-8"))}
-    fallback = {cmd for _, cmd in _exec_start_pre(_inline_fallback_unit())}
-    assert shipped == fallback, (
-        f"installer/openavc.service and install.sh's inline fallback run different "
-        f"ExecStartPre steps. Only in the shipped unit: {sorted(shipped - fallback)}. "
-        f"Only in the fallback: {sorted(fallback - shipped)}."
-    )
-
-
-@pytest.mark.parametrize("unit", ["shipped", "inline fallback"])
-def test_the_helper_runs_as_root_and_cannot_wedge_the_service(unit: str) -> None:
-    text = UNIT.read_text(encoding="utf-8") if unit == "shipped" else _inline_fallback_unit()
+def test_the_helper_runs_as_root_and_cannot_wedge_the_service() -> None:
+    unit = "shipped"
+    text = UNIT.read_text(encoding="utf-8")
     prefixes = [p for p, cmd in _exec_start_pre(text) if cmd.endswith("/firewall-sync.sh")]
     assert prefixes, f"the {unit} unit does not invoke firewall-sync.sh at all"
     for prefix in prefixes:
@@ -169,13 +147,11 @@ def test_the_helper_runs_as_root_and_cannot_wedge_the_service(unit: str) -> None
         )
 
 
-@pytest.mark.parametrize("unit", ["shipped", "inline fallback"])
-def test_the_helper_runs_after_the_update_helper(unit: str) -> None:
+def test_the_helper_runs_after_the_update_helper() -> None:
     """An in-app update refreshes firewall-sync.sh from the new release inside
     update-helper.sh. Running first would sync the ports with the old copy."""
-    commands = [cmd for _, cmd in _exec_start_pre(
-        UNIT.read_text(encoding="utf-8") if unit == "shipped" else _inline_fallback_unit()
-    )]
+    unit = "shipped"
+    commands = [cmd for _, cmd in _exec_start_pre(UNIT.read_text(encoding="utf-8"))]
     update = next(i for i, c in enumerate(commands) if c.endswith("/update-helper.sh"))
     firewall = next(i for i, c in enumerate(commands) if c.endswith("/firewall-sync.sh"))
     assert update < firewall, (

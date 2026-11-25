@@ -10,8 +10,8 @@ itself, leaving the devices where they were.
 
 Every copy of the unit that reaches a box says so: the shipped file (install.sh
 installs it, the Pi image is built with it, and update-helper.sh puts it on
-every existing install at its next start), install.sh's inline copy, and the
-unit the deployment guide prints for a hand install.
+every existing install at its next start) and the unit the deployment guide
+prints for a hand install.
 """
 
 from __future__ import annotations
@@ -23,15 +23,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UNIT = REPO_ROOT / "installer" / "openavc.service"
-INSTALL_SH = REPO_ROOT / "installer" / "install.sh"
 DEPLOYMENT_GUIDE = REPO_ROOT / "docs" / "deployment.md"
-
-
-def _inline_unit() -> str:
-    """The unit install.sh writes when installer/openavc.service is missing."""
-    body = re.search(r"<< 'UNIT'\n(.*?)\nUNIT\n", INSTALL_SH.read_text(encoding="utf-8"), re.S)
-    assert body, "install.sh no longer writes an inline unit heredoc -- this parser is stale"
-    return body.group(1)
 
 
 def _guide_unit() -> str:
@@ -44,7 +36,6 @@ def _guide_unit() -> str:
 
 _UNITS = {
     "installer/openavc.service": lambda: UNIT.read_text(encoding="utf-8"),
-    "install.sh's inline copy": _inline_unit,
     "the deployment guide's unit": _guide_unit,
 }
 

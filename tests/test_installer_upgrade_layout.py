@@ -2,9 +2,11 @@
 
 Up to 0.24.1 an install unpacked `server/`, `simulator/`, `web/` and `themes/`
 at the top of the install directory. 0.25.0 puts all four inside `openavc/`.
-Nothing about that is automatic: `install.sh` untars over whatever is already
-there, and the Windows and macOS installers merge rather than replace. Left
-alone, the pre-0.25.0 directories survive the upgrade beside the new package.
+The Windows and macOS installers merge rather than replace, so left alone the
+pre-0.25.0 directories survive the upgrade beside the new package. `install.sh`
+installs the release as a fresh tree and keeps the old install whole beside it
+(`test_install_sh_reinstall.py`), so on Linux they go with it, as long as the
+old layout still counts as an install.
 
 That is not clutter. The Linux service runs with `WorkingDirectory=/opt/openavc`
 and the frozen builds carry `_internal` on `sys.path`, so a driver in
@@ -54,13 +56,16 @@ def _make_pre_rename_install(install_dir: Path) -> None:
 
 
 def _make_release_tarball(path: Path) -> None:
-    """A 0.25.0 archive: one top-level `openavc`, plus the loose files."""
+    """A 0.25.0 archive: one top-level `openavc`, plus the loose files and the
+    service unit every release ships."""
     staging = path.parent / "staging"
     pkg = staging / "openavc"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("")
     (pkg / "main.py").write_text("# 0.25.0 entry point\n")
     (staging / "pyproject.toml").write_text('version = "0.25.0"\n')
+    (staging / "installer").mkdir()
+    shutil.copy2(REPO_ROOT / "installer" / "openavc.service", staging / "installer" / "openavc.service")
     with tarfile.open(path, "w:gz") as tar:
         for item in sorted(staging.iterdir()):
             tar.add(item, arcname=item.name)

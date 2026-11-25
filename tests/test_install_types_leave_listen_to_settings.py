@@ -7,7 +7,7 @@ variable now only appears where someone set it on purpose:
 
 - Windows: install-service.bat and the update's merge
   (test_installer_keeps_admin_settings.py).
-- Linux and the Pi: the systemd unit and install.sh's copy of it; an update
+- Linux and the Pi: the systemd unit, which install.sh installs; an update
   replaces the installed unit at the next start (update-helper.sh sync_unit),
   and an override an administrator wrote stays. The Pi's seeded system.json
   no longer carries a bind address either.
@@ -39,7 +39,6 @@ from tests.macos_launch_settings import INSTALLED, bash_path, sandboxed_mac
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = REPO_ROOT / "installer"
 UNIT = INSTALLER / "openavc.service"
-INSTALL_SH = INSTALLER / "install.sh"
 PI_SYSTEM_JSON = (
     INSTALLER / "pi-image" / "stage-openavc" / "01-install-openavc" / "files"
     / "default-system.json"
@@ -53,14 +52,6 @@ def _environment(unit_text: str) -> list[str]:
     return re.findall(r"^Environment=(\S+)$", unit_text, re.M)
 
 
-def _inline_fallback_unit() -> str:
-    """The unit install.sh writes when installer/openavc.service is missing."""
-    source = INSTALL_SH.read_text(encoding="utf-8")
-    body = re.search(r"<< 'UNIT'\n(.*?)\nUNIT\n", source, re.S)
-    assert body, "install.sh no longer writes an inline unit heredoc -- this parser is stale"
-    return body.group(1)
-
-
 # -- Linux and the Pi ---------------------------------------------------------
 
 
@@ -68,12 +59,6 @@ def test_the_systemd_unit_leaves_who_can_connect_to_settings():
     names = [entry.split("=", 1)[0] for entry in _environment(UNIT.read_text(encoding="utf-8"))]
     assert "OPENAVC_DATA_DIR" in names, "the parser no longer finds the unit's variables"
     assert "OPENAVC_BIND" not in names
-
-
-def test_install_sh_writes_the_same_variables_as_the_shipped_unit():
-    """The copy is used only when the shipped unit is missing, which is when
-    nobody would notice it drifting."""
-    assert _environment(_inline_fallback_unit()) == _environment(UNIT.read_text(encoding="utf-8"))
 
 
 def test_the_pi_image_seeds_no_bind_address():

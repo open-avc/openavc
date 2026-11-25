@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import plistlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -509,6 +510,81 @@ def test_the_helper_this_tree_installs_applies_the_next_update(
     assert again.returncode == 0, output
     assert f"update to v{this_tree.version} applied" in again.stdout, output
     assert _files(app.with_name("openavc.previous")) == first | {"installer/trusted-keys/test-signing.pem"}, output
+
+
+# --- install.sh, the other way round ----------------------------------------
+#
+# get.openavc.com serves install.sh from this tree, and it installs the latest
+# published release: here the script is this tree's and the archive is the
+# release's.
+
+
+def _install_sh_functions(where: Path) -> Path:
+    """This tree's install.sh minus its closing ``main "$@"``, so sourcing it
+    only defines things."""
+    body = (REPO_ROOT / "installer" / "install.sh").read_text(encoding="utf-8").rstrip("\n")
+    head, last = body.rsplit("\n", 1)
+    assert last == 'main "$@"', "install.sh no longer ends by calling main -- this harness is stale"
+    path = where / "install-functions.sh"
+    path.write_text(head + "\n", encoding="utf-8")
+    return path
+
+
+def test_this_tree_installs_the_latest_release_over_an_install_of_it(tmp_path, released, key, stubs):
+    """A re-run of install.sh on a system already on the latest release: the
+    release's archive swapped in by this tree's library, what an install keeps
+    carried across, the install it replaced whole beside it, and the unit the
+    release ships installed."""
+    app = tmp_path / "opt" / "openavc"
+    _install_linux(released, app, key[1], tmp_path / "pip.log")
+    installed = _files(app)
+    download = tmp_path / "download.tar.gz"  # install_files removes what it downloaded
+    shutil.copy2(released.linux_archive, download)
+    unit = tmp_path / "openavc.service"
+    script = f"""
+        set -euo pipefail
+        source "{_install_sh_functions(tmp_path)}"
+        INSTALL_DIR="{app}"
+        SERVICE_FILE="{unit}"
+        ARCHIVE_PATH="{download}"
+        install_files
+        install_service
+    """
+    proc = subprocess.run(
+        [BASH, "-c", script], capture_output=True, text=True, timeout=SCRIPT_TIMEOUT,
+        env=_script_env(stubs), check=False,
+    )
+    output = f"{proc.stdout}\n{proc.stderr}"
+    assert proc.returncode == 0, output
+
+    kept = {f for f in _files(app) if f.split("/", 1)[0] in LINUX_KEPT_DIRS or f in LINUX_TOP_LEVEL_COPIES}
+    assert _files(app) - kept == _archive_files(released.linux_archive), output
+    assert kept == {f for f in installed if f.split("/", 1)[0] in LINUX_KEPT_DIRS or f in LINUX_TOP_LEVEL_COPIES}
+    assert _files(app.with_name("openavc.previous")) == installed, output
+    assert unit.read_bytes() == released.file("installer/openavc.service")
+
+
+# The line a unit's AmbientCapabilities line becomes on a host without
+# CAP_NET_RAW, as any release words it.
+_CAP_NET_RAW_OFF = re.compile(r"# AmbientCapabilities=CAP_NET_RAW {2}\(disabled[^)]*\)")
+
+
+def test_this_tree_words_the_unit_as_the_latest_release_keeps_it(released):
+    """After a run of install.sh the helper that runs at each start is the
+    release's, which rewrites the unit and schedules a restart whenever its own
+    build of the unit differs from the installed one. On a host without
+    CAP_NET_RAW the two builds differ only in this line's words."""
+    ours = set(_CAP_NET_RAW_OFF.findall((REPO_ROOT / "installer" / "apply-lib.sh").read_text(encoding="utf-8")))
+    assert len(ours) == 1, f"the apply library words the disabled-capability line {len(ours)} ways"
+    theirs: set[str] = set()
+    for path in ("installer/update-helper.sh", "installer/apply-lib.sh"):
+        if (released.tree / path).is_file():
+            theirs |= set(_CAP_NET_RAW_OFF.findall(released.file(path).decode("utf-8")))
+    assert theirs, f"{released.tag} words no disabled-capability line -- this parser is stale"
+    assert theirs == ours, (
+        f"install.sh writes {ours} and {released.tag}'s helper builds {theirs}, so on a host "
+        f"without CAP_NET_RAW every install.sh run is followed by a unit rewrite and a restart"
+    )
 
 
 def _launchd_program(plist: bytes) -> str:

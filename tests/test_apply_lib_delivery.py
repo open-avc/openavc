@@ -14,16 +14,24 @@ An archive without it ships a helper that refuses every update, which reads in
 the field as an update that did not apply and nothing more. Read the pack
 lists rather than run them, and not gated on bash: a delivery guard that skips
 is the same green as one that passes.
+
+A re-run of `install.sh` over an install replaces it by the same library, and
+`install.sh` is fetched and run on its own, with no release beside it (the
+release it installs may be older than the library), so it carries the
+library's text, written by `scripts/embed_apply_lib.py`.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIBRARY = "installer/apply-lib.sh"
+
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 # Each file whose `tar czf` packs an install tree, and how many such archives
 # it builds.
@@ -100,3 +108,27 @@ def test_the_helper_reads_the_library_from_its_own_install() -> None:
         "update-helper.sh no longer reads installer/apply-lib.sh beside itself; "
         "the archives above pack it there, so find where it reads it now"
     )
+
+
+def test_install_sh_carries_the_library_as_it_is() -> None:
+    import embed_apply_lib
+
+    install = (REPO_ROOT / "installer" / "install.sh").read_text(encoding="utf-8")
+    library = (REPO_ROOT / LIBRARY).read_text(encoding="utf-8")
+    assert embed_apply_lib.is_current(install, library), (
+        f"installer/install.sh carries a copy of {LIBRARY} that differs from it, so a "
+        f"re-run of install.sh replaces an install by another rule than an update does. "
+        f"Run: python scripts/embed_apply_lib.py"
+    )
+
+
+def test_the_copy_is_written_from_the_library() -> None:
+    """What the fix the test above names does, on a stale copy."""
+    import embed_apply_lib
+
+    install = (REPO_ROOT / "installer" / "install.sh").read_text(encoding="utf-8")
+    library = (REPO_ROOT / LIBRARY).read_text(encoding="utf-8")
+    stale = install.replace(library, "apply_release() { :; }\n")
+    assert stale != install, "the copy in install.sh is not the library's text -- this test is stale"
+    assert not embed_apply_lib.is_current(stale, library)
+    assert embed_apply_lib.render(stale, library) == install

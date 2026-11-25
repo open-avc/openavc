@@ -48,20 +48,11 @@ for candidate in "$HELPER_DIR/installer/apply-lib.sh" "$HELPER_DIR/apply-lib.sh"
     fi
 done
 
-# Directories inside $APP_DIR that hold content the release tarball never ships
-# and that must survive every swap (the apply library copies each one into the
-# new release). venv is a Python virtual environment built
-# at install time. driver_repo and plugin_repo are legacy locations from before
-# user-installed content moved to $DATA_DIR — we still preserve them across the
-# swap so the runtime migration in openavc/system_config.migrate_legacy_repos can
-# drain them into $DATA_DIR on the first start of the new release. scripts holds
-# launchers placed by the appliance image build (the kiosk/setup display, the
-# first-boot and boot-info helpers); they live here but aren't in the tarball, so
-# without preserving them an in-app update would wipe the on-screen display until
-# the next re-flash. The `[ -e ]` guard below makes any of these absent (a clean
-# generic install that never had them) a no-op.
+# The folders inside $APP_DIR that no release ships and every swap carries into
+# the new release: the apply library's list for a Linux install, the same one a
+# re-run of install.sh carries (LINUX_KEPT_DIRS says what each is for).
 # shellcheck disable=SC2034  # read by the apply library
-PRESERVE_DIRS=(venv driver_repo plugin_repo scripts)
+PRESERVE_DIRS=(${LINUX_KEPT_DIRS[@]+"${LINUX_KEPT_DIRS[@]}"})
 
 # The subset of PRESERVE_DIRS that systemd may bind-mount via ReadWritePaths
 # under ProtectSystem=strict (the legacy pre-data_dir repo locations). A bind
@@ -406,17 +397,6 @@ handle_rollback() {
     echo "$LOG_TAG: rollback complete"
 }
 
-# Mirror of install.sh install_service: CAP_NET_RAW is capability bit 13; test
-# it in the bounding set from /proc/self/status. Returns success (cap present)
-# if it can't read the mask — every normal systemd host has CAP_NET_RAW; this
-# only reports absence on a genuinely capability-stripped container.
-host_has_cap_net_raw() {
-    local capbnd
-    capbnd=$(awk '/^CapBnd:/ {print $2}' /proc/self/status 2>/dev/null) || return 0
-    [ -n "$capbnd" ] || return 0
-    (( (0x$capbnd >> 13) & 1 ))
-}
-
 # Keep the active systemd unit in sync with the one shipped in the release.
 # The in-app update swaps $APP_DIR but never rewrites
 # /etc/systemd/system/openavc.service, so unit changes (hardening, env vars, the
@@ -437,21 +417,17 @@ sync_unit() {
     local src="$APP_DIR/installer/openavc.service"
     local dst="/etc/systemd/system/openavc.service"
     [ -f "$src" ] || return 0
+    [ -n "$APPLY_LIB" ] || return 0
     command -v systemctl >/dev/null 2>&1 || return 0
 
-    # Build the effective desired unit: the shipped file, with the cap line
-    # neutralized on hosts whose bounding set lacks CAP_NET_RAW. This mirrors
-    # install.sh exactly so the comparison below stays stable on such hosts
-    # (otherwise the active neutralized unit would forever differ from the
-    # shipped one and restart every boot).
+    # The unit this host should run: the shipped one, made for the host by the
+    # apply library, as install.sh writes it, so the comparison below finds
+    # nothing to change after a reinstall on a host without CAP_NET_RAW.
     local desired
     desired=$(mktemp 2>/dev/null) || return 0
-    if ! cp "$src" "$desired" 2>/dev/null; then
+    if ! host_unit "$src" "$desired" 2>/dev/null; then
         rm -f "$desired"
         return 0
-    fi
-    if ! host_has_cap_net_raw; then
-        sed -i 's/^AmbientCapabilities=CAP_NET_RAW.*/# AmbientCapabilities=CAP_NET_RAW  (disabled: CAP_NET_RAW unavailable here)/' "$desired"
     fi
 
     if [ -f "$dst" ] && cmp -s "$desired" "$dst"; then
