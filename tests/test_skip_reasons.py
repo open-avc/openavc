@@ -292,8 +292,8 @@ async def test_a_macro_already_running_under_skip_says_so(macro_engine, core) ->
         "m", "M", "macro_overlap",
         "The macro was already running, and the macro's Overlap is set to Skip.",
     ))]
-    running.cancel()
-    await running
+    assert await macro_engine.cancel("m") is True
+    assert await running == "cancelled"
 
 
 async def test_a_queued_macro_start_that_waited_too_long_says_so(

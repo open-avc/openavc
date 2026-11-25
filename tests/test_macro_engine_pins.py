@@ -175,7 +175,7 @@ async def test_a_start_with_no_task_is_skipped_behind_a_running_skip_macro(
          "code": "macro_overlap", "message": SKIP_REASONS["macro_overlap"]},
     )]
     monkeypatch.undo()
-    running.cancel()
+    assert await engine.cancel("solo") is True
     assert await running == "cancelled"
 
 
