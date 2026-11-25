@@ -86,7 +86,8 @@ reader of it relies on are the report contract's (``support/report_contract.py``
     (``listening``, ``not_connected``, ``done``, ``failed``, ``stopped``),
     ``active``, ``error``, the times (``started_at``, ``first_tx_at``,
     ``first_rx_at``, ``connected_at``, ``ends_at``, ``max_ends_at`` (how far
-    "Keep listening" can take it), ``finished_at``), ``poll_interval``,
+    "Keep listening" can take it), ``finished_at``), ``poll_interval`` (the
+    interval the driver's poll loop ran at, 0 when it never polled),
     ``liveness_every`` (the driver's liveness probe interval, 0 for none),
     ``silence_polls`` (polls in a row with no reply that take it offline,
     0 when the silence check does not watch it), ``reconnects`` and ``drops``

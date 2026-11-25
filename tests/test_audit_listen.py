@@ -10,6 +10,7 @@ front-panel check, and teardown.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -21,6 +22,7 @@ from openavc.api.models import (
     AuditStartRequest,
 )
 from openavc.api.routes import audit as routes
+from openavc.audit.commands import commands_for
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import (
     DONE,
@@ -30,9 +32,11 @@ from openavc.audit.listen import (
     next_step,
     start_listen,
 )
+from openavc.audit.observe import REPLY_WINDOW_SECONDS
 from openavc.audit.passes import DriverRun
 from openavc.audit.session import AuditError, AuditOptions, AuditSession, AuditTarget
 from openavc.core.device_traffic import get_traffic_recorder
+from openavc.drivers.base import BaseDriver
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.registry import _DRIVER_REGISTRY
 from openavc.utils.log_redaction import get_secret_registry
@@ -504,13 +508,16 @@ async def test_events_the_device_has_not_sent_are_said_on_the_listen_step(driver
         server.close()
 
 
-async def test_a_listen_that_raises_after_the_driver_started_fails_with_it(driver):
-    """Something the listen step cannot read once the driver is up (here a
-    driver default poll interval that is not a number) fails the step with
-    a sentence the wizard shows, rather than leaving it on connecting."""
-    _DRIVER_REGISTRY["acme_listen"] = create_configurable_driver_class(
-        {**DRIVER, "default_config": {"port": 1, "poll_interval": "abc"}},
-    )
+async def test_a_listen_that_raises_after_the_driver_started_fails_with_it(driver, monkeypatch):
+    """Something the listen step cannot read once the driver is up (here its
+    response rules, made to raise) fails the step with a sentence the wizard
+    shows, rather than leaving it on connecting."""
+    from openavc.audit import listen as listen_module
+
+    def unreadable(_driver):
+        raise ValueError("could not read rule abc")
+
+    monkeypatch.setattr(listen_module, "response_sources", unreadable)
     server, port = await _fake_device()
     session, run, heard = _session_and_run(port)
     try:
@@ -578,3 +585,81 @@ async def test_a_handler_that_raises_fails_the_listen_instead_of_hanging_it(driv
     finally:
         await run.stop()
         server.close()
+
+
+async def test_the_silence_check_figure_is_the_running_drivers_limit(driver):
+    """A declared max_missed_polls of 0 takes the device offline after one
+    silent poll, and the listen step says one, not the three a reading of its
+    own gave it."""
+    _DRIVER_REGISTRY["acme_listen"] = create_configurable_driver_class({
+        **DRIVER, "default_config": {**DRIVER["default_config"], "max_missed_polls": 0},
+    })
+    server, port = await _fake_device()
+    session, run, _heard = _session_and_run(port)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == DONE)
+        assert listen.silence_polls == 1
+        assert listen.to_dict()["silence_polls"] == 1
+        assert listen.sandbox.driver.max_missed_polls() == 1
+        assert listen.poll_interval == 0.1
+    finally:
+        await run.stop()
+        server.close()
+
+
+class _AcmeOwnPace(BaseDriver):
+    """A Python driver that polls at an interval of its own, with none in its
+    config."""
+
+    DRIVER_INFO = {
+        "id": "acme_pace", "name": "Acme Pace", "manufacturer": "Acme", "transport": "tcp",
+        "default_config": {"port": 1},
+        "state_variables": {"power": {"type": "boolean", "label": "Power"}},
+        "commands": {"power_on": {"label": "Power On", "sets": {"power": True}}},
+    }
+    EVERY = 0.4
+
+    async def connect(self) -> None:
+        await super().connect()
+        await self.start_polling(self.EVERY)
+
+    async def poll(self) -> None:
+        await self.transport.send(b"PWR?\r")
+
+    async def on_data_received(self, data: bytes) -> None:
+        if b"PWR=on" in data:
+            self.set_state("power", True)
+
+    async def send_command(self, command, params=None):
+        return None
+
+
+async def test_a_python_driver_that_polls_at_its_own_interval_is_asked_for_it():
+    """The interval is the one the driver's poll loop runs at, not its
+    config's (none here): the window holds its polls, and a command that
+    declares a value waits for the next poll to read it back."""
+    _DRIVER_REGISTRY["acme_pace"] = _AcmeOwnPace
+    server, port = await _fake_device()
+    session = AuditSession("lst9", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    run = DriverRun(index=0, choice=DriverChoice(driver_id="acme_pace"))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == DONE)
+        assert listen.poll_interval == _AcmeOwnPace.EVERY
+        assert listen.to_dict()["poll_interval"] == _AcmeOwnPace.EVERY
+        # Three of its polls, longer than the 0.6 s floor.
+        assert listen.ends_at - listen.connected_at == pytest.approx(3 * _AcmeOwnPace.EVERY)
+        commands = commands_for(session, run)
+        trial = SimpleNamespace(declared={"sets": {"power": True}}, connect_attempt=0)
+        assert commands._readback_span(trial) == pytest.approx(
+            min(_AcmeOwnPace.EVERY + REPLY_WINDOW_SECONDS, commands.max_window_seconds)
+        )
+    finally:
+        await run.stop()
+        server.close()
+        _DRIVER_REGISTRY.pop("acme_pace", None)
+        get_traffic_recorder().clear()
+        get_secret_registry().clear()

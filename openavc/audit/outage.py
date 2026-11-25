@@ -233,7 +233,7 @@ class OutageTest:
             not probe and poll > 0 and driver is not None
             and getattr(driver, "_watches_for_silence", lambda: False)()
         )
-        polls = max(int((driver.config or {}).get("max_missed_polls", 3) or 3), 1) if silence else 0
+        polls = driver.max_missed_polls() if silence else 0
         if probe:
             # The longest the probe takes to give up on a device that went:
             # each missed probe's interval and its reply deadline.

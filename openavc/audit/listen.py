@@ -232,11 +232,12 @@ class ListenPass:
         self.first_rx_seq: int | None = None
         self.ends_at: float | None = None
         self.finished_at: float | None = None
+        # How often the driver polls, and, when the poll loop's silence check
+        # watches it, how many polls in a row with no reply take the device
+        # offline: both asked of the running driver once its poll loop runs
+        # (_ask_poll_loop), and kept.
         self.poll_interval = 0.0
         self.liveness_every = 0.0
-        # The poll loop's silence check, when it watches this driver: how many
-        # polls in a row with no reply take the device offline. Known once the
-        # connection is up (it asks the live transport).
         self.silence_polls = 0
         # Drops and reconnects while listening, and after the window closed
         # (in a command's window or a power test, which each say their own).
@@ -278,7 +279,6 @@ class ListenPass:
         await sb.start()
         self._redactor = sb.observer.redactor()
         self.sources = response_sources(sb.driver)
-        self.poll_interval = float(sb.resolved.get("config", {}).get("poll_interval", 0) or 0)
         # The driver's liveness check, if it has one: how often it asks the
         # device whether it is still there, apart from the polls.
         health = getattr(sb.driver, "_health_enabled", None)
@@ -309,6 +309,7 @@ class ListenPass:
         watch = asyncio.create_task(self._watch())
         try:
             await sb.connect()
+            self._ask_poll_loop()
             if self.connected_at is None:
                 self.status = NOT_CONNECTED
                 self.ends_at = self.started_at + self.min_seconds
@@ -325,6 +326,7 @@ class ListenPass:
         """Hold the listening window, then keep the wizard's view current
         while the driver stays connected (the next step uses it)."""
         while self.sandbox.started:
+            self._ask_poll_loop()
             now = time.time()
             if self.status in (LISTENING, NOT_CONNECTED) and self.ends_at and now >= self.ends_at:
                 self._end_window()
@@ -366,6 +368,32 @@ class ListenPass:
         base = self.connected_at or self.started_at
         span = max(self.min_seconds, self.min_cycles * self.poll_interval)
         return min(base + span, self.started_at + self.max_seconds)
+
+    def _ask_poll_loop(self) -> None:
+        """Ask the running driver how often it polls and how many polls in a
+        row with no reply take the device offline (PollLoop's
+        running_poll_interval and max_missed_polls), once its poll loop runs.
+
+        The loop starts after the device is reported connected, and a driver
+        that fails its first connect starts it on a reconnect, so this is
+        asked on every tick until it answers. A figure once heard is kept:
+        a drop stops the loop, and the report and the later steps still say
+        how the driver polled. The listening window grows to hold
+        ``min_cycles`` of its polls, and never shrinks ("Keep listening"
+        stays)."""
+        driver = self.sandbox.driver
+        if driver is None:
+            return
+        every = driver.running_poll_interval()
+        if every <= 0 or every == self.poll_interval:
+            return
+        self.poll_interval = every
+        self.silence_polls = (
+            driver.max_missed_polls() if driver._watches_for_silence() is True else 0
+        )
+        if self.status == LISTENING and self.ends_at is not None:
+            self.ends_at = max(self.ends_at, self._window_end())
+        self._dirty = True
 
     def extend(self, seconds: float = EXTEND_SECONDS) -> None:
         """Keep listening longer, never past ``max_seconds`` from the start."""
@@ -501,12 +529,8 @@ class ListenPass:
             self.connected_at = now
             self.status = LISTENING
             self.offline = None
-            driver = self.sandbox.driver
-            watches = getattr(driver, "_watches_for_silence", None)
-            if self.poll_interval > 0 and callable(watches) and watches() is True:
-                self.silence_polls = max(
-                    int((driver.config or {}).get("max_missed_polls", 3) or 3), 1
-                )
+            # A held reconnect is announced once its poll loop runs.
+            self._ask_poll_loop()
             self.ends_at = self._window_end()
             self._timeline("listen.connected", f"Connected, {self._since(now)} after starting.")
         else:

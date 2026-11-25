@@ -522,6 +522,34 @@ async def test_a_polled_driver_notices_a_pulled_cable_by_its_silence(driver):
         await unit.close()
 
 
+async def test_the_silence_figures_are_the_running_drivers(driver):
+    """A declared max_missed_polls of 0 drops the device after one silent
+    poll: the outage test waits one poll and one interval for it, not the
+    three a reading of its own gave it."""
+    strict = dict(DRIVER, id="acme_strict", default_config={
+        **DRIVER["default_config"], "max_missed_polls": 0,
+    })
+    _DRIVER_REGISTRY["acme_strict"] = create_configurable_driver_class(strict)
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit, driver_id="acme_strict")
+    try:
+        test = start_outage(session, run, CABLE_PULL, pinger=_answers, **QUICK)
+        assert test.watch["silence_check"] and test.watch["silence_polls"] == 1
+        assert test.watch["poll_interval"] == 0.2
+        # The poll answered just before the cable went, then one silent one.
+        assert test.watch["notice_within"] == 0.4
+        await test.stop()
+    finally:
+        await run.stop()
+        await unit.close()
+        _DRIVER_REGISTRY.pop("acme_strict", None)
+
+
+async def _answers() -> bool:
+    return True
+
+
 async def test_a_driver_with_a_liveness_probe_notices_a_pulled_cable(driver):
     watched = dict(DRIVER, id="acme_watched", liveness={
         "send": "PWR?\\r", "interval": 1, "timeout": 0.3, "max_failures": 1,
