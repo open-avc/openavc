@@ -49,15 +49,15 @@ def command_catalog(driver: AuditedDriver) -> list[dict[str, Any]]:
     polled = driver.polled_commands()
     actions = _page_actions(driver)
     return [
-        _entry(name, cdef, command, polled, actions)
-        for name, cdef, command in driver.commands()
+        _entry(cdef, command, polled, actions)
+        for _name, cdef, command in driver.commands()
     ]
 
 
 def _entry(
-    name: str, cdef: dict[str, Any], command: CommandModel, polled: set[str],
-    actions: _PageActions,
+    cdef: dict[str, Any], command: CommandModel, polled: set[str], actions: _PageActions,
 ) -> dict[str, Any]:
+    name = command.name
     params = _typed(cdef, "params", dict, {})
     query_for = _typed(cdef, "query_for", str, "")
     return {

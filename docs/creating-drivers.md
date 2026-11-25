@@ -1347,7 +1347,7 @@ get_status:
 - `sets`: a map of state variable → value applied when the command runs in simulation. A value written as `"{param}"` takes that parameter's value (format specs in the send template are honored, so a hex-formatted `{level:02X}` decodes back to the number); anything else is a literal. Keys must name declared state variables.
 - `query_for`: names the state variable the device reports in answer to this command, so the simulator replies with its current value.
 
-On a command with exactly one `child_id` parameter, `sets` keys and `query_for` may instead name state variables **of that parameter's child type** — the simulator then applies the effect to the addressed child's own state and answers from it, so a `set_zone_level` command moves only the zone it names. Names the child type doesn't declare still resolve against the device-level variables.
+On a command with exactly one `child_id` parameter, `sets` keys and `query_for` may instead name state variables **of that parameter's child type**, or a property every child has (`online`, `label`, `offline_reason`, `offline_detail`) — the simulator then applies the effect to the addressed child's own state and answers from it, and the Device Audit checks it there, so a `set_zone_level` command moves only the zone it names. Any other name still resolves against the device-level variables.
 
 Declared semantics always beat name inference. Commands whose names already follow the conventions need nothing.
 
