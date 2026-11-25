@@ -360,8 +360,9 @@ class _HTTPWire:
         self._log = log
         self.failing = set(failing or ())
 
-    async def get(self, path: str) -> HTTPResponse:
-        self._log.append(("get", path))
+    async def send_request(self, line: Any) -> HTTPResponse:
+        path = line.path
+        self._log.append((line.method.lower(), path))
         if path in self.failing:
             raise ConnectionError(f"{path} did not reach the device")
         return HTTPResponse(status_code=200, headers={}, text="", ok=True)

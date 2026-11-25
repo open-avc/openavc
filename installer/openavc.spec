@@ -132,6 +132,7 @@ hiddenimports = [
     'openavc.transport.udp_listener',
     'openavc.transport.http_listener',
     'openavc.transport.http_client',
+    'openavc.transport.http_line',
     'openavc.transport.osc',
     'openavc.transport.osc_codec',
     'openavc.transport.ssh',

@@ -591,8 +591,8 @@ async def test_a_quiet_judge_leaves_the_polls_paused_bookkeeping_alone(caplog) -
 
 
 class HttpAnswers:
-    """An HTTP transport stand-in: ``get`` answers each path with a status,
-    or raises."""
+    """An HTTP transport stand-in: ``send_request`` answers each path with a
+    status, or raises."""
 
     connected = True
 
@@ -600,7 +600,8 @@ class HttpAnswers:
         self.answers = answers
         self.asked: list[str] = []
 
-    async def get(self, path: str) -> Any:
+    async def send_request(self, line: Any) -> Any:
+        path = line.path
         self.asked.append(path)
         answer = self.answers[path]
         if isinstance(answer, BaseException):

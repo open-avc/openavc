@@ -12,7 +12,8 @@ The rules worth knowing before changing anything here:
   fills (``_substitute_for_wire``); a query value or a header does not. A
   query value that is not text goes as it is, a header as its text.
 * **A body that parses as JSON goes as JSON; anything else** (XML, form text,
-  a bare token) goes as raw content (``body_parts``). Use a ``Content-Type``
+  a bare token) goes as raw content (``transport/http_line.body_parts``, the
+  rule an HTTP text line's body follows too). Use a ``Content-Type``
   header for a body that is not JSON.
 * **A device setting's HTTP write** is built by the same request builder
   (``_http_request``), so it fills and warns as a command does; only its
@@ -28,16 +29,17 @@ The rules worth knowing before changing anything here:
   sends nothing and is refused as not sent.
 
 ``HttpCommands`` is a mixin ``ConfigurableDriver`` inherits, so every name
-stays on the driver object. A poll or start-up line that is a raw path reads
-its answer through ``_process_http_response`` too (``start_up_and_poll``).
+stays on the driver object. A poll, start-up or follow-up line that names no
+command is an HTTP text line (``transport/http_line``) and reads its answer
+through ``_process_http_response`` too (``start_up_and_poll``).
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
 from openavc.drivers.command_outcome import CommandOutcomeError, answered_outcome, not_sent
+from openavc.transport.http_line import body_parts
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -50,15 +52,6 @@ def request_target(req_def: dict[str, Any], method: str = "GET") -> tuple[str, s
     and the root when it names none (a null or empty field names none, as
     ``command_form`` reads it)."""
     return str(req_def.get("method") or method).upper(), str(req_def.get("path") or "/")
-
-
-def body_parts(text: str) -> tuple[Any, bytes | None]:
-    """A filled-in body as (JSON, raw content): the JSON when it parses, else
-    the text as raw content."""
-    try:
-        return json.loads(text), None
-    except (json.JSONDecodeError, ValueError):
-        return None, text.encode("utf-8")
 
 
 def answered_note(error: BaseException) -> str:

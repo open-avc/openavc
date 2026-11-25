@@ -41,7 +41,10 @@ The rules worth knowing before changing anything here:
 ``Rereads`` is a mixin ``ConfigurableDriver`` inherits, so every name stays on
 the driver object. A follow-up line goes out as a poll line does
 (``_dispatch_query``); a read-back's raw query is the poll's raw form
-(``_raw_bytes`` in ``send_framing``, ``_read_path`` in ``start_up_and_poll``).
+(``_raw_bytes`` in ``send_framing``; on HTTP a text line read as a request,
+``transport/http_line``, sent by ``_ask_http`` in ``start_up_and_poll``). A
+command's own ``read_back: true`` on HTTP is a GET of its path as filled, never
+read as a line.
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ from openavc.drivers.child_registration import ChildRegistrations, registered_si
 from openavc.drivers.command_form import command_form
 from openavc.drivers.query_entry import EACH_CHILD, fill_child_line, read_query_entry
 from openavc.drivers.spec import FOLLOW_UP_SETTLE_S, placeholder_names, transport_traits
+from openavc.transport.http_line import HttpLine, read_http_line
 from openavc.transport.pacing import sleep_at_least
 from openavc.utils.logger import get_logger
 
@@ -120,7 +124,7 @@ class Rereads:
     _line_verdict: Callable[..., Any]
     _dispatch_query: Callable[[str], Any]
     _raw_bytes: Callable[[Any, str], bytes]
-    _read_path: Callable[[str], Any]
+    _ask_http: Callable[[HttpLine], Any]
     _send_command: Callable[..., Any]
     _push_params: Callable[[], dict[str, Any]]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
@@ -373,9 +377,10 @@ class Rereads:
 
         ``kind`` is ``"command"`` (``what`` is the command's name and the
         parameters it shares with this one, as the caller gave them),
-        ``"osc"`` (an address, sent with no arguments), ``"http"`` (a path,
-        read with GET) or ``"raw"`` (the bytes, built as a poll query's
-        are). ``key`` is what says two queries are the same one.
+        ``"osc"`` (an address, sent with no arguments), ``"http"`` (the
+        request, ``HttpLine``: a query read as an HTTP text line, or the
+        command's own path read with GET) or ``"raw"`` (the bytes, built as a
+        poll query's are). ``key`` is what says two queries are the same one.
         """
         raw = cmd_def.get("read_back")
         all_params = {**self.config, **self._push_params(), **wire}
@@ -401,7 +406,7 @@ class Rereads:
             path = self._substitute_for_wire(
                 f"commands.{command}.path", cmd_def.get("path") or "/", all_params,
             )
-            return [(f"http {path}", ("http", path))]
+            return [(f"http {path}", ("http", HttpLine("GET", path, "")))]
         log.debug(
             f"[{self.device_id}] read_back: true on '{command}' names "
             f"no query: only an OSC or HTTP command reads itself back"
@@ -421,9 +426,17 @@ class Rereads:
             key = f"command {entry} {sorted(shared.items(), key=lambda kv: kv[0])!r}"
             return key, ("command", (entry, shared))
         text = self._substitute_for_wire(f"commands.{command}.read_back", entry, all_params)
+        return self._read_back_query(text)
+
+    def _read_back_query(self, text: str) -> ReadBack:
+        """A read-back query that names no command, in the transport's own
+        form: an HTTP text line read as a request (``read_http_line``), an
+        OSC address, else the bytes a poll query's are."""
         transport_type = self._effective_transport()
         traits = transport_traits(transport_type)
         form = traits.line_form if traits is not None else None
+        if form == "http":
+            return f"http {text}", ("http", read_http_line(text))
         if form is not None and form != "raw":
             return f"{form} {text}", (form, text)
         return f"raw {text}", ("raw", self._raw_bytes(transport_type, text))
@@ -491,7 +504,7 @@ class Rereads:
 
             await self.transport.send(osc_encode_message(what))
         elif kind == "http":
-            await self._read_path(what)
+            await self._ask_http(what)
         else:
             await self.transport.send(what)
 

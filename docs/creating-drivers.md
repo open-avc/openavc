@@ -1401,8 +1401,8 @@ commands:
       level: { type: integer, required: true, label: Volume, min: 0, max: 100 }
 ```
 
-- Each entry is a query, or a list of them. A command name runs that command with this one's values for its parameters, so each parameter it declares has to be a parameter of this command too. Anything else is sent the way a `polling.queries` string is: on `tcp`, `serial` and `udp` a raw protocol string (`send_frame` applies, `command_prefix` / `command_suffix` do not), on `http` a path read with GET, on `osc` an address sent with no arguments. `{param}` takes this command's parameter as it was sent (after `map:` and `scale`), and config fields work as in `send`.
-- `read_back: true` reads the command itself back: an OSC command's own address with no arguments, or a GET of an HTTP command's own path (without its `query_params` or body). An HTTP API that reads with POST names the command that reads instead.
+- Each entry is a query, or a list of them. A command name runs that command with this one's values for its parameters, so each parameter it declares has to be a parameter of this command too. Anything else is sent the way a `polling.queries` string is: on `tcp`, `serial` and `udp` a raw protocol string (`send_frame` applies, `command_prefix` / `command_suffix` do not), on `http` a request line (`METHOD /path body`; a bare path is a GET), on `osc` an address sent with no arguments. `{param}` takes this command's parameter as it was sent (after `map:` and `scale`), and config fields work as in `send`.
+- `read_back: true` reads the command itself back: an OSC command's own address with no arguments, or a GET of an HTTP command's own path (without its `query_params` or body). An HTTP API that reads with POST writes the read as a line (`POST /api/status`) or names the command that reads.
 - The queries go out after the command's write (on `http`, after its response), spaced like poll lines, and the command returns without waiting for them. A device that needs each reply before the next message declares `inter_command_delay`, which spaces them from the command as it spaces every other line. None go out while `polling.when_state` holds the poll, so a command that puts a unit in standby is not followed by a query that wakes it.
 - A query already waiting to go out is not queued again, so a slider dragged through many values is read back after its last value rather than once per value.
 - The driver's own lines never read back: a poll entry or start-up step that names a command runs it without its `read_back`, and a command named in a `read_back` may not declare one of its own.
@@ -2478,9 +2478,14 @@ These fields in `config_schema` are recognized by the HTTP transport:
 
 #### HTTP polling
 
-For HTTP drivers, polling queries can be:
+For HTTP drivers, polling queries, `on_connect` steps, a rule's `then_query` and a `read_back` query can be:
 - **Command names**: executes that command (e.g., `"get_status"`)
-- **URL paths**: sends a GET request to that path (e.g., `"/api/status"`)
+- **Request lines**: the method, the path, then any body, read the same way as a command's `send:` on HTTP:
+  - `"/api/status"` (no method) sends a GET of that path
+  - `"POST /api/status"` sends a POST; the method can be GET, POST, PUT, DELETE, PATCH, HEAD or OPTIONS, in any case
+  - `'PUT /api/subscribe {"events": true}'` sends the text after the path as the body: as JSON when it is JSON, otherwise as plain text
+  - `'/api/power {"on": true}'` (a JSON body with no method) sends a POST
+  - a path is ended by a space, so write a space inside a path as `%20`
 
 Response text from polled endpoints is matched against `responses` patterns, same as TCP/serial.
 

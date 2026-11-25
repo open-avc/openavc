@@ -257,15 +257,16 @@ class _FakeResp:
 
 
 class _FakeHttpTransport:
-    """Minimal stand-in for the raw-path GET branch of _dispatch_query."""
+    """Minimal stand-in for the raw-line branch of _dispatch_query."""
 
     def __init__(self, text):
         self._text = text
         self.connected = True
         self.gets: list[str] = []
 
-    async def get(self, path):
-        self.gets.append(path)
+    async def send_request(self, line):
+        assert line.method == "GET"
+        self.gets.append(line.path)
         return _FakeResp(self._text)
 
 

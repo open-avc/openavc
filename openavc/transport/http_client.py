@@ -62,6 +62,7 @@ from openavc.core.device_traffic import (
 )
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport, env_proxy_for, environment_has_proxy
+from openavc.transport.http_line import HttpLine, body_parts, read_http_line
 from openavc.transport.pacing import sleep_at_least
 
 log = get_logger(__name__)
@@ -1265,32 +1266,26 @@ class HTTPClientTransport:
         """
         Compatibility method for the transport interface.
 
-        Interprets data as a request string in one of these formats:
-            - "GET /path"
-            - "POST /path {json_body}"
-            - "/path" (defaults to GET)
+        Sends ``data`` as one HTTP text line (``"GET /path"``,
+        ``"POST /path {json_body}"``, ``"/path"`` for a GET), read by
+        ``transport/http_line``, the one reading of a line.
 
         Returns the response (also kept in the last_response property).
         """
-        text = data.decode("utf-8", errors="replace").strip()
-        method, path, body = self._parse_send_string(text)
-
-        json_body = None
-        if body:
-            try:
-                json_body = json_module.loads(body)
-            except (json_module.JSONDecodeError, ValueError):
-                # Not JSON — send as raw content
-                result = await self.request(
-                    method, path, content=body.encode("utf-8"),
-                    timeout=timeout,
-                )
-                self._last_response = result
-                return result
-
-        result = await self.request(method, path, json_body=json_body, timeout=timeout)
+        line = read_http_line(data.decode("utf-8", errors="replace"))
+        result = await self.send_request(line, timeout=timeout)
         self._last_response = result
         return result
+
+    async def send_request(
+        self, line: HttpLine, *, timeout: httpx.Timeout | float | None = None
+    ) -> HTTPResponse:
+        """A request already read (``HttpLine``): its method, path and body,
+        the body as JSON when it parses, else as its text; the response."""
+        json_body, content = body_parts(line.body) if line.body else (None, None)
+        return await self.request(
+            line.method, line.path, json_body=json_body, content=content, timeout=timeout,
+        )
 
     async def send_and_wait(self, data: bytes, timeout: float = 5.0) -> bytes:
         """
@@ -1322,43 +1317,3 @@ class HTTPClientTransport:
             return httpx.DigestAuth(username, password)
         # bearer and api_key are handled via headers in open()
         return None
-
-    @staticmethod
-    def _parse_send_string(text: str) -> tuple[str, str, str]:
-        """
-        Parse a send string into (method, path, body).
-
-        Formats:
-            "GET /api/status"               -> ("GET", "/api/status", "")
-            "POST /api/power {\"on\":true}"  -> ("POST", "/api/power", '{"on":true}')
-            "/api/status"                    -> ("GET", "/api/status", "")
-        """
-        if not text:
-            return ("GET", "/", "")
-
-        # Check if it starts with an HTTP method
-        http_methods = ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
-        parts = text.split(None, 2)
-
-        if parts[0].upper() in http_methods:
-            method = parts[0].upper()
-            path = parts[1] if len(parts) > 1 else "/"
-            body = parts[2] if len(parts) > 2 else ""
-            return (method, path, body)
-
-        # No method prefix — default to GET, entire string is path
-        # But check if there's a body after a space following the path
-        if text.startswith("/"):
-            # Find where path ends and body begins (body starts with { or [)
-            space_idx = text.find(" ")
-            if space_idx > 0:
-                path = text[:space_idx]
-                body = text[space_idx + 1:]
-                # If there's a body, this is probably a POST
-                if body.strip().startswith(("{", "[")):
-                    return ("POST", path, body.strip())
-                return ("GET", path, "")
-            return ("GET", text, "")
-
-        # Fallback: treat entire string as path
-        return ("GET", "/" + text, "")

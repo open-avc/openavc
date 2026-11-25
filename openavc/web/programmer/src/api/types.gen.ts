@@ -638,21 +638,21 @@ export interface DriverCommandDef {
    * one's values for its parameters, so each parameter it declares has to be a
    * parameter of this command too. Anything else is sent the way a poll query
    * is: on tcp, serial and udp a raw protocol string (send_frame applies,
-   * command_prefix / command_suffix do not), on HTTP a path read with GET, on
-   * OSC an address sent with no arguments; {param} placeholders take this
-   * command's parameters as it sent them (after map: and scale) and config
-   * fields. true reads back from the command itself: on OSC its own address
-   * with no arguments, on HTTP a GET of its own path (without its query_params
-   * or body). The queries go out after the command's write (on HTTP, after its
-   * response) and are spaced like poll lines; a device that needs each reply
-   * before the next message declares inter_command_delay, which spaces them
-   * from the command too. None go out while polling.when_state holds the poll.
-   * A query already waiting to go out is not queued twice, so a slider dragged
-   * through many values is still read back after its last one. Keep the poll
-   * that reads these values: it is what reads them on a platform that ignores
-   * read_back. Not on a udp: or ir: command. Takes effect on platform 0.39.0;
-   * an older platform ignores it and still runs the driver, so it does not
-   * raise min_platform_version.
+   * command_prefix / command_suffix do not), on HTTP a request line (METHOD
+   * /path body, a bare path a GET), on OSC an address sent with no arguments;
+   * {param} placeholders take this command's parameters as it sent them (after
+   * map: and scale) and config fields. true reads back from the command
+   * itself: on OSC its own address with no arguments, on HTTP a GET of its own
+   * path (without its query_params or body). The queries go out after the
+   * command's write (on HTTP, after its response) and are spaced like poll
+   * lines; a device that needs each reply before the next message declares
+   * inter_command_delay, which spaces them from the command too. None go out
+   * while polling.when_state holds the poll. A query already waiting to go out
+   * is not queued twice, so a slider dragged through many values is still read
+   * back after its last one. Keep the poll that reads these values: it is what
+   * reads them on a platform that ignores read_back. Not on a udp: or ir:
+   * command. Takes effect on platform 0.39.0; an older platform ignores it and
+   * still runs the driver, so it does not raise min_platform_version.
    */
   read_back?: boolean | string | string[];
   /**
@@ -2122,9 +2122,10 @@ export interface DriverDefinition {
   responses?: DriverResponseDef[];
   /**
    * Commands sent immediately after connect, before polling. Strings for
-   * TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC
-   * values for a value-setting bring-up message); {each_child, send} templates
-   * expand to one query per registered child. Any mapping entry may add when:
+   * TCP/serial/UDP, and on HTTP request lines (METHOD /path body, a bare path
+   * a GET); {address, args} mappings for OSC (args carry typed OSC values for
+   * a value-setting bring-up message); {each_child, send} templates expand to
+   * one query per registered child. Any mapping entry may add when:
    * <config_field> to run only while that field is on, or when_state: to run
    * only while the device's state allows (a reconnect to a unit in standby
    * leaves it there), and a {send} entry may add query_for: <state_var> to

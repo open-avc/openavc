@@ -137,7 +137,7 @@ class _RaisingHTTP:
         self.connected = True
         self._error = error
 
-    async def get(self, path: str):  # noqa: ARG002 - the transport's signature
+    async def send_request(self, line):  # noqa: ARG002 - the transport's signature
         raise self._error
 
 

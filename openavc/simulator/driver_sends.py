@@ -42,6 +42,7 @@ and its read-back with the command's parameters (``command_sample``, and
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from typing import Any
 
@@ -55,6 +56,7 @@ from openavc.drivers.send_framing import framed_send
 from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import without_escaped_line_endings
+from openavc.transport.http_line import body_parts, read_http_line
 
 
 def with_config(template: Any, config: dict, params: Any = None) -> Any:
@@ -132,14 +134,31 @@ def query_line(query_text: str, config: dict, transport: str) -> str:
     """A query string as it reaches the simulator's dispatcher.
 
     Config substituted, an each_child template given a sample child id, the
-    line terminator stripped (the simulator frames by lines), and an HTTP raw
-    path expanded to the ``GET /path`` line the HTTP simulator dispatches —
-    without that last one every raw-path poll looks unanswered.
+    line terminator stripped (the simulator frames by lines), and on HTTP the
+    line read as the request the runtime sends (``transport/http_line``, THE
+    reading of an HTTP text line) and written as the line the HTTP simulator
+    dispatches (``_http_dispatched``) — without that last one every raw-path
+    poll looks unanswered.
     """
     sample = _as_dispatched(child_sample(safe_substitute(query_text, config)))
-    if transport == "http" and sample.startswith("/"):
-        sample = f"GET {sample}"
-    return sample
+    return _http_dispatched(sample) if transport == "http" else sample
+
+
+def _http_dispatched(text: str) -> str:
+    """An HTTP text line as the HTTP simulator's command line
+    (``yaml_auto.respond_http``): ``METHOD /path``, then ``|`` and the body
+    as the client sends it, a JSON body written compactly as httpx writes
+    one, any other as its text."""
+    line = read_http_line(text)
+    head = f"{line.method} {line.path}"
+    if not line.body:
+        return head
+    json_body, content = body_parts(line.body)
+    if content is not None:
+        return f"{head}|{content.decode('utf-8')}"
+    if json_body is None:
+        return head
+    return f"{head}|{json.dumps(json_body, ensure_ascii=False, separators=(',', ':'))}"
 
 
 def command_sample(template: str, params: dict, driver_def: dict) -> str | None:

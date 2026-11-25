@@ -6,13 +6,15 @@ The rules worth knowing before changing anything here:
 * **One way to read a line, on every transport.** A line that names a
   declared command runs as that command, so send-side framing applies and
   the reply goes through the reply rules. Anything else is the transport's
-  own raw form: a URL path on HTTP (its answer read the same way), an OSC
-  address on OSC, the protocol bytes on TCP, serial and UDP (TCP and serial
+  own raw form: on HTTP a text line read as a request (``METHOD /path
+  body``, a bare path a GET: ``transport/http_line``, the one reading a
+  command's ``send:`` gets too), its answer read the same way; an OSC
+  address on OSC; the protocol bytes on TCP, serial and UDP (TCP and serial
   ones inside the ``send_frame`` header, a no-op unless declared).
   ``_dispatch_query`` is that rule for every transport but OSC; a response
   rule's ``then_query`` sends through it too, and a command's ``read_back``
   builds its raw queries with the same two halves (``_raw_bytes``, which is
-  ``send_framing``'s, and ``_read_path``). Every answer ``_dispatch_query`` gets on HTTP is weighed
+  ``send_framing``'s, and ``_ask_http``). Every answer ``_dispatch_query`` gets on HTTP is weighed
   against the credential (``http_credential``); a read-back's is not.
 * **Spacing** is ``_pace_line``'s, for every line the driver sends on its
   own: start-up, the poll, a rule's follow-ups and a command's read-backs
@@ -57,6 +59,7 @@ from openavc.core.device_errors import device_error_text
 from openavc.drivers.base import ConnectionFaultError
 from openavc.drivers.query_entry import EACH_CHILD, LINE, read_query_entry
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
+from openavc.transport.http_line import HttpLine, read_http_line
 from openavc.transport.pacing import pacing_clock, sleep_at_least
 from openavc.utils.logger import get_logger
 
@@ -317,17 +320,18 @@ class StartUpAndPoll:
 
     async def _send_raw_line(self, transport_type: Any, text: str) -> Any:
         """A line that names no command, as the transport takes it; on HTTP,
-        the answer (read by the reply rules, as a command's is)."""
+        the line read as a request (``read_http_line``) and its answer (read
+        by the reply rules, as a command's is)."""
         if transport_type == "http":
-            return await self._read_path(text)
+            return await self._ask_http(read_http_line(text))
         await self.transport.send(self._raw_bytes(transport_type, text))
         return None
 
-    async def _read_path(self, path: str) -> Any:
-        """GET a path and read its answer with the reply rules, as a
+    async def _ask_http(self, line: HttpLine) -> Any:
+        """Send one request and read its answer with the reply rules, as a
         command's is; the answer."""
-        response = await self.transport.get(path)
-        await self._process_http_response(path, response)
+        response = await self.transport.send_request(line)
+        await self._process_http_response(f"{line.method} {line.path}", response)
         return response
 
     # --- the poll ---

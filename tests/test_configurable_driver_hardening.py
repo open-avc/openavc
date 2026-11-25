@@ -40,13 +40,13 @@ def _make_driver(definition: dict, config: dict | None = None, device_id: str = 
 
 
 class _RaisingHTTP:
-    """Stand-in HTTP transport whose .get() raises a configured error."""
+    """Stand-in HTTP transport whose request raises a configured error."""
 
     def __init__(self, error: BaseException):
         self.connected = True
         self._error = error
 
-    async def get(self, path: str):  # noqa: ARG002 - signature parity
+    async def send_request(self, line):  # noqa: ARG002 - signature parity
         raise self._error
 
 
@@ -148,7 +148,8 @@ class _StatusHTTP:
         self._body = body
         self.requested: list[str] = []
 
-    async def get(self, path: str):
+    async def send_request(self, line):
+        path = line.path
         self.requested.append(path)
         return HTTPResponse(
             status_code=self._statuses.get(path, 200),

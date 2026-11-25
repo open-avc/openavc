@@ -456,58 +456,7 @@ async def test_verify_ssl_on_refuses_a_self_signed_device(self_signed_https, loc
         await t.close()
 
 
-# --- _parse_send_string() ---
-
-def test_parse_get():
-    method, path, body = HTTPClientTransport._parse_send_string("GET /api/status")
-    assert method == "GET"
-    assert path == "/api/status"
-    assert body == ""
-
-
-def test_parse_post_with_body():
-    method, path, body = HTTPClientTransport._parse_send_string(
-        'POST /api/power {"on": true}'
-    )
-    assert method == "POST"
-    assert path == "/api/power"
-    assert body == '{"on": true}'
-
-
-def test_parse_bare_path():
-    method, path, body = HTTPClientTransport._parse_send_string("/api/status")
-    assert method == "GET"
-    assert path == "/api/status"
-    assert body == ""
-
-
-def test_parse_empty():
-    method, path, body = HTTPClientTransport._parse_send_string("")
-    assert method == "GET"
-    assert path == "/"
-
-
-def test_parse_put():
-    method, path, body = HTTPClientTransport._parse_send_string(
-        'PUT /api/volume {"level": 50}'
-    )
-    assert method == "PUT"
-    assert path == "/api/volume"
-    assert body == '{"level": 50}'
-
-
-def test_parse_delete():
-    method, path, body = HTTPClientTransport._parse_send_string("DELETE /api/preset/1")
-    assert method == "DELETE"
-    assert path == "/api/preset/1"
-    assert body == ""
-
-
-def test_parse_no_slash():
-    """String without leading slash gets one added."""
-    method, path, body = HTTPClientTransport._parse_send_string("status")
-    assert method == "GET"
-    assert path == "/status"
+# The text line send() reads: tests/test_http_text_line.py.
 
 
 # --- open() idempotency ---

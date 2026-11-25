@@ -60,7 +60,7 @@ class _FakeClient:
     async def __aexit__(self, *args):
         return False
 
-    async def request(self, method, url):
+    async def request(self, method, url, **kwargs):
         return SimpleNamespace(status_code=200, text="ok")
 
     async def head(self, url):

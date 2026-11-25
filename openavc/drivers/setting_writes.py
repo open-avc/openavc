@@ -26,7 +26,7 @@ The rules worth knowing before changing anything here:
   raised as the write's outcome, as a command's is (``http_commands``). A body that parses as JSON goes as JSON and its answer is
   read by the reply rules; any other body goes as raw content and its answer
   is returned unread. Which body is which is a command's rule too
-  (``http_commands.body_parts``).
+  (``transport/http_line.body_parts``).
 
 ``SettingWrites`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object; it answers ``BaseDriver``'s

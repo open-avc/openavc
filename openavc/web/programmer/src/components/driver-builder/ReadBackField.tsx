@@ -35,7 +35,7 @@ const READ_BACK_FORMS: Record<ReadBackForm, { own: string | null; rows: string; 
   },
   http: {
     own: "A GET of this command's own path",
-    rows: "Each is a path read with GET, or the name of a command to run, for an API that reads with POST.",
+    rows: "Each is a request, a path read with GET or METHOD /path with any body after it, or the name of a command to run.",
     placeholder: "e.g., /api/status",
   },
   raw: {

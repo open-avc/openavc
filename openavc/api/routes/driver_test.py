@@ -62,6 +62,7 @@ from openavc.drivers.spec import transport_has, transport_traits
 from openavc.drivers.transport_choice import effective_transport
 from openavc.transport.binary_helpers import encode_escape_sequences, has_incomplete_byte_escape
 from openavc.transport.endpoint import HttpEndpoint, UnusablePort, http_endpoint
+from openavc.transport.http_line import body_parts, read_http_line
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
 
@@ -776,21 +777,17 @@ def _raw_http_endpoint(body: TestCommandRequest) -> HttpEndpoint:
 
 
 async def _test_http_raw(body: TestCommandRequest) -> dict:
-    """Raw HTTP probe — parses 'METHOD /path' out of command_string."""
+    """Raw HTTP probe — the command string read as an HTTP text line
+    (``METHOD /path body``, a bare path a GET), as the driver's own lines are
+    (``transport/http_line``), its body sent as the transport sends one."""
     import httpx
 
-    cmd = body.command_string.strip()
-    method = "GET"
-    path = cmd
-    if " " in cmd:
-        parts = cmd.split(None, 1)
-        if parts[0].upper() in ("GET", "POST", "PUT", "DELETE", "PATCH"):
-            method = parts[0].upper()
-            path = parts[1]
+    line = read_http_line(body.command_string)
+    json_body, content = body_parts(line.body) if line.body else (None, None)
 
     endpoint = _raw_http_endpoint(body)
-    url = endpoint.base_url + (path if path.startswith("/") else "/" + path)
-    sent = f"{method} {url}"
+    url = endpoint.base_url + line.path
+    sent = f"{line.method} {url}" + (f" {line.body}" if line.body else "")
 
     try:
         async with httpx.AsyncClient(
@@ -799,7 +796,7 @@ async def _test_http_raw(body: TestCommandRequest) -> dict:
             # settings say (utils/outbound.py); the transport carries verify.
             transport=device_transport(url, verify=endpoint.verify),
         ) as client:
-            resp = await client.request(method, url)
+            resp = await client.request(line.method, url, json=json_body, content=content)
             return {
                 "success": True,
                 "sent": sent,

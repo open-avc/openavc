@@ -37,6 +37,7 @@ from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.contract_events import UNKNOWN_COMMAND
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, FOLLOW_UP_SETTLE_S
 from openavc.transport.http_client import HTTPResponse
+from openavc.transport.http_line import HttpLine
 
 LINE_UNIT: dict[str, Any] = {
     "id": "acme_line_unit",
@@ -358,7 +359,10 @@ def test_a_read_back_on_osc_and_http_names_an_address_and_a_path() -> None:
     osc = _driver(_with(LINE_UNIT, transport="osc"), Capture())
     assert _sends(osc, "set_level", {"level": 1}, {"level": "A"}) == [("osc GL\r", ("osc", "GL\r"))]
     http = _driver(_with(LINE_UNIT, transport="http"), Capture())
-    assert _sends(http, "set_level", {"level": 1}, {"level": "A"}) == [("http GL\r", ("http", "GL\r"))]
+    # An HTTP query is a text line, read as a request.
+    assert _sends(http, "set_level", {"level": 1}, {"level": "A"}) == [
+        ("http GL\r", ("http", HttpLine("GET", "/GL", ""))),
+    ]
 
 
 
@@ -510,8 +514,8 @@ async def test_a_read_back_sends_each_kind_its_own_way() -> None:
         async def send(self, data: bytes) -> None:
             calls.append(("send", data))
 
-        async def get(self, path: str) -> HTTPResponse:
-            calls.append(("get", path))
+        async def send_request(self, line: HttpLine) -> HTTPResponse:
+            calls.append((line.method, line.path))
             return HTTPResponse(status_code=200, text="LEVEL=7", headers={})
 
     drv = _driver(LINE_UNIT, Link())
@@ -524,10 +528,10 @@ async def test_a_read_back_sends_each_kind_its_own_way() -> None:
     drv._send_command = send_command
     await drv._send_read_back("command", ("get_level", {"level": 1}))
     await drv._send_read_back("osc", "/acme/level")
-    await drv._send_read_back("http", "/level")
+    await drv._send_read_back("http", HttpLine("POST", "/level", ""))
     await drv._send_read_back("raw", b"GL\r")
     assert sent_commands == [("get_level", {"level": 1}, {})]
-    assert calls == [("send", osc_encode_message("/acme/level")), ("get", "/level"), ("send", b"GL\r")]
+    assert calls == [("send", osc_encode_message("/acme/level")), ("POST", "/level"), ("send", b"GL\r")]
     assert drv.get_state("level") == 7
 
 
@@ -928,7 +932,7 @@ def test_an_http_command_with_no_path_reads_back_the_root() -> None:
     unit = _with(LINE_UNIT, transport="http")
     unit["commands"]["ping"] = {"label": "Ping", "method": "GET", "read_back": True}
     drv = _driver(unit, Capture())
-    assert _sends(drv, "ping") == [("http /", ("http", "/"))]
+    assert _sends(drv, "ping") == [("http /", ("http", HttpLine("GET", "/", "")))]
 
 
 @pytest.mark.parametrize("value", ["", False, 0, []])
