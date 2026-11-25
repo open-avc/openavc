@@ -335,5 +335,6 @@ def test_the_driver_model_stays_pure() -> None:
         "openavc.drivers.framing_checks", "openavc.drivers.auth_block", "openavc.drivers.driver_model",
         "openavc.drivers.usable_number", "openavc.drivers.command_form", "openavc.drivers.yaml_text",
         "openavc.drivers.reply_rule", "openavc.drivers.capture_ref", "openavc.drivers.json_value_spec",
-        "openavc.drivers.pattern_fill",
+        "openavc.drivers.pattern_fill", "openavc.drivers.enum_options", "openavc.drivers.declared_names",
+        "openavc.drivers.tagged_errors",
     }

@@ -491,6 +491,10 @@
  "each_child_without_instances": [
   "polling.queries[0]: each_child type 'zone' declares no instances: block, so nothing would ever be polled"
  ],
+ "enum_value_listed_twice": [
+  "state_variables.power.values[2]: \"on\" is the same value as values[0]; list each value once",
+  "commands.set_mode.params.mode.values[2]: 1.0 is the same value as values[0] (1), since a number is one value however it is written; list each value once. YAML reads bare on/off/yes/no/true/false as booleans and bare digits as numbers. Put it in quotes."
+ ],
  "frame_parser_bad_endian": [
   "frame_parser: length_endian must be 'big' or 'little' (got 'mid')"
  ],

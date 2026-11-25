@@ -416,7 +416,9 @@ export interface DriverParamDef {
    * Allowed values for an enum param. Each entry is a bare wire value or a
    * {value, label} pair (label shown in the picker, value sent on the wire).
    * The runtime accepts either the label or the value from any caller and
-   * normalizes to the value.
+   * normalizes to the value. List each value once: two entries are one value
+   * when they are the same JSON value (1 and 1.0 are one number, true is never
+   * 1, text is compared exactly).
    */
   values?: EnumOption[];
   /** For child_id type: the child_entity_types name this parameter targets. */
@@ -1244,7 +1246,10 @@ export interface DriverDeviceSettingDef {
   /**
    * Allowed values for an enum setting. Each entry is a bare wire value or a
    * {value, label} pair (label shown in the editor, value written to the
-   * device). A write that resolves to nothing in the set is rejected.
+   * device). A write that resolves to nothing in the set is rejected. List
+   * each value once: two entries are one value when they are the same JSON
+   * value (1 and 1.0 are one number, true is never 1, text is compared
+   * exactly).
    */
   values?: EnumOption[];
   min?: number;
@@ -1319,7 +1324,11 @@ export interface DriverStateVarDef {
   /** Human-readable label. Required for top-level state variables. */
   label: string;
   help?: string;
-  /** Allowed values for enum type. */
+  /**
+   * Allowed values for enum type. List each value once: two entries are one
+   * value when they are the same JSON value (1 and 1.0 are one number, true is
+   * never 1, text is compared exactly).
+   */
   values?: unknown[];
   min?: number;
   max?: number;

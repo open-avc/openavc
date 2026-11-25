@@ -558,6 +558,8 @@ A field named `mac_address` (a plain string, not `secret`) is filled in from Dis
 
 Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`, `table`. A field typed `password` in an existing driver is read as a `string` field marked `secret: true`; write `secret: true` in a new one. For `enum`, add a `"values"` array; for `table`, add a `"columns"` map (see below). Each `values` entry is a plain value or a `{value, label}` pair: the Add Device dropdown shows the label, and the value is what is saved and what `{placeholders}` send. In the Driver Builder, **Allowed Values** takes one row per choice, with the label optional.
 
+List each value once, in every `values` list a driver declares (a config field's, a state variable's, a parameter's, a device setting's). Two entries are one value when they are the same kind of value and the same value: `1` and `1.0` are one number, `true` is never `1` and never the text `"true"`, and text is compared exactly, case and spaces included. A `{value, label}` entry is its value. A list that names one value twice is refused when the driver is saved or checked, naming both positions, and named on its Installed entry if it is already installed.
+
 Spaces typed before or after a value are removed when it is saved, and again when the device connects, so an IP address pasted as `" 192.168.1.50"` dials `192.168.1.50`. That applies to every `string`, `integer`, `number` and `float` field and to the connection fields (`host`, `port`, `username`, `base_url` and the rest), never to a `secret: true` field, a `password`, a multi-line `text` field, a `table`, or a field with `values` to pick from. Mark a field `secret: true` or make it `text` when a space at either end is part of the value.
 
 `required: true` marks a field the driver cannot work without. Add Device and
@@ -797,7 +799,7 @@ output_1_fader_db:
   control: true
 ```
 
-Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`.
+Types: `string`, `integer`, `number`, `float`, `boolean`, `enum`. An `enum` lists each of its `values` once (see the [`config_schema` entry](#config_schema-entry)).
 
 The `label` field is required — it's the human-readable name shown wherever the variable appears (device card, properties panel, simulator), and a state variable without one fails validation so the whole driver won't load. The optional `help` field provides a description shown in the Driver Builder UI and available to the AI assistant.
 

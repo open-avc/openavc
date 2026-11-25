@@ -7,7 +7,8 @@ asks, ``command_form``), ``condition_checks``,
 ``liveness_checks``,
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``, with the reader it asks,
 ``query_entry``, and the driver model, ``driver_model``, with the reply-rule reading it
-composes, ``reply_rule``, and the placeholder fill it fills a pattern with, ``pattern_fill``,
+composes, ``reply_rule``, the placeholder fill it fills a pattern with, ``pattern_fill``, and
+the repeated-option rule it reads enum lists by, ``enum_options``,
 ``reply_name_checks``, ``response_rule_checks`` (with the value-spec reading it asks,
 ``json_value_spec``), ``routing_checks``, ``serial_line``, ``setting_checks``,
 ``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``, ``tagged_errors``,
@@ -50,6 +51,7 @@ ALLOWED = {
     "openavc.drivers.driver_id",
     "openavc.drivers.driver_model",
     "openavc.drivers.driver_warnings",
+    "openavc.drivers.enum_options",
     "openavc.drivers.framing_checks",
     "openavc.drivers.json_value_spec",
     "openavc.drivers.liveness_checks",

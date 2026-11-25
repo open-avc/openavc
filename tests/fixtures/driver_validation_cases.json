@@ -4653,6 +4653,46 @@
   },
   "transport": "tcp"
  },
+ "enum_value_listed_twice": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   },
+   "set_mode": {
+    "params": {
+     "mode": {
+      "type": "enum",
+      "values": [
+       1,
+       2,
+       1.0
+      ]
+     }
+    },
+    "send": "MODE {mode}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "enum",
+    "values": [
+     "on",
+     {
+      "label": "Standby",
+      "value": "standby"
+     },
+     {
+      "label": "On",
+      "value": "on"
+     }
+    ]
+   }
+  },
+  "transport": "tcp"
+ },
  "frame_parser_bad_endian": {
   "commands": {
    "noop": {

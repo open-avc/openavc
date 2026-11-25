@@ -734,7 +734,7 @@
         },
         "values": {
           "type": "array",
-          "description": "Allowed values for enum type."
+          "description": "Allowed values for enum type. List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly)."
         },
         "min": {
           "type": "number"
@@ -1335,7 +1335,7 @@
         },
         "values": {
           "type": "array",
-          "description": "Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value.",
+          "description": "Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value. List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly).",
           "items": {
             "$ref": "#/$defs/enumValue"
           }
@@ -2479,7 +2479,7 @@
         },
         "values": {
           "type": "array",
-          "description": "Allowed values for enum type."
+          "description": "Allowed values for enum type. List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly)."
         },
         "row_label": {
           "type": "string",
@@ -2586,7 +2586,7 @@
         },
         "values": {
           "type": "array",
-          "description": "Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected.",
+          "description": "Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected. List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly).",
           "items": {
             "$ref": "#/$defs/enumValue"
           }
@@ -3762,7 +3762,7 @@
         },
         "values": {
           "type": "array",
-          "description": "Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value.",
+          "description": "Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value. List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly).",
           "items": {
             "$ref": "#/$defs/enumValue"
           }

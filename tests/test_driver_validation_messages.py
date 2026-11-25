@@ -1028,6 +1028,24 @@ CASES: dict[str, Any] = {
         },
         polling={"when_state": {"power": "sleep"}, "queries": ["PWR?\r"]},
     ),
+    # One option listed twice: 1.0 is the number 1, and a labelled entry is
+    # its value.
+    "enum_value_listed_twice": _d(
+        commands={
+            "noop": {"send": "NOOP\r"},
+            "set_mode": {
+                "send": "MODE {mode}\r",
+                "params": {"mode": {"type": "enum", "values": [1, 2, 1.0]}},
+            },
+        },
+        state_variables={
+            "power": {
+                "type": "enum",
+                "label": "Power",
+                "values": ["on", {"value": "standby", "label": "Standby"}, {"value": "on", "label": "On"}],
+            }
+        },
+    ),
     "when_state_string_bare_boolean": _d(
         polling={"when_state": {"power": True}, "queries": ["PWR?\r"]},
     ),

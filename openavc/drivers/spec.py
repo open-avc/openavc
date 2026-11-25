@@ -1530,6 +1530,8 @@ FIELDS = {
     },
 }
 
+_VALUES_ONCE = 'List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly).'
+
 DEFS = {
     'enumValue': {
         'doc': 'One enum option: a bare wire value, or a {value, label} pair where the label is shown in pickers (and read in macros) while the value goes on the wire. A plain scalar means value == label.',
@@ -1617,7 +1619,7 @@ DEFS = {
             },
             'values': {
                 'type': 'array',
-                'doc': 'Allowed values for enum type.',
+                'doc': f'Allowed values for enum type. {_VALUES_ONCE}',
             },
             'min': {
                 'type': 'number',
@@ -2116,7 +2118,7 @@ DEFS = {
             },
             'values': {
                 'type': 'array',
-                'doc': 'Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value.',
+                'doc': 'Allowed values for an enum param. Each entry is a bare wire value or a {value, label} pair (label shown in the picker, value sent on the wire). The runtime accepts either the label or the value from any caller and normalizes to the value. ' + _VALUES_ONCE,
                 'items': {
                     'ref': 'enumValue',
                 },
@@ -3019,7 +3021,7 @@ DEFS = {
             },
             'values': {
                 'type': 'array',
-                'doc': 'Allowed values for enum type.',
+                'doc': f'Allowed values for enum type. {_VALUES_ONCE}',
             },
             'row_label': {
                 'type': 'string',
@@ -3134,7 +3136,7 @@ DEFS = {
             },
             'values': {
                 'type': 'array',
-                'doc': 'Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected.',
+                'doc': 'Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected. ' + _VALUES_ONCE,
                 'items': {
                     'ref': 'enumValue',
                 },
