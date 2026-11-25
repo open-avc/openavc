@@ -353,10 +353,8 @@ class AIToolHandler(
 
         no_backup = None
         if not self._ai_backup_created and self._project_path:
-            from openavc.core.backup_manager import capture
-
             try:
-                await capture(Path(self._project_path), _AI_BACKUP)
+                await self._capture_before_ai()
             except Exception as error:
                 # Leave the flag unset so the next mutating tool retries the
                 # backup. Latching it True on failure would silently disable
@@ -371,6 +369,19 @@ class AIToolHandler(
 
         self._ai_last_write_time = time.monotonic()
         return no_backup
+
+    async def _capture_before_ai(self) -> None:
+        """The pre-AI backup, read as one project through the engine
+        (``read_project_files``), so a replace running meanwhile never
+        swaps the files it has yet to read. With no engine, nothing can
+        replace the project, and the backup is taken as it is."""
+        from openavc.core.backup_manager import capture
+
+        def take():
+            return capture(Path(self._project_path), _AI_BACKUP)
+
+        engine = self._get_engine()
+        await (engine.read_project_files(take) if engine is not None else take())
 
     async def shutdown(self) -> None:
         """Cancel any in-flight tool tasks.

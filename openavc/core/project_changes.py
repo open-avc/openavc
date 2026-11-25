@@ -303,6 +303,7 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
 
         # Reload serialization
         self._reload_lock = asyncio.Lock()
+        self._init_project_replace()
         # The saved values of a whole project replacing the running one,
         # while it loads (core/project_replace): the variables stage seeds
         # from them.

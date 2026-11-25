@@ -518,17 +518,22 @@ class Engine(
                     continue
                 if self._last_backup_time and (time.time() - self._last_backup_time < self._PERIODIC_BACKUP_INTERVAL):
                     continue
-                # A failed one waits the interval like a taken one, and the
-                # project stays due for the next.
-                self._last_backup_time = time.time()
-                try:
-                    from openavc.core.backup_manager import capture
-                    await capture(self.project_path, "Auto-backup")
-                    self._dirty_since_backup = False
-                except Exception:
-                    log.debug("Periodic backup failed", exc_info=True)
+                await self._take_periodic_backup()
         except asyncio.CancelledError:
             pass
+
+    async def _take_periodic_backup(self) -> None:
+        """The auto-backup, read as one project (``read_project_files``). A
+        failed one waits the interval like a taken one, and the project stays
+        due for the next."""
+        from openavc.core.backup_manager import capture
+
+        self._last_backup_time = time.time()
+        try:
+            await self.read_project_files(lambda: capture(self.project_path, "Auto-backup"))
+            self._dirty_since_backup = False
+        except Exception:
+            log.debug("Periodic backup failed", exc_info=True)
 
     # --- Status ---
 

@@ -580,8 +580,8 @@ async def export_current_project_with_logins(data: LoginsPassphraseRequest):
 
     engine = _get_engine()
     try:
-        content, filename, content_type = await asyncio.to_thread(
-            export_active_project, engine.project_path, data.passphrase
+        content, filename, content_type = await engine.read_project_files(
+            lambda: asyncio.to_thread(export_active_project, engine.project_path, data.passphrase)
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No project file to export")
@@ -999,7 +999,7 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     reason = body.get("reason", "Manual backup")
 
     try:
-        path = await capture(engine.project_path, reason)
+        path = await engine.read_project_files(lambda: capture(engine.project_path, reason))
     except BackupFailed as e:
         raise _api_error(500, f"The backup could not be saved. {backup_failure_why(e.cause)}", e) from e
     if not path:

@@ -36,7 +36,10 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
 A door that writes or removes a file beside the project outside a change
 (an uploaded asset, a theme, a custom control, a script's source) holds the
 same lock from its checks to its write (``holding_project_files``), so its
-file lands before the backup or once the new project runs, never between.
+file lands before the backup or once the new project runs, never between. A
+door that reads the files off the event loop outside a change (a backup, an
+export with sealed logins) starts only between replaces, and a replace waits
+for it to finish before the swap (``read_project_files``).
 
 ``Engine.replace_project`` is the other way a whole project comes in, the
 cloud's push, which brings no files: it keeps the files beside the project,
@@ -50,9 +53,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 from pydantic import ValidationError
 
@@ -62,6 +66,8 @@ from openavc.core.project_update import MigrationNotes
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.engine")
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -230,6 +236,41 @@ class ProjectReplaceMixin:
         is let go."""
         return self._reload_lock
 
+    def _init_project_replace(self) -> None:
+        # The doors reading the project's files off the event loop now
+        # (read_project_files), and whether none is.
+        self._file_readers = 0
+        self._no_file_readers = asyncio.Event()
+        self._no_file_readers.set()
+
+    async def read_project_files(self, read: Callable[[], Awaitable[T]]) -> T:
+        """THE way a door reads the project's files from disk while the event
+        loop runs on, outside a change: a backup (the manual one, the
+        periodic one, the AI's first) or an export with sealed logins.
+        ``read()`` starts only between replaces, and :meth:`replace_with`
+        swaps nothing until every read started has finished, so what one
+        reads is one project, never the project file being replaced with
+        the incoming project's files. A save does not wait for it. Never
+        called under the change lock, which it takes to start. A caller
+        cancelled while the read runs on in its thread leaves it counted
+        until it finishes."""
+        async def counted() -> T:
+            return await read()
+
+        async with self._reload_lock:
+            self._file_readers += 1
+            self._no_file_readers.clear()
+        reading = asyncio.ensure_future(counted())
+        reading.add_done_callback(self._file_read_finished)
+        return await asyncio.shield(reading)
+
+    def _file_read_finished(self, reading: asyncio.Future) -> None:
+        if not reading.cancelled():
+            reading.exception()  # heard by the caller, or by nobody once it was cancelled
+        self._file_readers -= 1
+        if not self._file_readers:
+            self._no_file_readers.set()
+
     async def replace_with(self, prepared: PreparedProject, *, expected_revision: str | None = None):
         """Replace the running project, its files included, by ``prepared``
         (the module docstring has the order). Returns the ``ApplyOutcome``.
@@ -274,6 +315,9 @@ class ProjectReplaceMixin:
         the load, and the persister started again on what the store holds."""
         project_dir = self.project_path.parent
         backup = backup_manager.backup_id(project_dir, taken) if taken is not None else None
+        # A backup or an export still reading the files finishes first
+        # (read_project_files); none starts while the lock is held.
+        await self._no_file_readers.wait()
         if self.persister:
             self.persister.stop()
         try:

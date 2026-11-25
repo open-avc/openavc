@@ -344,3 +344,113 @@ async def test_a_library_save_between_the_swap_and_the_load_keeps_one_project(
     assert [element["id"] for element in shown] == ["hero", "map"], (
         "the library holds the Lobby's files under a project that does not show them"
     )
+
+
+# --- A backup or an export read off the event loop -------------------------------
+
+
+def _paused_once(target, name: str, reading: threading.Event, go: threading.Event):
+    """``target.name`` paused, the first time it is called, until ``go``,
+    with ``reading`` set: its reader has read the project file and not yet
+    the files beside it. Later calls (the replace's own backup) run."""
+    real = getattr(target, name)
+    first = threading.Lock()
+
+    def pause() -> None:
+        if first.acquire(blocking=False):
+            reading.set()
+            go.wait(10)
+
+    if name == "_beside_members":
+        def held(*args, **kwargs):
+            pause()
+            yield from real(*args, **kwargs)
+    else:
+        def held(*args, **kwargs):
+            pause()
+            return real(*args, **kwargs)
+    return patch.object(target, name, held)
+
+
+def _backup_by(engine: Engine, reason: str) -> bytes:
+    for backup in (engine.project_path.parent / "backups").glob("*.zip"):
+        with zipfile.ZipFile(backup) as zf:
+            if json.loads(zf.read("backup_meta.json"))["reason"] == reason:
+                return backup.read_bytes()
+    raise AssertionError(f"no backup '{reason}'")
+
+
+async def _manual_backup(engine: Engine) -> bytes:
+    from openavc.api.routes import project as project_routes
+
+    request = SimpleNamespace(headers={"content-length": "0"}, json=AsyncMock(return_value={}))
+    with patch.object(project_routes, "_get_engine", lambda: engine):
+        answer = await project_routes.create_backup_endpoint(request)
+    return (engine.project_path.parent / answer["filename"]).read_bytes()
+
+
+async def _periodic_backup(engine: Engine) -> bytes:
+    engine._dirty_since_backup = True
+    engine._last_backup_time = 0
+    await engine._take_periodic_backup()
+    return _backup_by(engine, "Auto-backup")
+
+
+async def _assistants_first_backup(engine: Engine) -> bytes:
+    handler = _assistant(engine)
+    handler._project_path = engine.project_path
+    assert await handler._maybe_create_pre_ai_backup() is None
+    return _backup_by(engine, "Before AI changes")
+
+
+async def _sealed_export(engine: Engine) -> bytes:
+    from openavc.api.models import LoginsPassphraseRequest
+    from openavc.api.routes import project as project_routes
+    from openavc.core import project_library
+
+    with patch.object(project_routes, "_get_engine", lambda: engine), \
+            patch.object(project_library, "_sealed_logins", lambda *args: None):
+        answer = await project_routes.export_current_project_with_logins(
+            LoginsPassphraseRequest(passphrase="a long enough passphrase"),
+        )
+    return answer.body
+
+
+#: Each door that reads the project's files off the event loop outside a
+#: change, where it is paused, and what it leaves.
+READERS = {
+    "manual backup": (backup_manager, "_beside_members", _manual_backup),
+    "periodic backup": (backup_manager, "_beside_members", _periodic_backup),
+    "assistant's first backup": (backup_manager, "_beside_members", _assistants_first_backup),
+    "export with logins": ("openavc.core.project_library", "_read_scripts_dir", _sealed_export),
+}
+
+
+@pytest.mark.parametrize("door", READERS)
+async def test_a_backup_or_export_read_across_a_replace_holds_one_project(hall: Engine, door: str):
+    """A backup or an export started before a replace, its files still being
+    read when the replace comes to swap, holds the project it started on:
+    the replace waits for it, never swapping the files it has yet to read."""
+    import importlib
+
+    target, name, read = READERS[door]
+    if isinstance(target, str):
+        target = importlib.import_module(target)
+    reading, go = threading.Event(), threading.Event()
+    with _paused_once(target, name, reading, go):
+        reader = asyncio.create_task(read(hall))
+        await asyncio.to_thread(reading.wait, 10)
+        replace = asyncio.create_task(hall.replace_with(_lobby()))
+        await asyncio.wait({replace}, timeout=1)
+        go.set()
+        archive = await reader
+        await replace
+
+    with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+        names = zf.namelist()
+        project = json.loads(zf.read("project.avc"))
+    assert project["project"]["name"] == "Hall"
+    assert "assets/logo.png" in names and "assets/lobby.png" not in names, (
+        f"the {door} holds the Hall's project file with the Lobby's files: {sorted(names)}"
+    )
+    assert hall.project.project.name == "Lobby"
