@@ -64,7 +64,8 @@ The assistant uses the same actions an administrator has in the Programmer: it e
 project, sends device commands, writes scripts, and installs drivers and plugins. Each action is
 recorded in the conversation. Before its first change in a conversation, the system takes a
 project backup named "Before AI changes". It is in the **Backups** list at the bottom of the
-Program view and restores like any other.
+Program view and restores like any other. If that backup cannot be saved, the change is still
+made, the assistant says no backup was saved, and the system tries again before its next change.
 
 ## Turning it off
 

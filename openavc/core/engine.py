@@ -518,29 +518,17 @@ class Engine(
                     continue
                 if self._last_backup_time and (time.time() - self._last_backup_time < self._PERIODIC_BACKUP_INTERVAL):
                     continue
+                # A failed one waits the interval like a taken one, and the
+                # project stays due for the next.
+                self._last_backup_time = time.time()
                 try:
-                    from openavc.core.backup_manager import create_backup
-                    # Offload the (uncapped) project+assets ZIP compression to a
-                    # worker thread — running it inline stalls device polling, WS
-                    # state pushes, command dispatch, and cloud heartbeats for
-                    # the whole compression on the event-loop thread.
-                    await asyncio.to_thread(
-                        create_backup, self.project_path, "Auto-backup"
-                    )
+                    from openavc.core.backup_manager import capture
+                    await capture(self.project_path, "Auto-backup")
                     self._dirty_since_backup = False
-                    self._last_backup_time = time.time()
                 except Exception:
                     log.debug("Periodic backup failed", exc_info=True)
         except asyncio.CancelledError:
             pass
-
-    def create_backup(self, reason: str) -> None:
-        """Convenience method to create a named backup of the current project."""
-        from openavc.core.backup_manager import create_backup
-        result = create_backup(self.project_path, reason)
-        if result:
-            self._last_backup_time = time.time()
-            self._dirty_since_backup = False
 
     # --- Status ---
 

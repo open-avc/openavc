@@ -519,7 +519,7 @@ async def test_periodic_backup_runs_off_event_loop(tmp_path, monkeypatch):
     main_thread = threading.current_thread()
     seen = {}
 
-    def fake_create_backup(parent, reason):
+    def fake_create_backup(parent, reason, **kwargs):
         seen["thread"] = threading.current_thread()
         seen["reason"] = reason
 

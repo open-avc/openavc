@@ -602,6 +602,13 @@ def _worded_save_why(exc: Exception) -> str | None:
     return worded_write_failure(exc)
 
 
+def backup_failure_why(exc: BaseException) -> str:
+    """Why a project backup could not be saved (``backup_manager.BackupFailed``,
+    or what it was raised from), as a failed save is said: the reason and
+    the remedy, with no path and none of the operating system's text."""
+    return _save_why(getattr(exc, "cause", exc))
+
+
 def worded_write_failure(exc: BaseException) -> str | None:
     """Why a file could not be written, for a full disk or a read-only file
     system, with no path and none of the operating system's text; None for
@@ -629,6 +636,10 @@ class ChangeFailure:
 #: write, could not take it. The cause is in the log the sentence names.
 _NOT_TAKEN = "the running system could not take the change. The Programmer's Log has the details."
 
+#: Why a change that replaces the project was not applied when the backup it
+#: takes first could not be saved (``backup_manager.capture``).
+_BACKUP_NOT_SAVED = "a backup of the current project could not be saved first."
+
 
 def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
     """THE words for a project change that did not run, at every door that
@@ -643,9 +654,13 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
     could not take (``ProjectNotAppliedError``) says it was not applied, why,
     and that the previous project is still running: a write that failed says
     why without the path or the operating system's text, and any other cause
-    sends the reader to the Programmer's Log, where it is logged. ``None``
-    for an exception that is not one of these.
+    sends the reader to the Programmer's Log, where it is logged. A change
+    whose backup could not be saved first (``backup_manager.BackupFailed``:
+    an import, opening another project, a blank project, a restore, a cloud
+    push) says so the same way. ``None`` for an exception that is not one
+    of these.
     """
+    from openavc.core.backup_manager import BackupFailed
     from openavc.core.installed_equipment import InstalledEquipmentError
     from openavc.core.project_changes import (
         ProjectInvalidError,
@@ -663,6 +678,8 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
         return ChangeFailure(422, "refused", str(exc))
     if isinstance(exc, ProjectInvalidError):
         return ChangeFailure(422, "refused", invalid_project(exc.cause))
+    if isinstance(exc, BackupFailed):
+        return ChangeFailure(500, "not_applied", not_applied(f"{_BACKUP_NOT_SAVED} {backup_failure_why(exc)}"))
     if not isinstance(exc, ProjectNotAppliedError):
         return None
     cause = exc.cause

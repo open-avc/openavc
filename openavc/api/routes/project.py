@@ -437,9 +437,7 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     # both pass and one edit would be silently lost.
     try:
         if mode == "import":
-            import asyncio
-
-            from openavc.core.backup_manager import create_backup
+            from openavc.core.backup_manager import capture
             from openavc.core.installed_equipment import InstalledEquipmentError
 
             try:
@@ -447,10 +445,10 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
                 # leaves no backup behind. replace_project asks again under its lock.
                 engine.installed_equipment.compose(project, for_load=True)
                 # Import replaces the running project, as opening one from the
-                # library does, and keeps the one it replaces the same way.
-                await asyncio.to_thread(
-                    create_backup, engine.project_path, f"Before importing '{project.project.name}'"
-                )
+                # library does, and keeps the one it replaces the same way:
+                # with no backup it is refused (BackupFailed, answered by the
+                # server's handler for a change that did not run).
+                await capture(engine.project_path, f"Before importing '{project.project.name}'")
                 outcome = await engine.replace_project(
                     project, update_notes, expected_revision=expected_rev
                 )
@@ -859,16 +857,16 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
 async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
     """The open, from the backup to the announcement; the engine it reloaded."""
     from openavc.core.project_library import open_from_library as _open, sanitize_id
-    from openavc.core.backup_manager import create_backup
+    from openavc.core.backup_manager import capture
 
     engine = _get_engine()
 
     project_id = sanitize_id(data.project_id or data.project_name)
     scripts_dir = engine.project_path.parent / "scripts"
 
-    # Back up current project (including scripts) before replacing
-    import asyncio
-    await asyncio.to_thread(create_backup, engine.project_path, f"Before opening '{data.project_name}'")
+    # Back up the current project (scripts and files included) before
+    # replacing it; with no backup the open is refused, nothing changed.
+    await capture(engine.project_path, f"Before opening '{data.project_name}'")
 
     try:
         _open(data.library_id, engine.project_path, scripts_dir,
@@ -921,7 +919,7 @@ async def create_blank(request: Request) -> dict[str, Any]:
     from openavc.core.project_library import (
         create_blank_project, replace_project_trees, replace_scripts, sanitize_id,
     )
-    from openavc.core.backup_manager import create_backup
+    from openavc.core.backup_manager import capture
 
     engine = _get_engine()
     body = await request.json()
@@ -929,9 +927,9 @@ async def create_blank(request: Request) -> dict[str, Any]:
     project_name = body.get("project_name", "New Room")
     project_id = sanitize_id(body.get("project_id") or project_name)
 
-    # Back up current project before replacing with blank
-    import asyncio
-    await asyncio.to_thread(create_backup, engine.project_path, "Before creating blank project")
+    # Back up the current project before replacing it with a blank one; with
+    # no backup it is refused, nothing cleared.
+    await capture(engine.project_path, "Before creating blank project")
 
     project = create_blank_project(project_id, project_name)
 
@@ -1013,7 +1011,7 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
 @router.post("/backups/{filename:path}/restore")
 async def restore_backup(filename: str) -> dict[str, Any]:
     """Restore a project from a backup file (ZIP or legacy .avc.bak)."""
-    from openavc.core.backup_manager import create_backup, restore_from_backup
+    from openavc.core.backup_manager import capture, restore_from_backup
 
     engine = _get_engine()
     project_dir = engine.project_path.parent
@@ -1031,11 +1029,10 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     if not (backup_path.name.endswith(".zip") or backup_path.name.endswith(".avc.bak")):
         raise HTTPException(status_code=400, detail="Not a valid backup file")
 
-    # Create a backup before restoring. Its rotation spares the one chosen,
-    # which is the oldest when somebody goes back the furthest, so it is
-    # still there to read.
-    import asyncio
-    await asyncio.to_thread(create_backup, engine.project_path, "Before restore", spare=backup_path)
+    # Create a backup before restoring; with none the restore is refused,
+    # nothing changed. Its rotation spares the one chosen, which is the
+    # oldest when somebody goes back the furthest, so it is still there to read.
+    await capture(engine.project_path, "Before restore", spare=backup_path)
 
     from openavc.core.installed_equipment import validate_backup
     validate_backup(backup_path)

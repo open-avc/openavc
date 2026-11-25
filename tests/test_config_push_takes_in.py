@@ -150,16 +150,18 @@ async def test_a_push_whose_backup_fails_is_not_applied(engine):
 
     before = engine.project_path.read_bytes()
 
-    def backup_fails(path, reason, **kwargs):
-        raise OSError(errno.EIO, "Input/output error", str(path))
+    def backup_fails(archive, project_file, *args, **kwargs):
+        raise OSError(errno.EIO, "Input/output error", str(archive))
 
-    with patch("openavc.core.backup_manager.create_backup", backup_fails):
+    # Part way through writing the backup, below the backup function, which
+    # used to answer such a failure as "nothing to back up".
+    with patch("openavc.core.backup_manager._write_archive", backup_fails):
         answer = await _push(engine, _pushed())
 
     assert answer["success"] is False
     assert answer["error"] == (
-        "Not applied: the system could not prepare the change. The Programmer's "
-        "Log has the details. The previous project is still running."
+        "Not applied: a backup of the current project could not be saved first. "
+        "Check disk space and directory permissions. The previous project is still running."
     )
     assert str(engine.project_path.parent) not in answer["error"]
     assert engine.project.project.name == "Hall"

@@ -108,11 +108,12 @@ def project_change_failures() -> tuple[type[Exception], ...]:
     """Each project change that did not run that a route may raise and
     ``project_change_handler`` answers (``describe_change_failure`` words a
     revision conflict too, but only Save checks a revision, and catches it)."""
+    from openavc.core.backup_manager import BackupFailed
     from openavc.core.installed_equipment import InstalledEquipmentError
     from openavc.core.project_changes import ProjectInvalidError, ProjectNotAppliedError
     from openavc.core.saved_values import UnknownWordError
 
-    return (InstalledEquipmentError, UnknownWordError, ProjectInvalidError, ProjectNotAppliedError)
+    return (InstalledEquipmentError, UnknownWordError, ProjectInvalidError, ProjectNotAppliedError, BackupFailed)
 
 
 def add_project_change_handler(app: Any) -> None:
@@ -129,8 +130,9 @@ async def project_change_handler(request: Request, exc: Exception) -> JSONRespon
     beside the sentence: a refusal (a product's built-in device 409, a word
     this version does not know or a result that is not a valid project 422,
     each ``refused``) or a change the
-    running system could not take (500, ``not_applied``; its cause was
-    logged where the change was put back). A client tells a refusal from a
+    running system could not take, or whose backup could not be saved
+    first (500, ``not_applied``; its cause was logged where the change was
+    put back or the backup failed). A client tells a refusal from a
     revision conflict by ``code``, never by status."""
     return await structured_api_error_handler(request, change_failure_error(exc))
 

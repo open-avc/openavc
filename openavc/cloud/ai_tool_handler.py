@@ -84,6 +84,23 @@ _WORDED_ERRNOS = frozenset({
 })
 
 
+#: The backup taken before the cloud AI's first change in a conversation.
+_AI_BACKUP = "Before AI changes"
+
+
+def _no_backup_note(error: BaseException) -> str:
+    """What a tool's answer says when its change was made without the
+    conversation's backup, which could not be saved: no path, none of the
+    operating system's text, since the answer is kept in the cloud chat
+    history."""
+    from openavc.api.error_messages import backup_failure_why
+
+    return (
+        f'No backup was saved before this change, so the Backups list has no "{_AI_BACKUP}" '
+        f"backup to go back to. {backup_failure_why(error)}"
+    )
+
+
 def describe_tool_failure(exc: Exception) -> str:
     """What the cloud is told when a tool raised instead of answering.
 
@@ -294,7 +311,10 @@ class AIToolHandler(
     async def _run_tool(self, tool_name: str, handler: Any, tool_input: dict) -> Any:
         """The tool's own answer. A project change it made that could not
         start a part is still applied, so the answer is not a failure: it
-        names each such part under ``not_running``, as Save does."""
+        names each such part under ``not_running``, as Save does. A tool run
+        without the conversation's backup, which could not be saved, says
+        so under ``backup_not_saved``."""
+        no_backup = None
         with collecting_not_running() as not_running:
             if tool_name in self._CONCURRENT_SAFE_TOOLS:
                 result = await handler(tool_input)
@@ -304,27 +324,40 @@ class AIToolHandler(
                 # the one-time pre-AI backup under the same lock so it happens
                 # exactly once even under concurrency.
                 async with self._project_lock:
-                    await self._maybe_create_pre_ai_backup()
+                    no_backup = await self._maybe_create_pre_ai_backup()
                     result = await handler(tool_input)
-        if not_running and isinstance(result, dict):
-            return {**result, "not_running": describe_not_running(not_running)}
-        return result
+        notes: dict[str, Any] = {}
+        if not_running:
+            notes["not_running"] = describe_not_running(not_running)
+        if no_backup:
+            notes["backup_not_saved"] = no_backup
+        if not notes:
+            return result
+        return {**result, **notes} if isinstance(result, dict) else {"result": result, **notes}
 
-    async def _maybe_create_pre_ai_backup(self) -> None:
+    async def _maybe_create_pre_ai_backup(self) -> str | None:
         """Create one backup before the first project-mutating tool in an AI
-        conversation. The caller holds ``self._project_lock`` so the flag
-        check and the backup are atomic (no double backup under concurrency).
+        conversation (``backup_manager.capture``). The caller holds
+        ``self._project_lock`` so the flag check and the backup are atomic
+        (no double backup under concurrency).
+
+        A backup that could not be saved does not stop the tool, whose first
+        call in a conversation may be a device command or a review as well as
+        an edit: the answer is the sentence the tool's answer carries, and
+        the next locked tool tries the backup again. None otherwise.
         """
         # Reset the flag if idle for too long (treat as a new conversation).
         if (self._ai_last_write_time
                 and time.monotonic() - self._ai_last_write_time > self._AI_BACKUP_IDLE_TIMEOUT):
             self._ai_backup_created = False
 
+        no_backup = None
         if not self._ai_backup_created and self._project_path:
+            from openavc.core.backup_manager import capture
+
             try:
-                from openavc.core.backup_manager import create_backup
-                await asyncio.to_thread(create_backup, Path(self._project_path), "Before AI changes")
-            except Exception:
+                await capture(Path(self._project_path), _AI_BACKUP)
+            except Exception as error:
                 # Leave the flag unset so the next mutating tool retries the
                 # backup. Latching it True on failure would silently disable
                 # the safety net for the rest of the AI editing session.
@@ -332,10 +365,12 @@ class AIToolHandler(
                     "Could not create pre-AI backup; will retry before the next change",
                     exc_info=True,
                 )
+                no_backup = _no_backup_note(error)
             else:
                 self._ai_backup_created = True
 
         self._ai_last_write_time = time.monotonic()
+        return no_backup
 
     async def shutdown(self) -> None:
         """Cancel any in-flight tool tasks.

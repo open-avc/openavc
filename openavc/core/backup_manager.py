@@ -14,7 +14,10 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
                           the key: core/device_logins.py)
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
-cloud pushes, manual request, periodic timer) — NOT on every save.
+cloud pushes, manual request, periodic timer) — NOT on every save. Every door
+that takes one before it changes the project, or on request, asks ``capture``,
+which says when the backup could not be saved (``BackupFailed``): a door that
+replaces the project refuses, and one that goes on says no backup was saved.
 
 The one backup taken with logins in the clear is the first start's, before the
 logins move out of the project into the login file; once they all have, it
@@ -30,6 +33,7 @@ the configured file however either was named.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import os
@@ -329,7 +333,10 @@ def create_backup(
 
     ``project_file`` is the project file itself; the scripts, assets, ui/,
     themes and state.json beside it go into the same archive. Returns the
-    backup path, or None if there's nothing to back up.
+    backup path, or None when there is no project file to back up. Raises
+    the ``OSError`` when the backup cannot be saved (the disk full part way,
+    no permission), leaving no part of it behind; a door asks ``capture``,
+    which says so in the door's words.
 
     ``spare`` is a backup this one's rotation leaves alone: the one a restore
     is about to read, which is the oldest when somebody goes back the furthest
@@ -381,7 +388,7 @@ def create_backup(
 
     except OSError as e:
         log.error(f"Failed to create backup: {e}")
-        return None
+        raise
     finally:
         # Never leave a partial/orphan temp behind on failure.
         if tmp_path is not None and tmp_path.exists():
@@ -389,6 +396,32 @@ def create_backup(
                 tmp_path.unlink()
             except OSError:
                 pass
+
+
+class BackupFailed(Exception):
+    """A backup a door asked for (``capture``) that could not be saved.
+    ``cause`` is the operating system's error, which the door words without
+    its path (``api/error_messages.backup_failure_why``)."""
+
+    def __init__(self, cause: OSError) -> None:
+        super().__init__(f"The project backup could not be saved: {cause}")
+        self.cause = cause
+
+
+async def capture(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
+    """THE backup a door takes before it changes the project, or when asked
+    for one: ``create_backup`` named ``reason``, off the event loop. Returns
+    the backup, or None when there is no project file, so nothing on disk is
+    lost. Raises ``BackupFailed`` when it could not be saved, and the door
+    hears it: a door that replaces the project (an import, opening another,
+    a blank project, a restore, a cloud push) refuses with the project left
+    as it was (``error_messages.describe_change_failure`` words it), the
+    login move leaves the logins where they are, and the cloud AI's change
+    goes on with its answer saying no backup was saved."""
+    try:
+        return await asyncio.to_thread(create_backup, project_file, reason, spare=spare)
+    except OSError as error:
+        raise BackupFailed(error) from error
 
 
 def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], Any]) -> bool:

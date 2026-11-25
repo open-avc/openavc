@@ -170,8 +170,9 @@ class KeepReplaced:
     project replaced, an edit saved while the replace waited included:
     ``before`` (a plain or coroutine function: the cloud push's rollback
     copy, which may refuse the push by raising), then a backup named
-    ``backup``. A failure in either leaves the running project and its file
-    as they were, and is raised as it is."""
+    ``backup`` (``backup_manager.capture``). A failure in either leaves the
+    running project and its file as they were, and is raised as it is: a
+    backup that could not be saved as ``BackupFailed``."""
 
     before: Any = None
     backup: str | None = None
@@ -180,7 +181,7 @@ class KeepReplaced:
         if self.before is not None:
             await _call(self.before)
         if self.backup is not None:
-            await asyncio.to_thread(backup_manager.create_backup, project_path, self.backup)
+            await backup_manager.capture(project_path, self.backup)
 
 
 @dataclass(frozen=True)
