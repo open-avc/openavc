@@ -150,10 +150,12 @@ def _read_project(project_file: Path) -> tuple[object, str]:
 
 def _write_archive(archive: Path, project_file: Path, meta: dict, logins: str | None) -> None:
     """Every member of a project backup, written into ``archive``: the
-    project file, the meta, what sits beside the project file
-    (``_beside_members``) and the sealed logins."""
+    project file (none when it is missing: ``set_aside``), the meta, what
+    sits beside the project file (``_beside_members``) and the sealed
+    logins."""
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(project_file, ARCHIVE_PROJECT)
+        if project_file.exists():
+            zf.write(project_file, ARCHIVE_PROJECT)
         zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
         for archive_path, f in _beside_members(project_file.parent):
             zf.write(f, archive_path)
@@ -220,11 +222,30 @@ def create_backup(
     is about to read, which is the oldest when somebody goes back the furthest
     (``cleanup_backups``).
     """
-    project_dir = project_file.parent
     if not project_file.exists():
         log.debug(f"No project file to back up at {project_file}")
         return None
+    return _take(project_file, reason, max_backups=max_backups, spare=spare)
 
+
+def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
+    """What a start is about to replace (``core/project_recovery``), kept
+    under Backups first: the project file as it is, however unreadable, and
+    the project's files beside it (``core/project_unit``), so the swap that
+    follows moves nothing away that no backup holds. When the project file
+    is missing, the files beside it alone, a backup that restores nothing
+    but keeps them. Returns the backup, or None when there is nothing there
+    at all (a first start). Raises the ``OSError`` as ``create_backup``
+    does; ``spare`` as there."""
+    if not project_file.exists() and next(_beside_members(project_file.parent), None) is None:
+        return None
+    return _take(project_file, reason, max_backups=MAX_BACKUPS, spare=spare)
+
+
+def _take(project_file: Path, reason: str, *, max_backups: int, spare: Path | None) -> Path:
+    """The backup ``create_backup`` and ``set_aside`` take, written and
+    placed under Backups."""
+    project_dir = project_file.parent
     from openavc.core.project_loader import _project_save_lock
 
     backup_d = _backup_dir(project_dir)
@@ -547,35 +568,25 @@ def restore_backup_logins(backup_path: Path, project_file: Path) -> None:
 
 
 def restore_from_backup(backup_path: Path, project_file: Path) -> None:
-    """Restore a project from a backup file into ``project_file``, at a
-    start (``core/project_recovery``), before there is a running project.
+    """Restore a project from a backup file into ``project_file`` where no
+    project is running: a start putting back the backup a replace took
+    (``core/project_recovery``).
 
     ZIP backups: the project file, scripts/, assets/, ui/, themes/ and
     state.json (none when the backup holds none), and the device logins it
     holds wherever this system has none saved for that device. Legacy
-    .avc.bak: the project file only. The project file goes in as the backup
-    holds it, for the load to migrate.
+    .avc.bak: the project file only.
 
-    Staged and swapped by renames (``core/project_swap``), every rename
-    undone when one fails, under the shared project-save lock, so a failure
-    part way leaves the project as it was and a concurrent save or backup
-    cannot read a partial state. A running project is replaced through
-    ``Engine.replace_with`` instead, which stops its persister and reloads
-    it (``core/project_replace``).
+    The backup prepared as every restore prepares it
+    (``project_replace.from_backup``: read and checked as a load reads it,
+    before anything is written) and put in place by the swap every replace
+    makes (``project_replace.replace_files``). A running project is
+    replaced through ``Engine.replace_with`` instead, which stops its
+    persister and reloads it.
     """
-    from openavc.core import project_swap
-    from openavc.core.installed_equipment import validate_backup
-    from openavc.core.project_loader import _project_save_lock
+    from openavc.core.project_replace import from_backup, replace_files
 
-    project_bytes = archived_project(backup_path)
-    validate_backup(backup_path)
-
-    with _project_save_lock:
-        project_swap.replace_on_disk(
-            project_file, project_bytes, backup_filler(backup_path),
-            beside=is_zip_backup(backup_path),
-        )
-        restore_backup_logins(backup_path, project_file)
+    replace_files(from_backup(backup_path), project_file)
     log.info(f"Restored from backup: {backup_path.name}")
 
 

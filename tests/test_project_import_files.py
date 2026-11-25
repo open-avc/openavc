@@ -462,8 +462,11 @@ def test_a_blank_project_the_recovery_project_and_a_library_copy_are_each_stampe
     blanks = {library.create_blank_project("room", "Room").project.uuid for _ in range(2)}
     assert len(blanks) == 2 and "" not in blanks
 
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     (tmp_path / "empty").mkdir()
-    recovered = project_recovery._start_empty(tmp_path / "empty" / "project.avc", project_recovery.UNREADABLE)
+    (tmp_path / "empty" / "project.avc").write_text('{"project": ', encoding="utf-8")
+    recovered = project_recovery.load_or_recover(tmp_path / "empty" / "project.avc")
+    assert recovered.project.id == "recovery"
     assert recovered.project.uuid
 
     monkeypatch.setattr(library, "_lib_dir", lambda: tmp_path / "library")

@@ -169,6 +169,21 @@ def test_the_first_boot_seed_and_the_starters_leave_no_notice(tmp_path):
         assert _notes(json.loads(template.read_text(encoding="utf-8"))).notes == [], template.name
 
 
+def test_a_start_that_restores_an_older_backup_says_what_its_load_changed(tmp_path):
+    from openavc.core import project_recovery
+    from openavc.core.backup_manager import create_backup
+
+    path = tmp_path / "project.avc"
+    _write(path, _v016(page_transition_duration=99999))
+    assert create_backup(path, "Auto backup") is not None
+    path.write_text('{"project": ', encoding="utf-8")
+
+    assert project_recovery.load_or_recover(path).project.name
+    kept = project_update.read(tmp_path)
+    assert kept is not None
+    assert any("Transition Duration" in n["message"] for n in kept["notes"])
+
+
 def test_notes_from_a_later_load_join_the_ones_nobody_dismissed(tmp_path):
     first, second = MigrationNotes(), MigrationNotes()
     first.changed("One.", "Panel Settings")

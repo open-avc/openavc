@@ -96,13 +96,21 @@ class PreparedProject:
 
 def replace_files(prepared: PreparedProject, project_file: Path) -> None:
     """``prepared``'s files put in place of the project at ``project_file``
-    where no project is running: staged, swapped, its logins filled in, with
-    no marker and nothing to reload. A swap that fails puts back what it
-    moved and raises."""
+    where no project is running (a start: ``core/project_recovery``):
+    staged and swapped under the shared project-save lock, so a save or a
+    backup never reads a part-swapped project, its logins filled in, and
+    what its migration changed kept for the notice in place of the previous
+    project's, with no marker and nothing to reload. A swap that fails puts
+    back what it moved and raises."""
+    from openavc.core import project_update
+    from openavc.core.project_loader import _project_save_lock
+
     text = project_text(prepared.project).encode("utf-8")
-    project_swap.replace_on_disk(project_file, text, prepared.fill, beside=prepared.beside)
-    if prepared.after_swap is not None:
-        prepared.after_swap(project_file)
+    with _project_save_lock:
+        project_swap.replace_on_disk(project_file, text, prepared.fill, beside=prepared.beside)
+        if prepared.after_swap is not None:
+            prepared.after_swap(project_file)
+    project_update.replace(project_file.parent, prepared.notes)
     if prepared.on_replaced is not None:
         prepared.on_replaced()
 
@@ -158,8 +166,10 @@ def from_backup(backup_path: Path) -> PreparedProject:
 
 
 def blank(project: ProjectConfig) -> PreparedProject:
-    """A new blank project prepared to replace the running one: no scripts,
-    no files, no saved values."""
+    """A project with nothing beside its file prepared to replace the
+    running one, or the one a start found (a new blank project, the starter
+    a first start copies in, the Recovery Project): no scripts, no files, no
+    saved values."""
     return PreparedProject(project, MigrationNotes(), "Before creating blank project")
 
 

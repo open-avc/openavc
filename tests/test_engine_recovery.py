@@ -2,7 +2,7 @@
 
 import json
 
-from openavc.core import project_recovery
+from openavc.core import project_recovery, project_update
 from openavc.core.backup_manager import create_backup
 from openavc.core.engine import Engine
 from openavc.core.project_loader import ProjectConfig, ProjectMeta, save_project
@@ -365,3 +365,183 @@ def test_a_project_with_its_own_name_is_never_recovered_into_another_file(tmp_pa
 
     assert project.project.id == "recovery"
     assert not (tmp_path / "project.avc").exists()
+
+
+# --- What a start's recovery replaces, and what it keeps ---
+#
+# The starter, a backup and the Recovery Project each replace the project the
+# way a running replace does: everything the project is made of, so nothing
+# the previous project left beside its file carries into the one that starts.
+# What they replace is kept under Backups first, the file that would not load
+# included, so nothing is lost that no backup holds.
+
+
+def _leave_files_beside(folder, values):
+    """A previous project's script, image, saved values and notice beside
+    ``folder``'s project file."""
+    (folder / "scripts").mkdir(parents=True, exist_ok=True)
+    (folder / "scripts" / "old.py").write_text("# the old project's script\n", encoding="utf-8")
+    (folder / "assets").mkdir(exist_ok=True)
+    (folder / "assets" / "logo.png").write_bytes(b"PNG-old")
+    (folder / "state.json").write_text(json.dumps(values), encoding="utf-8")
+    project_recovery.record(folder, outcome=project_recovery.RESTORED, reason=project_recovery.UNREADABLE,
+                            backup="backups/backup_old.zip")
+    notes = project_update.MigrationNotes()
+    notes.changed("The old project's repair.", "Panel Settings")
+    project_update.record(folder, notes)
+
+
+def _beside(folder):
+    """What sits beside the project file that a previous project could have
+    left there."""
+    return sorted(
+        str(p.relative_to(folder)) for p in folder.rglob("*")
+        if p.is_file() and p.parts[len(folder.parts)] in {"scripts", "assets", "ui", "themes", "state.json", "recovery.json"}
+    )
+
+
+def _backups_holding(folder, member):
+    """Each backup under ``folder``'s Backups that holds ``member``: its
+    filename and that member's bytes."""
+    import zipfile
+
+    held = {}
+    for path in sorted((folder / "backups").glob("backup_*.zip")):
+        with zipfile.ZipFile(path) as archive:
+            if member in archive.namelist():
+                held[path.name] = archive.read(member)
+    return held
+
+
+def _bad_backup(folder, values):
+    """A backup under Backups whose project file is not a project, beside a
+    script and saved values of its own."""
+    import zipfile
+
+    (folder / "backups").mkdir(parents=True, exist_ok=True)
+    path = folder / "backups" / "backup_20990101_000000_auto_backup.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("project.avc", '{"project": {"id": "bad"')
+        archive.writestr("backup_meta.json", json.dumps({"reason": "Auto backup", "timestamp": "2099-01-01T00:00:00+00:00"}))
+        archive.writestr("scripts/bad.py", "# the bad backup's script\n")
+        archive.writestr("state.json", json.dumps(values))
+    return path
+
+
+def test_a_seeded_start_brings_none_of_the_files_left_beside_a_missing_project(tmp_path, monkeypatch):
+    seed_path = tmp_path / "bundle" / "project.avc"
+    _write_seed(seed_path)
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: seed_path)
+    folder = tmp_path / "projects" / "default"
+    _leave_files_beside(folder, {"var.old": 5})
+
+    project = project_recovery.load_or_recover(folder / "project.avc")
+
+    assert project.project.id == "seeded_starter"
+    assert _beside(folder) == []
+    assert project_recovery.read(folder) is None
+    assert project_update.read(folder) is None
+    # Nothing it moved away is lost: a backup holds the old files.
+    assert list(_backups_holding(folder, "scripts/old.py").values()) == [b"# the old project's script\n"]
+    assert list(_backups_holding(folder, "state.json").values()) == [json.dumps({"var.old": 5}).encode()]
+
+
+def test_a_first_start_with_nothing_beside_the_project_takes_no_backup(tmp_path, monkeypatch):
+    seed_path = tmp_path / "bundle" / "project.avc"
+    _write_seed(seed_path)
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: seed_path)
+    folder = tmp_path / "projects" / "default"
+
+    assert project_recovery.load_or_recover(folder / "project.avc").project.id == "seeded_starter"
+
+    assert list((folder / "backups").glob("*.zip")) == []
+
+
+def test_a_start_that_restores_a_backup_keeps_the_file_that_would_not_load(tmp_path):
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    folder = project_path.parent
+    _real_project(project_path)
+    restored = create_backup(project_path, "Auto backup")
+    _corrupt(project_path)
+    unreadable = project_path.read_bytes()
+    (folder / "state.json").write_text(json.dumps({"var.newer": 9}), encoding="utf-8")
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "live"
+    assert project_recovery.read(folder)["backup"] == f"backups/{restored.name}"
+    kept = _backups_holding(folder, "project.avc")
+    kept.pop(restored.name)
+    assert list(kept.values()) == [unreadable]
+    assert list(_backups_holding(folder, "state.json").values()) == [json.dumps({"var.newer": 9}).encode()]
+
+
+def test_a_start_on_the_recovery_project_keeps_the_file_that_would_not_load_and_none_beside_it(tmp_path, monkeypatch):
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    folder = project_path.parent
+    _leave_files_beside(folder, {"var.old": 5})
+    _corrupt(project_path)
+    unreadable = project_path.read_bytes()
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "recovery"
+    assert _beside(folder) == ["recovery.json"]
+    assert project_recovery.read(folder)["outcome"] == project_recovery.RESET
+    assert project_update.read(folder) is None
+    assert list(_backups_holding(folder, "project.avc").values()) == [unreadable]
+    assert list(_backups_holding(folder, "scripts/old.py").values()) == [b"# the old project's script\n"]
+
+
+def test_a_backup_that_is_not_a_project_is_never_written_over_the_live_files(tmp_path, monkeypatch):
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    folder = project_path.parent
+    folder.mkdir(parents=True)
+    _corrupt(project_path)
+    _bad_backup(folder, {"var.from_the_bad_backup": 1})
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "recovery"
+    assert not (folder / "state.json").exists()
+    assert not (folder / "scripts" / "bad.py").exists()
+
+
+def test_the_backup_a_start_restores_outlives_the_backup_it_takes_first(tmp_path):
+    """A full list whose only backup that loads is the oldest: the backup of
+    the file that would not load must not rotate it out before it is read."""
+    import os
+
+    from openavc.core.backup_manager import MAX_BACKUPS
+
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    _real_project(project_path)
+    oldest = create_backup(project_path, "Auto backup")
+    _corrupt(project_path)
+    newer = [create_backup(project_path, f"Auto backup {n}") for n in range(MAX_BACKUPS - 1)]
+    for age, path in enumerate([oldest, *newer]):
+        os.utime(path, (1_000_000 + age, 1_000_000 + age))
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "live"
+    assert project_recovery.read(project_path.parent)["backup"] == f"backups/{oldest.name}"
+
+
+def test_a_start_whose_backup_of_the_unreadable_file_cannot_be_saved_still_comes_up(tmp_path, monkeypatch):
+    from openavc.core import backup_manager
+
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    _real_project(project_path)
+    restored = create_backup(project_path, "Auto backup")
+    _corrupt(project_path)
+
+    def full_disk(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup_manager, "set_aside", full_disk)
+
+    assert project_recovery.load_or_recover(project_path).project.id == "live"
+    assert project_recovery.read(project_path.parent)["backup"] == f"backups/{restored.name}"
