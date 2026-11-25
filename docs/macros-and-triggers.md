@@ -291,7 +291,7 @@ However a run ends, the answer says which of these it was:
 | **Completed** | Every step ran. |
 | **Failed** | At least one step did not. The macro may still have run to the end — with Stop on Error off, that is what it is meant to do — but it did not do everything it was asked. |
 | **Cancelled** | Something stopped it part-way, so its later steps never ran: somebody cancelled it, or another macro in the same Cancel Group preempted it. |
-| **Skipped** | It never started. Its own Overlap or Cooldown setting refused the run, and nothing was sent to any device. |
+| **Skipped** | It never started, so nothing was sent to any device. The answer says why: its Cooldown had not passed, it was already running with Overlap set to Skip, a run queued behind another one waited more than five minutes, or the system was stopping. |
 | **Running** | It is still going after 30 seconds — usually a **Delay** or a **Wait Until**. Not a failure; watch the live progress for how it ends. |
 
 A macro that calls another one reports **Failed** when the macro it called did,
@@ -347,7 +347,7 @@ Nothing is blocked. A half-finished step is normal while you are building, so th
 
 ## Testing Macros
 
-Click **Test** to save pending project edits and execute the macro. If saving fails or another session has changed the project, Test shows the save error and does not run the previous saved version. Resolve the error before testing again. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution. When the run did not go cleanly, Test says so on the button as well: a run whose steps failed, one that was cancelled, and one that never started each get their own message rather than finishing quietly.
+Click **Test** to save pending project edits and execute the macro. If saving fails or another session has changed the project, Test shows the save error and does not run the previous saved version. Resolve the error before testing again. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution. When the run did not go cleanly, Test says so on the button as well: a run whose steps failed, one that was cancelled, and one that never started each get their own message rather than finishing quietly, and a run that never started says why. A start the macro refuses from anywhere (Test, a panel button, a trigger, a script) shows under its steps as **Skipped:** with the reason, until the macro next starts.
 
 ## Convert to Script
 
@@ -394,13 +394,18 @@ run](#how-the-run-reports-itself): **Ran OK** with how long ago, or **Last run
 failed** in red with the reason on hover. A trigger that has never fired says
 nothing, because that is not the same as one that fired and worked.
 
+When a fire does not go ahead, the card says **Skipped:** with the reason, for
+example that its Cooldown had not passed, its conditions were not met, or its
+macro was still running. The line stays until the trigger next fires, and is
+shown only while the Programmer is open and connected.
+
 This matters most for the automation nobody watches. A nightly shutdown whose
 projector command has been failing for a month still fires on time, so a
 trigger with no report at all looked exactly like one doing its job.
 
-**Fire Now** tells you the same thing straight away — whether the macro
-completed, failed, was cancelled, or never started because of its own Overlap
-or Cooldown setting. It does not overwrite the card's record, so you can test a
+**Fire Now** tells you the same thing straight away: whether the macro
+completed, failed, was cancelled, or never started, and if it never started,
+why. It does not overwrite the card's record, so you can test a
 trigger without losing the failure you opened it to look at.
 
 ## Scripts

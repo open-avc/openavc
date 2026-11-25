@@ -541,7 +541,7 @@ export const SCRIPT_EVENTS: ScriptEvent[] = [
   {
     "name": "macro.skipped.<macro_id>",
     "pattern": "macro.skipped.*",
-    "description": "The macro did not start: its Overlap or Cooldown setting refused the run"
+    "description": "The macro did not start (code names why, message is its sentence)"
   },
   {
     "name": "system.started",

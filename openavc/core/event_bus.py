@@ -149,7 +149,7 @@ EVENTS: tuple[EventFamily, ...] = (
     ),
     EventFamily(
         "macro.skipped.<macro_id>",
-        "The macro did not start: its Overlap or Cooldown setting refused the run",
+        "The macro did not start (code names why, message is its sentence)",
     ),
     EventFamily("system.started", "The system started. Comes once per server start"),
     EventFamily("system.stopping", "The system is shutting down"),
