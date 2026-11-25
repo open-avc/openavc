@@ -59,7 +59,13 @@ def test_confirm_true_reads_as_a_plain_sentence_naming_the_command():
     )
 
 
-@pytest.mark.parametrize("value,seconds", [(30, 30), (None, 0), ("soon", 0)])
+@pytest.mark.parametrize("value,seconds", [
+    (30, 30), (None, 0), ("soon", 0),
+    # No window opens for 0 or less, so there is no restart to warn about.
+    (-5, 0),
+    # Neither raises nor counts: the command list is still served.
+    (float("inf"), 0), (float("nan"), 0), (True, 0), pytest.param(10**400, 0, id="past-a-float"),
+])
 def test_the_restart_is_read_as_whole_seconds(value, seconds):
     command = read_command("reboot", {"restarts_device_for": value})
     assert command.restarts_device_for == seconds

@@ -36,6 +36,7 @@ from typing import Any
 
 from openavc.drivers.param_validation import missing_required_params
 from openavc.drivers.spec import is_file_command
+from openavc.drivers.usable_number import usable_number
 
 
 @dataclass(frozen=True)
@@ -82,7 +83,8 @@ def _confirm_text(cdef: dict[str, Any], name: str) -> str:
 
 
 def _restart_seconds(cdef: dict[str, Any]) -> int:
-    try:
-        return int(cdef.get("restarts_device_for") or 0)
-    except (TypeError, ValueError):
-        return 0
+    """Whole seconds, through the usable-number rule, so an infinity or a
+    boolean reads as none instead of raising or counting; 0 or less is no
+    restart, as the runtime opens no window for it."""
+    seconds = usable_number(cdef.get("restarts_device_for"))
+    return int(seconds) if seconds is not None and seconds > 0 else 0
