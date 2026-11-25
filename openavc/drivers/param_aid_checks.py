@@ -16,16 +16,30 @@ or a map that never translates. So it is refused here, when the driver loads.
 ``param_aid_errors`` asks each aid's check about each parameter, in the order
 of ``_AID_CHECKS``; a new aid is one function and one row there.
 
+One aid is held to a rule the author's doors refuse and a load only names
+(``secret_type_errors``): ``secret`` masks text, so a secret parameter takes
+text (``spec.secret_off_text``). ``param_sites`` is THE walk over every
+command's and action's parameters that it, and the checker's warning on a
+credential's name (``driver_warnings``), read.
+
 Purity contract, as for ``avcdriver_semantic``: standard library, the sibling
-``spec`` table and the regex-safety helper. The module is vendored with the
+``spec`` table, the merged-key marker (``declared_names``), the tagged list
+(``tagged_errors``) and the regex-safety helper. The module is vendored with the
 rest of the driver contract (openavc-drivers' catalog CI, openavc-sdk).
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, NamedTuple
 
-from openavc.drivers.spec import PARAM_OPTIONS_FROM_SOURCES, VALUE_TYPES
+from openavc.drivers.declared_names import UNEVALUATED_KEY
+from openavc.drivers.spec import (
+    PARAM_OPTIONS_FROM_SOURCES,
+    VALUE_TYPES,
+    marked_secret,
+    secret_off_text,
+)
+from openavc.drivers.tagged_errors import TaggedErrors
 from openavc.drivers.usable_number import is_number_value
 from openavc.drivers.yaml_text import NOT_TEXT
 from openavc.utils.regex_safety import regex_safety_error
@@ -266,3 +280,87 @@ _AID_CHECKS: tuple[_AidCheck, ...] = (
     _options_from_errors,
     _type_from_errors,
 )
+
+
+class ParamSite(NamedTuple):
+    """One parameter a driver file declares: the command it belongs to (its
+    name) or the action (its index, ``in_action``), its ``name`` and its
+    ``definition`` as written. Its ``place`` in the definition and the
+    ``where`` a message names it by are written out only when asked, so a
+    check names a key only where it has something to say about it."""
+
+    owner: Any
+    in_action: bool
+    name: Any
+    definition: Any
+
+    @property
+    def place(self) -> str:
+        """``commands.pair.params.code``, ``actions[0].params.code``."""
+        if self.in_action:
+            return f"actions[{self.owner}].params.{self.name}"
+        return f"commands.{self.owner}.params.{self.name}"
+
+    @property
+    def where(self) -> str:
+        """``Command 'pair' param 'code'``, ``actions[0] param 'code'``: the
+        words ``param_aid_errors`` gives."""
+        if self.in_action:
+            return f"actions[{self.owner}] param '{self.name}'"
+        return f"Command '{self.owner}' param '{self.name}'"
+
+
+def param_sites(definition: Any) -> Iterator[ParamSite]:
+    """Each parameter of each command, then of each action, in the order
+    written. An action's place is its index in the whole list, entries that
+    are not actions counted. An entry a Python driver merged in or built in
+    code (``UNEVALUATED_KEY``) is passed over."""
+    if not isinstance(definition, dict):
+        return
+    for command, cmd_def in _named(definition.get("commands")):
+        yield from _sites_of(command, False, cmd_def)
+    actions = definition.get("actions")
+    for i, action in enumerate(actions if isinstance(actions, list) else ()):
+        yield from _sites_of(i, True, action)
+
+
+def _sites_of(owner: Any, in_action: bool, entry: Any) -> Iterator[ParamSite]:
+    params = entry.get("params") if isinstance(entry, dict) else None
+    return (ParamSite(owner, in_action, name, pdef) for name, pdef in _named(params))
+
+
+def _named(block: Any) -> Iterator[tuple[Any, Any]]:
+    if isinstance(block, dict):
+        yield from ((name, entry) for name, entry in block.items() if name != UNEVALUATED_KEY)
+
+
+def judge_every(place: str, unit: Any) -> bool:
+    """The ``judged`` of a YAML definition, which holds nothing unread."""
+    return True
+
+
+def secret_type_errors(
+    definition: Any, judged: Callable[[str, Any], bool] = judge_every,
+) -> TaggedErrors:
+    """Each secret parameter that takes something other than text
+    (``spec.secret_off_text``), as THE sentence naming the fix, tagged with
+    its place. Refused where a driver is written and named where one loads:
+    the YAML walk asks it among the author's doors' parts, a Python driver's
+    checker among its shared sections, where ``judged(place, definition)``
+    skips a parameter holding a value built in code (and names the skip)."""
+    errors = TaggedErrors()
+    for site in param_sites(definition):
+        if secret_off_text(site.name, site.definition) and judged(site.place, site.definition):
+            errors.at(site.place, _off_text_words(site))
+    return errors
+
+
+def _off_text_words(site: ParamSite) -> str:
+    why = (
+        "is marked secret" if marked_secret(site.definition)
+        else "is named password, which makes it a secret"
+    )
+    return (
+        f"{site.where}: {why}, and a secret takes text, not type "
+        f"'{site.definition.get('type')}'. A PIN or code is text: use type string"
+    )

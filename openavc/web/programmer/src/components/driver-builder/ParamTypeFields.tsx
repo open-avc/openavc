@@ -176,7 +176,7 @@ export function TextAids({ name, def, onUpdate }: BoxProps) {
       <RowFlag
         checked={def.secret === true}
         onChange={(on) => onUpdate({ secret: on ? true : undefined })}
-        title="Mask the input when the command is run, for a password, PIN or key. Presentation only: the value still goes to the device as typed."
+        title="Mask the input when the command is run, for a password, PIN or key. A value saved in a macro step or a control's action is kept on this system, not in the project."
         testId={`param-secret-${name}`}
         nowrap
       >

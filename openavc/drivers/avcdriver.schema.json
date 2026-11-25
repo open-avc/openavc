@@ -1437,7 +1437,7 @@
         },
         "secret": {
           "type": "boolean",
-          "description": "Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing. Set it wherever a credential would otherwise sit on screen in plain text."
+          "description": "For a string param that carries a password, PIN or key: the input is masked when the command is run, the value is masked in the log and in a refusal, and a value saved in a macro step or a control's action is kept on this system rather than in the project (the step holds a placeholder, and the driver receives the real value when the step runs). It never changes the value the device receives. Only a string param takes it, since a PIN or code is text: on any other type it is refused. A param named password is a secret without it. The same key on a config_schema field marks a secret setting."
         },
         "default": true,
         "scale": {
@@ -3864,7 +3864,7 @@
         },
         "secret": {
           "type": "boolean",
-          "description": "Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing. Set it wherever a credential would otherwise sit on screen in plain text."
+          "description": "For a string param that carries a password, PIN or key: the input is masked when the command is run, the value is masked in the log and in a refusal, and a value saved in a macro step or a control's action is kept on this system rather than in the project (the step holds a placeholder, and the driver receives the real value when the step runs). It never changes the value the device receives. Only a string param takes it, since a PIN or code is text: on any other type it is refused. A param named password is a secret without it. The same key on a config_schema field marks a secret setting."
         },
         "default": true,
         "scale": {

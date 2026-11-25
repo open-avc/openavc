@@ -754,8 +754,14 @@
  "param_options_state_empty": [
   "Command 'set_level' param 'level': options_state must be a non-empty string"
  ],
+ "param_password_not_text": [
+  "Command 'login' param 'password': is named password, which makes it a secret, and a secret takes text, not type 'integer'. A PIN or code is text: use type string"
+ ],
  "param_pattern_redos": [
   "Command 'set_level' param 'level': pattern: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
+ ],
+ "param_secret_not_text": [
+  "Command 'set_level' param 'level': is marked secret, and a secret takes text, not type 'integer'. A PIN or code is text: use type string"
  ],
  "param_trim_not_bool": [
   "Command 'set_level' param 'level': trim must be true or false"

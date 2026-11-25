@@ -12,11 +12,14 @@ warnings beside the errors. One function per rule, in the order they report:
 * ``port_open_warnings``: a ``discovery.port_open`` hint the TCP scan can
   never match
 * ``unlabeled_param_warnings``: a command parameter with no label
-
-The two per-field rules yield a field's name only with what it draws, so the
-walk writes a name into a tag only when there is a warning to tag.
+* ``credential_name_warnings``: a parameter or config field named like a
+  credential (``spec.CREDENTIAL_NAME_ENDINGS``) that is not marked secret;
+  ``drivers.check`` asks it of a Python driver too
 * ``poll_length_warnings``: a poll cycle longer than the poll interval
 * ``unwatched_silence_warnings``: a device whose silence nothing notices
+
+The per-field rules yield a field's name or place only with what it draws,
+so the walk writes one into a tag only when there is a warning to tag.
 
 The last two read what the driver does at its default config
 (``_AtDefaults``) and the numbers the runtime acts on from ``spec``: the line
@@ -30,9 +33,10 @@ rest of the validator, which the community catalog and the SDK run copies of.
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, NamedTuple
 
 from openavc.drivers.child_ids import page_starts
+from openavc.drivers.param_aid_checks import judge_every, param_sites
 from openavc.drivers.roster_source import config_child_ids
 from openavc.drivers.transport_choice import declared_transport, effective_transport
 from openavc.drivers.spec import (
@@ -42,9 +46,12 @@ from openavc.drivers.spec import (
     PORT_OPEN_TRANSPORTS,
     SILENCE_CHECK_TRANSPORTS,
     is_secret_setting,
+    named_like_a_credential,
+    takes_text,
     transport_has,
     transport_traits,
 )
+from openavc.drivers.tagged_errors import TaggedErrors
 from openavc.drivers.usable_number import usable_number
 
 def masked_default_warnings(driver_def: dict[str, Any]) -> Iterator[tuple[Any, list[str]]]:
@@ -152,6 +159,57 @@ def _unlabeled(cmd_name: Any, param_name: Any, param_def: Any) -> list[str]:
         f"forms show its key made readable. Give it a label that says "
         f"what to enter."
     ]
+
+
+def credential_name_warnings(
+    driver_def: dict[str, Any], judged: Callable[[str, Any], bool] = judge_every,
+) -> TaggedErrors:
+    """Each command or action parameter, then each config field, that takes
+    text (``spec.takes_text``), is named like a credential
+    (``spec.named_like_a_credential``) and is not a secret
+    (``spec.is_secret_setting``), as the warning, tagged with its place.
+
+    A nudge, never a refusal: the mark is what makes a value secret, and only
+    the author knows whether a ``pin`` is one. A field that takes a number or
+    a choice draws nothing, since a secret takes text
+    (``param_aid_checks.secret_type_issues``). ``judged(place, definition)``
+    skips one a Python driver's checker could not read whole. A config field
+    merged in or built in code is keyed by a marker no credential's name ends
+    in, so it is passed over."""
+    warnings = TaggedErrors()
+    fields = (_ConfigField(name, field_def) for name, field_def in _mapping(driver_def.get("config_schema")).items())
+    for site in (*param_sites(driver_def), *fields):
+        if _unmarked_credential(site.name, site.definition) and judged(site.place, site.definition):
+            warnings.at(site.place, (
+                f"{site.where} is named like a credential but is not marked secret, so "
+                "what is typed shows on screen and is saved in the project file. Mark "
+                "it secret if it holds a password, PIN or key."
+            ))
+    return warnings
+
+
+class _ConfigField(NamedTuple):
+    """A config field, named as ``param_aid_checks.ParamSite`` names a
+    parameter: its place and words written out only when asked."""
+
+    name: Any
+    definition: Any
+
+    @property
+    def place(self) -> str:
+        return f"config_schema.{self.name}"
+
+    @property
+    def where(self) -> str:
+        return f"Config field '{self.name}'"
+
+
+def _unmarked_credential(name: Any, definition: Any) -> bool:
+    return (
+        named_like_a_credential(name)
+        and takes_text(definition)
+        and not is_secret_setting(name, definition)
+    )
 
 
 class _AtDefaults:

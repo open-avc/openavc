@@ -498,6 +498,59 @@ def secret_settings(schema: object) -> frozenset[str]:
         if is_secret_setting(name, definition)
     )
 
+
+# THE types that hold typed text, the one kind of value a secret is. A PIN, a
+# code or a key is text to the device, and the platform keeps a secret as
+# text: saved on this system rather than in the project, and masked as text
+# wherever it is shown. A field that declares no type is a string,
+# ``password`` is the older spelling of a secret string, and ``text`` is a
+# config field's multi-line string.
+TEXT_TYPES: tuple[str, ...] = ("string", "text", "password")
+
+
+def takes_text(definition: object) -> bool:
+    """Whether a parameter or field holds typed text: its definition names
+    one of :data:`TEXT_TYPES`, or no type at all."""
+    return isinstance(definition, dict) and definition.get("type") in (None, *TEXT_TYPES)
+
+
+def secret_off_text(name: object, definition: object) -> bool:
+    """Whether a parameter is a secret (:func:`is_secret_setting`) that takes
+    something other than text: a number, a choice, a true/false or a child,
+    which the checker refuses where a driver is written. A file parameter is
+    the file rules' (``FILE_PARAM_EXCLUDED_KEYS``)."""
+    if not isinstance(definition, dict) or definition.get("type") in PYTHON_ONLY_PARAM_TYPES:
+        return False
+    return is_secret_setting(name, definition) and not takes_text(definition)
+
+
+def marked_secret(definition: object) -> bool:
+    """Whether a definition says ``secret: true`` itself, as a refusal that
+    names why a field is secret tells apart from the name ``password``."""
+    return isinstance(definition, dict) and definition.get("secret") is True
+
+
+# THE words a credential's name ends in, for the checker's warning on a
+# parameter or config field that takes text and is not marked secret. A
+# warning only: the mark is what makes a value secret (is_secret_setting).
+CREDENTIAL_NAME_ENDINGS: tuple[str, ...] = (
+    "password", "passphrase", "pin", "psk", "secret", "api_key", "stream_key",
+)
+
+
+def named_like_a_credential(name: object) -> bool:
+    """Whether ``name`` ends in one of :data:`CREDENTIAL_NAME_ENDINGS`, read
+    without case or separators, so ``streamKey`` and ``stream-key`` end in
+    ``stream_key``."""
+    if not isinstance(name, str):
+        return False
+    folded = _folded_name(name)
+    return any(folded.endswith(_folded_name(word)) for word in CREDENTIAL_NAME_ENDINGS)
+
+
+def _folded_name(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
 # --- transports with extra constraints ---------------------------------------
 # Columns of TRANSPORT_TRAITS, named as the checks and their messages read them.
 
@@ -2207,7 +2260,7 @@ DEFS = {
             },
             'secret': {
                 'type': 'boolean',
-                'doc': 'Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing. Set it wherever a credential would otherwise sit on screen in plain text.',
+                'doc': "For a string param that carries a password, PIN or key: the input is masked when the command is run, the value is masked in the log and in a refusal, and a value saved in a macro step or a control's action is kept on this system rather than in the project (the step holds a placeholder, and the driver receives the real value when the step runs). It never changes the value the device receives. Only a string param takes it, since a PIN or code is text: on any other type it is refused. A param named password is a secret without it. The same key on a config_schema field marks a secret setting.",
             },
             'default': ANY,
             'scale': VALUE_SCALE,

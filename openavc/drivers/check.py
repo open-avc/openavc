@@ -29,7 +29,10 @@ the save doors, the loader and the catalog already call:
     .py          python_info.extract_python_driver_info_full  ->
                  python_info.python_driver_refusals (a key the contract
                  does not declare, then python_driver_info_issues' strict
-                 verdict, as the Code view's save asks it)
+                 verdict, as the Code view's save asks it), plus
+                 driver_warnings.credential_name_warnings, the warning both
+                 kinds of driver draw alike, on the values the source reader
+                 saw (python_info.holds_unread)
     _sim.py      simulator_info.check_simulator_file, for a driver's
                  companion simulator (<driver>_sim.py, checked with the
                  driver, each finding opening with its file's name) and for
@@ -60,11 +63,13 @@ from pathlib import Path
 
 import yaml
 
+from openavc.drivers.driver_warnings import credential_name_warnings
 from openavc.drivers.python_info import (
     CLASS_DEPENDENT_CHECKS,
     ExtractError,
     declares_driver_info,
     extract_python_driver_info_full,
+    holds_unread,
     python_driver_refusals,
     python_driver_reference_skips,
 )
@@ -195,6 +200,7 @@ def _check_python_driver(path: Path) -> FileCheckResult:
         return result
 
     result.errors.extend(python_driver_refusals(info))
+    result.warnings.extend(credential_name_warnings(info, _seen_whole))
 
     for skip in python_driver_reference_skips(info):
         result.notes.append(f"not checked: {skip}")
@@ -212,6 +218,12 @@ def _check_python_driver(path: Path) -> FileCheckResult:
             f"class: {'; '.join(skipped)}"
         )
     return result
+
+
+def _seen_whole(place: str, unit: object) -> bool:
+    """Whether the source reader saw ``unit`` whole, the one value a warning
+    on a Python driver is judged on (``python_info.holds_unread``)."""
+    return not holds_unread(unit)
 
 
 def _class_dependent_notes(info: dict) -> list[str]:

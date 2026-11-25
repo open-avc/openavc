@@ -7305,6 +7305,27 @@
   },
   "transport": "tcp"
  },
+ "param_password_not_text": {
+  "commands": {
+   "login": {
+    "params": {
+     "password": {
+      "type": "integer"
+     }
+    },
+    "send": "LOGIN {password}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "param_pattern_redos": {
   "commands": {
    "set_level": {
@@ -7312,6 +7333,28 @@
      "level": {
       "pattern": "(a+)+$",
       "type": "string"
+     }
+    },
+    "send": "LVL {level}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "param_secret_not_text": {
+  "commands": {
+   "set_level": {
+    "params": {
+     "level": {
+      "secret": true,
+      "type": "integer"
      }
     },
     "send": "LVL {level}\r"

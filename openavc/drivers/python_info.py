@@ -57,7 +57,7 @@ from openavc.drivers.command_checks import SharedCommandChecks, state_name_error
 from openavc.drivers.declared_names import DeclaredSections
 from openavc.drivers.discovery_block import discovery_refusals
 from openavc.drivers.enum_options import repeated_option_errors
-from openavc.drivers.param_aid_checks import one_param_aid_errors, sibling_refs
+from openavc.drivers.param_aid_checks import one_param_aid_errors, secret_type_errors, sibling_refs
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.python_driver_class import driver_class_info
 from openavc.drivers.python_source import SourceDecodeError, python_source
@@ -273,7 +273,7 @@ def check_python_driver_info(
     has always been held to here (``_PythonWalk``). The checks of the sections
     both kinds of driver declare alike (``_SHARED_SECTIONS``: the state
     variables, the child types, each command's parameter aids and its
-    ``sets:`` and ``query_for:``, the push block, the serial line settings in
+    ``sets:`` and ``query_for:``, a secret parameter's type, the push block, the serial line settings in
     ``default_config``, the ``discovery:`` block, the ``transport``, a ``values:`` list naming one option twice, a command's ``restarts_device_for`` outside 1 to 600 (``restart_window``); the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
     (``drivers.check``, catalog CI, the Code view's save). Where a driver is
     loaded or a device connects they are the ``notices``, so a driver that
@@ -633,6 +633,7 @@ _SHARED_SECTIONS: tuple[tuple[str, Callable[[dict[str, Any], _Coverage], list[st
     ("state_variables", _state_variable_section),
     ("child_entity_types", _child_type_section),
     ("commands", _command_section),
+    ("commands", lambda info, coverage: secret_type_errors(info, coverage.judged)),
     ("push", _whole_block("push", push_block_errors, lambda block: _push_reads(block))),
     ("default_config", _line_setting_section),
     ("discovery", _whole_block("discovery", discovery_refusals)),

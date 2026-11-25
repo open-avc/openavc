@@ -13,7 +13,7 @@ setting and learned config field (``setting_checks``), the push block
 framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
 watchdog (``liveness_checks``), the ``routing:`` block
 (``routing_checks``), where a value conversion may be declared
-(``conversion_checks``), the ``{name}`` placeholders in its wire templates
+(``conversion_checks``), a secret parameter's type (``param_aid_checks``), the ``{name}`` placeholders in its wire templates
 (``substitution_checks``), the serial line settings its default_config
 holds (``serial_line``) and its ``discovery:`` block (``discovery_block``,
 the one reader the discovery engine runs too). The walk is ``_DefinitionWalk``, one method per
@@ -74,6 +74,7 @@ from openavc.drivers.declared_names import (
     DeclaredSections,
 )
 from openavc.drivers.driver_warnings import (
+    credential_name_warnings,
     masked_default_warnings,
     poll_length_warnings,
     port_open_warnings,
@@ -87,6 +88,7 @@ from openavc.drivers.framing_checks import (
     send_frame_errors,
 )
 from openavc.drivers.liveness_checks import liveness_errors
+from openavc.drivers.param_aid_checks import secret_type_errors
 from openavc.drivers.platform_floor_checks import (
     platform_version_errors as platform_version_errors,
 )
@@ -333,6 +335,7 @@ class _DefinitionWalk:
             (self.model_problems, ""),
             (self.transport_named, "transport"),
             (self.param_unknowns, "commands"),
+            (self.secret_types, "commands"),
             (self.seed_keys, "simulator"),
         ]
 
@@ -354,6 +357,12 @@ class _DefinitionWalk:
         """A command parameter's ``unknown``, which no load reads
         (``conversion_checks.param_unknown_issues``)."""
         self.authored.at_each(param_unknown_issues(self.driver_def))
+
+    def secret_types(self) -> None:
+        """A command's or action's secret parameter that takes no text
+        (``param_aid_checks.secret_type_errors``)."""
+        errors = self.authored
+        errors.extend(secret_type_errors(self.driver_def))
 
     def transport_named(self) -> None:
         """A transport written as a null or a blank: no transport, which a
@@ -739,6 +748,7 @@ class _WarningWalk:
             (self.masked_defaults, "config_schema"),
             (self.port_open, "discovery"),
             (self.unlabeled_params, "commands"),
+            (self.credential_names, "commands"),
             (self.poll_length, "polling.queries"),
             (self.silence, "liveness"),
         ]
@@ -757,6 +767,10 @@ class _WarningWalk:
         for cmd_name, param_name, found in unlabeled_param_warnings(self.driver_def):
             warnings.ctx = f"commands.{cmd_name}.params.{param_name}"
             warnings.extend(found)
+
+    def credential_names(self) -> None:
+        warnings = self.warnings
+        warnings.extend(credential_name_warnings(self.driver_def))
 
     def poll_length(self) -> None:
         self.warnings.extend(poll_length_warnings(self.driver_def))

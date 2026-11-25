@@ -631,6 +631,10 @@ CASES: dict[str, Any] = {
     "param_min_greater_than_max": _param(type="number", min=10, max=1),
     "param_decimals_negative": _param(type="number", decimals=-1),
     "param_trim_not_bool": _param(type="string", trim="yes"),
+    "param_secret_not_text": _param(type="integer", secret=True),
+    "param_password_not_text": _d(
+        commands={"login": {"send": "LOGIN {password}\r", "params": {"password": {"type": "integer"}}}}
+    ),
     "param_map_empty": _param(type="string", map={}),
     "param_map_bad_pairs": _param(type="string", map={"a": True}),
     "param_map_word_not_scalar": _param(type="string", map={"a": [1]}),
