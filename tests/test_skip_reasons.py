@@ -82,6 +82,16 @@ def test_a_reason_is_its_code_and_its_sentence() -> None:
     }
 
 
+@pytest.mark.parametrize(("seconds", "said"), [
+    (1, "1 second"), (1.0, "1 second"), (0.06, "0.06 seconds"), (30, "30 seconds"),
+    (2592000, "2,592,000 seconds"), (90.25, "90.25 seconds"),
+])
+def test_a_number_of_seconds_reads_as_a_person_says_it(seconds, said) -> None:
+    assert skip_reason("macro_cooldown", seconds=seconds)["message"] == (
+        f"The macro's Cooldown ({said}) had not passed since it last started."
+    )
+
+
 def test_a_code_the_table_does_not_hold_is_refused() -> None:
     with pytest.raises(KeyError):
         skip_reason("busy")
@@ -401,6 +411,9 @@ def test_each_engine_sends_its_skip_from_one_place() -> None:
 # The trigger's fire path, from a listener to the macro engine. Every `return`
 # in these hands the fire on (`trigger.pending`, `trigger.queued`), says why it
 # stopped (`_skipped`), or is one of the exits below, which are no fire at all.
+# The check reads `return` statements in these functions only: a new function
+# on the path joins this list, and an exit that ends by falling off the end of
+# one is out of its sight.
 _FIRE_PATH = (
     "_on_state_change", "_on_event", "_fire_startup", "_initiate_fire",
     "_debounced_fire", "_schedule_fire", "_delayed_fire", "_execute_trigger",

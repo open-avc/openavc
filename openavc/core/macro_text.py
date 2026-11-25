@@ -103,7 +103,7 @@ def stopped_message(exc: BaseException) -> str:
 #: first and readers already match on them, so they keep their names; the
 #: macro's own refusals start ``macro_`` because the setting to change is the
 #: macro's, not the trigger's. A ``{field}`` is filled in by the exit that
-#: stops the fire or the run.
+#: stops the fire or the run; ``{seconds}`` reads as ``_seconds_text`` writes it.
 SKIP_REASONS: dict[str, str] = {
     # A trigger's fire.
     "cooldown": "The trigger's Cooldown had not passed since it last fired.",
@@ -115,8 +115,8 @@ SKIP_REASONS: dict[str, str] = {
     ),
     "macro_running": "The macro was still running, and the trigger's Overlap is set to Skip.",
     "queue_timeout": (
-        "The macro was still running after {seconds:g} seconds, so the trigger's queued "
-        "fire was dropped."
+        "The macro was still running after {seconds}, so the trigger's queued fire was "
+        "dropped."
     ),
     "trigger_disabled": "The trigger was turned off while its fire waited in the queue.",
     "circular": "The trigger set itself off again while it was still firing.",
@@ -126,14 +126,25 @@ SKIP_REASONS: dict[str, str] = {
     ),
     # A macro's run, refused by the macro's own settings or by the shutdown.
     "macro_cooldown": (
-        "The macro's Cooldown ({seconds:g} seconds) had not passed since it last started."
+        "The macro's Cooldown ({seconds}) had not passed since it last started."
     ),
     "macro_overlap": "The macro was already running, and the macro's Overlap is set to Skip.",
     "macro_queue_timeout": (
-        "The macro was still running after {seconds:g} seconds, so this queued run was dropped."
+        "The macro was still running after {seconds}, so this queued run was dropped."
     ),
     "stopping": "The system is stopping.",
 }
+
+
+def _seconds_text(seconds: float) -> str:
+    """A number of seconds as a sentence says it: "1 second", "0.5 seconds",
+    "86,400 seconds". Never an exponent, which ``:g`` gives from a million on."""
+    number = f"{seconds:,.3f}".rstrip("0").rstrip(".")
+    return f"{number} second" if number == "1" else f"{number} seconds"
+
+
+# How a field is written into a sentence, where ``str`` would not do.
+_FIELD_TEXT: dict[str, Callable[[Any], str]] = {"seconds": _seconds_text}
 
 
 def skip_reason(code: str, **values: Any) -> dict[str, str]:
@@ -141,7 +152,8 @@ def skip_reason(code: str, **values: Any) -> dict[str, str]:
     ``SKIP_REASONS``, which a client matches on) and ``message``, its sentence
     with ``values`` filled in. A code the table does not hold raises
     ``KeyError``: a reason nobody wrote down is a bug, not a new reason."""
-    return {"code": code, "message": SKIP_REASONS[code].format(**values)}
+    words = {name: _FIELD_TEXT.get(name, str)(value) for name, value in values.items()}
+    return {"code": code, "message": SKIP_REASONS[code].format(**words)}
 
 
 def no_such_macro(macro_id: str) -> str:
