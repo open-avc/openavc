@@ -31,7 +31,9 @@ reconnect replaced the transport counts for nothing either way.
 the driver object: drivers call ``start_polling`` and ``stop_polling`` and
 override ``_silence_expected``, ``_poll_waits_on_device``, ``_silence_fault``,
 ``_parsed_count``, ``_framed_count`` and ``_unread_sample``, and read
-``_io_counts()``. ``BaseDriver.__init__`` calls ``_init_polling()``. From its
+``_io_counts()``. A reader that says how a device is polled (the Device
+Audit) asks ``running_poll_interval()`` and ``max_missed_polls()``, never the
+config. ``BaseDriver.__init__`` calls ``_init_polling()``. From its
 host this needs ``DRIVER_INFO``, ``LAST_ERROR_PROPERTY``, ``device_id``,
 ``config``, ``events``, ``transport``, ``_connected``, ``_push_receives``,
 ``_last_error_writes``, ``_last_poll_started_at``, ``_connect_began_at``,
@@ -59,6 +61,7 @@ from openavc.core.device_errors import device_error_text
 from openavc.core.event_bus import detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import SILENCE_CHECK_TRANSPORTS
+from openavc.drivers.usable_number import usable_number
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the driver runtime's name, which the
@@ -132,6 +135,9 @@ class PollLoop:
 
     def _init_polling(self) -> None:
         self._poll_task: asyncio.Task | None = None
+        # The interval start_polling was given, while its loop runs
+        # (running_poll_interval).
+        self._poll_every: float = 0.0
         # True while the unread-replies check holds: polls in a row brought
         # replies and the driver's rules read none of them (_parsed_count).
         # The loop owns `last_error` meanwhile, so the stale-error clear
@@ -147,11 +153,13 @@ class PollLoop:
         if interval <= 0:
             return
         await self.stop_polling()
+        self._poll_every = interval
         self._poll_task = asyncio.create_task(self._poll_loop(interval))
         log.debug(f"[{self.device_id}] Polling started (every {interval}s)")
 
     async def stop_polling(self) -> None:
         """Cancel the polling background task."""
+        self._poll_every = 0.0
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
             try:
@@ -160,6 +168,23 @@ class PollLoop:
                 pass
             self._poll_task = None
             log.debug(f"[{self.device_id}] Polling stopped")
+
+    def running_poll_interval(self) -> float:
+        """THE interval this device is polled at: the seconds start_polling
+        was given, while its loop runs; 0.0 when no loop runs (never
+        started, stopped, or ended on its own when it dropped the
+        connection).
+
+        Asked rather than read from ``config["poll_interval"]``: a Python
+        driver may poll at an interval of its own, and the YAML driver holds
+        its config's interval at 0 while it connects. The loop starts after
+        the device is reported connected, so a reader that asks at that
+        moment hears 0 and asks again later (the Device Audit's listen
+        step).
+        """
+        if self._poll_task is None or self._poll_task.done():
+            return 0.0
+        return float(self._poll_every)
 
     def _clear_stale_last_error(self) -> None:
         """Drop a ``last_error`` the device has stopped reporting.
@@ -215,7 +240,7 @@ class PollLoop:
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         httpx_errors = _httpx_errors()
         watch = _PollWatch(
-            max_missed=self._max_missed_polls(),
+            max_missed=self.max_missed_polls(),
             watching=self._watches_for_silence(),
             reading=self._parsed_count() is not None,
         )
@@ -240,17 +265,21 @@ class PollLoop:
         except asyncio.CancelledError:
             return
 
-    def _max_missed_polls(self) -> int:
-        """The device's ``max_missed_polls``, at least 1.
+    def max_missed_polls(self) -> int:
+        """THE missed-poll limit: how many polls in a row the poll loop lets
+        fail, go unanswered or go unread before it acts (the module
+        docstring's three checks). The device's ``max_missed_polls``, whole,
+        and at least 1; 3 when it is absent or no usable number (text that
+        reads as none, a boolean, NaN, an infinity: drivers/usable_number).
 
-        A value of 0 (or negative, or non-numeric) would drop a healthy device
-        after its first poll: the watchdog cannot be turned off that way, and
-        the minimum is one missed poll.
+        A value of 0 or below cannot turn the watchdog off: the minimum is
+        one missed poll. Readers that say how soon a device is noticed (the
+        Device Audit) ask this rather than reading the config themselves.
         """
-        try:
-            return max(int(self.config.get("max_missed_polls", 3)), 1)
-        except (TypeError, ValueError):
+        number = usable_number(self.config.get("max_missed_polls", 3))
+        if number is None:
             return 3
+        return max(int(number), 1)
 
     async def _wait_after_connect_poll(self, interval: float) -> None:
         """Wait out the rest of the interval when this connect has polled

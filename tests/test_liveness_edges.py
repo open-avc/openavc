@@ -348,13 +348,52 @@ def test_the_probe_pause_is_logged_once_each_way(caplog) -> None:
 
 
 @pytest.mark.parametrize(
-    ("configured", "limit"), [(None, 3), (5, 5), ("2", 2), (0, 1), (-4, 1), ("x", 3)],
+    ("configured", "limit"),
+    [
+        (None, 3), (5, 5), ("2", 2), (0, 1), (-4, 1), ("x", 3),
+        # No usable number reads as the default, never as a count it raises on.
+        (True, 3), (float("inf"), 3), (float("-inf"), 3), (float("nan"), 3),
+        pytest.param(10**400, 3, id="past-a-float"),
+        ("2.5", 2), (2.9, 2),
+    ],
 )
 def test_max_missed_polls_is_at_least_one(configured: Any, limit: int) -> None:
     drv = _widget()
     if configured is not None:
         drv.config["max_missed_polls"] = configured
-    assert drv._max_missed_polls() == limit
+    assert drv.max_missed_polls() == limit
+
+
+async def test_the_poll_loop_records_the_interval_it_runs_at() -> None:
+    """What a reader asks to learn how often the device is polled: the
+    interval start_polling was given while its loop runs, and 0 otherwise."""
+    drv = _widget()
+    drv.poll = _never_returns
+    assert drv.running_poll_interval() == 0.0
+    await drv.start_polling(30)
+    assert drv.running_poll_interval() == 30.0
+    # A start with no interval polls nothing and leaves the running loop alone.
+    await drv.start_polling(0)
+    assert drv.running_poll_interval() == 30.0
+    await drv.stop_polling()
+    assert drv.running_poll_interval() == 0.0
+
+
+async def test_a_poll_loop_that_ended_on_its_own_runs_at_no_interval() -> None:
+    """A loop that returned (it dropped the connection) before anyone stopped
+    it is not polling."""
+    drv = _widget()
+    drv.poll = _never_returns
+    await drv.start_polling(30)
+    drv._poll_task.cancel()
+    await asyncio.gather(drv._poll_task, return_exceptions=True)
+    assert drv.running_poll_interval() == 0.0
+    await drv.stop_polling()
+    assert drv.running_poll_interval() == 0.0
+
+
+async def _never_returns() -> None:
+    await asyncio.Event().wait()
 
 
 def test_a_missed_probe_on_an_announced_connection_leaves_the_wait() -> None:
