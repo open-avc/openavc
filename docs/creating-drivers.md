@@ -2487,6 +2487,8 @@ For HTTP drivers, polling queries, `on_connect` steps, a rule's `then_query` and
   - `'/api/power {"on": true}'` (a JSON body with no method) sends a POST
   - a path is ended by a space, so write a space inside a path as `%20`
 
+In releases after OpenAVC 0.41.0, a request line can name its method and carry a body. Earlier releases send every line that is not a command name as a GET of the whole line, so a driver for them writes a bare path or names a command.
+
 Response text from polled endpoints is matched against `responses` patterns, same as TCP/serial.
 
 **A refused password.** A device that answers a request with 401, 403 or 407 has refused it. Many devices lock an account, or the controller's address, after a few refused logins, so the start-up and poll requests, the connection check and the event stream (`push: {type: sse}`) stop as soon as the refusal is clearly the password's:
