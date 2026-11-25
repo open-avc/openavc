@@ -30,17 +30,19 @@ fi
 # apply library's rule, as install.sh does: left there, the start below would
 # put an older release over this one, or roll it back at once. The names are
 # the ones openavc-macos-run.sh reads; the library is the one this release
-# carries beside it.
+# carries beside it. In a subshell, so nothing in it can end this script
+# before the service below is installed.
+APPLY_LIB="$APP/Contents/MacOS/apply-lib.sh"
 # shellcheck disable=SC2034  # read by the apply library
 UPDATE_FILE="$DATA_DIR/apply-update.json"
 # shellcheck disable=SC2034
 ROLLBACK_FILE="$DATA_DIR/apply-rollback"
 LOG_TAG="postinstall"
 # shellcheck source=SCRIPTDIR/../../apply-lib.sh
-if [ -f "$APP/Contents/MacOS/apply-lib.sh" ] && . "$APP/Contents/MacOS/apply-lib.sh"; then
-    drop_instructions
-else
-    echo "$LOG_TAG: $APP/Contents/MacOS/apply-lib.sh is missing, so what the server left for its next start stays"
+if [ ! -f "$APPLY_LIB" ]; then
+    echo "$LOG_TAG: $APPLY_LIB is missing, so what the server left for its next start stays"
+elif ! ( . "$APPLY_LIB" && drop_instructions ); then
+    echo "$LOG_TAG: could not drop what the server left for its next start"
 fi
 
 # The services are the installed app's alone: a sandbox run (OPENAVC_APP
