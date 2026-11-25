@@ -447,6 +447,7 @@ jobs:
             openavc/ \
             installer/openavc.service \
             installer/update-helper.sh \
+            installer/apply-lib.sh \
             installer/firewall-sync.sh \
             installer/openavc-privileged-helper.sh \
             installer/trusted-keys/ \
@@ -513,6 +514,7 @@ jobs:
             openavc/ \
             installer/openavc.service \
             installer/update-helper.sh \
+            installer/apply-lib.sh \
             installer/firewall-sync.sh \
             installer/openavc-privileged-helper.sh \
             installer/trusted-keys/ \

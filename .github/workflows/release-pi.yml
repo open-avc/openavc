@@ -112,6 +112,7 @@ jobs:
             openavc/ \
             driver_repo/ \
             plugin_repo/ \
+            installer/apply-lib.sh \
             installer/trusted-keys/ \
             requirements.txt \
             pyproject.toml \

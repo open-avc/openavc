@@ -486,6 +486,31 @@ def test_the_released_update_helper_installs_this_tree_and_can_roll_back(
     assert (app / "update-helper.sh").read_bytes() == released.file("installer/update-helper.sh")
 
 
+def test_the_helper_this_tree_installs_applies_the_next_update(
+    tmp_path, released, this_tree, key, stubs,
+):
+    """After the hand-over the helper that runs is this tree's, from where an
+    install keeps it, reading what it applies an update with from the
+    installed tree, which only the archive put there."""
+    app, data, pip_log = tmp_path / "opt" / "openavc", tmp_path / "data", tmp_path / "pip.log"
+    data.mkdir()
+    _install_linux(released, app, key[1], pip_log)
+    env = _script_env(stubs, OPENAVC_BOOT_DIRS=str(tmp_path))
+    _stage_update(data, this_tree.linux_archive, released.version, this_tree.version)
+    handed_over = _run_script(app / "update-helper.sh", str(data), str(app), env=env)
+    assert f"update to v{this_tree.version} applied" in handed_over.stdout, handed_over.stdout
+    first = _files(app)
+
+    # The archive carries the release's trusted keys, not this test's.
+    shutil.copy2(key[1], app / "installer" / "trusted-keys" / "test-signing.pem")
+    _stage_update(data, this_tree.linux_archive, this_tree.version, this_tree.version)
+    again = _run_script(app / "update-helper.sh", str(data), str(app), env=env)
+    output = f"{again.stdout}\n{again.stderr}"
+    assert again.returncode == 0, output
+    assert f"update to v{this_tree.version} applied" in again.stdout, output
+    assert _files(app.with_name("openavc.previous")) == first | {"installer/trusted-keys/test-signing.pem"}, output
+
+
 def _launchd_program(plist: bytes) -> str:
     """The program a LaunchDaemon plist runs."""
     return plistlib.loads(plist)["ProgramArguments"][0]

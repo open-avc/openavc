@@ -301,13 +301,17 @@ def _fixup_instruction_paths(data_dir: Path) -> None:
 
 def _run_helper(
     data_dir: Path, app_dir: Path, *, python: Path | str | None = None,
+    script: Path = HELPER_SCRIPT,
 ) -> subprocess.CompletedProcess:
     """Run the actual update-helper.sh. Returns the completed process.
 
     On Windows, converts all paths to MSYS2 format (/c/Users/...) because
     Git Bash can't handle Windows backslash paths or drive letters in tar.
-    Sets PYTHON env var so the script can find the interpreter; pass ``python``
-    to point it at a stub instead (see ``_write_python_stub``).
+    The script's own path is converted too: the helper finds the library it
+    applies an update with beside itself. Sets PYTHON env var so the script
+    can find the interpreter; pass ``python`` to point it at a stub instead
+    (see ``_write_python_stub``), and ``script`` to run a copy of the helper
+    from somewhere else.
     """
     assert _BASH_PATH is not None, "bash not found"
     _fixup_instruction_paths(data_dir)
@@ -315,7 +319,7 @@ def _run_helper(
     data_arg = _as_bash_path(data_dir)
     app_arg = _as_bash_path(app_dir)
     return subprocess.run(
-        [_BASH_PATH, str(HELPER_SCRIPT), data_arg, app_arg],
+        [_BASH_PATH, _as_bash_path(script), data_arg, app_arg],
         capture_output=True,
         text=True,
         timeout=HELPER_TIMEOUT,
@@ -1592,6 +1596,150 @@ class TestHelperScriptAtomicSwap:
             "A61: snapshot is missing venv — rollback would be refused as corrupt"
         )
         assert (previous / "driver_repo" / "x.avcdriver").exists()
+
+
+def _stage_update(data_dir: Path, artifact: Path, to_version: str = "2.0.0") -> None:
+    """Write the apply-update.json the server leaves for the helper."""
+    instruction = {"artifact": str(artifact), "from_version": "1.0.0", "to_version": to_version}
+    (data_dir / "apply-update.json").write_text(json.dumps(instruction))
+
+
+def _install_with_a_previous_copy(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A v1.0.0 install that an earlier update left a v0.9.0 copy beside.
+
+    Returns (data_dir, app_dir, previous)."""
+    data_dir = tmp_path / "data"
+    app_dir = tmp_path / "app"
+    data_dir.mkdir()
+    _build_fake_install(app_dir, "1.0.0")
+    previous = Path(str(app_dir) + ".previous")
+    _build_fake_install(previous, "0.9.0")
+    return data_dir, app_dir, previous
+
+
+def _assert_nothing_moved(app_dir: Path, previous: Path, data_dir: Path) -> None:
+    """The running install and the copy kept to roll back to are as they
+    were, and no staging directory is left behind."""
+    assert _read_version(app_dir) == "1.0.0"
+    assert (app_dir / "venv" / "bin" / "python3").exists()
+    assert _read_version(previous) == "0.9.0", (
+        "the copy kept to roll back to was lost to an update that never applied"
+    )
+    assert not Path(str(app_dir) + ".new").exists()
+    assert not (data_dir / "apply-update.json").exists()
+
+
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
+class TestHelperScriptKeepsTheRollbackCopy:
+    """The release is staged and checked before anything moves, so an update
+    that cannot apply costs the box neither its install nor the copy an
+    earlier update left to roll back to; and only an update that applies
+    turns the running copy into the new one."""
+
+    def test_a_damaged_archive_leaves_the_install_and_its_previous_copy(self, tmp_path):
+        data_dir, app_dir, previous = _install_with_a_previous_copy(tmp_path)
+        damaged = tmp_path / "damaged.tar.gz"
+        damaged.write_bytes(b"not a valid tarball at all")
+        _stage_update(data_dir, damaged)
+
+        result = _run_helper(data_dir, app_dir)
+
+        assert result.returncode == 0
+        _assert_nothing_moved(app_dir, previous, data_dir)
+
+    def test_an_archive_that_is_not_a_release_is_refused_before_anything_moves(self, tmp_path):
+        """It unpacks cleanly but holds no OpenAVC tree: here the macOS
+        update tarball, whose root is OpenAVC.app."""
+        data_dir, app_dir, previous = _install_with_a_previous_copy(tmp_path)
+        bundle = tmp_path / "mac" / "OpenAVC.app" / "Contents" / "MacOS"
+        bundle.mkdir(parents=True)
+        (bundle / "openavc-server").write_text("#!/bin/sh\n")
+        wrong = tmp_path / "openavc-2.0.0-macos-arm64.tar.gz"
+        with tarfile.open(wrong, "w:gz") as tar:
+            tar.add(tmp_path / "mac" / "OpenAVC.app", arcname="OpenAVC.app")
+        _stage_update(data_dir, wrong)
+
+        result = _run_helper(data_dir, app_dir)
+
+        assert result.returncode == 0
+        _assert_nothing_moved(app_dir, previous, data_dir)
+        assert "is not an OpenAVC release" in result.stdout
+
+    def test_an_update_that_applies_keeps_the_running_copy(self, tmp_path, update_tarball):
+        data_dir, app_dir, previous = _install_with_a_previous_copy(tmp_path)
+        (app_dir / "scripts").mkdir()
+        (app_dir / "scripts" / "panel-kiosk.sh").write_text("#!/bin/sh\n# laid down by the image\n")
+        _stage_update(data_dir, update_tarball)
+
+        result = _run_helper(data_dir, app_dir)
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _read_version(app_dir) == "2.0.0"
+        assert (app_dir / "scripts" / "panel-kiosk.sh").exists()
+        assert (app_dir / "venv" / "bin" / "python3").exists()
+        # The copy kept is the install that was running, whole: its own venv
+        # and the image's scripts, so a rollback to it starts.
+        assert _read_version(previous) == "1.0.0"
+        assert (previous / "venv" / "bin" / "python3").exists()
+        assert (previous / "scripts" / "panel-kiosk.sh").exists()
+        assert not Path(str(app_dir) + ".new").exists()
+
+    @pytest.mark.skipif(
+        os.name != "posix" or os.geteuid() == 0,
+        reason="needs a file its own owner cannot read; root reads any file",
+    )
+    def test_a_carried_folder_that_cannot_be_copied_leaves_the_install_running(self, tmp_path, update_tarball):
+        data_dir, app_dir, _previous = _install_with_a_previous_copy(tmp_path)
+        unreadable = app_dir / "venv" / "lib" / "site.py"
+        unreadable.parent.mkdir(parents=True)
+        unreadable.write_text("# a file the copy cannot read\n")
+        unreadable.chmod(0)
+        _stage_update(data_dir, update_tarball)
+        try:
+            result = _run_helper(data_dir, app_dir)
+        finally:
+            unreadable.chmod(0o644)
+
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "1.0.0"
+        assert (app_dir / "venv" / "lib" / "site.py").exists()
+        assert not Path(str(app_dir) + ".new").exists()
+        assert not (data_dir / "apply-update.json").exists()
+
+    @pytest.mark.skipif(
+        os.name != "posix" or os.geteuid() == 0,
+        reason="needs a folder its own owner cannot empty; root removes anything",
+    )
+    def test_an_old_copy_that_cannot_be_removed_never_swallows_the_install(self, tmp_path, update_tarball):
+        """`mv A B` moves A inside B when B is a directory, so a previous copy
+        that survives its removal must stop the swap, not take the install."""
+        data_dir, app_dir, previous = _install_with_a_previous_copy(tmp_path)
+        stuck = previous / "openavc"
+        stuck.chmod(0o555)
+        _stage_update(data_dir, update_tarball)
+        try:
+            result = _run_helper(data_dir, app_dir)
+        finally:
+            stuck.chmod(0o755)
+
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "1.0.0"
+        assert not (previous / "app").exists()
+        assert not Path(str(app_dir) + ".new").exists()
+
+    def test_without_its_library_the_helper_applies_nothing_and_says_so(self, tmp_path, update_tarball):
+        data_dir, app_dir, previous = _install_with_a_previous_copy(tmp_path)
+        alone = tmp_path / "alone" / "update-helper.sh"
+        alone.parent.mkdir()
+        shutil.copy2(HELPER_SCRIPT, alone)
+        _stage_update(data_dir, update_tarball)
+
+        result = _run_helper(data_dir, app_dir, script=alone)
+
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "1.0.0"
+        assert _read_version(previous) == "0.9.0"
+        assert "apply-lib.sh" in result.stdout
 
 
 # ===========================================================================

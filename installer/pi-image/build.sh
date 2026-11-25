@@ -113,6 +113,7 @@ tar czf "$OPENAVC_ARCHIVE" \
     openavc/ \
     requirements.txt \
     pyproject.toml \
+    installer/apply-lib.sh \
     installer/trusted-keys/
 
 ARCHIVE_SIZE=$(du -h "$OPENAVC_ARCHIVE" | cut -f1)

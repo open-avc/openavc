@@ -44,8 +44,26 @@ MAX_UPDATE_ATTEMPTS=3
 # back by promote_deferred_update. Zero for a freshly staged one.
 RETRY_ATTEMPTS=0
 
+# How an update is applied (the release staged and checked, the swap, the copy
+# kept to roll back to) is the apply library's, read from the same install as
+# this script: installer/ beside it once installed, the script's own folder in
+# the source tree. An install without it applies no update and says so here.
+case "${BASH_SOURCE[0]}" in
+    */*) HELPER_DIR="${BASH_SOURCE[0]%/*}" ;;
+    *) HELPER_DIR=. ;;
+esac
+APPLY_LIB=""
+for candidate in "$HELPER_DIR/installer/apply-lib.sh" "$HELPER_DIR/apply-lib.sh"; do
+    # shellcheck source-path=SCRIPTDIR source=apply-lib.sh
+    if [ -f "$candidate" ] && . "$candidate"; then
+        APPLY_LIB="$candidate"
+        break
+    fi
+done
+
 # Directories inside $APP_DIR that hold content the release tarball never ships
-# and that must survive every swap. venv is a Python virtual environment built
+# and that must survive every swap (the apply library copies each one into the
+# new release). venv is a Python virtual environment built
 # at install time. driver_repo and plugin_repo are legacy locations from before
 # user-installed content moved to $DATA_DIR — we still preserve them across the
 # swap so the runtime migration in openavc/system_config.migrate_legacy_repos can
@@ -55,6 +73,7 @@ RETRY_ATTEMPTS=0
 # without preserving them an in-app update would wipe the on-screen display until
 # the next re-flash. The `[ -e ]` guard below makes any of these absent (a clean
 # generic install that never had them) a no-op.
+# shellcheck disable=SC2034  # read by the apply library
 PRESERVE_DIRS=(venv driver_repo plugin_repo scripts)
 
 # The subset of PRESERVE_DIRS that systemd may bind-mount via ReadWritePaths
@@ -64,6 +83,13 @@ PRESERVE_DIRS=(venv driver_repo plugin_repo scripts)
 # the mount and drops the dir once it's drained so it never reappears as an
 # EBUSY source. venv is never a mountpoint and is always preserved.
 LEGACY_REPO_DIRS=(driver_repo plugin_repo)
+
+# Whether $1 holds an OpenAVC code tree: its pyproject.toml and the package,
+# under either name (is_app_dir_valid says why). What the apply library asks of
+# a staged release before anything that runs is moved.
+is_code_tree_valid() {
+    [ -f "$1/pyproject.toml" ] && { [ -d "$1/openavc" ] || [ -d "$1/server" ]; }
+}
 
 # Sanity-check that a candidate install directory has the minimum set of
 # files needed to actually start the service. Used before promoting
@@ -86,8 +112,7 @@ LEGACY_REPO_DIRS=(driver_repo plugin_repo)
 # version's layout.
 is_app_dir_valid() {
     local dir="$1"
-    [ -f "$dir/pyproject.toml" ] && \
-    { [ -d "$dir/openavc" ] || [ -d "$dir/server" ]; } && \
+    is_code_tree_valid "$dir" && \
     [ -f "$dir/venv/bin/python3" ] && \
     "$dir/venv/bin/python3" -c 'import sys' >/dev/null 2>&1
 }
@@ -128,9 +153,10 @@ prepare_legacy_repos() {
     done
 }
 
-# Abort an in-progress update and restore the snapshot taken at the top of
-# handle_update. Called when the freshly-installed tree can't be made startable
-# (the venv interpreter can't be recreated, or the dependency sync fails), so
+# Abort an in-progress update and put back the install that was running, which
+# the swap kept as $APP_DIR.previous. Called when the freshly-installed tree
+# can't be made startable (the venv interpreter can't be recreated, or the
+# dependency sync fails), so
 # the service never comes up live on a broken venv. Both callers hand the
 # instruction to defer_update afterwards, so the attempt is retried on the next
 # start rather than thrown away; what this function leaves behind is exactly the
@@ -294,7 +320,8 @@ verify_artifact_signature() {
 # Defense-in-depth for the trust root: keep the root-executed scripts and the
 # signing-key store root-owned and unreachable-for-write by the service user, so
 # the signature gate above never depends on the service user being unable to swap in
-# its own key or rewrite the helper root runs. On Linux this is already enforced
+# its own key or rewrite the helper root runs, or the apply library
+# (installer/apply-lib.sh) it reads. On Linux this is already enforced
 # at runtime by the unit's ProtectSystem=strict (/opt/openavc is read-only to
 # the service); asserting ownership too covers non-strict deployments and any
 # future unit change. Owning a parent directory is enough to rename/replace a
@@ -329,7 +356,7 @@ handle_update() {
     fi
 
     # Integrity gate: verify the artifact's signature before doing ANY
-    # work with it (snapshot/extract/swap). Fail-closed once signing is armed.
+    # work with it (extract/swap). Fail-closed once signing is armed.
     if ! verify_artifact_signature "$ARTIFACT"; then
         echo "$LOG_TAG: artifact failed signature verification, skipping update"
         rm -f "$UPDATE_FILE"
@@ -338,103 +365,23 @@ handle_update() {
 
     echo "$LOG_TAG: applying update to v$TO_VER from $ARTIFACT"
 
-    # Detach/clean up the legacy repo bind mounts before any snapshot or swap so
-    # the mv/rm steps below don't fail with EBUSY on a mountpoint.
+    # Detach/clean up the legacy repo bind mounts before the swap so its
+    # renames don't fail with EBUSY on a mountpoint.
     prepare_legacy_repos
 
-    PREVIOUS="$APP_DIR.previous"
-    STAGING="$APP_DIR.new"
-
-    # Atomic-swap-extract (A62): extract the new release into a fresh
-    # staging directory, migrate the preserved dirs across, then swap.
-    # The old approach (tar xzf -C $APP_DIR overlay) left removed-in-
-    # release files behind — driver_loader.py would scan and try to
-    # load YAMLs that had been deleted upstream.
-
-    # 1. Snapshot the current install so rollback has a complete copy
-    #    (including venv/driver_repo/plugin_repo, since the migration
-    #    in step 4 moves those out of $APP_DIR).
-    rm -rf "$PREVIOUS"
-    if ! cp -a "$APP_DIR" "$PREVIOUS"; then
-        echo "$LOG_TAG: failed to snapshot $APP_DIR to $PREVIOUS, skipping update"
-        rm -rf "$PREVIOUS"
+    # 1-5. Unpack the release into $APP_DIR.new and check it, carry the
+    #    PRESERVE_DIRS into it, keep the running install as $APP_DIR.previous
+    #    and swap (installer/apply-lib.sh has the order and what each failure
+    #    leaves). A failure there is about this release, or leaves the install
+    #    as it was, so the instruction is consumed.
+    if ! apply_release "$ARTIFACT" "$APP_DIR" "" is_code_tree_valid; then
         rm -f "$UPDATE_FILE"
         return
     fi
 
-    # 2. Clean staging directory.
-    rm -rf "$STAGING"
-    if ! mkdir -p "$STAGING"; then
-        echo "$LOG_TAG: failed to create $STAGING, skipping update"
-        rm -rf "$PREVIOUS"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-
-    # 3. Extract tarball into staging (clean, no stragglers).
-    if ! tar xzf "$ARTIFACT" -C "$STAGING"; then
-        echo "$LOG_TAG: extraction failed, leaving current install untouched"
-        rm -rf "$STAGING"
-        rm -rf "$PREVIOUS"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-
-    # 4. Migrate venv/driver_repo/plugin_repo from $APP_DIR into staging.
-    #    We move (not copy) — the snapshot in $PREVIOUS already has its
-    #    own copies. Any stub the tarball might have shipped under these
-    #    names is removed first.
-    migrate_failed=0
-    for sub in "${PRESERVE_DIRS[@]}"; do
-        if [ -e "$APP_DIR/$sub" ]; then
-            rm -rf "$STAGING/$sub"
-            if ! mv "$APP_DIR/$sub" "$STAGING/$sub"; then
-                echo "$LOG_TAG: failed to migrate $sub into staging"
-                migrate_failed=1
-                break
-            fi
-        fi
-    done
-    if [ "$migrate_failed" -eq 1 ]; then
-        # Move anything we already migrated back into $APP_DIR so the
-        # current install is still functional.
-        for sub in "${PRESERVE_DIRS[@]}"; do
-            if [ -e "$STAGING/$sub" ] && [ ! -e "$APP_DIR/$sub" ]; then
-                mv "$STAGING/$sub" "$APP_DIR/$sub" 2>/dev/null || true
-            fi
-        done
-        rm -rf "$STAGING"
-        rm -rf "$PREVIOUS"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-
-    # 5. Swap: discard the old install (already snapshotted to .previous)
-    #    and promote staging into place.
-    if ! rm -rf "$APP_DIR"; then
-        echo "$LOG_TAG: failed to remove old install, attempting recovery from snapshot"
-        rm -rf "$APP_DIR"  # best effort
-        if ! mv "$PREVIOUS" "$APP_DIR"; then
-            echo "$LOG_TAG: recovery from snapshot failed; manual intervention required"
-        fi
-        rm -rf "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-    if ! mv "$STAGING" "$APP_DIR"; then
-        echo "$LOG_TAG: failed to promote new install, recovering from snapshot"
-        if ! mv "$PREVIOUS" "$APP_DIR"; then
-            echo "$LOG_TAG: recovery from snapshot also failed; manual intervention required"
-        fi
-        rm -rf "$STAGING"
-        rm -f "$UPDATE_FILE"
-        return
-    fi
-
-    # The swap removed and recreated $APP_DIR, so this shell's working directory
-    # (the unit's WorkingDirectory=$APP_DIR) now points at a deleted inode. Move
-    # to / so the venv rebuild, chown, and the re-exec below don't emit
-    # "getcwd: cannot access parent directories" warnings.
+    # The swap moved $APP_DIR aside, so this shell's working directory (the
+    # unit's WorkingDirectory=$APP_DIR) is now $APP_DIR.previous. Move to / so
+    # nothing below runs inside the copy kept to roll back to.
     cd / 2>/dev/null || true
 
     # 6. Self-update: replace this script with the version from the new release,
@@ -453,7 +400,7 @@ handle_update() {
     # 7. Make the venv functional, then sync dependencies against the new
     #    release's requirements.txt.
     #
-    #    The migrated venv came from the old release. An OS Python minor bump
+    #    The carried-across venv came from the old release. An OS Python minor bump
     #    (apt moves 3.11 -> 3.12) can leave its interpreter dangling, or
     #    repointed at a minor whose site-packages it lacks — either way the
     #    next start runs a non-functional install. Test the interpreter; if it
@@ -705,7 +652,9 @@ if [ -f "$ROLLBACK_FILE" ]; then
     handle_rollback
 else
     promote_deferred_update
-    if [ -f "$UPDATE_FILE" ]; then
+    if [ -f "$UPDATE_FILE" ] && [ -z "$APPLY_LIB" ]; then
+        echo "$LOG_TAG: $HELPER_DIR/installer/apply-lib.sh is missing, so no update can be applied; reinstall OpenAVC"
+    elif [ -f "$UPDATE_FILE" ]; then
         handle_update
     fi
 fi
