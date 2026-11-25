@@ -81,6 +81,12 @@ describe("what to do now, while a test runs", () => {
     );
     expect(outageNextMark(off)).toBe("");
     expect(outageNextMark({ ...off, noticed_at: 118 })).toBe("on");
+    // A limit of one is one poll.
+    const strict = { ...off, watch: { ...off.watch, silence_polls: 1, notice_within: 10 } };
+    expect(outageNowText(strict, 110)).toBe(
+      "Leave it off until OpenAVC notices it is gone. This driver polls every 5 s and notices " +
+        "after 1 poll with no reply, so it can take up to 10 s. The table below shows it.",
+    );
   });
 
   it("never reads a running clock below zero", () => {

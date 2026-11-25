@@ -1360,9 +1360,13 @@ def _attempt_timing_rows(attempt: dict[str, Any]) -> list[str]:
             "notices a device that stopped answering"
         )))
     elif attempt.get("silence_polls"):
+        polls = attempt["silence_polls"]
+        rule = (
+            "1 poll with no reply takes" if polls == 1
+            else f"{polls} polls in a row with no reply take"
+        )
         rows.append(_row("Silence check", _e(
-            f"{attempt['silence_polls']} polls in a row with no reply take the device offline: "
-            "how the driver notices a device that stopped answering"
+            f"{rule} the device offline: how the driver notices a device that stopped answering"
         )))
     return rows
 

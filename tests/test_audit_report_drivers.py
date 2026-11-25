@@ -680,6 +680,11 @@ def test_clock_times_say_their_time_zone_and_the_liveness_check_is_said():
     assert "Silence check" in page
     assert "3 polls in a row with no reply take the device offline" in page
 
+    # A limit of one is one poll.
+    section["attempts"][0].update({"silence_polls": 1})
+    page = "".join(_render_driver(section))
+    assert "1 poll with no reply takes the device offline" in page
+
 
 def test_the_report_says_where_each_identity_field_came_from():
     from openavc.audit.report import identity_sources

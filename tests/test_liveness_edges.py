@@ -689,3 +689,27 @@ def test_failed_polls_with_no_error_say_the_device_stopped_answering() -> None:
     fault = drv._failed_polls_fault(4, None)
     assert fault.code == NO_RESPONSE
     assert fault.message == "The device stopped answering: 4 polls in a row failed."
+
+
+def test_a_limit_of_one_poll_is_said_as_one_poll(caplog) -> None:
+    """A max_missed_polls of 0 or 1 acts on one poll: each sentence that
+    counts the polls says one poll, never "1 polls in a row"."""
+    caplog.set_level(logging.INFO, logger=_LOGGER)
+    drv = _widget()
+    sentences = [
+        drv._failed_polls_fault(1, None).message,
+        drv._silence_fault(1).message,
+        drv._unread_replies_message(1),
+        drv._unread_replies_message(1, framed=False),
+    ]
+    drv._warn_unread_replies(1, framed=False)
+    drv._handle_transport_disconnect = lambda: None
+    drv._drop_for_failed_polls(_PollWatch(max_missed=1, watching=False, reading=False, dry_polls=1))
+    sentences += _messages(caplog, logging.WARNING)
+    assert sentences[0] == "The device stopped answering: 1 poll failed."
+    assert "1 poll got no reply." in sentences[1]
+    assert all("1 poll" in s and "polls" not in s for s in sentences), sentences
+    # Two or more still count them in a row.
+    assert drv._failed_polls_fault(2, None).message == (
+        "The device stopped answering: 2 polls in a row failed."
+    )

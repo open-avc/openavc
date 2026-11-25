@@ -1169,13 +1169,18 @@ function checksOnItsOwn(o: AuditOutage): boolean {
   return o.watch.liveness_probe || o.watch.silence_check;
 }
 
+/** "1 poll" or "N polls". */
+function pollCount(polls: number): string {
+  return polls === 1 ? "1 poll" : `${polls} polls`;
+}
+
 /** How the driver notices, and the longest that takes. */
 function checkText(o: AuditOutage): string {
   const within = Math.ceil(o.watch.notice_within);
   return o.watch.liveness_probe
     ? `This driver checks every ${o.watch.probe_every} s, so it can take up to ${within} s.`
     : `This driver polls every ${o.watch.poll_interval} s and notices after ` +
-        `${o.watch.silence_polls} polls with no reply, so it can take up to ${within} s.`;
+        `${pollCount(o.watch.silence_polls)} with no reply, so it can take up to ${within} s.`;
 }
 
 /** A power cycle whose driver notices on its own, and has not yet: the

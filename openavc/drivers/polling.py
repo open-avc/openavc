@@ -98,6 +98,12 @@ def _on_connection(now: IoCounts | None, transport: Any) -> bool:
     return now is not None and now.transport is transport
 
 
+def _polls_in_a_row(count: int) -> str:
+    """How a sentence counts the polls a check acted on: ``1 poll`` when the
+    limit is one, else ``N polls in a row``."""
+    return "1 poll" if count == 1 else f"{count} polls in a row"
+
+
 def _httpx_errors() -> tuple[type[BaseException], ...]:
     """The errors a poll's HTTP failure raises: httpx's, when it imports."""
     try:
@@ -453,7 +459,7 @@ class PollLoop:
         say, restarting = self._silence_log()
         say(
             f"[{self.device_id}] No response for "
-            f"{watch.dry_polls} poll cycles — marking disconnected{restarting}"
+            f"{_polls_in_a_row(watch.dry_polls)} — marking disconnected{restarting}"
         )
         fault = self._failed_polls_fault(watch.dry_polls, watch.last_exc)
         self._last_fault = fault
@@ -487,8 +493,7 @@ class PollLoop:
                 return classified
         return ConnectionFault(
             NO_RESPONSE,
-            f"The device stopped answering: {count} polls "
-            f"in a row failed.",
+            f"The device stopped answering: {_polls_in_a_row(count)} failed.",
         )
 
     # --- Silence (a peer that takes every poll and answers none) ---
@@ -545,13 +550,13 @@ class PollLoop:
         if counts is not None and counts.received == 0:
             return ConnectionFault(
                 NO_RESPONSE,
-                f"Nothing has answered on this connection: {cycles} polls in "
-                f"a row got no reply. Check the address and port, and that "
-                f"this driver matches the device.",
+                f"Nothing has answered on this connection: "
+                f"{_polls_in_a_row(cycles)} got no reply. Check the address "
+                f"and port, and that this driver matches the device.",
             )
         return ConnectionFault(
             NO_RESPONSE,
-            f"The device stopped answering: {cycles} polls in a row got no "
+            f"The device stopped answering: {_polls_in_a_row(cycles)} got no "
             f"reply.",
         )
 
@@ -649,14 +654,14 @@ class PollLoop:
         if not framed:
             return (
                 f"Something is answering on this connection, but none of its "
-                f"replies ends the way this driver expects: {cycles} polls in "
-                f"a row. Check the port, and that this driver matches the "
-                f"device."
+                f"replies ends the way this driver expects: "
+                f"{_polls_in_a_row(cycles)}. Check the port, and that this "
+                f"driver matches the device."
             )
         return (
             f"Something is answering on this connection, but this driver reads "
-            f"none of it: {cycles} polls in a row. Check the port, and that "
-            f"this driver matches the device."
+            f"none of it: {_polls_in_a_row(cycles)}. Check the port, and "
+            f"that this driver matches the device."
         )
 
     def _unread_replies_explain(self) -> str:
@@ -752,7 +757,7 @@ class PollLoop:
             )
         log.warning(
             f"[{self.device_id}] Replies arrive but {finding} "
-            f"({cycles} polls in a row)"
+            f"({_polls_in_a_row(cycles)})"
             + (f"; the last one was {sample!r}" if sample else "")
             + ". Check the port, and that this driver matches the "
             "device."
