@@ -319,6 +319,7 @@ def test_every_reader_reads_the_flag_one_way(flag, offline):
     from types import SimpleNamespace as NS
 
     from openavc.audit.command_catalog import command_catalog
+    from openavc.audit.driver_reading import reading_of
     from openavc.core.command_gates import available_offline
     from openavc.drivers.command_model import offline_capable, read_command
 
@@ -330,7 +331,7 @@ def test_every_reader_reads_the_flag_one_way(flag, offline):
     assert available_offline(driver, "wake") is offline
     (button,) = resolve_device_actions(info)
     assert (button["availability"] == "always") is offline
-    (entry,) = command_catalog(driver)
+    (entry,) = command_catalog(reading_of(driver))
     assert entry["available_offline"] is offline
 
 

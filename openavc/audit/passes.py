@@ -24,8 +24,8 @@ from openavc.audit.driver_choice import (
     model_listing,
     verdict_agreement,
 )
+from openavc.audit.driver_reading import installed
 from openavc.audit.session import AuditError
-from openavc.drivers.registry import get_driver_class
 from openavc.utils.log_redaction import mask_secret_fields, secret_config_keys
 from openavc.utils.logger import get_logger
 
@@ -218,7 +218,7 @@ def choose_driver(
         )
         return None
 
-    if get_driver_class(driver_id) is None:
+    if installed(driver_id).driver is None:
         raise AuditError(NOT_INSTALLED.format(driver=driver_id))
     if run is not None and run.active:
         raise AuditError(RUN_IN_PROGRESS.format(driver=run.choice.identity.get("name")))
@@ -251,8 +251,7 @@ def choose_driver(
 
 
 def _driver_info(driver_id: str) -> dict[str, Any]:
-    cls = get_driver_class(driver_id)
-    return dict(getattr(cls, "DRIVER_INFO", {}) or {})
+    return dict(installed(driver_id).info)
 
 
 async def _is_target(session: "AuditSession", host: str) -> bool:
@@ -434,7 +433,7 @@ async def _preview(
     from openavc.drivers.dry_run import preview_connect
     from openavc.utils.log_redaction import get_secret_registry
 
-    cls = get_driver_class(run.choice.driver_id)
+    cls = installed(run.choice.driver_id).driver
     preview_id = f"audit-{session.id}-preview"
     try:
         driver = cls(preview_id, dict(config), StateStore(), EventBus())

@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 
 from openavc.audit.command_catalog import command_catalog
+from openavc.audit.driver_reading import reading_of
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -114,7 +115,7 @@ class _AuditedDriver:
 
 @pytest.mark.parametrize("case", CASES, ids=_ids(CASES))
 def test_the_audit_lists_the_restart_the_runtime_opens(case):
-    entry = command_catalog(_AuditedDriver(case["value"]))[0]
+    entry = command_catalog(reading_of(_AuditedDriver(case["value"])))[0]
     assert entry["restarts_device_for"] == (case["seconds"] or 0)
     assert read_command("reboot", {"restarts_device_for": case["value"]}).restarts_device_for == case["seconds"]
 

@@ -52,6 +52,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from openavc.audit.driver_reading import installed
 from openavc.audit.observe import AuditObserver, ContractEvent
 from openavc.audit.session import AuditError
 from openavc.core.device_config import devices_at_host, resolve_device_config
@@ -60,7 +61,7 @@ from openavc.core.device_manager import DeviceManager
 from openavc.core.device_traffic import TrafficEntry
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.registry import get_device_transport, get_driver_class
+from openavc.drivers.registry import get_device_transport
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -224,7 +225,7 @@ class DriverSandbox:
         Returns the resolved device record. Raises ``AuditError`` with the
         sentence the person reads.
         """
-        if get_driver_class(self.driver_id) is None:
+        if installed(self.driver_id).driver is None:
             raise AuditError(NOT_INSTALLED.format(driver=self.driver_id))
         record = {
             "id": self.device_id,

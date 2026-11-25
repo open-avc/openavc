@@ -22,7 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from openavc.drivers.registry import get_driver_class
+from openavc.audit.driver_reading import installed
+from openavc.drivers.driver_model import PYTHON
 from openavc.drivers.transport_choice import declared_transport
 from openavc.utils.logger import get_logger
 
@@ -48,13 +49,14 @@ def driver_main_file(driver_id: str) -> Path | None:
     from openavc.drivers.driver_loader import serving_file
     from openavc.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 
-    cls = get_driver_class(driver_id)
+    reading = installed(driver_id)
+    cls = reading.driver
     if cls is None:
         return None
     found = serving_file([DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR], driver_id)
     if found is not None:
         return found
-    if "_definition" in vars(cls):
+    if reading.model.kind != PYTHON:
         return None
     try:
         source = inspect.getsourcefile(cls)
@@ -79,8 +81,7 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
     """
     from openavc.drivers.driver_loader import is_builtin_definition_path
 
-    cls = get_driver_class(driver_id)
-    info = dict(getattr(cls, "DRIVER_INFO", {}) or {})
+    info = dict(installed(driver_id).info)
     entry = next((d for d in (catalog or []) if d.get("id") == driver_id), None)
     main = driver_main_file(driver_id)
     fmt = "python" if main is not None and main.suffix == ".py" else "avcdriver"
@@ -172,9 +173,7 @@ def compatible_models(driver_id: str, catalog: list[dict[str, Any]] | None) -> l
     entry = next((d for d in (catalog or []) if d.get("id") == driver_id), None)
     if entry and isinstance(entry.get("compatible_models"), list):
         return list(entry["compatible_models"])
-    cls = get_driver_class(driver_id)
-    info = getattr(cls, "DRIVER_INFO", {}) or {}
-    models = info.get("compatible_models")
+    models = installed(driver_id).info.get("compatible_models")
     return list(models) if isinstance(models, list) else []
 
 

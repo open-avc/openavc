@@ -32,6 +32,7 @@ from openavc.audit.command_text import trial_sentence
 from openavc.audit.commands import DONE, commands_for
 from openavc.audit.effects import same_value
 from openavc.audit.driver_choice import DriverChoice
+from openavc.audit.driver_reading import reading_of
 from openavc.audit.listen import DONE as LISTEN_DONE
 from openavc.audit.listen import start_listen
 from openavc.audit.passes import DriverRun
@@ -230,7 +231,7 @@ async def _connected(port: int):
 def test_the_command_list_is_the_drivers_own(driver):
     from openavc.audit.command_catalog import command_catalog
 
-    catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
+    catalog = {c["name"]: c for c in command_catalog(reading_of(_DRIVER_REGISTRY["acme_commands"]))}
     assert list(catalog) == [
         "power_on", "set_volume", "query_power", "query_volume", "set_code", "set_psk", "set_input",
         "reboot",
@@ -252,7 +253,7 @@ def test_the_command_list_is_the_drivers_own(driver):
 def test_a_command_is_sendable_without_asking_only_when_it_needs_and_asks_nothing(asking_driver):
     from openavc.audit.command_catalog import command_catalog
 
-    catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
+    catalog = {c["name"]: c for c in command_catalog(reading_of(_DRIVER_REGISTRY["acme_commands"]))}
     sendable = [n for n, c in catalog.items() if c["sendable_without_asking"]]
     # Not a value it needs (set_volume), a restart (reboot, get_firmware), the
     # command's own confirmation (get_mode) or its page action's (get_input).
@@ -552,14 +553,14 @@ def test_a_childs_declared_effect_is_read_from_the_childs_padded_key():
         "channel": {"type": "child_id", "child_type": "channel", "required": True},
     }}
     for given in ("1", " 1 ", 1):
-        assert [e["state_key"] for e in declared_effects(mute, {"channel": given}, amp)] == [
+        assert [e["state_key"] for e in declared_effects(mute, {"channel": given}, reading_of(amp))] == [
             "channel.01.mute",
         ]
     gain = {"sets": {"gain": "{level}"}, "params": {
         "name": {"type": "child_id", "child_type": "input", "required": True},
         "level": {"type": "number"},
     }}
-    assert declared_effects(gain, {"name": "mic_a", "level": 3}, amp)[0]["state_key"] == (
+    assert declared_effects(gain, {"name": "mic_a", "level": 3}, reading_of(amp))[0]["state_key"] == (
         "input.mic_a.gain"
     )
 

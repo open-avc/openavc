@@ -25,6 +25,7 @@ import pytest
 from openavc.audit.changes import changed_values, moved_values
 from openavc.audit.commands import CommandPass, CommandTrial
 from openavc.audit.driver_choice import DriverChoice
+from openavc.audit.driver_reading import reading_of
 from openavc.audit.effects import Readout, judged_effects
 from openavc.audit.listen import start_listen
 from openavc.audit.passes import DriverRun
@@ -248,7 +249,7 @@ def _trial(command: str, params: dict, before: dict) -> CommandTrial:
 
 def _outcome(command: str, params: dict, now: dict, before: dict, changed=()) -> str:
     trial = _trial(command, params, before)
-    readout = Readout(state=now, changed=set(changed), driver=NS(DRIVER_INFO=INFO, config={}))
+    readout = Readout(state=now, changed=set(changed), reading=reading_of(NS(DRIVER_INFO=INFO, config={})))
     (effect,) = judged_effects(INFO["commands"][command], trial, readout)
     return effect["outcome"]
 

@@ -24,10 +24,12 @@ wins, as in the contract, and anything else is the device's own.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from openavc.audit.changes import state_label
+from openavc.audit.driver_reading import AuditedDriver
 from openavc.audit.observe import recorded
 from openavc.audit.setting_reading import Setting, setting_says, settings_by_variable
 from openavc.drivers.child_ids import coerce_child_local_id
@@ -38,15 +40,16 @@ from openavc.drivers.truth_words import read_truth
 @dataclass
 class Readout:
     """The device as a command's window closed: its status values, the keys
-    that changed inside the window, and the driver that names them."""
+    that changed inside the window, and the driver that names them, as the
+    audit reads it."""
 
     state: dict[str, Any]
     changed: set[str]
-    driver: Any
+    reading: AuditedDriver
 
     @property
-    def info(self) -> dict[str, Any]:
-        return getattr(self.driver, "DRIVER_INFO", None) or {}
+    def info(self) -> Mapping[str, Any]:
+        return self.reading.info
 
 
 def same_value(expected: Any, actual: Any) -> bool:
@@ -83,7 +86,7 @@ def effect_holds(expected: Any, actual: Any, setting: Setting | None) -> bool:
 
 
 def declared_effects(
-    entry: dict[str, Any], params: dict[str, Any], driver: Any,
+    entry: dict[str, Any], params: dict[str, Any], driver: AuditedDriver,
 ) -> list[dict[str, Any]]:
     """The state a command says it sets (``sets``), as keys of the device's
     state, each with the value it should now read (``has_value`` false when
@@ -118,7 +121,7 @@ def judged_effects(
     now and the outcome."""
     out = []
     settings = settings_by_variable(readout.info)
-    for effect in declared_effects(entry, trial.params, readout.driver):
+    for effect in declared_effects(entry, trial.params, readout.reading):
         key = effect["state_key"]
         reading = VariableReading(
             now=readout.state.get(key), before=trial.before.get(key),
@@ -167,7 +170,7 @@ def query_answer(
     """What a status query's reply reported for its ``query_for`` value
     (``answered``: anything came back in its window)."""
     query_for = entry["query_for"]
-    key = _state_key(_addressed_child(entry, trial.params, readout.driver), query_for)
+    key = _state_key(_addressed_child(entry, trial.params, readout.reading), query_for)
     value = readout.state.get(key)
     if not answered:
         outcome = "no_reply"
@@ -190,7 +193,7 @@ def _state_key(child: tuple[str, str, set[str]] | None, name: str) -> str:
 
 
 def _addressed_child(
-    entry: dict[str, Any], params: dict[str, Any], driver: Any,
+    entry: dict[str, Any], params: dict[str, Any], driver: AuditedDriver,
 ) -> tuple[str, str, set[str]] | None:
     """(child type, its id as state keys spell it, the keys it may be set by)
     for a command with exactly one ``child_id`` parameter that was given a
@@ -204,15 +207,15 @@ def _addressed_child(
     if name is None:
         return None
     ctype = pdefs[name].get("child_type")
-    types = (getattr(driver, "DRIVER_INFO", {}) or {}).get("child_entity_types") or {}
+    types = driver.section("child_entity_types")
     local = params.get(name)
     if not _addressable(ctype, types, local):
         return None
-    padded = _padded_id(driver, ctype, types[ctype], local)
+    padded = _padded_id(driver.driver, ctype, types[ctype], local)
     return ctype, padded, child_writable_props(types[ctype])
 
 
-def _addressable(ctype: Any, types: dict[str, Any], local: Any) -> bool:
+def _addressable(ctype: Any, types: Mapping[str, Any], local: Any) -> bool:
     """A child type the driver declares, and an id given for it."""
     return isinstance(ctype, str) and ctype in types and local not in (None, "")
 

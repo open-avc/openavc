@@ -24,14 +24,16 @@ in case has still changed.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.audit.driver_reading import model_for
 from openavc.audit.observe import is_platform_key, recorded
 from openavc.audit.setting_reading import Setting, setting_reads_alike, settings_by_variable
 
 
-def state_label(info: dict[str, Any], key: str) -> str:
+def state_label(info: Mapping[str, Any], key: str) -> str:
     """A status value's name as a person reads it: the driver's label, and a
     child's with its type and id ("Channel 01 Mute")."""
     spec = (info.get("state_variables") or {}).get(key)
@@ -120,7 +122,7 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     if baseline is None or listen is None:
         return []
     now = current_values(listen)
-    info = _driver_info(run, listen)
+    info = model_for(run, listen).info
     movers = _Movers.of(trials)
     unwatched = getattr(run, "unwatched", None) or {}
     settings = settings_by_variable(info)
@@ -152,15 +154,6 @@ def _baseline(trials: list[Any], settings: Any) -> dict[str, Any] | None:
     if not firsts:
         return None
     return min(firsts, key=lambda pair: pair[0])[1]
-
-
-def _driver_info(run: Any, listen: Any) -> dict[str, Any]:
-    info = getattr(listen.sandbox.driver, "DRIVER_INFO", None) or {}
-    if info:
-        return info
-    from openavc.drivers.registry import get_driver_class
-
-    return getattr(get_driver_class(run.choice.driver_id), "DRIVER_INFO", {}) or {}
 
 
 @dataclass

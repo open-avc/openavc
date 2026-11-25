@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.observe import (
@@ -53,6 +54,7 @@ from openavc.audit.observe import (
     recorded,
     replies_to_nobody,
 )
+from openavc.audit.driver_reading import model_for
 from openavc.audit.sandbox import DriverSandbox, audit_device_id
 from openavc.audit.session import AuditError, error_sentence
 from openavc.core.connection_fault import is_permanent_fault
@@ -660,14 +662,9 @@ class ListenPass:
 
     # -- reading ------------------------------------------------------------------
 
-    def _driver_info(self) -> dict[str, Any]:
-        driver = self.sandbox.driver
-        info = getattr(driver, "DRIVER_INFO", None)
-        if info is None:
-            from openavc.drivers.registry import get_driver_class
-
-            info = getattr(get_driver_class(self.run.choice.driver_id), "DRIVER_INFO", {})
-        return info or {}
+    def _driver_info(self) -> Mapping[str, Any]:
+        """The driver this attempt's connection runs, else the installed one."""
+        return model_for(self.run, self).info
 
     def _declared(self) -> list[str]:
         return list((self._driver_info().get("state_variables") or {}).keys())

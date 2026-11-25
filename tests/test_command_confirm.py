@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from openavc.audit.command_catalog import command_catalog
+from openavc.audit.driver_reading import reading_of
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -162,7 +163,7 @@ def test_the_audit_asks_before_a_confirm_command_and_never_suggests_it():
     info["quick_actions"] = ["power_on", "factory_reset"]
     driver = _driver()
     driver.DRIVER_INFO = info
-    catalog = {c["name"]: c for c in command_catalog(driver)}
+    catalog = {c["name"]: c for c in command_catalog(reading_of(driver))}
     assert catalog["factory_reset"]["confirm"] == (
         "Erases every preset and returns the unit to DHCP."
     )
@@ -184,7 +185,7 @@ def _with_commands(**commands):
 def _catalog(info):
     driver = _driver()
     driver.DRIVER_INFO = info
-    return {c["name"]: c for c in command_catalog(driver)}
+    return {c["name"]: c for c in command_catalog(reading_of(driver))}
 
 
 def test_confirm_true_asks_one_question_naming_what_is_sent():

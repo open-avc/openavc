@@ -1,13 +1,13 @@
 """The command list: what a driver says about each of its commands.
 
-The live driver's own (``DRIVER_INFO["commands"]`` on the instance, so commands
-a Python driver builds once connected are there too), in the order the driver
-declares them, with what the driver says about each: its label, help and
-parameters; whether it is a **status query** (``query_for``, the variable its
-reply reports, or a command the driver's polling runs by name); what it says it
-changes (``sets``); whether it works with the device offline
-(``available_offline``); how long it takes the device away
-(``restarts_device_for``).
+The driver's own, as the audit reads it (``audit/driver_reading``: the live
+instance's while it runs, so commands a Python driver builds once connected
+are there too), in the order the driver declares them, with what the driver
+says about each: its label, help and parameters; whether it is a **status
+query** (``query_for``, the variable its reply reports, or a command the
+driver's polling runs by name); what it says it changes (``sets``); whether it
+works with the device offline (``available_offline``); how long it takes the
+device away (``restarts_device_for``).
 
 A command the driver puts on a device page (a quick action, or a command
 action) is **suggested**, one to try first, unless it asks for a confirmation
@@ -29,8 +29,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from openavc.drivers.command_model import CommandModel, read_command
-from openavc.drivers.driver_model import POLL, query_lines, read_driver, runs_as_command
+from openavc.audit.driver_reading import AuditedDriver
+from openavc.drivers.command_model import CommandModel
 from openavc.drivers.spec import file_param_names
 
 
@@ -44,26 +44,22 @@ class _PageActions:
     promoted: set[str] = field(default_factory=set)
 
 
-def command_catalog(driver: Any) -> list[dict[str, Any]]:
+def command_catalog(driver: AuditedDriver) -> list[dict[str, Any]]:
     """The driver's commands, in its own order, with what it says about each."""
-    info = getattr(driver, "DRIVER_INFO", {}) or {}
-    commands = info.get("commands") or {}
-    if not isinstance(commands, dict):
-        return []
-    polled = _polled_command_names(driver)
+    polled = driver.polled_commands()
     actions = _page_actions(driver)
     return [
-        _entry(name, cdef if isinstance(cdef, dict) else {}, polled, actions)
-        for name, cdef in commands.items()
+        _entry(name, cdef, command, polled, actions)
+        for name, cdef, command in driver.commands()
     ]
 
 
 def _entry(
-    name: str, cdef: dict[str, Any], polled: set[str], actions: _PageActions,
+    name: str, cdef: dict[str, Any], command: CommandModel, polled: set[str],
+    actions: _PageActions,
 ) -> dict[str, Any]:
     params = _typed(cdef, "params", dict, {})
     query_for = _typed(cdef, "query_for", str, "")
-    command = read_command(name, cdef)
     return {
         "name": name,
         "label": str(cdef.get("label") or name),
@@ -99,26 +95,7 @@ def _suggested(command: CommandModel, actions: _PageActions) -> bool:
     return not command.restarts_device_for and not command.confirm
 
 
-def _polled_command_names(driver: Any) -> set[str]:
-    """The commands a YAML driver's polling runs by name (its status queries),
-    by the runtime's sender's rule (``driver_model.runs_as_command``)."""
-    definition = getattr(driver, "_definition", None) or {}
-    commands = definition.get("commands")
-    return {text for text in _polled_sends(driver) if runs_as_command(commands, text)}
-
-
-def _polled_sends(driver: Any) -> list[str]:
-    """What a YAML driver's poll sends, each line once: a command's name, or
-    the text itself (the driver model's ``query_lines``, the poll's only).
-    A start-up line need not be a status query, and a follow-up or a
-    read-back is a command's own; an entry's ``when`` gate is not read, since
-    a line the poll may send is a status query whether or not this device's
-    config sends it now."""
-    definition = getattr(driver, "_definition", None) or {}
-    return [sent.text for sent in query_lines(read_driver(definition), (POLL,))]
-
-
-def _page_actions(driver: Any) -> _PageActions:
+def _page_actions(driver: AuditedDriver) -> _PageActions:
     """The confirmation each of the driver's command actions asks for before
     it runs (as the resolver words it), and the commands the driver puts on a
     device page (its quick actions and command actions)."""
@@ -130,14 +107,13 @@ def _page_actions(driver: Any) -> _PageActions:
     return actions
 
 
-def _command_actions(driver: Any) -> Iterator[tuple[str, str | None]]:
+def _command_actions(driver: AuditedDriver) -> Iterator[tuple[str, str | None]]:
     """Each command action on the driver's device page: the command it sends
     and what it asks first (None for nothing). The resolver names the command
     of every command action it serves."""
     from openavc.drivers.actions import resolve_device_actions
 
-    info = getattr(driver, "DRIVER_INFO", {}) or {}
-    config = getattr(driver, "config", None)
-    for action in resolve_device_actions(info, config if isinstance(config, dict) else None):
+    config = getattr(driver.driver, "config", None)
+    for action in resolve_device_actions(dict(driver.info), config if isinstance(config, dict) else None):
         if action["kind"] == "command":
             yield action["command"], action["confirm"]

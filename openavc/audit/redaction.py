@@ -375,13 +375,12 @@ def _run_catalog_names(run: Any) -> set[str]:
 def driver_public_strings(driver_id: str, identity: dict[str, Any] | None) -> set[str]:
     """Every string one driver declares, when the copy that ran is the
     catalog's (every file matches it); nothing for any other copy."""
-    from openavc.drivers.registry import get_driver_class
+    from openavc.audit.driver_reading import installed
 
     out: set[str] = set()
     files = (identity or {}).get("files") or []
     if files and all(f.get("matches_catalog") is True for f in files):
-        cls = get_driver_class(driver_id)
-        _strings_in(getattr(cls, "DRIVER_INFO", None) or {}, out)
+        _strings_in(dict(installed(driver_id).info), out)
     out.discard("")
     return out
 

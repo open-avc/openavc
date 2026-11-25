@@ -41,11 +41,13 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.command_catalog import command_catalog
 from openavc.audit.commands import QUERY_WINDOW_SECONDS
+from openavc.audit.driver_reading import model_for, reading_of
 from openavc.audit.observe import command_sent_nothing, recorded
 from openavc.audit.session import AuditError, error_sentence
 from openavc.core.pending_settings import readback_confirms
@@ -171,15 +173,8 @@ class SettingsPass:
         """The device setting ``key`` as the driver declares it, or None."""
         return (self._definitions().get("device_settings") or {}).get(key)
 
-    def _definitions(self) -> dict[str, Any]:
-        listen = self.run.listen
-        driver = listen.sandbox.driver if listen is not None else None
-        if driver is None:
-            from openavc.drivers.registry import get_driver_class
-
-            driver = get_driver_class(self.run.choice.driver_id)
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        return info
+    def _definitions(self) -> Mapping[str, Any]:
+        return model_for(self.run).info
 
     def catalog(self) -> list[dict[str, Any]]:
         """Every device setting the driver declares, with the value it has
@@ -355,7 +350,7 @@ class SettingsPass:
         sdef = self._declaration(trial.key) or {}
         state_key = read_setting(trial.key, sdef).state_key
         query = next((
-            c for c in command_catalog(sandbox.driver)
+            c for c in command_catalog(reading_of(sandbox.driver))
             if c["query_for"] == state_key and c["sendable_without_asking"]
         ), None)
         if query is None:

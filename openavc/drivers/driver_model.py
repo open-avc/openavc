@@ -11,7 +11,7 @@ Who asks it: the checker, for what the author's doors refuse
 sit (the walk's query part, ``substitution_checks``); the simulator, for the
 lines it answers (``simulator/reread_queries``, ``query_handlers``) and the
 validator's sets (``simulator/driver_sends``); the Device Audit, for the
-commands a poll runs (``audit/command_catalog``); the runtime, for its reply
+commands a poll runs (``audit/driver_reading``); the runtime, for its reply
 rules (``ConfigurableDriver``, once per driver file and again for a device
 whose own protocol is merged over it). The runtime reads one query entry at a
 time through the leaf, ``query_entry``.
@@ -38,7 +38,7 @@ What it holds so far:
   its own text; the runtime's sender (``start_up_and_poll``), the checker's
   fill (``substitution_checks``), the simulator's coverage
   (``osc_coverage``, ``send_coverage``, ``reread_queries``) and the audit's
-  status queries (``audit/command_catalog``) ask it.
+  status queries (``audit/driver_reading``) ask it.
 * ``problems`` also holds the fields of a push listener's frame parser the
   frame table refuses where push does not refuse them at every door
   (``framing_checks.push_frame_field_issues``), an ``auth:`` timeout of 0

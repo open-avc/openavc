@@ -15,6 +15,7 @@ from types import SimpleNamespace as NS
 
 from openavc.audit.changes import changed_values, moved_values
 from openavc.audit.command_catalog import command_catalog
+from openavc.audit.driver_reading import reading_of
 from openavc.audit.commands import CommandPass, CommandTrial
 from openavc.audit.effects import Readout, declared_effects, query_answer
 from openavc.core.device_traffic import RX, TX
@@ -79,6 +80,11 @@ INFO = {
 
 
 def _driver(info=INFO, fmt=lambda ctype, local: f"{int(local):02d}"):
+    """The audit's reading of the driver below."""
+    return reading_of(_raw_driver(info, fmt))
+
+
+def _raw_driver(info=INFO, fmt=lambda ctype, local: f"{int(local):02d}"):
     return NS(
         DRIVER_INFO=info, config={}, format_child_id=fmt,
         # A YAML driver's DRIVER_INFO commands are its definition's.
@@ -103,10 +109,10 @@ def test_a_command_is_polled_when_the_poll_runs_it_by_name_whatever_its_gate():
         "commands": {**INFO["commands"], "power_on": {"send": "ON", "read_back": "reboot"}},
     }
     driver = NS(DRIVER_INFO=INFO, config={"enable_temp": False}, _definition=definition)
-    catalog = {entry["name"]: entry for entry in command_catalog(driver)}
+    catalog = {entry["name"]: entry for entry in command_catalog(reading_of(driver))}
     assert [name for name, entry in catalog.items() if entry["polled"]] == ["polled"]
     # A driver with no definition (a Python one) has no poll to read.
-    assert not any(entry["polled"] for entry in command_catalog(NS(DRIVER_INFO=INFO, config={})))
+    assert not any(entry["polled"] for entry in command_catalog(reading_of(NS(DRIVER_INFO=INFO, config={}))))
 
 
 def test_the_command_list_reads_each_declaration():
@@ -183,7 +189,7 @@ def test_a_property_every_child_has_is_the_addressed_childs():
         {"state": "online", "state_key": "channel.01.online", "expected": True, "has_value": True},
     ]
     trial = NS(params={"ch": "1"})
-    readout = Readout(state={"channel.01.online": True}, changed={"channel.01.online"}, driver=driver)
+    readout = Readout(state={"channel.01.online": True}, changed={"channel.01.online"}, reading=driver)
     answer = query_answer({**commands["query_online"], "name": "query_online"}, trial, readout, True)
     assert (answer["state_key"], answer["outcome"]) == ("channel.01.online", "reported")
 
@@ -211,7 +217,7 @@ def _pass(state, *, frames=True, started=True, table=None, traffic=(), events=()
         frames=lambda: [object()] if frames else [],
     )
     sandbox = NS(
-        started=started, device_state=lambda: dict(state), observer=observer, driver=_driver(),
+        started=started, device_state=lambda: dict(state), observer=observer, driver=_raw_driver(),
     )
     attempt = NS(sandbox=sandbox, status_table=lambda: table or {})
     run = NS(listens=[attempt], listen=attempt, index=0, settings=None,

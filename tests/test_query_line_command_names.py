@@ -19,6 +19,7 @@ import pytest
 
 import openavc
 from openavc.audit.command_catalog import command_catalog
+from openavc.audit.driver_reading import reading_of
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import create_configurable_driver_class
@@ -65,7 +66,7 @@ async def test_the_runtime_and_the_audit_agree_on_what_the_poll_runs():
         await driver._dispatch_query(line)
     assert (as_command, as_text) == (["power_query"], ["INPUT?"])
 
-    catalog = {entry["name"]: entry for entry in command_catalog(driver)}
+    catalog = {entry["name"]: entry for entry in command_catalog(reading_of(driver))}
     polled = sorted(name for name, entry in catalog.items() if entry["polled"])
     assert polled == as_command
 
@@ -76,7 +77,7 @@ def test_no_reader_tests_a_line_against_the_commands_itself():
     root = Path(openavc.__file__).parent
     readers = {
         "drivers/start_up_and_poll.py", "drivers/substitution_checks.py",
-        "audit/command_catalog.py", "simulator/osc_coverage.py",
+        "audit/driver_reading.py", "simulator/osc_coverage.py",
         "simulator/send_coverage.py", "simulator/reread_queries.py",
     }
     own_test = re.compile(
@@ -92,5 +93,5 @@ def test_a_python_driver_has_no_poll_lines():
     """A Python driver's class sends what it sends; the audit reads no poll
     of its own into it."""
     driver = NS(DRIVER_INFO={"commands": {"power_query": {"label": "Power?"}}}, config={})
-    (entry,) = command_catalog(driver)
+    (entry,) = command_catalog(reading_of(driver))
     assert entry["polled"] is False

@@ -86,6 +86,7 @@ from openavc.audit.changes import changed_values, current_values, moved_values
 from openavc.audit.command_catalog import command_catalog
 from openavc.audit.command_text import ANSWERS, params_text, trial_sentence
 from openavc.audit.command_window import DONE, SENDING, WATCHING, WindowListener
+from openavc.audit.driver_reading import AuditedDriver, model_for
 from openavc.audit.effects import (
     Readout,
     declared_effects,
@@ -343,19 +344,13 @@ class CommandPass:
         attempt = self._attempt(trial)
         return attempt.sandbox.observer if attempt is not None else None
 
-    def _driver(self) -> Any:
-        listen = self.run.listen
-        driver = listen.sandbox.driver if listen is not None else None
-        if driver is None:
-            from openavc.drivers.registry import get_driver_class
-
-            driver = get_driver_class(self.run.choice.driver_id)
-        return driver
+    def _reading(self) -> AuditedDriver:
+        return model_for(self.run)
 
     def catalog(self) -> list[dict[str, Any]]:
         if self._final_catalog is not None and not self._connected():
             return self._final_catalog
-        return command_catalog(self._driver())
+        return command_catalog(self._reading())
 
     def catalog_entry(self, name: str) -> dict[str, Any] | None:
         """The command list's entry for ``name``; None for a name the driver
@@ -607,8 +602,8 @@ class CommandPass:
         entry = self._declaration(trial)
         state = sandbox.device_state()
         fresh = sandbox.written_after(trial.returned_seq)
-        driver = self._driver()
-        settings = settings_by_variable(getattr(driver, "DRIVER_INFO", None) or {})
+        driver = self._reading()
+        settings = settings_by_variable(driver.info)
         for effect in declared_effects(entry, trial.params, driver):
             if not effect["has_value"]:
                 continue
@@ -800,7 +795,7 @@ class CommandPass:
         readout = Readout(
             state=current_values(attempt) if attempt is not None else {},
             changed={c["key"] for c in trial.changes},
-            driver=self._driver(),
+            reading=self._reading(),
         )
         entry = self._declaration(trial)
         trial.effects.extend(judged_effects(entry, trial, readout))
@@ -828,7 +823,7 @@ class CommandPass:
             self.batch["status"] = "done"
             self._publish()
         if self._connected():
-            self._final_catalog = command_catalog(self._driver())
+            self._final_catalog = command_catalog(self._reading())
 
     async def _cancel_task(self) -> None:
         """Cancel what is being sent or watched and wait for it to unwind
@@ -854,7 +849,7 @@ class CommandPass:
             for key in _MASKED:
                 out[key] = redactor.value(out[key])
         out["moved"] = moved_values(
-            out["changes"], trial.already_moving, getattr(self._driver(), "DRIVER_INFO", {}) or {},
+            out["changes"], trial.already_moving, self._reading().info,
         )
         out["summary"] = trial_sentence(out) if trial.status == DONE else ""
         if not every_entry:
