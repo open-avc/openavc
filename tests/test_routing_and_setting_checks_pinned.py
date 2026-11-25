@@ -1314,9 +1314,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
                                             "Device setting 'volumes': state_key 'volumes' is not "
                                             'a declared state variable, so the setting would never '
                                             'read back')],
- 'settings_state_key_empty': [('device_settings.volume',
-                               "Device setting 'volume': state_key '' is not a declared state "
-                               'variable, so the setting would never read back')],
+ 'settings_state_key_empty': [],
  'settings_state_key_none': [],
  'settings_state_key_number': [],
  'settings_state_key_undeclared': [('device_settings.volume',

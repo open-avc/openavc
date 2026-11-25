@@ -54,15 +54,19 @@ import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
 
 const SETTINGS = {
-  volume: { label: "Volume", help: "Output level.", type: "integer", min: 0, max: 100, current_value: 20 },
+  // Each served with the state variable its value is read back from.
+  volume: {
+    label: "Volume", help: "Output level.", type: "integer", min: 0, max: 100,
+    state_key: "volume", current_value: 20,
+  },
   input: {
     label: "Input", type: "enum", state_key: "active_input",
     values: [{ value: "hdmi1", label: "HDMI 1" }, { value: "hdmi2", label: "HDMI 2" }],
     current_value: "hdmi2",
   },
-  eco: { label: "Eco Mode", type: "boolean", current_value: false },
-  name: { label: "Name", type: "string", current_value: null, default: "Amp" },
-  serial: { label: "Serial", type: "string", current_value: null },
+  eco: { label: "Eco Mode", type: "boolean", state_key: "eco", current_value: false },
+  name: { label: "Name", type: "string", state_key: "name", current_value: null, default: "Amp" },
+  serial: { label: "Serial", type: "string", state_key: "serial", current_value: null },
 };
 
 function setLive(next: Record<string, unknown>) {

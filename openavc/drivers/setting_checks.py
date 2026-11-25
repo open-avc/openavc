@@ -2,7 +2,8 @@
 entry, and a config field's ``learned_from``.
 
 Both point into the driver's state variables. A device setting reads back
-from its ``state_key`` (its own name when left out) and is written by its
+from its ``state_key`` (its own name when left out, null or empty, as
+``setting_model`` reads it) and is written by its
 ``write`` block; the YAML runtime writes it in ``drivers/setting_writes.py``,
 applying the ``map``, and ``core/pending_settings.py`` holds a write for a
 device that is away until the device reports the value. A config field with
@@ -35,6 +36,7 @@ from typing import Any, Callable
 from openavc.drivers.command_form import command_form
 from openavc.drivers.declared_names import UNEVALUATED_KEY, declared_enum_values
 from openavc.drivers.send_shape import osc_args_errors
+from openavc.drivers.setting_model import read_setting
 from openavc.drivers.spec import CONNECTION_FIELDS, VALUE_TYPES, is_secret_setting
 from openavc.drivers.usable_number import is_number_value
 
@@ -122,9 +124,10 @@ def device_setting_state_key_errors(
     """
     if not isinstance(declared_vars, dict) or UNEVALUATED_KEY in declared_vars:
         return []
-    state_key = setting_def.get("state_key", setting_name)
-    if not isinstance(state_key, str):
+    setting = read_setting(setting_name, setting_def)
+    if setting.not_text:
         return []
+    state_key = setting.state_key
     if state_key in declared_vars:
         return []
     return [

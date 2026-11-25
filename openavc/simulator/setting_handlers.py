@@ -45,6 +45,7 @@ from typing import Any
 
 from openavc.drivers.command_form import command_form
 from openavc.drivers.compiled_protocol import conversion_of, safe_substitute
+from openavc.drivers.setting_model import read_setting
 from openavc.drivers.spec import placeholder_names
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.send_templates import send_param_specs, send_regex, spec_int_base
@@ -100,7 +101,7 @@ def _handler(
     pattern = _pattern(name, line, params)
     if pattern is None:
         return None
-    state_key = str(entry.get("state_key") or name)
+    state_key = read_setting(name, entry).state_key
     base = spec_int_base(send_param_specs(line, params).get("value", ""))
     conversion = conversion_of(var_def_for_key(state_key))
     return CommandHandler(

@@ -71,6 +71,7 @@ ALLOWED = {
     "openavc.drivers.send_shape",
     "openavc.drivers.serial_line",
     "openavc.drivers.setting_checks",
+    "openavc.drivers.setting_model",
     "openavc.drivers.shape_checks",
     "openavc.drivers.sign_in_checks",
     "openavc.drivers.state_variable_checks",

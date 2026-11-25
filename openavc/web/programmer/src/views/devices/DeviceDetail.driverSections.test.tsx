@@ -196,7 +196,7 @@ describe("the editors a driver opts in to", () => {
 
   it("draws them in a fixed order, below Device Settings and above Send Command", async () => {
     mocks.getDeviceSettings.mockResolvedValue({
-      settings: { volume: { label: "Volume", type: "integer", current_value: 1 } },
+      settings: { volume: { label: "Volume", type: "integer", state_key: "volume", current_value: 1 } },
     });
     setInfo({
       commands: { power_on: { label: "Power On" } },

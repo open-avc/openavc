@@ -5,7 +5,7 @@ The rules worth knowing before changing anything here:
 * **The value that goes out.** A setting's ``map`` names the device's own
   word for a value (ON for true) and is written as declared. Otherwise the
   setting writes its state variable's real value (``state_key``, else the
-  setting's own key), turned back into the device's own number by that
+  setting's own key, as ``setting_model`` reads it), turned back into the device's own number by that
   variable's ``scale`` / ``offset``. ``{value}``, any config field and the
   platform's push values fill the write as they fill a command's send, and a
   placeholder nothing fills goes out as written with the warning a command's
@@ -41,6 +41,7 @@ from typing import Any, Callable
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import UnknownDeviceSettingError
 from openavc.drivers.command_form import command_form
+from openavc.drivers.setting_model import read_setting
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -107,7 +108,7 @@ class SettingWrites:
         if word is not None:
             return word
         state_var = self._definition.get("state_variables", {}).get(
-            setting_def.get("state_key") or key
+            read_setting(key, setting_def).state_key
         )
         return compiled_protocol.value_to_wire(value, state_var)
 

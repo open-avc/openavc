@@ -50,6 +50,7 @@ from openavc.drivers.base import (
     UnknownDeviceSettingError,
     validate_device_setting_value,
 )
+from openavc.drivers.setting_model import read_setting
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -133,8 +134,9 @@ def _names_options(sdef: Any) -> bool:
 def readback_state_key(key: str, sdef: Any, state_vars: Any) -> Any:
     """The state variable a device setting reads back through, or None when
     the driver declares no such variable and there is nothing to confirm the
-    setting against. The setting's ``state_key``, else its own key."""
-    state_key = sdef.get("state_key", key) if isinstance(sdef, dict) else key
+    setting against. The setting's ``state_key``, as ``setting_model``
+    reads it."""
+    state_key = read_setting(key, sdef).state_key
     return state_key if state_key in state_vars else None
 
 

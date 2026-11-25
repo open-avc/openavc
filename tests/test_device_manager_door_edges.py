@@ -150,8 +150,9 @@ async def test_the_settings_listing_carries_each_declaration_and_its_current_val
     assert dm.get_device_settings("dev") == {
         # Read from the state key the setting names...
         "brightness": {**BRIGHTNESS, "current_value": 40},
-        # ...or, naming none, from the key the setting is called.
-        "input_name": {**INPUT_NAME, "current_value": "HDMI 2"},
+        # ...or, naming none, from the key the setting is called, which is
+        # served as the setting's state key.
+        "input_name": {**INPUT_NAME, "state_key": "input_name", "current_value": "HDMI 2"},
     }
 
 

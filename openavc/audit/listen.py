@@ -57,6 +57,7 @@ from openavc.audit.sandbox import DriverSandbox, audit_device_id
 from openavc.audit.session import AuditError, error_sentence
 from openavc.core.connection_fault import is_permanent_fault
 from openavc.core.device_traffic import RX, TX, TrafficEntry, serialize_entry
+from openavc.drivers.setting_model import read_setting
 from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
 
@@ -752,14 +753,14 @@ class ListenPass:
         settings = []
         for key, spec in (info.get("device_settings") or {}).items():
             spec = spec if isinstance(spec, dict) else {}
-            state_key = spec.get("state_key")
-            value = state.get(state_key) if state_key else None
+            state_key = read_setting(key, spec).state_key
+            value = state.get(state_key)
             settings.append({
                 "key": key,
                 "label": spec.get("label") or key,
-                "state_key": state_key or "",
+                "state_key": state_key,
                 "value": recorded(value),
-                "populated": bool(state_key) and value is not None,
+                "populated": value is not None,
             })
         return {
             "variables": variables, "children": children, "child_labels": child_labels,

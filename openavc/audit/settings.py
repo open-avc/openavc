@@ -50,6 +50,7 @@ from openavc.audit.observe import command_sent_nothing, recorded
 from openavc.audit.session import AuditError, error_sentence
 from openavc.core.pending_settings import readback_confirms
 from openavc.drivers.base import validate_device_setting_value
+from openavc.drivers.setting_model import read_setting
 from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
 
@@ -192,7 +193,7 @@ class SettingsPass:
         out = []
         for key, sdef in (info.get("device_settings") or {}).items():
             sdef = sdef if isinstance(sdef, dict) else {}
-            state_key = sdef.get("state_key", key)
+            state_key = read_setting(key, sdef).state_key
             readable = state_key in variables
             current = state.get(state_key) if readable else None
             label = str(sdef.get("label") or key)
@@ -312,7 +313,7 @@ class SettingsPass:
         sandbox = self.run.listen.sandbox
         started = half["at"]
         sdef = self._declaration(key) or {}
-        state_key = sdef.get("state_key", key) if isinstance(sdef, dict) else key
+        state_key = read_setting(key, sdef).state_key
         # Already showing the value written (a restore after a write the
         # device never reported): the read-back passes at once and proves
         # nothing unless the device reports again.
@@ -352,7 +353,7 @@ class SettingsPass:
         warns about is not sent on the person's behalf."""
         sandbox = self.run.listen.sandbox
         sdef = self._declaration(trial.key) or {}
-        state_key = sdef.get("state_key", trial.key) if isinstance(sdef, dict) else trial.key
+        state_key = read_setting(trial.key, sdef).state_key
         query = next((
             c for c in command_catalog(sandbox.driver)
             if c["query_for"] == state_key and c["sendable_without_asking"]

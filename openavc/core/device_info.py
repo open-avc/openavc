@@ -38,6 +38,7 @@ from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
 from openavc.core.device_records import ORPHANED, RUNNING, DeviceRecord
 from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
 from openavc.drivers.refused_files import refusal_for
+from openavc.drivers.setting_model import read_setting
 # The device.<id>.<key> keys the device manager writes for every device: the
 # driver contract's list, where a reply rule's gate reads it too. The AI's
 # property check and the device audit import it from here.
@@ -137,17 +138,19 @@ class DeviceInfoMixin:
         return info
 
     def get_device_settings(self, device_id: str) -> dict[str, Any]:
-        """Return device settings metadata with current values from state."""
+        """Each device setting's declaration, with the state variable its
+        value is read back from (``state_key``, as ``setting_model`` reads
+        it: never empty) and its current value there."""
         driver = self._live_driver(device_id)
 
         settings_def = driver.DRIVER_INFO.get("device_settings", {})
         result: dict[str, Any] = {}
         for key, setting in settings_def.items():
-            state_key = setting.get("state_key", key)
-            current_value = driver.get_state(state_key)
+            state_key = read_setting(key, setting).state_key
             result[key] = {
                 **setting,
-                "current_value": current_value,
+                "state_key": state_key,
+                "current_value": driver.get_state(state_key),
             }
         return result
 

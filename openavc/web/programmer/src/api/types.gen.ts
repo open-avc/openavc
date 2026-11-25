@@ -1246,7 +1246,10 @@ export interface DriverDeviceSettingDef {
   type?: string;
   label?: string;
   help?: string;
-  /** State variable providing the current value. Defaults to the setting key. */
+  /**
+   * State variable providing the current value. Left out or empty, the setting
+   * key.
+   */
   state_key?: string;
   default?: unknown;
   /**

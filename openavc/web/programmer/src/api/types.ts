@@ -582,7 +582,11 @@ export interface DeviceSettingDef {
   regex?: string;
 }
 
+/** A device setting as the device's settings answer serves it: its
+ *  declaration, the state variable its value is read back from (never empty:
+ *  the setting's own key when the driver names none) and the value there. */
 export interface DeviceSettingValue extends DeviceSettingDef {
+  state_key: string;
   current_value: unknown;
 }
 

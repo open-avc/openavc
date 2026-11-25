@@ -698,7 +698,7 @@ device_settings:
 | `type` | Yes | `string`, `integer`, `number`, `float`, `boolean`, or `enum`. |
 | `label` | Yes | Human-readable label shown in the Programmer IDE. |
 | `help` | Yes | Inline help text explaining what the setting does. |
-| `state_key` | No | Which state variable provides the current value. Defaults to the setting key. When that variable declares `scale` / `offset`, the setting's `{value}` is converted back to the device's own number before it is written. |
+| `state_key` | No | Which state variable provides the current value. Left out or empty, it is the setting's own key. When that variable declares `scale` / `offset`, the setting's `{value}` is converted back to the device's own number before it is written. |
 | `default` | Yes | Default value for new devices. |
 | `setup` | No | If `true`, the setting is prompted during add-to-project. Default: `false`. |
 | `unique` | No | If `true`, the system generates a non-clashing default (appends device ID). Default: `false`. |

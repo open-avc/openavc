@@ -63,16 +63,17 @@ function useDeviceSettings(deviceId: string) {
   return { settings, pending, loaded, reloadSoon };
 }
 
-/** The value on the device now: the live state under the setting's state key
- *  when the device reports it, else what the last read of the settings said. */
+/** The value on the device now: the live state under the state variable the
+ *  server serves for the setting when the device reports it, else what the
+ *  last read of the settings said. */
 function currentValueOf(
   liveState: Record<string, unknown>,
   deviceId: string,
-  key: string,
   def: DeviceSettingValue | undefined,
 ): unknown {
-  const stateKey = `device.${deviceId}.${String(def?.state_key ?? key)}`;
-  return stateKey in liveState ? liveState[stateKey] : def?.current_value;
+  if (!def) return undefined;
+  const stateKey = `device.${deviceId}.${def.state_key}`;
+  return stateKey in liveState ? liveState[stateKey] : def.current_value;
 }
 
 export function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; connected: boolean }) {
@@ -88,7 +89,7 @@ export function DeviceSettingsSection({ deviceId, connected }: { deviceId: strin
   if (!loaded || settingKeys.length === 0) return null;
 
   const handleStartEdit = (key: string) => {
-    const current = currentValueOf(liveState, deviceId, key, settings[key]);
+    const current = currentValueOf(liveState, deviceId, settings[key]);
     setEditingKey(key);
     setEditValue(current != null ? String(current) : String(settings[key]?.default ?? ""));
     setSaveResult(null);
@@ -131,7 +132,7 @@ export function DeviceSettingsSection({ deviceId, connected }: { deviceId: strin
             key={key}
             settingKey={key}
             def={settings[key]}
-            currentValue={currentValueOf(liveState, deviceId, key, settings[key])}
+            currentValue={currentValueOf(liveState, deviceId, settings[key])}
             pending={key in pendingSettings}
             pendingValue={pendingSettings[key]}
             connected={connected}

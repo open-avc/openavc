@@ -2573,7 +2573,7 @@
         },
         "state_key": {
           "type": "string",
-          "description": "State variable providing the current value. Defaults to the setting key."
+          "description": "State variable providing the current value. Left out or empty, the setting key."
         },
         "default": true,
         "setup": {
