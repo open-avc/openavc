@@ -246,8 +246,8 @@ async def test_a_value_that_lands_before_the_subscription_is_still_seen(
 async def test_a_wait_until_ignores_the_trigger_context(
     engine: MacroEngine, events: EventBus, state: StateStore,
 ) -> None:
-    """A wait_until reads its condition from the state store only: a
-    ``trigger.`` key is never satisfied by the firing trigger's context."""
+    """A wait_until is judged with no firing context: a ``trigger.`` key is
+    never satisfied by the context the run was fired with."""
     engine.load_macros([{
         "id": "w", "name": "W",
         "steps": [{"action": "wait_until", "timeout": 0.05, "on_timeout": "fail",

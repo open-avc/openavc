@@ -34,7 +34,7 @@ from openavc.core.macro_text import StepFailed
 from openavc.core.project_loader import MacroStep, reads_as
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.state_store import check_authored_write
-from openavc.core.value_resolver import resolve_in_text, resolve_ref
+from openavc.core.value_resolver import read_operand, resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -277,25 +277,16 @@ class MacroSteps:
 
     # --- conditions and $-references ---
 
-    def _condition_actual(
-        self, key: str, context: dict[str, Any] | None = None
-    ) -> Any:
-        """Read a condition's left-hand value. A ``trigger.<field>`` key reads
-        from the firing trigger's context (event payload / state-change
-        snapshot); any other key reads from the state store."""
-        if key.startswith("trigger."):
-            return (context or {}).get(key[len("trigger."):])
-        return self.state.get(key)
-
     def _evaluate_condition(
         self, condition: dict[str, Any], context: dict[str, Any] | None = None
     ) -> bool:
-        """Evaluate a step condition. The condition ``key`` may be a state key
-        or ``trigger.<field>`` (resolved from the firing trigger's context)."""
+        """Evaluate a step condition, its key read by ``read_operand``: a
+        ``trigger.<field>`` key from ``context``, the run's firing context
+        (None for a step handed none), any other key from the state."""
         key = condition.get("key", "")
         op = condition.get("operator", "eq")
         target = condition.get("value")
-        actual = self._condition_actual(key, context)
+        actual = read_operand(key, state=self.state, context=context)
         return eval_operator(op, actual, target)
 
     def _resolve_value(self, value: Any, context: dict[str, Any] | None = None) -> Any:
@@ -453,7 +444,9 @@ class MacroSteps:
                 "condition_key": condition.get("key", ""),
                 "condition_operator": condition.get("operator", "eq"),
                 "condition_value": condition.get("value"),
-                "actual_value": self._condition_actual(condition.get("key", ""), run.context),
+                "actual_value": read_operand(
+                    condition.get("key", ""), state=self.state, context=run.context,
+                ),
                 "status": "evaluated",
             },
         )
@@ -517,8 +510,9 @@ class MacroSteps:
     async def _wait_until(self, step: dict[str, Any], run: StepRun, _path: StepPath) -> None:
         """Pause until a state condition becomes true, with optional timeout.
 
-        The condition is read from the state store only: a ``trigger.`` key
-        is never answered from the firing trigger's context here.
+        The condition is judged with no firing context (``_evaluate_condition``
+        with none): a state key reads the state, and a ``trigger.`` key reads
+        as a value that has not arrived, whatever the run was fired with.
         """
         condition, timeout, on_timeout = _wait_until_args(step)
         key = condition.get("key", "")

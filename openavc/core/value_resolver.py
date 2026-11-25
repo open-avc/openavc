@@ -1,4 +1,17 @@
-"""Shared ``$``-reference resolver for command/action parameter values.
+"""THE ``$``-reference resolver, THE reader of a condition's key, and the
+firing context's field table.
+
+Three rules that share one question, what a name means at run time:
+
+- ``resolve_ref`` / ``resolve_in_text``: what a ``$`` reference in a value
+  stands for (below).
+- ``read_operand``: what a condition's key reads, for every site that judges
+  one -- a step's Skip If, a Conditional, a Wait Until, a trigger's guard and a
+  state-change trigger's own test. A ``trigger.<field>`` key is the firing
+  context's field at a site that reads the context, and any other key is the
+  state store's value.
+- ``FIRING_CONTEXT_FIELDS``: the fields each producer puts in that context,
+  which a ``trigger.<field>`` key and a ``$trigger.<field>`` reference read.
 
 A ``$``-prefixed string is a runtime value reference. The same sigil is used by
 two authoring surfaces — UI Builder bindings (which deliver a UI-event value)
@@ -28,9 +41,61 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+#: The namespace a condition key or a ``$`` reference reads the firing
+#: context through: ``trigger.new_value`` is the context's ``new_value``.
+TRIGGER_PREFIX = "trigger."
+
+#: The fields each producer of a run puts in its firing context. A child
+#: macro run by a Run Macro step reads its parent's context; a run started
+#: any other way (the Run button, the API, a script, a plugin) has none.
+FIRING_CONTEXT_FIELDS: dict[str, tuple[str, ...]] = {
+    # A state-change trigger: the key that changed and its two values.
+    "state_change": ("key", "old_value", "new_value"),
+    # An event trigger: the event's name, and every field of the event's own
+    # payload beside it (CONTEXT_CARRIES_PAYLOAD).
+    "event": ("event",),
+    "schedule": ("trigger_type", "cron"),
+    "startup": ("trigger_type",),
+    # A control's macro action: the press's own values, then the control's
+    # tag and id (``core/ui_events.py``).
+    "press": ("value", "input", "output", "mute", "tag", "element"),
+    # Fire now in the trigger list.
+    "fire_now": (),
+}
+
+#: The producers whose context also holds fields the source names as it
+#: fires, beyond the ones ``FIRING_CONTEXT_FIELDS`` lists.
+CONTEXT_CARRIES_PAYLOAD: frozenset[str] = frozenset({"event"})
+
+
+def read_operand(
+    key: str,
+    *,
+    state: Any,
+    context: Mapping[str, Any] | None = None,
+    from_context: bool = True,
+) -> Any:
+    """What a condition's ``key`` reads at the site judging it.
+
+    A ``trigger.<field>`` key reads the firing context's field when the site
+    reads the context (``from_context``, the default); a field the context
+    lacks, and every field of a run with no context, is a value that has not
+    arrived (None). Any other key, and every key at a site that reads the
+    state only (``from_context=False``), is the state store's value, None when
+    it has none.
+
+    A key is read as written: a leading ``$`` is part of the key here, not a
+    reference. Nothing is logged for a key with no value, since a Wait Until
+    reads its key again on every change.
+    """
+    if from_context and key.startswith(TRIGGER_PREFIX):
+        return (context or {}).get(key[len(TRIGGER_PREFIX):])
+    return state.get(key)
 
 # A ``$`` reference embedded in prose. Dots are part of the key
 # (``$var.room_name``), but a trailing one is sentence punctuation, so it is

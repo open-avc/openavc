@@ -19,6 +19,7 @@ from openavc.core.macro_engine import (
     _QUEUE_MAX_WAIT_SECONDS,
     _QUEUE_POLL_SECONDS as _QUEUE_POLL_INTERVAL,
 )
+from openavc.core.value_resolver import TRIGGER_PREFIX, read_operand
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -53,6 +54,10 @@ _CANCEL_DRAIN_SECONDS = 2.0
 # its trigger.fired listeners, to reach the macro engine. A fire held longer
 # goes on by itself; at a shutdown it finds the macro engine closed.
 _FIRE_HANDOVER_SECONDS = 2.0
+
+# What a state-change trigger's own test judges at the change: the value the
+# change carries, read from the context the change fires with.
+_CHANGED_VALUE = f"{TRIGGER_PREFIX}new_value"
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -372,20 +377,23 @@ class TriggerEngine:
         # exposes the other.
         op = t.get("state_operator") or "any"
         target = t.get("state_value")
+        context = {"key": key, "old_value": old_value, "new_value": new_value}
         if op != "any":
+            # The value the change carries, not what the state holds by now.
+            actual = read_operand(_CHANGED_VALUE, state=self.state, context=context)
             try:
-                matched = eval_operator(op, new_value, target)
+                matched = eval_operator(op, actual, target)
             except ValueError:
                 log.error(f"Trigger {t['id']} has invalid operator '{op}'")
                 return
             if not matched:
                 log.debug(
                     f"Trigger {t['id']} skipped — state_operator {op} not met "
-                    f"(actual={new_value!r}, target={target!r})"
+                    f"(actual={actual!r}, target={target!r})"
                 )
                 return
 
-        self._initiate_fire(ts, {"key": key, "old_value": old_value, "new_value": new_value})
+        self._initiate_fire(ts, context)
 
     async def _on_event(
         self, ts: _TriggerState, event: str, payload: dict[str, Any]
@@ -602,7 +610,7 @@ class TriggerEngine:
                 op = t.get("state_operator") or "any"  # see _on_state_change
                 target = t.get("state_value")
                 if op != "any":
-                    current = self.state.get(state_key)
+                    current = read_operand(state_key, state=self.state, from_context=False)
                     try:
                         matched = eval_operator(op, current, target)
                     except ValueError:
@@ -862,12 +870,17 @@ class TriggerEngine:
     # --- Condition evaluation ---
 
     def _check_conditions(self, conditions: list[dict[str, Any]]) -> bool:
-        """Check all guard conditions. All must pass."""
+        """Check all guard conditions. All must pass.
+
+        A guard reads the state only (``read_operand`` with
+        ``from_context=False``): a ``trigger.`` key is a state key here, not
+        the firing context's field.
+        """
         for cond in conditions:
             key = cond.get("key", "")
             op = cond.get("operator", "eq")
             target = cond.get("value")
-            actual = self.state.get(key)
+            actual = read_operand(key, state=self.state, from_context=False)
             try:
                 if not eval_operator(op, actual, target):
                     return False
