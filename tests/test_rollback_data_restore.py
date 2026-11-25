@@ -132,6 +132,21 @@ def test_a_backup_with_a_damaged_file_in_it_changes_nothing(tmp_path):
     assert not (data / "projects.pre-rollback").exists()
 
 
+def test_a_damaged_file_the_restore_never_writes_does_not_stop_it(tmp_path):
+    """The community drivers and plugins are carried, never put back."""
+    data = tmp_path / "data"
+    room = _room(data / "projects" / "default")
+    backup = tmp_path / "pre-update-v0.7.0-x.zip"
+    with zipfile.ZipFile(backup, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("projects/default/project.avc", '{"openavc_version": "0.6.0"}')
+        zf.writestr("driver_repo/acme_widget.avcdriver", "# acme, intact")
+    backup.write_bytes(backup.read_bytes().replace(b"intact", b"broken"))
+
+    assert restore_user_data(data, backup) is True
+
+    assert (room / "project.avc").read_text(encoding="utf-8") == '{"openavc_version": "0.6.0"}'
+
+
 def test_a_backup_with_no_projects_in_it_restores_nothing(tmp_path):
     data = tmp_path / "data"
     data.mkdir()

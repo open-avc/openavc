@@ -199,6 +199,40 @@ def test_a_backup_written_again_with_its_logins_sealed_keeps_the_old_one_on_fail
     assert _left_behind(backup.parent) == []
 
 
+def test_a_backup_is_sealed_with_no_zip_open_on_it(tmp_path, monkeypatch):
+    """Windows refuses to replace a file the process holds open, so the
+    rewrite closes the backup before it takes its place."""
+    project = _project(tmp_path / "proj")
+    backup = backup_manager.create_backup(project, "Before moving device logins")
+    open_now: set[Path] = set()
+    real_init, real_close, real_replace = zipfile.ZipFile.__init__, zipfile.ZipFile.close, os.replace
+
+    def opened(self, file, mode="r", *args, **kwargs):
+        real_init(self, file, mode, *args, **kwargs)
+        if isinstance(file, (str, os.PathLike)):
+            self.watched = Path(file).resolve()
+            open_now.add(self.watched)
+
+    def closed(self):
+        open_now.discard(getattr(self, "watched", None))
+        real_close(self)
+
+    def replace(src, dst, *args, **kwargs):
+        if Path(dst).resolve() in open_now:
+            raise PermissionError(13, "The file is in use by another process", str(dst))
+        return real_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "__init__", opened)
+    monkeypatch.setattr(zipfile.ZipFile, "close", closed)
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr(backup_manager, "_logins_copy", lambda data: "sealed")
+
+    assert backup_manager.seal_logins_in_backup(backup, lambda raw: {**raw, "moved": True}) is True
+
+    with zipfile.ZipFile(backup) as zf:
+        assert zf.read(backup_manager.ARCHIVE_LOGINS) == b"sealed"
+
+
 def test_no_temporary_name_matches_a_rotation(tmp_path, monkeypatch):
     """A write cut off by a power loss leaves its temporary file, which no
     list or rotation may take for a backup."""

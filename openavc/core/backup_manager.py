@@ -338,15 +338,22 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
 
     with zipfile.ZipFile(backup_path) as source:
         replaced = _sealed_members(source, move)
-        if replaced is None:
-            return False
+    if replaced is None:
+        return False
+
+    def fill(out: zipfile.ZipFile) -> None:
+        # Opened again and closed before place: Windows refuses to replace a
+        # file this process holds open.
         try:
-            write_zip(
-                backup_path.parent, backup_path.stem,
-                lambda out: _copy_sealed(source, out, replaced), place=place,
-            )
-        except _RotatedAway:
-            return False
+            with zipfile.ZipFile(backup_path) as again:
+                _copy_sealed(again, out, replaced)
+        except FileNotFoundError as gone:
+            raise _RotatedAway from gone
+
+    try:
+        write_zip(backup_path.parent, backup_path.stem, fill, place=place)
+    except _RotatedAway:
+        return False
     log.info(f"Backup {backup_path.name} now holds its logins sealed, not in the clear")
     return True
 

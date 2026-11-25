@@ -441,22 +441,33 @@ def _restore_trees(job: _Restore, data_dir: Path, project_path: Path | None) -> 
 
 
 def _opened(backup_path: Path) -> zipfile.ZipFile:
-    """The pre-update backup, opened and read through once, so a file in it
-    that does not read back as written is found before anything is written.
-    Raises ``BackupNotReadable``."""
+    """The pre-update backup, opened, each project file it holds read
+    through once, so one that does not read back as written is found before
+    anything is written. What the restore never writes (the drivers, the
+    plugins, the settings) is not read. Raises ``BackupNotReadable``."""
     try:
         zf = zipfile.ZipFile(backup_path)
     except (OSError, zipfile.BadZipFile) as e:
         raise BackupNotReadable(f"Cannot open the pre-update backup {backup_path.name}: {e}") from e
     try:
-        bad = zf.testzip()
+        for info in zf.infolist():
+            if info.filename.startswith(_RESTORED_TREES) and not info.is_dir():
+                _read_through(zf, info)
     except (OSError, zipfile.BadZipFile, zlib.error, EOFError) as e:
         zf.close()
         raise BackupNotReadable(f"Cannot read the pre-update backup {backup_path.name}: {e}") from e
-    if bad is not None:
-        zf.close()
-        raise BackupNotReadable(f"The pre-update backup {backup_path.name} is damaged at {bad}")
     return zf
+
+
+#: The trees of a pre-update backup a restore writes back.
+_RESTORED_TREES = ("projects/", "external-project/")
+
+
+def _read_through(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
+    """One member read to its end, which checks it against its CRC."""
+    with zf.open(info) as member:
+        while member.read(1 << 20):
+            pass
 
 
 #: Beside ``projects.pre-rollback``: the name of the backup whose restore set
