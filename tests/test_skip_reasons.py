@@ -319,44 +319,57 @@ async def test_a_macro_started_while_the_system_stops_says_so(macro_engine, core
 
 # --- every exit names a code in the table ---------------------------------------
 
+_FUNCTION_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+# Where the code sits in a call that names one: `skip_reason(code, ...)` and
+# `self._skipped(trigger_id, code, ...)`.
+_CODE_POSITION = {"skip_reason": 0, "_skipped": 1}
+
+_SKIP_EVENTS = ("trigger.skipped", "macro.skipped")
+
 
 def _module_tree(module) -> ast.Module:
     return ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
 
 
-def _code_argument(call: ast.Call) -> ast.expr | None:
-    """The argument of a call that names a reason's code, if it is such a call:
-    ``skip_reason(code, ...)`` and ``self._skipped(trigger_id, code, ...)``."""
+def _functions(tree: ast.AST) -> list[ast.AST]:
+    return [n for n in ast.walk(tree) if isinstance(n, _FUNCTION_TYPES)]
+
+
+def _called_name(call: ast.Call) -> str:
     func = call.func
-    if isinstance(func, ast.Name) and func.id == "skip_reason" and call.args:
-        return call.args[0]
-    if isinstance(func, ast.Attribute) and func.attr == "_skipped" and len(call.args) > 1:
-        return call.args[1]
-    return None
+    if isinstance(func, ast.Name):
+        return func.id
+    return func.attr if isinstance(func, ast.Attribute) else ""
+
+
+def _code_argument(call: ast.Call) -> ast.expr | None:
+    """The argument that names a reason's code, when ``call`` is such a call."""
+    position = _CODE_POSITION.get(_called_name(call))
+    if position is None or len(call.args) <= position:
+        return None
+    return call.args[position]
+
+
+def _is_text(node: ast.AST | None) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, str)
 
 
 def _codes_named(module, helper: str) -> set[str]:
     """Every code the module names, each a literal; only ``helper`` itself may
     pass one through."""
     tree = _module_tree(module)
-    codes: set[str] = set()
-    helper_node = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == helper
-    )
+    helper_node = next(fn for fn in _functions(tree) if fn.name == helper)
     inside_helper = {id(n) for n in ast.walk(helper_node)}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        arg = _code_argument(node)
-        if arg is None:
-            continue
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+    codes: set[str] = set()
+    for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
+        arg = _code_argument(call)
+        if _is_text(arg):
             codes.add(arg.value)
-        else:
-            assert id(node) in inside_helper, (
-                f"{module.__name__}:{node.lineno} names a reason that is not a literal code"
-            )
+            continue
+        assert arg is None or id(call) in inside_helper, (
+            f"{module.__name__}:{call.lineno} names a reason that is not a literal code"
+        )
     return codes
 
 
@@ -366,24 +379,23 @@ def test_every_code_an_engine_names_is_in_the_table_and_every_row_is_used() -> N
     assert set(SKIP_REASONS) - named == set()
 
 
-def _event_names(module) -> list[tuple[str, str]]:
+def _names_a_skip_event(node: ast.AST) -> bool:
+    return _is_text(node) and node.value.startswith(_SKIP_EVENTS)
+
+
+def _event_names(module) -> set[tuple[str, str]]:
     """(function, text) for each string in the module naming a skip event."""
-    tree = _module_tree(module)
-    found: list[tuple[str, str]] = []
-    for fn in ast.walk(tree):
-        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for node in ast.walk(fn):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str) and (
-                node.value.startswith("trigger.skipped") or node.value.startswith("macro.skipped")
-            ):
-                found.append((fn.name, node.value))
-    return found
+    return {
+        (fn.name, node.value)
+        for fn in _functions(_module_tree(module))
+        for node in ast.walk(fn)
+        if _names_a_skip_event(node)
+    }
 
 
 def test_each_engine_sends_its_skip_from_one_place() -> None:
-    assert sorted(set(_event_names(te))) == [("_skipped", "trigger.skipped")]
-    assert sorted(set(_event_names(me))) == [("_report_skipped", "macro.skipped.")]
+    assert _event_names(te) == {("_skipped", "trigger.skipped")}
+    assert _event_names(me) == {("_report_skipped", "macro.skipped.")}
 
 
 # The trigger's fire path, from a listener to the macro engine. Every `return`
@@ -406,53 +418,63 @@ _NO_FIRE = {
     ("_on_state_change", "matched"),
 }
 
+# What a statement before a `return` says when the fire went on or was refused.
+_SAYS_WHY = ("self._skipped(", '"trigger.pending"', '"trigger.queued"')
 
-def _returns_with_their_block(fn: ast.AST):
-    """Each `return` in ``fn``, the statements before it in its block, and the
+
+def _blocks_inside(stmt: ast.stmt, guard: ast.AST | None):
+    """(statements, guard) for each block inside ``stmt``: an `if`'s blocks are
+    guarded by it, a handler's by the handler, the rest by ``guard``."""
+    inner = stmt if isinstance(stmt, ast.If) else guard
+    for field in ("body", "orelse", "finalbody"):
+        block = getattr(stmt, field, None)
+        if isinstance(block, list) and block and isinstance(block[0], ast.stmt):
+            yield block, inner
+    for handler in getattr(stmt, "handlers", None) or []:
+        yield handler.body, handler
+
+
+def _returns_with_their_block(stmts: list[ast.stmt], guard: ast.AST | None = None):
+    """Each `return` in ``stmts``, the statements before it in its block, and the
     `if` (or `except`) it sits in."""
-    def walk(stmts, guard):
-        for i, stmt in enumerate(stmts):
-            if isinstance(stmt, ast.Return):
-                yield stmt, stmts[:i], guard
-            for field in ("body", "orelse", "finalbody"):
-                inner = getattr(stmt, field, None)
-                if inner and isinstance(inner, list) and inner and isinstance(inner[0], ast.stmt):
-                    yield from walk(inner, stmt if isinstance(stmt, ast.If) else guard)
-            for handler in getattr(stmt, "handlers", []) or []:
-                yield from walk(handler.body, handler)
-    yield from walk(fn.body, None)
+    for i, stmt in enumerate(stmts):
+        if isinstance(stmt, ast.Return):
+            yield stmt, stmts[:i], guard
+        for block, inner in _blocks_inside(stmt, guard):
+            yield from _returns_with_their_block(block, inner)
+
+
+def _text(source: str, node: ast.AST | None) -> str:
+    return (ast.get_source_segment(source, node) if node is not None else None) or ""
 
 
 def _says_why(stmts: list[ast.stmt], source: str) -> bool:
-    for stmt in stmts:
-        text = ast.get_source_segment(source, stmt) or ""
-        if "self._skipped(" in text or '"trigger.pending"' in text or '"trigger.queued"' in text:
-            return True
-    return False
+    return any(mark in _text(source, stmt) for stmt in stmts for mark in _SAYS_WHY)
 
 
-def test_every_exit_on_a_triggers_fire_path_says_why_it_stopped() -> None:
-    source = Path(te.__file__).read_text(encoding="utf-8")
+def _is_no_fire(name: str, guard: ast.AST | None, source: str) -> bool:
+    if isinstance(guard, ast.ExceptHandler):
+        return "CancelledError" in _text(source, guard.type)
+    test = _text(source, guard.test) if isinstance(guard, ast.If) else ""
+    return any(f in (name, "*") and word in test for f, word in _NO_FIRE)
+
+
+def _fire_path(source: str) -> dict[str, ast.AST]:
     engine = next(
         n for n in ast.parse(source).body
         if isinstance(n, ast.ClassDef) and n.name == TriggerEngine.__name__
     )
-    functions = {
-        n.name: n for n in engine.body
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in _FIRE_PATH
-    }
+    return {n.name: n for n in engine.body if isinstance(n, _FUNCTION_TYPES) and n.name in _FIRE_PATH}
+
+
+def test_every_exit_on_a_triggers_fire_path_says_why_it_stopped() -> None:
+    source = Path(te.__file__).read_text(encoding="utf-8")
+    functions = _fire_path(source)
     assert set(functions) == set(_FIRE_PATH)
-    silent: list[str] = []
-    for name, fn in functions.items():
-        for ret, before, guard in _returns_with_their_block(fn):
-            if _says_why(before, source):
-                continue
-            if isinstance(guard, ast.ExceptHandler):
-                caught = ast.get_source_segment(source, guard.type) if guard.type else ""
-                if caught and "CancelledError" in caught:
-                    continue
-            test = ast.get_source_segment(source, guard.test) if isinstance(guard, ast.If) else ""
-            if any(f in (name, "*") and word in (test or "") for f, word in _NO_FIRE):
-                continue
-            silent.append(f"{name}: {ast.get_source_segment(source, ret)} (line {ret.lineno})")
+    silent = [
+        f"{name}: {_text(source, ret)} (line {ret.lineno})"
+        for name, fn in functions.items()
+        for ret, before, guard in _returns_with_their_block(fn.body)
+        if not (_says_why(before, source) or _is_no_fire(name, guard, source))
+    ]
     assert silent == []
