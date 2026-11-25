@@ -22,7 +22,7 @@ from typing import Any, Sequence
 from openavc import config
 from openavc.core import asset_tree, project_unit, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
-from openavc.core import login_bundle, project_drivers, project_identity, project_update
+from openavc.core import import_left_out, login_bundle, project_drivers, project_identity, project_update
 from openavc.core.device_logins import (
     FoundView,
     StoreView,
@@ -462,7 +462,7 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
     with zipfile.ZipFile(zip_path, "r") as zf:
         _check_zip_safety(zf)
         # Extract and migrate the project file
-        avc_names = [n for n in zf.namelist() if n.endswith(".avc")]
+        avc_names = [n for n in zf.namelist() if import_left_out.is_project_file(n)]
         if not avc_names:
             raise ValueError(f"No .avc file found in {zip_path.name}")
 
@@ -1490,7 +1490,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         _check_zip_safety(zf)  # zip-bomb guard
         _check_bundled_driver_identity(zf)
 
-        avc_names = [n for n in zf.namelist() if n.endswith(".avc")]
+        avc_names = [n for n in zf.namelist() if import_left_out.is_project_file(n)]
         if not avc_names:
             raise ValueError("No .avc file found in zip")
 
@@ -1572,6 +1572,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
     if sealed_problem:
         warnings.append(sealed_problem)
+    warnings += import_left_out.left_out(zf.namelist(), avc_names[0])
 
     log.info(f"Imported project '{pid}' from .zip bundle")
     result: dict[str, Any] = {
