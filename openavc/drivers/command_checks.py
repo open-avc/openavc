@@ -544,8 +544,11 @@ def _wake_command_errors(where: str, wake: str, wake_def: dict[str, Any]) -> lis
             f"available_offline: true, so it cannot wake a device that is off "
             f"the network"
         )
+    # A window left out. A value written that opens none (0, -5, text) is the
+    # range rule's to say (restart_window, at the author's doors), so a copy
+    # installed with one keeps loading, named.
     restarts = wake_def.get("restarts_device_for")
-    if not _unevaluated(restarts) and not restarts:
+    if restarts is None:
         errors.append(
             f"{where}: 'sleeps_device' names '{wake}', which declares no "
             f"restarts_device_for: give it the measured seconds the device takes "

@@ -3346,6 +3346,91 @@
   },
   "transport": "http"
  },
+ "command_restart_fraction": {
+  "commands": {
+   "reboot": {
+    "restarts_device_for": 1.5,
+    "send": "REBOOT\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_restart_negative": {
+  "commands": {
+   "reboot": {
+    "restarts_device_for": -5,
+    "send": "REBOOT\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_restart_past_the_most": {
+  "commands": {
+   "reboot": {
+    "restarts_device_for": 700,
+    "send": "REBOOT\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_restart_text": {
+  "commands": {
+   "reboot": {
+    "restarts_device_for": "30",
+    "send": "REBOOT\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_restart_zero": {
+  "commands": {
+   "reboot": {
+    "restarts_device_for": 0,
+    "send": "REBOOT\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_returns_file_not_bool": {
   "commands": {
    "dump": {

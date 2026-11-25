@@ -349,6 +349,7 @@ CASES: dict[str, dict[str, Any]] = {
         off_none=send(sleeps_device=None),
         wake={"udp": {"magic_packet": "wake_mac"}, "available_offline": True,
               "restarts_device_for": 30},
+        # Its 0 is the range rule's to say (restart_window), not the sleep rule's.
         lazy=send(available_offline="yes", restarts_device_for=0),
         odd="X\r",
     ),
@@ -797,10 +798,6 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
  'sleeps_device': [('commands.off_unsaid',
                     "Command 'off_unsaid': 'sleeps_device' names 'lazy', which does not set "
                     'available_offline: true, so it cannot wake a device that is off the network'),
-                   ('commands.off_unsaid',
-                    "Command 'off_unsaid': 'sleeps_device' names 'lazy', which declares no "
-                    'restarts_device_for: give it the measured seconds the device takes to come back after '
-                    "'lazy'"),
                    ('commands.off_self',
                     "Command 'off_self': 'sleeps_device' names this command itself; name the command that "
                     'wakes the device'),

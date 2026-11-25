@@ -11,6 +11,7 @@
 import { useState } from "react";
 import type { DriverCommandDef } from "../../api/types";
 import { FIELD_HINT, FIELD_LABEL, FIELD_WARNING, FlagField } from "./commandFieldParts";
+import { RESTART_SECONDS_MAX, RESTART_SECONDS_MIN, restartWindowSeconds } from "./restartWindow";
 
 const RUNS_OFFLINE = "Runs while the device is offline";
 const RESTARTS_FOR = "Restarts the device for";
@@ -40,13 +41,12 @@ export function OfflineFlag({
   );
 }
 
-/** What the restart window box holds as seconds: whole, at most 600; empty,
- *  not a number or not positive removes it. */
+/** What the restart window box holds as seconds, read as the platform reads
+ *  the field (restartWindow.ts): whole, rounded up, at most the contract's
+ *  most; empty, not a number or not positive removes it. */
 function restartSeconds(raw: string): number | undefined {
   const text = raw.trim();
-  if (text === "") return undefined;
-  const n = Number(text);
-  return Number.isFinite(n) && n > 0 ? Math.min(600, Math.round(n)) : undefined;
+  return text === "" ? undefined : restartWindowSeconds(Number(text));
 }
 
 /** `restarts_device_for`, in seconds. */
@@ -70,8 +70,8 @@ export function RestartWindowField({
         {RESTARTS_FOR}
         <input
           type="number"
-          min={1}
-          max={600}
+          min={RESTART_SECONDS_MIN}
+          max={RESTART_SECONDS_MAX}
           placeholder="seconds"
           value={value ?? ""}
           onChange={(e) => onChange(restartSeconds(e.target.value))}
@@ -109,7 +109,9 @@ function wakeChoice(
   const picked = current ? commands[current] : undefined;
   const needs: string[] = [];
   if (picked && !picked.available_offline) needs.push(`"${RUNS_OFFLINE}" ticked`);
-  if (picked && !picked.restarts_device_for) needs.push(`"${RESTARTS_FOR}" set`);
+  if (picked && restartWindowSeconds(picked.restarts_device_for) === undefined) {
+    needs.push(`"${RESTARTS_FOR}" set`);
+  }
   return { current, wakers, listed: wakers.some(([id]) => id === current), picked, needs };
 }
 

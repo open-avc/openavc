@@ -27,7 +27,7 @@ import textwrap
 from dataclasses import dataclass
 from typing import Any, Callable, NamedTuple
 
-from openavc.drivers import serial_line, spec, truth_words, ts_type_check
+from openavc.drivers import restart_window, serial_line, spec, truth_words, ts_type_check
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
@@ -600,6 +600,7 @@ _LIST = "list"
 _SET = "set"
 _NUM_SET = "num_set"
 _TEXT = "text"
+_NUMBER = "number"
 
 CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
     ("DRIVER_ID_CHARS", _TEXT, lambda: spec.DRIVER_ID_CHARS,
@@ -674,6 +675,13 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
     ("FALSE_WORDS", _SET, lambda: truth_words.FALSE_WORDS,
      "The words that mean false, trimmed and apart from case "
      "(drivers/truth_words.py; conditionEval.ts readTruth reads them)."),
+    ("RESTART_SECONDS_MIN", _NUMBER, lambda: restart_window.RESTART_SECONDS_MIN,
+     "The fewest whole seconds a command's restarts_device_for may say "
+     "(drivers/restart_window.py; restartWindow.ts reads it)."),
+    ("RESTART_SECONDS_MAX", _NUMBER, lambda: restart_window.RESTART_SECONDS_MAX,
+     "The most whole seconds a command's restarts_device_for may say, and "
+     "the longest window the platform opens for one "
+     "(drivers/restart_window.py; restartWindow.ts reads it)."),
 )
 
 
@@ -692,6 +700,7 @@ _CONSTANT_SHAPES: dict[str, Callable[[str, Any], str]] = {
         f"new Set([{', '.join(str(v) for v in values)}]);\n"
     ),
     _TEXT: lambda name, values: f"export const {name} = {json.dumps(values)};\n",
+    _NUMBER: lambda name, values: f"export const {name} = {values};\n",
 }
 
 

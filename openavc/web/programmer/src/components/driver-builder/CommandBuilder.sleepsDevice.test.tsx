@@ -108,6 +108,20 @@ describe("Puts the device to sleep", () => {
     ).toBeTruthy();
   });
 
+  it("says a wake command whose window the platform reads as none still needs one", () => {
+    // -5 opens no window at runtime, so the device that does not come back
+    // straight away would read as a fault.
+    const draft = draftWith({
+      power_off: { label: "Power Off", send: "PWR OFF\r", params: {}, sleeps_device: "power_on" },
+      power_on: { ...WAKE, restarts_device_for: -5 },
+    });
+    render(<CommandBuilder draft={draft} onUpdate={vi.fn()} />);
+    openCommand("power_off");
+    expect(
+      screen.getByText("Power On also needs \"Restarts the device for\" set."),
+    ).toBeTruthy();
+  });
+
   it("keeps showing a wake command that no longer runs offline", () => {
     const draft = draftWith({
       power_off: { label: "Power Off", send: "PWR OFF\r", params: {}, sleeps_device: "power_on" },

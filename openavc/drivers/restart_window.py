@@ -20,10 +20,11 @@ Programmer IDE's copy is generated from the two constants here
 
 Who asks it: the runtime's commanded-restart window
 (``core/device_away``), the command model the Device Audit serves
-(``command_model.CommandModel.restarts_device_for``), the checker for both
-kinds of driver (``driver_model``'s problems for a YAML file, ``python_info``'s
-command section for a ``DRIVER_INFO``), and the sleep rule's check that a wake
-command declares a window (``command_checks``).
+(``command_model.CommandModel.restarts_device_for``), and the checker for
+both kinds of driver (``driver_model``'s problems for a YAML file,
+``python_info``'s command section for a ``DRIVER_INFO``). The sleep rule
+(``command_checks``) names only a wake command's window left out, so a value
+written is this rule's alone to judge.
 
 Purity contract, as ``spec``: standard library plus ``spec`` and
 ``usable_number``, no logger. Vendored with the driver contract.
@@ -32,7 +33,7 @@ Purity contract, as ``spec``: standard library plus ``spec`` and
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
 from openavc.drivers.spec import DEFS
@@ -69,16 +70,22 @@ def restart_problem(raw: Any) -> str | None:
     )
 
 
-def restart_problems(commands: Any) -> Iterator[tuple[str, str]]:
+def restart_problems(
+    commands: Any, judged: Callable[[str, Any], bool] = lambda place, value: True,
+) -> Iterator[tuple[str, str]]:
     """Each command in ``commands`` whose ``restarts_device_for`` the author's
-    doors refuse, as its place and the words said there."""
+    doors refuse, as its place and the words said there, among the values
+    ``judged(place, value)`` lets be judged (a Python driver's checker skips
+    one built in code, and names the skip there)."""
     if not isinstance(commands, Mapping):
         return
     for name, cdef in commands.items():
-        if isinstance(cdef, Mapping):
-            words = restart_problem(cdef.get("restarts_device_for"))
-            if words is not None:
-                yield f"commands.{name}.restarts_device_for", words
+        if not isinstance(cdef, Mapping):
+            continue
+        place, value = f"commands.{name}.restarts_device_for", cdef.get("restarts_device_for")
+        words = restart_problem(value)
+        if words is not None and judged(place, value):
+            yield place, words
 
 
 def _shown(raw: Any) -> str:

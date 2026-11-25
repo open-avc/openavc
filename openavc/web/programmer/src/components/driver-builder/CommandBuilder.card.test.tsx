@@ -218,7 +218,7 @@ describe("the fields every command has", () => {
     expect("available_offline" in h.commands().a).toBe(false);
   });
 
-  it("reads Restarts the device for as whole seconds up to 600, and removes it when not positive", () => {
+  it("reads Restarts the device for as whole seconds rounded up, at most 600, and removes it when not positive", () => {
     const h = host(draftWith({ a: { label: "A", send: "" } }));
     open("a");
     const box = screen.getByLabelText(/Restarts the device for/);
@@ -227,6 +227,12 @@ describe("the fields every command has", () => {
     expect(document.activeElement).toBe(screen.getByLabelText(/Restarts the device for/));
     type(screen.getByLabelText(/Restarts the device for/), "2.6");
     expect(h.commands().a.restarts_device_for).toBe(3);
+    // Rounded up, as the platform reads the field: a measured 2.2 s is 3,
+    // and a gap under a second is still a restart, never a 0 it refuses.
+    type(screen.getByLabelText(/Restarts the device for/), "2.2");
+    expect(h.commands().a.restarts_device_for).toBe(3);
+    type(screen.getByLabelText(/Restarts the device for/), "0.4");
+    expect(h.commands().a.restarts_device_for).toBe(1);
     type(screen.getByLabelText(/Restarts the device for/), "900");
     expect(h.commands().a.restarts_device_for).toBe(600);
     type(screen.getByLabelText(/Restarts the device for/), "1e3");

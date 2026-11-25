@@ -117,6 +117,19 @@ export const TRUE_WORDS: ReadonlySet<string> = new Set(["enabled", "on", "true",
  */
 export const FALSE_WORDS: ReadonlySet<string> = new Set(["disabled", "false", "no", "off"]);
 
+/**
+ * The fewest whole seconds a command's restarts_device_for may say
+ * (drivers/restart_window.py; restartWindow.ts reads it).
+ */
+export const RESTART_SECONDS_MIN = 1;
+
+/**
+ * The most whole seconds a command's restarts_device_for may say, and the
+ * longest window the platform opens for one (drivers/restart_window.py;
+ * restartWindow.ts reads it).
+ */
+export const RESTART_SECONDS_MAX = 600;
+
 /** The keys each push type accepts (unknown keys are rejected at load). */
 export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
   multicast: new Set(["group", "port", "type"]),

@@ -512,6 +512,11 @@ CASES: dict[str, Any] = {
     # Retired alias: `string:` was once accepted for `send:` — a command
     # carrying only the old spelling must fail like any send-less command.
     "command_legacy_string_alias": _d(commands={"noop": {"string": "NOOP\r"}}),
+    "command_restart_past_the_most": _d(commands={"reboot": {"send": "REBOOT\r", "restarts_device_for": 700}}),
+    "command_restart_zero": _d(commands={"reboot": {"send": "REBOOT\r", "restarts_device_for": 0}}),
+    "command_restart_negative": _d(commands={"reboot": {"send": "REBOOT\r", "restarts_device_for": -5}}),
+    "command_restart_fraction": _d(commands={"reboot": {"send": "REBOOT\r", "restarts_device_for": 1.5}}),
+    "command_restart_text": _d(commands={"reboot": {"send": "REBOOT\r", "restarts_device_for": "30"}}),
     "command_osc_args_not_list": _d(
         transport="osc", commands={"beep": {"address": "/beep", "args": "f"}}
     ),

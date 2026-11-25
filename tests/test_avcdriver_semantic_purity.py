@@ -64,6 +64,7 @@ ALLOWED = {
     "openavc.drivers.query_entry_checks",
     "openavc.drivers.reply_name_checks",
     "openavc.drivers.reply_rule",
+    "openavc.drivers.restart_window",
     "openavc.drivers.response_rule_checks",
     "openavc.drivers.roster_source",
     "openavc.drivers.routing_checks",

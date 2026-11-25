@@ -38,6 +38,10 @@ ALLOWED = {
     # pattern), which the compile fills with and re-exports. Standard
     # library and spec only.
     "openavc.drivers.pattern_fill",
+    # THE reading of a command's restarts_device_for, whose range the driver
+    # model names among its problems. Standard library, spec and
+    # usable_number only.
+    "openavc.drivers.restart_window",
     # The driver contract's constant tables. Stdlib-only (ipaddress + re) and
     # already vendored into openavc-drivers, so it travels everywhere this
     # module does. compiled_protocol needs it for the reserved child props:

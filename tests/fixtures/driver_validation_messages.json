@@ -315,6 +315,21 @@
  "command_query_param_placeholder_names_nothing": [
   "commands.set.query_params.z: '{lvl}' resolves to nothing (did you mean 'level'?). It names no parameter of this command and no config field, so it would be sent to the device as written"
  ],
+ "command_restart_fraction": [
+  "commands.reboot.restarts_device_for: must be a whole number of seconds from 1 to 600, not 1.5; leave it out when the command does not restart the device"
+ ],
+ "command_restart_negative": [
+  "commands.reboot.restarts_device_for: must be a whole number of seconds from 1 to 600, not -5; leave it out when the command does not restart the device"
+ ],
+ "command_restart_past_the_most": [
+  "commands.reboot.restarts_device_for: must be a whole number of seconds from 1 to 600, not 700; leave it out when the command does not restart the device"
+ ],
+ "command_restart_text": [
+  "commands.reboot.restarts_device_for: must be a whole number of seconds from 1 to 600, not \"30\"; leave it out when the command does not restart the device"
+ ],
+ "command_restart_zero": [
+  "commands.reboot.restarts_device_for: must be a whole number of seconds from 1 to 600, not 0; leave it out when the command does not restart the device"
+ ],
  "command_returns_file_not_bool": [
   "Command 'dump': 'returns_file' must be true or false"
  ],

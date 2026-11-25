@@ -61,6 +61,7 @@ from openavc.drivers.param_aid_checks import one_param_aid_errors, sibling_refs
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.python_driver_class import driver_class_info
 from openavc.drivers.python_source import SourceDecodeError, python_source
+from openavc.drivers.restart_window import restart_problems
 from openavc.drivers.serial_line import SERIAL_LINE_SETTINGS, line_setting_errors
 from openavc.drivers.shape_checks import transport_refusal
 from openavc.drivers.spec import CONFIG_FIELD_SOURCES
@@ -273,7 +274,7 @@ def check_python_driver_info(
     both kinds of driver declare alike (``_SHARED_SECTIONS``: the state
     variables, the child types, each command's parameter aids and its
     ``sets:`` and ``query_for:``, the push block, the serial line settings in
-    ``default_config``, the ``discovery:`` block, the ``transport``, a ``values:`` list naming one option twice; the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
+    ``default_config``, the ``discovery:`` block, the ``transport``, a ``values:`` list naming one option twice, a command's ``restarts_device_for`` outside 1 to 600 (``restart_window``); the routing block is one of the first kind) refuse only in ``strict`` mode, where a driver is written
     (``drivers.check``, catalog CI, the Code view's save). Where a driver is
     loaded or a device connects they are the ``notices``, so a driver that
     worked before still does and the door can say what is wrong with it. A
@@ -637,6 +638,7 @@ _SHARED_SECTIONS: tuple[tuple[str, Callable[[dict[str, Any], _Coverage], list[st
     ("discovery", _whole_block("discovery", discovery_refusals)),
     ("transport", _transport_section),
     ("", lambda info, coverage: repeated_option_errors(info, coverage.judged)),
+    ("commands", lambda info, coverage: [f"{p}: {w}" for p, w in restart_problems(info.get("commands"), coverage.judged)]),
 )
 
 
