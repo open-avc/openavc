@@ -315,3 +315,32 @@ async def test_a_delete_between_the_swap_and_the_load_reads_the_incoming_project
     answer = await _between_swap_and_load(hall, lambda: send(hall))
     assert not _accepted(answer), f"the {door} deleted {rel}, which the Lobby shows: {answer!r}"
     assert (hall.project_path.parent / rel).is_file()
+
+
+@pytest.mark.parametrize("door", ["save to library", "replace in library"])
+async def test_a_library_save_between_the_swap_and_the_load_keeps_one_project(
+    hall: Engine, tmp_path: Path, monkeypatch, door: str,
+):
+    """Saving the running project to the library copies the project and the
+    files beside it together: never the project being replaced with the
+    incoming project's files."""
+    from openavc.api.models import LibraryReplaceRequest, LibrarySaveRequest
+    from openavc.api.routes import project as project_routes
+    from openavc.core import project_library
+
+    monkeypatch.setattr(project_library.config, "SAVED_PROJECTS_DIR", tmp_path / "library")
+    monkeypatch.setattr(project_routes, "_get_engine", lambda: hall)
+    if door == "replace in library":
+        await project_routes.save_to_library(LibrarySaveRequest(id="kept", name="Kept"))
+        send = lambda: project_routes.replace_library_project("kept", LibraryReplaceRequest(name="Kept"))  # noqa: E731
+    else:
+        send = lambda: project_routes.save_to_library(LibrarySaveRequest(id="kept", name="Kept"))  # noqa: E731
+
+    answer = await _between_swap_and_load(hall, send)
+    assert _accepted(answer), answer
+    saved = tmp_path / "library" / "kept"
+    shown = json.loads((saved / "project.avc").read_text(encoding="utf-8"))["ui"]["pages"][0]["elements"]
+    assert (saved / "assets" / "lobby.png").is_file()
+    assert [element["id"] for element in shown] == ["hero", "map"], (
+        "the library holds the Lobby's files under a project that does not show them"
+    )

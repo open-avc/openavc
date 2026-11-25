@@ -611,25 +611,36 @@ async def get_library_project(project_id: str) -> dict[str, Any]:
     return {"project_id": project_id, "project": data, "scripts": scripts}
 
 
+def _running_project_trees(engine) -> dict[str, Path]:
+    """The folders beside the running project that a library save copies
+    with it (``core/project_unit``'s names), keyed as the library takes them."""
+    from openavc.core import project_unit
+
+    folder = engine.project_path.parent
+    return {
+        "scripts_dir": folder / project_unit.SCRIPTS_DIR,
+        "assets_dir": folder / project_unit.ASSETS_DIR,
+        "ui_dir": folder / project_unit.UI_DIR,
+        "themes_dir": folder / project_unit.THEMES_DIR,
+    }
+
+
 @router.post("/library")
 async def save_to_library(data: LibrarySaveRequest) -> dict[str, Any]:
     """Save the current project to the library."""
     from openavc.core.project_library import save_to_library as _save
 
     engine = _get_engine()
-    if not engine.project:
-        raise HTTPException(status_code=503, detail="No project loaded")
-
-    scripts_dir = engine.project_path.parent / "scripts"
-    assets_dir = engine.project_path.parent / "assets"
-    ui_dir = engine.project_path.parent / "ui"
-    themes_dir = engine.project_path.parent / "themes"
-
-    try:
-        _save(data.id, engine.project, scripts_dir, data.name, data.description,
-              assets_dir=assets_dir, ui_dir=ui_dir, themes_dir=themes_dir)
-    except ValueError as e:
-        raise _api_error(409, f"Library project '{data.id}' already exists", e)
+    # The running project and the files beside it read together, never
+    # between a replace's swap and its load (Engine.holding_project_files).
+    async with engine.holding_project_files():
+        if not engine.project:
+            raise HTTPException(status_code=503, detail="No project loaded")
+        try:
+            _save(data.id, engine.project, name=data.name, description=data.description,
+                  **_running_project_trees(engine))
+        except ValueError as e:
+            raise _api_error(409, f"Library project '{data.id}' already exists", e)
 
     return {"status": "created", "project_id": data.id}
 
@@ -640,22 +651,16 @@ async def replace_library_project(project_id: str, data: LibraryReplaceRequest) 
     from openavc.core.project_library import replace_in_library
 
     engine = _get_engine()
-    if not engine.project:
-        raise HTTPException(status_code=503, detail="No project loaded")
-
-    scripts_dir = engine.project_path.parent / "scripts"
-    assets_dir = engine.project_path.parent / "assets"
-    ui_dir = engine.project_path.parent / "ui"
-    themes_dir = engine.project_path.parent / "themes"
-
-    try:
-        replace_in_library(project_id, engine.project, scripts_dir, data.name,
-                           data.description, assets_dir=assets_dir, ui_dir=ui_dir,
-                           themes_dir=themes_dir)
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=404, detail=f"Project '{project_id}' not found in library",
-        ) from None
+    async with engine.holding_project_files():
+        if not engine.project:
+            raise HTTPException(status_code=503, detail="No project loaded")
+        try:
+            replace_in_library(project_id, engine.project, name=data.name, description=data.description,
+                               **_running_project_trees(engine))
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"Project '{project_id}' not found in library",
+            ) from None
 
     return {"status": "replaced", "project_id": project_id}
 

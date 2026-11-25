@@ -1226,6 +1226,7 @@ class TestReplaceRoute:
     """PUT /api/library/{id} — the door the Save to Library dialog presses."""
 
     def _client(self, tmp_lib, project):
+        import asyncio
         from types import SimpleNamespace
 
         from fastapi import FastAPI
@@ -1236,7 +1237,9 @@ class TestReplaceRoute:
         live = tmp_lib / "_live" / "project.avc"
         live.parent.mkdir(parents=True, exist_ok=True)
         (live.parent / "scripts").mkdir(exist_ok=True)
-        engine = SimpleNamespace(project=project, project_path=live)
+        # The hold a library save takes (Engine.holding_project_files).
+        files_hold = asyncio.Lock()
+        engine = SimpleNamespace(project=project, project_path=live, holding_project_files=lambda: files_hold)
         app = FastAPI()
         app.include_router(project_routes.router, prefix="/api")
         with patch.object(project_routes, "_get_engine", return_value=engine):
