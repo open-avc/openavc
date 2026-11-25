@@ -185,4 +185,59 @@ gen("help_steps", {
   ],
 });
 
+// --- A trigger. key and a $trigger. reference read the run's firing context,
+// as the macro engine reads them: Skip If, a Conditional and a step's values
+// read it; a Wait Until reads none; a trigger's guard reads the state ---
+gen("trigger_context", {
+  id: "m12",
+  name: "Trigger Context",
+  steps: [
+    { action: "state.set", key: "var.got_new", value: "$trigger.new_value" },
+    {
+      action: "device.command", device: "amp", command: "set",
+      params: { level: "$trigger.new_value", src: "$trigger.source" },
+    },
+    {
+      action: "device.command", device: "unless_off", command: "go",
+      skip_if: { key: "trigger.new_value", operator: "eq", value: "off" },
+    },
+    {
+      action: "conditional",
+      condition: { key: "trigger.key", operator: "eq", value: "var.power" },
+      then_steps: [{ action: "state.set", key: "var.branch", value: "then" }],
+      else_steps: [{ action: "state.set", key: "var.branch", value: "else" }],
+    },
+  ],
+  triggers: [
+    { type: "state_change", enabled: true, state_key: "var.power" },
+    { type: "event", enabled: true, event_pattern: "custom.go" },
+    { type: "startup", enabled: true },
+  ],
+});
+
+gen("trigger_context_wait_until", {
+  id: "m13",
+  name: "Wait On A Trigger Field",
+  steps: [
+    {
+      action: "wait_until",
+      condition: { key: "trigger.new_value", operator: "falsy" },
+      timeout: 0,
+      on_timeout: "fail",
+    },
+    { action: "state.set", key: "var.after", value: "ran" },
+  ],
+  triggers: [{ type: "state_change", enabled: true, state_key: "var.power" }],
+});
+
+gen("trigger_context_guard", {
+  id: "m14",
+  name: "Guard On A Trigger Field",
+  steps: [{ action: "state.set", key: "var.after", value: "ran" }],
+  triggers: [{
+    type: "state_change", enabled: true, state_key: "var.power",
+    conditions: [{ key: "trigger.new_value", operator: "eq", value: "on" }],
+  }],
+});
+
 process.stdout.write(JSON.stringify(results));

@@ -11,12 +11,16 @@
 //               engine's list
 //   triggers    {type: script} -- Convert to Script of one macro per entry in
 //               TRIGGER_TYPES, with a state.set step the test can see
+//   context_reads  {type: {fields, macro, script}} -- per trigger type that
+//               runs a handler, a macro whose steps copy every field the
+//               field table (FIRING_CONTEXTS) lists for it, and for an event
+//               one field of its payload, into a variable each; and its script
 //
 // tests/test_generated_scripts_load.py loads each through the real
 // ScriptEngine. Skips happen on the Python side when Node is absent.
 const path = require("path");
 
-const [templatesPath, helpersPath, triggersPath] = process.argv.slice(2);
+const [templatesPath, helpersPath, triggersPath, contextsPath] = process.argv.slice(2);
 
 const esbuild = require("esbuild");
 function load(entry) {
@@ -37,6 +41,7 @@ function load(entry) {
 const { SCRIPT_TEMPLATES } = load(templatesPath);
 const { STEP_TYPES, macroToScript } = load(helpersPath);
 const { TRIGGER_TYPES } = load(triggersPath);
+const { FIRING_CONTEXTS } = load(contextsPath);
 
 const results = {
   templates: SCRIPT_TEMPLATES.map((t) => ({ name: t.name, code: t.code })),
@@ -92,6 +97,22 @@ for (const t of TRIGGER_TYPES) {
     steps: [{ action: "state.set", key: "var.acme_fired", value: t.type }],
     triggers: [trigger],
   });
+}
+
+// --- What each trigger hands its run, read by the script it converts to. A
+// schedule trigger converts to a comment, so it has no handler to read with.
+results.context_reads = {};
+for (const t of TRIGGER_TYPES) {
+  if (t.type === "schedule") continue;
+  const ctx = FIRING_CONTEXTS[t.type];
+  const fields = [...ctx.fields.map((f) => f.name), ...(ctx.carries_payload ? ["source"] : [])];
+  const macro = {
+    id: "macro_acme_ctx",
+    name: `Acme reads ${t.label}`,
+    steps: fields.map((f) => ({ action: "state.set", key: `var.acme_ctx_${f}`, value: `$trigger.${f}` })),
+    triggers: [{ id: `trigger_${t.type}`, ...t.defaults(), ...(TRIGGER_FILL[t.type] ?? {}) }],
+  };
+  results.context_reads[t.type] = { fields, macro, script: macroToScript(macro) };
 }
 
 process.stdout.write(JSON.stringify(results));

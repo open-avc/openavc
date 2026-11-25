@@ -7,8 +7,8 @@ listening for an event nothing emits, is a script that fails at its first save
 or never runs. So each one is loaded here through the real engine, and the
 handlers that need no device are fired with the events the platform emits.
 
-The sources are the real ``scriptTemplates.ts``, ``macroHelpers.ts`` and
-``triggerHelpers.ts``, bundled with the esbuild in
+The sources are the real ``scriptTemplates.ts``, ``macroHelpers.ts``,
+``triggerHelpers.ts`` and ``firingContext.gen.ts``, bundled with the esbuild in
 ``openavc/web/programmer/node_modules`` (``tests/fixtures/generated_scripts_harness.cjs``).
 The template, step and trigger lists come from the IDE's own ``SCRIPT_TEMPLATES``,
 ``STEP_TYPES`` and ``TRIGGER_TYPES``, and the last two are held to the engine's
@@ -30,9 +30,12 @@ from tests import gates
 from openavc.core import script_api
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS, VALID_TRIGGER_TYPES
 from openavc.core.script_engine import ScriptEngine
 from openavc.core.state_store import StateStore
+from openavc.core.trigger_engine import TriggerEngine
+from openavc.core.value_resolver import FIRING_CONTEXTS
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "generated_scripts_harness.cjs"
@@ -41,6 +44,7 @@ SOURCES = (
     COMPONENTS / "scripts" / "scriptTemplates.ts",
     COMPONENTS / "macros" / "macroHelpers.ts",
     COMPONENTS / "macros" / "triggerHelpers.ts",
+    COMPONENTS.parent / "api" / "firingContext.gen.ts",
 )
 NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 
@@ -249,11 +253,15 @@ async def test_every_step_converts_to_a_script_that_loads(generated, subsystems,
     assert not refused, "\n\n".join(refused)
 
 
+#: The payload the event trigger's event carries.
+EVENT_PAYLOAD = {"source": "hdmi1"}
+
+
 async def _fire(trigger_type: str, state: StateStore, events: EventBus) -> None:
     if trigger_type == "state_change":
         state.set("var.acme_level", 75)
     elif trigger_type == "event":
-        await events.emit("custom.acme_go")
+        await events.emit("custom.acme_go", dict(EVENT_PAYLOAD))
     elif trigger_type == "startup":
         await events.emit("system.started")
     else:
@@ -293,4 +301,57 @@ async def test_a_converted_schedule_is_a_comment_whose_handler_works(
     assert _load(engine, "scheduled", _uncomment_schedule_handler(source)) == 1
     await events.emit("custom.macro_acme_schedule")
     assert await _settle(lambda: state.get("var.acme_fired") == "schedule")
+    assert _runtime_errors(engine) == {}
+
+
+# --- The firing context ------------------------------------------------------
+
+
+def _context_keys(fields: list[str]) -> list[str]:
+    return [f"var.acme_ctx_{field}" for field in fields]
+
+
+async def _macro_reads(entry: dict, trigger_type: str) -> dict:
+    """What the macro reads when its trigger fires through the trigger engine:
+    the run the script's handler stands in for."""
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    devices = DeviceManager(state, events)
+    macros = MacroEngine(state, events, devices)
+    macros.load_macros([entry["macro"]])
+    triggers = TriggerEngine(state, events, macros)
+    triggers.load_triggers([entry["macro"]])
+    keys = _context_keys(entry["fields"])
+    await triggers.start()  # a startup trigger fires here
+    try:
+        if trigger_type != "startup":
+            await _fire(trigger_type, state, events)
+        assert await _settle(lambda: all(state.has(k) for k in keys)), trigger_type
+        return {k: state.get(k) for k in keys}
+    finally:
+        await triggers.stop()
+
+
+@pytest.mark.parametrize("trigger_type", sorted(VALID_TRIGGER_TYPES - {"schedule"}))
+async def test_a_converted_trigger_hands_its_steps_what_the_macro_reads(
+    generated, engine, subsystems, trigger_type
+):
+    """Every field the table lists for the trigger, and an event's payload,
+    read through ``$trigger.<field>`` by the script's handler, holds what the
+    macro reads when the trigger engine fires it."""
+    entry = generated["context_reads"][trigger_type]
+    row = FIRING_CONTEXTS[trigger_type]
+    assert entry["fields"] == [f.name for f in row.fields] + (
+        list(EVENT_PAYLOAD) if row.carries_payload else []
+    )
+    expected = await _macro_reads(entry, trigger_type)
+    assert any(value is not None for value in expected.values()), expected
+
+    state, events, _ = subsystems
+    assert _load(engine, "context_reads", entry["script"]) == 1
+    await _fire(trigger_type, state, events)
+    keys = _context_keys(entry["fields"])
+    assert await _settle(lambda: all(state.has(k) for k in keys))
+    assert {k: state.get(k) for k in keys} == expected
     assert _runtime_errors(engine) == {}

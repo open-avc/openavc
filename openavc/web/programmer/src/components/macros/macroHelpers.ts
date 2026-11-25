@@ -259,86 +259,31 @@ export function macroToScript(
   worksOffline?: WorksOffline,
 ): string {
   const triggers = macro.triggers ?? [];
-  const hasTriggers = triggers.length > 0;
   const hasStateChange = triggers.some((t) => t.type === "state_change" && t.enabled);
   const hasEvent = triggers.some((t) => t.type === "event" && t.enabled);
   const hasSchedule = triggers.some((t) => t.type === "schedule" && t.enabled);
 
   // Generate the body first; the import list depends on what it uses.
   const body: string[] = [];
+  const writeSteps: StepWriter = (into) =>
+    _generateStepLines(into, macro.steps, "    ", groups, worksOffline);
 
   // Generate decorator-based handlers for triggers
-  if (hasTriggers) {
-    for (const trigger of triggers) {
-      if (!trigger.enabled) continue;
-      body.push("");
-      if (trigger.type === "state_change" && trigger.state_key) {
-        body.push(`@on_state_change("${_pyEscape(trigger.state_key)}")`);
-        body.push("async def on_trigger(key, old_value, new_value):");
-        // State operator check (compare() mirrors the trigger engine's coercion)
-        if (trigger.state_operator && trigger.state_operator !== "any") {
-          const op = trigger.state_operator;
-          if (op === "truthy") body.push("    if not new_value:");
-          else if (op === "falsy") body.push("    if new_value:");
-          else {
-            body.push(
-              `    if not compare(new_value, "${_pyEscape(op)}", ${_pyValue(trigger.state_value ?? "", false)}):`
-            );
-          }
-          body.push("        return");
-        }
-        // Guard conditions
-        for (const cond of trigger.conditions ?? []) {
-          body.push(_conditionToGuard(cond, "    "));
-          body.push("        return");
-        }
-        // Delay + re-check
-        if ((trigger.delay_seconds ?? 0) > 0) {
-          body.push(`    await asyncio.sleep(${trigger.delay_seconds})  # delay re-check`);
-          if (trigger.state_operator && trigger.state_operator !== "any") {
-            // Re-check using same operator (inverted for guard return)
-            body.push(_conditionToGuard({
-              key: trigger.state_key ?? "",
-              operator: trigger.state_operator,
-              value: trigger.state_value,
-            }, "    "));
-            body.push("        return");
-          }
-        }
-        // Steps
-        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
-      } else if (trigger.type === "event" && trigger.event_pattern) {
-        body.push(`@on_event("${_pyEscape(trigger.event_pattern)}")`);
-        body.push("async def on_trigger(event):");
-        for (const cond of trigger.conditions ?? []) {
-          body.push(_conditionToGuard(cond, "    "));
-          body.push("        return");
-        }
-        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
-      } else if (trigger.type === "schedule" && trigger.cron) {
-        // A schedule trigger runs its macro directly and emits no event, so
-        // there is nothing for a script handler to listen for.
-        _scheduleComment(body, trigger, macro);
-      } else if (trigger.type === "startup") {
-        body.push("@on_event(\"system.started\")");
-        body.push("async def on_startup(event):");
-        if ((trigger.delay_seconds ?? 0) > 0) {
-          body.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
-        }
-        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
-      }
-    }
+  for (const trigger of triggers) {
+    if (trigger.enabled) _triggerHandler(body, trigger, macro, writeSteps);
   }
 
   // Always include a manual run() function
   body.push("");
   body.push("");
   body.push("async def run():");
+  const runStart = body.length;
   if (macro.steps.length === 0) {
     body.push("    pass");
   } else {
-    _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
+    writeSteps(body);
   }
+  _holdContext(body, runStart, RUN_CONTEXT.run);
 
   // Build import list based on what the script needs
   const bodyText = body.join("\n");
@@ -366,6 +311,123 @@ export function macroToScript(
   ];
 
   return lines.join("\n") + "\n";
+}
+
+/** Writes the macro's steps into a function body, one level in. */
+type StepWriter = (into: string[]) => void;
+
+/** The namespace a condition key or a `$` reference reads the run's firing
+ * context through (`value_resolver.TRIGGER_PREFIX` on the server):
+ * `trigger.new_value` is the context's `new_value`. */
+const TRIGGER_PREFIX = "trigger.";
+
+/** What a run hands its steps, held as `trigger` in the function that runs
+ * them, built as the trigger engine builds it for that trigger
+ * (`core/trigger_engine.py`): the change; the event's name with its payload
+ * spread over it; the startup. A run nothing fired (`run()`) has none.
+ * tests/test_generated_scripts_load.py holds each to what the macro reads
+ * when its trigger fires. */
+const RUN_CONTEXT = {
+  state_change: '{"key": key, "old_value": old_value, "new_value": new_value}',
+  event: '{"event": event.name, **event.payload}',
+  startup: '{"trigger_type": "startup"}',
+  run: "{}  # nothing fired this run",
+} as const;
+
+/** One enabled trigger's handler, or the comment a schedule becomes. */
+function _triggerHandler(
+  body: string[],
+  trigger: TriggerConfig,
+  macro: MacroConfig,
+  writeSteps: StepWriter,
+): void {
+  body.push("");
+  if (trigger.type === "state_change" && trigger.state_key) {
+    _stateChangeHandler(body, trigger, writeSteps);
+  } else if (trigger.type === "event" && trigger.event_pattern) {
+    body.push(`@on_event("${_pyEscape(trigger.event_pattern)}")`);
+    body.push("async def on_trigger(event):");
+    const start = body.length;
+    _pushGuards(body, trigger);
+    writeSteps(body);
+    _holdContext(body, start, RUN_CONTEXT.event);
+  } else if (trigger.type === "schedule" && trigger.cron) {
+    // A schedule trigger runs its macro directly and emits no event, so
+    // there is nothing for a script handler to listen for.
+    _scheduleComment(body, trigger, macro);
+  } else if (trigger.type === "startup") {
+    body.push("@on_event(\"system.started\")");
+    body.push("async def on_startup(event):");
+    const start = body.length;
+    if ((trigger.delay_seconds ?? 0) > 0) {
+      body.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
+    }
+    writeSteps(body);
+    _holdContext(body, start, RUN_CONTEXT.startup);
+  }
+}
+
+/** A state change trigger's handler: its operator's check (compare() mirrors
+ * the trigger engine's coercion), its guards, its delay and re-check, then
+ * the steps. */
+function _stateChangeHandler(body: string[], trigger: TriggerConfig, writeSteps: StepWriter): void {
+  body.push(`@on_state_change("${_pyEscape(trigger.state_key ?? "")}")`);
+  body.push("async def on_trigger(key, old_value, new_value):");
+  const start = body.length;
+  const op = trigger.state_operator;
+  const checksValue = Boolean(op) && op !== "any";
+  if (checksValue) {
+    body.push(_newValueGuard(op ?? "", trigger.state_value));
+    body.push("        return");
+  }
+  _pushGuards(body, trigger);
+  if ((trigger.delay_seconds ?? 0) > 0) {
+    body.push(`    await asyncio.sleep(${trigger.delay_seconds})  # delay re-check`);
+    if (checksValue) {
+      // Re-check using same operator (inverted for guard return)
+      body.push(_conditionToGuard({ key: trigger.state_key ?? "", operator: op, value: trigger.state_value }, "    "));
+      body.push("        return");
+    }
+  }
+  writeSteps(body);
+  _holdContext(body, start, RUN_CONTEXT.state_change);
+}
+
+/** The line that ends a state change handler whose new value fails `op`. */
+function _newValueGuard(op: string, value: unknown): string {
+  if (op === "truthy") return "    if not new_value:";
+  if (op === "falsy") return "    if new_value:";
+  return `    if not compare(new_value, "${_pyEscape(op)}", ${_pyValue(value ?? "", false)}):`;
+}
+
+/** A trigger's guard conditions, each ending the handler when it fails. */
+function _pushGuards(body: string[], trigger: TriggerConfig): void {
+  for (const cond of trigger.conditions ?? []) {
+    body.push(_conditionToGuard(cond, "    "));
+    body.push("        return");
+  }
+}
+
+/** `context` held as `trigger` at the top of the function body that starts
+ * at `start`, when a line of it reads the run's firing context. Only
+ * `_read` writes `trigger.get("`: a quote in a value is escaped, and a
+ * comment line is passed over. */
+function _holdContext(body: string[], start: number, context: string): void {
+  const reads = body
+    .slice(start)
+    .some((line) => !line.trimStart().startsWith("#") && line.includes('trigger.get("'));
+  if (reads) body.splice(start, 0, `    trigger = ${context}`);
+}
+
+/** What a step's condition key or `$` reference reads, where the macro engine
+ * reads it (`value_resolver.read_operand` and `resolve_ref`): a
+ * `trigger.<field>` key reads the run's firing context, any other key the
+ * state. A Wait Until is judged with no firing context, so there a
+ * `trigger.` key is a value that has not arrived (None). */
+function _read(key: string, site: "step" | "wait_until" = "step"): string {
+  if (!key.startsWith(TRIGGER_PREFIX)) return `state.get("${_pyEscape(key)}")`;
+  if (site === "wait_until") return "None";
+  return `trigger.get("${_pyEscape(key.slice(TRIGGER_PREFIX.length))}")`;
 }
 
 /** What a schedule trigger becomes: a comment, since scripts have no Schedule
@@ -403,17 +465,16 @@ function _pyComment(s: string): string {
 /** Render a JS value as a Python literal expression.
  *
  * When `resolveDollar` is true, a top-level string starting with `$` becomes a
- * `state.get(...)` lookup — mirroring the macro engine, which resolves
- * `$state.key` references in command params and state.set values at runtime
+ * read of what it references (`_read`: `$trigger.<field>` the run's firing
+ * context, any other `$<key>` the state) — mirroring the macro engine, which
+ * resolves `$` references in command params and state.set values at runtime
  * (top level only, so nested values recurse with resolution off). */
 function _pyValue(v: unknown, resolveDollar: boolean): string {
   if (v === null || v === undefined) return "None";
   if (typeof v === "boolean") return v ? "True" : "False";
   if (typeof v === "number") return Number.isFinite(v) ? String(v) : "None";
   if (typeof v === "string") {
-    if (resolveDollar && v.startsWith("$")) {
-      return `state.get("${_pyEscape(v.slice(1))}")`;
-    }
+    if (resolveDollar && v.startsWith("$")) return _read(v.slice(1));
     return `"${_pyEscape(v)}"`;
   }
   if (Array.isArray(v)) {
@@ -428,8 +489,8 @@ function _pyValue(v: unknown, resolveDollar: boolean): string {
   return `"${_pyEscape(String(v))}"`;
 }
 
-/** Render a params dict as a Python dict literal, resolving top-level `$state.key`
- * string values to `state.get(...)` like the macro engine's _resolve_params. */
+/** Render a params dict as a Python dict literal, resolving top-level `$`
+ * references (`_read`) like the macro engine's _resolve_params. */
 function _pyParamsDict(params: Record<string, unknown>): string {
   const entries = Object.entries(params).map(
     ([k, v]) => `"${_pyEscape(k)}": ${_pyValue(v, true)}`
@@ -437,18 +498,24 @@ function _pyParamsDict(params: Record<string, unknown>): string {
   return `{${entries.join(", ")}}`;
 }
 
-/** Positive-sense condition expression (true when the condition matches).
+/** Positive-sense condition expression (true when the condition matches), its
+ * key read where the macro engine reads it at `site` (`_read`).
  * Comparison operators go through compare(), which applies the same alias
  * normalization and type coercion as the macro/trigger engines. */
-function _conditionExpr(cond: { key?: string; operator?: string; value?: unknown }): string {
-  const key = _pyEscape(cond.key ?? "");
+function _conditionExpr(
+  cond: { key?: string; operator?: string; value?: unknown },
+  site: "step" | "wait_until" = "step",
+): string {
+  const actual = _read(cond.key ?? "", site);
   const op = cond.operator ?? "eq";
-  if (op === "truthy") return `state.get("${key}")`;
-  if (op === "falsy") return `not state.get("${key}")`;
-  return `compare(state.get("${key}"), "${_pyEscape(op)}", ${_pyValue(cond.value ?? "", false)})`;
+  if (op === "truthy") return actual;
+  if (op === "falsy") return `not ${actual}`;
+  return `compare(${actual}, "${_pyEscape(op)}", ${_pyValue(cond.value ?? "", false)})`;
 }
 
-/** Generate a guard condition (if ... return) line for a trigger condition/operator. */
+/** Generate a guard condition (if ... return) line for a trigger condition/operator.
+ * A guard reads the state only, `trigger.` keys included, as the trigger
+ * engine's guard does (`TriggerEngine._check_conditions`). */
 function _conditionToGuard(
   cond: { key?: string; operator?: string; value?: unknown },
   indent: string
@@ -590,7 +657,7 @@ function _generateStepLines(
         }
         const key = _pyEscape(cond.key ?? "");
         const op = cond.operator ?? "eq";
-        const checkExpr = _conditionExpr(cond);
+        const checkExpr = _conditionExpr(cond, "wait_until");
         const timeout = step.timeout;
         const onTimeout = step.on_timeout ?? "fail";
         if (timeout == null) {

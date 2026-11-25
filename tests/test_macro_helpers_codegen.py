@@ -37,6 +37,7 @@ import pytest
 from tests import gates
 
 from openavc.core.condition_eval import eval_operator
+from openavc.core.script_api import Event
 from openavc.core.script_api import compare as script_compare
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -201,6 +202,9 @@ SCENARIOS = [
     "wait_until_timeout_fail",
     "legacy_plain",
     "help_steps",
+    "trigger_context",
+    "trigger_context_wait_until",
+    "trigger_context_guard",
 ]
 
 
@@ -342,6 +346,95 @@ class TestValueGeneration:
         r = _exec_script(script)
         r.run()
         assert r.state.data["var.after"] == "ran"
+
+
+class TestTriggerContext:
+    """A ``trigger.<field>`` key and a ``$trigger.<field>`` reference read the
+    run's firing context where the macro engine reads it
+    (``core/macro_steps.py``): a Skip If, a Conditional and a step's values
+    read the context of the handler that ran them, and a run nothing fired has
+    none. A state key of the same name is never read in its place, so each
+    run here holds a ``trigger.*`` state key with a value that would show."""
+
+    DECOY = {"trigger.new_value": "off", "trigger.key": "var.decoy", "trigger.source": "decoy"}
+
+    def _handlers(self, r, kind):
+        handlers = r.state_handlers if kind == "state" else r.event_handlers
+        return {pattern: fn for pattern, fn in handlers}
+
+    def test_a_state_change_reads_its_change(self, generated):
+        r = _exec_script(generated["trigger_context"]["script"], self.DECOY)
+        handler = self._handlers(r, "state")["var.power"]
+        asyncio.run(handler("var.power", "off", "on"))
+        assert r.state.data["var.got_new"] == "on"
+        assert r.devices.sent == [
+            ("amp", "set", {"level": "on", "src": None}),
+            ("unless_off", "go", None),
+        ]
+        assert r.state.data["var.branch"] == "then"
+
+    def test_skip_if_reads_the_change_that_fired(self, generated):
+        r = _exec_script(generated["trigger_context"]["script"])
+        handler = self._handlers(r, "state")["var.power"]
+        asyncio.run(handler("var.power", "on", "off"))
+        assert ("unless_off", "go", None) not in r.devices.sent
+
+    def test_an_event_reads_its_name_and_payload(self, generated):
+        r = _exec_script(generated["trigger_context"]["script"], self.DECOY)
+        handler = self._handlers(r, "event")["custom.go"]
+        asyncio.run(handler(Event("custom.go", {"source": "hdmi1", "new_value": 3})))
+        assert r.state.data["var.got_new"] == 3
+        assert r.devices.sent[0] == ("amp", "set", {"level": 3, "src": "hdmi1"})
+        assert r.state.data["var.branch"] == "else"
+
+    def test_startup_reads_its_trigger_type_only(self, generated):
+        r = _exec_script(generated["trigger_context"]["script"], self.DECOY)
+        handler = self._handlers(r, "event")["system.started"]
+        asyncio.run(handler(Event("system.started", {"version": "9"})))
+        assert r.state.data["var.got_new"] is None
+        assert r.state.data["var.branch"] == "else"
+
+    def test_a_run_nothing_fired_reads_no_field(self, generated):
+        r = _exec_script(generated["trigger_context"]["script"], self.DECOY)
+        r.run()
+        assert r.state.data["var.got_new"] is None
+        assert r.devices.sent == [
+            ("amp", "set", {"level": None, "src": None}),
+            ("unless_off", "go", None),
+        ]
+        assert r.state.data["var.branch"] == "else"
+
+    def test_no_step_reads_a_trigger_field_from_the_state(self, generated):
+        assert 'state.get("trigger.' not in generated["trigger_context"]["script"]
+
+    def test_a_wait_until_reads_a_trigger_field_as_no_value(self, generated):
+        """The engine judges a Wait Until with no firing context, so a
+        ``trigger.`` key there is a value that has not arrived (None): falsy
+        holds at once, whatever fired the run or the state holds."""
+        source = generated["trigger_context_wait_until"]["script"]
+        assert 'state.get("trigger.' not in source
+        r = _exec_script(source, {"trigger.new_value": "on"})
+        handler = self._handlers(r, "state")["var.power"]
+        asyncio.run(handler("var.power", None, "on"))
+        assert r.state.data["var.after"] == "ran"
+
+    def test_a_trigger_guard_reads_the_state(self, generated):
+        """The trigger engine's guard reads the state only
+        (``TriggerEngine._check_conditions``), so the script's does too: a
+        guard on ``trigger.new_value`` holds only when the state key does."""
+        source = generated["trigger_context_guard"]["script"]
+        r = _exec_script(source)
+        handler = self._handlers(r, "state")["var.power"]
+        asyncio.run(handler("var.power", None, "on"))
+        assert "var.after" not in r.state.data
+        r2 = _exec_script(source, {"trigger.new_value": "on"})
+        asyncio.run(self._handlers(r2, "state")["var.power"]("var.power", None, "off"))
+        assert r2.state.data["var.after"] == "ran"
+
+    def test_a_macro_reading_no_field_gets_no_context(self, generated):
+        """Only a script whose steps read the context builds it."""
+        for scenario in ("legacy_plain", "trigger_gte", "dollar_params", "trigger_context_guard"):
+            assert "trigger = " not in generated[scenario]["script"], scenario
 
 
 class TestOfflineGuards:
