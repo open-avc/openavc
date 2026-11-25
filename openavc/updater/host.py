@@ -3,6 +3,15 @@
 The process snapshots this policy at startup. Firmware provisioning must supply
 the same configuration to the server and any pre-start update helper. A missing
 explicit file or invalid configuration keeps generic update operations disabled.
+
+Whether the firmware owns updates (``get_firmware_host() is not None``) is also
+decided before the server starts, by the Linux update helper
+(``installer/update-helper.sh``) and the macOS launch wrapper
+(``installer/openavc-macos-run.sh``), which leave every update instruction on
+disk for a firmware host. They run before this process and as root, so they
+read the host's file themselves rather than anything the server writes.
+``tests/test_firmware_host_parity.py`` holds the three to one answer, case for
+case, and holds each script to ``DEFAULT_HOST_FILE``.
 """
 
 from __future__ import annotations
@@ -12,6 +21,11 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+# Where a product's firmware provisions the update policy when the
+# OPENAVC_FIRMWARE_HOST variable names no other file. The update helper and the
+# macOS launch wrapper name the same path.
+DEFAULT_HOST_FILE = "/etc/openavc-firmware-host.json"
 
 
 @dataclass(frozen=True)
@@ -60,7 +74,7 @@ def get_firmware_host() -> FirmwareHost | None:
     # has no such absolute path; an ordinary install there stays unchanged.
     if not explicit and os.name == "nt":
         return None
-    filename = os.environ.get("OPENAVC_FIRMWARE_HOST", "/etc/openavc-firmware-host.json")
+    filename = os.environ.get("OPENAVC_FIRMWARE_HOST", DEFAULT_HOST_FILE)
     try:
         path = Path(filename)
         if not filename or not path.is_absolute():

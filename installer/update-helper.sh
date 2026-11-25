@@ -15,6 +15,9 @@
 
 # Firmware ownership must be checked before any update marker is consumed.
 # The explicit argument covers supervisors that do not pass the server environment.
+# A firmware host is the server's (openavc/updater/host.py): the variable set to
+# anything, or anything at the default path, even a file it cannot read or a
+# broken link. tests/test_firmware_host_parity.py holds this check to it.
 FIRMWARE_HOST="${3:-${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}}"
 if [ "${3+x}" = x ] || [ "${OPENAVC_FIRMWARE_HOST+x}" = x ] || [ -e "$FIRMWARE_HOST" ] || [ -L "$FIRMWARE_HOST" ]; then
     echo "OpenAVC updates are managed through the product's firmware update settings."

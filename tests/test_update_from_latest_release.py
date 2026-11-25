@@ -43,6 +43,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from openavc.updater.host import DEFAULT_HOST_FILE
 from openavc.utils.version_rule import read_version
 from tests import gates
 
@@ -137,7 +138,9 @@ def _cannot_run_here() -> str | None:
         # The release's helper writes the system's own unit and helper paths,
         # which no stand-in can redirect; as root it would really write them.
         return "running as root, where the release's update helper would write this machine's service files"
-    if Path("/etc/openavc-firmware-host.json").exists():
+    if os.path.lexists(DEFAULT_HOST_FILE):
+        # Anything there, even a broken link, is a firmware host to both
+        # scripts (tests/test_firmware_host_parity.py).
         return "this machine is a firmware host, where both scripts leave updates to the firmware"
     return None
 

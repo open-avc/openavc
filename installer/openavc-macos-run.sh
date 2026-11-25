@@ -334,6 +334,10 @@ add_stop_bound() {
     fi
 }
 
+# A product whose firmware owns updates leaves every instruction on disk for it.
+# A firmware host is the server's (openavc/updater/host.py): the variable set to
+# anything, or anything at the default path, even a file it cannot read or a
+# broken link. tests/test_firmware_host_parity.py holds this check to it.
 FIRMWARE_HOST="${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}"
 if [ "${OPENAVC_FIRMWARE_HOST+x}" != x ] && [ ! -e "$FIRMWARE_HOST" ] && [ ! -L "$FIRMWARE_HOST" ]; then
     # Which instruction is acted on, and what becomes of the others, is the
