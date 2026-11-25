@@ -1,9 +1,11 @@
 """Why a trigger fire or a macro run did not go ahead: one table of reasons.
 
 ``SKIP_REASONS`` in ``core/macro_text.py`` holds every code a
-``trigger.skipped`` or ``macro.skipped`` names, each with its sentence. These
-tests hold the two engines to it: every exit that stops a fire or a run sends
-one of those codes and its sentence, and no exit stops one without saying why.
+``trigger.skipped`` or ``macro.skipped`` names, each with its sentence, and the
+code a step held back by its own setting announces (a ``macro.progress`` whose
+status is ``skipped``). These tests hold the two engines to it: every exit that
+stops a fire or a run sends one of those codes and its sentence, and no exit
+stops one without saying why.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import openavc.core.help_requests as hr
 import openavc.core.macro_engine as me
 import openavc.core.trigger_engine as te
 from openavc.core.device_manager import DeviceManager
@@ -384,7 +387,12 @@ def _codes_named(module, helper: str) -> set[str]:
 
 
 def test_every_code_an_engine_names_is_in_the_table_and_every_row_is_used() -> None:
-    named = _codes_named(te, "_skipped") | _codes_named(me, "_report_skipped")
+    """The two engines' codes, and a step's: the help cooldown is the help
+    service's rule, so the code is named there and the step announces it."""
+    named = (
+        _codes_named(te, "_skipped") | _codes_named(me, "_report_skipped")
+        | _codes_named(hr, "raise_request")
+    )
     assert named - set(SKIP_REASONS) == set()
     assert set(SKIP_REASONS) - named == set()
 

@@ -3,7 +3,7 @@ import { actOnProjectReload, reloadStillNeeded, type ProjectReloadMessage } from
 import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
-import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
+import type { GroupCommandResult, LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
@@ -52,6 +52,58 @@ const CHANGE_NOTICES = new Map<string, () => void>([
 // fleet push and a plain reconnect as much as for an edit made elsewhere.
 // Clearing on all of them left the user with a Ctrl+Z that reverted an older
 // change instead of the one they had just made.
+/** Where a running step sits in the tree. The server sends it as step_path
+ *  (e.g. [2, "then", 0]), consumed verbatim rather than inferred from
+ *  total_steps deltas, which is ambiguous when a branch's length equals its
+ *  parent's; the flat index when it is absent. */
+function stepPathOf(msg: Record<string, unknown>, stepIndex: number): StepPathSegment[] {
+  return Array.isArray(msg.step_path) ? (msg.step_path as StepPathSegment[]) : [stepIndex];
+}
+
+/** A `macro.progress` frame. Only a `running` one names its step; every other
+ *  (a condition's answer, a group's results, a step that was skipped) belongs
+ *  to the step last named. */
+function takeMacroProgress(msg: Record<string, unknown>) {
+  const store = useLogStore.getState();
+  const stepIndex = store.macroProgress.stepIndex ?? -1;
+  if (msg.status === "running") {
+    const index = msg.step_index as number;
+    store.setMacroProgress({
+      macroId: msg.macro_id as string,
+      stepIndex: index,
+      totalSteps: msg.total_steps as number,
+      status: "running",
+      activeStepPath: stepPathOf(msg, index),
+    });
+  } else if (msg.status === "evaluated" && msg.action === "conditional") {
+    store.addConditionalResult({
+      stepIndex,
+      conditionResult: msg.condition_result as boolean,
+      branch: msg.branch as "then" | "else",
+      conditionKey: msg.condition_key as string,
+      conditionOperator: msg.condition_operator as string,
+      actualValue: msg.actual_value,
+    });
+  } else if (msg.status === "group_complete" && msg.action === "group.command") {
+    store.addGroupResult({
+      stepIndex,
+      group: msg.group as string,
+      command: msg.command as string,
+      deviceResults: msg.device_results as GroupCommandResult["deviceResults"],
+    });
+  } else if (msg.status === "skipped") {
+    // A step its own setting held back (an Ask for Help inside its cooldown),
+    // in the reason table's words.
+    store.addStepSkip({
+      stepIndex,
+      action: msg.action as string,
+      code: msg.code as string,
+      message: msg.message as string,
+      at: Date.now(),
+    });
+  }
+}
+
 function dropStaleUndoHistory(before: ProjectConfig | null) {
   const after = useProjectStore.getState().project;
   const cleared = useUIBuilderStore.getState().clearUndoHistoryIfStale(before, after);
@@ -293,49 +345,7 @@ export function useWebSocket() {
         });
       }
 
-      if (msg.type === "macro.progress") {
-        const store = useLogStore.getState();
-        // Regular step progress
-        if (msg.status === "running") {
-          const stepIndex = msg.step_index as number;
-          const totalSteps = msg.total_steps as number;
-          // The server sends the step's explicit tree location as step_path
-          // (e.g. [2, "then", 0]) — consume it verbatim rather than inferring
-          // branch depth from total_steps deltas (which is ambiguous when a
-          // branch's length equals its parent's). Fall back to the flat index.
-          const stepPath = Array.isArray(msg.step_path)
-            ? (msg.step_path as StepPathSegment[])
-            : [stepIndex];
-
-          store.setMacroProgress({
-            macroId: msg.macro_id as string,
-            stepIndex,
-            totalSteps,
-            status: "running",
-            activeStepPath: stepPath,
-          });
-        }
-        // Conditional evaluation result
-        if (msg.status === "evaluated" && msg.action === "conditional") {
-          store.addConditionalResult({
-            stepIndex: store.macroProgress.stepIndex ?? -1,
-            conditionResult: msg.condition_result as boolean,
-            branch: msg.branch as "then" | "else",
-            conditionKey: msg.condition_key as string,
-            conditionOperator: msg.condition_operator as string,
-            actualValue: msg.actual_value,
-          });
-        }
-        // Group command per-device results
-        if (msg.status === "group_complete" && msg.action === "group.command") {
-          store.addGroupResult({
-            stepIndex: store.macroProgress.stepIndex ?? -1,
-            group: msg.group as string,
-            command: msg.command as string,
-            deviceResults: msg.device_results as any[],
-          });
-        }
-      }
+      if (msg.type === "macro.progress") takeMacroProgress(msg);
 
       // Macro step error (emitted even when stop_on_error is false)
       if (msg.type === "macro.step_error") {

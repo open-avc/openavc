@@ -521,7 +521,7 @@ async def test_a_conditional_reports_the_value_it_compared(
 
 async def test_a_help_request_defaults_to_a_warning(engine: MacroEngine) -> None:
     help_requests = MagicMock()
-    help_requests.raise_request = AsyncMock()
+    help_requests.raise_request = AsyncMock(return_value={"raised": True})
     engine._help = help_requests
     engine.load_macros([{"id": "m", "name": "M", "steps": [
         {"action": "help.request", "message": "Lamp out"},

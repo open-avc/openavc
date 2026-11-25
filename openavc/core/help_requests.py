@@ -42,6 +42,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
+from openavc.core.macro_text import skip_reason
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -112,7 +113,9 @@ class HelpRequests:
         severity: str = "warning",
         cooldown: float | None = None,
     ) -> dict[str, Any]:
-        """Ask for help. Returns what happened, for the caller's log.
+        """Ask for help. Returns what happened: ``raised``, and for a request
+        the cooldown held back the reason (``macro_text.skip_reason``'s
+        ``code`` and ``message``), which the step announces as skipped.
 
         ``cooldown`` of 0 disables the guard, which a room that genuinely needs
         to shout twice should be able to do.
@@ -121,13 +124,13 @@ class HelpRequests:
         now = time.monotonic()
         if window and self._last_raised_at and (now - self._last_raised_at) < window:
             remaining = int(window - (now - self._last_raised_at))
+            held_back = skip_reason("help_cooldown", seconds=window)
             log.info(
-                "Help request suppressed: one was raised %ds ago and the "
-                "cooldown has %ds left. Set cooldown to 0 on the step to "
-                "always send.",
-                int(now - self._last_raised_at), remaining,
+                "Help request not sent: %s The next can go in %ds; set the "
+                "step's Send at most every to 0 to always send.",
+                held_back["message"], remaining,
             )
-            return {"raised": False, "reason": "cooldown", "retry_in": remaining}
+            return {"raised": False, **held_back, "retry_in": remaining}
 
         self._last_raised_at = now
         text = (message or DEFAULT_MESSAGE).strip()[:MAX_MESSAGE_LEN]

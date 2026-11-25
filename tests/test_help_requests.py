@@ -227,9 +227,45 @@ async def test_a_second_request_inside_the_cooldown_is_dropped(engine, help_requ
     result = await help_requests.raise_request(message="second")
 
     assert result["raised"] is False
-    assert result["reason"] == "cooldown"
+    assert result["code"] == "help_cooldown"
+    assert result["message"] == (
+        "Help was asked for less than 300 seconds ago, and this step sends at most "
+        "once in that time, so no new request was sent."
+    )
     assert len(engine.cloud_agent.sent) == 1
     assert engine.state.get(KEY_MESSAGE) == "first", "the room keeps the live one"
+
+
+@pytest.mark.asyncio
+async def test_a_step_its_cooldown_holds_back_says_it_was_skipped(engine, help_requests):
+    """A second press inside the cooldown sends nothing. The run still goes on
+    to its end, but the step says it did not send, and why, where the editor
+    shows a step's result, rather than reading the same as one that did."""
+    macros = _macro_engine(engine, help_requests)
+    macros.load_macros([{"id": "ask", "name": "Ask", "steps": [
+        {"action": "help.request", "message": "x", "cooldown": 60},
+    ]}])
+    progress: list[dict] = []
+
+    async def on_progress(_event, payload):
+        progress.append(dict(payload))
+
+    engine.events.on("macro.progress.ask", on_progress)
+
+    assert await macros.execute("ask") == "completed"
+    assert [p["status"] for p in progress] == ["running"]
+
+    progress.clear()
+    assert await macros.execute("ask") == "completed"
+    assert progress[1:] == [{
+        "macro_id": "ask", "action": "help.request", "status": "skipped",
+        "code": "help_cooldown",
+        "message": (
+            "Help was asked for less than 60 seconds ago, and this step sends at "
+            "most once in that time, so no new request was sent."
+        ),
+    }]
+    assert len(engine.cloud_agent.sent) == 1
 
 
 @pytest.mark.asyncio

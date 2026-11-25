@@ -18,11 +18,12 @@ THE sentence for a press naming a macro the project does not have is here too
 (``no_such_macro``): a control's macro action and the panel's ``macro.execute``
 and ``macro.cancel`` all answer with it.
 
-THE reasons a trigger fire or a macro run did not go ahead are here too
-(``SKIP_REASONS``, read through ``skip_reason``): every ``trigger.skipped`` and
-``macro.skipped`` names one of its codes and sends its sentence, and no other
-module words a skip. A new way for a fire or a run to stop is a new row, which
-``tests/test_skip_reasons.py`` holds both engines to.
+THE reasons a trigger fire, a macro run or a step did not go ahead are here
+too (``SKIP_REASONS``, read through ``skip_reason``): every ``trigger.skipped``
+and ``macro.skipped``, and a step's ``skipped`` progress, names one of its codes
+and sends its sentence, and no other module words a skip. A new way for a fire,
+a run or a step to stop is a new row, which ``tests/test_skip_reasons.py`` holds
+the modules that send them to.
 """
 
 from __future__ import annotations
@@ -98,12 +99,14 @@ def stopped_message(exc: BaseException) -> str:
     return exc.message if isinstance(exc, StepFailed) else MACRO_STOPPED
 
 
-#: Why a trigger fire (``trigger.skipped``) or a macro run (``macro.skipped``)
-#: did not go ahead: each code with its sentence. The trigger's codes came
-#: first and readers already match on them, so they keep their names; the
-#: macro's own refusals start ``macro_`` because the setting to change is the
-#: macro's, not the trigger's. A ``{field}`` is filled in by the exit that
-#: stops the fire or the run; ``{seconds}`` reads as ``_seconds_text`` writes it.
+#: Why a trigger fire (``trigger.skipped``), a macro run (``macro.skipped``)
+#: or a step (a ``macro.progress`` whose status is ``skipped``) did not go
+#: ahead: each code with its sentence. The trigger's codes came first and
+#: readers already match on them, so they keep their names; the macro's own
+#: refusals start ``macro_`` because the setting to change is the macro's, not
+#: the trigger's; a step's start with what the step does (``help_``). A
+#: ``{field}`` is filled in by the exit that stops the fire, the run or the
+#: step; ``{seconds}`` reads as ``_seconds_text`` writes it.
 SKIP_REASONS: dict[str, str] = {
     # A trigger's fire.
     "cooldown": "The trigger's Cooldown had not passed since it last fired.",
@@ -133,6 +136,11 @@ SKIP_REASONS: dict[str, str] = {
         "The macro was still running after {seconds}, so this queued run was dropped."
     ),
     "stopping": "The system is stopping.",
+    # A step that did not do its work, in a run that went on.
+    "help_cooldown": (
+        "Help was asked for less than {seconds} ago, and this step sends at most once "
+        "in that time, so no new request was sent."
+    ),
 }
 
 

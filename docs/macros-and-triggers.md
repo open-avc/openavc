@@ -159,6 +159,10 @@ $var.room_name projector failed to power on $var.attempts times
 
 arrives as "Lecture Hall 2 projector failed to power on 3 times" rather than as "someone pressed help". Leave it empty for a plain call for a person.
 
+### Send at most every
+
+A request is sent at most once in this many seconds (300 unless you change it), so a trigger that fires on every poll does not send one each time. A step reached sooner sends nothing and the rest of the macro runs. The macro editor shows that step as skipped, with the reason. Set it to 0 if the space should be able to ask twice in a row.
+
 ### Telling the room what happened
 
 The step sets state you can bind to a label, so a panel can answer the person who pressed it:

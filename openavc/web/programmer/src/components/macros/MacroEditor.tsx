@@ -42,7 +42,7 @@ import { MacroCooldown } from "./MacroCooldown";
 import { useLogStore } from "../../store/logStore";
 import { useProjectStore } from "../../store/projectStore";
 import { showError } from "../../store/toastStore";
-import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun, StepPathSegment } from "../../store/logStore";
+import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun, StepPathSegment, StepSkip } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
 import { runTrouble } from "./runAnswer";
@@ -85,6 +85,8 @@ interface SortableStepItemProps {
   isExpanded: boolean;
   isActive: boolean;
   stepError: StepError | undefined;
+  /** What this step did not do in the last run, and why (its own setting held it back). */
+  stepSkip: StepSkip | undefined;
   /** What this step will not do as built, from the platform's own rules. */
   lintIssues: MacroIssue[];
   conditionalResult: ConditionalResult | undefined;
@@ -110,6 +112,7 @@ function SortableStepItem({
   isExpanded,
   isActive,
   stepError,
+  stepSkip,
   lintIssues,
   conditionalResult,
   groupResult,
@@ -326,6 +329,8 @@ function SortableStepItem({
         </div>
       )}
 
+      {stepSkip && <SkipLine skip={stepSkip} style={STEP_SKIP_STYLE} />}
+
       {/* What this step is missing, beside the fields it is about. Only while
           the step is open: collapsed, the header's mark and the summary at the
           top of the editor already say it, and saying it three times is noise. */}
@@ -427,6 +432,7 @@ export function MacroEditor({
   const stepErrors = useLogStore((s) => s.stepErrors);
   const conditionalResults = useLogStore((s) => s.conditionalResults);
   const groupResults = useLogStore((s) => s.groupResults);
+  const stepSkips = useLogStore((s) => s.stepSkips);
   const lastRun = useLogStore((s) => s.lastRun);
   const showLastRun = lastRun && lastRun.macroId === macro.id && !isRunning;
   // Why its latest start did not go ahead, from whichever door asked for it.
@@ -866,6 +872,7 @@ export function MacroEditor({
                     isExpanded={expandedStep === i}
                     isActive={isRunning && macroProgress.activeStepPath.length > 0 && macroProgress.activeStepPath[0] === i}
                     stepError={stepErrors.find((e) => e.stepIndex === i)}
+                    stepSkip={stepSkips.find((k) => k.stepIndex === i)}
                     lintIssues={issuesAt(issues, "step", i)}
                     conditionalResult={step.action === "conditional" ? conditionalResults.find((r) => r.stepIndex === i) : undefined}
                     groupResult={step.action === "group.command" ? groupResults.find((g) => g.stepIndex === i) : undefined}
@@ -1229,9 +1236,18 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
           {err.device && <span style={{ color: "var(--text-muted)" }}>({err.device})</span>}
         </div>
       ))}
+      {lastRun.stepSkips.map((skip, i) => (
+        <SkipLine key={i} skip={skip} label={`Step ${skip.stepIndex + 1}`} style={{ padding: "2px 0" }} />
+      ))}
     </div>
   );
 }
+
+const STEP_SKIP_STYLE: React.CSSProperties = {
+  padding: "var(--space-xs) var(--space-md)",
+  background: "rgba(245,158,11,0.08)",
+  borderTop: "1px solid rgba(245,158,11,0.2)",
+};
 
 const btnStyle: React.CSSProperties = {
   display: "flex",

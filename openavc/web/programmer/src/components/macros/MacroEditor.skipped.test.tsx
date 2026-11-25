@@ -22,7 +22,8 @@ const mocks = vi.hoisted(() => ({
     stepErrors: [],
     conditionalResults: [],
     groupResults: [],
-    lastRun: null,
+    stepSkips: [] as unknown[],
+    lastRun: null as unknown,
     recentlyFired: {},
     triggerPending: {},
     triggerRuns: {},
@@ -96,6 +97,8 @@ function renderEditor() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.logState.macroSkips = {};
+  mocks.logState.stepSkips = [];
+  mocks.logState.lastRun = null;
 });
 
 describe("a run of this macro that did not start", () => {
@@ -133,5 +136,52 @@ describe("a run of this macro that did not start", () => {
     await waitFor(() =>
       expect(mocks.showError).toHaveBeenCalledWith("The macro didn't start. The system is stopping."),
     );
+  });
+});
+
+describe("a step that did not do its work, in a run that went on", () => {
+  const HELP = {
+    id: "macro_1",
+    name: "Call for Help",
+    steps: [{ action: "help.request", message: "Room 2" }],
+  } as MacroConfig;
+  const HELD_BACK = {
+    stepIndex: 0,
+    action: "help.request",
+    code: "help_cooldown",
+    message:
+      "Help was asked for less than 300 seconds ago, and this step sends at most once in that time, so no new request was sent.",
+    at: Date.now(),
+  };
+
+  function renderHelp() {
+    return render(
+      <MacroEditor
+        macro={HELP}
+        allMacros={[HELP]}
+        devices={[]}
+        onUpdate={() => {}}
+        onConvertToScript={() => {}}
+      />,
+    );
+  }
+
+  it("says so on its step, in the server's words", () => {
+    mocks.logState.stepSkips = [HELD_BACK];
+    renderHelp();
+    expect(screen.getByText(/Help was asked for less than 300 seconds ago/)).toBeTruthy();
+    expect(screen.getByText(/Skipped:/)).toBeTruthy();
+  });
+
+  it("is in the last run, which still completed", () => {
+    mocks.logState.lastRun = {
+      macroId: "macro_1", startedAt: 0, completedAt: Date.now(), duration: 20,
+      status: "completed", stepErrors: [], conditionalResults: [], groupResults: [],
+      stepSkips: [HELD_BACK],
+    };
+    renderHelp();
+    expect(screen.getByText(/Last run: Completed/)).toBeTruthy();
+    expect(screen.getByText(/Step 1/)).toBeTruthy();
+    expect(screen.getByText(/Help was asked for less than 300 seconds ago/)).toBeTruthy();
   });
 });

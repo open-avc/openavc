@@ -485,9 +485,16 @@ class MacroSteps:
                 "it. The request was not raised."
             )
             return
-        await self._help.raise_request(
+        result = await self._help.raise_request(
             message=message, severity=severity, cooldown=cooldown,
         )
+        # Held back by its cooldown: the run goes on, and the step says it sent
+        # nothing, and why, on the run's progress as a step's other results do.
+        if result.get("raised") is False and run.macro_id:
+            await self.events.emit(f"macro.progress.{run.macro_id}", {
+                "macro_id": run.macro_id, "action": step.get("action", ""),
+                "status": "skipped", "code": result["code"], "message": result["message"],
+            })
 
     async def _clear_help(self, _step: dict[str, Any], _run: StepRun, _path: StepPath) -> None:
         if self._help is None:

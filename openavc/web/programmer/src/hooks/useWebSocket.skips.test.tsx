@@ -64,6 +64,7 @@ beforeEach(() => {
     macroSkips: {},
     triggerPending: {},
     runningMacros: {},
+    stepSkips: [],
     lastRun: null,
   });
 });
@@ -139,5 +140,46 @@ describe("useWebSocket: a fire or a run that did not go ahead", () => {
     act(() => socket.disconnects.forEach((h) => h()));
     expect(useLogStore.getState().triggerSkips).toEqual({});
     expect(useLogStore.getState().macroSkips).toEqual({});
+  });
+});
+
+// A step its own setting held back (an Ask for Help inside its Send at most
+// every): the run goes on, and the step says it sent nothing, on the run's
+// progress, belonging to the step last named as running.
+const HELP_HELD_BACK = {
+  type: "macro.progress",
+  macro_id: "call_help",
+  action: "help.request",
+  status: "skipped",
+  code: "help_cooldown",
+  message:
+    "Help was asked for less than 300 seconds ago, and this step sends at most once in that time, so no new request was sent.",
+};
+
+describe("useWebSocket: a step that did not do its work", () => {
+  it("is kept against the step that was running, and the run's last-run record keeps it", () => {
+    renderHook(() => useWebSocket());
+    receive({ type: "macro.started", macro_id: "call_help", total_steps: 2 });
+    receive({
+      type: "macro.progress", macro_id: "call_help", step_index: 1, total_steps: 2,
+      step_path: [1], action: "help.request", status: "running", description: "Asking for help",
+    });
+    receive(HELP_HELD_BACK);
+    const said = { stepIndex: 1, action: "help.request", code: "help_cooldown", message: HELP_HELD_BACK.message };
+    expect(useLogStore.getState().stepSkips).toMatchObject([said]);
+
+    receive({ type: "macro.completed", macro_id: "call_help", outcome: "completed", failed_steps: 0 });
+    const lastRun = useLogStore.getState().lastRun;
+    expect(lastRun?.status).toBe("completed");
+    expect(lastRun?.stepSkips).toMatchObject([said]);
+  });
+
+  it("is forgotten when the next run starts", () => {
+    renderHook(() => useWebSocket());
+    receive({ type: "macro.started", macro_id: "call_help", total_steps: 1 });
+    receive(HELP_HELD_BACK);
+    receive({ type: "macro.completed", macro_id: "call_help", outcome: "completed", failed_steps: 0 });
+    receive({ type: "macro.started", macro_id: "call_help", total_steps: 1 });
+    expect(useLogStore.getState().stepSkips).toEqual([]);
   });
 });

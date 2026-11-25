@@ -72,6 +72,7 @@ export interface MacroLastRun {
   stepErrors: StepError[];
   conditionalResults: ConditionalResult[];
   groupResults: GroupCommandResult[];
+  stepSkips: StepSkip[];
   error?: string;
 }
 
@@ -107,6 +108,15 @@ export interface SkipNote {
   at: number;
 }
 
+/** A step its own setting held back in a run that went on (an Ask for Help
+ *  inside its Send at most every), from a `macro.progress` whose status is
+ *  `skipped`: its `code` and `message` from the same reason table. It belongs
+ *  to the step last named as running, as a condition's answer does. */
+export interface StepSkip extends SkipNote {
+  stepIndex: number;
+  action: string;
+}
+
 interface LogStore {
   logEntries: LogEntry[];
   logPaused: boolean;
@@ -118,6 +128,7 @@ interface LogStore {
   stepErrors: StepError[];
   conditionalResults: ConditionalResult[];
   groupResults: GroupCommandResult[];
+  stepSkips: StepSkip[];
   macroStartedAt: number;
   lastRun: MacroLastRun | null;
 
@@ -149,6 +160,7 @@ interface LogStore {
   addStepError: (e: StepError) => void;
   addConditionalResult: (r: ConditionalResult) => void;
   addGroupResult: (r: GroupCommandResult) => void;
+  addStepSkip: (k: StepSkip) => void;
   startMacroRun: (macroId: string) => void;
   finishMacroRun: (macroId: string, status: MacroLastRun["status"], error?: string) => void;
   setTriggerPending: (triggerId: string, pending: TriggerPending | null) => void;
@@ -180,6 +192,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
   stepErrors: [],
   conditionalResults: [],
   groupResults: [],
+  stepSkips: [],
   macroStartedAt: 0,
   lastRun: null,
   triggerPending: {},
@@ -219,6 +232,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
     stepErrors: [],
     conditionalResults: [],
     groupResults: [],
+    stepSkips: [],
   }),
 
   clearMacroRuns: () => set({
@@ -232,6 +246,8 @@ export const useLogStore = create<LogStore>((set, get) => ({
 
   addGroupResult: (r) => set((s) => ({ groupResults: [...s.groupResults, r] })),
 
+  addStepSkip: (k) => set((s) => ({ stepSkips: [...s.stepSkips, k] })),
+
   startMacroRun: (macroId) => {
     const s = get();
     set({ runningMacros: { ...s.runningMacros, [macroId]: (s.runningMacros[macroId] ?? 0) + 1 } });
@@ -242,6 +258,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
       stepErrors: [],
       conditionalResults: [],
       groupResults: [],
+      stepSkips: [],
       macroStartedAt: Date.now(),
       macroProgress: { macroId, stepIndex: null, totalSteps: null, status: "running", activeStepPath: [] },
     });
@@ -262,6 +279,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
       stepErrors: [...s.stepErrors],
       conditionalResults: [...s.conditionalResults],
       groupResults: [...s.groupResults],
+      stepSkips: [...s.stepSkips],
       error,
     };
     set({ lastRun, runningMacros });

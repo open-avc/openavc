@@ -76,6 +76,7 @@ vi.mock("../../store/logStore", () => {
     stepErrors: [],
     conditionalResults: [],
     groupResults: [],
+    stepSkips: [] as unknown[],
     lastRun: null,
     recentlyFired: {},
     triggerPending: {},
