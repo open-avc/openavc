@@ -231,6 +231,34 @@ async def test_a_rollback_that_could_not_start_carries_on_booting(boot, monkeypa
     assert not any("Rollback initiated" in r.getMessage() for r in caplog.records)
 
 
+async def test_a_rollback_whose_projects_could_not_be_put_back_stops_the_start_and_says_why(
+        boot, monkeypatch):
+    """The earlier version is not put back on projects the failed one left,
+    the start page says why, and the next start tries the rollback again."""
+    from openavc.updater.rollback import RollbackStopped
+
+    monkeypatch.setattr(
+        "openavc.updater.rollback.check_rollback_needed", lambda data_dir: True,
+    )
+    sentence = (
+        "v0.2.0 did not start, and going back to v0.1.0 stopped because the projects "
+        "could not be put back as they were before the update. The disk is full."
+    )
+
+    def stopped(data_dir, project_path=None):
+        boot.order.append("restore_pre_update_data")
+        raise RollbackStopped(sentence)
+
+    monkeypatch.setattr("openavc.updater.rollback.restore_pre_update_data", stopped)
+
+    await boot.run()
+
+    # The stale update records are still swept, as on every start.
+    assert boot.order == ["restore_pre_update_data", "clear_stale_rollback_marker"]
+    boot.engine.start.assert_not_awaited()
+    assert boot.app.state.run_state.error == f"Checking the last update failed: {sentence}"
+
+
 async def test_windows_installer_tasks_are_removed_before_the_rollback_check(boot, monkeypatch):
     """sys.platform reads win32 from the firmware-host check until the
     rollback check, the stretch that branches on it."""

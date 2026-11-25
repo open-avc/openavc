@@ -682,12 +682,13 @@ class TestRestoreUserData:
         assert restore_user_data(data_dir, backup, project_path=project_path) is True
         assert project_path.read_text() == '{"openavc_version": "0.7.0"}'
 
-    def test_restore_bad_zip_returns_false(self, tmp_path):
-        from openavc.updater.backup import restore_user_data
+    def test_restore_bad_zip_is_not_readable(self, tmp_path):
+        from openavc.updater.backup import BackupNotReadable, restore_user_data
 
         bad = tmp_path / "pre-update-v0.1.0-x.zip"
         bad.write_bytes(b"not a zip")
-        assert restore_user_data(tmp_path, bad) is False
+        with pytest.raises(BackupNotReadable):
+            restore_user_data(tmp_path, bad)
 
     def test_restore_pre_update_data_uses_marker_backup(self, tmp_path):
         from openavc.updater.rollback import restore_pre_update_data

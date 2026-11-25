@@ -3,6 +3,10 @@ Rollback system for failed updates.
 
 Supports both automatic rollback (server crash after update) and
 manual rollback (user-initiated via API).
+
+An automatic rollback puts the projects back from the pre-update backup
+before the earlier version (``restore_pre_update_data``), and stops, saying
+why, when a file it holds cannot be written back (``RollbackStopped``).
 """
 
 from __future__ import annotations
@@ -639,6 +643,12 @@ def check_rollback_needed(data_dir: Path) -> bool:
     return False
 
 
+class RollbackStopped(RuntimeError):
+    """An automatic rollback that stopped before the earlier version was put
+    back, because the projects could not be; its text is the sentence the
+    start stops with."""
+
+
 def restore_pre_update_data(data_dir: Path, project_path: Path | None = None) -> bool:
     """Restore user data from the pre-update backup during automatic rollback.
 
@@ -650,26 +660,63 @@ def restore_pre_update_data(data_dir: Path, project_path: Path | None = None) ->
     long after a confirmed update, and edits made since must not be silently
     discarded.
 
-    Best-effort: a failed restore never blocks the code rollback. The system
-    is crash-looping at this point; restoring service comes first, and a
-    project file left in the newer format is exactly the pre-existing
-    behavior (the loader warns on a newer stamp).
+    **When the projects cannot be put back.** A backup that is missing or
+    cannot be read changes nothing, and no later start can change that: the
+    rollback goes on with the projects as the update left them, as a
+    rollback by hand does, and the log says they were not put back. A backup
+    whose files could not all be written back stops the rollback
+    (``RollbackStopped``, its text the sentence the start stops with): the
+    earlier version is not put back on what the failed one left, and the
+    next start tries again, keeping what this one set aside.
     """
     marker = read_pending_marker(data_dir)
     if marker is None:
         return False
     backup = _find_pre_update_backup(data_dir, marker)
     if backup is None:
-        log.warning("No pre-update backup found; rolling back code only")
+        _not_put_back(marker, "the backup taken before the update is missing")
         return False
 
-    from openavc.updater.backup import restore_user_data
+    from openavc.updater.backup import BackupNotReadable, restore_user_data
     log.warning("Restoring user data from pre-update backup: %s", backup.name)
     try:
         return restore_user_data(data_dir, backup, project_path=project_path)
-    except Exception:
-        log.exception("Pre-update data restore failed; rolling back code only")
+    except BackupNotReadable:
+        log.exception("The pre-update backup %s could not be read", backup.name)
+        _not_put_back(marker, "the backup taken before the update could not be read")
         return False
+    except Exception as exc:
+        log.exception("The projects could not be put back from %s", backup.name)
+        raise RollbackStopped(_stopped_sentence(marker, exc)) from exc
+
+
+def _not_put_back(marker: dict, reason: str) -> None:
+    log.warning(
+        "The projects were not put back: %s. Going back to v%s with the projects as v%s left them.",
+        reason, marker.get("from_version") or "unknown", marker.get("to_version") or "unknown",
+    )
+
+
+#: Why a rollback stopped, when the error has no words of its own.
+_SEE_THE_SERVER_LOG = "Check the server log for the reason."
+
+
+def _stopped_sentence(marker: dict, exc: Exception) -> str:
+    """What a start says when its rollback stopped because the projects
+    could not be put back: the two versions, then the reason and what to do,
+    with no path."""
+    from openavc.api.error_messages import worded_write_failure
+    from openavc.updater.backup import RestoreFailed
+
+    cause = exc.cause if isinstance(exc, RestoreFailed) else exc
+    failed = marker.get("to_version")
+    earlier = marker.get("from_version")
+    lead = (
+        f"v{failed} did not start, and going back to v{earlier} stopped"
+        if failed and earlier else "The update did not start, and going back stopped"
+    )
+    why = worded_write_failure(cause) or _SEE_THE_SERVER_LOG
+    return f"{lead} because the projects could not be put back as they were before the update. {why}"
 
 
 def _find_pre_update_backup(data_dir: Path, marker: dict) -> Path | None:

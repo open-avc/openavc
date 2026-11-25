@@ -190,16 +190,24 @@ def _remove_leftover_windows_update_tasks() -> None:
 def _roll_back_a_failed_update(data_dir) -> None:
     """An update whose new version kept failing to start (the crash
     detection in updater/rollback.py) is undone here, and the process exits
-    for the service manager to start the old version."""
+    for the service manager to start the old version. One whose projects
+    could not be put back stops the start with its sentence
+    (``RollbackStopped``), the stale update records swept first."""
     from openavc.updater.rollback import check_rollback_needed
     if not check_rollback_needed(data_dir):
         return
     from pathlib import Path
-    from openavc.updater.rollback import perform_rollback, restore_pre_update_data, settle_before_rollback
+    from openavc.updater.rollback import (
+        RollbackStopped, perform_rollback, restore_pre_update_data, settle_before_rollback,
+    )
     settle_before_rollback(data_dir)
     # Restore user data from the pre-update backup BEFORE swapping the code back: the rolled-back
     # code may predate this version's project-format migrations, so the restore runs on this side.
-    restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
+    try:
+        restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
+    except RollbackStopped:
+        _sweep_stale_update_records(data_dir)
+        raise
     # The earlier version reads each login from the project; the Library is not in the backup.
     from openavc.core.device_logins import put_back_for_rollback
     put_back_for_rollback(data_dir, Path(config.PROJECT_PATH))
