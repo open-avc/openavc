@@ -38,6 +38,10 @@ from pathlib import Path
 
 import pytest
 
+from openavc.updater import rollback
+from openavc.updater.platform import DeploymentType
+from openavc.updater.release_files import artifact_name
+from openavc.utils.version_rule import read_version
 from tests import gates
 from tests.test_update_system import (
     _BASH_MISSING,
@@ -53,6 +57,7 @@ from tests.test_update_system import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIBRARY = REPO_ROOT / "installer" / "apply-lib.sh"
+SETUP_ISS = REPO_ROOT / "installer" / "setup.iss"
 PREINSTALL = REPO_ROOT / "installer" / "macos" / "scripts" / "preinstall"
 POSTINSTALL = REPO_ROOT / "installer" / "macos" / "scripts" / "postinstall"
 
@@ -177,7 +182,6 @@ def test_a_first_pkg_install_leaves_no_copy_to_roll_back_to(tmp_path):
     assert _outcome(app, data) == {"app": "2.0.0", "previous": None, "instructions": []}
 
 
-
 def _leave_for_the_next_start(data: Path, what: str, tarball: Path) -> None:
     record = {"artifact": _as_bash_path(tarball), "from_version": "1.0.0", "to_version": "1.5.0"}
     if what == "an update staged":
@@ -260,9 +264,23 @@ def test_the_installed_pkg_stops_its_services_with_the_system_launchctl():
     assert 'APP="${OPENAVC_APP:-/Applications/OpenAVC.app}"' in postinstall
 
 
-# --- What the .pkg deletes in the bundle -------------------------------
+# --- What both installers delete in the bundle -------------------------------
 
 
+def _iss_section(name: str) -> str:
+    text = SETUP_ISS.read_text(encoding="utf-8")
+    found = re.search(rf"^\[{name}\]\n(.*?)(?=^\[|\Z)", text, re.M | re.S)
+    assert found, f"setup.iss has no [{name}] section"
+    return found.group(1)
+
+
+def _windows_stale_layout() -> list[str]:
+    names = re.findall(
+        r'^Type: filesandordirs; Name: "\{app\}\\_internal\\([^"\\]+)"$',
+        _iss_section("InstallDelete"), re.M,
+    )
+    assert names, "setup.iss's [InstallDelete] names nothing in {app}\\_internal; this reads the wrong lines"
+    return sorted(names)
 
 
 def _pkg_stale_layout() -> list[str]:
@@ -270,6 +288,11 @@ def _pkg_stale_layout() -> list[str]:
     assert found, "preinstall has no `for stale in ...; do` loop; this reads the wrong lines"
     return sorted(found.group(1).split())
 
+
+def test_both_installers_delete_the_same_layouts_releases_left_behind():
+    """One bundle is built for both (installer/openavc.spec), so a name a
+    release removed from it is deleted by both or it stays on one."""
+    assert _pkg_stale_layout() == _windows_stale_layout()
 
 
 @needs_bash
@@ -286,3 +309,71 @@ def test_the_pkg_deletes_them_after_it_keeps_the_app_as_it_ran(tmp_path):
     assert sorted(p.name for p in (previous / INTERNAL).iterdir()) == sorted([*stale, "openavc"]), (
         "the copy kept to roll back to is not the app as it ran"
     )
+
+
+# --- The Windows installer: the copy it keeps, and the data folder -----------
+
+
+def _code_routine(name: str) -> str:
+    text = SETUP_ISS.read_text(encoding="utf-8")
+    found = re.search(rf"^(?:procedure|function) {name}\b.*?^end;$", text, re.M | re.S)
+    assert found, f"setup.iss's [Code] has no {name}"
+    return found.group(0)
+
+
+def _service_data_dir() -> str:
+    """The data folder the installer gives the service (install-service.bat's
+    second argument), which the server's rollback reads update-cache from."""
+    found = re.search(
+        r'^Filename: "\{app\}\\install-service\.bat"; Parameters: """\{app\}"" ""([^"]+)""";',
+        _iss_section("Run"), re.M,
+    )
+    assert found, "setup.iss's [Run] no longer passes install-service.bat a data folder this can read"
+    return found.group(1)
+
+
+def test_every_windows_install_caches_itself_where_rollback_finds_it(tmp_path):
+    """The running version's installer is the Windows copy to roll back to:
+    the next update, or the next installer run by hand, leaves it in the cache,
+    and Rollback runs it again. Under the name the in-app update downloads it
+    by, so a version has one installer there, not two."""
+    routine = _code_routine("CacheInstallerForRollback")
+    cache_dir = re.search(r"CacheDir := ExpandConstant\('([^']+)'\);", routine)
+    name = re.search(r"VersionedName := '([^']+)';", routine)
+    assert cache_dir and name, "CacheInstallerForRollback no longer reads as this expects"
+    assert cache_dir.group(1) == _service_data_dir() + "\\update-cache"
+
+    cached = name.group(1).replace("{#MyAppVersion}", "0.41.0-rc1")
+    assert cached == artifact_name("0.41.0-rc1", DeploymentType.WINDOWS_INSTALLER, "amd64")
+    cache = tmp_path / "update-cache"
+    cache.mkdir()
+    (cache / cached).write_bytes(b"")
+    assert rollback._cached_installers(cache) == [cache / cached]
+    assert rollback._installer_version(cache / cached) == read_version("0.41.0rc1")
+
+    post_install = re.search(
+        r"if CurStep = ssPostInstall then\s*begin(.*?)end;", _code_routine("CurStepChanged"), re.S,
+    )
+    assert post_install and "CacheInstallerForRollback();" in post_install.group(1), (
+        "an install no longer caches its own installer once its files are in place"
+    )
+
+
+def test_the_windows_installer_deletes_nothing_in_the_data_folder():
+    data_dir = _service_data_dir()
+    for section in ("InstallDelete", "UninstallDelete"):
+        try:
+            entries = _iss_section(section)
+        except AssertionError:
+            continue
+        assert data_dir.split("\\")[0] not in entries, (
+            f"setup.iss's [{section}] deletes in {data_dir}"
+        )
+    deleting = re.compile(r"\b(?:DelTree|DeleteFile|RemoveDir)\(")
+    text = SETUP_ISS.read_text(encoding="utf-8")
+    code = text[text.index("[Code]"):]
+    for routine in re.finditer(r"^(?:procedure|function) (\w+).*?^end;$", code, re.M | re.S):
+        if data_dir.split("\\")[0] in routine.group(0):
+            assert not deleting.search(routine.group(0)), (
+                f"{routine.group(1)} reaches into {data_dir} and deletes"
+            )

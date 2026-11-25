@@ -16,10 +16,10 @@ store, its own event bus, its own root-logger handlers -- instead of failing
 with the one-sentence message that tells the user to update the driver from
 Browse Drivers.
 
-The Linux half runs the real `install.sh` function against a real directory,
-in the style of the update-helper tests next door. The Windows and macOS halves
-are read from their installer files, which is the only thing a test on this
-machine can do about them.
+These run the real `install.sh` function against a real directory, in the
+style of the update-helper tests next door. The Windows and macOS installers
+delete the old layout by name, and `test_installer_conformance.py` holds the
+two lists the same and runs the .pkg's.
 """
 
 import shutil
@@ -28,14 +28,11 @@ import sys
 import tarfile
 from pathlib import Path
 
-import pytest
 
 from tests import gates
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SCRIPT = REPO_ROOT / "installer" / "install.sh"
-SETUP_ISS = REPO_ROOT / "installer" / "setup.iss"
-MACOS_PREINSTALL = REPO_ROOT / "installer" / "macos" / "scripts" / "preinstall"
 
 # The four names that moved inside the package.
 PRE_RENAME_DIRS = ("server", "simulator", "web", "themes")
@@ -146,20 +143,3 @@ def test_a_fresh_install_takes_no_snapshot(tmp_path):
     assert (install_dir / "openavc" / "main.py").is_file()
     assert not Path(str(install_dir) + ".previous").exists()
 
-
-@pytest.mark.parametrize("stale", PRE_RENAME_DIRS)
-def test_windows_installer_deletes_the_old_bundle_layout(stale):
-    """Inno copies over what is there and never removes anything on its own."""
-    text = SETUP_ISS.read_text(encoding="utf-8")
-    assert "[InstallDelete]" in text, "setup.iss has no [InstallDelete] section"
-    assert f'Name: "{{app}}\\_internal\\{stale}"' in text, (
-        f"setup.iss does not remove the pre-rename _internal\\{stale}"
-    )
-
-
-@pytest.mark.parametrize("stale", PRE_RENAME_DIRS)
-def test_macos_preinstall_deletes_the_old_bundle_layout(stale):
-    """Installer upgrades a bundle by merging, so the old payload would stay."""
-    text = MACOS_PREINSTALL.read_text(encoding="utf-8")
-    assert "_internal" in text, "preinstall does not touch the frozen _internal dir"
-    assert stale in text, f"preinstall does not remove the pre-rename {stale}"
