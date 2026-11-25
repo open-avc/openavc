@@ -9,8 +9,8 @@ naming them itself, so an entry the project gains is carried by every door
 or by none:
 
 - a project backup, the zip under Backups (``core/backup_manager``);
-- the swap when another project is opened or a blank one started
-  (``core/project_library.replace_project_trees``);
+- the swap when a whole project replaces the live one, a restore, an open
+  from the library and a blank project (``core/project_swap``);
 - the backup an update or a rollback takes of a project kept at the data
   root, where the system's own files sit beside it (``updater/backup``).
 
@@ -21,7 +21,9 @@ for ``ui/``, ``core/theme_tree`` for ``themes/``.
 
 Not in the list: the ``backups/`` folder itself, and the record of what the
 last start had to do to get a project (``core/project_recovery``'s
-``recovery.json``), which belongs to the start rather than to the project.
+``recovery.json``), which belongs to the start rather than to the project:
+no backup holds it, and a replace moves it aside with the project it is
+about (``core/project_swap``).
 """
 
 from __future__ import annotations

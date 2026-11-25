@@ -1,11 +1,13 @@
 """Getting a project at boot, and saying out loud when the project on disk was
 not the one that loaded.
 
-``load_or_recover`` is the load (``Engine._load_project_safe`` asks it): a
-missing project file is seeded from the bundled starter project, a project
-file that will not parse is replaced from the newest backup that does, and
-only when no backup loads at all does the instance start an empty Recovery
-Project. Which of those leaves a record, and what it says, is decided beside
+``load_or_recover`` is the load (``Engine._load_project_safe`` asks it). First
+a replace of the project that a power cut stopped part way is put back: the
+backup it took before its first rename, which its "replace in progress"
+marker names (``core/project_swap``). Then a missing project file is seeded
+from the bundled starter project, a project file that will not parse is
+replaced from the newest backup that does, and only when no backup loads at
+all does the instance start an empty Recovery Project. Which of those leaves a record, and what it says, is decided beside
 the record itself. The recovery always worked. What it did not do was tell
 anybody. The two log lines it wrote
 scrolled past under device-poll noise, and the person whose last edit was in
@@ -68,9 +70,10 @@ RESET = "reset"         # nothing loaded; the instance started an empty project
 # system.project_recovery_reason values — what was wrong with the project file.
 UNREADABLE = "unreadable"   # present, and it would not parse or validate
 MISSING = "missing"         # not there at all
+INTERRUPTED = "interrupted"  # a replace of the project stopped part way
 
 _OUTCOMES = {RESTORED, RESET}
-_REASONS = {UNREADABLE, MISSING}
+_REASONS = {UNREADABLE, MISSING, INTERRUPTED}
 
 
 def _marker_path(project_dir: Path) -> Path:
@@ -174,7 +177,9 @@ def _write_atomic(path: Path, text: str) -> None:
 def load_or_recover(project_path: Path) -> ProjectConfig:
     """The project at ``project_path``, or what stands in for it.
 
-    A missing file is seeded from the bundled starter project. If the file is
+    A replace that did not finish is put back first
+    (``_finish_interrupted_replace``). A missing file is seeded from the
+    bundled starter project. If the file is
     missing with no seed, or cannot be read or validated, the newest backup
     that loads replaces it; if none does, an empty Recovery Project is saved
     in its place. A restored backup leaves a record (``record``), and so does
@@ -183,6 +188,7 @@ def load_or_recover(project_path: Path) -> ProjectConfig:
     whose newer edit is not in it. A missing file with nothing to restore is
     a first boot and leaves none.
     """
+    _finish_interrupted_replace(project_path)
     try:
         return load_project(project_path, keep_notes=True)
     except FileNotFoundError:
@@ -201,6 +207,47 @@ def load_or_recover(project_path: Path) -> ProjectConfig:
     if restored is not None:
         return restored
     return _start_empty(project_path, failure)
+
+
+def _finish_interrupted_replace(project_path: Path) -> None:
+    """A replace that a power cut stopped part way, put back: the backup its
+    marker names restored, and recorded as ``RESTORED`` for ``INTERRUPTED``,
+    so the room comes up on the project before the replace, never a mix of
+    two. What a replace left in its working folder is removed either way. A
+    backup that cannot be put back is logged, and the load goes on with
+    what is on disk."""
+    from openavc.core import project_swap
+
+    project_dir = project_path.parent
+    marker = project_swap.read_marker(project_dir)
+    project_swap.clear_leftovers(project_dir)
+    if marker is None:
+        return
+    backup = marker["backup"]
+    if backup:
+        _put_back_replaced(project_path, backup)
+    try:
+        project_swap.clear_marker(project_dir)
+    except OSError as e:
+        _load_log.warning(f"Could not remove the replace-in-progress marker: {e}")
+
+
+def _put_back_replaced(project_path: Path, backup: str) -> None:
+    """The backup a replace took of the project it replaced, restored and
+    recorded. Never raises."""
+    from openavc.core.backup_manager import list_backups, restore_from_backup
+
+    project_dir = project_path.parent
+    backup_path = project_dir / backup
+    _load_log.warning(f"A project replace did not finish; putting back the backup it took first: {backup}")
+    try:
+        backup_path.resolve().relative_to(project_dir.resolve())
+        restore_from_backup(backup_path, project_path)
+    except Exception as e:
+        _load_log.error(f"The backup taken before a project replace could not be put back ({backup}): {e}")
+        return
+    taken = next((b.timestamp for b in list_backups(project_path) if b.filename == backup), "")
+    record(project_dir, outcome=RESTORED, reason=INTERRUPTED, backup=backup, cutoff=taken)
 
 
 def _seed_missing(project_path: Path) -> ProjectConfig | None:

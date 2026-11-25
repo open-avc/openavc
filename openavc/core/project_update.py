@@ -154,11 +154,10 @@ def replace(folder: Path, notes: MigrationNotes) -> None:
     record(folder, notes)
 
 
-def take(folder: Path) -> MigrationNotes:
-    """The notes ``folder``'s record holds, removing it: a library entry's,
-    handed to the running project as it opens."""
+def held(folder: Path) -> MigrationNotes:
+    """The notes ``folder``'s record holds, left in it: a library entry's,
+    handed to the running project once it opens (``clear`` then)."""
     data = read(folder) or {}
-    clear(folder)
     return MigrationNotes([UpdateNote(**n) for n in data.get("notes", [])])
 
 

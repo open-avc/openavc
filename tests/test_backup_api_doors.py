@@ -16,7 +16,6 @@ running system saving variable values afterwards, whatever the restore did.
 import json
 import os
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,17 +45,14 @@ def project_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(project_dir: Path):
-    """TestClient over an engine whose project lives in a real tmp directory,
-    so the backup files the routes create are really on disk."""
-    engine = MagicMock()
-    engine.project_path = project_dir / "project.avc"
-    engine.persister = None
-    engine.reload_project = AsyncMock()
-    engine.reload_persisted_state = MagicMock()
-    engine.logins_needed = MagicMock(return_value=[])
+    """TestClient over a real engine whose project lives in a real tmp
+    directory, so the backup files the routes create and restore are really
+    on disk."""
+    engine = _running_engine(project_dir / "project.avc")
     rest.set_engine(engine)
     yield TestClient(app)
     rest.set_engine(None)
+    engine.persister.stop()
 
 
 def test_create_returns_the_name_list_reports(client: TestClient):
@@ -114,12 +110,7 @@ def test_the_doors_serve_a_project_file_with_its_own_name(tmp_path: Path):
     ``project.avc`` beside it and answered "restored" with nothing changed."""
     hall = tmp_path / "main-hall.avc"
     hall.write_text(json.dumps({"project": {"id": "hall", "name": "Main Hall"}}), encoding="utf-8")
-    engine = MagicMock()
-    engine.project_path = hall
-    engine.persister = None
-    engine.reload_project = AsyncMock()
-    engine.reload_persisted_state = MagicMock()
-    engine.logins_needed = MagicMock(return_value=[])
+    engine = _running_engine(hall)
     rest.set_engine(engine)
     try:
         client = TestClient(app)
@@ -135,6 +126,7 @@ def test_the_doors_serve_a_project_file_with_its_own_name(tmp_path: Path):
         assert not (tmp_path / "project.avc").exists()
     finally:
         rest.set_engine(None)
+        engine.persister.stop()
 
 
 # ── restoring: the chosen backup and the saved values ──
@@ -154,20 +146,12 @@ def _write_project(project_file: Path, name: str, variables: object = None) -> N
     }), encoding="utf-8")
 
 
-def _running_engine(project_dir: Path) -> Engine:
-    """A real engine on the project in ``project_dir``, its variables seeded
-    and its persister watching them as a start leaves them. Only the reload is
-    stood in for: it reads the project file again, as the real one does first,
-    without reconnecting anything."""
-    project_file = project_dir / "project.avc"
+def _running_engine(project_file: Path) -> Engine:
+    """A real engine on ``project_file``, its variables seeded and its
+    persister watching them as a start leaves them; nothing else started."""
     engine = Engine(str(project_file))
     engine.project = load_project(project_file)
     engine._start_variables()
-
-    async def reload_project() -> None:
-        engine.project = load_project(engine.project_path)
-
-    engine.reload_project = reload_project
     return engine
 
 
@@ -218,7 +202,7 @@ def test_the_oldest_of_a_full_list_of_backups_restores_and_is_kept(restore_dir: 
         taken.append(path)
     oldest = taken[0]
     _write_project(project_file, "Current")
-    engine = _running_engine(tmp_path)
+    engine = _running_engine(tmp_path / "project.avc")
     rest.set_engine(engine)
     try:
         restored = TestClient(app).post(f"/api/backups/{backup_id(tmp_path, oldest)}/restore")
@@ -243,7 +227,7 @@ def test_a_restore_that_fails_leaves_values_being_saved(tmp_path: Path):
     _write_project(project_file, "Will not load", variables="not a list")
     broken = create_backup(project_file, "Manual backup")
     _write_project(project_file, "Current")
-    engine = _running_engine(tmp_path)
+    engine = _running_engine(tmp_path / "project.avc")
     rest.set_engine(engine)
     try:
         client = TestClient(app, raise_server_exceptions=False)

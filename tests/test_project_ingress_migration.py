@@ -118,7 +118,7 @@ class TestOpenFromLibraryDoor:
         active.parent.mkdir(parents=True)
         with patch.object(plib, "config") as mock_config:
             mock_config.SAVED_PROJECTS_DIR = lib_dir
-            open_from_library("legacy", active, active.parent / "scripts",
+            open_from_library("legacy", active,
                               "legacy", "Legacy")
 
         written = json.loads(active.read_text(encoding="utf-8"))

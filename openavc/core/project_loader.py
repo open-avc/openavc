@@ -1298,23 +1298,12 @@ class ProjectSaveError(OSError):
         self.reason = save_error_reason(cause)
 
 
-def save_project(path: str | Path, project: ProjectConfig) -> None:
-    """
-    Save a ProjectConfig back to a JSON file atomically.
-
-    Auto-populates driver_dependencies from project devices.
-    Creates a .avc.bak crash-protection copy before overwriting
-    the existing file.
-
-    Uses write-to-temp-then-rename for crash safety: if the process dies
-    mid-write, the original file remains intact.
-
-    Args:
-        path: Path to write the file.
-        project: The project configuration to save.
-    """
-    path = Path(path)
-
+def project_text(project: ProjectConfig) -> str:
+    """THE text a project file holds for ``project``: the installed
+    equipment composed in, and the driver and plugin dependency lists
+    derived from it, stamped onto ``project`` in place, so the running
+    project matches the bytes written. ``save_project`` writes it, and so
+    does the swap a replace stages (``core/project_replace``)."""
     from openavc.core.installed_equipment import InstalledEquipment
     project.devices = InstalledEquipment.from_environment().compose(project).devices
 
@@ -1330,8 +1319,26 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
     except (KeyError, ValueError, AttributeError):
         log.debug("Could not build plugin dependencies (non-critical)")
 
-    data = project.model_dump(mode="json")
-    content = json.dumps(data, indent=4, ensure_ascii=False)
+    return json.dumps(project.model_dump(mode="json"), indent=4, ensure_ascii=False)
+
+
+def save_project(path: str | Path, project: ProjectConfig) -> None:
+    """
+    Save a ProjectConfig back to a JSON file atomically.
+
+    Auto-populates driver_dependencies from project devices
+    (``project_text``). Creates a .avc.bak crash-protection copy before
+    overwriting the existing file.
+
+    Uses write-to-temp-then-rename for crash safety: if the process dies
+    mid-write, the original file remains intact.
+
+    Args:
+        path: Path to write the file.
+        project: The project configuration to save.
+    """
+    path = Path(path)
+    content = project_text(project)
 
     with _project_save_lock:
         # Crash-protection backup — single rolling copy before each write

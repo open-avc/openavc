@@ -34,6 +34,7 @@ from openavc.core.device_logins import (
     move_logins,
     saved_logins_of,
 )
+from openavc.core.project_replace import PreparedProject, replace_files
 from openavc.core.project_update import MigrationNotes
 from openavc.core.project_loader import (
     ISCConfig,
@@ -42,7 +43,6 @@ from openavc.core.project_loader import (
     UIConfig,
     UIPage,
     UISettings,
-    save_project,
 )
 from openavc.system_config import (
     DRIVER_REPO_DIR as _DRIVER_REPO_DIR,
@@ -141,26 +141,16 @@ def _copy_tree(src: Path, dest: Path) -> None:
         shutil.copy2(f, target)
 
 
-def replace_project_trees(project_dir: Path, source_dir: Path | None) -> None:
-    """Swap the live project's file trees (``project_unit.FILE_TREES``) for
-    ``source_dir``'s.
-
-    ``source_dir`` None clears them, which is what starting a blank project
-    wants. One helper for both callers on purpose: opening a library project
-    cleared the trees and creating a blank one did not, so a new project
-    inherited the previous project's images, custom controls and themes while
-    its scripts were correctly cleared.
-    """
+def copy_project_trees(source_dir: Path, dest_dir: Path) -> None:
+    """A saved project's file trees (``project_unit.FILE_TREES``) copied from
+    ``source_dir`` into ``dest_dir``, each into its own folder there: what a
+    library copy brings beside its project file when it is opened
+    (``prepare_open``). A tree the copy has none of is left out."""
     for tree in project_unit.FILE_TREES:
-        active_tree = project_dir / tree
-        if active_tree.exists():
-            shutil.rmtree(active_tree, ignore_errors=True)
-        if source_dir is None:
-            continue
         if tree == project_unit.THEMES_DIR:
-            theme_tree.copy_tree(source_dir / tree, active_tree)
+            theme_tree.copy_tree(source_dir / tree, dest_dir / tree)
         else:
-            _copy_tree(source_dir / tree, active_tree)
+            _copy_tree(source_dir / tree, dest_dir / tree)
 
 
 def _lib_dir() -> Path:
@@ -906,25 +896,31 @@ def create_blank_project(project_id: str, project_name: str) -> ProjectConfig:
     )
 
 
-def open_from_library(
+def prepare_open(
     project_id: str,
-    project_path: Path,
-    scripts_dir: Path,
     new_project_id: str,
     new_project_name: str,
     *,
     opened: Opened | None = None,
-) -> ProjectConfig:
-    """Load a saved project as the active project.
+) -> PreparedProject:
+    """A saved project prepared to replace the running one, named
+    ``new_project_name`` (``core/project_replace``; the running system's
+    door is ``Engine.replace_with``).
 
-    Backs up the existing project, clears scripts, copies library scripts.
-    If the project has a bundle.zip with drivers/plugins, installs them; the
-    caller holds the drivers' ids (``bundled_driver_ids``). Returns the new
-    ProjectConfig (caller should reload the engine). ``opened`` gets what
-    its import into the library and this open's migration changed in it,
-    and what each of its bundle's drivers and plugins came to.
+    Migrated and checked against this server's installed equipment before
+    anything is written. If the project has a bundle.zip with drivers and
+    plugins, they are installed; the caller holds the drivers' ids
+    (``bundled_driver_ids``). It brings its scripts and file trees and no
+    saved values, and its own saved logins fill in, once its files are in
+    place, for each device this system has none saved for (this system's
+    current login always wins). ``opened`` gets what its import into the
+    library and this open's migration changed in it, and what each of its
+    bundle's drivers and plugins came to. The library entry's record of
+    what its import changed becomes the running project's once it runs.
     """
     data, scripts = get_project(project_id)
+    sid = sanitize_id(project_id)
+    folder = _lib_dir() / sid
 
     # Library copies keep whatever format they were saved with (open/duplicate
     # never rewrite them) — migrate before validating so an older saved project
@@ -937,9 +933,9 @@ def open_from_library(
     from openavc.core.installed_equipment import InstalledEquipment
     policy = InstalledEquipment.from_environment()
     policy.compose(ProjectConfig(**data), for_load=True)
+    notes = MigrationNotes(project_update.held(folder).notes + migrated.notes)
     if opened is not None:
-        opened.update_notes.notes += project_update.take(_lib_dir() / sanitize_id(project_id)).notes
-        opened.update_notes.notes += migrated.notes
+        opened.update_notes.notes += notes.notes
 
     # Install bundled drivers/plugins from the original zip if present
     _install_bundled_from_library(
@@ -951,25 +947,44 @@ def open_from_library(
     data["project"]["name"] = new_project_name
     data["project"]["created"] = now
     data["project"]["modified"] = now
-
     project = policy.compose(ProjectConfig(**data), for_load=True)
-    # The copy's own saved logins, for each device the running project has
-    # none saved for (this system's current login always wins).
-    try:
-        device_logins().adopt_library(sanitize_id(project_id), in_project(project))
-    except Exception:  # those devices then ask for their login
-        log.exception("Could not bring in the saved device logins of library project '%s'", project_id)
-    save_project(project_path, project)
 
-    replace_scripts(scripts_dir, scripts)
+    def fill(dest: Path) -> None:
+        for fname, source in scripts.items():
+            (dest / project_unit.SCRIPTS_DIR / fname).write_text(source, encoding="utf-8")
+        copy_project_trees(folder, dest)
 
-    # Replace the active project's assets, custom UI files and themes with the
-    # library project's, so image/background references and custom controls
-    # resolve and the previous project's files don't linger.
-    replace_project_trees(project_path.parent, _lib_dir() / sanitize_id(project_id))
+    def adopt_logins(_project_file: Path) -> None:
+        try:
+            device_logins().adopt_library(sid, in_project(project))
+        except Exception:  # those devices then ask for their login
+            log.exception("Could not bring in the saved device logins of library project '%s'", project_id)
 
-    log.info(f"Opened project '{project_id}' as '{new_project_name}'")
-    return project
+    def opened_notes() -> None:
+        project_update.clear(folder)
+        log.info(f"Opened project '{project_id}' as '{new_project_name}'")
+
+    return PreparedProject(
+        project, notes, f"Before opening '{new_project_name}'",
+        fill=fill, after_swap=adopt_logins, on_replaced=opened_notes,
+    )
+
+
+def open_from_library(
+    project_id: str,
+    project_path: Path,
+    new_project_id: str,
+    new_project_name: str,
+    *,
+    opened: Opened | None = None,
+) -> ProjectConfig:
+    """A saved project's files put in place of the project at
+    ``project_path`` where no project is running (``prepare_open``, then the
+    swap with nothing to reload: ``project_replace.replace_files``). Returns
+    the project as written."""
+    prepared = prepare_open(project_id, new_project_id, new_project_name, opened=opened)
+    replace_files(prepared, project_path)
+    return prepared.project
 
 
 def _install_bundled_from_library(
@@ -1008,15 +1023,6 @@ def _unloadable_plugin_warning(plugin_id: str) -> str:
         f"Plugin '{plugin_id}' came with this project but did not load on "
         f"this system. Check the Plugins page."
     )
-
-
-def replace_scripts(scripts_dir: Path, scripts: dict[str, str]) -> None:
-    """Clear existing .py files from scripts dir, write new ones."""
-    scripts_dir.mkdir(parents=True, exist_ok=True)
-    for f in scripts_dir.glob("*.py"):
-        f.unlink()
-    for fname, source in scripts.items():
-        (scripts_dir / fname).write_text(source, encoding="utf-8")
 
 
 def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:

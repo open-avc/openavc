@@ -95,128 +95,6 @@ def _restore_logins(zf: zipfile.ZipFile, names: list[str], project_file: Path, w
         log.exception("Could not restore the device logins in %s", where)
 
 
-def _atomic_write_bytes(target: Path, data: bytes) -> None:
-    """Write ``data`` to ``target`` atomically (temp file in the same dir, then
-    os.replace). A crash mid-write leaves the original ``target`` intact."""
-    fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp", prefix=".restore_")
-    try:
-        os.write(fd, data)
-        os.close(fd)
-        fd = None
-        os.replace(tmp, str(target))
-        tmp = None
-    finally:
-        if fd is not None:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
-        if tmp is not None and os.path.exists(tmp):
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-
-
-def _swap_dir(staging: Path, target: Path) -> None:
-    """Replace ``target`` directory with the fully-populated ``staging`` dir using
-    atomic renames. The old dir is moved aside to a ``.restore-old`` sibling
-    first, so a crash between the two renames keeps the old content (recoverable)
-    rather than losing both. Rolls the old dir back if the swap-in fails."""
-    old = target.with_name(target.name + ".restore-old")
-    if old.exists():
-        shutil.rmtree(old, ignore_errors=True)
-    moved_old = False
-    if target.exists():
-        os.replace(target, old)
-        moved_old = True
-    try:
-        os.replace(staging, target)
-    except OSError:
-        if moved_old and not target.exists():
-            os.replace(old, target)  # roll the old dir back into place
-        raise
-    if moved_old:
-        shutil.rmtree(old, ignore_errors=True)
-
-
-def _restore_subdir(
-    zf: zipfile.ZipFile, names: list[str], prefix: str, target_dir: Path
-) -> None:
-    """Extract the ZIP entries under ``prefix`` into a fresh staging dir, then
-    atomically swap it in for ``target_dir``. The old content is only removed
-    once the new content is fully on disk — no unlink-then-extract window where a
-    crash leaves the directory half-cleared (old gone, new missing).
-
-    Each entry is placed by the last part of its path, which must be one plain
-    file name (``plain_file_in``): on Windows the last part of
-    ``scripts/D:x.py`` is ``D:x.py``, a path on drive D:. An entry that is not
-    is skipped with a warning, and the rest of the restore goes ahead."""
-    staging = target_dir.with_name(target_dir.name + ".restore-new")
-    if staging.exists():
-        shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=True)
-    for name in names:
-        if name.startswith(prefix) and name != prefix:
-            target = plain_file_in(staging, Path(name).name)
-            if target is None:
-                log.warning("Skipping backup entry with an unsafe file name: %r", name)
-                continue
-            with zf.open(name) as src:
-                target.write_bytes(src.read())
-    _swap_dir(staging, target_dir)
-
-
-def _restore_asset_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
-    """Restore the ``assets/`` tree, folders intact.
-
-    Same staged-extract-then-swap as the flat restore below it, and it needs
-    its own function for the same reason ``ui/`` does: ``_restore_subdir``
-    keeps each entry's basename, which would collapse ``rooms/plan.png`` and
-    ``floors/plan.png`` onto each other.
-    """
-    staging = target_dir.with_name(target_dir.name + ".restore-new")
-    if staging.exists():
-        shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=True)
-    asset_tree.extract_from_zip(zf, staging)
-    _swap_dir(staging, target_dir)
-
-
-def _restore_ui_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
-    """Restore the ``ui/`` tree the same way ``_restore_subdir`` restores the
-    flat ones: staged extract, atomic swap, old content replaced rather than
-    merged into.
-
-    It needs its own function because a custom control is a *folder* —
-    ``_restore_subdir`` keeps only each entry's basename, which is right for
-    ``scripts/`` (flat by design, and written flat) and would collapse
-    ``room_map/index.html`` and ``lights/index.html`` onto each other here.
-
-    The replace-don't-merge half is the point: every other tree is swapped
-    whole on restore, so a ``ui/`` tree that merely gained the backup's files
-    would leave last month's controls sitting beside a freshly restored
-    project. A backup with no ``ui/`` at all clears the directory, which is the
-    same promise ``scripts/`` and ``assets/`` already make.
-    """
-    staging = target_dir.with_name(target_dir.name + ".restore-new")
-    if staging.exists():
-        shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=True)
-    extract_from_zip(zf, staging)
-    _swap_dir(staging, target_dir)
-
-
-def _restore_theme_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
-    """Replace custom themes using the same staged swap as other project trees."""
-    staging = target_dir.with_name(target_dir.name + ".restore-new")
-    if staging.exists():
-        shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=True)
-    theme_tree.extract_from_zip(zf, staging)
-    _swap_dir(staging, target_dir)
-
-
 @dataclass
 class BackupInfo:
     """Metadata about a single backup file."""
@@ -569,72 +447,131 @@ def list_backups(project_file: Path) -> list[BackupInfo]:
     return results
 
 
-def restore_from_backup(backup_path: Path, project_file: Path) -> None:
-    """Restore a project from a backup file into ``project_file``.
+class BackupUnreadable(ValueError):
+    """A backup that holds no project file this system can read: not a ZIP,
+    a ZIP with no ``project.avc``, or a file in no backup format."""
 
-    ZIP backups: restores the project file, scripts/, assets/, ui/, themes/ and
-    state.json, and files the device logins it holds wherever this system has
-    none saved for that device. Legacy .avc.bak: restores the project file only.
 
-    Every write is atomic (temp + os.replace for files, staged rename swap for
-    directories) and the whole restore runs under the shared project-save lock,
-    so a crash mid-restore can't truncate the project file or leave scripts/assets
-    half-cleared, and a concurrent save/backup can't read a partial state.
+def is_zip_backup(backup_path: Path) -> bool:
+    """Whether ``backup_path`` is a ZIP backup, which holds the project's
+    files beside its project file; a legacy ``.avc.bak`` holds the project
+    file alone."""
+    return backup_path.suffix == ".zip"
 
-    NOTE: when a running StatePersister is watching state keys, the caller must
-    stop it before this and re-load persisted state after (see the engine /
-    restore endpoint) — this function only touches the files.
-    """
-    from openavc.core.project_loader import _project_save_lock
 
+def archived_project(backup_path: Path) -> bytes:
+    """The project file a backup holds, as it was saved. Raises
+    ``FileNotFoundError`` when the backup is not there and
+    ``BackupUnreadable`` when it holds no project file."""
     if not backup_path.exists():
         raise FileNotFoundError(f"Backup not found: {backup_path}")
+    if backup_path.name.endswith(".avc.bak"):
+        return backup_path.read_bytes()
+    if not is_zip_backup(backup_path):
+        raise BackupUnreadable(f"Unrecognized backup format: {backup_path.name}")
+    try:
+        with zipfile.ZipFile(backup_path, "r") as zf:
+            return zf.read(ARCHIVE_PROJECT)
+    except KeyError as missing:
+        raise BackupUnreadable(f"Backup ZIP does not contain {ARCHIVE_PROJECT}") from missing
+    except zipfile.BadZipFile as bad:
+        raise BackupUnreadable(f"Backup {backup_path.name} is not a readable ZIP") from bad
 
+
+def _extract_scripts(zf: zipfile.ZipFile, dest: Path) -> None:
+    """The archive's scripts into ``dest``, flat by design.
+
+    Each entry is placed by the last part of its path, which must be one
+    plain file name (``plain_file_in``): on Windows the last part of
+    ``scripts/D:x.py`` is ``D:x.py``, a path on drive D:. An entry that is
+    not is skipped with a warning, and the rest goes ahead."""
+    prefix = f"{project_unit.SCRIPTS_DIR}/"
+    for name in zf.namelist():
+        if not name.startswith(prefix) or name == prefix:
+            continue
+        target = plain_file_in(dest, Path(name).name)
+        if target is None:
+            log.warning("Skipping backup entry with an unsafe file name: %r", name)
+            continue
+        with zf.open(name) as src:
+            target.write_bytes(src.read())
+
+
+#: How each of the project's file trees is read back out of a backup, its
+#: folders intact: what the tree may hold is its own module's, so a member
+#: it does not take is skipped.
+_TREE_EXTRACTS: dict[str, Callable[[zipfile.ZipFile, Path], Any]] = {
+    project_unit.ASSETS_DIR: asset_tree.extract_from_zip,
+    project_unit.UI_DIR: extract_from_zip,
+    project_unit.THEMES_DIR: theme_tree.extract_from_zip,
+}
+
+
+def backup_filler(backup_path: Path) -> Callable[[Path], None] | None:
+    """What a backup holds beside its project file, as the ``fill`` a swap
+    stages (``core/project_swap.stage``): the scripts, each file tree and
+    state.json when it holds one, each written under its own name in the
+    folder it is given. None for a legacy ``.avc.bak``, which holds the
+    project file alone."""
+    if not is_zip_backup(backup_path):
+        return None
+
+    def fill(dest: Path) -> None:
+        with zipfile.ZipFile(backup_path, "r") as zf:
+            _extract_scripts(zf, dest / project_unit.SCRIPTS_DIR)
+            for tree, extract in _TREE_EXTRACTS.items():
+                extract(zf, dest / tree)
+            if project_unit.STATE_FILE in zf.namelist():
+                (dest / project_unit.STATE_FILE).write_bytes(zf.read(project_unit.STATE_FILE))
+
+    return fill
+
+
+def restore_backup_logins(backup_path: Path, project_file: Path) -> None:
+    """A ZIP backup's sealed device logins, filed for what ``project_file``
+    (the project just restored from it) holds wherever this system has none
+    saved, such as those of a device removed long ago; its own always win.
+    Never raises."""
+    if not is_zip_backup(backup_path):
+        return
+    try:
+        with zipfile.ZipFile(backup_path, "r") as zf:
+            _restore_logins(zf, zf.namelist(), project_file, f"backup {backup_path.name}")
+    except (OSError, zipfile.BadZipFile):
+        log.exception("Could not read the device logins in backup %s", backup_path.name)
+
+
+def restore_from_backup(backup_path: Path, project_file: Path) -> None:
+    """Restore a project from a backup file into ``project_file``, at a
+    start (``core/project_recovery``), before there is a running project.
+
+    ZIP backups: the project file, scripts/, assets/, ui/, themes/ and
+    state.json (none when the backup holds none), and the device logins it
+    holds wherever this system has none saved for that device. Legacy
+    .avc.bak: the project file only. The project file goes in as the backup
+    holds it, for the load to migrate.
+
+    Staged and swapped by renames (``core/project_swap``), every rename
+    undone when one fails, under the shared project-save lock, so a failure
+    part way leaves the project as it was and a concurrent save or backup
+    cannot read a partial state. A running project is replaced through
+    ``Engine.replace_with`` instead, which stops its persister and reloads
+    it (``core/project_replace``).
+    """
+    from openavc.core import project_swap
     from openavc.core.installed_equipment import validate_backup
+    from openavc.core.project_loader import _project_save_lock
+
+    project_bytes = archived_project(backup_path)
     validate_backup(backup_path)
-    project_dir = project_file.parent
 
     with _project_save_lock:
-        if backup_path.suffix == ".zip":
-            with zipfile.ZipFile(backup_path, "r") as zf:
-                names = zf.namelist()
-                if ARCHIVE_PROJECT not in names:
-                    raise ValueError(f"Backup ZIP does not contain {ARCHIVE_PROJECT}")
-
-                # The project file — atomic write so a torn restore can't corrupt
-                # the room's single source of truth (the recovery path then loads it).
-                _atomic_write_bytes(project_file, zf.read(ARCHIVE_PROJECT))
-
-                # Every tree: staged extract + atomic swap (clears orphans
-                # without a half-cleared window). scripts/ is flat by design;
-                # assets/ and ui/ keep their folders.
-                _restore_subdir(zf, names, "scripts/", project_dir / "scripts")
-                _restore_asset_tree(zf, project_dir / "assets")
-                _restore_ui_tree(zf, project_dir / "ui")
-                _restore_theme_tree(zf, project_dir / "themes")
-
-                # Persisted state — restore it, or clear a stale newer state.json
-                # when the backup predates persistence, so the older restored
-                # project doesn't boot with newer values (symmetry with scripts/
-                # assets, which are always cleared).
-                state_target = project_dir / "state.json"
-                if "state.json" in names:
-                    _atomic_write_bytes(state_target, zf.read("state.json"))
-                else:
-                    state_target.unlink(missing_ok=True)
-
-                # Device logins this system no longer has, such as those of a
-                # device removed long ago; its own always win.
-                _restore_logins(zf, names, project_file, f"backup {backup_path.name}")
-
-            log.info(f"Restored from ZIP backup: {backup_path.name}")
-
-        elif backup_path.name.endswith(".avc.bak"):
-            _atomic_write_bytes(project_file, backup_path.read_bytes())
-            log.info(f"Restored from legacy backup: {backup_path.name}")
-
-        else:
-            raise ValueError(f"Unrecognized backup format: {backup_path.name}")
+        project_swap.replace_on_disk(
+            project_file, project_bytes, backup_filler(backup_path),
+            beside=is_zip_backup(backup_path),
+        )
+        restore_backup_logins(backup_path, project_file)
+    log.info(f"Restored from backup: {backup_path.name}")
 
 
 def _rotation(backup_dir: Path, spare: Path | None) -> list[Path]:

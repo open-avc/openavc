@@ -190,6 +190,7 @@ def world(tmp_path: Path, monkeypatch):
     running = MagicMock(project_path=tmp_path / "active" / "project.avc")
     running.broadcast_ws = AsyncMock()
     running.reload_project = AsyncMock()
+    running.replace_with = AsyncMock()
     running.logins_needed = MagicMock(return_value=[])
     running.plugin_logins_needed = MagicMock(return_value=[])
     monkeypatch.setattr(PROJECT, "_get_engine", lambda: running)

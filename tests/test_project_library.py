@@ -20,7 +20,6 @@ from openavc.core.project_library import (
     update_project_meta,
     duplicate_project,
     create_blank_project,
-    replace_scripts,
     ensure_starter_projects,
     import_project,
     open_from_library,
@@ -376,29 +375,32 @@ class TestCreateBlankProject:
         assert project.project.modified != ""
 
 
-# --- replace_scripts tests ---
+# --- Opening a copy replaces the scripts ---
 
 
-class TestReplaceScripts:
-    def test_writes_scripts(self, tmp_path):
-        scripts_dir = tmp_path / "scripts"
-        scripts_dir.mkdir()
-        replace_scripts(scripts_dir, {"a.py": "# a", "b.py": "# b"})
-        assert (scripts_dir / "a.py").read_text(encoding="utf-8") == "# a"
-        assert (scripts_dir / "b.py").read_text(encoding="utf-8") == "# b"
+class TestOpenReplacesScripts:
+    def test_the_copy_s_scripts_replace_the_old_ones(self, tmp_lib, tmp_path, sample_project_data):
+        _seed_project(tmp_lib, "lib", sample_project_data)
+        (tmp_lib / "lib" / "scripts").mkdir(exist_ok=True)
+        (tmp_lib / "lib" / "scripts" / "new.py").write_text("# new", encoding="utf-8")
+        active_path = tmp_path / "active" / "project.avc"
+        (active_path.parent / "scripts").mkdir(parents=True)
+        (active_path.parent / "scripts" / "old.py").write_text("# old", encoding="utf-8")
 
-    def test_clears_old_scripts(self, tmp_path):
-        scripts_dir = tmp_path / "scripts"
-        scripts_dir.mkdir()
-        (scripts_dir / "old.py").write_text("# old")
-        replace_scripts(scripts_dir, {"new.py": "# new"})
-        assert not (scripts_dir / "old.py").exists()
-        assert (scripts_dir / "new.py").exists()
+        open_from_library("lib", active_path, "lib", "Lib")
 
-    def test_creates_dir_if_missing(self, tmp_path):
-        scripts_dir = tmp_path / "nonexistent" / "scripts"
-        replace_scripts(scripts_dir, {"test.py": "# test"})
-        assert (scripts_dir / "test.py").exists()
+        scripts = active_path.parent / "scripts"
+        assert sorted(f.name for f in scripts.glob("*.py")) == ["new.py"]
+        assert (scripts / "new.py").read_text(encoding="utf-8") == "# new"
+
+    def test_a_copy_with_no_scripts_leaves_an_empty_folder(self, tmp_lib, tmp_path, sample_project_data):
+        _seed_project(tmp_lib, "lib", sample_project_data)
+        active_path = tmp_path / "active" / "project.avc"
+        active_path.parent.mkdir(parents=True)
+
+        open_from_library("lib", active_path, "lib", "Lib")
+
+        assert list((active_path.parent / "scripts").glob("*.py")) == []
 
 
 # --- ensure_starter_projects tests ---
@@ -587,7 +589,7 @@ class TestAssetPropagation:
 
         active_path = tmp_path / "active" / "project.avc"
         active_path.parent.mkdir(parents=True)
-        open_from_library("lib", active_path, active_path.parent / "scripts", "lib", "Lib")
+        open_from_library("lib", active_path, "lib", "Lib")
 
         assert (active_path.parent / "assets" / "wall.png").read_bytes() == b"WALLDATA"
 
@@ -601,7 +603,7 @@ class TestAssetPropagation:
         active_assets.mkdir(parents=True)
         (active_assets / "stale.png").write_bytes(b"STALE")
 
-        open_from_library("lib", active_path, active_path.parent / "scripts", "lib", "Lib")
+        open_from_library("lib", active_path, "lib", "Lib")
 
         assert (active_assets / "new.png").exists()
         assert not (active_assets / "stale.png").exists()  # replaced, not merged
@@ -1284,33 +1286,21 @@ def _live_tree_files(project_dir: Path) -> set[str]:
     }
 
 
-def test_replace_project_trees_with_no_source_clears_all_three(tmp_path):
-    """Starting a blank project must not inherit the previous project's
-    images, custom controls or themes. They used to survive, because only
-    the scripts were cleared."""
+def test_opening_a_copy_swaps_in_its_trees_and_leaves_none_of_the_old(tmp_lib, tmp_path, sample_project_data):
+    """Opening a saved project takes its files and leaves none of the old:
+    its images, custom controls and themes."""
     project_dir = tmp_path / "projects" / "default"
     project_dir.mkdir(parents=True)
     _seed_live_trees(project_dir)
     assert _live_tree_files(project_dir)  # the fixture actually planted them
-
-    plib.replace_project_trees(project_dir, None)
-
-    assert _live_tree_files(project_dir) == set()
-
-
-def test_replace_project_trees_swaps_in_the_source(tmp_path):
-    """Opening a saved project takes its files and leaves none of the old."""
-    project_dir = tmp_path / "projects" / "default"
-    project_dir.mkdir(parents=True)
-    _seed_live_trees(project_dir)
-
-    source = tmp_path / "saved_projects" / "other"
+    _seed_project(tmp_lib, "other", sample_project_data)
+    source = tmp_lib / "other"
     (source / "assets").mkdir(parents=True)
     (source / "assets" / "backdrop.jpg").write_bytes(b"jpg stand-in")
     (source / "themes").mkdir(parents=True)
     (source / "themes" / "night.json").write_text('{"id": "night"}')
 
-    plib.replace_project_trees(project_dir, source)
+    open_from_library("other", project_dir / "project.avc", "other", "Other")
 
     assert _live_tree_files(project_dir) == {
         str(Path("assets") / "backdrop.jpg"),
@@ -1318,10 +1308,14 @@ def test_replace_project_trees_swaps_in_the_source(tmp_path):
     }
 
 
-def test_replace_project_trees_is_safe_on_a_project_with_none(tmp_path):
+def test_opening_a_copy_with_no_trees_clears_the_live_ones(tmp_lib, tmp_path, sample_project_data):
     project_dir = tmp_path / "projects" / "default"
     project_dir.mkdir(parents=True)
-    plib.replace_project_trees(project_dir, None)
+    _seed_live_trees(project_dir)
+    _seed_project(tmp_lib, "bare", sample_project_data)
+
+    open_from_library("bare", project_dir / "project.avc", "bare", "Bare")
+
     assert _live_tree_files(project_dir) == set()
 
 

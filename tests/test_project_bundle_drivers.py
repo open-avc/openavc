@@ -266,6 +266,7 @@ def engine(tmp_path: Path, monkeypatch):
     stub.project_path = active / "project.avc"
     stub.broadcast_ws = AsyncMock()
     stub.reload_project = AsyncMock()
+    stub.replace_with = AsyncMock()
     stub.logins_needed = MagicMock(return_value=[])
     stub.plugin_logins_needed = MagicMock(return_value=[])
     monkeypatch.setattr(project_routes, "_get_engine", lambda: stub)

@@ -95,15 +95,13 @@ def test_large_backup_uses_the_same_restore_path_and_hardware_protection(host, f
 async def test_api_rejects_before_stopping_persistence_for_named_project(host, monkeypatch):
     path, _ = backup(host, True, forbidden=True)
     engine = SimpleNamespace(project_path=host, persister=SimpleNamespace(stop=Mock()),
-                             reload_project=AsyncMock(), reload_persisted_state=Mock())
+                             replace_with=AsyncMock())
     monkeypatch.setattr(routes, "_get_engine", lambda: engine)
     original = host.read_bytes()
     with pytest.raises(InstalledEquipmentError, match="identity and mapping"):
         await routes.restore_backup(path.name)
     engine.persister.stop.assert_not_called()
-    engine.reload_project.assert_not_awaited()
+    engine.replace_with.assert_not_awaited()
     assert host.read_bytes() == original
-    saved = list((host.parent / "backups").glob("*.zip"))
-    assert len(saved) == 1
-    with zipfile.ZipFile(saved[0]) as archive:
-        assert archive.read("project.avc") == original
+    # Refused before the backup a restore takes first: nothing changed.
+    assert not list((host.parent / "backups").glob("*.zip"))

@@ -56,7 +56,7 @@ def open_project(root, *, device_id="local", builtin=False, zipped=False):
     imported = library.import_project(payload, name)
     path = root / "active/project.avc"
     path.parent.mkdir()
-    project = library.open_from_library(imported["id"], path, path.parent / "scripts", "new", "New")
+    project = library.open_from_library(imported["id"], path, "new", "New")
     return path, project
 
 

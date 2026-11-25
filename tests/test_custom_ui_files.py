@@ -602,7 +602,7 @@ def test_save_duplicate_and_open_carry_the_controls(tmp_lib, tmp_path):
     other = tmp_path / "other"
     (other / "scripts").mkdir(parents=True)
     _write_control(other / "ui", name="old_control")
-    open_from_library("saved", other / "project.avc", other / "scripts", "x", "X")
+    open_from_library("saved", other / "project.avc", "x", "X")
     assert (other / "ui" / "room_map" / "index.html").exists()
     assert not (other / "ui" / "old_control").exists()
 

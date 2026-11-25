@@ -923,7 +923,7 @@ def test_opening_a_copy_keeps_the_running_login_and_brings_its_own_for_the_rest(
 
     active = tmp_path / "active" / "project.avc"
     active.parent.mkdir()
-    library.open_from_library("room_b", active, active.parent / "scripts", "room_b", "Room B")
+    library.open_from_library("room_b", active, "room_b", "Room B")
 
     fresh = DeviceLogins(data)
     assert fresh.login("proj1", DRIVER, "password") == "This-Room"

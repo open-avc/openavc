@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from openavc.core import backup_manager, project_library, project_unit
+from openavc.core import backup_manager, project_swap, project_unit
 from openavc.updater.backup import create_backup as create_update_backup
 from openavc.updater.rollback import restore_pre_update_data, write_pending_marker
 
@@ -54,22 +54,20 @@ def test_a_project_backup_carries_every_entry(tmp_path):
         assert planted <= set(archive.namelist())
 
 
-def test_replacing_the_project_trees_clears_and_swaps_every_tree(tmp_path):
+def test_a_replace_swaps_every_entry_and_one_with_none_leaves_none(tmp_path):
     project_dir = tmp_path / "live"
-    source = tmp_path / "source"
-    _plant(project_dir, "previous")
-    planted = _plant(source, "opened")
+    project_file = project_dir / "project.avc"
+    planted = _plant(project_dir, "previous")
+    project_file.write_text("{}")
 
-    project_library.replace_project_trees(project_dir, source)
+    project_swap.replace_on_disk(project_file, b"{}", lambda incoming: _plant(incoming, "opened"))
 
     for rel in planted:
-        if rel.partition("/")[0] in project_unit.FILE_TREES:
-            assert (project_dir / rel).read_text() == f"opened {rel}"
+        assert (project_dir / rel).read_text() == f"opened {rel}"
 
-    project_library.replace_project_trees(project_dir, None)
+    project_swap.replace_on_disk(project_file, b"{}", None)
 
-    for tree in project_unit.FILE_TREES:
-        assert not (project_dir / tree).exists()
+    assert [p for p in project_dir.rglob("*") if p.is_file()] == [project_file]
 
 
 @pytest.mark.parametrize("project_name", ["project.avc", "my-space.avc"])

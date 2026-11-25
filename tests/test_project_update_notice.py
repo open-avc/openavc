@@ -258,7 +258,7 @@ def test_a_library_import_keeps_its_notes_until_the_copy_is_opened(tmp_path, mon
     running = tmp_path / "running" / "project.avc"
     running.parent.mkdir()
     opened = library.Opened()
-    library.open_from_library(result["id"], running, running.parent / "scripts", "old", "Old", opened=opened)
+    library.open_from_library(result["id"], running, "old", "Old", opened=opened)
     assert any("Transition Duration" in n.message for n in opened.update_notes.notes)
     # Handed over: the copy no longer holds them.
     assert project_update.read(lib / result["id"]) is None

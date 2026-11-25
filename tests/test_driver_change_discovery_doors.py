@@ -171,6 +171,11 @@ def world(tmp_path: Path, monkeypatch):
     engine.ws = SimpleNamespace(broadcast=_broadcast)
     engine.broadcast_ws = AsyncMock()
     engine.reload_project = _reload_project
+
+    async def _replace_with(_prepared):
+        events.append(("project reloaded",))
+
+    engine.replace_with = _replace_with
     engine.logins_needed = MagicMock(return_value=[])
     engine.plugin_logins_needed = MagicMock(return_value=[])
     monkeypatch.setattr(driver_change, "_running_engine", lambda: engine)
@@ -221,7 +226,7 @@ def world(tmp_path: Path, monkeypatch):
         return identification.driver_id if identification.state == DeviceState.IDENTIFIED else None
 
     yield SimpleNamespace(
-        repo=repo, lib=lib, events=events, devices=engine.devices,
+        repo=repo, lib=lib, events=events, devices=engine.devices, engine=engine,
         installed_python=installed_python, on_the_page=on_the_page,
         after_the_next_scan=after_the_next_scan_folds_the_catalog,
     )
@@ -347,10 +352,10 @@ async def test_an_open_that_fails_after_its_drivers_went_in_still_follows_them(w
     the found device is matched, though no project reloads."""
     world.devices.on = {"waiting": DRIVER_ID}
 
-    def _disk_full(*_args, **_kwargs):
+    async def _disk_full(_prepared):
         raise OSError("No space left on device")
 
-    monkeypatch.setattr(project_library, "save_project", _disk_full)
+    monkeypatch.setattr(world.engine, "replace_with", _disk_full)
     with pytest.raises(OSError):
         await _open_library_copy()
 

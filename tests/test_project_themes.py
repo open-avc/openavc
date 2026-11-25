@@ -73,7 +73,7 @@ def test_save_replace_duplicate_export_import_open_preserves_theme(room, tmp_pat
     fresh.mkdir()
     engine.project_path = fresh / "project.avc"
     engine.project = library.open_from_library(
-        "imported", engine.project_path, fresh / "scripts", "fresh", "Fresh",
+        "imported", engine.project_path, "fresh", "Fresh",
     )
     assert engine.project.ui.settings.theme_id == theme["id"]
     loaded = client.get("/api/themes/studio-green")
@@ -85,7 +85,7 @@ def test_save_replace_duplicate_export_import_open_preserves_theme(room, tmp_pat
     # previous room's custom themes into the next room's Theme Studio.
     blank = library.create_blank_project("blank", "Blank")
     library.save_to_library("blank", blank, fresh / "missing", "Blank", "")
-    library.open_from_library("blank", engine.project_path, fresh / "scripts", "blank", "Blank")
+    library.open_from_library("blank", engine.project_path, "blank", "Blank")
     assert client.get("/api/themes/studio-green").status_code == 404
 
 
@@ -96,7 +96,7 @@ def test_seeded_bundle_keeps_custom_themes(room, tmp_path):
     bundle.write_bytes(content)
     library._seed_zip_to_library(bundle, "starter", library._lib_dir())
     library.open_from_library(
-        "starter", engine.project_path, engine.project_path.parent / "scripts", "test", "Test",
+        "starter", engine.project_path, "test", "Test",
     )
     assert client.get("/api/themes/studio-green").json() == {**theme, "_source": "custom"}
 

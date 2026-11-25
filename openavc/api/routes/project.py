@@ -855,28 +855,19 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
 
 
 async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
-    """The open, from the backup to the announcement; the engine it reloaded."""
-    from openavc.core.project_library import open_from_library as _open, sanitize_id
-    from openavc.core.backup_manager import capture
+    """The open, from the prepare to the announcement; the engine it
+    replaced the project of."""
+    from openavc.core.project_library import prepare_open, sanitize_id
 
     engine = _get_engine()
-
     project_id = sanitize_id(data.project_id or data.project_name)
-    scripts_dir = engine.project_path.parent / "scripts"
-
-    # Back up the current project (scripts and files included) before
-    # replacing it; with no backup the open is refused, nothing changed.
-    await capture(engine.project_path, f"Before opening '{data.project_name}'")
-
     try:
-        _open(data.library_id, engine.project_path, scripts_dir,
-              project_id, data.project_name, opened=opened)
+        prepared = prepare_open(data.library_id, project_id, data.project_name, opened=opened)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{data.library_id}' not found in library")
     except ValidationError as e:
         # A stored project that no longer validates even after migration —
-        # surface a friendly 422 instead of a raw 500 (the pre-open backup of
-        # the current project has already been taken and stays available).
+        # surface a friendly 422 instead of a raw 500, nothing changed.
         raise validation_failed(
             422,
             f"Saved project '{data.library_id}' is not a valid project file",
@@ -885,13 +876,14 @@ async def _open_library_copy(data: LibraryOpenRequest, opened: Any) -> Any:
     finally:
         await _follow_bundled_drivers(opened)
 
-    engine.keep_update_notes(opened.update_notes, replace=True)
+    # Backed up first, under the project lock; with no backup the open is
+    # refused, nothing changed (core/project_replace).
+    await engine.replace_with(prepared)
     await engine.broadcast_ws({
         "type": "project.replaced",
         "project_name": data.project_name,
         "source": "library",
     })
-    await engine.reload_project()
     # Told again once the opened project runs, so the devices the driver
     # lists name on each driver are the opened project's.
     await announce()
@@ -916,10 +908,8 @@ async def _follow_bundled_drivers(opened: Any) -> None:
 @router.post("/project/create-blank")
 async def create_blank(request: Request) -> dict[str, Any]:
     """Reset to an empty project."""
-    from openavc.core.project_library import (
-        create_blank_project, replace_project_trees, replace_scripts, sanitize_id,
-    )
-    from openavc.core.backup_manager import capture
+    from openavc.core import project_replace
+    from openavc.core.project_library import create_blank_project, sanitize_id
 
     engine = _get_engine()
     body = await request.json()
@@ -927,30 +917,17 @@ async def create_blank(request: Request) -> dict[str, Any]:
     project_name = body.get("project_name", "New Room")
     project_id = sanitize_id(body.get("project_id") or project_name)
 
-    # Back up the current project before replacing it with a blank one; with
-    # no backup it is refused, nothing cleared.
-    await capture(engine.project_path, "Before creating blank project")
-
+    # A blank project starts with nothing of the old one's: its scripts, its
+    # uploaded assets, custom controls and themes, its saved values. The
+    # backup the replace takes first keeps them; with no backup it is
+    # refused, nothing cleared.
     project = create_blank_project(project_id, project_name)
-
-    # A blank project starts with nothing of the old one's: its scripts, and
-    # equally its uploaded assets, custom controls and themes. The backup above
-    # is taken first, so none of this is unrecoverable.
-    scripts_dir = engine.project_path.parent / "scripts"
-    replace_scripts(scripts_dir, {})
-    replace_project_trees(engine.project_path.parent, None)
-
+    await engine.replace_with(project_replace.blank(project))
     await engine.broadcast_ws({
         "type": "project.replaced",
         "project_name": project_name,
         "source": "blank",
     })
-    # A whole new project: LOAD origin persists it and does the full
-    # reconcile (library rescan, startup triggers) in one pass instead of
-    # save-then-reload-from-disk.
-    from openavc.core.project_update import MigrationNotes
-    await engine.replace_project(project, MigrationNotes())
-
     return {"status": "created", "project_name": project_name}
 
 
@@ -1014,8 +991,6 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
 @router.post("/backups/{filename:path}/restore")
 async def restore_backup(filename: str) -> dict[str, Any]:
     """Restore a project from a backup file (ZIP or legacy .avc.bak)."""
-    from openavc.core.backup_manager import capture, restore_from_backup
-
     engine = _get_engine()
     project_dir = engine.project_path.parent
 
@@ -1032,34 +1007,24 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     if not (backup_path.name.endswith(".zip") or backup_path.name.endswith(".avc.bak")):
         raise HTTPException(status_code=400, detail="Not a valid backup file")
 
-    # Create a backup before restoring; with none the restore is refused,
-    # nothing changed. Its rotation spares the one chosen, which is the
-    # oldest when somebody goes back the furthest, so it is still there to read.
-    await capture(engine.project_path, "Before restore", spare=backup_path)
-
-    from openavc.core.installed_equipment import validate_backup
-    validate_backup(backup_path)
-
-    # Stop the state persister first so its pending debounced flush (up to a 1s
-    # window) can't overwrite the state.json we're about to restore.
-    if engine.persister:
-        engine.persister.stop()
+    # Read and checked as a load reads it before anything is written, so a
+    # backup this system will not run is refused with nothing changed. The
+    # replace backs the project up first (its rotation spares the one
+    # chosen, which is the oldest when somebody goes back the furthest);
+    # with no backup it is refused too.
+    from openavc.core import project_replace
+    from openavc.core.installed_equipment import InstalledEquipmentError
+    from openavc.core.project_changes import ProjectInvalidError
 
     try:
-        restore_from_backup(backup_path, engine.project_path)
-        # The backup replaces the running project: a notice about the one
-        # before goes, and the reload keeps what the backup's own migration
-        # changes.
-        from openavc.core.project_update import MigrationNotes
-        engine.keep_update_notes(MigrationNotes(), replace=True)
-        await engine.reload_project()
-    finally:
-        # Re-apply state.json to the store and start the persister again,
-        # whatever the restore did: on success the restored values take effect
-        # and are not written back over; on a failure the store follows the
-        # state.json on disk and values go on being saved, never stopped until
-        # a restart.
-        engine.reload_persisted_state()
+        prepared = project_replace.from_backup(backup_path)
+    except (ProjectInvalidError, InstalledEquipmentError):
+        raise
+    except Exception as e:
+        raise _api_error(
+            422, f"Backup '{filename}' could not be read, so nothing was restored. Choose another backup.", e,
+        ) from e
+    await engine.replace_with(prepared)
     return {
         "status": "restored",
         "filename": filename,

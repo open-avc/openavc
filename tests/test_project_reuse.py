@@ -63,7 +63,7 @@ def test_replacement_unit_uses_its_own_hardware_and_preserves_programming(worksp
     imported = library.import_project(data, name)
     target = root / "active/project.avc"
     target.parent.mkdir()
-    project = library.open_from_library(imported["id"], target, target.parent / "scripts", "new-hall", "New hall")
+    project = library.open_from_library(imported["id"], target, "new-hall", "New hall")
     local = project.devices[0]
     assert local.id == "local" and local.name == "House amplifier" and local.enabled is False
     assert project.macros[0].steps[0].device == "local"
@@ -82,7 +82,7 @@ def test_ordinary_controller_opens_reference_for_normal_reassignment(workspace):
     imported = library.import_project(raw, "hall.avc")
     target = root / "active/project.avc"
     target.parent.mkdir()
-    project = library.open_from_library(imported["id"], target, target.parent / "scripts", "new-hall", "New hall")
+    project = library.open_from_library(imported["id"], target, "new-hall", "New hall")
     assert project.devices[0].driver == DRIVER
     assert any(item["driver_id"] == DRIVER for item in imported["missing_drivers"])
     # Normal reassignment preserves the project-local ID used by automation.
@@ -118,7 +118,7 @@ def test_different_model_preserves_foreign_programming_without_using_host_hardwa
     target = root / "active/project.avc"
     target.parent.mkdir()
     target.write_bytes(b"active project sentinel")
-    project = library.open_from_library(imported["id"], target, target.parent / "scripts", "new", "New")
+    project = library.open_from_library(imported["id"], target, "new", "New")
     assert [device.id for device in project.devices] == ["local_2", "local"]
     local, foreign = project.devices
     assert policy.matches(local) and policy.resolve(local)["config"]["identity"] == "other-unit"

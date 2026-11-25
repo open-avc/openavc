@@ -95,6 +95,7 @@ from openavc.core.project_loader import (
     save_project_async,
 )
 from openavc.core.project_reconcile import FailedPart, ReconcileRun
+from openavc.core.project_replace import ProjectReplaceMixin
 from openavc.core.project_revision import (  # noqa: F401 -- ProjectRevisionConflictError is imported from here
     ProjectRevisionConflictError,
     ProjectRevisionMixin,
@@ -129,9 +130,9 @@ class ProjectNotAppliedError(Exception):
     """A change the running system was given and could not take: the swap,
     the reconcile or the file's write failed, and everything was put back,
     so the project before it is still running and the apply wrote no file.
-    A change that came from the file (a reload, and the restore and library
-    open that write the file first) leaves the file holding that change,
-    which is then not what runs. ``cause`` is what failed (also the
+    A reload, which came from the file, leaves the file holding that change,
+    which is then not what runs; a whole project with its files
+    (``replace_with``) puts the previous files back. ``cause`` is what failed (also the
     ``__cause__``); every door
     answers it in one wording (``api/error_messages.describe_change_failure``),
     never with the cause's own text. A refusal of the change itself (a word
@@ -287,8 +288,11 @@ async def _call_logged(callback, failure: str) -> None:
         log.exception(failure)
 
 
-class ProjectChangesMixin(ProjectRevisionMixin):
-    """The project's change doors, its revision and its bookkeeping saves."""
+class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
+    """The project's change doors, its revision and its bookkeeping saves.
+    A whole other project with its files (a restore, a library copy, a
+    blank project) comes in through ``replace_with``
+    (``core/project_replace``)."""
 
     def _init_project_changes(self) -> None:
         self._init_project_revision()
@@ -422,12 +426,14 @@ class ProjectChangesMixin(ProjectRevisionMixin):
         self, new_project: ProjectConfig, update_notes: MigrationNotes, *,
         expected_revision: str | None = None, keep: KeepReplaced | None = None,
     ) -> ApplyOutcome:
-        """A project that replaces the running one (an import, a new blank
-        project, a whole project pushed from the cloud), applied as a load
-        and saved; once that has worked, the update notice is what its
-        migration changed, or none (``keep_update_notes``). What the caller
-        keeps of the project it replaces (``keep``) is taken under the lock
-        once the revision is checked, before anything changes."""
+        """A project that replaces the running one and keeps the files
+        beside it and the saved values (an import of a bare ``.avc``, a
+        whole project pushed from the cloud), applied as a load and saved;
+        once that has worked, the update notice is what its migration
+        changed, or none (``keep_update_notes``). What the caller keeps of
+        the project it replaces (``keep``) is taken under the lock once the
+        revision is checked, before anything changes. A project that comes
+        with its files replaces them too, through ``replace_with``."""
         async with self._lock_for_a_change():
             self._check_revision(expected_revision)
             if keep is not None:

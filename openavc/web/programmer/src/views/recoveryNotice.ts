@@ -45,7 +45,27 @@ export function recoveryNotice(
   const outcome = String(state["system.project_recovery"] ?? "");
   if (outcome !== "restored" && outcome !== "reset") return NOTHING;
 
-  const missing = String(state["system.project_recovery_reason"] ?? "") === "missing";
+  const reason = String(state["system.project_recovery_reason"] ?? "");
+  const cutoff = String(state["system.project_recovery_cutoff"] ?? "");
+  const when = cutoff ? formatTime(cutoff) : "";
+
+  if (outcome === "restored" && reason === "interrupted") {
+    // A restore or an open stopped part way: the backup it took first is
+    // what runs, so nothing saved is missing; the other project is.
+    const from = when ? `, from the backup taken at ${when}` : "";
+    return {
+      show: true,
+      severe: false,
+      title: "Project restored from a backup",
+      body: "Opening or restoring a project did not finish before this system stopped."
+        + ` This system is running the project it was replacing${from}.`
+        + " Open or restore the other project again.",
+      backupFile: String(state["system.project_recovery_backup"] ?? ""),
+      action: "Open Project",
+    };
+  }
+
+  const missing = reason === "missing";
   const opening = missing
     ? "The project file was missing at startup."
     : "The project file could not be read at startup.";
@@ -63,8 +83,6 @@ export function recoveryNotice(
     };
   }
 
-  const cutoff = String(state["system.project_recovery_cutoff"] ?? "");
-  const when = cutoff ? formatTime(cutoff) : "";
   const which = when ? `the backup from ${when}` : "the most recent backup that would open";
   return {
     show: true,

@@ -172,29 +172,44 @@ class ProjectVariablesMixin:
         if self.persister:
             self.persister.update_keys(persistent_var_keys(self.project.variables))
 
-    def reload_persisted_state(self) -> None:
+    def reload_persisted_state(self, *, replaced: bool = False) -> None:
         """Re-apply state.json to the store and restart the persister.
 
-        Called after a backup restore. A plain reload only re-subscribes the
+        Called once a project replace has swapped the files
+        (``core/project_replace``). A plain reload only re-subscribes the
         persister (via ``update_keys``); it never re-reads state.json, so the
         running store would keep the stale pre-restore values and the persister
         would write them straight back over the just-restored file. This reloads
         the restored values into the store — falling back to each persistent
         variable's default when the backup carried no value for it — then
         restarts the persister so it tracks the restored state cleanly.
+
+        With ``replaced`` (another project is now the running one), every
+        variable starts as a start seeds it (``_init_variable_values``), so a
+        value the previous project set on a variable of the same id, saved or
+        not, does not carry over. Without it (a replace that put the previous
+        project back), only the saved ones are read again.
         """
         if not self.persister or not self.project:
             return
         persisted = self.persister.load()
+        if replaced:
+            self._init_variable_values(persisted)
+        else:
+            self._reread_saved_values(persisted)
+        # stop() clears any prior subscriptions + the _stopped flag the caller's
+        # pre-restore stop() set; start() re-subscribes with _stopped cleared.
+        self.persister.stop()
+        self.persister.start(persistent_var_keys(self.project.variables))
+
+    def _reread_saved_values(self, persisted: dict[str, Any]) -> None:
+        """Each persistent variable's value from ``persisted`` (state.json as
+        read), or its default when it holds none; the others as they are."""
         for var in self.project.variables:
             if not var.persist:
                 continue
             key = f"var.{var.id}"
             self.state.set(key, persisted.get(key, var.default), source="system")
-        # stop() clears any prior subscriptions + the _stopped flag the caller's
-        # pre-restore stop() set; start() re-subscribes with _stopped cleared.
-        self.persister.stop()
-        self.persister.start(persistent_var_keys(self.project.variables))
 
     def _rebind_variables(self) -> None:
         """The bindings, then the rules, for the variables as they are now."""

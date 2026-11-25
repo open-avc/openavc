@@ -69,6 +69,24 @@ describe("recoveryNotice", () => {
     expect(n.action).toBe("Open Project");
   });
 
+  it("says a replace that did not finish put back the project it was replacing", () => {
+    const n = recoveryNotice({
+      "system.project_recovery": "restored",
+      "system.project_recovery_reason": "interrupted",
+      "system.project_recovery_backup": "backups/backup_20260903_211430_before_restore.zip",
+      "system.project_recovery_cutoff": "2026-09-03T21:14:30+00:00",
+    }, at);
+    expect(n.show).toBe(true);
+    expect(n.severe).toBe(false);
+    expect(n.body).toBe(
+      "Opening or restoring a project did not finish before this system stopped."
+      + " This system is running the project it was replacing, from the backup taken at 3 Sep 2026, 21:14."
+      + " Open or restore the other project again.",
+    );
+    expect(n.backupFile).toBe("backups/backup_20260903_211430_before_restore.zip");
+    expect(n.action).toBe("Open Project");
+  });
+
   it("ignores an outcome it does not know", () => {
     expect(recoveryNotice({ "system.project_recovery": "something_else" }).show).toBe(false);
   });
