@@ -106,6 +106,14 @@ class StatePersister:
         if persistent_keys:
             log.info(f"Watching {len(persistent_keys)} persistent variable(s)")
 
+    def resume(self, persistent_keys: set[str]) -> None:
+        """Start again after a ``stop`` that nothing replaced state.json
+        behind (a project replace refused before its swap): watching
+        ``persistent_keys``, and the values the store holds written now,
+        since one changed while stopped was not."""
+        self.start(persistent_keys)
+        self._write()
+
     def update_keys(self, persistent_keys: set[str]) -> None:
         """Update the set of watched keys (called on reload).
 
@@ -190,9 +198,13 @@ class StatePersister:
             self._write()
 
     def stop(self) -> None:
-        """Flush pending writes and unsubscribe."""
-        self._stopped = True
+        """Flush pending writes and unsubscribe. From then until ``start``
+        nothing is written, whatever is asked of it (a key-set update or its
+        undo, run by a reload while the project's files are being replaced),
+        so a stopped persister cannot write the store's values over a
+        state.json put in place meanwhile."""
         self.flush()
+        self._stopped = True
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
         for sub_id in self._sub_ids:
@@ -200,7 +212,10 @@ class StatePersister:
         self._sub_ids.clear()
 
     def _write(self) -> None:
-        """Write current persistent values to state.json atomically."""
+        """Write current persistent values to state.json atomically; nothing
+        while stopped (``stop``)."""
+        if self._stopped:
+            return
         data: dict[str, Any] = {}
         for key in self._persistent_keys:
             value = self._state_store.get(key, _MISSING)

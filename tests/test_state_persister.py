@@ -279,3 +279,26 @@ def test_load_quarantines_non_dict_file(tmp_state_file, store, persister):
 
     quarantine = tmp_state_file.parent / "state.json.corrupt"
     assert quarantine.exists()
+
+
+def test_a_stopped_persister_writes_nothing_until_it_starts_again(tmp_state_file, store):
+    """A project replace stops the persister and puts another state.json in
+    place; the reload's key-set update, and its undo when the reload fails,
+    used to write the running values over that file."""
+    persister = StatePersister(tmp_state_file, store)
+    store.set("var.a", "running", source="system")
+    store.set("var.b", "running", source="system")
+    persister.start({"var.a", "var.b"})
+    persister.stop()
+    tmp_state_file.write_text(json.dumps({"var.a": "restored"}))
+
+    persister.update_keys({"var.a"})
+    persister.restore_keys({"var.a", "var.b"})
+    persister.flush()
+
+    assert json.loads(tmp_state_file.read_text()) == {"var.a": "restored"}
+
+    persister.resume({"var.a", "var.b"})
+
+    assert json.loads(tmp_state_file.read_text()) == {"var.a": "running", "var.b": "running"}
+    persister.stop()
