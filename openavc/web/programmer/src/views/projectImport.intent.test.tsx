@@ -38,7 +38,6 @@ describe("plain project import intent", () => {
     const imported = await importParsedProject(project, {
       getEtag: () => '"previous"',
       saveProject: async () => answer,
-      reloadProject: async () => undefined,
       forceReload: async () => undefined,
       isConflict: () => false,
       errorMessage: parseApiError,
@@ -47,15 +46,33 @@ describe("plain project import intent", () => {
     expect(imported).toEqual({ needsLogin: [], pluginsNeedLogin: [], previousFiles: "set_aside", notice });
   });
 
+  it("loads the imported project once: the import itself, then a read of it", async () => {
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      requests.push(`${options?.method ?? "GET"} ${url}`);
+      return new Response(JSON.stringify({ status: "saved" }), { status: 200, headers: { etag: '"next"' } });
+    }));
+    const adopt = vi.fn(async () => undefined);
+    const imported = await importParsedProject(project, {
+      getEtag: () => '"previous"',
+      saveProject: (sent, etag) => saveProject(sent, etag, "import"),
+      forceReload: adopt,
+      isConflict: () => false,
+      errorMessage: parseApiError,
+      onError: vi.fn(),
+    });
+    expect(imported).not.toBe(false);
+    expect(requests).toEqual(["PUT /api/project?mode=import"]);
+    expect(adopt).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the equipment refusal without adopting the rejected project", async () => {
     const reason = "This project uses a different product hardware model.";
-    const reload = vi.fn();
     const adopt = vi.fn();
     const onError = vi.fn();
     const result = await importParsedProject(project, {
       getEtag: () => '"previous"',
       saveProject: async () => { throw new ApiError(422, JSON.stringify({ detail: reason })); },
-      reloadProject: reload,
       forceReload: adopt,
       isConflict: (error) => error instanceof ConflictError,
       errorMessage: parseApiError,
@@ -63,7 +80,6 @@ describe("plain project import intent", () => {
     });
     expect(result).toBe(false);
     expect(onError).toHaveBeenCalledWith(reason);
-    expect(reload).not.toHaveBeenCalled();
     expect(adopt).not.toHaveBeenCalled();
   });
 });

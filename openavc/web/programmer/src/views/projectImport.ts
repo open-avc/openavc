@@ -12,8 +12,6 @@ export interface ImportProjectDeps {
   getEtag: () => string | undefined;
   /** PUT the project; rejects (non-2xx) when the server can't validate it. */
   saveProject: (project: ProjectConfig, etag?: string) => Promise<unknown>;
-  /** Reload the engine so the imported project's devices become active. */
-  reloadProject: () => Promise<unknown>;
   /** Pull the now-validated project from the server into the live store. */
   forceReload: () => Promise<void>;
   /** True for a 409 version conflict (distinct user message). */
@@ -60,8 +58,9 @@ export async function importParsedProject(
   deps: ImportProjectDeps,
 ): Promise<false | ImportedProject> {
   try {
+    // The import loads the project on the server as a start does; a reload
+    // after it would load it again and fire its startup triggers twice.
     const saved = await deps.saveProject(parsed, deps.getEtag());
-    await deps.reloadProject();
     await deps.forceReload();
     return importedFrom(saved);
   } catch (e) {

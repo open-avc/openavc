@@ -281,7 +281,6 @@ export function ProjectView() {
       const imported = await importParsedProject(parsed, {
         getEtag: () => useProjectStore.getState().etag ?? undefined,
         saveProject: (project, etag) => api.saveProject(project, etag, "import"),
-        reloadProject: api.reloadProject,
         forceReload: forceReloadProject,
         isConflict: (e) => e instanceof api.ConflictError,
         errorMessage: parseApiError,
