@@ -103,7 +103,7 @@ def test_resolve_explicit_action_wins_over_quick_action_collision():
     actions = resolve_device_actions(info)
     assert len(actions) == 1  # de-duped by id
     assert actions[0]["icon"] == "power"
-    assert actions[0]["confirm"] is True
+    assert actions[0]["confirm"] == "Send Power On?"
 
 
 def test_resolve_setup_action_keeps_params_and_availability():

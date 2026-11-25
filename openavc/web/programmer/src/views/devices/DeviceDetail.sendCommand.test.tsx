@@ -89,6 +89,7 @@ const COMMANDS = {
   set_level: { label: "Set Level", params: { level: { type: "integer", min: 0, max: 100, required: true } } },
   factory_reset: { label: "Factory Reset", confirm: "This erases every preset." },
   reboot: { label: "Reboot", confirm: true },
+  clear_log: { label: "Clear Log", confirm: "   " },
   upload_logo: {
     label: "Upload Logo",
     params: { image: { type: "file", required: true }, slot: { type: "string" } },
@@ -100,10 +101,14 @@ function setLive(next: Record<string, unknown>) {
   Object.assign(liveState, { "device.amp.enabled": true, ...next });
 }
 
-function setInfo(commands: Record<string, unknown> = COMMANDS) {
+/** What the server reads each command as asking: the page shows it and
+ *  never reads `confirm` itself. */
+const CONFIRMS = { factory_reset: "This erases every preset.", reboot: "Send Reboot?" };
+
+function setInfo(commands: Record<string, unknown> = COMMANDS, confirms: Record<string, string> = CONFIRMS) {
   mocks.getDevice.mockResolvedValue({
     id: "amp", name: "Rack Amp", driver: "acme_amp", connected: true,
-    enabled: true, commands, driver_info: {},
+    enabled: true, commands, command_confirms: confirms, driver_info: {},
   });
 }
 
@@ -359,6 +364,20 @@ describe("a command that asks first", () => {
     await pick("Reboot");
     fireEvent.click(sendButton());
     expect(screen.getByRole("alertdialog").textContent).toContain("Send Reboot?");
+  });
+
+  it("asks what the server read, and nothing for a command it says asks nothing", async () => {
+    mocks.sendCommand.mockResolvedValue({ result: true });
+    setInfo(COMMANDS, { ...CONFIRMS, power_on: "Wakes the whole rack." });
+    await showPage();
+    await pick("Clear Log");
+    fireEvent.click(sendButton());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() => expect(mocks.sendCommand).toHaveBeenCalledWith("amp", "clear_log", {}));
+
+    await pick("Power On");
+    fireEvent.click(sendButton());
+    expect(screen.getByRole("alertdialog").textContent).toContain("Wakes the whole rack.");
   });
 });
 

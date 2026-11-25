@@ -12,8 +12,9 @@ changes (``sets``); whether it works with the device offline
 A command the driver puts on a device page (a quick action, or a command
 action) is **suggested**, one to try first, unless it asks for a confirmation
 or restarts the device. The confirmation text is the command's own
-``confirm``, else an ``actions`` entry's, for the wizard to show first; the
-server sends the command either way, as on the device page.
+``confirm``, else the one its device-page button asks, each read by
+``command_model.confirm_sentence``, for the wizard to show first; the server
+sends the command either way, as on the device page.
 
 A command is **sendable without asking** when it needs no value or file and
 neither confirms nor restarts the device: the command's own reading
@@ -79,7 +80,7 @@ def _entry(
         # chosen in the wizard, never by "Run all status queries".
         "takes_file": bool(file_param_names(cdef)),
         "returns_file": cdef.get("returns_file") is True,
-        "confirm": command.confirm or actions.confirms.get(name, ""),
+        "confirm": command.confirm or actions.confirms.get(name) or "",
         "suggested": _suggested(command, actions),
         "sendable_without_asking": command.sendable_without_asking and name not in actions.confirms,
     }
@@ -116,9 +117,8 @@ def _polled_sends(driver: Any) -> list[str]:
 
 def _page_actions(driver: Any) -> _PageActions:
     """The confirmation each of the driver's command actions asks for before
-    it runs (the driver's own words, or a plain one for ``confirm: true``),
-    and the commands the driver puts on a device page (its quick actions and
-    command actions)."""
+    it runs (as the resolver words it), and the commands the driver puts on a
+    device page (its quick actions and command actions)."""
     from openavc.drivers.actions import resolve_device_actions
 
     info = getattr(driver, "DRIVER_INFO", {}) or {}
@@ -131,11 +131,5 @@ def _page_actions(driver: Any) -> _PageActions:
         actions.promoted.add(name)
         confirm = action.get("confirm")
         if confirm:
-            actions.confirms.setdefault(name, _action_confirm(confirm, action, name))
+            actions.confirms.setdefault(name, confirm)
     return actions
-
-
-def _action_confirm(confirm: Any, action: dict[str, Any], name: str) -> str:
-    if isinstance(confirm, str):
-        return confirm
-    return f"The driver asks for a confirmation before {action.get('label') or name} runs."

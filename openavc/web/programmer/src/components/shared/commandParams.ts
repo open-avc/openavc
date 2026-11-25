@@ -97,18 +97,6 @@ export function commandParamsBlocked(
   return hasInvalidParams(params, values) || hasMissingRequiredParams(params, values);
 }
 
-/** What to ask before a person sends this command by hand, or null to send at
- *  once: the driver's own sentence, or a plain question for `confirm: true`. */
-export function commandConfirmMessage(
-  command: { confirm?: unknown } | null | undefined,
-  label: string,
-): string | null {
-  const confirm = command?.confirm;
-  if (typeof confirm === "string" && confirm.trim()) return confirm;
-  if (confirm === true) return `Send ${label}?`;
-  return null;
-}
-
 /** What the device page says once a command has gone out: that it was sent,
  *  and the device's answer when the driver hands one back. A short answer is
  *  in the line; a structured one comes back as `detail`, shown below it. */

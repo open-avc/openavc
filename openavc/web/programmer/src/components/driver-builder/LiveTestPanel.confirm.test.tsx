@@ -17,7 +17,7 @@ vi.mock("../../api/restClient", () => ({
 
 import { LiveTestPanel } from "./LiveTestPanel";
 import { CommandConfirmField } from "./CommandConfirmField";
-import { commandConfirmMessage } from "../shared/commandParams";
+import { commandConfirmMessage } from "../shared/commandConfirm";
 import type { DriverDraft } from "../../store/driverBuilderStore.helpers";
 
 const DRAFT = {
@@ -96,6 +96,7 @@ describe("Live Test asks before a command that declares confirm", () => {
 describe("commandConfirmMessage", () => {
   it("is the driver's sentence, a plain question for true, or nothing", () => {
     expect(commandConfirmMessage({ confirm: "Erases it." }, "Factory Reset")).toBe("Erases it.");
+    expect(commandConfirmMessage({ confirm: " Erases it.\n" }, "Factory Reset")).toBe("Erases it.");
     expect(commandConfirmMessage({ confirm: true }, "Factory Reset")).toBe("Send Factory Reset?");
     expect(commandConfirmMessage({ confirm: false }, "Factory Reset")).toBeNull();
     expect(commandConfirmMessage({ confirm: "  " }, "Factory Reset")).toBeNull();

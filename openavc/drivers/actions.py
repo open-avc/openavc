@@ -46,7 +46,8 @@ Resolved action shape (one dict per entry, consumed by the REST API + IDE):
       "kind": "command" | "setup" | "link",
       "label": str,
       "icon": str | None,            # lucide icon name
-      "confirm": bool | str | None,  # str = custom confirmation message
+      "confirm": str | None,         # what to ask before running it, or None
+                                     # (command_model.confirm_sentence)
       "visible_when": dict | None,   # shared condition shape (key/operator/value
                                      # or {any|all:[...]}); evaluated by the IDE
       "availability": "online" | "offline" | "always",
@@ -62,6 +63,7 @@ from typing import Any
 
 from openavc.core.web_ui_probe import web_ui_url_for_http_config
 from openavc.drivers.avcdriver_semantic import validate_actions as validate_actions
+from openavc.drivers.command_model import confirm_sentence, driver_sentence, sets_its_own_confirm
 from openavc.drivers.spec import ACTION_KINDS, AVAILABILITIES, is_file_command
 from openavc.drivers.transport_choice import effective_transport
 from openavc.utils.logger import get_logger
@@ -88,13 +90,6 @@ def _command_availability(cmd: Any) -> str:
     if isinstance(cmd, dict) and cmd.get("available_offline"):
         return "always"
     return _DEFAULT_AVAILABILITY
-
-
-def _command_confirm(cmd: Any) -> bool | str | None:
-    """The command's own ``confirm`` for a button that promotes it: True, the
-    sentence to ask, or None. Used for both promotion styles."""
-    confirm = cmd.get("confirm") if isinstance(cmd, dict) else None
-    return confirm if isinstance(confirm, (bool, str)) and confirm else None
 
 
 def resolve_device_actions(
@@ -168,13 +163,14 @@ def resolve_device_actions(
                 # is skipped for the reason above.
                 continue
             params = cmd.get("params")
+            label = cmd.get("label") or cmd_id
             resolved.append({
                 "id": cmd_id,
                 "kind": "command",
                 "command": cmd_id,
-                "label": cmd.get("label") or cmd_id,
+                "label": label,
                 "icon": None,
-                "confirm": _command_confirm(cmd),
+                "confirm": confirm_sentence(cmd.get("confirm"), label),
                 "visible_when": None,
                 "availability": _command_availability(cmd),
                 "params": params if isinstance(params, dict) else {},
@@ -258,8 +254,9 @@ def _resolve_action_entry(
         "kind": kind,
         "label": entry.get("label") or action_id,
         "icon": icon if isinstance(icon, str) and icon else None,
-        # confirm: True (default message), a custom string, or None (no confirm).
-        "confirm": confirm if isinstance(confirm, (bool, str)) and confirm else None,
+        # A setup wizard or a link sends no command of its own: only the
+        # driver's sentence is shown. A command action's is set below.
+        "confirm": driver_sentence(confirm),
         "visible_when": visible_when if isinstance(visible_when, dict) else None,
         "availability": availability,
     }
@@ -280,9 +277,11 @@ def _resolve_action_entry(
             params = cmd.get("params")
         resolved["params"] = params if isinstance(params, dict) else {}
         # A command that asks before it is sent by hand asks from its button
-        # too, unless the action says otherwise (false included).
-        if "confirm" not in entry:
-            resolved["confirm"] = _command_confirm(cmd)
+        # too, unless the action sets its own: false turns it off, and a
+        # blank or null one is no setting of its own. Either is worded with
+        # the button's label.
+        own = confirm if sets_its_own_confirm(confirm) else cmd.get("confirm")
+        resolved["confirm"] = confirm_sentence(own, resolved["label"])
         # An available_offline command keeps its button live regardless of
         # connection state, unless the action pinned an explicit availability.
         if explicit_availability is None:

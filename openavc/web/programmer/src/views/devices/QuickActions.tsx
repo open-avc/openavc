@@ -165,11 +165,7 @@ export function QuickActions({
       {confirmAction && (
         <ConfirmDialog
           title={confirmAction.label}
-          message={
-            typeof confirmAction.confirm === "string"
-              ? confirmAction.confirm
-              : `Run "${confirmAction.label}"?`
-          }
+          message={confirmAction.confirm}
           confirmLabel={running ? "Running..." : "Run"}
           destructive
           onConfirm={() => invoke(confirmAction, {})}

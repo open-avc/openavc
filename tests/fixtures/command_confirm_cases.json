@@ -1,0 +1,149 @@
+{
+ "question": "Send {label}?",
+ "cases": [
+  {
+   "name": "a_sentence",
+   "confirm": "Erases every preset and returns the unit to DHCP.",
+   "label": "Factory Reset",
+   "sentence": "Erases every preset and returns the unit to DHCP.",
+   "sets_its_own": true
+  },
+  {
+   "name": "a_padded_sentence",
+   "confirm": "  Erases every preset.\t",
+   "label": "Factory Reset",
+   "sentence": "Erases every preset.",
+   "sets_its_own": true
+  },
+  {
+   "name": "a_folded_yaml_sentence",
+   "confirm": "Erases every preset\nand returns the unit to DHCP.\n",
+   "label": "Factory Reset",
+   "sentence": "Erases every preset\nand returns the unit to DHCP.",
+   "sets_its_own": true
+  },
+  {
+   "name": "true",
+   "confirm": true,
+   "label": "Factory Reset",
+   "sentence": "Send Factory Reset?",
+   "sets_its_own": true
+  },
+  {
+   "name": "true_names_the_label_as_written",
+   "confirm": true,
+   "label": "Price $& {x}",
+   "sentence": "Send Price $& {x}?",
+   "sets_its_own": true
+  },
+  {
+   "name": "false",
+   "confirm": false,
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": true
+  },
+  {
+   "name": "left_out",
+   "confirm": null,
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "empty",
+   "confirm": "",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "blank",
+   "confirm": "   ",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "line_breaks_only",
+   "confirm": "\r\n\n",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "a_no_break_space",
+   "confirm": "\u00a0",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "an_ideographic_space",
+   "confirm": "\u3000",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "a_line_separator",
+   "confirm": "\u2028",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "a_byte_order_mark",
+   "confirm": "\ufeff",
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "a_sentence_after_a_byte_order_mark",
+   "confirm": "\ufeffErases it.",
+   "label": "Factory Reset",
+   "sentence": "Erases it.",
+   "sets_its_own": true
+  },
+  {
+   "name": "a_next_line_mark_is_text",
+   "confirm": "\u0085",
+   "label": "Factory Reset",
+   "sentence": "\u0085",
+   "sets_its_own": true
+  },
+  {
+   "name": "a_unit_separator_is_text",
+   "confirm": "\u001f",
+   "label": "Factory Reset",
+   "sentence": "\u001f",
+   "sets_its_own": true
+  },
+  {
+   "name": "a_number",
+   "confirm": 1,
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "a_list",
+   "confirm": [
+    "Sure?"
+   ],
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  },
+  {
+   "name": "a_mapping",
+   "confirm": {
+    "text": "Sure?"
+   },
+   "label": "Factory Reset",
+   "sentence": null,
+   "sets_its_own": false
+  }
+ ]
+}

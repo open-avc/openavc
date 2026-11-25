@@ -11,11 +11,8 @@ import {
 import type { DriverCommandDef } from "../../api/types";
 import * as api from "../../api/restClient";
 import { CommandParamForm } from "../shared/CommandParamForm";
-import {
-  coerceCommandParams,
-  commandConfirmMessage,
-  seedCommandParams,
-} from "../shared/commandParams";
+import { coerceCommandParams, seedCommandParams } from "../shared/commandParams";
+import { commandConfirmMessage } from "../shared/commandConfirm";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { BASE } from "../../api/base";
 import { ApiError, parseApiError } from "../../api/errors";

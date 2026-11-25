@@ -21,6 +21,7 @@ import {
   type VisibleWhenMode,
 } from "./actionsEditorHelpers";
 import { SearchableSelect } from "../shared/SearchableSelect";
+import { asksFirst } from "../shared/commandConfirm";
 import { commandOptions } from "../shared/pickerOptions";
 
 interface ActionsEditorProps {
@@ -324,7 +325,7 @@ function ActionCard({
   };
 
   const confirm = action.confirm;
-  const confirmEnabled = confirm === true || typeof confirm === "string";
+  const confirmEnabled = asksFirst(confirm);
 
   const paramsOverridden = action.params !== undefined;
   const inheritedParamCount = targetCommand
@@ -556,7 +557,7 @@ function ActionCard({
               <input
                 value={typeof confirm === "string" ? confirm : ""}
                 onChange={(e) =>
-                  onUpdate({ confirm: e.target.value || true })
+                  onUpdate({ confirm: e.target.value.trim() ? e.target.value : true })
                 }
                 placeholder="Leave blank for the generic prompt"
                 style={{ width: "100%" }}

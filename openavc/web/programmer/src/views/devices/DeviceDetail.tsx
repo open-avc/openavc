@@ -219,6 +219,7 @@ export function DeviceDetail({
         deviceId={deviceId}
         deviceName={deviceName}
         commands={deviceInfo?.commands ?? {}}
+        confirms={deviceInfo?.command_confirms ?? {}}
         connected={connected}
         onReport={setReportContext}
       />

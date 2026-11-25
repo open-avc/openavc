@@ -165,6 +165,7 @@ class DeviceInfoMixin:
                 **_orphan_summary(record),
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
+                "command_confirms": {},
                 "driver_info": {},
                 # Redact credentials: this is the only get_device_info branch
                 # that returns raw connection config, and it reaches the cloud
@@ -181,10 +182,12 @@ class DeviceInfoMixin:
                 **_summary_without_driver(record),
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
+                "command_confirms": {},
                 "driver_info": {},
             }
 
         from openavc.drivers.actions import resolve_device_actions
+        from openavc.drivers.command_model import command_confirms
 
         driver = self._devices[device_id]
         config = self._device_configs.get(device_id, {})
@@ -197,6 +200,9 @@ class DeviceInfoMixin:
             "connection": connection_of(config).address(),
             "state": self.state.get_namespace(f"device.{device_id}"),
             "commands": driver.DRIVER_INFO.get("commands", {}),
+            # What each command asks before a person sends it from Send
+            # Command, read once here so the page shows, never decides.
+            "command_confirms": command_confirms(driver.DRIVER_INFO.get("commands")),
             # Quick Actions strip: driver-declared actions resolved (quick_actions
             # sugar folded in). The IDE filters by visible_when + availability.
             # Link (Open Web UI) URLs substitute {host}/{port} from the driver's

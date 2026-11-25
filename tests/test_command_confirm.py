@@ -13,9 +13,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from openavc.audit.command_catalog import command_catalog
+from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.actions import resolve_device_actions
+from openavc.drivers.command_model import confirm_sentence, read_command
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
 from openavc.drivers.python_info import (
@@ -161,8 +163,114 @@ def test_the_audit_asks_before_a_confirm_command_and_never_suggests_it():
     assert catalog["factory_reset"]["confirm"] == (
         "Erases every preset and returns the unit to DHCP."
     )
-    assert catalog["clear_log"]["confirm"] == (
-        "The driver asks for a confirmation before Clear Log runs."
-    )
+    assert catalog["clear_log"]["confirm"] == "Send Clear Log?"
     assert catalog["power_on"]["confirm"] == ""
     assert [n for n, c in catalog.items() if c["suggested"]] == ["power_on"]
+
+
+# --- one reading, everywhere it is asked ------------------------------------------
+#
+# The sentence is the driver's own, trimmed; a blank one asks nothing; true asks
+# one plain question naming what is sent. The resolver words a button's question
+# with the button's label, the audit and the device page with the command's.
+
+def _with_commands(**commands):
+    return {**ACME_WIDGET, "commands": {**ACME_WIDGET["commands"], **commands}}
+
+
+def _catalog(info):
+    driver = _driver()
+    driver.DRIVER_INFO = info
+    return {c["name"]: c for c in command_catalog(driver)}
+
+
+def test_confirm_true_asks_one_question_naming_what_is_sent():
+    assert confirm_sentence(True, "Clear Log") == "Send Clear Log?"
+    assert read_command("clear_log", {"label": "Clear Log", "confirm": True}).confirm == "Send Clear Log?"
+    assert read_command("clear_log", {"confirm": True}).confirm == "Send clear_log?"
+    info = {**_driver().DRIVER_INFO, "quick_actions": ["clear_log"]}
+    assert resolve_device_actions(info)[0]["confirm"] == "Send Clear Log?"
+    assert _catalog(info)["clear_log"]["confirm"] == "Send Clear Log?"
+
+
+def test_a_blank_confirm_asks_nothing_anywhere():
+    info = _with_commands(wipe={"label": "Wipe", "send": "WIPE\\r", "confirm": " \n "})
+    info["quick_actions"] = ["wipe"]
+    assert read_command("wipe", info["commands"]["wipe"]).confirm is None
+    assert resolve_device_actions(info)[0]["confirm"] is None
+    entry = _catalog(info)["wipe"]
+    assert entry["confirm"] == "" and entry["sendable_without_asking"] and entry["suggested"]
+
+
+def test_a_padded_sentence_is_asked_without_its_padding():
+    sentence = "  Erases every preset.\n"
+    info = _with_commands(wipe={"label": "Wipe", "send": "WIPE\\r", "confirm": sentence})
+    info["quick_actions"] = ["wipe"]
+    assert confirm_sentence(sentence, "Wipe") == "Erases every preset."
+    assert resolve_device_actions(info)[0]["confirm"] == "Erases every preset."
+    assert _catalog(info)["wipe"]["confirm"] == "Erases every preset."
+
+
+def test_a_buttons_true_is_worded_with_the_buttons_label():
+    info = {**_driver().DRIVER_INFO, "actions": [
+        {"id": "own", "kind": "command", "command": "power_on", "label": "Wake", "confirm": True},
+        {"id": "inherited", "kind": "command", "command": "clear_log", "label": "Empty Log"},
+    ]}
+    actions = {a["id"]: a for a in resolve_device_actions(info)}
+    assert actions["own"]["confirm"] == "Send Wake?"
+    assert actions["inherited"]["confirm"] == "Send Empty Log?"
+    # The audit lists the command, so it asks with the command's own label
+    # when the command confirms, and the button's question when only the
+    # button does.
+    catalog = _catalog(info)
+    assert catalog["clear_log"]["confirm"] == "Send Clear Log?"
+    assert catalog["power_on"]["confirm"] == "Send Wake?"
+
+
+def test_a_blank_or_empty_button_confirm_keeps_the_commands_question():
+    # Only false turns a confirming command's question off for its button: a
+    # blank, empty or null one is no confirm of the button's own, so the
+    # command's still asks rather than the command going out unasked.
+    info = {**_driver().DRIVER_INFO, "actions": [
+        {"id": "blank", "kind": "command", "command": "factory_reset", "confirm": "  "},
+        {"id": "empty", "kind": "command", "command": "factory_reset", "confirm": ""},
+        {"id": "null", "kind": "command", "command": "factory_reset", "confirm": None},
+        {"id": "off", "kind": "command", "command": "factory_reset", "confirm": False},
+    ]}
+    actions = {a["id"]: a["confirm"] for a in resolve_device_actions(info)}
+    erases = "Erases every preset and returns the unit to DHCP."
+    assert actions == {"blank": erases, "empty": erases, "null": erases, "off": None}
+
+
+def test_a_setup_actions_true_leaves_the_wizard_its_own_words():
+    # The wizard always asks before it runs; true adds no sentence of its own,
+    # so the wizard shows its own description. A sentence is shown trimmed.
+    info = {"commands": {}, "actions": [
+        {"id": "provision", "kind": "setup", "label": "Provision", "confirm": True},
+        {"id": "scan", "kind": "setup", "label": "Scan", "confirm": " Registers every light. "},
+        {"id": "probe", "kind": "setup", "label": "Probe", "confirm": "   "},
+    ]}
+    actions = {a["id"]: a["confirm"] for a in resolve_device_actions(info)}
+    assert actions == {"provision": None, "scan": "Registers every light.", "probe": None}
+
+
+def test_the_device_page_is_served_each_commands_question():
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    dm = DeviceManager(state, events)
+    definition = _with_commands(
+        wipe={"label": "Wipe", "send": "WIPE\\r", "confirm": " "},
+        padded={"label": "Padded", "send": "PAD\\r", "confirm": "Clears it.\n"},
+    )
+    cls = create_configurable_driver_class(definition)
+    dm._devices["widget1"] = cls("widget1", {"host": "h", "port": 1}, state, events)
+    dm._device_configs["widget1"] = {"name": "Widget", "driver": "acme_widget"}
+    info = dm.get_device_info("widget1")
+    assert info["command_confirms"] == {
+        "factory_reset": "Erases every preset and returns the unit to DHCP.",
+        "clear_log": "Send Clear Log?",
+        "padded": "Clears it.",
+    }
+    # The declaration itself is served as the driver wrote it.
+    assert info["commands"]["clear_log"]["confirm"] is True

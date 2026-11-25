@@ -113,17 +113,13 @@ def test_the_command_list_reads_each_declaration():
     # A restart time that is not a number reads as none.
     assert catalog["bad_restart"]["restarts_device_for"] == 0
     assert catalog["bad_restart"]["suggested"]
-    # confirm: true is a plain sentence; a number is no confirmation at all.
-    assert catalog["own_confirm"]["confirm"] == (
-        "The driver asks for a confirmation before Own Confirm runs."
-    )
+    # confirm: true is a plain question; a number is no confirmation at all.
+    assert catalog["own_confirm"]["confirm"] == "Send Own Confirm?"
     assert not catalog["own_confirm"]["suggested"]
     assert catalog["confirm_number"]["confirm"] == ""
     assert catalog["confirm_number"]["suggested"]
     # An action's confirm: true names the action.
-    assert catalog["action_confirm"]["confirm"] == (
-        "The driver asks for a confirmation before Go runs."
-    )
+    assert catalog["action_confirm"]["confirm"] == "Send Go?"
     assert not catalog["action_confirm"]["suggested"]
     assert catalog["reboot"]["confirm"] == "Really restart?"
     assert catalog["guarded"]["confirm"] == "Sure?"

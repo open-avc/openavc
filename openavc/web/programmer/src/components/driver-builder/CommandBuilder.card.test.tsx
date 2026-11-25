@@ -260,6 +260,22 @@ describe("the fields every command has", () => {
     expect("confirm" in h.commands().a).toBe(false);
     expect(screen.queryByText("Confirmation Message (optional)")).toBeNull();
   });
+
+  it("reads a blank message as asking nothing", () => {
+    // The server asks nothing for a blank sentence, so the tick shows it off.
+    host(draftWith({ a: { label: "A", send: "", confirm: "   " } }));
+    open("a");
+    expect((screen.getByLabelText(/Ask before sending/) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByText("Confirmation Message (optional)")).toBeNull();
+  });
+
+  it("keeps the message field open while a sentence starts with a space", () => {
+    const h = host(draftWith({ a: { label: "A", send: "", confirm: true } }));
+    open("a");
+    type(fieldUnder("Confirmation Message (optional)"), " ");
+    expect(h.commands().a.confirm).toBe(true);
+    expect(fieldUnder("Confirmation Message (optional)")).toBeTruthy();
+  });
 });
 
 describe("how a byte-stream command is sent", () => {

@@ -682,7 +682,10 @@ export interface DeviceAction {
   kind: "command" | "setup" | "link";
   label: string;
   icon?: string | null; // lucide icon name
-  confirm?: boolean | string | null; // string = custom confirmation message
+  /** What to ask before running it, worded by the server (a command's
+   *  `confirm: true` asks "Send <label>?"); null to run at once. A setup
+   *  wizard shows only the driver's own sentence here, else its own words. */
+  confirm?: string | null;
   visible_when?: ActionVisibleWhen | null;
   availability: "online" | "offline" | "always";
   params: Record<string, ActionParam>;
@@ -741,6 +744,9 @@ export interface DeviceInfo {
   enabled?: boolean;
   state: Record<string, unknown>;
   commands: Record<string, unknown>;
+  /** What each command asks before a person sends it from Send Command, by
+   *  name, worded by the server; a command that asks nothing is left out. */
+  command_confirms?: Record<string, string>;
   actions?: DeviceAction[];
   driver_info: Record<string, unknown>;
   config?: Record<string, unknown>;

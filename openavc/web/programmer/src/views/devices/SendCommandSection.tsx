@@ -6,7 +6,8 @@
  * lists no commands: a driver that narrows its commands to what the hardware
  * reports does so again on every connect, and the command chosen before a drop
  * is still chosen when the device comes back. A command that erases or resets
- * asks first (commandConfirmMessage); one that takes or hands back a file is
+ * asks first, in the words the server reads from the driver
+ * (`command_confirms`); one that takes or hands back a file is
  * uploaded and run in the background (useCommandFileRun), never sent here.
  * A failure the driver could have caused offers Report a problem, which the
  * page opens with what was sent.
@@ -23,7 +24,6 @@ import { SearchableSelect } from "../../components/shared/SearchableSelect";
 import { fileParamNames, fileParamsBlocked, isFileCommand } from "../../components/shared/commandFiles";
 import {
   coerceCommandParams,
-  commandConfirmMessage,
   commandParamsBlocked,
   commandResultText,
   seedCommandParams,
@@ -36,6 +36,8 @@ import { reportableCommandFailure } from "./problemReport";
 import { sectionStyle, sectionTitleStyle, surfaceStyle } from "./deviceSectionStyles";
 
 type Commands = Record<string, unknown>;
+/** What each command asks before it is sent, by name, as the server reads it. */
+type Confirms = Record<string, string>;
 type CommandDef = Record<string, unknown> | undefined;
 
 /** What the last send came to. A failure keeps its HTTP status and code, and
@@ -137,7 +139,7 @@ async function deliver(
  * the file run, and what came back. Owned by the always-mounted section, so
  * all of it outlives a drop of the device.
  */
-function useCommandSend(deviceId: string, commands: Commands) {
+function useCommandSend(deviceId: string, commands: Commands, confirms: Confirms) {
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<Record<string, File | null>>({});
@@ -175,7 +177,7 @@ function useCommandSend(deviceId: string, commands: Commands) {
   /** Send, or first ask the driver's question for a command that erases or
    *  resets the device. */
   const requestSend = () => {
-    const ask = commandConfirmMessage(chosen.def, chosen.label);
+    const ask = confirms[selected];
     if (ask) setQuestion(ask);
     else void send();
   };
@@ -200,16 +202,18 @@ export function SendCommandSection({
   deviceId,
   deviceName,
   commands,
+  confirms,
   connected,
   onReport,
 }: {
   deviceId: string;
   deviceName: string;
   commands: Commands;
+  confirms: Confirms;
   connected: boolean;
   onReport: (context: ProblemReportContext) => void;
 }) {
-  const send = useCommandSend(deviceId, commands);
+  const send = useCommandSend(deviceId, commands, confirms);
   return (
     <div style={sectionStyle}>
       <h3 style={sectionTitleStyle}>Send Command</h3>

@@ -18,7 +18,7 @@ def test_a_plain_query_is_sendable_without_asking():
     command = read_command("query_power", {"label": "Query Power", "send": "PWR?\\r", "query_for": "power"})
     assert command.sendable_without_asking
     assert not command.needs_input and not command.moves_a_file
-    assert command.confirm == "" and command.restarts_device_for is None
+    assert command.confirm is None and command.restarts_device_for is None
 
 
 @pytest.mark.parametrize("cdef", [
@@ -43,6 +43,8 @@ def test_a_command_that_needs_or_asks_something_is_not(cdef):
     {"params": {"level": {"type": "integer", "default": 5}}},
     {"confirm": False},
     {"confirm": ""},
+    # A blank sentence asks nothing.
+    {"confirm": " \n "},
     {"restarts_device_for": 0},
     {"returns_file": False},
 ])
@@ -50,13 +52,13 @@ def test_what_asks_nothing_leaves_it_sendable(cdef):
     assert read_command("cmd", {"label": "Cmd", **cdef}).sendable_without_asking
 
 
-def test_confirm_true_reads_as_a_plain_sentence_naming_the_command():
-    assert read_command("reset", {"label": "Factory Reset", "confirm": True}).confirm == (
-        "The driver asks for a confirmation before Factory Reset runs."
-    )
-    assert read_command("reset", {"confirm": True}).confirm == (
-        "The driver asks for a confirmation before reset runs."
-    )
+def test_confirm_true_reads_as_a_plain_question_naming_the_command():
+    assert read_command("reset", {"label": "Factory Reset", "confirm": True}).confirm == "Send Factory Reset?"
+    assert read_command("reset", {"confirm": True}).confirm == "Send reset?"
+
+
+def test_the_drivers_sentence_is_read_trimmed():
+    assert read_command("reset", {"confirm": "  Erases every preset.\n"}).confirm == "Erases every preset."
 
 
 @pytest.mark.parametrize("value,seconds", [
@@ -76,4 +78,4 @@ def test_the_restart_is_read_as_whole_seconds(value, seconds):
 
 def test_a_declaration_that_is_not_a_mapping_reads_as_one_that_declares_nothing():
     command = read_command("odd", "PWR?")
-    assert command.sendable_without_asking and command.confirm == ""
+    assert command.sendable_without_asking and command.confirm is None
