@@ -87,3 +87,50 @@ describe("the Test button on an action", () => {
     expect(showSuccess).toHaveBeenCalledWith("Command sent");
   });
 });
+
+describe("the Test button on a macro action", () => {
+  const macroAction = { action: "macro", macro: "lights_on" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // It said "Macro triggered" whatever the run did: a macro whose steps all
+  // failed, or one that never started, read as a success.
+  it("says the macro did not start, and why", async () => {
+    vi.mocked(api.executeMacro).mockResolvedValue({
+      status: "skipped",
+      macro_id: "lights_on",
+      code: "macro_cooldown",
+      message: "The macro's Cooldown (5 seconds) had not passed since it last started.",
+    });
+
+    render(<ActionTestButton action={macroAction} />);
+    await userEvent.click(screen.getByRole("button", { name: /Test/ }));
+
+    expect(showError).toHaveBeenCalledWith(
+      "The macro didn't start. The macro's Cooldown (5 seconds) had not passed since it last started.",
+    );
+    expect(showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("says a run whose steps failed did not go cleanly", async () => {
+    vi.mocked(api.executeMacro).mockResolvedValue({ status: "failed", macro_id: "lights_on" });
+
+    render(<ActionTestButton action={macroAction} />);
+    await userEvent.click(screen.getByRole("button", { name: /Test/ }));
+
+    expect(vi.mocked(showError).mock.calls[0][0]).toContain("some of its steps didn't");
+    expect(showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("confirms a run that went cleanly", async () => {
+    vi.mocked(api.executeMacro).mockResolvedValue({ status: "completed", macro_id: "lights_on" });
+
+    render(<ActionTestButton action={macroAction} />);
+    await userEvent.click(screen.getByRole("button", { name: /Test/ }));
+
+    expect(showSuccess).toHaveBeenCalledWith("Macro triggered");
+    expect(showError).not.toHaveBeenCalled();
+  });
+});

@@ -28,6 +28,7 @@ import {
   testBlockedMessage,
 } from "../ui-builder/BindingEditor/testActionParams";
 import { isSavedParam } from "./savedParams";
+import { runTrouble } from "../macros/runAnswer";
 
 /** Can this action be fired from the properties pane as it stands? */
 export function isTestableAction(action: Record<string, unknown> | null | undefined): boolean {
@@ -62,8 +63,10 @@ async function runTestAction(action: Record<string, unknown>) {
       await api.sendCommand(String(action.device), String(action.command), result.params, saved);
       showSuccess("Command sent");
     } else if (action.action === "macro" && action.macro) {
-      await api.executeMacro(String(action.macro));
-      showSuccess("Macro triggered");
+      // How the run went, as the macro editor's Test button says it.
+      const trouble = runTrouble(await api.executeMacro(String(action.macro)));
+      if (trouble) showError(trouble);
+      else showSuccess("Macro triggered");
     } else {
       showError("Cannot test this action type");
     }
