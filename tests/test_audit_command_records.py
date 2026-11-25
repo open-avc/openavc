@@ -81,7 +81,11 @@ INFO = {
 def _driver(info=INFO, fmt=lambda ctype, local: f"{int(local):02d}"):
     return NS(
         DRIVER_INFO=info, config={}, format_child_id=fmt,
-        _definition={"polling": {"queries": [{"send": "polled"}, "raw_poll", "NOT A COMMAND"]}},
+        # A YAML driver's DRIVER_INFO commands are its definition's.
+        _definition={
+            "commands": info["commands"],
+            "polling": {"queries": [{"send": "polled"}, "raw_poll", "NOT A COMMAND"]},
+        },
     )
 
 
@@ -96,7 +100,7 @@ def test_a_command_is_polled_when_the_poll_runs_it_by_name_whatever_its_gate():
         "polling": {"queries": [{"send": "polled", "when": "enable_temp"}]},
         "on_connect": ["raw_poll"],
         "responses": [{"match": "X", "then_query": ["guarded"]}],
-        "commands": {"power_on": {"send": "ON", "read_back": "reboot"}},
+        "commands": {**INFO["commands"], "power_on": {"send": "ON", "read_back": "reboot"}},
     }
     driver = NS(DRIVER_INFO=INFO, config={"enable_temp": False}, _definition=definition)
     catalog = {entry["name"]: entry for entry in command_catalog(driver)}

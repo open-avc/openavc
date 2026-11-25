@@ -57,6 +57,7 @@ from typing import Any, Callable
 
 from openavc.core.device_errors import device_error_text
 from openavc.drivers.base import ConnectionFaultError
+from openavc.drivers.driver_model import runs_as_command
 from openavc.drivers.query_entry import EACH_CHILD, LINE, read_query_entry
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.transport.http_line import HttpLine, read_http_line
@@ -304,7 +305,7 @@ class StartUpAndPoll:
         """Send one start-up, poll or follow-up line on a transport that is
         not OSC: a declared command by name, else the transport's raw form."""
         transport_type = self._effective_transport()
-        if query in self._definition.get("commands", {}):
+        if runs_as_command(self._definition.get("commands"), query):
             response = await self._send_command(query)
         else:
             response = await self._send_raw_line(transport_type, self._line_text(query))
@@ -413,7 +414,7 @@ class StartUpAndPoll:
         return None
 
     async def _send_osc_poll_line(self, query: str) -> None:
-        if query in self._definition.get("commands", {}):
+        if runs_as_command(self._definition.get("commands"), query):
             await self._send_command(query)
         else:
             await self.transport.send(_osc_message(self._osc_address(query)))

@@ -36,6 +36,7 @@ from openavc.drivers.driver_model import (
     SentLine,
     query_lines,
     read_driver,
+    runs_as_command,
 )
 from openavc.drivers.query_entry import OSC_MESSAGE
 from openavc.drivers.spec import placeholder_names
@@ -192,7 +193,7 @@ def _is_query_line(line: Any, commands: dict[str, Any]) -> bool:
     name (the simulator answers that command already)."""
     if not isinstance(line, str) or not line:
         return False
-    return line not in commands
+    return not runs_as_command(commands, line)
 
 
 def read_back_query_lines(cmd_def: dict[str, Any], commands: dict[str, Any]) -> Iterator[str]:

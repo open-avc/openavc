@@ -31,6 +31,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.driver_model import runs_as_command
 from openavc.drivers.spec import PLACEHOLDER
 from openavc.simulator.driver_sends import (
     child_sample,
@@ -177,7 +178,7 @@ def check_osc_poll_coverage(
         query_text = str(entry_text(query))
         if not query_text:
             continue
-        if query_text in commands:
+        if runs_as_command(commands, query_text):
             continue  # runs as that command; command coverage checks it
         sample = child_sample(addresses.filled(query_text))
         if not addresses.answers(sample):

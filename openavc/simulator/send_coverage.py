@@ -29,6 +29,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from openavc.drivers.command_form import command_form
+from openavc.drivers.driver_model import runs_as_command
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.transport_choice import declared_transport
 from openavc.simulator.driver_sends import (
@@ -224,7 +225,7 @@ def _checked_query(query: Any, commands: dict) -> Any:
         if isinstance(qf, str) and qf:
             return None
     query_text = entry_text(query)
-    if not query_text or query_text in commands:
+    if not query_text or runs_as_command(commands, query_text):
         return None
     return query_text
 

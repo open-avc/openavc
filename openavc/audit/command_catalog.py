@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from openavc.drivers.command_model import CommandModel, read_command
-from openavc.drivers.driver_model import POLL, query_lines, read_driver
+from openavc.drivers.driver_model import POLL, query_lines, read_driver, runs_as_command
 from openavc.drivers.spec import file_param_names
 
 
@@ -100,9 +100,11 @@ def _suggested(command: CommandModel, actions: _PageActions) -> bool:
 
 
 def _polled_command_names(driver: Any) -> set[str]:
-    """The commands a YAML driver's polling runs by name (its status queries)."""
-    commands = (getattr(driver, "DRIVER_INFO", {}) or {}).get("commands") or {}
-    return {text for text in _polled_sends(driver) if text in commands}
+    """The commands a YAML driver's polling runs by name (its status queries),
+    by the runtime's sender's rule (``driver_model.runs_as_command``)."""
+    definition = getattr(driver, "_definition", None) or {}
+    commands = definition.get("commands")
+    return {text for text in _polled_sends(driver) if runs_as_command(commands, text)}
 
 
 def _polled_sends(driver: Any) -> list[str]:

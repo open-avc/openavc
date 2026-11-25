@@ -33,6 +33,12 @@ What it holds so far:
   each line once, in the order first sent, with every entry that sends it.
   A reader that answers or covers each line reads these, each with its
   filter stated.
+* ``runs_as_command``: THE rule for a line that is the name of one of the
+  driver's commands, which runs as that command rather than going out as
+  its own text; the runtime's sender (``start_up_and_poll``), the checker's
+  fill (``substitution_checks``), the simulator's coverage
+  (``osc_coverage``, ``send_coverage``, ``reread_queries``) and the audit's
+  status queries (``audit/command_catalog``) ask it.
 * ``problems`` also holds the fields of a push listener's frame parser the
   frame table refuses where push does not refuse them at every door
   (``framing_checks.push_frame_field_issues``), an ``auth:`` timeout of 0
@@ -264,6 +270,14 @@ def query_lines(
 
 def _asked_for(line: QueryLine, origins: tuple[str, ...], where: Callable[[QueryLine], bool] | None) -> bool:
     return line.origin in origins and (where is None or where(line))
+
+
+def runs_as_command(commands: Any, text: Any) -> bool:
+    """Whether a query line (a poll's, a start-up's, a follow-up's or a
+    read-back's) runs as the declared command it names: its framing, the
+    fill of its params and its reply rules. Any other line goes out as its
+    own text. ``commands`` is the definition's section, as written."""
+    return isinstance(text, str) and isinstance(commands, Mapping) and text in commands
 
 
 def sent_text(line: QueryLine) -> str | None:
