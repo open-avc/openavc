@@ -21,6 +21,16 @@ export function resultOnRow<T extends PlacedResult>(
   return results.find((r) => r.macroId === macroId && r.stepPath[0] === row);
 }
 
+/** The result of this macro's top-level step `row` itself, never one from a
+ *  step inside its branch: a conditional's answer, a group's results. */
+export function resultOfRow<T extends PlacedResult>(
+  results: T[],
+  macroId: string,
+  row: number,
+): T | undefined {
+  return results.find((r) => r.macroId === macroId && r.stepPath.length === 1 && r.stepPath[0] === row);
+}
+
 /** "Step 2" for a step of the run's own macro (the top-level step that holds
  *  it), "Projector On, step 1" for a step of a macro the run called. */
 export function resultStepLabel(

@@ -47,7 +47,7 @@ import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
 import { runTrouble } from "./runAnswer";
 import { SkipLine } from "./SkipLine";
-import { resultOnRow, resultStepLabel } from "./stepResults";
+import { resultOfRow, resultOnRow, resultStepLabel } from "./stepResults";
 import {
   STEP_TYPES,
   getStepType,
@@ -873,11 +873,11 @@ export function MacroEditor({
                     isLast={i === macro.steps.length - 1}
                     isExpanded={expandedStep === i}
                     isActive={isRunning && macroProgress.activeStepPath.length > 0 && macroProgress.activeStepPath[0] === i}
-                    stepError={stepErrors.find((e) => e.stepIndex === i)}
+                    stepError={resultOnRow(stepErrors, macro.id, i)}
                     stepSkip={resultOnRow(stepSkips, macro.id, i)}
                     lintIssues={issuesAt(issues, "step", i)}
-                    conditionalResult={step.action === "conditional" ? conditionalResults.find((r) => r.stepIndex === i) : undefined}
-                    groupResult={step.action === "group.command" ? groupResults.find((g) => g.stepIndex === i) : undefined}
+                    conditionalResult={step.action === "conditional" ? resultOfRow(conditionalResults, macro.id, i) : undefined}
+                    groupResult={step.action === "group.command" ? resultOfRow(groupResults, macro.id, i) : undefined}
                     devices={devices}
                     allMacros={allMacros}
                     macroId={macro.id}
@@ -1236,7 +1236,7 @@ function LastRunSummary({ lastRun, nameOf }: {
           }}
         >
           <XCircle size={11} style={{ flexShrink: 0 }} />
-          <span style={{ fontWeight: 500 }}>Step {err.stepIndex + 1}:</span>
+          <span style={{ fontWeight: 500 }}>{resultStepLabel(err, lastRun.macroId, nameOf)}:</span>
           <span title={err.error}>{err.message}</span>
           {err.device && <span style={{ color: "var(--text-muted)" }}>({err.device})</span>}
         </div>

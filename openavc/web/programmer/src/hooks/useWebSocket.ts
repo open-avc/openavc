@@ -3,7 +3,7 @@ import { actOnProjectReload, reloadStillNeeded, type ProjectReloadMessage } from
 import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
-import type { GroupCommandResult, LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
+import type { GroupCommandResult, LogEntry, PlacedResult, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
@@ -65,6 +65,17 @@ function stepPathOf(msg: Record<string, unknown>, stepIndex: number): StepPathSe
  *  because a macro a Run Macro step calls names its own steps in between. */
 const runningStepPaths = new Map<string, StepPathSegment[]>();
 
+/** Where a frame about one of macro `macroId`'s steps belongs: the step its
+ *  last `running` frame named, when the frame names that step's index or none
+ *  (a condition's answer, a group's results, a skip); else the flat index. */
+function placeOf(macroId: string, stepIndex?: number): PlacedResult {
+  const path = runningStepPaths.get(macroId);
+  if (path && (stepIndex === undefined || path[path.length - 1] === stepIndex)) {
+    return { macroId, stepPath: path };
+  }
+  return { macroId, stepPath: [stepIndex ?? useLogStore.getState().macroProgress.stepIndex ?? -1] };
+}
+
 /** A `macro.progress` frame. Only a `running` one names its step; every other
  *  (a condition's answer, a group's results, a step that was skipped) belongs
  *  to the step last named. */
@@ -85,6 +96,7 @@ function takeMacroProgress(msg: Record<string, unknown>) {
     });
   } else if (msg.status === "evaluated" && msg.action === "conditional") {
     store.addConditionalResult({
+      ...placeOf(macroId),
       stepIndex,
       conditionResult: msg.condition_result as boolean,
       branch: msg.branch as "then" | "else",
@@ -94,6 +106,7 @@ function takeMacroProgress(msg: Record<string, unknown>) {
     });
   } else if (msg.status === "group_complete" && msg.action === "group.command") {
     store.addGroupResult({
+      ...placeOf(macroId),
       stepIndex,
       group: msg.group as string,
       command: msg.command as string,
@@ -103,8 +116,7 @@ function takeMacroProgress(msg: Record<string, unknown>) {
     // A step its own setting held back (an Ask for Help inside its cooldown),
     // in the reason table's words.
     store.addStepSkip({
-      macroId,
-      stepPath: runningStepPaths.get(macroId) ?? [stepIndex],
+      ...placeOf(macroId),
       action: msg.action as string,
       code: msg.code as string,
       message: msg.message as string,
@@ -359,6 +371,7 @@ export function useWebSocket() {
       // Macro step error (emitted even when stop_on_error is false)
       if (msg.type === "macro.step_error") {
         useLogStore.getState().addStepError({
+          ...placeOf(msg.macro_id as string, msg.step_index as number),
           stepIndex: msg.step_index as number,
           action: msg.action as string,
           device: (msg.device as string) ?? "",

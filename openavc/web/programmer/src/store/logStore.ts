@@ -23,7 +23,7 @@ export interface MacroProgress {
   activeStepPath: StepPathSegment[];
 }
 
-export interface StepError {
+export interface StepError extends PlacedResult {
   stepIndex: number;
   action: string;
   device: string;
@@ -36,7 +36,7 @@ export interface StepError {
   description: string;
 }
 
-export interface ConditionalResult {
+export interface ConditionalResult extends PlacedResult {
   stepIndex: number;
   conditionResult: boolean;
   branch: "then" | "else";
@@ -45,7 +45,7 @@ export interface ConditionalResult {
   actualValue: unknown;
 }
 
-export interface GroupCommandResult {
+export interface GroupCommandResult extends PlacedResult {
   stepIndex: number;
   group: string;
   command: string;

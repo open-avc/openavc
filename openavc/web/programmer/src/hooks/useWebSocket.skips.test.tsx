@@ -203,3 +203,69 @@ describe("useWebSocket: a step that did not do its work", () => {
     expect(useLogStore.getState().stepSkips).toEqual([]);
   });
 });
+
+// Every step result a run reports is kept with the macro and the place in its
+// tree it belongs to. Filed by its bare index, a failure inside a branch, or in
+// a macro a Run Macro step called, named the wrong step of the macro on screen.
+describe("useWebSocket: where a step's result belongs", () => {
+  function running(macroId: string, stepIndex: number, stepPath: unknown[], action: string) {
+    receive({
+      type: "macro.progress", macro_id: macroId, step_index: stepIndex, total_steps: 3,
+      step_path: stepPath, action, status: "running", description: action,
+    });
+  }
+
+  it("a failure inside a conditional's branch, at its place in the tree", () => {
+    renderHook(() => useWebSocket());
+    receive({ type: "macro.started", macro_id: "system_on", total_steps: 3 });
+    running("system_on", 2, [2], "conditional");
+    running("system_on", 0, [2, "then", 0], "device.command");
+    receive({
+      type: "macro.step_error", macro_id: "system_on", call_chain: ["system_on"],
+      step_index: 0, total_steps: 1, action: "device.command", error: "x", message: "Projector is offline.",
+    });
+    expect(useLogStore.getState().stepErrors).toMatchObject([
+      { macroId: "system_on", stepPath: [2, "then", 0], message: "Projector is offline." },
+    ]);
+  });
+
+  it("a failure in a called macro, as that macro's step; the caller's own, as its", () => {
+    renderHook(() => useWebSocket());
+    receive({ type: "macro.started", macro_id: "system_on", total_steps: 3 });
+    running("system_on", 1, [1], "macro");
+    receive({ type: "macro.started", macro_id: "projector_on", total_steps: 1 });
+    running("projector_on", 0, [0], "device.command");
+    receive({
+      type: "macro.step_error", macro_id: "projector_on", call_chain: ["projector_on", "system_on"],
+      step_index: 0, total_steps: 1, action: "device.command", error: "x", message: "Projector is offline.",
+    });
+    receive({ type: "macro.completed", macro_id: "projector_on", outcome: "failed", failed_steps: 1 });
+    receive({
+      type: "macro.step_error", macro_id: "system_on", call_chain: ["system_on"],
+      step_index: 1, total_steps: 3, action: "macro", error: "y", message: "Projector On failed.",
+    });
+    expect(useLogStore.getState().stepErrors).toMatchObject([
+      { macroId: "projector_on", stepPath: [0] },
+      { macroId: "system_on", stepPath: [1] },
+    ]);
+  });
+
+  it("a condition's answer and a group's results, at their step", () => {
+    renderHook(() => useWebSocket());
+    receive({ type: "macro.started", macro_id: "system_on", total_steps: 3 });
+    running("system_on", 2, [2], "conditional");
+    running("system_on", 0, [2, "then", 0], "conditional");
+    receive({
+      type: "macro.progress", macro_id: "system_on", action: "conditional", status: "evaluated",
+      condition_result: true, branch: "then", condition_key: "var.x", condition_operator: "eq", actual_value: 1,
+    });
+    running("system_on", 1, [2, "then", 1], "group.command");
+    receive({
+      type: "macro.progress", macro_id: "system_on", action: "group.command", status: "group_complete",
+      group: "displays", command: "power_on", device_results: [],
+    });
+    const store = useLogStore.getState();
+    expect(store.conditionalResults).toMatchObject([{ macroId: "system_on", stepPath: [2, "then", 0] }]);
+    expect(store.groupResults).toMatchObject([{ macroId: "system_on", stepPath: [2, "then", 1] }]);
+  });
+});
