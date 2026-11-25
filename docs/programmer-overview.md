@@ -98,7 +98,7 @@ The Assets and Backups lists refresh when a project is opened, imported or resto
 
 ### Backups
 
-The **Backups** section at the bottom of the Program view lists your backup history with the reason each was created. Click **Restore** on any backup to replace the current project with that snapshot. You can also click **Create Backup** to save a manual checkpoint at any time. A periodic auto-backup runs every 30 minutes if the project has been modified.
+The **Backups** section at the bottom of the Program view lists your backup history with the reason each was created. Click **Restore** on any backup to replace the current project with that snapshot. You can also click **Create Backup** to save a manual checkpoint at any time. A periodic auto-backup runs every 30 minutes if the project has been modified. [What each backup holds](updates.md#what-each-backup-holds) compares a project backup with an export and with the backup taken before an update.
 
 The list keeps the 15 most recent backups, removing the oldest to make room for a new one. Restoring first backs up the current project as "Before restore", and that never removes the backup you are restoring, even when it is the oldest.
 

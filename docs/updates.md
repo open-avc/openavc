@@ -77,7 +77,33 @@ A project saved by an earlier release is brought up to date the first time it lo
 
 A project saved by a later version loads too, after a rollback or when a project is sent to a system running an older version. A setting that holds a choice this version does not know, such as a trigger type added later, is kept as it is: that trigger does not fire here, and an Overlap, a page's Contents, a background picture's Size or a layout's orientation works as its default. The Dashboard lists each one where it is, once; a save here keeps them, and the later version reads them again. A value an earlier version saved past a range this one keeps is changed to the nearest value that works, whichever version saved the project. This needs the version you go back to to be later than v0.40.0.
 
-A backup zip is created before every update and every rollback, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls, themes and saved variable state, including on appliance hardware. On appliance hardware, an automatic rollback puts the project's themes back when the update started from a version later than v0.41.0. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
+A backup zip is created before every update and every rollback, stored in your data directory under `backups/`. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
+
+### What each backup holds
+
+A project is copied three ways: the backup taken before an update or rollback, a project backup in the **Backups** list of the Program view, and **Export**. When an update fails to start and is rolled back automatically, the rollback restores what the table marks "put back". A rollback you start from the Updates view restores nothing.
+
+| | Before an update or rollback | Project backup | Export |
+|---|---|---|---|
+| Project file | Yes, put back | Yes | Yes |
+| Scripts | Yes, put back | Yes | Yes |
+| Assets | Yes, put back | Yes | Yes |
+| Custom controls | Yes, put back | Yes | Yes |
+| Custom themes | Yes, put back | Yes | Yes |
+| Saved variable values | Yes, put back | Yes | No |
+| Device logins | The system's login file | The project's, sealed with this system's key | The project's, sealed with a passphrase, if you include them |
+| Cloud pairing | Yes | No | No |
+| System settings (`system.json`) | Yes | No | No |
+| Approved panels | Yes | No | No |
+| Installed drivers and plugins | Yes | No | The ones the project uses |
+| Project Library | No | No | No |
+| Plugin data | No | No | No |
+| The key the device logins are sealed with | No | No | No |
+| HTTPS certificate | No | No | No |
+| Time zone | No | No | No |
+| Update History | No | No | No |
+
+An automatic rollback from a version later than v0.41.0 leaves the cloud pairing as the system has it, and on appliance hardware it puts the project's themes back.
 
 If the backup cannot be made, for example because the disk is full, the update or rollback stops before anything changes and the Updates view says why. Free up disk space and try again. This holds on a system running a version later than v0.41.0.
 
