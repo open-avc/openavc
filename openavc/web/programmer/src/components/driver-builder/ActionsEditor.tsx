@@ -13,6 +13,7 @@ import {
 } from "../../api/types";
 import { ParamEditor } from "./ParamEditor";
 import {
+  buttonConfirm,
   convertQuickActionsToActions,
   extraKeys,
   visibleWhenConditions,
@@ -21,7 +22,6 @@ import {
   type VisibleWhenMode,
 } from "./actionsEditorHelpers";
 import { SearchableSelect } from "../shared/SearchableSelect";
-import { asksFirst, setsItsOwnConfirm } from "../shared/commandConfirm";
 import { commandOptions } from "../shared/pickerOptions";
 
 interface ActionsEditorProps {
@@ -324,16 +324,8 @@ function ActionCard({
     }
   };
 
-  // The button asks what the action sets for it, else what its command asks
-  // (only false turns that off), as the server resolves it.
   const confirm = action.confirm;
-  const commandAsks = !isLink && asksFirst(targetCommand ? commands[targetCommand]?.confirm : undefined);
-  const confirmEnabled = setsItsOwnConfirm(confirm) ? asksFirst(confirm) : commandAsks;
-  // What the button's confirm is once the tick or the sentence changes: with a
-  // command that asks, ticked or blank goes back to the command's question.
-  const tickedConfirm = (checked: boolean) =>
-    checked ? (commandAsks ? undefined : true) : commandAsks ? false : undefined;
-  const typedConfirm = (text: string) => (text.trim() ? text : commandAsks ? undefined : true);
+  const ask = buttonConfirm(confirm, commands, targetCommand);
 
   const paramsOverridden = action.params !== undefined;
   const inheritedParamCount = targetCommand
@@ -549,9 +541,9 @@ function ActionCard({
               >
                 <input
                   type="checkbox"
-                  checked={confirmEnabled}
+                  checked={ask.enabled}
                   onChange={(e) =>
-                    onUpdate({ confirm: tickedConfirm(e.target.checked) })
+                    onUpdate({ confirm: ask.ticked(e.target.checked) })
                   }
                 />
                 Ask before running
@@ -559,19 +551,15 @@ function ActionCard({
             </div>
           </div>
 
-          {confirmEnabled && (
+          {ask.enabled && (
             <div style={{ marginBottom: "var(--space-md)" }}>
               <label style={labelStyle}>Confirmation Message (optional)</label>
               <input
                 value={typeof confirm === "string" ? confirm : ""}
                 onChange={(e) =>
-                  onUpdate({ confirm: typedConfirm(e.target.value) })
+                  onUpdate({ confirm: ask.typed(e.target.value) })
                 }
-                placeholder={
-                  commandAsks
-                    ? "Leave blank to ask what the command asks"
-                    : "Leave blank for the generic prompt"
-                }
+                placeholder={ask.placeholder}
                 style={{ width: "100%" }}
               />
             </div>

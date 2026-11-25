@@ -3,6 +3,7 @@ import type {
   DriverVisibleWhen,
   DriverVisibleWhenCondition,
 } from "../../api/types";
+import { asksFirst, setsItsOwnConfirm } from "../shared/commandConfirm";
 
 /**
  * Pure helpers for the Actions editor (ActionsEditor.tsx). Kept out of the
@@ -87,4 +88,50 @@ export function extraKeys(
     if (!known.includes(k)) out[k] = v;
   }
   return out;
+}
+
+/** What a button's "Ask before running" shows and writes. The button asks
+ *  what the action sets for it, else what its command asks (only false turns
+ *  that off), as the server resolves it. */
+export interface ButtonConfirm {
+  /** The tick: whether the button asks. */
+  enabled: boolean;
+  /** The action's confirm once the tick changes: with a command that asks,
+   *  ticking goes back to its question and unticking writes false. */
+  ticked: (checked: boolean) => boolean | undefined;
+  /** The action's confirm once its sentence changes: blank goes back to the
+   *  command's question, else to the plain one. */
+  typed: (text: string) => string | boolean | undefined;
+  placeholder: string;
+}
+
+export function buttonConfirm(
+  own: unknown,
+  commands: Record<string, { confirm?: unknown } | undefined>,
+  command: string | undefined,
+): ButtonConfirm {
+  const commandAsks = commandAsksFirst(commands, command);
+  return {
+    enabled: setsItsOwnConfirm(own) ? asksFirst(own) : commandAsks,
+    ticked: (checked) => tickedConfirm(checked, commandAsks),
+    typed: (text) => typedConfirm(text, commandAsks),
+    placeholder: commandAsks ? "Leave blank to ask what the command asks" : "Leave blank for the generic prompt",
+  };
+}
+
+function commandAsksFirst(
+  commands: Record<string, { confirm?: unknown } | undefined>,
+  command: string | undefined,
+): boolean {
+  return command !== undefined && asksFirst(commands[command]?.confirm);
+}
+
+function tickedConfirm(checked: boolean, commandAsks: boolean): boolean | undefined {
+  if (commandAsks) return checked ? undefined : false;
+  return checked ? true : undefined;
+}
+
+function typedConfirm(text: string, commandAsks: boolean): string | boolean | undefined {
+  if (text.trim()) return text;
+  return commandAsks ? undefined : true;
 }

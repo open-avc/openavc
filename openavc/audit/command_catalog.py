@@ -25,6 +25,7 @@ of the queries that run together ask this one field.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -80,7 +81,7 @@ def _entry(
         # chosen in the wizard, never by "Run all status queries".
         "takes_file": bool(file_param_names(cdef)),
         "returns_file": cdef.get("returns_file") is True,
-        "confirm": command.confirm or actions.confirms.get(name) or "",
+        "confirm": command.confirm or actions.confirms.get(name, ""),
         "suggested": _suggested(command, actions),
         "sendable_without_asking": command.sendable_without_asking and name not in actions.confirms,
     }
@@ -119,17 +120,22 @@ def _page_actions(driver: Any) -> _PageActions:
     """The confirmation each of the driver's command actions asks for before
     it runs (as the resolver words it), and the commands the driver puts on a
     device page (its quick actions and command actions)."""
+    actions = _PageActions()
+    for name, confirm in _command_actions(driver):
+        actions.promoted.add(name)
+        if confirm:
+            actions.confirms.setdefault(name, confirm)
+    return actions
+
+
+def _command_actions(driver: Any) -> Iterator[tuple[str, str | None]]:
+    """Each command action on the driver's device page: the command it sends
+    and what it asks first (None for nothing). The resolver names the command
+    of every command action it serves."""
     from openavc.drivers.actions import resolve_device_actions
 
     info = getattr(driver, "DRIVER_INFO", {}) or {}
     config = getattr(driver, "config", None)
-    actions = _PageActions()
     for action in resolve_device_actions(info, config if isinstance(config, dict) else None):
-        name = action.get("command")
-        if action.get("kind") != "command" or not isinstance(name, str):
-            continue
-        actions.promoted.add(name)
-        confirm = action.get("confirm")
-        if confirm:
-            actions.confirms.setdefault(name, confirm)
-    return actions
+        if action["kind"] == "command":
+            yield action["command"], action["confirm"]
