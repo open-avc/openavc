@@ -120,9 +120,22 @@ def read_as_loaded(text: bytes | str) -> tuple[ProjectConfig, MigrationNotes]:
 
 def from_backup(backup_path: Path) -> PreparedProject:
     """A backup prepared to replace the running project: ZIP or legacy
-    ``.avc.bak``, read and checked as a load reads it. Raises as
-    ``read_as_loaded`` and ``backup_manager.archived_project`` do."""
-    project, notes = read_as_loaded(backup_manager.archived_project(backup_path))
+    ``.avc.bak``, read and checked as a load reads it. Raises
+    ``ProjectInvalidError`` and ``InstalledEquipmentError`` as
+    ``read_as_loaded`` does, and ``backup_manager.BackupUnreadable`` for one
+    that holds no project this system can read at all."""
+    from openavc.core.installed_equipment import InstalledEquipmentError
+    from openavc.core.project_changes import ProjectInvalidError
+
+    text = backup_manager.archived_project(backup_path)
+    try:
+        project, notes = read_as_loaded(text)
+    except (ProjectInvalidError, InstalledEquipmentError):
+        raise
+    except Exception as unreadable:
+        raise backup_manager.BackupUnreadable(
+            f"Backup {backup_path.name} holds no project this system can read"
+        ) from unreadable
     return PreparedProject(
         project, notes, "Before restore",
         fill=backup_manager.backup_filler(backup_path),

@@ -33,6 +33,22 @@ function defaultFormat(iso: string): string {
   return isNaN(when.getTime()) ? "" : when.toLocaleString();
 }
 
+/** A restore or an open that stopped part way: the backup it took first is
+ *  what runs, so nothing saved is missing; the other project is. */
+function interruptedNotice(backupFile: string, when: string): RecoveryNotice {
+  const from = when ? `, from the backup taken at ${when}` : "";
+  return {
+    show: true,
+    severe: false,
+    title: "Project restored from a backup",
+    body: "Opening or restoring a project did not finish before this system stopped."
+      + ` This system is running the project it was replacing${from}.`
+      + " Open or restore the other project again.",
+    backupFile,
+    action: "Open Project",
+  };
+}
+
 /** The notice for the current state, or `show: false` when there is none.
  *
  *  `formatTime` is passed in rather than read from the environment so a test
@@ -49,20 +65,9 @@ export function recoveryNotice(
   const cutoff = String(state["system.project_recovery_cutoff"] ?? "");
   const when = cutoff ? formatTime(cutoff) : "";
 
-  if (outcome === "restored" && reason === "interrupted") {
-    // A restore or an open stopped part way: the backup it took first is
-    // what runs, so nothing saved is missing; the other project is.
-    const from = when ? `, from the backup taken at ${when}` : "";
-    return {
-      show: true,
-      severe: false,
-      title: "Project restored from a backup",
-      body: "Opening or restoring a project did not finish before this system stopped."
-        + ` This system is running the project it was replacing${from}.`
-        + " Open or restore the other project again.",
-      backupFile: String(state["system.project_recovery_backup"] ?? ""),
-      action: "Open Project",
-    };
+  // Always "restored": the server puts back the backup a replace took.
+  if (reason === "interrupted") {
+    return interruptedNotice(String(state["system.project_recovery_backup"] ?? ""), when);
   }
 
   const missing = reason === "missing";

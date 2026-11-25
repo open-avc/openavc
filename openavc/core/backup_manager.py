@@ -469,6 +469,11 @@ def archived_project(backup_path: Path) -> bytes:
         return backup_path.read_bytes()
     if not is_zip_backup(backup_path):
         raise BackupUnreadable(f"Unrecognized backup format: {backup_path.name}")
+    return _zipped_project(backup_path)
+
+
+def _zipped_project(backup_path: Path) -> bytes:
+    """The project file a ZIP backup holds (``archived_project``)."""
     try:
         with zipfile.ZipFile(backup_path, "r") as zf:
             return zf.read(ARCHIVE_PROJECT)

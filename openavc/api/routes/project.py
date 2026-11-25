@@ -1,6 +1,7 @@
 """Project, library, backup, and log REST API endpoints."""
 
 import json
+from pathlib import Path
 from typing import Any, Literal
 
 from openavc.api.host_policy import PanelRoute, ProgrammerRoute
@@ -988,39 +989,38 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     return {"status": "created", "filename": backup_id(project_dir, path)}
 
 
-@router.post("/backups/{filename:path}/restore")
-async def restore_backup(filename: str) -> dict[str, Any]:
-    """Restore a project from a backup file (ZIP or legacy .avc.bak)."""
-    engine = _get_engine()
-    project_dir = engine.project_path.parent
-
-    # Resolve the backup path (supports both "backups/file.zip" and "file.avc.bak")
+def _backup_to_restore(project_dir: Path, filename: str) -> Path:
+    """The backup ``filename`` names ("backups/file.zip" or "file.avc.bak"),
+    which must be a backup inside the project directory."""
     backup_path = (project_dir / filename).resolve()
-
-    # Security: ensure the backup is within the project directory tree
     try:
         backup_path.relative_to(project_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid backup filename")
     if not backup_path.exists():
         raise HTTPException(status_code=404, detail=f"Backup '{filename}' not found")
-    if not (backup_path.name.endswith(".zip") or backup_path.name.endswith(".avc.bak")):
+    if not backup_path.name.endswith((".zip", ".avc.bak")):
         raise HTTPException(status_code=400, detail="Not a valid backup file")
+    return backup_path
 
-    # Read and checked as a load reads it before anything is written, so a
-    # backup this system will not run is refused with nothing changed. The
-    # replace backs the project up first (its rotation spares the one
-    # chosen, which is the oldest when somebody goes back the furthest);
-    # with no backup it is refused too.
+
+@router.post("/backups/{filename:path}/restore")
+async def restore_backup(filename: str) -> dict[str, Any]:
+    """Restore a project from a backup file (ZIP or legacy .avc.bak).
+
+    Read and checked as a load reads it before anything is written, so a
+    backup this system will not run is refused with nothing changed. The
+    replace backs the project up first (its rotation spares the one chosen,
+    which is the oldest when somebody goes back the furthest); with no
+    backup it is refused too."""
     from openavc.core import project_replace
-    from openavc.core.installed_equipment import InstalledEquipmentError
-    from openavc.core.project_changes import ProjectInvalidError
+    from openavc.core.backup_manager import BackupUnreadable
 
+    engine = _get_engine()
+    backup_path = _backup_to_restore(engine.project_path.parent, filename)
     try:
         prepared = project_replace.from_backup(backup_path)
-    except (ProjectInvalidError, InstalledEquipmentError):
-        raise
-    except Exception as e:
+    except BackupUnreadable as e:
         raise _api_error(
             422, f"Backup '{filename}' could not be read, so nothing was restored. Choose another backup.", e,
         ) from e

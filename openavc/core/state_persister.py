@@ -211,17 +211,18 @@ class StatePersister:
             self._state_store.unsubscribe(sub_id)
         self._sub_ids.clear()
 
+    def _values(self) -> dict[str, Any]:
+        """The persistent keys' current values; a key never set is left out,
+        and None is a first-class, persisted value."""
+        values = {key: self._state_store.get(key, _MISSING) for key in self._persistent_keys}
+        return {key: value for key, value in values.items() if value is not _MISSING}
+
     def _write(self) -> None:
         """Write current persistent values to state.json atomically; nothing
         while stopped (``stop``)."""
         if self._stopped:
             return
-        data: dict[str, Any] = {}
-        for key in self._persistent_keys:
-            value = self._state_store.get(key, _MISSING)
-            if value is _MISSING:
-                continue  # key never set — nothing to persist
-            data[key] = value  # None is a first-class, persisted value
+        data = self._values()
 
         # Atomic write: temp file then rename. json.dumps is inside the try so
         # a non-serializable value is caught and logged here instead of being
