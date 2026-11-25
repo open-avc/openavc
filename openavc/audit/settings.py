@@ -347,14 +347,15 @@ class SettingsPass:
 
     async def _refresh_original(self, trial: SettingTrial) -> None:
         """Read the value to put back fresh, when the driver has a status
-        query for it: the last poll may be older than a change made at the
-        device since."""
+        query for it that is sendable without asking: the last poll may be
+        older than a change made at the device since. A query a single Send
+        warns about is not sent on the person's behalf."""
         sandbox = self.run.listen.sandbox
         sdef = self._declaration(trial.key) or {}
         state_key = sdef.get("state_key", trial.key) if isinstance(sdef, dict) else trial.key
         query = next((
             c for c in command_catalog(sandbox.driver)
-            if c["query_for"] == state_key and not c["needs_input"]
+            if c["query_for"] == state_key and c["sendable_without_asking"]
         ), None)
         if query is None:
             return

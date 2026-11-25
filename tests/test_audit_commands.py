@@ -104,14 +104,52 @@ DRIVER = {
 FAST = {"min_seconds": 0.3, "min_cycles": 1, "max_seconds": 5.0, "flush_seconds": 0.05}
 WINDOW = {"window_seconds": 0.3, "query_window_seconds": 0.2, "flush_seconds": 0.05}
 
+# The same driver with three more status queries, each of which a single Send
+# warns about first: one restarts the device, one asks for a confirmation of
+# its own, and one is wrapped by a device-page action that asks for one.
+ASKING = {
+    **DRIVER,
+    "state_variables": {
+        **DRIVER["state_variables"],
+        "firmware": {"type": "string", "label": "Firmware"},
+        "mode": {"type": "string", "label": "Mode"},
+    },
+    "commands": {
+        **DRIVER["commands"],
+        "get_firmware": {
+            "label": "Get Firmware", "send": "FW?\\r", "query_for": "firmware", "restarts_device_for": 30,
+        },
+        "get_mode": {
+            "label": "Get Mode", "send": "MODE?\\r", "query_for": "mode",
+            "confirm": "Asking for the mode closes the front-panel menu.",
+        },
+        "get_input": {"label": "Get Input", "send": "INP?\\r", "query_for": "input"},
+    },
+    "actions": [
+        *DRIVER["actions"],
+        {"id": "get_input", "kind": "command", "confirm": "Asking wakes the device."},
+    ],
+}
+
+
+def _cleanup() -> None:
+    _DRIVER_REGISTRY.pop("acme_commands", None)
+    get_traffic_recorder().clear()
+    get_secret_registry().clear()
+
 
 @pytest.fixture
 def driver():
     _DRIVER_REGISTRY["acme_commands"] = create_configurable_driver_class(DRIVER)
     yield
-    _DRIVER_REGISTRY.pop("acme_commands", None)
-    get_traffic_recorder().clear()
-    get_secret_registry().clear()
+    _cleanup()
+
+
+@pytest.fixture
+def asking_driver():
+    _DRIVER_REGISTRY["acme_commands"] = create_configurable_driver_class(ASKING)
+    yield
+    _cleanup()
 
 
 async def _fake_device(reset_next_connection: bool = False):
@@ -211,6 +249,20 @@ def test_the_command_list_is_the_drivers_own(driver):
     assert [n for n, c in catalog.items() if c["suggested"]] == ["power_on", "set_volume"]
 
 
+def test_a_command_is_sendable_without_asking_only_when_it_needs_and_asks_nothing(asking_driver):
+    from openavc.audit.command_catalog import command_catalog
+
+    catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
+    sendable = [n for n, c in catalog.items() if c["sendable_without_asking"]]
+    # Not a value it needs (set_volume), a restart (reboot, get_firmware), the
+    # command's own confirmation (get_mode) or its page action's (get_input).
+    assert sendable == ["power_on", "query_power", "query_volume", "blip"]
+    # Whatever a single Send would warn about first is never sent unasked.
+    for c in catalog.values():
+        if c["confirm"] or c["restarts_device_for"] > 0:
+            assert not c["sendable_without_asking"], c["name"]
+
+
 async def test_a_command_is_sent_through_the_production_door(driver):
     server, port = await _fake_device()
     session, run, heard = await _connected(port)
@@ -269,6 +321,22 @@ async def test_the_status_queries_run_together(driver):
             "state": "power", "state_key": "power", "label": "Power", "value": False,
             "changed": True, "outcome": "reported",
         }
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_the_status_queries_run_together_leave_out_one_that_asks_first(asking_driver):
+    """A status query that restarts the device or asks for a confirmation is
+    left for its own Send, where the person is told first."""
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        await commands.run_queries()
+        await _until(lambda: commands.batch["status"] == "done")
+        assert [t.command for t in commands.trials] == ["query_power", "query_volume"]
+        assert commands.batch["skipped"] == ["get_firmware", "get_mode", "get_input"]
     finally:
         await run.stop()
         server.close()

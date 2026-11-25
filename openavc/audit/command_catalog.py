@@ -14,6 +14,12 @@ action) is **suggested**, one to try first, unless it asks for a confirmation
 or restarts the device. The confirmation text is the command's own
 ``confirm``, else an ``actions`` entry's, for the wizard to show first; the
 server sends the command either way, as on the device page.
+
+A command is **sendable without asking** when it needs no value or file and
+neither confirms nor restarts the device: the command's own reading
+(``drivers/command_model``) joined with its page action's confirmation. "Run
+all status queries", the read before a setting is written and the IDE's count
+of the queries that run together ask this one field.
 """
 
 from __future__ import annotations
@@ -21,8 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.drivers.command_model import CommandModel, read_command
 from openavc.drivers.driver_model import POLL, query_lines, read_driver
-from openavc.drivers.param_validation import missing_required_params
 from openavc.drivers.spec import file_param_names
 
 
@@ -55,8 +61,7 @@ def _entry(
 ) -> dict[str, Any]:
     params = _typed(cdef, "params", dict, {})
     query_for = _typed(cdef, "query_for", str, "")
-    restarts = _restart_seconds(cdef)
-    own_confirm = _confirm_text(cdef, name)
+    command = read_command(name, cdef)
     return {
         "name": name,
         "label": str(cdef.get("label") or name),
@@ -67,14 +72,15 @@ def _entry(
         "polled": name in polled,
         "sets": dict(_typed(cdef, "sets", dict, {})),
         "available_offline": bool(cdef.get("available_offline")),
-        "restarts_device_for": restarts,
-        "needs_input": bool(missing_required_params(params, {})),
+        "restarts_device_for": command.restarts_device_for,
+        "needs_input": command.needs_input,
         # A command that takes or hands back a file: sent with the file
         # chosen in the wizard, never by "Run all status queries".
         "takes_file": bool(file_param_names(cdef)),
         "returns_file": cdef.get("returns_file") is True,
-        "confirm": own_confirm or actions.confirms.get(name, ""),
-        "suggested": _suggested(name, restarts, own_confirm, actions),
+        "confirm": command.confirm or actions.confirms.get(name, ""),
+        "suggested": _suggested(command, actions),
+        "sendable_without_asking": command.sendable_without_asking and name not in actions.confirms,
     }
 
 
@@ -83,18 +89,11 @@ def _typed(cdef: dict[str, Any], key: str, kind: type, default: Any) -> Any:
     return value if isinstance(value, kind) else default
 
 
-def _restart_seconds(cdef: dict[str, Any]) -> int:
-    try:
-        return int(cdef.get("restarts_device_for") or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _suggested(name: str, restarts: int, own_confirm: str, actions: _PageActions) -> bool:
+def _suggested(command: CommandModel, actions: _PageActions) -> bool:
     """One to try first: on a device page, and nothing to warn about."""
-    if name not in actions.promoted or name in actions.confirms:
+    if command.name not in actions.promoted or command.name in actions.confirms:
         return False
-    return not restarts and not own_confirm
+    return not command.restarts_device_for and not command.confirm
 
 
 def _polled_command_names(driver: Any) -> set[str]:
@@ -139,14 +138,3 @@ def _action_confirm(confirm: Any, action: dict[str, Any], name: str) -> str:
     if isinstance(confirm, str):
         return confirm
     return f"The driver asks for a confirmation before {action.get('label') or name} runs."
-
-
-def _confirm_text(cdef: dict[str, Any], name: str) -> str:
-    """The command's own ``confirm``: its sentence, a plain one for
-    ``confirm: true``, or "" for none."""
-    confirm = cdef.get("confirm")
-    if isinstance(confirm, str) and confirm:
-        return confirm
-    if confirm is True:
-        return f"The driver asks for a confirmation before {cdef.get('label') or name} runs."
-    return ""

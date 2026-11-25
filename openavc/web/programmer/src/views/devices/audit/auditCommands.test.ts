@@ -27,6 +27,7 @@ import {
   nowReading,
   paramsText,
   sendWarning,
+  skippedQueriesLine,
   splitChanged,
   stepFor,
   suggestedProgress,
@@ -39,6 +40,9 @@ function command(name: string, extra: Partial<AuditCommandInfo> = {}): AuditComm
     name, label: name, help: "", params: {}, query: false, query_for: "", polled: false,
     sets: {}, available_offline: false, restarts_device_for: 0, needs_input: false, confirm: "",
     suggested: false, ...extra,
+    // As the server answers it: nothing to give and nothing to warn about.
+    sendable_without_asking:
+      extra.sendable_without_asking ?? !(extra.needs_input || extra.confirm || extra.restarts_device_for),
   };
 }
 
@@ -90,8 +94,25 @@ describe("the command list", () => {
     expect(commandMatches(volume, "input")).toBe(false);
   });
 
-  it("counts only the queries that can run without a value", () => {
+  it("counts only the queries the server says can be sent without asking", () => {
     expect(batchableQueries(catalog)).toBe(1);
+    const asking = [
+      ...catalog,
+      // A status query that restarts the device, or asks for a confirmation:
+      // the server says neither is sendable without asking.
+      command("get_firmware", { query: true, restarts_device_for: 30, sendable_without_asking: false }),
+      command("get_mode", { query: true, confirm: "Closes the menu.", sendable_without_asking: false }),
+    ];
+    expect(batchableQueries(asking)).toBe(1);
+  });
+
+  it("names the queries left for their own Send by label", () => {
+    expect(skippedQueriesLine(catalog, [])).toBe("");
+    const labelled = [...catalog, command("get_mode", { label: "Get Mode", query: true })];
+    expect(skippedQueriesLine(labelled, ["query_input", "get_mode"])).toBe(
+      "Not included, because each needs a value or a file, or has a warning to read before it " +
+        "is sent: query_input, Get Mode. Send them one at a time below.",
+    );
   });
 });
 

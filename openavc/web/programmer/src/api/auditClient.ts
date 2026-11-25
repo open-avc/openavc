@@ -326,6 +326,10 @@ export interface AuditCommandInfo {
   /** It takes a file (a file param) or hands one back. */
   takes_file?: boolean;
   returns_file?: boolean;
+  /** The audit may send it on its own (Run all status queries, the read
+   *  before a setting is written): it needs no value or file, and neither
+   *  asks for a confirmation nor restarts the device. */
+  sendable_without_asking: boolean;
 }
 
 /** A declared effect (``sets``) checked against what the device reports. */

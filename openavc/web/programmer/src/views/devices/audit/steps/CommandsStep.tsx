@@ -49,6 +49,7 @@ import {
   nowReading,
   paramsText,
   sendWarning,
+  skippedQueriesLine,
   splitChanged,
   suggestedProgress,
   trafficEntryText,
@@ -369,10 +370,7 @@ export function CommandsStep() {
                 )}
               </div>
               {commands?.batch && commands.batch.skipped.length > 0 && (
-                <div style={hintStyle}>
-                  Not included, because they need a value: {commands.batch.skipped.join(", ")}. Send
-                  them one at a time below.
-                </div>
+                <div style={hintStyle}>{skippedQueriesLine(catalog, commands.batch.skipped)}</div>
               )}
               {error?.where === "queries" && (
                 <div style={{ marginTop: "var(--space-sm)" }}>

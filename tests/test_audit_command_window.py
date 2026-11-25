@@ -656,7 +656,7 @@ async def test_one_status_query_and_none():
     ]
     none = _Connection()
     none.driver = driver({"power_on": {"label": "Power On"}})
-    with pytest.raises(AuditError, match="^Acme has no status queries that can run without a value.$"):
+    with pytest.raises(AuditError, match="^Acme has no status queries that can run together: "):
         await _pass(none).run_queries()
 
 

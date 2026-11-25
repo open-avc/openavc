@@ -135,7 +135,10 @@ NOT_CONNECTED_YET = "Connect the driver first, on the Connect and listen step."
 BUSY = "Wait for {label} to finish before sending another command."
 # What the status queries are called while they run, in every step's refusal.
 QUERIES_LABEL = "the status queries"
-NO_QUERIES = "{driver} has no status queries that can run without a value."
+NO_QUERIES = (
+    "{driver} has no status queries that can run together: each one needs a value or a file, "
+    "or has a warning to read before it is sent. Send them one at a time."
+)
 NOT_WATCHING = "No command is being watched."
 WATCH_CAP = "A command is watched for {span} at most."
 NO_SUCH_TRIAL = "There is no command number {number} to send again."
@@ -943,16 +946,15 @@ def _moves_a_file(entry: dict[str, Any]) -> bool:
     return bool(entry.get("takes_file") or entry.get("returns_file"))
 
 
-def _runs_alone(entry: dict[str, Any]) -> bool:
-    """Can the command be sent with nothing given: no value it needs, no file?"""
-    return not (entry["needs_input"] or _moves_a_file(entry))
-
-
 def _status_queries(catalog: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
-    """The status queries that run together, and the names of those left
-    for their own Send."""
+    """The status queries that run together (each one the command list says
+    is sendable without asking), and the names of those left for their own
+    Send."""
     queries = [c for c in catalog if c["query"]]
-    return [c for c in queries if _runs_alone(c)], [c["name"] for c in queries if not _runs_alone(c)]
+    return (
+        [c for c in queries if c["sendable_without_asking"]],
+        [c["name"] for c in queries if not c["sendable_without_asking"]],
+    )
 
 
 def _secret_params(entry: dict[str, Any]) -> set[str]:

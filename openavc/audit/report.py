@@ -117,7 +117,8 @@ reader of it relies on are the report contract's (``support/report_contract.py``
     driver's commands as it declared them while connected (``name``,
     ``label``, ``help``, ``params``, ``query`` with ``query_for`` and
     ``polled``, ``sets``, ``available_offline``, ``restarts_device_for``,
-    ``needs_input``, ``confirm``, ``suggested``); ``batch``, the status queries run together
+    ``needs_input``, ``takes_file``, ``returns_file``, ``confirm``, ``suggested``,
+    ``sendable_without_asking``); ``batch``, the status queries run together
     (``total``, ``sent``, ``skipped``); and ``trials``, every command sent,
     in order: ``number``, ``command``, ``label``, ``params`` (secret ones
     ``***``), ``attempt`` (the how-manyth time this command was sent),
@@ -1724,6 +1725,9 @@ The driver test (drivers)
   says the driver's polling runs it. needs_input means it takes a value
   nobody has given yet. suggested marks a command the driver puts on a device
   page, tried first. confirm is the driver's question before sending it.
+  sendable_without_asking marks a command the audit may send on its own: it
+  needs no value or file, and neither asks a question nor restarts the device.
+  Only those status queries run together (batch.skipped names the rest).
   commands.trials holds every command sent and what its window showed; each
   summary says it in a sentence.
   suggested_confidence is the catalog confidence these results support, with

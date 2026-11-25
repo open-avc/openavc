@@ -368,6 +368,33 @@ async def test_the_value_put_back_is_read_fresh_first(driver):
         server.close()
 
 
+@pytest.mark.parametrize("asks", [
+    {"confirm": "Reading the name closes the front-panel menu."},
+    {"restarts_device_for": 30},
+])
+async def test_the_value_put_back_is_not_read_by_a_query_that_asks_first(asks):
+    """A status query a single Send warns about is not sent on the person's
+    behalf before a write: the value to put back is the one last reported."""
+    commands = {**DRIVER["commands"], "read_name": {**DRIVER["commands"]["read_name"], **asks}}
+    _DRIVER_REGISTRY["acme_settings"] = create_configurable_driver_class({**DRIVER, "commands": commands})
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port, poll_interval=60)
+    try:
+        settings = settings_for(session, run)
+        device["name"] = "Changed at the device"
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: trial.status == DONE)
+        assert trial.original == "Lobby"
+        assert "setting.read" not in [e.kind for e in session.timeline]
+    finally:
+        await run.stop()
+        server.close()
+        _DRIVER_REGISTRY.pop("acme_settings", None)
+        get_traffic_recorder().clear()
+        get_secret_registry().clear()
+
+
 async def test_put_it_back_retries_a_restore_that_did_not_read_back(driver):
     server, port = await _fake_device()
     session, run = await _connected(port)

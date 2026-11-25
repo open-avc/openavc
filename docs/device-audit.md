@@ -75,7 +75,8 @@ the one before.
    the command sent. **What changed** lists the values the audit left changed, to set back on
    the device yourself, and apart from them the values first reported during the audit, with no
    earlier reading to compare. **Run all status
-   queries** sends every query that needs no value. Under **Device settings**, **Write and put
+   queries** sends every query that needs no value or file and has no warning to read first (a
+   confirmation, or a restart); the rest are listed to send one at a time. Under **Device settings**, **Write and put
    back** writes a new value, checks that the device reports it, then writes the old value back.
    A command that takes a file has a **Choose file** button; send it again by choosing the file
    again. A file a command brings back has a **Download** button on the command's row.

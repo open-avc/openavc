@@ -347,11 +347,22 @@ export function commandMatches(command: AuditCommandInfo, search: string): boole
   return [command.label, command.name, command.help].some((s) => s.toLowerCase().includes(q));
 }
 
-/** How many status queries "Run all status queries" would send. */
+/** How many status queries "Run all status queries" would send: each one
+ *  the server says is sendable without asking. */
 export function batchableQueries(catalog: AuditCommandInfo[]): number {
-  return catalog.filter(
-    (c) => c.query && !c.needs_input && !c.takes_file && !c.returns_file,
-  ).length;
+  return catalog.filter((c) => c.query && c.sendable_without_asking).length;
+}
+
+/** What "Run all status queries" says about the queries it left for their
+ *  own Send (the server's ``skipped``, by name), each by its label; "" when
+ *  it left none. */
+export function skippedQueriesLine(catalog: AuditCommandInfo[], skipped: string[]): string {
+  if (skipped.length === 0) return "";
+  const labels = skipped.map((name) => catalog.find((c) => c.name === name)?.label || name);
+  return (
+    "Not included, because each needs a value or a file, or has a warning to read before it " +
+    `is sent: ${labels.join(", ")}. Send them one at a time below.`
+  );
 }
 
 function plural(n: number, one: string, many: string): string {
