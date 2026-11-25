@@ -64,3 +64,32 @@ def test_the_trigger_card_and_the_macro_editor_say_why(server_factory, page):
     # A second press straight after is the server's to refuse, and says so.
     page.get_by_role("button", name="Test", exact=True).click()
     expect(page.get_by_text("Too many requests", exact=False).first).to_be_visible(timeout=10_000)
+
+
+def test_a_help_step_its_cooldown_held_back_is_shown_skipped(server_factory, page):
+    """An Ask for Help reached again inside its Send at most every sends
+    nothing; the run still completes, and the last run says which step was
+    skipped and why."""
+    server = server_factory(project_overrides={
+        "macros": [{
+            "id": "call_help", "name": "Call for Help",
+            "steps": [{"action": "help.request", "message": "Room 2", "cooldown": 600}],
+        }],
+    })
+    page.goto(f"{server.base_url}/programmer/#macros")
+    page.get_by_text("Call for Help", exact=True).click(timeout=15_000)
+
+    test = page.get_by_role("button", name="Test", exact=True)
+    test.click()
+    expect(page.get_by_text("Last run: Completed")).to_be_visible(timeout=10_000)
+    # The run button takes one call per 2 seconds for a macro.
+    page.wait_for_timeout(2_100)
+    test.click()
+    reason = (
+        "Help was asked for less than 600 seconds ago, and this step sends at most "
+        "once in that time, so no new request was sent."
+    )
+    summary_line = page.get_by_text(f"Skipped: {reason}").last
+    expect(summary_line).to_be_visible(timeout=10_000)
+    expect(page.get_by_text("Step 1:", exact=True)).to_be_visible()
+    expect(page.get_by_text("Last run: Completed")).to_be_visible()
