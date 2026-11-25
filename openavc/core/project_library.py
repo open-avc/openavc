@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import re
 import shutil
-import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -49,6 +47,7 @@ from openavc.system_config import (
     PLUGIN_REPO_DIR as _PLUGIN_REPO_DIR,
     SEED_TEMPLATES_DIR,
 )
+from openavc.utils.backup_zip import write_zip
 from openavc.utils.fileio import atomic_write_text as _atomic_write_text
 from openavc.utils.fileio import private_dir
 from openavc.utils.logger import get_logger
@@ -410,20 +409,13 @@ def _saved_here(backup: Path, logins, present: set[str]) -> bool:
 
 def _write_private_zip(folder: Path, name: str, members: dict[str, bytes]) -> Path:
     """``members`` zipped into ``folder / name``, owner-only from the first
-    byte (``mkstemp``) and in place only once complete."""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    byte and in place only once complete (``utils/backup_zip``)."""
+
+    def fill(zf: zipfile.ZipFile) -> None:
         for member, content in members.items():
             zf.writestr(member, content)
-    fd, tmp = tempfile.mkstemp(dir=str(folder), prefix=f".{name}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(buf.getvalue())
-        os.replace(tmp, folder / name)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-    return folder / name
+
+    return write_zip(folder, name, fill)
 
 
 def _project_meta(project_id: str, data: dict[str, Any],

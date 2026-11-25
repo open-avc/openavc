@@ -328,9 +328,9 @@ def _temp_artifacts(project_dir: Path) -> list[str]:
     names = []
     for p in list(project_dir.iterdir()) + list((project_dir / "backups").glob("*")):
         n = p.name
-        if (n.startswith(".restore_") or n.startswith(".backup_")
+        if (n.startswith(".restore_") or n.startswith(".backup")
                 or n.endswith(".restore-new") or n.endswith(".restore-old")
-                or n.endswith(".zip.tmp")):
+                or n.endswith(".tmp")):
             names.append(n)
     return names
 

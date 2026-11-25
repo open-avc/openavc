@@ -39,7 +39,6 @@ import json
 import os
 import re
 import shutil
-import tempfile
 import zipfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -49,6 +48,7 @@ from typing import Any
 
 from openavc.core import asset_tree, project_unit, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
+from openavc.utils.backup_zip import keep_newest, write_zip
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import plain_file_in
 from openavc.version import __version__
@@ -148,19 +148,17 @@ def _read_project(project_file: Path) -> tuple[object, str]:
         return data, ""
 
 
-def _write_archive(archive: Path, project_file: Path, meta: dict, logins: str | None) -> None:
-    """Every member of a project backup, written into ``archive``: the
-    project file (none when it is missing: ``set_aside``), the meta, what
-    sits beside the project file (``_beside_members``) and the sealed
-    logins."""
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-        if project_file.exists():
-            zf.write(project_file, ARCHIVE_PROJECT)
-        zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
-        for archive_path, f in _beside_members(project_file.parent):
-            zf.write(f, archive_path)
-        if logins is not None:
-            zf.writestr(ARCHIVE_LOGINS, logins)
+def _write_archive(zf: zipfile.ZipFile, project_file: Path, meta: dict, logins: str | None) -> None:
+    """Every member of a project backup, written into ``zf``: the project
+    file (none when it is missing: ``set_aside``), the meta, what sits
+    beside the project file (``_beside_members``) and the sealed logins."""
+    if project_file.exists():
+        zf.write(project_file, ARCHIVE_PROJECT)
+    zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
+    for archive_path, f in _beside_members(project_file.parent):
+        zf.write(f, archive_path)
+    if logins is not None:
+        zf.writestr(ARCHIVE_LOGINS, logins)
 
 
 #: How each of the project's file trees (``project_unit.FILE_TREES``) is
@@ -262,39 +260,27 @@ def _take(project_file: Path, reason: str, *, max_backups: int, spare: Path | No
         "openavc_version": __version__,
     }
 
-    # Compress into a temp file first (the slow part, lock-free). project.avc is
-    # written atomically by save_project, so reading it here always sees a
-    # complete file even under a concurrent save.
-    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(backup_d), suffix=".zip.tmp", prefix=".backup_")
-    os.close(tmp_fd)
-    tmp_path: Path | None = Path(tmp_name)
-    try:
-        _write_archive(tmp_path, project_file, meta, logins)
-
-        # Reserve a unique name and place the finished ZIP atomically. The lock
-        # makes the existence-check + rename a single critical section, so two
-        # concurrent backups in the same second (same reason) can't pick the same
-        # name and corrupt each other — and an interrupted compression never
-        # surfaces as a real backup because only the completed temp is renamed in.
+    def place(finished: Path) -> Path:
+        # The lock makes the free-name check and the rename one step, so two
+        # backups in the same second with the same reason never pick one name.
         with _project_save_lock:
             backup_path = _free_name(backup_d, f"backup_{stamp}_{slug}")
-            os.replace(tmp_path, backup_path)
-            tmp_path = None
+            os.replace(finished, backup_path)
             cleanup_backups(backup_d, keep=max_backups, spare=spare)
-
-        log.info(f"Backup created: {backup_path.name} ({reason})")
         return backup_path
 
+    # Compressed outside the lock (the slow part). project.avc is written
+    # atomically by save_project, so this reads a complete file even under a
+    # concurrent save.
+    try:
+        backup_path = write_zip(
+            backup_d, "backup", lambda zf: _write_archive(zf, project_file, meta, logins), place=place,
+        )
     except OSError as e:
         log.error(f"Failed to create backup: {e}")
         raise
-    finally:
-        # Never leave a partial/orphan temp behind on failure.
-        if tmp_path is not None and tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
+    log.info(f"Backup created: {backup_path.name} ({reason})")
+    return backup_path
 
 
 class BackupFailed(Exception):
@@ -341,37 +327,46 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
     from openavc.core.project_loader import _project_save_lock
 
     taken = backup_path.stat()
-    tmp_path: Path | None = None
-    try:
-        with zipfile.ZipFile(backup_path) as source:
-            replaced = _sealed_members(source, move)
-            if replaced is None:
-                return False
-            tmp_fd, tmp_name = tempfile.mkstemp(
-                dir=str(backup_path.parent), suffix=".zip.tmp", prefix=".backup_",
-            )
-            os.close(tmp_fd)
-            tmp_path = Path(tmp_name)
-            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as out:
-                for info in source.infolist():
-                    if info.filename in replaced:
-                        out.writestr(copy.copy(info), replaced.pop(info.filename))
-                        continue
-                    with source.open(info) as member, out.open(copy.copy(info), "w") as copied:
-                        shutil.copyfileobj(member, copied, 1 << 20)
-                for name, content in replaced.items():
-                    out.writestr(name, content)
-        os.utime(tmp_path, ns=(taken.st_atime_ns, taken.st_mtime_ns))
+
+    def place(finished: Path) -> Path:
+        os.utime(finished, ns=(taken.st_atime_ns, taken.st_mtime_ns))
         with _project_save_lock:
-            if not backup_path.exists():  # rotated away meanwhile
-                return False
-            os.replace(tmp_path, backup_path)
-            tmp_path = None
-    finally:
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
+            if not backup_path.exists():
+                raise _RotatedAway
+            os.replace(finished, backup_path)
+        return backup_path
+
+    with zipfile.ZipFile(backup_path) as source:
+        replaced = _sealed_members(source, move)
+        if replaced is None:
+            return False
+        try:
+            write_zip(
+                backup_path.parent, backup_path.stem,
+                lambda out: _copy_sealed(source, out, replaced), place=place,
+            )
+        except _RotatedAway:
+            return False
     log.info(f"Backup {backup_path.name} now holds its logins sealed, not in the clear")
     return True
+
+
+class _RotatedAway(Exception):
+    """The backup being sealed was rotated away while its copy was written."""
+
+
+def _copy_sealed(source: zipfile.ZipFile, out: zipfile.ZipFile, replaced: dict[str, bytes]) -> None:
+    """Every member of ``source`` into ``out``, one at a time, never read
+    whole, the two ``replaced`` holds written in their place
+    (``seal_logins_in_backup``)."""
+    for info in source.infolist():
+        if info.filename in replaced:
+            out.writestr(copy.copy(info), replaced.pop(info.filename))
+            continue
+        with source.open(info) as member, out.open(copy.copy(info), "w") as copied:
+            shutil.copyfileobj(member, copied, 1 << 20)
+    for name, content in replaced.items():
+        out.writestr(name, content)
 
 
 def _sealed_members(source: zipfile.ZipFile, move: Callable[[dict[str, Any]], Any]) -> dict[str, bytes] | None:
@@ -591,35 +586,15 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
     log.info(f"Restored from backup: {backup_path.name}")
 
 
-def _rotation(backup_dir: Path, spare: Path | None) -> list[Path]:
-    """The ZIP backups the rotation may remove: every one but ``spare``."""
-    backups = list(backup_dir.glob("backup_*.zip"))
-    if spare is None:
-        return backups
-    spared = spare.resolve()
-    return [p for p in backups if p.resolve() != spared]
-
-
 def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Path | None = None) -> int:
-    """Remove oldest backups beyond the retention limit. Returns count removed.
+    """Remove the oldest project backups past the newest ``keep``
+    (``utils/backup_zip.keep_newest``). Returns how many were removed.
 
     ``spare`` is neither removed nor counted, so the list holds one more while
     it is spared and nothing else goes in its place: a person going back
-    through the oldest backups one at a time still finds the next one. Paths
-    are compared resolved, since a data directory reached through a link
-    names the same file two ways.
+    through the oldest backups one at a time still finds the next one.
     """
-    backups = sorted(_rotation(backup_dir, spare), key=lambda p: p.stat().st_mtime)
-    removed = 0
-    while len(backups) > keep:
-        oldest = backups.pop(0)
-        try:
-            oldest.unlink()
-            log.debug(f"Removed old backup: {oldest.name}")
-            removed += 1
-        except OSError:
-            pass
-    return removed
+    return keep_newest(backup_dir, "backup_*.zip", keep, spare=spare)
 
 
 def _read_zip_meta(path: Path) -> dict:

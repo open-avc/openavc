@@ -37,13 +37,13 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import zipfile
 import zlib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from openavc.core.project_unit import BESIDE_PROJECT
+from openavc.utils.backup_zip import keep_newest, write_zip
 from openavc.utils.fileio import make_private, private_dir
 from openavc.utils.paths import files_below, is_link
 
@@ -120,88 +120,64 @@ def create_backup(
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_name = f"pre-update-v{current_version}-{timestamp}.zip"
-    backup_path = backup_dir / backup_name
-    # Write to a temp name and atomically rename on success. A mid-write failure
-    # (disk full, cancellation) then leaves only a temp that doesn't match the
-    # pre-update-*.zip glob, so list_backups/cleanup_old_backups never count a
-    # truncated archive as a real restore slot. mkstemp creates it owner-only,
-    # and the rename keeps that, so the zip is never in place readable by
-    # another account.
-    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(backup_dir), prefix=f".{backup_name}.", suffix=".tmp")
-    os.close(tmp_fd)
-    tmp_path = Path(tmp_name)
+    log.info("Creating pre-update backup: %s", backup_dir / backup_name)
 
-    log.info("Creating pre-update backup: %s", backup_path)
-
-    links: dict[str, dict[str, str]] = {}
-    try:
-        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Back up projects directory. User backups (backup_manager writes
-            # {project_dir}/backups/ inside this tree) are skipped: embedding
-            # up to 15 already-compressed backup zips per update multiplies
-            # disk and CPU cost for zero restore value.
-            projects_dir = data_dir / "projects"
-            if projects_dir.exists():
-                files, links["projects"] = _project_files(projects_dir, backup_dir)
-                for file_path in files:
-                    if not _in_user_backups(file_path, projects_dir):
-                        arcname = file_path.relative_to(data_dir).as_posix()
-                        zf.write(file_path, arcname)
-
-            # The community drivers, the themes and the plugins, without
-            # following a link: a rollback never restores these, and a linked
-            # plugin or driver is somebody's working copy that lives elsewhere.
-            # A project kept at the data root has its own themes here, which
-            # go into external-project/ with the project and come back with it.
-            for tree in ("driver_repo", "themes", "plugin_repo"):
-                for file_path in files_below(data_dir / tree):
-                    arcname = file_path.relative_to(data_dir).as_posix()
-                    zf.write(file_path, arcname)
-
-            # Back up system.json
-            system_json = data_dir / "system.json"
-            if system_json.exists():
-                zf.write(system_json, "system.json")
-
-            # Back up cloud.json if it exists
-            cloud_json = data_dir / "cloud.json"
-            if cloud_json.exists():
-                zf.write(cloud_json, "cloud.json")
-
-            # The approved panel devices. Backed up like system.json; a
-            # rollback restores projects/ only and leaves this in place,
-            # because an approval should not roll back with the code.
-            panel_devices = data_dir / "panel_devices.json"
-            if panel_devices.exists():
-                zf.write(panel_devices, "panel_devices.json")
-
-            # The device login file, never its key: the copy opens only on the
-            # system whose key it was sealed with. Like panel_devices.json,
-            # nothing restores it automatically.
-            device_logins = data_dir / "device_logins.json"
-            if device_logins.exists():
-                zf.write(device_logins, "device_logins.json")
-
-            # Projects outside data_dir, and directly at its root, are not
-            # reached by the projects/ walk. The data-root case selects only
-            # project entries, never the supervisor, update cache or backups.
-            if project_path is not None and project_path.exists():
-                links["external-project"] = _backup_extra_project(zf, project_path, data_dir)
-
-            recorded = {tree: found for tree, found in links.items() if found}
-            if recorded:
-                zf.writestr(LINKS_MEMBER, json.dumps(recorded, indent=2, sort_keys=True))
-
-        tmp_path.replace(backup_path)
-    except BaseException:
-        # Don't leave a half-written archive behind (it isn't a *.zip so it
-        # wouldn't be restorable, but clean it up so temps don't accumulate).
-        tmp_path.unlink(missing_ok=True)
-        raise
-
+    # In place whole or not at all, owner-only (utils/backup_zip), so a
+    # truncated archive is never listed or restored.
+    backup_path = write_zip(
+        backup_dir, backup_name, lambda zf: _write_update_archive(zf, data_dir, backup_dir, project_path),
+    )
     size_mb = backup_path.stat().st_size / (1024 * 1024)
     log.info("Backup created: %s (%.1f MB)", backup_path, size_mb)
     return backup_path
+
+
+#: The files at the data root an update's backup carries. ``panel_devices.json``
+#: and ``device_logins.json`` (never its key: the copy opens only on the system
+#: it was sealed on) are carried like ``system.json``, and a rollback restores
+#: none of them: an approval or a login should not roll back with the code.
+_DATA_ROOT_FILES = ("system.json", "cloud.json", "panel_devices.json", "device_logins.json")
+
+
+def _write_update_archive(
+    zf: zipfile.ZipFile, data_dir: Path, backup_dir: Path, project_path: Path | None,
+) -> None:
+    """Every member of an update's backup (``create_backup``), written into
+    ``zf``, with the links each project tree holds recorded last."""
+    links: dict[str, dict[str, str]] = {}
+    # The projects tree. User backups (backup_manager writes
+    # {project_dir}/backups/ inside it) are skipped: embedding up to 15
+    # already-compressed backup zips per update multiplies disk and CPU cost
+    # for zero restore value.
+    projects_dir = data_dir / "projects"
+    if projects_dir.exists():
+        files, links["projects"] = _project_files(projects_dir, backup_dir)
+        for file_path in files:
+            if not _in_user_backups(file_path, projects_dir):
+                zf.write(file_path, file_path.relative_to(data_dir).as_posix())
+
+    # The community drivers, the themes and the plugins, without following a
+    # link: a rollback never restores these, and a linked plugin or driver is
+    # somebody's working copy that lives elsewhere. A project kept at the data
+    # root has its own themes here, which go into external-project/ with the
+    # project and come back with it.
+    for tree in ("driver_repo", "themes", "plugin_repo"):
+        for file_path in files_below(data_dir / tree):
+            zf.write(file_path, file_path.relative_to(data_dir).as_posix())
+
+    for name in _DATA_ROOT_FILES:
+        if (data_dir / name).exists():
+            zf.write(data_dir / name, name)
+
+    # Projects outside data_dir, and directly at its root, are not reached by
+    # the projects/ walk. The data-root case selects only project entries,
+    # never the supervisor, update cache or backups.
+    if project_path is not None and project_path.exists():
+        links["external-project"] = _backup_extra_project(zf, project_path, data_dir)
+
+    recorded = {tree: found for tree, found in links.items() if found}
+    if recorded:
+        zf.writestr(LINKS_MEMBER, json.dumps(recorded, indent=2, sort_keys=True))
 
 
 def _in_user_backups(file_path: Path, root: Path) -> bool:
@@ -781,28 +757,7 @@ def list_backups(data_dir: Path) -> list[dict]:
 
 
 def cleanup_old_backups(data_dir: Path, keep: int = 5) -> int:
-    """Remove old backups, keeping the most recent `keep` files.
-
-    Returns the number of backups removed.
-    """
-    backup_dir = data_dir / "backups"
-    if not backup_dir.exists():
-        return 0
-
-    # Keep the chronologically newest `keep` by mtime. Sorting by filename would
-    # order by embedded version string, so a newer "v0.13.0" backup could be evicted
-    # while an older "v0.9.0" one survives the cross-version lexicographic sort.
-    backups = sorted(
-        backup_dir.glob("pre-update-*.zip"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    removed = 0
-    for old_backup in backups[keep:]:
-        try:
-            old_backup.unlink()
-            removed += 1
-            log.info("Removed old backup: %s", old_backup.name)
-        except OSError as e:
-            log.warning("Failed to remove old backup %s: %s", old_backup.name, e)
-    return removed
+    """Remove the oldest pre-update backups past the newest ``keep``, by when
+    each was written (``utils/backup_zip.keep_newest``). Returns how many
+    were removed."""
+    return keep_newest(data_dir / "backups", "pre-update-*.zip", keep)
