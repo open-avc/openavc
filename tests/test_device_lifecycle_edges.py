@@ -323,12 +323,13 @@ async def test_device_info_for_a_disabled_and_an_orphaned_device(dm):
 
     assert off["state"] == dm.state.get_namespace("device.off")
     assert off["commands"] == {} and off["driver_info"] == {}
+    assert off["command_confirms"] == {}
     assert "orphaned" not in off
     assert lost["orphaned"] is True
     assert lost["orphan_reason"]
     assert list(lost) == [
         "id", "name", "driver", "status", "connected", "connection", "orphaned", "orphan_reason",
-        "state", "commands", "driver_info", "config",
+        "state", "commands", "command_confirms", "driver_info", "config",
     ]
 
 
