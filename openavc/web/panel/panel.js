@@ -727,9 +727,11 @@ class PanelApp {
      * ignored there and in-flight builder edits aren't clobbered by the
      * last-saved project. All Preview keeps of it is which devices each
      * control's press reaches, which only the server can work out
-     * (`ui/action_devices.py`).
+     * (`ui/action_devices.py`), and, like every panel, how long a queued
+     * macro start may wait (`macroRuns.takeServed`).
      */
     _takeDefinition(msg) {
+        this.macroRuns.takeServed(msg);
         if (this.embedded) {
             if (!this.editMode) {
                 this.availability.takeServed(msg.ui);

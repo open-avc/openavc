@@ -148,6 +148,8 @@ async def test_reload_broadcasts_ui_definition_and_project_reloaded(tmp_path):
     ui_msgs = [m for m in sent if m["type"] == "ui.definition"]
     assert len(ui_msgs) == 1
     assert "pages" in ui_msgs[0]["ui"]
+    # The frame a panel is sent on connect, ceiling and all (test_ws_ui).
+    assert ui_msgs[0] == eng.panel_definition_frame()
 
     reloaded_msgs = [m for m in sent if m["type"] == "project.reloaded"]
     assert len(reloaded_msgs) == 1

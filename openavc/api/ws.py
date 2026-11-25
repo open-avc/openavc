@@ -260,10 +260,7 @@ async def _run_ws_connection(
 
         # Send UI definition
         if engine.project:
-            await ws.send_json({
-                "type": "ui.definition",
-                "ui": engine.panel_ui(),
-            })
+            await ws.send_json(engine.panel_definition_frame())
 
         # Baseline is on the wire — release queued broadcasts
         engine.ws.mark_client_ready(ws)

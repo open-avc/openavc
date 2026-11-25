@@ -227,6 +227,21 @@ async def test_ws_connect_receives_ui_definition(engine_and_client):
         assert pages[1]["id"] == "confirm"
 
 
+async def test_ws_connect_is_told_how_long_a_queued_macro_start_may_wait(engine_and_client):
+    """A panel holds a press it made as its own until that press's run starts
+    and ends; a start that never comes (refused, or dropped from its queue) is
+    let go after the longest a queued start may wait, which the panel reads
+    from here rather than keeping its own copy of the number."""
+    from openavc.core import macro_engine
+
+    _, client = engine_and_client
+    with client.websocket_connect("/ws?client=panel") as websocket:
+        websocket.receive_json()  # state.snapshot
+        ui_msg = websocket.receive_json()
+    assert ui_msg["type"] == "ui.definition"
+    assert ui_msg["macro_queue_max_wait_seconds"] == macro_engine._QUEUE_MAX_WAIT_SECONDS
+
+
 # ---------------------------------------------------------------------------
 # Button press → state change
 # ---------------------------------------------------------------------------

@@ -32,12 +32,6 @@
  * and `revert()`, which say a failure and put the control last touched back.
  */
 
-// How long a macro this panel started stays this panel's to report a failure
-// for, when nothing ever tells us its run ended. Matches the macro engine's own
-// ceiling for a queued start, which is the longest a press can legitimately sit
-// before it runs.
-const MACRO_CLAIM_MAX_AGE_MS = 5 * 60 * 1000;
-
 // Where a progress label's idle words come from, for the in-place editor.
 const IDLE_TEXT_PATH = ['bindings', 'show', 'value', 'idle_text'];
 
@@ -89,6 +83,17 @@ export class MacroRuns {
         this.running = Object.create(null);  // macro_id -> { description, step_index, total_steps }
         this._claims = Object.create(null);  // macro_id -> { at, reported, running } for macros THIS panel started
         this._runs = Object.create(null);    // macro_id -> how many runs of it are in flight (see ended)
+        // How long a macro this panel started stays this panel's to report a
+        // failure for, when nothing ever tells us its run ended: the longest a
+        // queued start can legitimately sit before it runs, which the server
+        // serves (`takeServed`). Null until it has: a claim is kept until then.
+        this._claimMaxAgeMs = null;
+    }
+
+    /** `ui.definition`: the macro engine's wait for a queued start, in seconds. */
+    takeServed(msg) {
+        const seconds = msg?.macro_queue_max_wait_seconds;
+        if (typeof seconds === 'number' && seconds >= 0) this._claimMaxAgeMs = seconds * 1000;
     }
 
     /**
@@ -176,8 +181,8 @@ export class MacroRuns {
      * somebody is standing there waiting for arrives to a panel that has
      * forgotten it ever asked. Silence, which is what this whole surface
      * exists to end. A start that never happens -- the macro's own overlap
-     * guard refused it -- leaves the claim to age out, the case
-     * MACRO_CLAIM_MAX_AGE_MS was always for.
+     * guard refused it -- leaves the claim to age out after the wait the
+     * server serves (`takeServed`), the case that wait was always for.
      */
     ended(msg) {
         this._endRun(msg.macro_id);
@@ -200,7 +205,7 @@ export class MacroRuns {
      * sends its end to nobody, and nothing on the next connection says which
      * runs are still going, so a run kept here would keep its buttons busy
      * (which takes no press) for good. A run still going reads idle from here
-     * on. Claims keep their own age-out (MACRO_CLAIM_MAX_AGE_MS).
+     * on. Claims keep their own age-out (`takeServed`).
      */
     forgetRuns() {
         const drawn = Object.keys(this.running);
@@ -268,7 +273,7 @@ export class MacroRuns {
             // one that never sees an end -- the start was throttled, or the
             // socket dropped mid-run -- so a schedule firing the same macro
             // hours later cannot draw a message nobody asked for.
-            if (Date.now() - claim.at > MACRO_CLAIM_MAX_AGE_MS) {
+            if (this._claimMaxAgeMs !== null && Date.now() - claim.at > this._claimMaxAgeMs) {
                 delete this._claims[macroId];
                 continue;
             }

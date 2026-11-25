@@ -41,7 +41,7 @@ from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
 from openavc.core.learned_config import LearnedConfig
-from openavc.core.macro_engine import MacroEngine
+from openavc.core.macro_engine import _QUEUE_MAX_WAIT_SECONDS, MacroEngine
 from openavc.core.pending_queue import ProjectQueue
 from openavc.core.panel_devices import (
     ACCESS_APPROVED,
@@ -314,6 +314,19 @@ class Engine(
         actions and reports them without any of the effects — for a caller
         checking a control rather than operating one."""
         return await self.ui_events.handle(event_type, element_id, data, dry_run=dry_run)
+
+    def panel_definition_frame(self) -> dict[str, Any]:
+        """THE ``ui.definition`` frame, sent to a client as it connects and to
+        every panel when what it carries changes: the UI as a renderer receives
+        it (``panel_ui``), and the longest a macro start queued behind a running
+        run waits before it is dropped. A panel holds a press as its own until
+        the press's run starts and ends, and lets a start that never comes go
+        after that wait, read from here rather than kept as its own number."""
+        return {
+            "type": "ui.definition",
+            "ui": self.panel_ui(),
+            "macro_queue_max_wait_seconds": _QUEUE_MAX_WAIT_SECONDS,
+        }
 
     def panel_ui(self) -> dict[str, Any]:
         """The UI definition as a RENDERER must receive it, not as it is stored.

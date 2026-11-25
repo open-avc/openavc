@@ -219,6 +219,7 @@ SCENARIOS = [
     "q139_a_run_that_ends_does_not_take_another_runs_claim",
     "q139_a_claim_is_given_back_when_the_run_it_started_ends",
     "q139_a_button_stays_busy_while_a_second_run_is_still_going",
+    "macro_claim_ages_out_at_the_wait_the_server_serves",
     "macro_progress_keeps_its_step_through_a_wait",
     "macro_progress_never_counts_to_zero",
     "a_macro_named_like_an_object_built_in_is_an_ordinary_macro",

@@ -775,10 +775,7 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
             # trying to fix something, and silence reads as having fixed it.
             self.ui_events.forget_undispatched_actions()
         if diff.panel_definition:
-            await self.broadcast_ws({
-                "type": "ui.definition",
-                "ui": self.panel_ui(),
-            })
+            await self.broadcast_ws(self.panel_definition_frame())
 
     async def persist_or_defer_bookkeeping_change(self, mutate, *, on_error=None, runtime_write=None) -> None:
         """Persist a bookkeeping change from code that may be running inside

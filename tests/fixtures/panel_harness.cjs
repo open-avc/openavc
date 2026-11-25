@@ -4024,6 +4024,40 @@ const tests = {
             'a room where nobody touched anything stays quiet');
     },
 
+    // A press whose run never starts (refused, or dropped from its queue) is
+    // let go after the longest a queued start may wait. The server says how
+    // long that is on ui.definition; a claim made before it has said is kept.
+    macro_claim_ages_out_at_the_wait_the_server_serves() {
+        withFakeTime((advance) => {
+            const app = mkApp();
+            app.ws = { readyState: 1, send() {} };
+            const fail = (message) => app.handleMessage({ type: 'macro.step_error', macro_id: 'system_on', message });
+            const band = () => document.getElementById('panel-failure-message');
+
+            clearFailureBand();
+            app.send({ type: 'macro.execute', macro_id: 'system_on' });
+            advance(10 * 60 * 1000);
+            fail('Kept until the server says');
+            assert(band() && band().textContent === 'Kept until the server says',
+                `a claim made before any wait was served is kept, got "${band() && band().textContent}"`);
+
+            app.handleMessage({ type: 'ui.definition', ui: { pages: [] }, macro_queue_max_wait_seconds: 2 });
+            clearFailureBand();
+            app.send({ type: 'macro.execute', macro_id: 'system_on' });
+            advance(2000);
+            fail('At the served wait');
+            assert(band() && band().textContent === 'At the served wait',
+                `still this panel's at the served wait, got "${band() && band().textContent}"`);
+
+            clearFailureBand();
+            app.send({ type: 'macro.execute', macro_id: 'system_on' });
+            advance(2001);
+            fail('Past the served wait');
+            assert(!band(), 'past the served wait the press is let go');
+            clearFailureBand();
+        });
+    },
+
     // A label bound to a macro's progress reads the running step. A Wait Until
     // sends more progress while it waits (waiting, then satisfied or timeout)
     // with no description and no step numbers, and so do a group command's
@@ -10512,6 +10546,9 @@ function macroMount({ elements, state, settings, edit, pages }, advance) {
     if (pages) proj.ui.pages.push(...pages);
     app.state = { ...(state || {}) };
     renderProject(app, proj);
+    // The wait the server serves a panel on ui.definition (the macro engine's
+    // queued-start ceiling), so a claim ages out as on a served panel.
+    app.macroRuns.takeServed({ macro_queue_max_wait_seconds: 300 });
     const ids = elements.map((e) => e.id);
     const m = { app, seen: {}, band: bandSnapshot(), steps: [] };
     m.look = (extra) => {
