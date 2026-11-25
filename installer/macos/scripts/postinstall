@@ -25,6 +25,24 @@ if [ ! -f "$DEST/project.avc" ] && [ -f "$SEED" ]; then
     cp "$SEED" "$DEST/project.avc"
 fi
 
+# What the server left for its next start (an update staged or set aside to
+# try again, a rollback) is dropped now that this release is in place, by the
+# apply library's rule, as install.sh does: left there, the start below would
+# put an older release over this one, or roll it back at once. The names are
+# the ones openavc-macos-run.sh reads; the library is the one this release
+# carries beside it.
+# shellcheck disable=SC2034  # read by the apply library
+UPDATE_FILE="$DATA_DIR/apply-update.json"
+# shellcheck disable=SC2034
+ROLLBACK_FILE="$DATA_DIR/apply-rollback"
+LOG_TAG="postinstall"
+# shellcheck source=SCRIPTDIR/../../apply-lib.sh
+if [ -f "$APP/Contents/MacOS/apply-lib.sh" ] && . "$APP/Contents/MacOS/apply-lib.sh"; then
+    drop_instructions
+else
+    echo "$LOG_TAG: $APP/Contents/MacOS/apply-lib.sh is missing, so what the server left for its next start stays"
+fi
+
 # The services are the installed app's alone: a sandbox run (OPENAVC_APP
 # pointed elsewhere, as the tests do) installs and starts none.
 [ "$APP" = "/Applications/OpenAVC.app" ] || exit 0

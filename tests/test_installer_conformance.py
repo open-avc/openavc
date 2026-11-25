@@ -29,12 +29,14 @@ declared in its sections.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 
 from tests import gates
 from tests.test_update_system import (
@@ -175,6 +177,35 @@ def test_a_first_pkg_install_leaves_no_copy_to_roll_back_to(tmp_path):
     assert _outcome(app, data) == {"app": "2.0.0", "previous": None, "instructions": []}
 
 
+
+def _leave_for_the_next_start(data: Path, what: str, tarball: Path) -> None:
+    record = {"artifact": _as_bash_path(tarball), "from_version": "1.0.0", "to_version": "1.5.0"}
+    if what == "an update staged":
+        (data / "apply-update.json").write_text(json.dumps(record))
+    elif what == "an update set aside to try again":
+        (data / "apply-update.retry").write_text(json.dumps(
+            {**record, "attempts": 1, "reason": "no room", "final": False}
+        ))
+    else:
+        (data / "apply-rollback").write_text("")
+
+
+@needs_bash
+@pytest.mark.parametrize(
+    "left", ["an update staged", "an update set aside to try again", "a rollback asked for"]
+)
+def test_the_first_start_after_a_pkg_install_runs_the_release_it_installed(tmp_path, left):
+    data, app, _ = _mac_install_with_a_previous_copy(tmp_path)
+    _leave_for_the_next_start(data, left, _build_bundle_tarball(tmp_path / "staging", "1.5.0"))
+
+    _install_pkg(tmp_path, app, data, "2.0.0")
+    started = _run_mac_wrapper(data, app)
+
+    assert started.returncode == 0, started.stdout + started.stderr
+    assert "openavc-server stub v2.0.0" in started.stdout, (
+        f"{left} outlived the .pkg install, and its first start acted on it: {started.stdout}"
+    )
+    assert _outcome(app, data) == {"app": "2.0.0", "previous": "1.0.0", "instructions": []}
 
 
 @needs_bash
