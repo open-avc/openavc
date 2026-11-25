@@ -17,7 +17,7 @@ import { AnchoredMenu } from "../components/shared/AnchoredMenu";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
-import { importParsedProject } from "./projectImport";
+import { importParsedProject, type ImportedProject } from "./projectImport";
 import * as api from "../api/restClient";
 import type { DeviceNeedingLogin, LibraryProject, PluginNeedingLogin, ProjectConfig } from "../api/types";
 import { parseApiError } from "../api/errors";
@@ -33,6 +33,15 @@ function announceNeedsLogin(
 ): void {
   const sentence = needsLoginSentence(devices, plugins);
   if (sentence) showLastingWarning(sentence);
+}
+
+/** A project file imported on its own: what became of the files beside the
+ *  project it replaced. Files set aside stay on screen until somebody
+ *  dismisses the message, so it is not missed. */
+function announceImported(imported: ImportedProject): void {
+  const sentence = ["Project imported.", imported.notice].filter(Boolean).join(" ");
+  if (imported.previousFiles === "set_aside") showLastingWarning(sentence);
+  else showSuccess(sentence);
 }
 
 /** What a project that came in could not bring with it (a driver it carried
@@ -278,7 +287,10 @@ export function ProjectView() {
         errorMessage: parseApiError,
         onError: showError,
       });
-      if (imported) announceNeedsLogin(imported.needsLogin, imported.pluginsNeedLogin);
+      if (imported) {
+        announceImported(imported);
+        announceNeedsLogin(imported.needsLogin, imported.pluginsNeedLogin);
+      }
     };
     input.click();
   }, [forceReloadProject, importBundle]);

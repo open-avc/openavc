@@ -24,7 +24,7 @@ from typing import Any, Sequence
 from openavc import config
 from openavc.core import asset_tree, project_unit, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
-from openavc.core import login_bundle, project_drivers, project_update
+from openavc.core import login_bundle, project_drivers, project_identity, project_update
 from openavc.core.device_logins import (
     FoundView,
     StoreView,
@@ -839,6 +839,7 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
     data["project"]["name"] = new_name
     data["project"]["created"] = now
     data["project"]["modified"] = now
+    data["project"]["uuid"] = project_identity.new_stamp()
 
     project_dir = _lib_dir() / new_sid
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -881,6 +882,7 @@ def create_blank_project(project_id: str, project_name: str) -> ProjectConfig:
             description="",
             created=now,
             modified=now,
+            uuid=project_identity.new_stamp(),
         ),
         devices=[],
         variables=[],
@@ -942,11 +944,14 @@ def prepare_open(
         project_id, opened.installs if opened is not None else None, data.get("devices", [])
     )
 
+    # Opened, it is a project of its own: two rooms opened from one copy
+    # are two projects (core/project_identity).
     now = datetime.now().isoformat()
     data["project"]["id"] = new_project_id
     data["project"]["name"] = new_project_name
     data["project"]["created"] = now
     data["project"]["modified"] = now
+    data["project"]["uuid"] = project_identity.new_stamp()
     project = policy.compose(ProjectConfig(**data), for_load=True)
 
     def fill(dest: Path) -> None:

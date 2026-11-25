@@ -23,28 +23,47 @@ export interface ImportProjectDeps {
   onError: (message: string) => void;
 }
 
+/** What an accepted import named: the devices and plugins that wait for
+ *  their login, and what became of the files beside the project it replaced
+ *  (`previousFiles`, with the server's sentence for it in `notice`). */
+export interface ImportedProject {
+  needsLogin: DeviceNeedingLogin[];
+  pluginsNeedLogin: PluginNeedingLogin[];
+  previousFiles?: "kept" | "set_aside";
+  notice?: string;
+}
+
+/** What the import's answer named, each field kept only in the shape the
+ *  server sends it. */
+function importedFrom(saved: unknown): ImportedProject {
+  const answer = (saved ?? {}) as {
+    needs_login?: unknown; plugins_need_login?: unknown; previous_files?: unknown; notice?: unknown;
+  };
+  const { needs_login: needsLogin, plugins_need_login: pluginsNeedLogin, previous_files: previous, notice } = answer;
+  return {
+    needsLogin: Array.isArray(needsLogin) ? (needsLogin as DeviceNeedingLogin[]) : [],
+    pluginsNeedLogin: Array.isArray(pluginsNeedLogin) ? (pluginsNeedLogin as PluginNeedingLogin[]) : [],
+    previousFiles: previous === "kept" || previous === "set_aside" ? previous : undefined,
+    notice: typeof notice === "string" && notice ? notice : undefined,
+  };
+}
+
 /**
  * Persist a parsed project through the server and adopt it into the store only
  * on success. Returns what the import's answer named when it was accepted and
- * adopted (the devices and plugins that wait for their login), false when the server
+ * adopted (`ImportedProject`), false when the server
  * rejected it (in which case the store is left untouched and an error message
  * has been surfaced).
  */
 export async function importParsedProject(
   parsed: ProjectConfig,
   deps: ImportProjectDeps,
-): Promise<false | { needsLogin: DeviceNeedingLogin[]; pluginsNeedLogin: PluginNeedingLogin[] }> {
+): Promise<false | ImportedProject> {
   try {
     const saved = await deps.saveProject(parsed, deps.getEtag());
     await deps.reloadProject();
     await deps.forceReload();
-    const answer = saved as { needs_login?: unknown; plugins_need_login?: unknown } | undefined;
-    const needsLogin = answer?.needs_login;
-    const pluginsNeedLogin = answer?.plugins_need_login;
-    return {
-      needsLogin: Array.isArray(needsLogin) ? (needsLogin as DeviceNeedingLogin[]) : [],
-      pluginsNeedLogin: Array.isArray(pluginsNeedLogin) ? (pluginsNeedLogin as PluginNeedingLogin[]) : [],
-    };
+    return importedFrom(saved);
   } catch (e) {
     deps.onError(
       deps.isConflict(e)

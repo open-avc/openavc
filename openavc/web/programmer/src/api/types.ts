@@ -13,6 +13,10 @@ export interface ProjectMeta {
   description: string;
   created: string;
   modified: string;
+  /** Which project this is, made when it was made; the server keeps it
+   *  through every save. An import of a project file is the same project
+   *  when it names this stamp. */
+  uuid?: string;
 }
 
 export interface DeviceConfig {

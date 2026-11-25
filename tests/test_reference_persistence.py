@@ -43,7 +43,10 @@ def document(collision=False, present=False):
     if present:
         devices.append({'id': 'amplifier', 'name': 'My amplifier', 'driver': DRIVER, 'enabled': False,
                         'config': {'integration': 'acme_amplifier'}})
-    return {'openavc_version': CURRENT_VERSION, 'project': {'id': 'hall', 'name': 'Hall'}, 'devices': devices,
+    # Stamped, as a project saved by this release is: a start gives a file
+    # without a stamp one, which is a write of its own.
+    return {'openavc_version': CURRENT_VERSION, 'project': {'id': 'hall', 'name': 'Hall', 'uuid': 'hall-stamp'},
+            'devices': devices,
             'macros': [{'id': 'operate', 'name': 'Operate', 'steps': [{'action': 'device.command', 'device': 'local', 'command': 'mute'}]}],
             'isc': {'enabled': False}}
 

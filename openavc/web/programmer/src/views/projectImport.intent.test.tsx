@@ -27,6 +27,26 @@ describe("plain project import intent", () => {
     expect(JSON.parse(options.body as string)).toEqual(project);
   });
 
+  it("passes on what an import did with the files beside the project it replaced", async () => {
+    const notice = "The previous project's scripts were set aside in the backup taken before the import.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status: "saved", needs_login: [], plugins_need_login: [], previous_files: "set_aside", notice,
+    }), { status: 200, headers: { etag: '"next"' } })));
+    const answer = await saveProject(project, '"previous"', "import");
+    expect(answer).toMatchObject({ previous_files: "set_aside", notice });
+
+    const imported = await importParsedProject(project, {
+      getEtag: () => '"previous"',
+      saveProject: async () => answer,
+      reloadProject: async () => undefined,
+      forceReload: async () => undefined,
+      isConflict: () => false,
+      errorMessage: parseApiError,
+      onError: vi.fn(),
+    });
+    expect(imported).toEqual({ needsLogin: [], pluginsNeedLogin: [], previousFiles: "set_aside", notice });
+  });
+
   it("shows the equipment refusal without adopting the rejected project", async () => {
     const reason = "This project uses a different product hardware model.";
     const reload = vi.fn();

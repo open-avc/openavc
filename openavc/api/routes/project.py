@@ -438,23 +438,14 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     # both pass and one edit would be silently lost.
     try:
         if mode == "import":
-            from openavc.core.backup_manager import capture
-            from openavc.core.installed_equipment import InstalledEquipmentError
-
-            try:
-                # Asked before the backup, so a project this server refuses
-                # leaves no backup behind. replace_project asks again under its lock.
-                engine.installed_equipment.compose(project, for_load=True)
-                # Import replaces the running project, as opening one from the
-                # library does, and keeps the one it replaces the same way:
-                # with no backup it is refused (BackupFailed, answered by the
-                # server's handler for a change that did not run).
-                await capture(engine.project_path, f"Before importing '{project.project.name}'")
-                outcome = await engine.replace_project(
-                    project, update_notes, expected_revision=expected_rev
-                )
-            except InstalledEquipmentError as error:
-                raise HTTPException(status_code=422, detail=str(error)) from error
+            prepared = _prepared_import(engine, project, update_notes)
+            # Import replaces the running project, as opening one from the
+            # library does: under the project lock, the revision checked
+            # first, the project it replaces backed up (with no backup it is
+            # refused, BackupFailed, answered by the server's handler for a
+            # change that did not run), the files beside it kept when it is
+            # the same project and set aside in that backup when it is not.
+            outcome = await engine.replace_with(prepared, expected_revision=expected_rev)
         else:
             operation = parse_client_id(request.headers.get(OPERATION_HEADER))
             outcome = await engine.apply_named_save(project, expected_rev, operation)
@@ -467,21 +458,54 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
         # run of the server. A change that was not applied reaches the
         # server's own handler (main.py) in the same wording.
         raise change_failure_error(e) from e
-    return _saved_answer(engine, outcome, imported=mode == "import")
+    if mode == "import":
+        return _saved_answer(engine, outcome, imported=prepared)
+    return _saved_answer(engine, outcome)
 
 
-def _saved_answer(engine: Any, outcome: Any, *, imported: bool) -> JSONResponse:
+def _prepared_import(engine: Any, project: ProjectConfig, update_notes: Any) -> Any:
+    """An imported project file prepared to replace the running one
+    (``core/project_replace.imported``), the installed equipment composed
+    in. One this server's equipment refuses is a 422, before anything is
+    written or backed up."""
+    from openavc.core import project_replace
+    from openavc.core.installed_equipment import InstalledEquipmentError
+
+    try:
+        composed = engine.installed_equipment.compose(project, for_load=True)
+    except InstalledEquipmentError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return project_replace.imported(composed, update_notes)
+
+
+#: What an import did with the files beside the project it replaced, by
+#: ``previous_files``.
+_PREVIOUS_FILES = {
+    "kept": "It is the same project, so its scripts, images, custom controls, "
+            "themes and saved values were kept.",
+    "set_aside": "The previous project's scripts, images, custom controls, themes "
+                 "and saved values were set aside in the backup taken before the "
+                 "import ({backup}).",
+}
+
+
+def _saved_answer(engine: Any, outcome: Any, *, imported: Any = None) -> JSONResponse:
     """What a save that was applied answers: its revision as the ETag; each
     part it could not start, in the words that part's own surface shows; and
-    for an import, a project from somewhere else, the devices and plugins
-    whose login this system does not have."""
+    for an import (``imported``, the project it prepared), a project from
+    somewhere else, the devices and plugins whose login this system does
+    not have, and what became of the files beside the project it replaced
+    (``previous_files``, ``kept`` or ``set_aside``, and its ``notice``)."""
     content: dict[str, Any] = {"status": "saved"}
     not_running = describe_not_running(outcome.failed)
     if not_running:
         content["not_running"] = not_running
-    if imported:
+    if imported is not None:
         content["needs_login"] = engine.logins_needed()
         content["plugins_need_login"] = engine.plugin_logins_needed()
+        previous = "kept" if imported.kept_files else "set_aside"
+        content["previous_files"] = previous
+        content["notice"] = _PREVIOUS_FILES[previous].format(backup=imported.backup_reason)
     return JSONResponse(content=content, headers={"ETag": f'"{outcome.revision}"'})
 
 

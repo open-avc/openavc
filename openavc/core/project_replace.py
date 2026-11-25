@@ -1,5 +1,6 @@
 """THE replace of the running project by another whole project, its files
-included: a restore, opening a copy from the library, a blank project.
+included: a restore, opening a copy from the library, a blank project, an
+import of a project file on its own.
 
 A door prepares what comes in (``PreparedProject``): the project migrated and
 checked as a load reads it, before anything is written, so one this system
@@ -8,6 +9,10 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
 ``Engine.replace_with`` runs the replace under the project lock
 (``_lock_for_a_change``), in this order:
 
+0. the revision the door read checked, and what the door decides by the
+   project it replaces settled (``settle``): an imported project file that is
+   the same project (``core/project_identity``) keeps the files beside it,
+   its saved values included, and another sets them aside;
 1. the backup of the project it replaces (``backup_manager.capture``), taken
    under the lock, so an edit saved while the replace waited is in it, and
    refused when it cannot be saved;
@@ -28,10 +33,9 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
 6. whatever happened, the persister started again, and the values the
    store holds written out.
 
-``Engine.replace_project`` is the other way a whole project comes in: it
-keeps the files beside the project and the saved values, which is right for
-a cloud push (it brings no files) and is what an import of a bare ``.avc``
-does until it is sent through here.
+``Engine.replace_project`` is the other way a whole project comes in, the
+cloud's push, which brings no files: it keeps the files beside the project,
+the saved values and the running project's stamp.
 
 Mixed into the engine through ``ProjectChangesMixin``. Logs under the
 engine's name.
@@ -47,7 +51,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from openavc.core import backup_manager, project_recovery, project_swap
+from openavc.core import backup_manager, project_identity, project_recovery, project_swap
 from openavc.core.project_loader import ProjectConfig, load_project, project_text
 from openavc.core.project_update import MigrationNotes
 from openavc.utils.logger import get_logger
@@ -66,7 +70,11 @@ class PreparedProject:
     ``beside`` False the files beside the live one are kept), and
     ``after_swap(project_file)``, run once its files are in place and before
     it loads: the logins it brings, filled in where this system has none.
-    ``on_replaced()`` runs once it is the running project."""
+    ``on_replaced()`` runs once it is the running project. ``settle(self,
+    running)`` runs under the lock before the backup: what the door decides
+    by the project it replaces (``running``), such as whether the files
+    beside it stay (``kept_files``: True when they did, None for a door
+    whose project always brings its own)."""
 
     project: ProjectConfig
     notes: MigrationNotes
@@ -76,6 +84,8 @@ class PreparedProject:
     after_swap: Callable[[Path], None] | None = None
     on_replaced: Callable[[], None] | None = None
     spare: Path | None = None
+    settle: Callable[[PreparedProject, ProjectConfig | None], None] | None = None
+    kept_files: bool | None = None
 
     def staged_beside(self, project_file: Path) -> project_swap.Staged:
         """This project staged beside ``project_file`` for a swap, its
@@ -153,16 +163,50 @@ def blank(project: ProjectConfig) -> PreparedProject:
     return PreparedProject(project, MigrationNotes(), "Before creating blank project")
 
 
+def imported(project: ProjectConfig, notes: MigrationNotes) -> PreparedProject:
+    """A project file imported on its own, with nothing beside it, prepared
+    to replace the running one, its device settings trimmed as a save trims
+    them. Whether the files beside the running project stay is settled
+    against it under the lock (``_settle_imported``)."""
+    from openavc.core.typed_fields import trim_device_settings
+
+    trim_device_settings(project)
+    return PreparedProject(
+        project, notes, f"Before importing '{project.project.name}'", settle=_settle_imported,
+    )
+
+
+def _settle_imported(prepared: PreparedProject, running: ProjectConfig | None) -> None:
+    """The same project (``project_identity.same_project``) keeps the files
+    beside it (its scripts, file trees and saved values) and the running
+    project's stamp; another project replaces them with none, the previous
+    ones set aside in the backup the replace takes, and brings its own
+    stamp, or a new one."""
+    incoming = prepared.project
+    same = project_identity.same_project(running.project if running else None, incoming.project)
+    if same:
+        project_identity.keep_running(running, incoming)
+    else:
+        project_identity.stamp_missing(incoming)
+    prepared.beside = not same
+    prepared.kept_files = same
+
+
 class ProjectReplaceMixin:
     """``replace_with``: the running project replaced by a prepared one."""
 
-    async def replace_with(self, prepared: PreparedProject):
+    async def replace_with(self, prepared: PreparedProject, *, expected_revision: str | None = None):
         """Replace the running project, its files included, by ``prepared``
         (the module docstring has the order). Returns the ``ApplyOutcome``.
-        Raises ``BackupFailed`` when the backup could not be saved and
-        ``ProjectNotAppliedError`` when the swap or the load failed; either
-        way the project before it is running, its files as they were."""
+        Raises ``ProjectRevisionConflictError`` when the project moved past
+        ``expected_revision``, before anything is written, ``BackupFailed``
+        when the backup could not be saved and ``ProjectNotAppliedError``
+        when the swap or the load failed; either way the project before it
+        is running, its files as they were."""
         async with self._lock_for_a_change():
+            self._check_revision(expected_revision)
+            if prepared.settle is not None:
+                prepared.settle(prepared, self.project)
             if self.persister:
                 # The values changed since the last flush are in the backup.
                 self.persister.flush()
@@ -243,7 +287,8 @@ class ProjectReplaceMixin:
 
         self._values_coming_in = self.persister.load() if self.persister else {}
         try:
-            incoming = load_project(self.project_path)
+            running = self.project.project if self.project else None
+            incoming = load_project(self.project_path, running=running)
             return await self._apply_project_locked(incoming, ProjectOrigin.LOAD, persist=False)
         except Exception as failure:
             log.error("The replacing project could not be loaded; putting the previous one back", exc_info=True)

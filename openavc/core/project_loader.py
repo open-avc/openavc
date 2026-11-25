@@ -189,6 +189,10 @@ class ProjectMeta(_ForwardCompatModel):
     description: str = ""
     created: str = ""
     modified: str = ""
+    # Which project this is, made when it is made (core/project_identity),
+    # never by the model: a default here would stamp every file that comes
+    # in, and no two would ever read as the same project.
+    uuid: str = ""
 
 
 class ChildEntityConfig(_ForwardCompatModel):
@@ -1014,7 +1018,7 @@ class ProjectConfig(_ForwardCompatModel):
 # --- Loader Functions ---
 
 
-def load_project(path: str | Path, *, keep_notes: bool = False) -> ProjectConfig:
+def load_project(path: str | Path, *, keep_notes: bool = False, running: ProjectMeta | None = None) -> ProjectConfig:
     """
     Load and validate a project.avc file.
 
@@ -1027,6 +1031,9 @@ def load_project(path: str | Path, *, keep_notes: bool = False) -> ProjectConfig
         path: Path to the project.avc file.
         keep_notes: Keep the migration's notes. The boot's load and a reload
             do; the first boot's seed does not.
+        running: The project running, for a file read in its place (a
+            reload, a replace): a file without a stamp that is that project
+            keeps its stamp (``core/project_identity.stamp_missing``).
 
     Returns:
         Validated ProjectConfig object.
@@ -1056,14 +1063,35 @@ def load_project(path: str | Path, *, keep_notes: bool = False) -> ProjectConfig
         f"{len(project.ui.pages)} pages)"
     )
 
+    # A project saved before projects were stamped, or the starter a first
+    # start copied in, is given its stamp once (core/project_identity).
+    from openavc.core import project_identity
+    stamped = project_identity.stamp_missing(project, running)
+
     # Persist migrated format so we don't re-migrate next time
     if was_migrated:
         log.info("Saving migrated project format to disk")
         from openavc.core.installed_equipment import InstalledEquipment
         project = InstalledEquipment.from_environment().compose(project, for_load=True)
         save_project(path, project)
+    elif stamped:
+        _save_stamp(path, project)
 
     return project
+
+
+def _save_stamp(path: Path, project: ProjectConfig) -> None:
+    """The stamp a load gave ``project`` written into its file, so the next
+    start reads the same one. Whatever stops the write (a file that cannot
+    be written, equipment this server refuses), the project loads as it
+    would have, with the stamp in the running project until its next save:
+    a load that raised here would have a start put a backup in its place."""
+    from openavc.core.installed_equipment import InstalledEquipment
+
+    try:
+        save_project(path, InstalledEquipment.from_environment().compose(project.model_copy(deep=True), for_load=True))
+    except Exception as error:
+        log.warning(f"The project's stamp could not be written to its file: {error}")
 
 
 

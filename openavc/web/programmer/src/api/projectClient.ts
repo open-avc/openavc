@@ -120,6 +120,20 @@ function answerFields(body: string): { detail?: unknown; code?: unknown } {
   }
 }
 
+/** What a project save answers. An import (`mode` "import") also names the
+ *  devices and plugins that wait for their login, and what became of the
+ *  files beside the project it replaced: `previous_files` is "kept" when it
+ *  was the same project and "set_aside" (in the backup the import took) when
+ *  it was another, with the server's sentence for it in `notice`. */
+export interface ProjectSaveAnswer {
+  status: string;
+  etag?: string;
+  needs_login?: DeviceNeedingLogin[];
+  plugins_need_login?: PluginNeedingLogin[];
+  previous_files?: "kept" | "set_aside";
+  notice?: string;
+}
+
 /**
  * PUT the whole project. `operation` names this save: sent again under the
  * same id after its answer was lost, it is answered with what it did. A 409
@@ -132,7 +146,7 @@ export async function saveProject(
   etag?: string,
   mode: "edit" | "import" = "edit",
   operation?: string,
-): Promise<{ status: string; etag?: string; needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[] }> {
+): Promise<ProjectSaveAnswer> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (etag) headers["If-Match"] = etag;
   if (operation) headers[OPERATION_HEADER] = operation;
@@ -161,16 +175,18 @@ export async function saveProject(
   }
 
   const result = await res.json();
-  const newEtag = res.headers.get("etag") ?? undefined;
-  // An import also names the devices and plugins that wait for their login.
-  return Array.isArray(result.needs_login)
-    ? {
-        status: result.status,
-        etag: newEtag,
-        needs_login: result.needs_login,
-        plugins_need_login: Array.isArray(result.plugins_need_login) ? result.plugins_need_login : [],
-      }
-    : { status: result.status, etag: newEtag };
+  const answer: ProjectSaveAnswer = { status: result.status, etag: res.headers.get("etag") ?? undefined };
+  // An import also names the devices and plugins that wait for their login,
+  // and what became of the files beside the project it replaced.
+  if (Array.isArray(result.needs_login)) {
+    answer.needs_login = result.needs_login;
+    answer.plugins_need_login = Array.isArray(result.plugins_need_login) ? result.plugins_need_login : [];
+  }
+  if (result.previous_files === "kept" || result.previous_files === "set_aside") {
+    answer.previous_files = result.previous_files;
+  }
+  if (typeof result.notice === "string" && result.notice) answer.notice = result.notice;
+  return answer;
 }
 
 /** Save a secret command parameter (a stream key in a macro step or a

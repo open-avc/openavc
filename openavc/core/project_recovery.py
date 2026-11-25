@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from openavc.core import project_identity
 from openavc.core.project_loader import ProjectConfig, ProjectMeta, load_project, save_project
 from openavc.utils.logger import get_logger
 
@@ -321,6 +322,7 @@ def _start_empty(project_path: Path, failure: str) -> ProjectConfig:
             description="Auto-created after project corruption. Use File > Open to load a project.",
             created=datetime.now(timezone.utc).isoformat(),
             modified=datetime.now(timezone.utc).isoformat(),
+            uuid=project_identity.new_stamp(),
         )
     )
     # save_project writes through a temp file beside the project and a

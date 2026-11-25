@@ -94,8 +94,10 @@ def data(tmp_path, monkeypatch):
 
 
 def _project(password: Any = "Hunter2-Acme", **config: Any) -> ProjectConfig:
+    # Stamped, as a project saved by this release is: a start gives a file
+    # without a stamp one, which is a write of its own.
     return ProjectConfig(
-        project=ProjectMeta(id="p1", name="Hall"),
+        project=ProjectMeta(id="p1", name="Hall", uuid="hall-stamp"),
         devices=[DeviceConfig(id="proj1", driver=DRIVER, name="Projector", config={"mode": "eco", **config})],
         connections={"proj1": {"host": "192.0.2.10", "port": 5500, "username": "admin", "password": password}},
     )
@@ -420,6 +422,34 @@ async def test_a_start_with_nothing_to_move_rewrites_nothing(engine, data, monke
     assert engine.project_path.read_bytes() == before
     assert _backups(engine) == []
     assert not (data / LOGINS_FILENAME).exists()
+
+
+@pytest.mark.parametrize("login,backup_fails", [(SAVED_LOGIN, False), ("Hunter2-Acme", True)])
+async def test_a_start_of_a_file_saved_before_stamps_gains_its_stamp_and_moves_logins_as_before(
+    engine, data, monkeypatch, login, backup_fails,
+):
+    """Every upgraded system starts on a file with no stamp: the start writes
+    the stamp once, and the logins move, or stay, as they would have."""
+    from openavc.core import backup_manager
+
+    original = _document(login)
+    del original["project"]["uuid"]
+    _write(engine.project_path, original)
+    if backup_fails:
+        def no_room(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(backup_manager, "create_backup", no_room)
+
+    await _start_until_loaded(engine, monkeypatch)
+
+    saved = _on_disk(engine.project_path)
+    assert saved["project"]["uuid"] == engine.project.project.uuid != ""
+    assert saved["connections"]["proj1"]["password"] == login
+    assert engine.project.connections["proj1"]["password"] == login
+    assert _backups(engine) == []
+    if not backup_fails:
+        assert not (data / LOGINS_FILENAME).exists()
 
 
 async def test_a_start_whose_backup_fails_leaves_the_project_as_it_was(engine, data, monkeypatch):

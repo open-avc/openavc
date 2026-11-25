@@ -83,7 +83,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from openavc.core import backup_manager, project_update
+from openavc.core import backup_manager, project_identity, project_update
 from openavc.core.change_files import ChangeFiles
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_logins import LoginChange
@@ -291,8 +291,8 @@ async def _call_logged(callback, failure: str) -> None:
 class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
     """The project's change doors, its revision and its bookkeeping saves.
     A whole other project with its files (a restore, a library copy, a
-    blank project) comes in through ``replace_with``
-    (``core/project_replace``)."""
+    blank project, an imported project file) comes in through
+    ``replace_with`` (``core/project_replace``)."""
 
     def _init_project_changes(self) -> None:
         self._init_project_revision()
@@ -353,7 +353,9 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
         save finished.
         """
         async with self._lock_for_a_change():
-            new_project = load_project(self.project_path, keep_notes=True)
+            new_project = load_project(
+                self.project_path, keep_notes=True, running=self.project.project if self.project else None,
+            )
             await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=False)
             project_update.publish(self.state, self.project_path.parent)
 
@@ -431,17 +433,20 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
         expected_revision: str | None = None, keep: KeepReplaced | None = None,
     ) -> ApplyOutcome:
         """A project that replaces the running one and keeps the files
-        beside it and the saved values (an import of a bare ``.avc``, a
-        whole project pushed from the cloud), applied as a load and saved;
-        once that has worked, the update notice is what its migration
-        changed, or none (``keep_update_notes``). What the caller keeps of
-        the project it replaces (``keep``) is taken under the lock once the
-        revision is checked, before anything changes. A project that comes
-        with its files replaces them too, through ``replace_with``."""
+        beside it, the saved values and the running project's stamp
+        (``core/project_identity``): a whole project pushed from the cloud,
+        which brings no files. Applied as a load and saved; once that has
+        worked, the update notice is what its migration changed, or none
+        (``keep_update_notes``). What the caller keeps of the project it
+        replaces (``keep``) is taken under the lock once the revision is
+        checked, before anything changes. A project that comes with its
+        files, or with none of its own (an imported project file), comes
+        through ``replace_with``."""
         async with self._lock_for_a_change():
             self._check_revision(expected_revision)
             if keep is not None:
                 await keep.take(self.project_path)
+            project_identity.keep_running(self.project, new_project)
             outcome = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
             self.keep_update_notes(update_notes, replace=True)
             return outcome
@@ -591,6 +596,8 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
             # A word a later release saved stays; one this edit adds is refused.
             refuse_new_words(self.project, new_project)
+            # An edit is still the project it edits, whatever stamp it names.
+            project_identity.keep_running(self.project, new_project)
         as_given = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
         # Every project that comes in ends here, so this is where a login it
         # holds in the clear moves into this system's login file and the
