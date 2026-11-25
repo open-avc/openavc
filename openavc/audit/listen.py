@@ -15,9 +15,12 @@ driver's commands. What it records:
   reconnects after the listening window are counted apart from the window's.
 - **A listening window** of at least ``MIN_SECONDS`` and ``MIN_CYCLES`` poll
   cycles from the moment the device connected; the person can extend it, up
-  to ``MAX_SECONDS`` from the start. A device that does not connect is watched
-  for the minimum window, because the manager keeps retrying as it would for
-  a device in a space.
+  to ``MAX_SECONDS`` from the start. The cycles are the driver's poll loop's,
+  asked of the running driver once the loop starts (it starts after the
+  start-up steps, so the window does not close while they run), never read
+  from its config. A device that does not connect is watched for the minimum
+  window, because the manager keeps retrying as it would for a device in a
+  space.
 - **The status table**: every state variable the driver declares with its
   value or "not reported", the rules that would have set it, any type
   problem; the children the driver registered and their values; each device
