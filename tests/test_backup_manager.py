@@ -310,10 +310,11 @@ class TestCleanupBackups:
         removed = cleanup_backups(backup_dir, keep=3)
         assert removed == 0
 
-    def test_auto_rotation_on_create(self, project_dir: Path):
-        # Create more than max_backups
+    def test_auto_rotation_on_create(self, project_dir: Path, monkeypatch):
+        # Create more than MAX_BACKUPS
+        monkeypatch.setattr("openavc.core.backup_manager.MAX_BACKUPS", 3)
         for i in range(5):
-            create_backup(project_dir / "project.avc", f"Backup {i}", max_backups=3)
+            create_backup(project_dir / "project.avc", f"Backup {i}")
 
         backups = list((project_dir / "backups").glob("backup_*.zip"))
         assert len(backups) == 3

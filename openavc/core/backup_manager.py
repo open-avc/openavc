@@ -238,7 +238,6 @@ def create_backup(
     reason: str,
     *,
     kind: str = "",
-    max_backups: int = MAX_BACKUPS,
     spare: Path | None = None,
 ) -> Path | None:
     """Create a ZIP backup of the current project state.
@@ -260,7 +259,7 @@ def create_backup(
     if not project_file.exists():
         log.debug(f"No project file to back up at {project_file}")
         return None
-    return _take(project_file, reason, kind=kind, max_backups=max_backups, spare=spare)
+    return _take(project_file, reason, kind=kind, spare=spare)
 
 
 def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
@@ -274,12 +273,12 @@ def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> 
     does; ``spare`` as there."""
     if not project_file.exists() and next(_beside_members(project_file.parent), None) is None:
         return None
-    return _take(project_file, reason, kind=KIND_SET_ASIDE, max_backups=MAX_BACKUPS, spare=spare)
+    return _take(project_file, reason, kind=KIND_SET_ASIDE, spare=spare)
 
 
-def _take(project_file: Path, reason: str, *, kind: str, max_backups: int, spare: Path | None) -> Path:
+def _take(project_file: Path, reason: str, *, kind: str, spare: Path | None) -> Path:
     """The backup ``create_backup`` and ``set_aside`` take, written and
-    placed under Backups."""
+    placed under Backups, the oldest past ``MAX_BACKUPS`` rotated away."""
     project_dir = project_file.parent
     from openavc.core.project_loader import _project_save_lock
 
@@ -307,7 +306,7 @@ def _take(project_file: Path, reason: str, *, kind: str, max_backups: int, spare
         with _project_save_lock:
             backup_path = _free_name(backup_d, f"backup_{stamp}_{slug}")
             os.replace(finished, backup_path)
-            cleanup_backups(backup_d, keep=max_backups, spare=spare)
+            cleanup_backups(backup_d, keep=MAX_BACKUPS, spare=spare)
         return backup_path
 
     # Compressed outside the lock (the slow part). project.avc is written
@@ -532,14 +531,17 @@ def backups_since_replaced(project_file: Path) -> list[BackupInfo]:
     since: list[BackupInfo] = []
     running = ""
     for info in list_backups(project_file):
-        if info.before_a_replace:
+        if info.before_a_replace or _holds_another(info, running):
             break
-        if info.project_uuid:
-            if running and info.project_uuid != running:
-                break
-            running = info.project_uuid
+        running = running or info.project_uuid
         since.append(info)
     return since
+
+
+def _holds_another(info: BackupInfo, running: str) -> bool:
+    """``info`` holds a different project than ``running``, the stamp of
+    the newer backups: never when either has none."""
+    return bool(running and info.project_uuid and info.project_uuid != running)
 
 
 class BackupUnreadable(ValueError):

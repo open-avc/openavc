@@ -49,6 +49,48 @@ function interruptedNotice(backupFile: string, when: string): RecoveryNotice {
   };
 }
 
+/** A missing file whose backups hold no copy of it that opens. The
+ *  backups that are listed are another project's, or would not open. */
+const STARTER_NOTICE: RecoveryNotice = {
+  show: true,
+  severe: true,
+  title: "Project file missing",
+  body: "The project file was missing at startup, and no backup of that project would open,"
+    + " so this system is running the starter project. Earlier backups are listed under Backups.",
+  backupFile: "",
+  action: "Review backups",
+};
+
+/** Nothing opened: an empty project is running. */
+function resetNotice(opening: string): RecoveryNotice {
+  return {
+    show: true,
+    severe: true,
+    title: "Project could not be recovered",
+    body: `${opening} No backup would open either, so this system is running an empty project.`,
+    backupFile: "",
+    // Not "Review backups": nothing here opened, and the Project view is
+    // also where a saved project is opened, which is the way out.
+    action: "Open Project",
+  };
+}
+
+/** A backup opened in place of the project file. */
+function restoredNotice(opening: string, when: string, backupFile: string): RecoveryNotice {
+  const which = when ? `the backup from ${when}` : "the most recent backup that would open";
+  return {
+    show: true,
+    severe: false,
+    title: "Project restored from a backup",
+    body: `${opening} This system is running ${which},`
+      + " so anything saved after that is not in this project.",
+    backupFile,
+    action: "Review backups",
+  };
+}
+
+const OUTCOMES = new Set(["restored", "reset", "starter"]);
+
 /** The notice for the current state, or `show: false` when there is none.
  *
  *  `formatTime` is passed in rather than read from the environment so a test
@@ -59,57 +101,19 @@ export function recoveryNotice(
   formatTime: (iso: string) => string = defaultFormat,
 ): RecoveryNotice {
   const outcome = String(state["system.project_recovery"] ?? "");
-  if (outcome !== "restored" && outcome !== "reset" && outcome !== "starter") return NOTHING;
+  if (!OUTCOMES.has(outcome)) return NOTHING;
+  if (outcome === "starter") return STARTER_NOTICE;
 
   const reason = String(state["system.project_recovery_reason"] ?? "");
   const cutoff = String(state["system.project_recovery_cutoff"] ?? "");
   const when = cutoff ? formatTime(cutoff) : "";
+  const backupFile = String(state["system.project_recovery_backup"] ?? "");
 
   // Always "restored": the server puts back the backup a replace took.
-  if (reason === "interrupted") {
-    return interruptedNotice(String(state["system.project_recovery_backup"] ?? ""), when);
-  }
+  if (reason === "interrupted") return interruptedNotice(backupFile, when);
 
-  const missing = reason === "missing";
-  const opening = missing
+  const opening = reason === "missing"
     ? "The project file was missing at startup."
     : "The project file could not be read at startup.";
-
-  // A missing file whose backups hold no copy of it that opens. The
-  // backups that are listed are another project's, or would not open.
-  if (outcome === "starter") {
-    return {
-      show: true,
-      severe: true,
-      title: "Project file missing",
-      body: "The project file was missing at startup, and no backup of that project would open,"
-        + " so this system is running the starter project. Earlier backups are listed under Backups.",
-      backupFile: "",
-      action: "Review backups",
-    };
-  }
-
-  if (outcome === "reset") {
-    return {
-      show: true,
-      severe: true,
-      title: "Project could not be recovered",
-      body: `${opening} No backup would open either, so this system is running an empty project.`,
-      backupFile: "",
-      // Not "Review backups": nothing here opened, and the Project view is
-      // also where a saved project is opened, which is the way out.
-      action: "Open Project",
-    };
-  }
-
-  const which = when ? `the backup from ${when}` : "the most recent backup that would open";
-  return {
-    show: true,
-    severe: false,
-    title: "Project restored from a backup",
-    body: `${opening} This system is running ${which},`
-      + " so anything saved after that is not in this project.",
-    backupFile: String(state["system.project_recovery_backup"] ?? ""),
-    action: "Review backups",
-  };
+  return outcome === "reset" ? resetNotice(opening) : restoredNotice(opening, when, backupFile);
 }
