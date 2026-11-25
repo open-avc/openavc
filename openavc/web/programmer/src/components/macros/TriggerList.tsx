@@ -65,6 +65,21 @@ function fireNowResult(answer: RunAnswer): { message: string; kind: "ok" | "bad"
   return FIRE_NOW_RESULTS[answer.status] ?? { message: "Trigger fired.", kind: "info" };
 }
 
+const SHOW_RESULT = { ok: showSuccess, bad: showError, info: showInfo };
+
+/** Fire now: fire the trigger, then say how its macro's run went. It answered
+ *  the same whatever the macro did, so pressing it on a broken trigger looked
+ *  like it had worked. */
+async function fireNow(triggerId: string): Promise<void> {
+  try {
+    const result = fireNowResult(await api.testTrigger(triggerId));
+    SHOW_RESULT[result.kind](result.message);
+  } catch (e) {
+    showError("Could not fire the trigger.");
+    console.error("Fire trigger failed:", e);
+  }
+}
+
 interface TriggerListProps {
   triggers: TriggerConfig[];
   /** The whole macro's issues; this list reads the trigger half. A cron with
@@ -440,24 +455,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
-                      onClick={async () => {
-                        try {
-                          // It answered the same whatever the macro did, so
-                          // pressing this on a broken trigger looked like it
-                          // had worked.
-                          const result = fireNowResult(await api.testTrigger(trigger.id));
-                          if (result.kind === "ok") {
-                            showSuccess(result.message);
-                          } else if (result.kind === "bad") {
-                            showError(result.message);
-                          } else {
-                            showInfo(result.message);
-                          }
-                        } catch (e) {
-                          showError("Could not fire the trigger.");
-                          console.error("Fire trigger failed:", e);
-                        }
-                      }}
+                      onClick={() => fireNow(trigger.id)}
                       style={{ ...iconBtnStyle, color: "var(--accent)" }}
                       title="Fire now (bypasses conditions)"
                     >

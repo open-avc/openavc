@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import weakref
 from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 
@@ -203,6 +204,12 @@ class MacroEngine(MacroSteps):
         # Strong references to the tasks start() runs, so a macro nobody is
         # awaiting any more is not collected out from under itself.
         self._detached: set[asyncio.Task] = set()
+        # The reason the start a task ran was refused (_report_skipped), which
+        # execute_detached answers its door with. Weak: an entry goes with its
+        # task, and a long-lived caller's task only ever holds its latest.
+        self._refusals: weakref.WeakKeyDictionary[asyncio.Task, dict[str, str]] = (
+            weakref.WeakKeyDictionary()
+        )
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
         # Plugin-registered actions: action_type -> (handler, plugin_id, label)
@@ -404,7 +411,6 @@ class MacroEngine(MacroSteps):
     async def execute(
         self, macro_id: str, context: dict[str, Any] | None = None,
         _call_chain: frozenset[str] | None = None, *, _subroutine: bool = False,
-        _why: dict[str, str] | None = None,
     ) -> str:
         """
         Execute a macro by ID. Returns how the run ended.
@@ -428,8 +434,6 @@ class MacroEngine(MacroSteps):
                 detect circular/recursive calls without blocking independent
                 concurrent chains.
             _subroutine: Internal — set by a Run Macro step only.
-            _why: Internal — filled with the ``skip_reason`` of a start the
-                macro refuses, for ``execute_detached``'s ``RunEnd``.
         """
         _call_chain = self._chain_into(macro_id, _call_chain)
         macro = self._macros[macro_id]
@@ -448,8 +452,6 @@ class MacroEngine(MacroSteps):
         if blocked is not None:
             _active_call_chain.reset(_chain_token)
             await self._report_skipped(macro_id, name, blocked)
-            if _why is not None:
-                _why.update(blocked)
             return "skipped"
 
         try:  # from the claim on, so any cancel ends the run and frees its slot
@@ -565,6 +567,11 @@ class MacroEngine(MacroSteps):
 
     async def _report_skipped(self, macro_id: str, name: str, reason: dict[str, str]) -> None:
         log.info(f"Macro '{name}' skipped — {reason['message']}")
+        # Kept for the task the refused start ran in, so execute_detached can
+        # hand its operator door the same reason (RunEnd).
+        task = asyncio.current_task()
+        if task is not None:
+            self._refusals[task] = reason
         # A run that never starts is still an outcome somebody asked for.
         # Every other way a run ends has a lifecycle event; without this
         # one a caller waiting on the outcome (the WebSocket's
@@ -657,7 +664,6 @@ class MacroEngine(MacroSteps):
         context: dict[str, Any] | None = None,
         *,
         _call_chain: frozenset[str] | None = None,
-        _why: dict[str, str] | None = None,
     ) -> asyncio.Task:
         """Run a macro in its own task and return that task at once.
 
@@ -668,15 +674,13 @@ class MacroEngine(MacroSteps):
         point -- a script's timer that awaited a long macro was cut off at the
         handler limit partway through the steps.
 
-        The task's result is ``execute``'s word; ``_why`` is ``execute``'s.
-
         Raises ``ValueError`` for a macro that does not exist or would
         re-enter ``_call_chain``, before the task exists, so the caller hears
         it. Needs a running event loop.
         """
         self._refuse_start(macro_id, _call_chain or frozenset())
         task = asyncio.create_task(
-            self.execute(macro_id, context, _call_chain=_call_chain, _why=_why)
+            self.execute(macro_id, context, _call_chain=_call_chain)
         )
         self._detached.add(task)
         task.add_done_callback(self._detached.discard)
@@ -719,8 +723,7 @@ class MacroEngine(MacroSteps):
         if wait_seconds is None:
             wait_seconds = OPERATOR_RUN_WAIT_SECONDS
 
-        why: dict[str, str] = {}
-        task = self.start(macro_id, context, _why=why)
+        task = self.start(macro_id, context)
         try:
             # shield, so the timeout ends the WAIT and not the macro.
             await asyncio.wait_for(asyncio.shield(task), timeout=wait_seconds)
@@ -734,4 +737,6 @@ class MacroEngine(MacroSteps):
         # `executed` was the only word this ever said, and it said it for a
         # macro whose every step failed and for one that was cancelled out from
         # under the caller.
-        return RunEnd(task.result(), why or None)
+        outcome = task.result()
+        reason = self._refusals.pop(task, None) if outcome == "skipped" else None
+        return RunEnd(outcome, reason)

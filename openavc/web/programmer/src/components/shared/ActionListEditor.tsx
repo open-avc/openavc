@@ -39,6 +39,14 @@ export function isTestableAction(action: Record<string, unknown> | null | undefi
   );
 }
 
+/** Run the action's macro and say how the run went, as the macro editor's
+ *  Test button says it. */
+async function testMacroAction(macroId: string): Promise<void> {
+  const trouble = runTrouble(await api.executeMacro(macroId));
+  if (trouble) showError(trouble);
+  else showSuccess("Macro triggered");
+}
+
 async function runTestAction(action: Record<string, unknown>) {
   try {
     if (action.action === "device.command" && action.device && action.command) {
@@ -63,10 +71,7 @@ async function runTestAction(action: Record<string, unknown>) {
       await api.sendCommand(String(action.device), String(action.command), result.params, saved);
       showSuccess("Command sent");
     } else if (action.action === "macro" && action.macro) {
-      // How the run went, as the macro editor's Test button says it.
-      const trouble = runTrouble(await api.executeMacro(String(action.macro)));
-      if (trouble) showError(trouble);
-      else showSuccess("Macro triggered");
+      await testMacroAction(String(action.macro));
     } else {
       showError("Cannot test this action type");
     }
