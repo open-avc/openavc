@@ -1003,7 +1003,7 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     try:
         path = await capture(engine.project_path, reason)
     except BackupFailed as e:
-        raise _api_error(500, f"The backup could not be saved. {backup_failure_why(e)}", e) from e
+        raise _api_error(500, f"The backup could not be saved. {backup_failure_why(e.cause)}", e) from e
     if not path:
         raise HTTPException(status_code=404, detail="No project to back up")
     # The same name GET /backups lists and POST /backups/{filename}/restore
