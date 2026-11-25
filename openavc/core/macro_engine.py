@@ -398,7 +398,7 @@ class MacroEngine(MacroSteps):
 
     async def execute(
         self, macro_id: str, context: dict[str, Any] | None = None,
-        _call_chain: frozenset[str] | None = None,
+        _call_chain: frozenset[str] | None = None, *, _subroutine: bool = False,
     ) -> str:
         """
         Execute a macro by ID. Returns how the run ended.
@@ -419,8 +419,11 @@ class MacroEngine(MacroSteps):
         every step failed was indistinguishable from a clean one. A caller that
         ignores the return value behaves exactly as before.
 
-        A NESTED call is different and still raises (see ``nested_call``): a
-        subroutine's failure belongs to the step that awaited it.
+        A Run Macro step's call is different and still raises (``_subroutine``):
+        a subroutine's failure belongs to the step that awaited it. A call
+        that only carries a chain (a script answering an event a running macro
+        emitted) is not a step of that macro: the chain's guards apply to it,
+        and it is told the outcome like any other caller.
 
         Args:
             macro_id: The macro to execute.
@@ -428,11 +431,12 @@ class MacroEngine(MacroSteps):
             _call_chain: Internal — tracks the current execution chain to
                 detect circular/recursive calls without blocking independent
                 concurrent chains.
+            _subroutine: Internal — set by a Run Macro step only.
         """
         # An awaited subroutine must return its failure/cancellation to the
         # calling step. Only the outer invocation owns the event-only outcome;
         # swallowing it here would let dependent parent steps keep running.
-        nested_call = bool(_call_chain)
+        nested_call = _subroutine
         _call_chain = self._chain_into(macro_id, _call_chain)
         macro = self._macros[macro_id]
         # Publish the chain to this task's context so handler tasks spawned

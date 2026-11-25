@@ -137,7 +137,7 @@ class MacroSteps:
 
         async def execute(
             self, macro_id: str, context: dict[str, Any] | None = None,
-            _call_chain: frozenset[str] | None = None,
+            _call_chain: frozenset[str] | None = None, *, _subroutine: bool = False,
         ) -> str: ...
 
     async def execute_steps(
@@ -380,7 +380,9 @@ class MacroSteps:
     async def _call_macro(self, step: dict[str, Any], run: StepRun, _path: StepPath) -> None:
         sub_macro_id = step.get("macro", "")
         log.debug(f"  Macro step: call macro '{sub_macro_id}'")
-        outcome = await self.execute(sub_macro_id, run.context, _call_chain=run.call_chain)
+        outcome = await self.execute(
+            sub_macro_id, run.context, _call_chain=run.call_chain, _subroutine=True,
+        )
         if outcome == "failed":
             # The subroutine ran to the end and its own stop_on_error said
             # to carry on past what failed, so it returned rather than
