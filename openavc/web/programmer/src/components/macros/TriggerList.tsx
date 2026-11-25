@@ -9,8 +9,10 @@ import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpe
 import { issuesAt, issueLabel, issueText, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
 import { isFailedRun } from "./triggerRuns";
+import { didNotStart, type RunAnswer } from "./runAnswer";
+import { SkipLine } from "./SkipLine";
 import { useLogStore } from "../../store/logStore";
-import type { TriggerRun } from "../../store/logStore";
+import type { SkipNote, TriggerRun } from "../../store/logStore";
 import { showSuccess, showError, showInfo } from "../../store/toastStore";
 import * as api from "../../api/restClient";
 
@@ -41,7 +43,8 @@ function timeAgo(seconds: number): string {
 }
 
 /** What the person who pressed Fire now is told. The button reported nothing
- *  at all for a macro whose every step failed. */
+ *  at all for a macro whose every step failed. A macro that refused the run
+ *  says why in the server's words (`fireNowResult`). */
 const FIRE_NOW_RESULTS: Record<string, { message: string; kind: "ok" | "bad" | "info" }> = {
   completed: { message: "Trigger fired. The macro completed.", kind: "ok" },
   failed: {
@@ -52,13 +55,15 @@ const FIRE_NOW_RESULTS: Record<string, { message: string; kind: "ok" | "bad" | "
     message: "Trigger fired. Something cancelled the macro part-way through.",
     kind: "info",
   },
-  skipped: {
-    message:
-      "Trigger fired, but the macro did not start — its own Overlap or Cooldown setting refused the run.",
-    kind: "info",
-  },
   running: { message: "Trigger fired. The macro is still running.", kind: "info" },
 };
+
+function fireNowResult(answer: RunAnswer): { message: string; kind: "ok" | "bad" | "info" } {
+  if (answer.status === "skipped") {
+    return { message: didNotStart(answer, "Trigger fired, but"), kind: "info" };
+  }
+  return FIRE_NOW_RESULTS[answer.status] ?? { message: "Trigger fired.", kind: "info" };
+}
 
 interface TriggerListProps {
   triggers: TriggerConfig[];
@@ -75,6 +80,9 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [pendingTriggers, setPendingTriggers] = useState<Record<string, { reason: string; waitSeconds?: number; queuePosition?: number }>>({});
+  // Why each trigger's latest fire did not go ahead. Read on the tick below,
+  // not subscribed: a busy trigger can be skipped many times a second.
+  const [skips, setSkips] = useState<Record<string, SkipNote>>(() => useLogStore.getState().triggerSkips);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   // "Just fired" highlights come straight from the trigger.fired WS message,
@@ -91,8 +99,9 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
   // Poll for trigger pending state every 1s
   useEffect(() => {
     const interval = setInterval(() => {
-      const tp = useLogStore.getState().triggerPending;
-      setPendingTriggers(tp);
+      const { triggerPending, triggerSkips } = useLogStore.getState();
+      setPendingTriggers(triggerPending);
+      setSkips(triggerSkips);
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -436,11 +445,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                           // It answered the same whatever the macro did, so
                           // pressing this on a broken trigger looked like it
                           // had worked.
-                          const { status } = await api.testTrigger(trigger.id);
-                          const result = FIRE_NOW_RESULTS[status];
-                          if (!result) {
-                            showInfo("Trigger fired.");
-                          } else if (result.kind === "ok") {
+                          const result = fireNowResult(await api.testTrigger(trigger.id));
+                          if (result.kind === "ok") {
                             showSuccess(result.message);
                           } else if (result.kind === "bad") {
                             showError(result.message);
@@ -473,6 +479,14 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     </button>
                   </div>
                 </div>
+
+                {/* Why its latest fire did not go ahead, until it next fires. */}
+                {skips[trigger.id] && (
+                  <SkipLine
+                    skip={skips[trigger.id]}
+                    style={{ padding: "0 var(--space-md) var(--space-sm) calc(var(--space-md) + 22px)" }}
+                  />
+                )}
 
                 {/* What this trigger is missing, beside the fields it is about.
                     Only while it is open -- collapsed, the header's mark and the

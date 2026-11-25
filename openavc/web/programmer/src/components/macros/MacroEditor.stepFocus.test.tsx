@@ -79,6 +79,8 @@ vi.mock("../../store/logStore", () => {
     lastRun: null,
     recentlyFired: {},
     triggerPending: {},
+    triggerSkips: {},
+    macroSkips: {},
   };
   return {
     useLogStore: Object.assign(

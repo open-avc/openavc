@@ -10,6 +10,7 @@ import { useUiFilesStore } from "../store/uiFilesStore";
 import { useThemeFilesStore } from "../store/themeFilesStore";
 import { useScriptErrorsStore } from "../store/scriptErrorsStore";
 import { applyDiscoveryMessage } from "../store/discoveryStore";
+import { applySkipMessage } from "./skipNotices";
 import { usePluginStore } from "../store/pluginStore";
 import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
@@ -149,6 +150,7 @@ export function useWebSocket() {
       setConnected(false);
       useLogStore.getState().setLogSubscribed(false);
       useLogStore.getState().clearMacroRuns();
+      useLogStore.getState().clearSkips();
       // Why the socket is down, from the server's run-state record: a start
       // that failed keeps the socket out (and, with a password, a restart
       // ends this tab's session first), so its reason is asked for here. A
@@ -234,6 +236,10 @@ export function useWebSocket() {
       }
 
       CHANGE_NOTICES.get(msg.type as string)?.();
+
+      // A fire or a run that did not go ahead, and the fire or start that
+      // ends that note (skipNotices.ts).
+      applySkipMessage(msg);
 
       // Project was modified: by this tab through a dedicated endpoint, by
       // another session, the AI, a fleet push. projectReload.ts decides which.

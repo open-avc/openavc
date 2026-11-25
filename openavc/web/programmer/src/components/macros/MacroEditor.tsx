@@ -45,6 +45,8 @@ import { showError } from "../../store/toastStore";
 import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun, StepPathSegment } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
+import { runTrouble } from "./runAnswer";
+import { SkipLine } from "./SkipLine";
 import {
   STEP_TYPES,
   getStepType,
@@ -427,6 +429,8 @@ export function MacroEditor({
   const groupResults = useLogStore((s) => s.groupResults);
   const lastRun = useLogStore((s) => s.lastRun);
   const showLastRun = lastRun && lastRun.macroId === macro.id && !isRunning;
+  // Why its latest start did not go ahead, from whichever door asked for it.
+  const skip = useLogStore((s) => s.macroSkips[macro.id]);
 
   const handleTest = async () => {
     setTestPending(true);
@@ -439,19 +443,12 @@ export function MacroEditor({
           throw new Error(saved.error || "Save the project before testing this macro.");
         }
       }
-      const { status } = await api.executeMacro(macro.id);
       // A run that went wrong is not a failed REQUEST, so it arrives as a
       // normal 200 and used to be dropped on the floor here -- the button
       // went back to idle and said nothing whether the macro did everything
-      // or nothing. `running` and `debounced` stay quiet on purpose: the
-      // first is shown live by the progress bar, the second is this button
-      // being pressed twice.
-      const trouble: Record<string, string> = {
-        failed: "The macro ran, but some of its steps didn't. The log says which ones and why.",
-        cancelled: "The macro was cancelled before it finished, so its later steps didn't run.",
-        skipped: "The macro didn't start — it's already running, or it's still in its cooldown.",
-      };
-      if (trouble[status]) showError(trouble[status]);
+      // or nothing. `running` stays quiet: the progress bar shows it live.
+      const trouble = runTrouble(await api.executeMacro(macro.id));
+      if (trouble) showError(trouble);
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -893,6 +890,7 @@ export function MacroEditor({
         {showLastRun && (
           <LastRunSummary lastRun={lastRun!} />
         )}
+        {skip && <SkipLine skip={skip} style={{ marginTop: "var(--space-sm)" }} />}
 
         {/* Add step button */}
         <div ref={addMenuRef} style={{ marginTop: "var(--space-md)", position: "relative" }}>

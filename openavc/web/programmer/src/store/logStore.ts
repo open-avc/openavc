@@ -95,6 +95,18 @@ export interface TriggerRun {
   firedAt?: number;
 }
 
+/** Why a trigger's fire or a macro's run did not go ahead, as the server's
+ *  `trigger.skipped` or `macro.skipped` said it: `code` from its reason table
+ *  and `message`, that code's sentence. `at` is when it was heard (ms).
+ *
+ *  Heard on this connection only: the next fire or start ends it, and a
+ *  dropped connection forgets it, since a fire may have happened unheard. */
+export interface SkipNote {
+  code: string;
+  message: string;
+  at: number;
+}
+
 interface LogStore {
   logEntries: LogEntry[];
   logPaused: boolean;
@@ -119,6 +131,11 @@ interface LogStore {
   // the two above this is not a flash and is NOT cleared on disconnect: it is
   // the server's record, seeded from GET /api/triggers and updated live.
   triggerRuns: Record<string, TriggerRun>;
+  // Why each trigger's latest fire, and each macro's latest start, did not go
+  // ahead (id -> note). Many arrive a second from a busy trigger, so the
+  // trigger list reads this on its one-second tick rather than subscribing.
+  triggerSkips: Record<string, SkipNote>;
+  macroSkips: Record<string, SkipNote>;
 
   addLogEntry: (entry: Omit<LogEntry, "id">) => void;
   addLogBatch: (entries: Omit<LogEntry, "id">[]) => void;
@@ -138,6 +155,9 @@ interface LogStore {
   setTriggerFired: (triggerId: string, fired: boolean) => void;
   setTriggerRun: (triggerId: string, run: TriggerRun) => void;
   setTriggerRuns: (runs: Record<string, TriggerRun>) => void;
+  setTriggerSkip: (triggerId: string, note: SkipNote | null) => void;
+  setMacroSkip: (macroId: string, note: SkipNote | null) => void;
+  clearSkips: () => void;
 }
 
 let nextLogEntryId = 1;
@@ -165,6 +185,8 @@ export const useLogStore = create<LogStore>((set, get) => ({
   triggerPending: {},
   recentlyFired: {},
   triggerRuns: {},
+  triggerSkips: {},
+  macroSkips: {},
 
   addLogEntry: (entry) =>
     set((s) => {
@@ -274,4 +296,24 @@ export const useLogStore = create<LogStore>((set, get) => ({
   // server's own list, so a trigger missing from it no longer exists and its
   // record must go with it.
   setTriggerRuns: (runs) => set({ triggerRuns: runs }),
+
+  setTriggerSkip: (triggerId, note) =>
+    set((s) => ({ triggerSkips: withNote(s.triggerSkips, triggerId, note) })),
+
+  setMacroSkip: (macroId, note) =>
+    set((s) => ({ macroSkips: withNote(s.macroSkips, macroId, note) })),
+
+  clearSkips: () => set({ triggerSkips: {}, macroSkips: {} }),
 }));
+
+/** `notes` with `id`'s note set, or removed for null; the same object when
+ *  there was nothing to remove, so a subscriber is not told of a change. */
+function withNote(
+  notes: Record<string, SkipNote>, id: string, note: SkipNote | null,
+): Record<string, SkipNote> {
+  if (note) return { ...notes, [id]: note };
+  if (!(id in notes)) return notes;
+  const next = { ...notes };
+  delete next[id];
+  return next;
+}

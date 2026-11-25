@@ -88,6 +88,36 @@ describe("the card's last-run marker", () => {
     renderCard();
     expect(screen.queryByText(/Last run/)).toBeNull();
     expect(screen.queryByText(/Ran OK/)).toBeNull();
+    expect(screen.queryByText(/Skipped/)).toBeNull();
+  });
+});
+
+describe("a fire that did not go ahead", () => {
+  it("says why, in the server's sentence", () => {
+    useLogStore.setState({
+      triggerSkips: {
+        [TRIGGER.id]: {
+          code: "conditions_not_met",
+          message: "The trigger's conditions were not met.",
+          at: Date.now(),
+        },
+      },
+    });
+    renderCard({ outcome: "completed", firedAt: Date.now() / 1000 - 3600 });
+    expect(screen.getByText(/The trigger's conditions were not met\./)).toBeTruthy();
+    expect(screen.getByText(/Skipped/)).toBeTruthy();
+    // The last run it did make is still what the marker says.
+    expect(screen.getByText(/Ran OK/)).toBeTruthy();
+  });
+
+  it("is said for this trigger only", () => {
+    useLogStore.setState({
+      triggerSkips: {
+        trg_other: { code: "cooldown", message: "The trigger's Cooldown had not passed since it last fired.", at: Date.now() },
+      },
+    });
+    renderCard();
+    expect(screen.queryByText(/Skipped/)).toBeNull();
   });
 });
 
@@ -111,6 +141,24 @@ describe("Fire now", () => {
 
     await waitFor(() => expect(mocks.showSuccess).toHaveBeenCalled());
     expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("says why the macro did not start, in the server's words", async () => {
+    // It said "its own Overlap or Cooldown setting refused the run" whatever
+    // the reason was.
+    mocks.testTrigger.mockResolvedValueOnce({
+      status: "skipped",
+      code: "macro_cooldown",
+      message: "The macro's Cooldown (600 seconds) had not passed since it last started.",
+    } as never);
+    renderCard();
+
+    await userEvent.click(screen.getByTitle("Fire now (bypasses conditions)"));
+
+    await waitFor(() => expect(mocks.showInfo).toHaveBeenCalled());
+    expect(mocks.showInfo.mock.calls[0][0]).toBe(
+      "Trigger fired, but the macro didn't start. The macro's Cooldown (600 seconds) had not passed since it last started.",
+    );
   });
 
   it("does not report a still-running macro as a failure", async () => {

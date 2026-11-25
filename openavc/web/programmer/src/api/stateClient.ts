@@ -43,17 +43,21 @@ export async function setStateValue(
 
 // --- Macros ---
 
-const _macroExecuteTimestamps: Record<string, number> = {};
+/** How a run asked for by hand ended: `status` is `completed`, `failed`,
+ *  `cancelled`, `skipped` or `running`, and a `skipped` run carries `code` and
+ *  `message`, the server's reason (its reason table's code and sentence). */
+export interface RunAnswer {
+  status: string;
+  code?: string;
+  message?: string;
+}
+
+/** Run a macro and say how the run ended (`RunAnswer`): `skipped` carries
+ *  the server's `code` and `message`. A second run within two seconds is the
+ *  server's to refuse (a 429). */
 export async function executeMacro(
   macroId: string
-): Promise<{ status: string }> {
-  // Rate limit: max 1 execution per macro per 500ms
-  const now = Date.now();
-  const last = _macroExecuteTimestamps[macroId] || 0;
-  if (now - last < 500) {
-    return { status: "debounced" };
-  }
-  _macroExecuteTimestamps[macroId] = now;
+): Promise<RunAnswer & { macro_id: string }> {
   return request(`/macros/${macroId}/execute`, { method: "POST" });
 }
 
@@ -65,7 +69,7 @@ export async function cancelMacro(
 
 export async function testTrigger(
   triggerId: string
-): Promise<{ status: string }> {
+): Promise<RunAnswer & { trigger_id: string }> {
   return request(`/triggers/${triggerId}/test`, { method: "POST" });
 }
 
