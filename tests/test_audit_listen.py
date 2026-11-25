@@ -663,3 +663,30 @@ async def test_a_python_driver_that_polls_at_its_own_interval_is_asked_for_it():
         _DRIVER_REGISTRY.pop("acme_pace", None)
         get_traffic_recorder().clear()
         get_secret_registry().clear()
+
+
+async def test_a_start_up_longer_than_the_window_still_hears_the_drivers_polls(driver):
+    """The window holds three of the driver's polls, and the poll loop starts
+    only once the start-up steps are done: a start-up that outlasts the
+    shortest window does not end it before the loop's interval is known."""
+    base = create_configurable_driver_class({
+        **DRIVER, "default_config": {**DRIVER["default_config"], "poll_interval": 0.5},
+    })
+
+    class AcmeSlowSync(base):
+        async def _initial_sync(self):
+            await super()._initial_sync()
+            await asyncio.sleep(1.0)  # longer than the 0.6 s shortest window
+
+    _DRIVER_REGISTRY["acme_listen"] = AcmeSlowSync
+    server, port = await _fake_device()
+    session, run, _heard = _session_and_run(port)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == DONE)
+        assert listen.poll_interval == 0.5
+        assert listen.ends_at - listen.connected_at == pytest.approx(1.5)
+        assert listen.finished_at >= listen.connected_at + 1.5
+    finally:
+        await run.stop()
+        server.close()

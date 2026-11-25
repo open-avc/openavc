@@ -261,6 +261,9 @@ class ListenPass:
         # goes with it), for the report and the wizard afterwards.
         self._final_table: dict[str, Any] | None = None
         self.task: asyncio.Task | None = None
+        # True while the driver's own connect runs (its start-up steps): its
+        # poll loop starts after them, so the window waits (_window_over).
+        self._dialing = False
         self.sandbox = DriverSandbox(
             audit_device_id(session.id), run.choice.driver_id, dict(run.config or {}),
             name=run.choice.identity.get("name") or run.choice.driver_id,
@@ -308,7 +311,11 @@ class ListenPass:
         # start-up steps, and the wizard hears that then.
         watch = asyncio.create_task(self._watch())
         try:
-            await sb.connect()
+            self._dialing = True
+            try:
+                await sb.connect()
+            finally:
+                self._dialing = False
             self._ask_poll_loop()
             if self.connected_at is None:
                 self.status = NOT_CONNECTED
@@ -328,7 +335,7 @@ class ListenPass:
         while self.sandbox.started:
             self._ask_poll_loop()
             now = time.time()
-            if self.status in (LISTENING, NOT_CONNECTED) and self.ends_at and now >= self.ends_at:
+            if self._window_over(now):
                 self._end_window()
             self._flush_now()
             await asyncio.sleep(self._flush)
@@ -368,6 +375,17 @@ class ListenPass:
         base = self.connected_at or self.started_at
         span = max(self.min_seconds, self.min_cycles * self.poll_interval)
         return min(base + span, self.started_at + self.max_seconds)
+
+    def _window_over(self, now: float) -> bool:
+        """Whether the listening window has ended: its end has passed, and the
+        driver's connect has returned, since the poll loop whose polls size
+        the window starts only after the start-up steps; never past
+        ``max_seconds`` from the start."""
+        if self.status not in (LISTENING, NOT_CONNECTED) or not self.ends_at:
+            return False
+        if now >= self.started_at + self.max_seconds:
+            return True
+        return now >= self.ends_at and not self._dialing
 
     def _ask_poll_loop(self) -> None:
         """Ask the running driver how often it polls and how many polls in a
