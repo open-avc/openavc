@@ -64,6 +64,11 @@ OPENSSL = "OPENAVC_REQUIRE_OPENSSL"
 # git, plus a real checkout to run it against.
 GIT = "OPENAVC_REQUIRE_GIT"
 
+# The latest published release's tag, fetched into this clone and named by
+# OPENAVC_LATEST_RELEASE, for the check that runs that release's update
+# scripts against what this tree builds (test_update_from_latest_release.py).
+LATEST_RELEASE = "OPENAVC_REQUIRE_LATEST_RELEASE"
+
 # Playwright and its browser download, for the end-to-end IDE tests.
 E2E = "OPENAVC_REQUIRE_E2E"
 

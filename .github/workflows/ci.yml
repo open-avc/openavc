@@ -93,6 +93,7 @@ jobs:
       OPENAVC_REQUIRE_BASH: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_OPENSSL: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_GIT: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      OPENAVC_REQUIRE_LATEST_RELEASE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_SYMLINKS: "1"
       OPENAVC_REQUIRE_HOST_FIREWALL: ${{ matrix.os == 'windows-latest' && '1' || '' }}
 
@@ -167,6 +168,21 @@ jobs:
           $out
           if ($LASTEXITCODE -ne 1 -or -not ($out -match 'changed after it was signed')) { exit 1 }
           exit 0
+
+      # An installed system applies an update with the script its own release
+      # carries, not the one inside the update, so
+      # tests/test_update_from_latest_release.py runs the latest release's
+      # update helper and macOS wrapper against what this commit builds. The
+      # checkout has no tags: fetch that release's, and name it for the test.
+      - name: Fetch the latest release's tag
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view -R open-avc/openavc --json tagName -q .tagName)
+          [[ "$tag" =~ ^v[0-9] ]] || { echo "No latest release found (got '$tag')"; exit 1; }
+          git fetch --no-tags --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
+          echo "OPENAVC_LATEST_RELEASE=$tag" >> "$GITHUB_ENV"
 
       - name: Lint with ruff
         run: ruff check openavc/ tests/
