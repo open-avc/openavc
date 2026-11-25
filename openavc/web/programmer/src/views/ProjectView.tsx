@@ -732,8 +732,8 @@ export function ProjectView() {
                 await api.createBackup();
                 showSuccess("Backup created.");
                 await refreshBackups();
-              } catch {
-                showError("Failed to create backup.");
+              } catch (e) {
+                showError(parseApiError(e));
               } finally {
                 setCreatingBackup(false);
               }

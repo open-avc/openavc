@@ -992,15 +992,18 @@ async def list_backups_endpoint() -> dict[str, Any]:
 @router.post("/backups/create")
 async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     """Create a manual backup of the current project."""
-    from openavc.core.backup_manager import backup_id, create_backup
+    from openavc.api.error_messages import backup_failure_why
+    from openavc.core.backup_manager import BackupFailed, backup_id, capture
 
     engine = _get_engine()
     project_dir = engine.project_path.parent
     body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
     reason = body.get("reason", "Manual backup")
 
-    import asyncio
-    path = await asyncio.to_thread(create_backup, engine.project_path, reason)
+    try:
+        path = await capture(engine.project_path, reason)
+    except BackupFailed as e:
+        raise _api_error(500, f"The backup could not be saved. {backup_failure_why(e)}", e) from e
     if not path:
         raise HTTPException(status_code=404, detail="No project to back up")
     # The same name GET /backups lists and POST /backups/{filename}/restore

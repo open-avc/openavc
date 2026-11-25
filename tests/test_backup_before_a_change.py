@@ -182,6 +182,17 @@ async def test_a_restore_whose_backup_fails_is_not_applied(engine, monkeypatch):
     engine.persister.stop.assert_not_called()
 
 
+async def test_create_backup_says_why_it_could_not_save_one(engine, monkeypatch):
+    _run_out_of_room(monkeypatch)
+
+    async with _client(engine, monkeypatch) as client:
+        resp = await client.post("/api/backups/create", json={"reason": "Manual backup"})
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "The backup could not be saved. The disk is full. Free up disk space and try again."
+    assert _backups(engine) == []
+
+
 # --- The cloud AI's edits go on and say so --------------------------------------
 
 #: What an AI tool's answer says when no backup was saved before its change.
