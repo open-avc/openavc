@@ -413,11 +413,13 @@ function _pushGuards(body: string[], trigger: TriggerConfig): void {
  * `_read` writes `trigger.get("`: a quote in a value is escaped, and a
  * comment line is passed over. */
 function _holdContext(body: string[], start: number, context: string): void {
-  const reads = body
-    .slice(start)
-    .some((line) => !line.trimStart().startsWith("#") && line.includes('trigger.get("'));
-  if (reads) body.splice(start, 0, `    trigger = ${context}`);
+  if (_readsContext(body.slice(start))) body.splice(start, 0, `    trigger = ${context}`);
 }
+
+function _readsContext(lines: string[]): boolean {
+  return lines.some((line) => !line.trimStart().startsWith("#") && line.includes('trigger.get("'));
+}
+
 
 /** What a step's condition key or `$` reference reads, where the macro engine
  * reads it (`value_resolver.read_operand` and `resolve_ref`): a
@@ -706,8 +708,13 @@ function _onlyComments(block: string[]): boolean {
   return block.every((line) => line.trimStart().startsWith("#"));
 }
 
-/** Analyze a macro for potential script conversion issues. */
-export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]): string[] {
+/** Analyze a macro for potential script conversion issues. `macros`, the
+ * project's, are what its Run Macro steps run. */
+export function getConversionWarnings(
+  macro: MacroConfig,
+  groups?: DeviceGroup[],
+  macros: MacroConfig[] = [],
+): string[] {
   const warnings: string[] = [];
   const checkSteps = (steps: MacroStep[]) => {
     for (const step of steps) {
@@ -732,8 +739,64 @@ export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]
   if (triggers.some((t) => t.type === "schedule" && t.enabled)) {
     warnings.push("Schedule triggers are not converted: scripts have no Schedule trigger. To run the script on this schedule, keep the Schedule trigger on this macro and replace the macro's steps with one Emit Event step. The generated script shows the handler to add.");
   }
+  warnings.push(..._runMacroWarnings(macro, macros));
 
   return warnings;
+}
+
+/** A warning for each macro a Run Macro step runs that reads what ran the
+ * macro, itself or through a macro it runs: the macro engine hands it the
+ * trigger's values, and a script's macros.execute hands it none. Only a
+ * trigger's handler has values to lose. */
+function _runMacroWarnings(macro: MacroConfig, macros: MacroConfig[]): string[] {
+  const handlers = (macro.triggers ?? []).some(
+    (t) => t.enabled && (t.type === "state_change" || t.type === "event" || t.type === "startup"),
+  );
+  if (!handlers) return [];
+  return _macrosRun(macro.steps, macros, new Set([macro.id]))
+    .filter((child) => _readsWhatRan(child.steps, macros, new Set([macro.id, child.id])))
+    .map((child) =>
+      `Run Macro "${child.name}" reads what ran the macro ($trigger values). The script runs it with macros.execute, which passes none, so it reads them as empty. To keep them, write that macro's steps into the script, where they read trigger.`,
+    );
+}
+
+/** Whether `steps`, or a macro they run, read what ran the macro. */
+function _readsWhatRan(steps: MacroStep[], macros: MacroConfig[], seen: Set<string>): boolean {
+  if (_namesWhatRan(steps)) return true;
+  return _macrosRun(steps, macros, seen).some((child) => _readsWhatRan(child.steps, macros, seen));
+}
+
+/** Whether `value` (steps, or anything in one) names what ran the macro: a
+ * `$trigger.` reference in any text, or a condition on a `trigger.` key. A
+ * macro run by Run Macro runs in the macro engine, which reads both in more
+ * places than a script writes (a help request's message, a plugin action's
+ * params), so every one counts. */
+function _namesWhatRan(value: unknown): boolean {
+  if (typeof value === "string") return value.includes("$" + TRIGGER_PREFIX);
+  if (Array.isArray(value)) return value.some(_namesWhatRan);
+  if (value === null || typeof value !== "object") return false;
+  return Object.entries(value).some(
+    ([field, v]) => (field === "key" && typeof v === "string" && v.startsWith(TRIGGER_PREFIX)) || _namesWhatRan(v),
+  );
+}
+
+/** The macros `steps` run with Run Macro, their branches included, each once:
+ * a macro already in `seen` is passed over, and each found is added to it. */
+function _macrosRun(steps: MacroStep[], macros: MacroConfig[], seen: Set<string>): MacroConfig[] {
+  const found: MacroConfig[] = [];
+  for (const step of _everyStep(steps)) {
+    const child = step.action === "macro" ? macros.find((m) => m.id === step.macro) : undefined;
+    if (child && !seen.has(child.id)) {
+      seen.add(child.id);
+      found.push(child);
+    }
+  }
+  return found;
+}
+
+/** `steps` and every step in their branches. */
+function _everyStep(steps: MacroStep[]): MacroStep[] {
+  return steps.flatMap((step) => [step, ..._everyStep(step.then_steps ?? []), ..._everyStep(step.else_steps ?? [])]);
 }
 
 /** What to do with the macro once Convert to Script has created its script,

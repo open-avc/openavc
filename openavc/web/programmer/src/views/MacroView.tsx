@@ -89,7 +89,7 @@ export function MacroView() {
     if (!selectedMacro || !project) return;
     const worksOffline = await loadWorksOffline(selectedMacro, project.device_groups, api.getDevice);
     const source = macroToScript(selectedMacro, project.device_groups, worksOffline);
-    const warnings = getConversionWarnings(selectedMacro, project.device_groups);
+    const warnings = getConversionWarnings(selectedMacro, project.device_groups, project.macros);
     const scriptId = selectedMacro.id.replace(/^macro_/, "script_");
     const fileName = `${scriptId}.py`;
     setScriptPreview({ source, scriptId, fileName, warnings });
