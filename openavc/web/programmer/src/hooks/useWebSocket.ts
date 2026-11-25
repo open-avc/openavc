@@ -60,20 +60,28 @@ function stepPathOf(msg: Record<string, unknown>, stepIndex: number): StepPathSe
   return Array.isArray(msg.step_path) ? (msg.step_path as StepPathSegment[]) : [stepIndex];
 }
 
+/** Each macro's running step, by the path its last `running` frame named:
+ *  what a later frame about that step (it was skipped) belongs to. Per macro,
+ *  because a macro a Run Macro step calls names its own steps in between. */
+const runningStepPaths = new Map<string, StepPathSegment[]>();
+
 /** A `macro.progress` frame. Only a `running` one names its step; every other
  *  (a condition's answer, a group's results, a step that was skipped) belongs
  *  to the step last named. */
 function takeMacroProgress(msg: Record<string, unknown>) {
   const store = useLogStore.getState();
   const stepIndex = store.macroProgress.stepIndex ?? -1;
+  const macroId = msg.macro_id as string;
   if (msg.status === "running") {
     const index = msg.step_index as number;
+    const stepPath = stepPathOf(msg, index);
+    runningStepPaths.set(macroId, stepPath);
     store.setMacroProgress({
-      macroId: msg.macro_id as string,
+      macroId,
       stepIndex: index,
       totalSteps: msg.total_steps as number,
       status: "running",
-      activeStepPath: stepPathOf(msg, index),
+      activeStepPath: stepPath,
     });
   } else if (msg.status === "evaluated" && msg.action === "conditional") {
     store.addConditionalResult({
@@ -95,7 +103,8 @@ function takeMacroProgress(msg: Record<string, unknown>) {
     // A step its own setting held back (an Ask for Help inside its cooldown),
     // in the reason table's words.
     store.addStepSkip({
-      stepIndex,
+      macroId,
+      stepPath: runningStepPaths.get(macroId) ?? [stepIndex],
       action: msg.action as string,
       code: msg.code as string,
       message: msg.message as string,

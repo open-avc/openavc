@@ -146,7 +146,8 @@ describe("a step that did not do its work, in a run that went on", () => {
     steps: [{ action: "help.request", message: "Room 2" }],
   } as MacroConfig;
   const HELD_BACK = {
-    stepIndex: 0,
+    macroId: "macro_1",
+    stepPath: [0],
     action: "help.request",
     code: "help_cooldown",
     message:
@@ -173,6 +174,12 @@ describe("a step that did not do its work, in a run that went on", () => {
     expect(screen.getByText(/Skipped:/)).toBeTruthy();
   });
 
+  it("is not shown on this macro's step for another macro's step", () => {
+    mocks.logState.stepSkips = [{ ...HELD_BACK, macroId: "macro_2" }];
+    renderHelp();
+    expect(screen.queryByText(/Skipped:/)).toBeNull();
+  });
+
   it("is in the last run, which still completed", () => {
     mocks.logState.lastRun = {
       macroId: "macro_1", startedAt: 0, completedAt: Date.now(), duration: 20,
@@ -183,5 +190,60 @@ describe("a step that did not do its work, in a run that went on", () => {
     expect(screen.getByText(/Last run: Completed/)).toBeTruthy();
     expect(screen.getByText(/Step 1/)).toBeTruthy();
     expect(screen.getByText(/Help was asked for less than 300 seconds ago/)).toBeTruthy();
+  });
+});
+
+describe("a step's result inside a branch or a called macro", () => {
+  const OUTER = {
+    id: "macro_1",
+    name: "System On",
+    steps: [
+      { action: "delay", seconds: 1 },
+      { action: "conditional", condition: { key: "var.x", operator: "eq", value: 1 },
+        then_steps: [{ action: "help.request" }], else_steps: [] },
+    ],
+  } as MacroConfig;
+  const INNER = { id: "projector_on", name: "Projector On", steps: [] } as unknown as MacroConfig;
+  const HELD_BACK = {
+    macroId: "macro_1",
+    stepPath: [1, "then", 0],
+    action: "help.request",
+    code: "help_cooldown",
+    message:
+      "Help was asked for less than 300 seconds ago, and this step sends at most once in that time, so no new request was sent.",
+    at: Date.now(),
+  };
+
+  function renderOuter() {
+    return render(
+      <MacroEditor
+        macro={OUTER}
+        allMacros={[OUTER, INNER]}
+        devices={[]}
+        onUpdate={() => {}}
+        onConvertToScript={() => {}}
+      />,
+    );
+  }
+
+  it("names the step that holds it in the last run", () => {
+    mocks.logState.lastRun = {
+      macroId: "macro_1", startedAt: 0, completedAt: Date.now(), duration: 20,
+      status: "completed", stepErrors: [], conditionalResults: [], groupResults: [],
+      stepSkips: [HELD_BACK],
+    };
+    renderOuter();
+    expect(screen.getByText("Step 2:")).toBeTruthy();
+    expect(screen.queryByText("Step 1:")).toBeNull();
+  });
+
+  it("names the macro a called macro's step belongs to", () => {
+    mocks.logState.lastRun = {
+      macroId: "macro_1", startedAt: 0, completedAt: Date.now(), duration: 20,
+      status: "completed", stepErrors: [], conditionalResults: [], groupResults: [],
+      stepSkips: [{ ...HELD_BACK, macroId: "projector_on", stepPath: [0] }],
+    };
+    renderOuter();
+    expect(screen.getByText("Projector On, step 1:")).toBeTruthy();
   });
 });

@@ -47,6 +47,7 @@ import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
 import { runTrouble } from "./runAnswer";
 import { SkipLine } from "./SkipLine";
+import { resultOnRow, resultStepLabel } from "./stepResults";
 import {
   STEP_TYPES,
   getStepType,
@@ -437,6 +438,7 @@ export function MacroEditor({
   const showLastRun = lastRun && lastRun.macroId === macro.id && !isRunning;
   // Why its latest start did not go ahead, from whichever door asked for it.
   const skip = useLogStore((s) => s.macroSkips[macro.id]);
+  const macroName = (id: string) => allMacros.find((m) => m.id === id)?.name ?? id;
 
   const handleTest = async () => {
     setTestPending(true);
@@ -872,7 +874,7 @@ export function MacroEditor({
                     isExpanded={expandedStep === i}
                     isActive={isRunning && macroProgress.activeStepPath.length > 0 && macroProgress.activeStepPath[0] === i}
                     stepError={stepErrors.find((e) => e.stepIndex === i)}
-                    stepSkip={stepSkips.find((k) => k.stepIndex === i)}
+                    stepSkip={resultOnRow(stepSkips, macro.id, i)}
                     lintIssues={issuesAt(issues, "step", i)}
                     conditionalResult={step.action === "conditional" ? conditionalResults.find((r) => r.stepIndex === i) : undefined}
                     groupResult={step.action === "group.command" ? groupResults.find((g) => g.stepIndex === i) : undefined}
@@ -895,7 +897,7 @@ export function MacroEditor({
 
         {/* Last run summary */}
         {showLastRun && (
-          <LastRunSummary lastRun={lastRun!} />
+          <LastRunSummary lastRun={lastRun!} nameOf={macroName} />
         )}
         {skip && <SkipLine skip={skip} style={{ marginTop: "var(--space-sm)" }} />}
 
@@ -1187,7 +1189,10 @@ export function MacroEditor({
   );
 }
 
-function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
+function LastRunSummary({ lastRun, nameOf }: {
+  lastRun: MacroLastRun;
+  nameOf: (macroId: string) => string;
+}) {
   const durationSec = (lastRun.duration / 1000).toFixed(1);
   const time = new Date(lastRun.completedAt).toLocaleTimeString();
   const hasErrors = lastRun.stepErrors.length > 0;
@@ -1237,7 +1242,12 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
         </div>
       ))}
       {lastRun.stepSkips.map((skip, i) => (
-        <SkipLine key={i} skip={skip} label={`Step ${skip.stepIndex + 1}`} style={{ padding: "2px 0" }} />
+        <SkipLine
+          key={i}
+          skip={skip}
+          label={resultStepLabel(skip, lastRun.macroId, nameOf)}
+          style={{ padding: "2px 0" }}
+        />
       ))}
     </div>
   );

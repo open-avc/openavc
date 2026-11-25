@@ -108,12 +108,19 @@ export interface SkipNote {
   at: number;
 }
 
+/** Which step of which macro a run's result belongs to: the macro's id and the
+ *  step's place in its tree (`[2, "then", 0]`), from the `running` frame that
+ *  named the step. `components/macros/stepResults.ts` reads it. */
+export interface PlacedResult {
+  macroId: string;
+  stepPath: StepPathSegment[];
+}
+
 /** A step its own setting held back in a run that went on (an Ask for Help
  *  inside its Send at most every), from a `macro.progress` whose status is
  *  `skipped`: its `code` and `message` from the same reason table. It belongs
  *  to the step last named as running, as a condition's answer does. */
-export interface StepSkip extends SkipNote {
-  stepIndex: number;
+export interface StepSkip extends SkipNote, PlacedResult {
   action: string;
 }
 

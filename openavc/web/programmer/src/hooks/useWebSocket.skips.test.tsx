@@ -165,13 +165,33 @@ describe("useWebSocket: a step that did not do its work", () => {
       step_path: [1], action: "help.request", status: "running", description: "Asking for help",
     });
     receive(HELP_HELD_BACK);
-    const said = { stepIndex: 1, action: "help.request", code: "help_cooldown", message: HELP_HELD_BACK.message };
+    const said = {
+      macroId: "call_help", stepPath: [1], action: "help.request",
+      code: "help_cooldown", message: HELP_HELD_BACK.message,
+    };
     expect(useLogStore.getState().stepSkips).toMatchObject([said]);
 
     receive({ type: "macro.completed", macro_id: "call_help", outcome: "completed", failed_steps: 0 });
     const lastRun = useLogStore.getState().lastRun;
     expect(lastRun?.status).toBe("completed");
     expect(lastRun?.stepSkips).toMatchObject([said]);
+  });
+
+  it("inside a conditional's branch, belongs to the step's place in the tree", () => {
+    renderHook(() => useWebSocket());
+    receive({ type: "macro.started", macro_id: "call_help", total_steps: 3 });
+    receive({
+      type: "macro.progress", macro_id: "call_help", step_index: 2, total_steps: 3,
+      step_path: [2], action: "conditional", status: "running", description: "If",
+    });
+    receive({
+      type: "macro.progress", macro_id: "call_help", step_index: 0, total_steps: 1,
+      step_path: [2, "then", 0], action: "help.request", status: "running", description: "Asking for help",
+    });
+    receive(HELP_HELD_BACK);
+    expect(useLogStore.getState().stepSkips).toMatchObject([
+      { macroId: "call_help", stepPath: [2, "then", 0] },
+    ]);
   });
 
   it("is forgotten when the next run starts", () => {
