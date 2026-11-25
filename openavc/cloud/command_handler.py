@@ -40,7 +40,9 @@ log = get_logger(__name__)
 
 
 #: Why a push was not applied when it failed before the project was handed
-#: to the running system (its backup, say). The cause is in the local log.
+#: to the running system, for a cause ``describe_change_failure`` does not
+#: word (a backup that could not be saved it does). The cause is in the
+#: local log.
 _NOT_REACHED = "the system could not prepare the change. The Programmer's Log has the details."
 
 

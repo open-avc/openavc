@@ -438,8 +438,8 @@ async def test_a_start_whose_backup_fails_leaves_the_project_as_it_was(engine, d
 
 
 async def test_a_start_whose_backup_runs_out_of_room_leaves_the_project_as_it_was(engine, data, monkeypatch):
-    """The backup itself fails part way (it reports nothing written rather
-    than raising): the move must not go ahead without it."""
+    """The backup itself fails part way, the disk full while the archive is
+    written: the move must not go ahead without it."""
     from openavc.core import backup_manager
 
     _write(engine.project_path, _document())

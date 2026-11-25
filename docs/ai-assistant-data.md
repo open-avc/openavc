@@ -65,7 +65,8 @@ project, sends device commands, writes scripts, and installs drivers and plugins
 recorded in the conversation. Before its first change in a conversation, the system takes a
 project backup named "Before AI changes". It is in the **Backups** list at the bottom of the
 Program view and restores like any other. If that backup cannot be saved, the change is still
-made, the assistant says no backup was saved, and the system tries again before its next change.
+made, the assistant is told that no backup was saved, and the system tries again before its next
+change.
 
 ## Turning it off
 

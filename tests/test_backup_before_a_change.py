@@ -220,6 +220,8 @@ async def test_an_ai_change_made_without_its_backup_says_so_and_the_next_one_tri
     answer = await handler._run_tool("add_variable", add_variable, {})
 
     assert answer == {"success": True, "backup_not_saved": NO_AI_BACKUP}
+    # First, so a long answer cut off at its end still says it.
+    assert list(answer)[0] == "backup_not_saved"
     assert handler._ai_backup_created is False
 
     monkeypatch.undo()

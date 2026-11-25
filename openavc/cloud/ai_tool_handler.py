@@ -326,14 +326,14 @@ class AIToolHandler(
                 async with self._project_lock:
                     no_backup = await self._maybe_create_pre_ai_backup()
                     result = await handler(tool_input)
-        notes: dict[str, Any] = {}
-        if not_running:
-            notes["not_running"] = describe_not_running(not_running)
-        if no_backup:
-            notes["backup_not_saved"] = no_backup
-        if not notes:
+        if not (not_running or no_backup):
             return result
-        return {**result, **notes} if isinstance(result, dict) else {"result": result, **notes}
+        # The missing backup first: the cloud cuts a long answer off at its
+        # end before the model reads it.
+        first = {"backup_not_saved": no_backup} if no_backup else {}
+        last = {"not_running": describe_not_running(not_running)} if not_running else {}
+        body = result if isinstance(result, dict) else {"result": result}
+        return {**first, **body, **last}
 
     async def _maybe_create_pre_ai_backup(self) -> str | None:
         """Create one backup before the first project-mutating tool in an AI
