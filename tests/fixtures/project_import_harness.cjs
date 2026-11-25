@@ -27,6 +27,8 @@ function makeDeps(overrides) {
   const deps = {
     getEtag: () => '"1"',
     saveProject: async () => { calls.push("save"); return { status: "saved" }; },
+    // Not a dep any more: the import loads the project on the server, so a
+    // reload after it would load it twice. Kept here so a call shows up.
     reloadProject: async () => { calls.push("reload"); return {}; },
     forceReload: async () => { calls.push("forceReload"); },
     isConflict: (e) => Boolean(e && e.__conflict),
@@ -40,12 +42,13 @@ function makeDeps(overrides) {
 async function main() {
   const results = {};
 
-  // Success: save -> reload -> adopt (forceReload), in that order, no error.
+  // Success: save -> adopt (forceReload), in that order, no error, and no
+  // reload: the save already loaded the project as a start does.
   {
     const { deps, calls } = makeDeps({});
     const ok = await H.importParsedProject({ id: "p" }, deps);
     results.m308_success_adopts = {
-      pass: ok !== false && eq(ok.needsLogin, []) && eq(calls, ["save", "reload", "forceReload"]),
+      pass: ok !== false && eq(ok.needsLogin, []) && eq(calls, ["save", "forceReload"]),
       detail: calls,
     };
   }
