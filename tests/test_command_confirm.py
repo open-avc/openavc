@@ -1,11 +1,14 @@
 """A command's ``confirm``: asked where a person sends it by hand, nowhere else.
 
 The driver declares it on the command (``confirm: true`` or the sentence to
-ask). Every door a person sends from by hand reads it off ``DRIVER_INFO``: the
-device page's Send Command, its promoted buttons, and the device audit's
-Commands step (the Driver Builder's Live Test reads the draft it is editing).
-The runtime's own send path never reads it, which is how macros, triggers and
-panel buttons send it without asking.
+ask). The server reads it off ``DRIVER_INFO`` one way
+(``command_model.confirm_sentence``) and serves the question to every door a
+person sends from by hand: the device page's Send Command
+(``command_confirms``), its promoted buttons (each action's ``confirm``) and
+the device audit's Commands step (the Driver Builder's Live Test reads the
+draft it is editing through the IDE's copy). The runtime's own send path never
+reads it, which is how macros, triggers and panel buttons send it without
+asking.
 """
 
 from __future__ import annotations
