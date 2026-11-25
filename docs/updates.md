@@ -100,10 +100,11 @@ A project is copied three ways: the backup taken before an update or rollback, a
 | Plugin data | No | No | No |
 | The key the device logins are sealed with | No | No | No |
 | HTTPS certificate | No | No | No |
+| OpenAVC SSH key | No | No | No |
 | Time zone | No | No | No |
 | Update History | No | No | No |
 
-An automatic rollback from a version later than v0.41.0 leaves the cloud pairing as the system has it, and on appliance hardware it puts the project's themes back.
+An automatic rollback of an update to a version later than v0.41.0 leaves the cloud pairing as the system has it. On appliance hardware, it puts the project's themes back when the update started from a version later than v0.41.0.
 
 If the backup cannot be made, for example because the disk is full, the update or rollback stops before anything changes and the Updates view says why. Free up disk space and try again. This holds on a system running a version later than v0.41.0.
 
@@ -171,7 +172,7 @@ Do not use `install.sh` for this. That script always fetches the release from Gi
 
 Two things to know before you start:
 
-- **Make a backup first.** In the Programmer IDE, open the **Project** view and click **Create Backup**. An update staged by hand does not create the automatic pre-update backup, so this is your copy of the projects and settings. Rolling the application code back afterwards still works normally from the Updates view.
+- **Make a backup first.** In the Programmer IDE, open the **Project** view and click **Create Backup**. An update staged by hand does not create the automatic pre-update backup, so this is your copy of the project. For a copy of the system's settings, also copy `system.json` from the data directory. Rolling the application code back afterwards still works normally from the Updates view.
 - **Dependencies.** After swapping in the new version, the system re-checks its Python packages. Almost every release uses the packages already installed and needs no internet for this. If a release does change one, the system cannot fetch it, so it rolls itself back and keeps running the version you had. The journal line above names the package it wanted. Install that release with internet available. On a system with no internet at all, expect the next two restarts to be slower: each one tries the update again before giving up, which is what lets a system that was only temporarily offline install it by itself. After the third attempt it stops and the Updates view says so.
 
 ### Docker

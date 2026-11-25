@@ -52,6 +52,7 @@ ROWS: dict[str, list[tuple[str, str]]] = {
     "Plugin data": [("data", "plugin_data/acme_plugin/notes.json")],
     "The key the device logins are sealed with": [("data", "device_logins.key")],
     "HTTPS certificate": [("data", "tls/cert.pem"), ("data", "tls/ca.crt")],
+    "OpenAVC SSH key": [("data", "ssh/id_openavc")],
     "Time zone": [("data", "time_zone.json")],
     "Update History": [("data", "update-history.json")],
 }
@@ -76,7 +77,7 @@ DATA_NO_ROW = (
     "logs/server.log", "status/run-state.json", "update-cache/OpenAVC-0.0.1.tar.gz",
     "update-run.json", "staged-update.json", "apply-update.json", "push_ports.json",
     "plugin_ports.json", "device_sleep.json", "simulation.json", "ssh/known_hosts",
-    "ssh/id_openavc", "audit_reports/acme.json", "problem_reports/acme.zip",
+    "audit_reports/acme.json", "problem_reports/acme.zip",
     "equipment-requests/acme.json", "priv-requests/acme.json", "priv-results/acme.json",
     "backups/pre-update-v0.0.1-20260101T000000Z.zip",
 )

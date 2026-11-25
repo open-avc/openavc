@@ -13,7 +13,8 @@ folder of one outside the data folder, or the project's own entries of one
 at the data root (``core/project_unit``), with the system's own files beside
 it. An automatic rollback puts these back, except the system's own files
 beside a project (``project_unit.SYSTEM_BESIDE_PROJECT``: the cloud pairing,
-the instance id), which it leaves as the system has them now. Then the data
+the instance id), which it leaves as the system has them now; one the system
+no longer has is put back, since nothing removes one on purpose. Then the data
 folder's own trees and files (``_SYSTEM_TREES``, ``_DATA_ROOT_FILES``),
 carried for a person to open by hand and never put back. Nothing else in the
 data folder is carried: the Project Library, plugin data, the login key, the
@@ -450,10 +451,11 @@ def _restore_trees(job: _Restore, data_dir: Path, project_path: Path | None) -> 
     the backup; True when anything was."""
     members = [i for i in job.zf.infolist() if not i.is_dir()]
     restored = False
-    projects = _put_back(members, "projects/")
+    projects = _put_back(members, "projects/", data_dir / "projects")
     if projects:
         restored |= _restore_projects_tree(_ProjectsTree(job, data_dir, projects))
-    external = _put_back(members, "external-project/")
+    external_dir = _extra_project_tree(project_path, data_dir)[0] if project_path is not None else None
+    external = _put_back(members, "external-project/", external_dir)
     if external and project_path is not None:
         restored |= _restore_external_files(job, external, data_dir, project_path)
     return restored
@@ -472,15 +474,22 @@ def _system_file(rel: PurePosixPath | Path) -> bool:
     return rel.name in SYSTEM_BESIDE_PROJECT and not _PROJECT_OWN_FOLDERS.intersection(rel.parts[:-1])
 
 
-def _put_back(members: list, prefix: str) -> list:
-    """The archived files below ``prefix`` a rollback writes back: every one
-    but the system's own files beside a project, which it leaves as the
-    system has them now (the module docstring). The projects folder's swap
-    takes the live ones into the folder it swaps in (``_take_live_system_files``)."""
+def _put_back(members: list, prefix: str, live: Path | None) -> list:
+    """The archived files below ``prefix`` a rollback writes back, into the
+    tree ``live``: every one but the system's own files beside a project the
+    system has there now, which it leaves as they are (the module
+    docstring). The projects folder's swap takes those into the folder it
+    swaps in (``_take_live_system_files``)."""
     return [
         i for i in members
-        if i.filename.startswith(prefix) and not _system_file(PurePosixPath(i.filename[len(prefix):]))
+        if i.filename.startswith(prefix) and not _kept_live(PurePosixPath(i.filename[len(prefix):]), live)
     ]
+
+
+def _kept_live(rel: PurePosixPath, live: Path | None) -> bool:
+    """Whether ``rel`` is one of the system's own files beside a project
+    that the live tree holds, so a rollback leaves it as it is."""
+    return _system_file(rel) and live is not None and os.path.exists(live.joinpath(*rel.parts))
 
 
 def _opened(backup_path: Path) -> zipfile.ZipFile:

@@ -123,6 +123,23 @@ def test_a_rollback_keeps_the_pairing_in_a_linked_project_folder(tmp_path, kind)
     _assert_kept(room)
 
 
+@pytest.mark.parametrize("kept", ["projects folder", "outside the data folder"])
+def test_a_pairing_file_the_system_lost_since_the_update_comes_back(tmp_path, kept):
+    """Unpairing keeps the file and says so in it, so one that is gone was
+    lost, and the backup's copy is put back."""
+    data = tmp_path / "data"
+    data.mkdir()
+    room = _room(data / "projects" / "default" if kept == "projects folder" else tmp_path / "room")
+    backup = create_backup(data, "0.7.0", project_path=room / "project.avc")
+    (room / "cloud.json").unlink()
+    (room / ".instance_id").unlink()
+
+    assert restore_user_data(data, backup, project_path=room / "project.avc") is True
+
+    assert (room / "cloud.json").read_text(encoding="utf-8") == BEFORE
+    assert (room / ".instance_id").read_text(encoding="utf-8") == "instance-before"
+
+
 def test_a_file_of_the_same_name_inside_a_project_tree_is_put_back(tmp_path):
     """Only the pairing beside a project is the system's: an image or a
     custom control's file that happens to share its name is the project's."""
