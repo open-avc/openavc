@@ -527,10 +527,10 @@ class EngineLifecycleMixin:
         project_update.publish(self.state, self.project_path.parent)
         self._apply_project_settings()
         self.state.set("system.project_name", self.project.project.name, source="system")
-        # Publish project asset catalog so plugins (e.g. audio_player) can
-        # subscribe to project.assets and pick up uploaded files.
-        from openavc.api.assets import publish_assets_state
-        publish_assets_state(self)
+        # The asset catalog a plugin (the Audio Player) reads, republished by
+        # every door that changes the files (core/file_news).
+        from openavc.core import file_news
+        file_news.publish_assets(self)
 
     async def _add_devices_at_start(self, run: StartRun) -> None:
         """Add every project device, in parallel with the connection table

@@ -5817,6 +5817,187 @@ const tests = {
         }
     },
 
+    // --- A saved theme changing on the server (themes.changed) -------------
+
+    // The theme in hand is used again while the definition names it, so a
+    // wall panel kept drawing a theme saved in the Theme Studio, or swapped
+    // in with another project, until somebody reloaded it.
+    async theme_change_fetches_the_theme_drawn_again() {
+        const changed = { ...themeWithPageDefaults(), variables: { panel_bg: '#334455', accent: '#1976D2' } };
+        const rig = remoteRig(reply(200, JSON.stringify(changed), true));
+        const app = mkApp();
+        app.theme.current = themeWithPageDefaults();
+        try {
+            renderProject(app, themedProject());
+            app.theme.firstSettled = true;
+            rig.fetched.length = 0;
+            app.handleMessage({ type: 'themes.changed', theme_id: 'slate' });
+            await rig.settle();
+            assert(rig.fetched.length === 1 && rig.fetched[0].endsWith('/api/themes/slate'),
+                `the theme drawn fetched once more, got ${JSON.stringify(rig.fetched)}`);
+            const surface = document.querySelector('#panel-root .panel-page');
+            assert(surface.style.backgroundColor === 'rgb(51, 68, 85)',
+                `the page painted from the theme as saved, got ${surface.style.backgroundColor}`);
+            assert(document.documentElement.style.getPropertyValue('--panel-bg') === '#334455',
+                'the elements read the saved theme too');
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // Every theme in the project may have changed (a replace of the whole
+    // project): the frame names none, and the theme drawn is fetched again.
+    async theme_change_naming_no_theme_fetches_the_theme_drawn_again() {
+        const rig = remoteRig(reply(200, JSON.stringify(themeWithPageDefaults()), true));
+        const app = mkApp();
+        app.theme.current = themeWithPageDefaults();
+        try {
+            renderProject(app, themedProject());
+            app.theme.firstSettled = true;
+            rig.fetched.length = 0;
+            app.handleMessage({ type: 'themes.changed' });
+            await rig.settle();
+            assert(rig.fetched.length === 1 && rig.fetched[0].endsWith('/api/themes/slate'),
+                `the theme drawn fetched once more, got ${JSON.stringify(rig.fetched)}`);
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    async theme_change_of_another_theme_fetches_nothing() {
+        const rig = remoteRig(reply(200, JSON.stringify(themeWithPageDefaults()), true));
+        const app = mkApp();
+        app.theme.current = themeWithPageDefaults();
+        try {
+            renderProject(app, themedProject());
+            app.theme.firstSettled = true;
+            rig.fetched.length = 0;
+            app.handleMessage({ type: 'themes.changed', theme_id: 'other' });
+            await rig.settle();
+            assert(rig.fetched.length === 0, `nothing fetched, got ${JSON.stringify(rig.fetched)}`);
+            assert(app.theme.current && app.theme.current.id === 'slate', 'the theme in hand is kept');
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // The Theme Studio's preview draws the working copy it sends, which a
+    // save of the same theme elsewhere must not take away mid-edit.
+    async theme_change_keeps_the_studio_working_copy() {
+        const rig = remoteRig(reply(200, JSON.stringify(themeWithPageDefaults()), true));
+        const app = mkApp();
+        const working = themeWithPageDefaults();
+        app.theme.inline = working;
+        try {
+            renderProject(app, themedProject());
+            app.theme.firstSettled = true;
+            rig.fetched.length = 0;
+            app.handleMessage({ type: 'themes.changed', theme_id: 'slate' });
+            await rig.settle();
+            assert(rig.fetched.length === 0, `nothing fetched, got ${JSON.stringify(rig.fetched)}`);
+            assert(app.theme.inline === working, 'the working copy is kept');
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // The Builder's canvas and Preview take their theme from the Builder.
+    async theme_change_embedded_fetches_nothing() {
+        const rig = remoteRig(reply(200, JSON.stringify(themeWithPageDefaults()), true));
+        const app = mkApp();
+        app.embedded = true;
+        app.theme.current = themeWithPageDefaults();
+        try {
+            renderProject(app, themedProject());
+            app.theme.firstSettled = true;
+            rig.fetched.length = 0;
+            app.handleMessage({ type: 'themes.changed', theme_id: 'slate' });
+            await rig.settle();
+            assert(rig.fetched.length === 0, `nothing fetched, got ${JSON.stringify(rig.fetched)}`);
+            assert(app.theme.current && app.theme.current.id === 'slate', 'the theme in hand is kept');
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // The first draw fetches the theme itself, and nothing is drawn before
+    // the state is here: a frame before it fetches and draws nothing, even
+    // with a theme in hand.
+    async theme_change_before_the_first_draw_fetches_nothing() {
+        const rig = remoteRig(reply(200, JSON.stringify(themeWithPageDefaults()), true));
+        const app = mkApp();
+        app.theme.current = themeWithPageDefaults();
+        app.uiDef = themedProject().ui;
+        let drawn = 0;
+        app.renderCurrentPage = () => { drawn += 1; };
+        try {
+            app.handleMessage({ type: 'themes.changed', theme_id: 'slate' });
+            await rig.settle();
+            assert(rig.fetched.length === 0, `nothing fetched, got ${JSON.stringify(rig.fetched)}`);
+            assert(drawn === 0, `nothing drawn, drew ${drawn} time(s)`);
+        } finally {
+            rig.restore();
+        }
+    },
+
+    // The theme the project names was not there (the panel drew the
+    // fallback) and is then imported under that id: the panel draws it.
+    async theme_change_brings_a_theme_that_was_missing() {
+        const rig = remoteRig(reply(404, '{}', true));
+        const app = mkApp();
+        try {
+            renderProject(app, themedProject());
+            app.theme.firstSettled = true;
+            await rig.settle();
+            assert(app.theme.current === null, 'the panel drew the fallback first');
+            rig.answer = reply(200, JSON.stringify(themeWithPageDefaults()), true);
+            rig.fetched.length = 0;
+            app.handleMessage({ type: 'themes.changed', theme_id: 'slate' });
+            await rig.settle();
+            assert(rig.fetched.length === 1 && rig.fetched[0].endsWith('/api/themes/slate'),
+                `the theme named fetched, got ${JSON.stringify(rig.fetched)}`);
+            assert(app.theme.current && app.theme.current.id === 'slate', 'the imported theme is drawn');
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // The Builder's canvas has no socket to hear themes.changed on: the
+    // Builder's count of saved-theme changes rides on its editor messages,
+    // and a new count lets the theme in hand go, so the next draw fetches it.
+    async theme_saved_count_lets_the_canvas_fetch_the_theme_again() {
+        const rig = remoteRig(reply(200, JSON.stringify(themeWithPageDefaults()), true));
+        const app = mkApp();
+        app.theme.current = themeWithPageDefaults();
+        try {
+            app._takeEditorView({ themesVersion: 0 });
+            app._takeEditorView({ themesVersion: 0 });
+            app._takeEditorView({ showGrid: true });
+            assert(app.theme.current && app.theme.current.id === 'slate',
+                'the first count, the same count and a message without one keep the theme');
+            app._takeEditorView({ themesVersion: 1 });
+            assert(app.theme.current === null, 'a new count lets it go');
+            rig.fetched.length = 0;
+            renderProject(app, themedProject());
+            await rig.settle();
+            assert(rig.fetched.length === 1 && rig.fetched[0].endsWith('/api/themes/slate'),
+                `the next draw fetches the theme, got ${JSON.stringify(rig.fetched)}`);
+            const working = themeWithPageDefaults();
+            app.theme.inline = working;
+            app._takeEditorView({ themesVersion: 2 });
+            assert(app.theme.inline === working, 'the working copy stays');
+        } finally {
+            rig.restore();
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
     // Both ends of a page gradient go through the same resolver, so both have
     // to see the same variables -- and settings.accent_color is an override
     // too, applied after theme_overrides and on top of them.

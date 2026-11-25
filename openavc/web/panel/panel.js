@@ -71,8 +71,9 @@ installSessionBridge(window);
 
 /**
  * What the panel does with each frame the server sends, by its `type`: the
- * whole state, a change, keys going away, the project and its ui/ files, a
- * page change, a macro run's progress, and a refusal or a failed ack.
+ * whole state, a change, keys going away, the project, its ui/ files and its
+ * saved themes, a page change, a macro run's progress, and a refusal or a
+ * failed ack.
  */
 const FRAMES = new Map([
     ['ping', (app) => app.send({ type: 'pong' })],
@@ -81,6 +82,7 @@ const FRAMES = new Map([
     ['state.delete', (app, msg) => app._dropKeys(msg)],
     ['ui.definition', (app, msg) => app._takeDefinition(msg)],
     ['ui.files', (app, msg) => app._takeFilesVersion(msg)],
+    ['themes.changed', (app, msg) => { if (!app.embedded) app.theme.takeChange(msg.theme_id); }],
     ['ui.navigate', (app, msg) => { if (msg.page_id) app.navigateToPage(msg.page_id); }],
     ['macro.started', (app, msg) => app.macroRuns.started(msg)],
     ['macro.progress', (app, msg) => app.macroRuns.progress(msg)],
@@ -447,7 +449,7 @@ class PanelApp {
         this._postToParent({ type: 'openavc:editor-ready' });
     }
 
-    /** What a definition message says about the view: the grid, the files, the type scale, the theme. */
+    /** What a definition message says about the view: the grid, the files, the type scale, the theme and its saved count. */
     _takeEditorView(msg) {
         if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
         // Bumped by the Builder every time a file lands in ui/. It rides on the
@@ -460,6 +462,8 @@ class PanelApp {
         if (carries(msg, 'vmin')) applyVminOverride(msg.vmin);
         // The Theme Studio's working copy of the theme, or word that there is none.
         this.theme.takeWorkingCopy(msg);
+        // Bumped by the Builder when a saved theme changed on the server.
+        this.theme.takeSavedCount(msg);
     }
 
     /**

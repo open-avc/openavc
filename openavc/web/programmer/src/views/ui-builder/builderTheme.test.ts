@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -13,6 +13,8 @@ vi.mock("../../api/restClient", () => ({
 }));
 
 import { blankThemeId, projectThemeId, useBuilderTheme } from "./builderTheme";
+import { listThemes } from "../../api/restClient";
+import { useThemeFilesStore } from "../../store/themeFilesStore";
 
 type Case = { name: string; settings: Record<string, unknown>; expected: string };
 
@@ -45,6 +47,21 @@ describe("useBuilderTheme", () => {
     answer(null, false);
     rerender({ id: "gone" });
     await waitFor(() => expect(result.current.variables).toBeNull());
+  });
+
+  // Another tab, the assistant or a project replaced changed a saved theme:
+  // the list and the theme drawn are read again, not only on mount.
+  it("reads the theme list and the theme again when a saved theme changes", async () => {
+    answer({ variables: { accent: "#111111" } });
+    vi.mocked(listThemes).mockClear();
+    const { result } = renderHook(() => useBuilderTheme("hall-look"));
+    await waitFor(() => expect(result.current.variables).toEqual({ accent: "#111111" }));
+    expect(vi.mocked(listThemes)).toHaveBeenCalledTimes(1);
+
+    answer({ variables: { accent: "#222222" } });
+    act(() => useThemeFilesStore.getState().bump());
+    await waitFor(() => expect(result.current.variables).toEqual({ accent: "#222222" }));
+    expect(vi.mocked(listThemes)).toHaveBeenCalledTimes(2);
   });
 });
 

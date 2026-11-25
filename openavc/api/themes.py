@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from openavc.api.auth import require_programmer_auth
 from openavc.api.errors import StructuredApiError
-from openavc.core import themes
+from openavc.core import file_news, themes
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
@@ -138,6 +138,7 @@ async def create_theme(data: dict[str, Any]) -> dict[str, Any]:
             raise HTTPException(status_code=409, detail=f"Custom theme '{theme_id}' already exists")
         _write(custom_path, data)
     log.info(f"Created custom theme: {theme_id}")
+    await file_news.themes_changed(_get_engine(), theme_id)
     return {"status": "created", "theme_id": theme_id, "mode": themes.theme_mode(data)}
 
 
@@ -150,6 +151,7 @@ async def update_theme(theme_id: str, data: dict[str, Any]) -> dict[str, Any]:
         data["id"] = theme_id  # Prevent ID change via PUT
         _write(custom_path, data)
     log.info(f"Updated custom theme: {theme_id}")
+    await file_news.themes_changed(_get_engine(), theme_id)
     return {"status": "updated", "theme_id": theme_id}
 
 
@@ -159,6 +161,7 @@ async def delete_theme(theme_id: str) -> dict[str, str]:
     async with _get_engine().holding_project_files():
         _custom_theme_to_change(theme_id, "delete").unlink()
     log.info(f"Deleted custom theme: {theme_id}")
+    await file_news.themes_changed(_get_engine(), theme_id)
     return {"status": "deleted", "theme_id": theme_id}
 
 
@@ -232,6 +235,7 @@ async def import_theme(
             )
         _write(custom_path, data)
     log.info(f"Imported theme: {theme_id} (overwrite={overwrite})")
+    await file_news.themes_changed(_get_engine(), theme_id)
     return {
         "status": "imported", "theme_id": theme_id, "name": data.get("name", ""),
         "mode": themes.theme_mode(data),

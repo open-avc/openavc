@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import apply_tool_edit
+from openavc.core import file_news
 from openavc.core.asset_references import asset_users
 from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.themes import ThemeRefused, all_themes, find_theme, project_themes_dir, theme_mode
@@ -454,7 +455,10 @@ class SystemToolsMixin:
         # The check and the delete under the project files' hold, so the
         # project asked is the one the file on disk belongs to.
         async with engine.holding_project_files():
-            return _delete_unless_shown(engine, Path(filename).name)
+            reply = _delete_unless_shown(engine, Path(filename).name)
+        if "error" not in reply:
+            await file_news.assets_changed(engine)
+        return reply
 
     async def _get_isc_status(self, input: dict) -> Any:
         engine = self._get_engine()

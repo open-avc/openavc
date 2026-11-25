@@ -60,7 +60,7 @@ from typing import TypeVar
 
 from pydantic import ValidationError
 
-from openavc.core import backup_manager, project_identity, project_recovery, project_swap
+from openavc.core import backup_manager, file_news, project_identity, project_recovery, project_swap
 from openavc.core.project_loader import ProjectConfig, load_project, project_text
 from openavc.core.project_update import MigrationNotes
 from openavc.utils.logger import get_logger
@@ -278,22 +278,31 @@ class ProjectReplaceMixin:
         ``expected_revision``, before anything is written, ``BackupFailed``
         when the backup could not be saved and ``ProjectNotAppliedError``
         when the swap or the load failed; either way the project before it
-        is running, its files as they were."""
+        is running, its files as they were. Once it runs, each file tree it
+        swapped is announced (``core/file_news``), the lock let go first;
+        one that kept the files beside the project announces none."""
         async with self._lock_for_a_change():
-            self._check_revision(expected_revision)
-            if prepared.settle is not None:
-                prepared.settle(prepared, self.project)
-            if self.persister:
-                # The values changed since the last flush are in the backup.
-                self.persister.flush()
-            taken = await backup_manager.capture(
-                self.project_path, prepared.backup_reason, spare=prepared.spare,
-            )
-            staged = await asyncio.to_thread(self._stage_replace, prepared)
-            try:
-                return await self._replace_staged(prepared, staged, taken)
-            finally:
-                await asyncio.to_thread(staged.discard)
+            outcome = await self._replace_locked(prepared, expected_revision)
+        if prepared.beside:
+            await file_news.trees_changed(self)
+        return outcome
+
+    async def _replace_locked(self, prepared: PreparedProject, expected_revision: str | None):
+        """Steps 0 to 6 under the lock."""
+        self._check_revision(expected_revision)
+        if prepared.settle is not None:
+            prepared.settle(prepared, self.project)
+        if self.persister:
+            # The values changed since the last flush are in the backup.
+            self.persister.flush()
+        taken = await backup_manager.capture(
+            self.project_path, prepared.backup_reason, spare=prepared.spare,
+        )
+        staged = await asyncio.to_thread(self._stage_replace, prepared)
+        try:
+            return await self._replace_staged(prepared, staged, taken)
+        finally:
+            await asyncio.to_thread(staged.discard)
 
     def _stage_replace(self, prepared: PreparedProject) -> project_swap.Staged:
         """What ``prepared`` brings, staged beside the live project; the

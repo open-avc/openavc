@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core import file_news
 from openavc.core.custom_ui import (
     MAX_FILE_SIZE,
     MAX_FILES,
@@ -391,8 +392,7 @@ class CustomUIToolsMixin:
             log.info("Custom UI file written by AI: %s", rel)
             # Every door into this folder owes the panels the same frame, or a
             # wall panel keeps drawing the version from before the save.
-            from openavc.api.routes.ui_files import announce_ui_files_changed
-            await announce_ui_files_changed(rel)
+            await file_news.ui_files_changed(engine, rel)
         return reply
 
     def _write_held(self, engine: Any, rel: str, content: str, size: int) -> dict[str, Any]:
@@ -441,8 +441,7 @@ class CustomUIToolsMixin:
             reply = self._delete_held(engine, rel)
         if "error" not in reply:
             log.info("Custom UI file deleted by AI: %s", rel)
-            from openavc.api.routes.ui_files import announce_ui_files_changed
-            await announce_ui_files_changed(rel)
+            await file_news.ui_files_changed(engine, rel)
         return reply
 
     def _delete_held(self, engine: Any, rel: str) -> dict[str, Any]:

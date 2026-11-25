@@ -21,7 +21,6 @@ visitor on the LAN should not be able to leave on somebody's wall panel.
 
 import io
 import shutil
-import time
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -33,6 +32,7 @@ from openavc.core.host_policy import HostCategory
 from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.static_files import serve_static_file
+from openavc.core import file_news
 from openavc.core.custom_ui import (
     MAX_FILE_SIZE,
     MAX_FILES,
@@ -142,34 +142,6 @@ def _check_room_for(
         )
 
 
-async def announce_ui_files_changed(path: str) -> None:
-    """Tell every panel a file moved under it.
-
-    A custom control is a file, not project data, so writing one changes
-    nothing the project push carries -- and a panel only re-fetches a control
-    when it re-renders. The serving route is ``no-cache``, so a fetch does
-    revalidate, but nothing was asking for one: a wall panel kept drawing the
-    old control until somebody navigated away and back, or reloaded it. That
-    was true of every door into this folder, which is why it is announced here
-    rather than at the one that happened to surface it.
-
-    The version rides onto each frame's URL the same way the Builder's own
-    counter does in the design canvas. Milliseconds rather than a counter so it
-    still moves forward across a restart, when a browser may be holding a
-    cached copy stamped with the count from last time.
-
-    Public because the AI's write tool is a fifth door into the same folder and
-    owes the panels the same frame -- a control the assistant saves has to
-    appear on the wall exactly like one saved in the editor.
-    """
-    engine = _get_engine()
-    await engine.broadcast_ws({
-        "type": "ui.files",
-        "version": str(time.time_ns() // 1_000_000),
-        "path": path,
-    })
-
-
 # ──── Listing and editing ────
 
 
@@ -225,7 +197,7 @@ async def write_ui_file(project_id: str, file_path: str, request: Request) -> di
         # editor is where they find out.
         warnings = [f.message for f in review_saved_file(ui_dir, rel, project=engine.project)]
     log.info("Custom UI file saved: %s", rel)
-    await announce_ui_files_changed(rel)
+    await file_news.ui_files_changed(_get_engine(), rel)
 
     result: dict[str, Any] = {"status": "saved", "path": rel, "size": len(encoded)}
     if warnings:
@@ -253,7 +225,7 @@ async def delete_ui_file(project_id: str, file_path: str) -> dict[str, str]:
     async with engine.holding_project_files():
         _remove_unless_shown(engine, rel)
     log.info("Custom UI file deleted: %s", rel)
-    await announce_ui_files_changed(rel)
+    await file_news.ui_files_changed(_get_engine(), rel)
     return {"status": "deleted", "path": rel}
 
 
@@ -316,7 +288,7 @@ async def upload_ui_file(
     if (file.filename or "").lower().endswith(".zip"):
         async with _get_engine().holding_project_files():
             unpacked = _unpack_zip(_ui_dir(), content, folder)
-        await announce_ui_files_changed(folder or ".")
+        await file_news.ui_files_changed(_get_engine(), folder or file_news.WHOLE_TREE)
         return unpacked
 
     # Only the basename: a browser may report "room_map/index.html" as the
@@ -333,7 +305,7 @@ async def upload_ui_file(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
     log.info("Custom UI file uploaded: %s", rel)
-    await announce_ui_files_changed(rel)
+    await file_news.ui_files_changed(_get_engine(), rel)
     return {"status": "saved", "written": [rel], "skipped": []}
 
 

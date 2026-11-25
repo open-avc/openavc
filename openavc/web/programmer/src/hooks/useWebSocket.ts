@@ -7,6 +7,7 @@ import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
+import { useThemeFilesStore } from "../store/themeFilesStore";
 import { useScriptErrorsStore } from "../store/scriptErrorsStore";
 import { applyDiscoveryMessage } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
@@ -32,6 +33,10 @@ const CHANGE_NOTICES = new Map<string, () => void>([
   // redraws them against what is now on disk. Our own writes bump it
   // directly and simply arrive here a second time, which is harmless.
   ["ui.files", () => useUiFilesStore.getState().bump()],
+  // One of the project's saved themes changed somewhere else, or a project
+  // that replaced this one brought its own. The UI Builder reads its theme
+  // list and the theme it draws again on the store's counter.
+  ["themes.changed", () => useThemeFilesStore.getState().bump()],
   // A script failed while running, and the server has recorded it. The
   // Scripts view re-asks the record on this (useScriptErrorsRefresh).
   ["script.error", () => useScriptErrorsStore.getState().bump()],

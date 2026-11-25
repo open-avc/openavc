@@ -78,6 +78,8 @@ MESSAGE_AUDIENCE: dict[str, frozenset[str]] = {
     "ui.definition": _EVERYONE,
     "ui.navigate": _EVERYONE,
     "ui.files": _EVERYONE,
+    # A saved theme changed: a panel drawing it fetches it again.
+    "themes.changed": _EVERYONE,
     # The project's revision after a save, a reload or a whole project
     # replaced.
     "project.reloaded": _EVERYONE,

@@ -207,6 +207,8 @@ export class PanelTheme {
         this.current = null;
         // The Theme Studio's working copy (takeWorkingCopy).
         this.inline = null;
+        // The Builder's count of saved-theme changes last seen (takeSavedCount).
+        this._savedCount = undefined;
         // Set while apply's own redraw runs.
         this._applying = false;
         // The first draw has happened, or stopped waiting: see drawWhenReady.
@@ -225,6 +227,19 @@ export class PanelTheme {
             // Explicitly null/undefined cleared from parent — drop any prior inline theme
             this.inline = null;
         }
+    }
+
+    /**
+     * The Builder's count of saved-theme changes, on an editor message
+     * (`themesVersion`): when it moves, the theme in hand is let go, so the
+     * draw the message brings fetches it again. The Builder's canvas has no
+     * socket of its own to hear `themes.changed` on (takeChange). The
+     * working copy stays.
+     */
+    takeSavedCount(msg) {
+        if (!Object.prototype.hasOwnProperty.call(msg, 'themesVersion')) return;
+        if (this._savedCount !== undefined && msg.themesVersion !== this._savedCount) this.current = null;
+        this._savedCount = msg.themesVersion;
     }
 
     /** Put a theme on the page, and redraw it if that changed how elements look.
@@ -302,6 +317,26 @@ export class PanelTheme {
     }
 
     /** The theme in hand for this id: the Theme Studio's working copy first, else the one applied last. */
+    /**
+     * One of the project's saved themes changed on the server (saved,
+     * imported or deleted, or a whole project replaced: `themes.changed`,
+     * `themeId` naming it, or none when any may have). The theme in hand is
+     * used again while the definition names it, so the page would keep its
+     * old look, or the fallback when the theme was missing, until it was
+     * reloaded: when the theme the definition names changed, it is fetched
+     * again and the page redrawn in place on it. The Theme Studio's working
+     * copy stays. Nothing happens before the first draw, which fetches the
+     * theme itself. Not for the Builder's canvas or Preview, which take the
+     * theme from the Builder.
+     */
+    takeChange(themeId) {
+        if (!this.firstSettled) return;
+        const settings = this._host.settings() || {};
+        if (themeId != null && themeId !== themeIdOf(settings)) return;
+        this.current = null;
+        this.apply(settings, { repaint: false }).then(() => this._host.draw());
+    }
+
     _held(themeId) {
         if (this.inline && this.inline.id === themeId) return this.inline;
         if (this.current && this.current.id === themeId) return this.current;

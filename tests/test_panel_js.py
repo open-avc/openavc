@@ -288,6 +288,14 @@ SCENARIOS = [
     # elements standing on it.
     "theme_override_moves_the_page_background",
     "theme_with_no_override_paints_its_own_page_colour",
+    "theme_change_fetches_the_theme_drawn_again",
+    "theme_change_naming_no_theme_fetches_the_theme_drawn_again",
+    "theme_change_of_another_theme_fetches_nothing",
+    "theme_change_keeps_the_studio_working_copy",
+    "theme_change_embedded_fetches_nothing",
+    "theme_change_before_the_first_draw_fetches_nothing",
+    "theme_change_brings_a_theme_that_was_missing",
+    "theme_saved_count_lets_the_canvas_fetch_the_theme_again",
     "theme_page_defaults_references_read_one_set_of_variables",
     # A look that goes inactive lets go of what its active state drew, and
     # no look or toggle pass takes a button's own image away.

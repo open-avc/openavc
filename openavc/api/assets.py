@@ -5,7 +5,6 @@ Handles uploading, listing, serving, and deleting project assets
 (images, icons, backgrounds, audio) used by the panel UI and plugins.
 """
 
-import json
 import os
 import re
 import stat
@@ -17,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
 from openavc.api.auth import require_programmer_auth
+from openavc.core import file_news
 from openavc.core.asset_references import asset_users
 # The file types an asset may be, and the SVG check, live with the tree's other
 # rules, because an import and a backup restore ask them too.
@@ -148,8 +148,9 @@ def _asset_files(assets_dir: Path) -> list[tuple[Path, os.stat_result]]:
     return found
 
 
-def _list_assets_metadata(assets_dir: Path) -> list[dict[str, Any]]:
-    """Build the asset metadata list shared between the API and state publishing."""
+def asset_catalog(assets_dir: Path) -> list[dict[str, Any]]:
+    """One ``{name, size, extension, type}`` per asset in ``assets_dir``: the
+    asset list, and the ``project.assets`` state key (``core/file_news``)."""
     out: list[dict[str, Any]] = []
     for f, info in _asset_files(assets_dir):
         ext = f.suffix.lower()
@@ -161,28 +162,6 @@ def _list_assets_metadata(assets_dir: Path) -> list[dict[str, Any]]:
                 "type": _asset_type(ext),
             })
     return out
-
-
-def publish_assets_state(engine) -> None:
-    """Republish the project's asset catalog to the `project.assets` state key.
-
-    The value is a JSON-encoded list of ``{name, size, extension, type}``
-    objects — one per asset. State values must be flat primitives, hence
-    the JSON serialization. Plugins (e.g. Audio Player) subscribe to this
-    key so they can pick up newly-uploaded assets without polling.
-
-    Called at engine startup and after every upload/delete.
-    """
-    try:
-        project_dir = Path(engine.project_path).parent
-        assets_dir = project_dir / "assets"
-        if assets_dir.is_dir():
-            metadata = _list_assets_metadata(assets_dir)
-        else:
-            metadata = []
-        engine.state.set("project.assets", json.dumps(metadata), source="system")
-    except Exception:  # Catch-all: never block uploads on telemetry
-        log.exception("Failed to publish project.assets state")
 
 
 def _sanitize_filename(raw: str) -> str:
@@ -273,7 +252,7 @@ async def list_assets(project_id: str) -> dict[str, Any]:
     assets_dir = _assets_dir_for(project_id)
     if not assets_dir.is_dir():
         return {"assets": [], "total_size": 0}
-    assets = _list_assets_metadata(assets_dir)
+    assets = asset_catalog(assets_dir)
     engine = _get_engine()
     project = getattr(engine, "project", None) if engine else None
     if project is not None and project_id in ("", "default"):
@@ -324,7 +303,7 @@ async def upload_asset(project_id: str, file: UploadFile = File(...)) -> dict[st
             )
         (assets_dir / filename).write_bytes(content)
     log.info(f"Asset uploaded: {filename} ({len(content)} bytes)")
-    publish_assets_state(engine)
+    await file_news.assets_changed(engine)
 
     return {
         "name": filename,
@@ -377,7 +356,7 @@ async def delete_asset(project_id: str, filename: str) -> dict[str, str]:
     async with engine.holding_project_files():
         _unlink_unless_shown(engine, _assets_dir() / safe_name)
     log.info(f"Asset deleted: {safe_name}")
-    publish_assets_state(engine)
+    await file_news.assets_changed(engine)
     return {"status": "deleted", "name": safe_name}
 
 

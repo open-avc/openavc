@@ -30,6 +30,7 @@ import type { ThemeSummary } from "../../api/systemClient";
 import type { UISettings } from "../../api/types";
 import { CSS_VAR_FALLBACKS } from "../../components/ui-builder/colorUtils";
 import { showError } from "../../store/toastStore";
+import { useThemeFilesStore } from "../../store/themeFilesStore";
 
 export type ThemeDefaults = Record<string, Record<string, unknown>>;
 
@@ -162,21 +163,24 @@ export function blankThemeId(settings: ThemeChoice): string {
 
 /**
  * The theme list, and the theme `themeId` read from the server: again when it
- * changes and on `refetch` (the Theme Studio saved the same theme id with
- * changed contents): each control type's defaults, and the theme's own
- * variables. A theme that cannot be read shows no defaults, and its variables
- * are null, as they are until the first read answers. `id` is the theme read.
+ * changes, on `refetch` (the Theme Studio saved the same theme id with
+ * changed contents), and, both of them, when a saved theme changed on the
+ * server (`themes.changed`: another tab, the assistant, a project replaced):
+ * each control type's defaults, and the theme's own variables. A theme that
+ * cannot be read shows no defaults, and its variables are null, as they are
+ * until the first read answers. `id` is the theme read.
  */
 export function useBuilderTheme(themeId: string) {
   const [themes, setThemes] = useState<ThemeSummary[]>([]);
   const [defaults, setDefaults] = useState<ThemeDefaults>({});
   const [variables, setVariables] = useState<Record<string, unknown> | null>(null);
   const [fetchKey, setFetchKey] = useState(0);
+  const themesChanged = useThemeFilesStore((s) => s.version);
 
   const loadThemes = useCallback(() => {
     listThemes().then(setThemes).catch(() => showError("Failed to load themes"));
   }, []);
-  useEffect(() => { loadThemes(); }, [loadThemes]);
+  useEffect(() => { loadThemes(); }, [loadThemes, themesChanged]);
 
   useEffect(() => {
     fetch(`${getTunnelPrefix()}/api/themes/${themeId}`)
@@ -189,7 +193,7 @@ export function useBuilderTheme(themeId: string) {
         setDefaults({});
         setVariables(null);
       });
-  }, [themeId, fetchKey]);
+  }, [themeId, fetchKey, themesChanged]);
 
   const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
   return { id: themeId, themes, loadThemes, defaults, variables, refetch };

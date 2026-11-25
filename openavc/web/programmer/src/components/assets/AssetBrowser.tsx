@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Trash2, X, Image as ImageIcon, Music, FolderOpen } from "lucide-react";
 import * as api from "../../api/restClient";
 import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { parseApiError } from "../../api/errors";
 import { Modal } from "../shared/Modal";
@@ -62,6 +63,10 @@ export function AssetBrowser({
   onFilterChange,
 }: AssetBrowserProps) {
   const loadGeneration = useProjectStore((s) => s.loadGeneration);
+  // The server's catalog of the files (core/file_news): it moves on every
+  // upload and delete, the assistant's included, and when a replace brings
+  // another project's files, none of which changes the project itself.
+  const catalog = useConnectionStore((s) => s.liveState["project.assets"]);
   const [assets, setAssets] = useState<api.AssetInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -100,8 +105,10 @@ export function AssetBrowser({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
+  // "Loading..." is the first load's alone: a list read again (an upload, a
+  // catalog that moved, a project replaced) changes in place rather than
+  // blanking for each file a multi-file upload publishes.
   const loadAssets = useCallback(async () => {
-    setLoading(true);
     try {
       const data = await api.listAssets();
       setAssets(data.assets);
@@ -114,7 +121,7 @@ export function AssetBrowser({
 
   useEffect(() => {
     loadAssets();
-  }, [loadAssets, loadGeneration]);
+  }, [loadAssets, loadGeneration, catalog]);
 
   const visibleAssets = useMemo(() => {
     let list = assets;

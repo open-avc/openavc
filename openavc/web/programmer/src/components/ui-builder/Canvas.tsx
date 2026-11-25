@@ -37,6 +37,7 @@ import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useUiFilesStore } from "../../store/uiFilesStore";
+import { useThemeFilesStore } from "../../store/themeFilesStore";
 import { isCustomPage } from "./customPage";
 import { showError, showInfo } from "../../store/toastStore";
 
@@ -127,6 +128,7 @@ export function Canvas({
   // updates constantly and this component also subscribes to others.
   const sampleState = () => useConnectionStore.getState().liveState;
   const uiFilesVersion = useUiFilesStore((s) => s.version);
+  const themesVersion = useThemeFilesStore((s) => s.version);
 
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
@@ -146,17 +148,17 @@ export function Canvas({
           showGrid,
           vmin: vminRef.current,
           demoState: sampleState(),
-          uiFilesVersion,
+          uiFilesVersion, themesVersion,
         },
         window.location.origin,
       ),
     );
     setIframeReady(true);
-  }, [showGrid, uiFilesVersion]);
+  }, [showGrid, uiFilesVersion, themesVersion]);
 
   // Push project → iframe on every edit (both edit and preview modes), and on
-  // every save into ui/ — a custom control's markup is not project data, so
-  // that is the only thing that redraws it.
+  // every save into ui/ or of a theme — a custom control's markup and a theme
+  // are not project data, so that is the only thing that redraws them.
   useEffect(() => {
     if (!project) return;
     const iframe = iframeRef.current;
@@ -173,14 +175,14 @@ export function Canvas({
             showGrid,
             vmin: vminRef.current,
             demoState: sampleState(),
-            uiFilesVersion,
+            uiFilesVersion, themesVersion,
           },
           window.location.origin,
         );
       });
     }, 50);
     return () => { live = false; clearTimeout(timer); };
-  }, [project, page.id, showGrid, uiFilesVersion]);
+  }, [project, page.id, showGrid, uiFilesVersion, themesVersion]);
 
   // Double-click on the overlay: ask the panel to make that element's own text
   // node editable. The element goes over by id because the iframe takes no
