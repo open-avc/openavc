@@ -593,11 +593,10 @@ class PendingSettingsMixin:
 
     def _confirm_window(self, driver: BaseDriver) -> float:
         """Seconds to wait for a written setting to read back. See the
-        ``_CONFIRM_*`` constants for why it is two poll cycles."""
-        try:
-            interval = float((getattr(driver, "config", None) or {}).get("poll_interval", 0) or 0)
-        except (TypeError, ValueError):
-            interval = 0.0
+        ``_CONFIRM_*`` constants for why it is two poll cycles: cycles of the
+        interval the driver's poll loop runs at (running_poll_interval), which
+        a Python driver may choose for itself, not its config's."""
+        interval = driver.running_poll_interval()
         if interval <= 0:
             return _CONFIRM_UNPOLLED_WINDOW
         return min(interval * 2 + _CONFIRM_SLACK, _CONFIRM_MAX_WINDOW)

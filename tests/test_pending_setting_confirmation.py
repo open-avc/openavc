@@ -421,30 +421,46 @@ async def test_a_watcher_whose_device_went_judges_nothing_at_its_deadline(dm, he
 # ── The window, and what counts as agreement ────────────────────────────────
 
 
-def test_window_is_two_poll_cycles_for_a_polled_device(dm):
-    class _Cfg:
-        config = {"poll_interval": 30}
+class _OwnPace(BaseDriver):
+    """Polls at an interval of its own, with none in its config."""
 
-    class _NoPoll:
-        config = {"poll_interval": 0}
+    DRIVER_INFO = {"id": "acme_pace", "name": "Acme Pace", "transport": "tcp"}
 
-    class _Junk:
-        config = {"poll_interval": "soon"}
+    async def poll(self) -> None:
+        await asyncio.Event().wait()
 
-    # Two cycles plus slack: the poll in flight when the write went out is
-    # still carrying the old value.
-    assert dm._confirm_window(_Cfg()) == 70.0
-    assert dm._confirm_window(_NoPoll()) == pending_settings._CONFIRM_UNPOLLED_WINDOW
-    assert dm._confirm_window(_Junk()) == pending_settings._CONFIRM_UNPOLLED_WINDOW
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
 
 
-def test_window_is_capped():
-    assert (
-        device_manager.DeviceManager._confirm_window(
-            None, type("D", (), {"config": {"poll_interval": 100000}})()
+async def test_window_is_two_poll_cycles_of_the_interval_the_device_is_polled_at(dm):
+    """The interval the driver's poll loop runs at, not its config's: a
+    driver that polls every 30 s with no poll_interval of its own waits two
+    of its cycles, and one whose config names an interval it does not poll
+    at waits as for a device nobody polls."""
+    pace = _OwnPace("dev", {"host": "127.0.0.1", "port": 1}, StateStore(), EventBus())
+    assert dm._confirm_window(pace) == pending_settings._CONFIRM_UNPOLLED_WINDOW
+    await pace.start_polling(30)
+    try:
+        # Two cycles plus slack: the poll in flight when the write went out is
+        # still carrying the old value.
+        assert dm._confirm_window(pace) == 70.0
+    finally:
+        await pace.stop_polling()
+    pace.config["poll_interval"] = 30
+    assert dm._confirm_window(pace) == pending_settings._CONFIRM_UNPOLLED_WINDOW
+
+
+async def test_window_is_capped():
+    pace = _OwnPace("dev", {"host": "127.0.0.1", "port": 1}, StateStore(), EventBus())
+    await pace.start_polling(100000)
+    try:
+        assert (
+            device_manager.DeviceManager._confirm_window(None, pace)
+            == pending_settings._CONFIRM_MAX_WINDOW
         )
-        == pending_settings._CONFIRM_MAX_WINDOW
-    )
+    finally:
+        await pace.stop_polling()
 
 
 @pytest.mark.parametrize(
