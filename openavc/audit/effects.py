@@ -15,9 +15,11 @@ value the setting's declaration reads as the one declared counts too, as the
 platform confirms a write of that setting (``audit/setting_reading``): an
 option's label for its value.
 
-On a command with exactly one ``child_id`` parameter, a key the child type
-declares means that child's variable (the child's own name wins, as in the
-contract); anything else is the device's own.
+On a command with exactly one ``child_id`` parameter, a key that child may be
+set by means that child's variable: one its type declares, or a property
+every child has (``online``, ``label``, ...), the keys the checker lets such
+a command name (``declared_names.child_writable_props``); the child's name
+wins, as in the contract, and anything else is the device's own.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from openavc.audit.changes import state_label
 from openavc.audit.observe import recorded
 from openavc.audit.setting_reading import Setting, setting_says, settings_by_variable
 from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.declared_names import child_writable_props
 from openavc.drivers.spec import bare_placeholder
 from openavc.drivers.truth_words import read_truth
 
@@ -179,8 +182,8 @@ def query_answer(
 
 
 def _state_key(child: tuple[str, str, set[str]] | None, name: str) -> str:
-    """A declared variable's key: the addressed child's when the child type
-    declares it, else the device's own."""
+    """A declared variable's key: the addressed child's when that child may
+    be set by it, else the device's own."""
     if child and name in child[2]:
         return f"{child[0]}.{child[1]}.{name}"
     return name
@@ -189,8 +192,9 @@ def _state_key(child: tuple[str, str, set[str]] | None, name: str) -> str:
 def _addressed_child(
     entry: dict[str, Any], params: dict[str, Any], driver: Any,
 ) -> tuple[str, str, set[str]] | None:
-    """(child type, its id as state keys spell it, its variables) for a
-    command with exactly one ``child_id`` parameter that was given a value.
+    """(child type, its id as state keys spell it, the keys it may be set by)
+    for a command with exactly one ``child_id`` parameter that was given a
+    value.
 
     The value arrives as the form sent it ("1"); it is coerced to the kind
     the child type declares before it is padded, as every door that takes a
@@ -205,8 +209,7 @@ def _addressed_child(
     if not _addressable(ctype, types, local):
         return None
     padded = _padded_id(driver, ctype, types[ctype], local)
-    variables = set((types[ctype] or {}).get("state_variables") or {})
-    return ctype, padded, variables
+    return ctype, padded, child_writable_props(types[ctype])
 
 
 def _addressable(ctype: Any, types: dict[str, Any], local: Any) -> bool:

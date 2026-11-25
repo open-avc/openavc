@@ -16,8 +16,9 @@ from types import SimpleNamespace as NS
 from openavc.audit.changes import changed_values, moved_values
 from openavc.audit.command_catalog import command_catalog
 from openavc.audit.commands import CommandPass, CommandTrial
-from openavc.audit.effects import declared_effects
+from openavc.audit.effects import Readout, declared_effects, query_answer
 from openavc.core.device_traffic import RX, TX
+from openavc.drivers.driver_loader import validate_driver_definition
 
 INFO = {
     "state_variables": {
@@ -158,6 +159,43 @@ def test_a_child_id_the_driver_cannot_format_is_used_as_given():
 def test_two_child_ids_address_no_child():
     entry = {**INFO["commands"]["two_children"], "name": "two_children"}
     assert declared_effects(entry, {"a": "1", "b": "2"}, _driver())[0]["state_key"] == "mute"
+
+
+_ON_A_CHANNEL = {"ch": {"type": "child_id", "child_type": "channel"}}
+
+
+def test_a_property_every_child_has_is_the_addressed_childs():
+    """A command addressed to one child may name the properties every child
+    has (``online``, ``label``, ...) as well as its type's own, as the
+    checker allows: the audit reads them as that child's, never as the
+    device's own value of the same name."""
+    commands = {
+        "mark_online": {"label": "Mark Online", "sets": {"online": True}, "params": _ON_A_CHANNEL},
+        "query_online": {"label": "Query Online", "query_for": "online", "params": _ON_A_CHANNEL},
+    }
+    driver = _driver({**INFO, "commands": commands})
+    entry = {**commands["mark_online"], "name": "mark_online"}
+    assert declared_effects(entry, {"ch": "1"}, driver) == [
+        {"state": "online", "state_key": "channel.01.online", "expected": True, "has_value": True},
+    ]
+    trial = NS(params={"ch": "1"})
+    readout = Readout(state={"channel.01.online": True}, changed={"channel.01.online"}, driver=driver)
+    answer = query_answer({**commands["query_online"], "name": "query_online"}, trial, readout, True)
+    assert (answer["state_key"], answer["outcome"]) == ("channel.01.online", "reported")
+
+
+def test_the_checker_takes_the_property_the_audit_reads_as_the_childs():
+    """The command above is one the author's doors take."""
+    definition = {
+        "id": "acme_widget", "name": "Acme Widget", "manufacturer": "Acme",
+        "category": "utility", "transport": "tcp",
+        "child_entity_types": {"channel": INFO["child_entity_types"]["channel"]},
+        "commands": {
+            "mark_online": {"send": "ON {ch}", "sets": {"online": True}, "params": _ON_A_CHANNEL},
+        },
+    }
+    errors = validate_driver_definition(definition, strict=True)
+    assert not [e for e in errors if "online" in e], errors
 
 
 # -- the verdict a window ends with --------------------------------------------------
