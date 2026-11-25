@@ -72,7 +72,8 @@ def _entry(
         "polled": name in polled,
         "sets": dict(_typed(cdef, "sets", dict, {})),
         "available_offline": bool(cdef.get("available_offline")),
-        "restarts_device_for": command.restarts_device_for,
+        # Whole seconds the runtime holds the device away for; 0 for none.
+        "restarts_device_for": command.restarts_device_for or 0,
         "needs_input": command.needs_input,
         # A command that takes or hands back a file: sent with the file
         # chosen in the wizard, never by "Run all status queries".

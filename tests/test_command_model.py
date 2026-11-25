@@ -18,7 +18,7 @@ def test_a_plain_query_is_sendable_without_asking():
     command = read_command("query_power", {"label": "Query Power", "send": "PWR?\\r", "query_for": "power"})
     assert command.sendable_without_asking
     assert not command.needs_input and not command.moves_a_file
-    assert command.confirm == "" and command.restarts_device_for == 0
+    assert command.confirm == "" and command.restarts_device_for is None
 
 
 @pytest.mark.parametrize("cdef", [
@@ -60,16 +60,18 @@ def test_confirm_true_reads_as_a_plain_sentence_naming_the_command():
 
 
 @pytest.mark.parametrize("value,seconds", [
-    (30, 30), (None, 0), ("soon", 0),
+    (30, 30), (None, None), ("soon", None),
     # No window opens for 0 or less, so there is no restart to warn about.
-    (-5, 0),
+    (-5, None),
     # Neither raises nor counts: the command list is still served.
-    (float("inf"), 0), (float("nan"), 0), (True, 0), pytest.param(10**400, 0, id="past-a-float"),
+    (float("inf"), None), (float("nan"), None), (True, None), pytest.param(10**400, None, id="past-a-float"),
+    # The runtime's reading (tests/test_restart_window.py has the whole table).
+    (700, 600), (0.4, 1),
 ])
 def test_the_restart_is_read_as_whole_seconds(value, seconds):
     command = read_command("reboot", {"restarts_device_for": value})
     assert command.restarts_device_for == seconds
-    assert command.sendable_without_asking is (seconds == 0)
+    assert command.sendable_without_asking is (seconds is None)
 
 
 def test_a_declaration_that_is_not_a_mapping_reads_as_one_that_declares_nothing():

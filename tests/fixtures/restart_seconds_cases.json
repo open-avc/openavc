@@ -1,0 +1,16 @@
+{
+  "about": "How a command's restarts_device_for reads: whole seconds from 1 to 600, or null for no restart. The platform's reading is openavc/drivers/restart_window.py (restart_seconds); the Driver Builder's copy is restartWindow.ts. tests/test_restart_window.py and restartWindow.test.ts run every row.",
+  "cases": [
+    {"name": "left out", "value": null, "seconds": null},
+    {"name": "zero", "value": 0, "seconds": null},
+    {"name": "negative", "value": -5, "seconds": null},
+    {"name": "a boolean", "value": true, "seconds": null},
+    {"name": "whole", "value": 30, "seconds": 30},
+    {"name": "the least", "value": 1, "seconds": 1},
+    {"name": "the most", "value": 600, "seconds": 600},
+    {"name": "past the most", "value": 700, "seconds": 600},
+    {"name": "under a second", "value": 0.4, "seconds": 1},
+    {"name": "a fraction rounds up", "value": 1.5, "seconds": 2},
+    {"name": "a whole float", "value": 45.0, "seconds": 45}
+  ]
+}

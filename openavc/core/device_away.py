@@ -47,6 +47,7 @@ from openavc.core.connection_fault import (
 )
 from openavc.core.device_config import driver_connection
 from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
+from openavc.drivers.restart_window import restart_seconds
 from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
@@ -58,14 +59,6 @@ if TYPE_CHECKING:
 # The device manager's logger: utils/log_buffer.py files a line under the
 # device category by this name, and the device page shows that category.
 log = get_logger("openavc.core.device_manager")
-
-
-# The longest a driver's `restarts_device_for` may hold back a real fault.
-# The contract caps the declared value at the same figure, so this is the
-# second of the two gates rather than the only one: a driver dropped straight
-# into driver_repo/ skips catalog validation, and a window with no ceiling
-# would let a typo'd 6000 hide a genuinely dead device for most of an hour.
-_MAX_RESTART_WINDOW_SECONDS = 600.0
 
 
 @dataclass(frozen=True)
@@ -243,16 +236,16 @@ class DeviceAwayMixin:
         cmd_def = command_definition(driver, command)
         if cmd_def is None:
             return
-        try:
-            seconds = float(cmd_def.get("restarts_device_for") or 0)
-        except (TypeError, ValueError):
+        # The one reading (drivers/restart_window.py): whole seconds, held to
+        # the contract's ceiling, so a driver dropped straight into the driver
+        # folder, which no author's door checked, cannot hide a dead device
+        # for longer, nor open a window no clock ends.
+        seconds = restart_seconds(cmd_def.get("restarts_device_for"))
+        if seconds is None:
             return
-        if seconds <= 0:
-            return
-        seconds = min(seconds, _MAX_RESTART_WINDOW_SECONDS)
         self._restart_windows[device_id] = time.monotonic() + seconds
         log.info(
-            "[%s] %s restarts the device; holding the offline fault for %.0fs",
+            "[%s] %s restarts the device; holding the offline fault for %ds",
             device_id, command, seconds,
         )
 

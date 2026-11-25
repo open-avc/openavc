@@ -12,7 +12,8 @@ nothing from the person and a single Send would not warn about it first:
   (``param_validation.missing_required_params``, asked with nothing given);
 * no file to give or take (``moves_a_file``, ``spec.is_file_command``);
 * no confirmation of its own (``confirm``);
-* no restart (``restarts_device_for``).
+* no restart (``restarts_device_for``, read by ``restart_window``, the
+  reading the runtime's commanded-restart window opens).
 
 Who asks: the Device Audit's command list (``audit/command_catalog``) serves
 the answer on each entry, joined there with a device-page action's own
@@ -21,9 +22,10 @@ never sees). "Run all status queries", the read before a setting is written
 and the IDE's count of the queries that run together all read that field, so
 nothing a single Send would warn about is sent unasked.
 
-``confirm`` and ``restarts_device_for`` are read as the command list has
-served them to the wizard's Send warning, so the warning and this answer
-cannot disagree about a command.
+``confirm`` is read as the command list has served it to the wizard's Send
+warning, so the warning and this answer cannot disagree about a command.
+``restarts_device_for`` is ``restart_window``'s reading, so the window the
+audit watches is the one the runtime opens.
 
 Never logs and never raises: a declaration that is not a mapping reads as one
 that declares nothing.
@@ -35,21 +37,21 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.param_validation import missing_required_params
+from openavc.drivers.restart_window import restart_seconds
 from openavc.drivers.spec import is_file_command
-from openavc.drivers.usable_number import usable_number
 
 
 @dataclass(frozen=True)
 class CommandModel:
     """One command, read. ``confirm`` is the sentence the driver asks before
     the command runs ("" for none); ``restarts_device_for`` the whole seconds
-    the driver says it takes the device away (0 for none)."""
+    sending it takes the device away, from 1 to 600 (None for none)."""
 
     name: str
     needs_input: bool
     moves_a_file: bool
     confirm: str
-    restarts_device_for: int
+    restarts_device_for: int | None
 
     @property
     def sendable_without_asking(self) -> bool:
@@ -67,7 +69,7 @@ def read_command(name: str, cdef: Any) -> CommandModel:
         needs_input=bool(missing_required_params(params, {})),
         moves_a_file=is_file_command(cdef),
         confirm=_confirm_text(cdef, name),
-        restarts_device_for=_restart_seconds(cdef),
+        restarts_device_for=restart_seconds(cdef.get("restarts_device_for")),
     )
 
 
@@ -80,11 +82,3 @@ def _confirm_text(cdef: dict[str, Any], name: str) -> str:
     if confirm is True:
         return f"The driver asks for a confirmation before {cdef.get('label') or name} runs."
     return ""
-
-
-def _restart_seconds(cdef: dict[str, Any]) -> int:
-    """Whole seconds, through the usable-number rule, so an infinity or a
-    boolean reads as none instead of raising or counting; 0 or less is no
-    restart, as the runtime opens no window for it."""
-    seconds = usable_number(cdef.get("restarts_device_for"))
-    return int(seconds) if seconds is not None and seconds > 0 else 0
