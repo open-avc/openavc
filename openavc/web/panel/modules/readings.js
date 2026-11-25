@@ -17,7 +17,7 @@
  * (core/monitors.py `as_number`, monitorHelpers.ts `asNumber`), narrower
  * than Number(), which reads "0x10" as 16, a blank as 0 and true as 1.
  */
-const NUMERIC = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const NUMERIC = /^[+-]?(\d+(?:\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 
 /** No value to show: none reported, or a device that cannot be reached. */
 export function nothingToShow(value, offline) {

@@ -50,7 +50,7 @@ function norm(value: unknown): string {
  *  Deliberately narrower than `Number()`, and pinned to the same spelling
  *  Python's `as_number` uses — otherwise "0x10" is 16 on one side and not a
  *  number on the other. */
-const NUMERIC_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const NUMERIC_RE = /^[+-]?(\d+(?:\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 
 /** The reading as a number, or null when a range cannot address it.
  *  A boolean is not a number here: `Number(true)` is 1, and without this a

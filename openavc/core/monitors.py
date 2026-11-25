@@ -72,8 +72,10 @@ def _norm(value: Any) -> str:
 #: a wire, and ``float()`` also accepts ``"inf"``, ``"nan"`` and (unlike the
 #: IDE's mirror) rejects things JavaScript's ``Number()`` takes. Pinning both
 #: sides to one spelling of "is this a number" is what keeps the two from
-#: disagreeing about a reading neither of them should be judging.
-_NUMERIC_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
+#: disagreeing about a reading neither of them should be judging. Each digit
+#: has one place it can match, so text a device sent that is no number fails
+#: in time in proportion to its length (tests/test_number_reader_is_linear.py).
+_NUMERIC_RE = re.compile(r"^[+-]?(\d+(?:\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 
 
 def as_number(value: Any) -> float | None:
