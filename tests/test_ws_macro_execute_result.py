@@ -67,6 +67,15 @@ async def _ask(ws: FakeWS, macro_id: str, client_type: str = "panel") -> None:
     await _handle_message(ws, {"type": "macro.execute", "macro_id": macro_id}, client_type)
 
 
+async def _until(predicate, timeout: float = 2.0) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(0.01)
+    return predicate()
+
+
 async def _settle(*sockets: FakeWS, count: int = 1) -> None:
     for _ in range(200):
         if all(len(ws.results()) >= count for ws in sockets):
@@ -98,7 +107,7 @@ async def test_a_run_with_a_failed_step_says_failed(engine):
 async def test_each_socket_is_told_its_own_ending(engine):
     first, second = FakeWS(), FakeWS()
     await _ask(first, "warm_up")
-    await asyncio.sleep(0.05)
+    await _until(lambda: engine.macros.is_macro_running("warm_up"))
     await _ask(second, "warm_up")  # turned away: the first is still running
     await _settle(first, second)
 
@@ -113,7 +122,7 @@ async def test_each_socket_is_told_its_own_ending(engine):
 async def test_a_run_somebody_cancelled_says_cancelled(engine):
     asker, stopper = FakeWS(), FakeWS()
     await _ask(asker, "long")
-    await asyncio.sleep(0.05)
+    await _until(lambda: engine.macros.is_macro_running("long"))
     await _handle_message(stopper, {"type": "macro.cancel", "macro_id": "long"}, "panel")
     await _settle(asker)
 
@@ -121,3 +130,30 @@ async def test_a_run_somebody_cancelled_says_cancelled(engine):
         {"type": "macro.execute.result", "macro_id": "long", "outcome": "cancelled"}
     ]
     assert stopper.results() == []
+
+
+class SlowToAck(FakeWS):
+    """A client slow to take the receipt: its write is held until released."""
+
+    def __init__(self):
+        super().__init__()
+        self.release = asyncio.Event()
+
+    async def send_json(self, data: dict):
+        if data.get("type") == "macro.execute.ack":
+            await self.release.wait()
+        self.sent.append(data)
+
+
+async def test_a_client_slow_to_take_the_receipt_does_not_hold_the_run_back(engine):
+    ws = SlowToAck()
+    asked = asyncio.create_task(_ask(ws, "clean"))
+
+    # The run went ahead while the receipt was still being written...
+    assert await _until(lambda: engine.state.get("var.ran") is True)
+    assert ws.sent == []
+    # ...and its ending waited, so the receipt still comes first.
+    ws.release.set()
+    await asked
+    await _settle(ws)
+    assert ws.types() == ["macro.execute.ack", "macro.execute.result"]

@@ -741,10 +741,12 @@ async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type:
     otherwise hold this client's whole message loop: further taps queue in the
     socket and the panel reads as hung. Macro lifecycle events stream the
     progress to every client; ``macro.execute.result`` is this socket's own
-    run's ending, the word ``execute`` reports, sent after the receipt. A run
-    that raised around its steps is answered with an ``error`` frame instead.
+    run's ending, the word ``execute`` reports. A run that raised around its
+    steps is answered with an ``error`` frame instead. The run starts before
+    the receipt is written, so a client slow to take it never holds a press
+    back; either answer waits for the receipt, so it always comes first.
     """
-    await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+    acked = asyncio.Event()
 
     async def _run_macro() -> None:
         try:
@@ -752,8 +754,10 @@ async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type:
         except Exception as e:
             # Catch-all: whatever raised around the steps reaches nobody else.
             log.exception(f"macro.execute of '{macro_id}' failed")
+            await acked.wait()
             await _send_ws_error(ws, "macro.execute", _press_failure(e, client_type))
             return
+        await acked.wait()
         await _send_ws(
             ws, {"type": "macro.execute.result", "macro_id": macro_id, "outcome": outcome},
         )
@@ -761,6 +765,10 @@ async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type:
     task = asyncio.create_task(_run_macro())
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
+    try:
+        await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+    finally:
+        acked.set()
 
 
 async def _cancel_macro(ws: WebSocket, engine: Any, macro_id: Any) -> None:
