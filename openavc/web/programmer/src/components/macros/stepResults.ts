@@ -1,3 +1,4 @@
+import type { MacroConfig } from "../../api/types";
 import type { PlacedResult } from "../../store/logStore";
 
 /**
@@ -41,4 +42,9 @@ export function resultStepLabel(
   const top = result.stepPath[0];
   const n = typeof top === "number" ? top + 1 : "?";
   return result.macroId === runMacroId ? `Step ${n}` : `${nameOf(result.macroId)}, step ${n}`;
+}
+
+/** A macro's name by its id, from the project's macros; the id for one it does not have. */
+export function macroNamer(allMacros: MacroConfig[]): (macroId: string) => string {
+  return (macroId) => allMacros.find((m) => m.id === macroId)?.name ?? macroId;
 }

@@ -70,10 +70,14 @@ const runningStepPaths = new Map<string, StepPathSegment[]>();
  *  (a condition's answer, a group's results, a skip); else the flat index. */
 function placeOf(macroId: string, stepIndex?: number): PlacedResult {
   const path = runningStepPaths.get(macroId);
-  if (path && (stepIndex === undefined || path[path.length - 1] === stepIndex)) {
-    return { macroId, stepPath: path };
-  }
+  if (path && namesStep(path, stepIndex)) return { macroId, stepPath: path };
   return { macroId, stepPath: [stepIndex ?? useLogStore.getState().macroProgress.stepIndex ?? -1] };
+}
+
+/** Whether a running step's path is the step a frame names: any, for a frame
+ *  that names no index. */
+function namesStep(path: StepPathSegment[], stepIndex: number | undefined): boolean {
+  return stepIndex === undefined || path[path.length - 1] === stepIndex;
 }
 
 /** A `macro.progress` frame. Only a `running` one names its step; every other

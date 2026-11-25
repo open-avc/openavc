@@ -14,8 +14,6 @@ import {
   Loader2,
   AlertTriangle,
   GripVertical,
-  Clock,
-  CheckCircle,
   XCircle,
   LayoutTemplate,
   GitBranch,
@@ -42,12 +40,14 @@ import { MacroCooldown } from "./MacroCooldown";
 import { useLogStore } from "../../store/logStore";
 import { useProjectStore } from "../../store/projectStore";
 import { showError } from "../../store/toastStore";
-import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun, StepPathSegment, StepSkip } from "../../store/logStore";
+import type { StepError, ConditionalResult, GroupCommandResult, StepPathSegment, StepSkip } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
 import { runTrouble } from "./runAnswer";
 import { SkipLine } from "./SkipLine";
-import { resultOfRow, resultOnRow, resultStepLabel } from "./stepResults";
+import { resultOfRow, resultOnRow } from "./stepResults";
+import { LastRunSummary } from "./LastRunSummary";
+import { StepResultNotes } from "./StepResultNotes";
 import {
   STEP_TYPES,
   getStepType,
@@ -311,26 +311,7 @@ function SortableStepItem({
         )}
       </div>
 
-      {/* Step error detail */}
-      {stepError && (
-        <div
-          style={{
-            padding: "var(--space-xs) var(--space-md)",
-            fontSize: 12,
-            color: "#ef4444",
-            background: "rgba(239,68,68,0.08)",
-            borderTop: "1px solid rgba(239,68,68,0.2)",
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-xs)",
-          }}
-        >
-          <AlertTriangle size={12} style={{ flexShrink: 0 }} />
-          <span title={stepError.error}>{stepError.message}</span>
-        </div>
-      )}
-
-      {stepSkip && <SkipLine skip={stepSkip} style={STEP_SKIP_STYLE} />}
+      <StepResultNotes stepError={stepError} stepSkip={stepSkip} />
 
       {/* What this step is missing, beside the fields it is about. Only while
           the step is open: collapsed, the header's mark and the summary at the
@@ -438,7 +419,6 @@ export function MacroEditor({
   const showLastRun = lastRun && lastRun.macroId === macro.id && !isRunning;
   // Why its latest start did not go ahead, from whichever door asked for it.
   const skip = useLogStore((s) => s.macroSkips[macro.id]);
-  const macroName = (id: string) => allMacros.find((m) => m.id === id)?.name ?? id;
 
   const handleTest = async () => {
     setTestPending(true);
@@ -897,7 +877,7 @@ export function MacroEditor({
 
         {/* Last run summary */}
         {showLastRun && (
-          <LastRunSummary lastRun={lastRun!} nameOf={macroName} />
+          <LastRunSummary lastRun={lastRun!} allMacros={allMacros} />
         )}
         {skip && <SkipLine skip={skip} style={{ marginTop: "var(--space-sm)" }} />}
 
@@ -1188,76 +1168,6 @@ export function MacroEditor({
     </div>
   );
 }
-
-function LastRunSummary({ lastRun, nameOf }: {
-  lastRun: MacroLastRun;
-  nameOf: (macroId: string) => string;
-}) {
-  const durationSec = (lastRun.duration / 1000).toFixed(1);
-  const time = new Date(lastRun.completedAt).toLocaleTimeString();
-  const hasErrors = lastRun.stepErrors.length > 0;
-  const isSuccess = lastRun.status === "completed" && !hasErrors;
-
-  return (
-    <div
-      style={{
-        marginTop: "var(--space-md)",
-        padding: "var(--space-sm) var(--space-md)",
-        borderRadius: "var(--border-radius)",
-        border: `1px solid ${isSuccess ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-        background: isSuccess ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
-        fontSize: 12,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: hasErrors ? "var(--space-xs)" : 0 }}>
-        {isSuccess ? (
-          <CheckCircle size={14} style={{ color: "#10b981" }} />
-        ) : (
-          <XCircle size={14} style={{ color: "#ef4444" }} />
-        )}
-        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-          Last run: {isSuccess ? "Completed" : lastRun.status === "cancelled" ? "Cancelled" : lastRun.status === "error" ? "Failed" : "Completed with errors"}
-        </span>
-        <span style={{ color: "var(--text-muted)" }}>
-          <Clock size={11} style={{ verticalAlign: "middle", marginRight: 2 }} />
-          {durationSec}s at {time}
-        </span>
-      </div>
-      {lastRun.stepErrors.map((err, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-xs)",
-            padding: "2px 0",
-            color: "#ef4444",
-            fontSize: 11,
-          }}
-        >
-          <XCircle size={11} style={{ flexShrink: 0 }} />
-          <span style={{ fontWeight: 500 }}>{resultStepLabel(err, lastRun.macroId, nameOf)}:</span>
-          <span title={err.error}>{err.message}</span>
-          {err.device && <span style={{ color: "var(--text-muted)" }}>({err.device})</span>}
-        </div>
-      ))}
-      {lastRun.stepSkips.map((skip, i) => (
-        <SkipLine
-          key={i}
-          skip={skip}
-          label={resultStepLabel(skip, lastRun.macroId, nameOf)}
-          style={{ padding: "2px 0" }}
-        />
-      ))}
-    </div>
-  );
-}
-
-const STEP_SKIP_STYLE: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-md)",
-  background: "rgba(245,158,11,0.08)",
-  borderTop: "1px solid rgba(245,158,11,0.2)",
-};
 
 const btnStyle: React.CSSProperties = {
   display: "flex",
