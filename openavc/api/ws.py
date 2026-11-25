@@ -504,8 +504,9 @@ async def _send_ws_error(
     Note the two other ways this socket reports a failure, both deliberate:
     a result ack (``command.ack``/``state.set.ack``) carries ``success: false``
     plus the correlation fields a generic error frame has no room for (which
-    device, which key); and macro *lifecycle* events carry a macro's own
-    outcome. See the WebSocket section of the API reference for the rule.
+    device, which key); and a macro's outcome travels on its *lifecycle*
+    events to every client and on ``macro.execute.result`` to the client that
+    asked. See the WebSocket section of the API reference for the rule.
     """
     frame: dict[str, Any] = {"type": "error", "message": message}
     if source_type:
@@ -733,26 +734,33 @@ async def _named_macro(ws: WebSocket, msg_type: str, engine: Any, msg: dict[str,
 
 
 async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type: str) -> None:
-    """Start a macro in the background and acknowledge it at once.
+    """Acknowledge a macro at once, run it in the background, and tell this
+    socket how its run ended.
 
     A macro with delay steps (warm-up sequences run tens of seconds) would
     otherwise hold this client's whole message loop: further taps queue in the
     socket and the panel reads as hung. Macro lifecycle events stream the
-    progress; a run that raised around its steps (``execute`` reports a step's
-    own failure) is answered on this socket from the background task.
+    progress to every client; ``macro.execute.result`` is this socket's own
+    run's ending, the word ``execute`` reports, sent after the receipt. A run
+    that raised around its steps is answered with an ``error`` frame instead.
     """
+    await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+
     async def _run_macro() -> None:
         try:
-            await engine.macros.execute(macro_id)
+            outcome = await engine.macros.execute(macro_id)
         except Exception as e:
             # Catch-all: whatever raised around the steps reaches nobody else.
             log.exception(f"macro.execute of '{macro_id}' failed")
             await _send_ws_error(ws, "macro.execute", _press_failure(e, client_type))
+            return
+        await _send_ws(
+            ws, {"type": "macro.execute.result", "macro_id": macro_id, "outcome": outcome},
+        )
 
     task = asyncio.create_task(_run_macro())
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
-    await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
 
 
 async def _cancel_macro(ws: WebSocket, engine: Any, macro_id: Any) -> None:
