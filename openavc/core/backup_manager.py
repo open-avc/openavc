@@ -231,10 +231,10 @@ def create_backup(
 def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
     """What a start is about to replace (``core/project_recovery``), kept
     under Backups first: the project file as it is, however unreadable, and
-    the project's files beside it (``core/project_unit``), so the swap that
-    follows moves nothing away that no backup holds. When the project file
-    is missing, the files beside it alone, a backup that restores nothing
-    but keeps them. Returns the backup, or None when there is nothing there
+    what a backup carries from beside it (``_beside_members``), as the
+    backup a running replace takes keeps them. When the project file is
+    missing, the files beside it alone, a backup that restores nothing but
+    keeps them. Returns the backup, or None when there is nothing there
     at all (a first start). Raises the ``OSError`` as ``create_backup``
     does; ``spare`` as there."""
     if not project_file.exists() and next(_beside_members(project_file.parent), None) is None:
@@ -580,13 +580,14 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
     The backup prepared as every restore prepares it
     (``project_replace.from_backup``: read and checked as a load reads it,
     before anything is written) and put in place by the swap every replace
-    makes (``project_replace.replace_files``). A running project is
+    makes (``project_replace.replace_files``), an update notice nobody has
+    read yet kept: the backup is of the same project. A running project is
     replaced through ``Engine.replace_with`` instead, which stops its
     persister and reloads it.
     """
     from openavc.core.project_replace import from_backup, replace_files
 
-    replace_files(from_backup(backup_path), project_file)
+    replace_files(from_backup(backup_path), project_file, keep_earlier_notes=True)
     log.info(f"Restored from backup: {backup_path.name}")
 
 

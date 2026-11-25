@@ -545,3 +545,67 @@ def test_a_start_whose_backup_of_the_unreadable_file_cannot_be_saved_still_comes
 
     assert project_recovery.load_or_recover(project_path).project.id == "live"
     assert project_recovery.read(project_path.parent)["backup"] == f"backups/{restored.name}"
+
+
+def test_a_folder_that_cannot_be_moved_still_lets_the_recovery_project_start(tmp_path, monkeypatch):
+    """A script folder held open (Windows refuses the rename) must not stop
+    the last resort: the Recovery Project's file is written on its own, and
+    the backup taken first still holds what was there."""
+    from openavc.core import project_swap
+
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    folder = project_path.parent
+    _leave_files_beside(folder, {"var.old": 5})
+    _corrupt(project_path)
+    unreadable = project_path.read_bytes()
+    rename = project_swap._rename_on_disk
+
+    def scripts_held_open(src, dst):
+        if src == folder / "scripts":
+            raise PermissionError(13, "The file is in use")
+        rename(src, dst)
+
+    monkeypatch.setattr(project_swap, "_rename_on_disk", scripts_held_open)
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "recovery"
+    assert json.loads(project_path.read_text(encoding="utf-8"))["project"]["id"] == "recovery"
+    assert project_recovery.read(folder)["outcome"] == project_recovery.RESET
+    assert list(_backups_holding(folder, "project.avc").values()) == [unreadable]
+
+
+def _unread_update_notice(folder):
+    notes = project_update.MigrationNotes()
+    notes.changed("Kept until somebody reads it.", "Panel Settings")
+    project_update.record(folder, notes)
+
+
+def _notice_messages(folder):
+    return [n["message"] for n in (project_update.read(folder) or {}).get("notes", [])]
+
+
+def test_a_start_that_puts_back_a_cut_off_replace_keeps_the_unread_update_notice(tmp_path):
+    from openavc.core import project_swap
+    from openavc.core.backup_manager import backup_id
+
+    project_path = tmp_path / "project.avc"
+    _real_project(project_path)
+    taken = create_backup(project_path, "Before opening 'Lobby'")
+    _unread_update_notice(tmp_path)
+    project_swap.write_marker(tmp_path, backup_id(tmp_path, taken))
+
+    assert project_recovery.load_or_recover(project_path).project.id == "live"
+    assert _notice_messages(tmp_path) == ["Kept until somebody reads it."]
+
+
+def test_a_start_that_restores_a_backup_keeps_the_unread_update_notice(tmp_path):
+    project_path = tmp_path / "project.avc"
+    _real_project(project_path)
+    create_backup(project_path, "Auto backup")
+    _unread_update_notice(tmp_path)
+    _corrupt(project_path)
+
+    assert project_recovery.load_or_recover(project_path).project.id == "live"
+    assert _notice_messages(tmp_path) == ["Kept until somebody reads it."]

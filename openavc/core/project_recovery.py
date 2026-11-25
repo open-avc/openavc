@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from openavc.core import project_identity
-from openavc.core.project_loader import ProjectConfig, ProjectMeta, load_project
+from openavc.core.project_loader import ProjectConfig, ProjectMeta, load_project, save_project
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -290,13 +290,14 @@ class _Recovery:
 
     def _replace(self, prepared, *, spare: Path | None = None) -> None:
         """``prepared`` put in place of what is at the project file, which
-        is kept under Backups first, once (``spare`` is the backup about to
-        be read, which that backup's rotation leaves alone)."""
+        is kept under Backups first, once. ``spare`` is a backup being
+        restored: that backup's rotation leaves it alone, and an update
+        notice nobody has read yet stays, since it is the same project."""
         from openavc.core.project_replace import replace_files
 
         if not self._set_aside_taken:
             self._set_aside(spare)
-        replace_files(prepared, self.project_path)
+        replace_files(prepared, self.project_path, keep_earlier_notes=spare is not None)
 
     def _set_aside(self, spare: Path | None) -> None:
         """What is at the project file and beside it, kept under Backups.
@@ -373,7 +374,10 @@ class _Recovery:
         first boot rather than a loss, so it gets no record. Only a project
         that existed and could not be read is worth interrupting somebody
         for. The record is written after the swap, which moves any earlier
-        one away with the project it was about.
+        one away with the project it was about. A swap that cannot be made
+        (a folder held open) leaves the files beside the project as they
+        were and writes the Recovery Project's file alone, so the last
+        resort still starts the room.
         """
         from openavc.core.project_replace import blank
 
@@ -389,7 +393,11 @@ class _Recovery:
                 uuid=project_identity.new_stamp(),
             )
         )
-        self._replace(blank(empty))
+        try:
+            self._replace(blank(empty))
+        except OSError as e:
+            _load_log.error(f"Could not replace the project's files ({e}); writing the Recovery Project's file alone")
+            save_project(self.project_path, empty)
         if self.failure == UNREADABLE:
             record(self.project_path.parent, outcome=RESET, reason=UNREADABLE)
         return empty

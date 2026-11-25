@@ -94,13 +94,15 @@ class PreparedProject:
         return project_swap.stage(project_file, text, self.fill, beside=self.beside)
 
 
-def replace_files(prepared: PreparedProject, project_file: Path) -> None:
+def replace_files(prepared: PreparedProject, project_file: Path, *, keep_earlier_notes: bool = False) -> None:
     """``prepared``'s files put in place of the project at ``project_file``
     where no project is running (a start: ``core/project_recovery``):
     staged and swapped under the shared project-save lock, so a save or a
     backup never reads a part-swapped project, its logins filled in, and
-    what its migration changed kept for the notice in place of the previous
-    project's, with no marker and nothing to reload. A swap that fails puts
+    what its migration changed kept for the notice, with no marker and
+    nothing to reload. The notice describes ``prepared`` alone, unless
+    ``keep_earlier_notes`` (a backup of the same project put back), when
+    notes nobody has read yet stay ahead of its own. A swap that fails puts
     back what it moved and raises."""
     from openavc.core import project_update
     from openavc.core.project_loader import _project_save_lock
@@ -110,7 +112,8 @@ def replace_files(prepared: PreparedProject, project_file: Path) -> None:
         project_swap.replace_on_disk(project_file, text, prepared.fill, beside=prepared.beside)
         if prepared.after_swap is not None:
             prepared.after_swap(project_file)
-    project_update.replace(project_file.parent, prepared.notes)
+    keep = project_update.record if keep_earlier_notes else project_update.replace
+    keep(project_file.parent, prepared.notes)
     if prepared.on_replaced is not None:
         prepared.on_replaced()
 
