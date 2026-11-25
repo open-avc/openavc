@@ -28,7 +28,7 @@ from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 from openavc.core.event_bus import EventBus
 from openavc.core.group_command import DeviceGroups, GroupCommand
 from openavc.core.macro_steps import MacroSteps
-from openavc.core.macro_text import StepWording, stopped_message
+from openavc.core.macro_text import StepWording, skip_reason, stopped_message
 from openavc.core.project_loader import MacroConfig, reads_as
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
@@ -48,9 +48,6 @@ BroadcastWS = Callable[[dict[str, Any]], Awaitable[None]]
 # sending bytes to AV hardware past this window — we surface that rather
 # than silently reporting success.
 _CANCEL_GRACE_SECONDS = 5.0
-
-# Why a start is skipped once the shutdown has closed the engine (close).
-SKIPPED_STOPPING = "the system is stopping"
 
 # A macro's optional overlap="queue" guard waits for the in-flight
 # invocation to finish before starting. Poll this often for it to clear,
@@ -220,8 +217,8 @@ class MacroEngine(MacroSteps):
 
     def _throttle_reason(
         self, macro_id: str, overlap: str, cooldown: float
-    ) -> str | None:
-        """Return a human reason if a macro's own guard blocks this start, else None.
+    ) -> dict[str, str] | None:
+        """The reason (``skip_reason``) a macro's own guard blocks this start, else None.
 
         Called inside the start lock so the skip / cooldown decision is atomic
         against other concurrent execute() callers. This is the macro-level
@@ -234,9 +231,9 @@ class MacroEngine(MacroSteps):
         if cooldown > 0:
             last = self._last_started_monotonic.get(macro_id)
             if last is not None and (time.monotonic() - last) < cooldown:
-                return f"cooldown ({cooldown:g}s) not elapsed"
+                return skip_reason("macro_cooldown", seconds=cooldown)
         if overlap == "skip" and self.is_macro_running(macro_id):
-            return "overlap=skip and an instance is already running"
+            return skip_reason("macro_overlap")
         return None
 
     async def cancel(self, macro_id: str) -> bool:
@@ -265,7 +262,7 @@ class MacroEngine(MacroSteps):
 
     def close(self) -> None:
         """No macro starts from here on: the shutdown, before ``cancel_all``.
-        A start then is skipped (``SKIPPED_STOPPING``), with its
+        A start then is skipped (``stopping``), with its
         ``macro.skipped`` event as any refused start has."""
         self._closed = True
 
@@ -473,7 +470,7 @@ class MacroEngine(MacroSteps):
             _active_call_chain.reset(_chain_token)
             self._release(macro_id, task)
 
-    async def _wait_for_slot(self, macro_id: str, name: str) -> str | None:
+    async def _wait_for_slot(self, macro_id: str, name: str) -> dict[str, str] | None:
         """overlap=queue: hold this start until any in-flight invocation of the
         same macro finishes, then let it go on to claim the slot.
 
@@ -492,17 +489,14 @@ class MacroEngine(MacroSteps):
                     f"{_QUEUE_MAX_WAIT_SECONDS:g}s waiting for the running "
                     f"invocation to finish; skipping this start"
                 )
-                return (
-                    "overlap=queue and the running instance did not finish "
-                    f"within {_QUEUE_MAX_WAIT_SECONDS:g}s"
-                )
+                return skip_reason("macro_queue_timeout", seconds=_QUEUE_MAX_WAIT_SECONDS)
             await asyncio.sleep(_QUEUE_POLL_SECONDS)
             waited += _QUEUE_POLL_SECONDS
         return None
 
     async def _claim_start(
         self, macro_id: str, name: str, task: asyncio.Task | None, guards: _StartGuards,
-    ) -> tuple[str | None, list[tuple[str, asyncio.Task]]]:
+    ) -> tuple[dict[str, str] | None, list[tuple[str, asyncio.Task]]]:
         """Take this run's slot, or say why it may not start. Under
         overlap=queue it first waits for the running invocation
         (``_wait_for_slot``), and a wait that reaches its ceiling is a refusal.
@@ -521,7 +515,7 @@ class MacroEngine(MacroSteps):
         register: the throttle and the preemption still apply, without the lock.
         """
         if self._closed:
-            return SKIPPED_STOPPING, []
+            return skip_reason("stopping"), []
         if guards.overlap == "queue":
             gave_up = await self._wait_for_slot(macro_id, name)
             if gave_up is not None:
@@ -533,7 +527,7 @@ class MacroEngine(MacroSteps):
 
     def _claim(
         self, macro_id: str, task: asyncio.Task | None, guards: _StartGuards,
-    ) -> tuple[str | None, list[tuple[str, asyncio.Task]]]:
+    ) -> tuple[dict[str, str] | None, list[tuple[str, asyncio.Task]]]:
         blocked = self._throttle_reason(macro_id, guards.overlap, guards.cooldown)
         if blocked is not None:
             return blocked, []
@@ -555,17 +549,18 @@ class MacroEngine(MacroSteps):
             t.cancel()
         return cancelled
 
-    async def _report_skipped(self, macro_id: str, name: str, reason: str) -> None:
-        log.info(f"Macro '{name}' skipped — {reason}")
+    async def _report_skipped(self, macro_id: str, name: str, reason: dict[str, str]) -> None:
+        log.info(f"Macro '{name}' skipped — {reason['message']}")
         # A run that never starts is still an outcome somebody asked for.
         # Every other way a run ends has a lifecycle event; without this
         # one a caller waiting on the outcome (the WebSocket's
         # macro.execute acks receipt and nothing more) waits forever.
         # Emitted outside the start lock: a handler that starts a macro
-        # of its own takes that lock too.
+        # of its own takes that lock too. `reason` is the sentence, as it was
+        # before `code` and `message` (``macro_text.skip_reason``) came.
         await self.events.emit(
             f"macro.skipped.{macro_id}",
-            {"macro_id": macro_id, "name": name, "reason": reason},
+            {"macro_id": macro_id, "name": name, "reason": reason["message"], **reason},
         )
 
     async def _report_completed(

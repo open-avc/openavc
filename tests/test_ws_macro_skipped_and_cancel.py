@@ -26,6 +26,7 @@ from openavc.api.ws import _PANEL_ALLOWED_TYPES, _handle_message
 from openavc.core.engine import Engine
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.macro_text import SKIP_REASONS, skip_reason
 from openavc.core.state_store import StateStore
 
 
@@ -96,7 +97,8 @@ async def test_a_start_the_macro_s_own_guard_turns_away_is_an_outcome_not_silenc
     assert len(skipped) == 1
     assert skipped[0]["macro_id"] == "warm_up"
     assert skipped[0]["name"] == "Warm Up"
-    assert "overlap=skip" in skipped[0]["reason"]
+    assert skipped[0]["code"] == "macro_overlap"
+    assert skipped[0]["reason"] == skipped[0]["message"] == SKIP_REASONS["macro_overlap"]
     # The first run is untouched and still ends the ordinary way.
     assert engine.macros.is_macro_running("warm_up")
     await first
@@ -111,7 +113,10 @@ async def test_a_cooldown_says_which_guard_it_was(engine):
     await engine.macros.execute("preset")
     skipped = [p for e, p in seen if e == "macro.skipped.preset"]
     assert len(skipped) == 1
-    assert "cooldown" in skipped[0]["reason"]
+    assert skipped[0]["code"] == "macro_cooldown"
+    assert skipped[0]["reason"] == skipped[0]["message"] == (
+        "The macro's Cooldown (60 seconds) had not passed since it last started."
+    )
 
 
 @pytest.mark.asyncio
@@ -124,13 +129,14 @@ async def test_the_engine_forwards_skipped_as_a_frame_like_every_other_outcome()
     fake_self._event_sub_ids = []
     fake_self._pusher = lambda msg_type: Engine._pusher(fake_self, msg_type)
     Engine._bridge_events_to_ws(fake_self)
+    why = skip_reason("macro_cooldown", seconds=60)
     await fake_self.events.emit(
         "macro.skipped.warm_up",
-        {"macro_id": "warm_up", "name": "Warm Up", "reason": "cooldown (60s) not elapsed"},
+        {"macro_id": "warm_up", "name": "Warm Up", "reason": why["message"], **why},
     )
     fake_self.broadcast_ws.assert_awaited_once_with({
         "type": "macro.skipped", "macro_id": "warm_up", "name": "Warm Up",
-        "reason": "cooldown (60s) not elapsed",
+        "reason": why["message"], "code": "macro_cooldown", "message": why["message"],
     })
 
 

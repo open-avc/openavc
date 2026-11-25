@@ -31,6 +31,7 @@ from fastapi import FastAPI
 
 from openavc.core import project_update
 from openavc.core.engine import Engine
+from openavc.core.macro_text import skip_reason
 from openavc.core.project_loader import (
     DriverDependency,
     Layout,
@@ -324,7 +325,7 @@ async def test_a_trigger_overlap_this_release_does_not_know_skips_while_its_macr
     await engine._execute_trigger(engine._triggers["t"], {})
 
     assert fired == []
-    assert skipped == [{"trigger_id": "t", "reason": "macro_running"}]
+    assert skipped == [{"trigger_id": "t", "reason": "macro_running", **skip_reason("macro_running")}]
 
 
 @pytest.mark.asyncio

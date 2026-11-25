@@ -17,6 +17,12 @@ names and hosts), the loaded project and the plugin actions registered now.
 THE sentence for a press naming a macro the project does not have is here too
 (``no_such_macro``): a control's macro action and the panel's ``macro.execute``
 and ``macro.cancel`` all answer with it.
+
+THE reasons a trigger fire or a macro run did not go ahead are here too
+(``SKIP_REASONS``, read through ``skip_reason``): every ``trigger.skipped`` and
+``macro.skipped`` names one of its codes and sends its sentence, and no other
+module words a skip. A new way for a fire or a run to stop is a new row, which
+``tests/test_skip_reasons.py`` holds both engines to.
 """
 
 from __future__ import annotations
@@ -90,6 +96,52 @@ def stopped_message(exc: BaseException) -> str:
     """The sentence a run that stopped on ``exc`` ends with: the failing
     step's, else ``MACRO_STOPPED``. Never the exception's own text."""
     return exc.message if isinstance(exc, StepFailed) else MACRO_STOPPED
+
+
+#: Why a trigger fire (``trigger.skipped``) or a macro run (``macro.skipped``)
+#: did not go ahead: each code with its sentence. The trigger's codes came
+#: first and readers already match on them, so they keep their names; the
+#: macro's own refusals start ``macro_`` because the setting to change is the
+#: macro's, not the trigger's. A ``{field}`` is filled in by the exit that
+#: stops the fire or the run.
+SKIP_REASONS: dict[str, str] = {
+    # A trigger's fire.
+    "cooldown": "The trigger's Cooldown had not passed since it last fired.",
+    "conditions_not_met": "The trigger's conditions were not met.",
+    "guard_not_met": "The trigger's conditions were no longer met when its wait ended.",
+    "state_reverted": "The value changed back before the trigger's delay ended.",
+    "invalid_condition": (
+        "A condition on the trigger uses '{operator}', an operator this system does not know."
+    ),
+    "macro_running": "The macro was still running, and the trigger's Overlap is set to Skip.",
+    "queue_timeout": (
+        "The macro was still running after {seconds:g} seconds, so the trigger's queued "
+        "fire was dropped."
+    ),
+    "trigger_disabled": "The trigger was turned off while its fire waited in the queue.",
+    "circular": "The trigger set itself off again while it was still firing.",
+    "max_depth": (
+        "The trigger was already running {limit} times at once. Its macro may be setting "
+        "it off again."
+    ),
+    # A macro's run, refused by the macro's own settings or by the shutdown.
+    "macro_cooldown": (
+        "The macro's Cooldown ({seconds:g} seconds) had not passed since it last started."
+    ),
+    "macro_overlap": "The macro was already running, and the macro's Overlap is set to Skip.",
+    "macro_queue_timeout": (
+        "The macro was still running after {seconds:g} seconds, so this queued run was dropped."
+    ),
+    "stopping": "The system is stopping.",
+}
+
+
+def skip_reason(code: str, **values: Any) -> dict[str, str]:
+    """THE words for a fire or a run that did not go ahead: ``code`` (a key of
+    ``SKIP_REASONS``, which a client matches on) and ``message``, its sentence
+    with ``values`` filled in. A code the table does not hold raises
+    ``KeyError``: a reason nobody wrote down is a bug, not a new reason."""
+    return {"code": code, "message": SKIP_REASONS[code].format(**values)}
 
 
 def no_such_macro(macro_id: str) -> str:

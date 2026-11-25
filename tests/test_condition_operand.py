@@ -31,6 +31,7 @@ import pytest
 from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.macro_text import skip_reason
 from openavc.core.state_store import StateStore
 from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.value_resolver import read_operand
@@ -327,6 +328,7 @@ async def test_a_delayed_state_trigger_judges_the_state_after_its_delay(then, fi
         state.set("var.watched", then, source="test")
         await _settle(state)
         assert (state.get("var.ran") is True) == fires
-        assert (skipped == [{"trigger_id": "t", "reason": "state_reverted"}]) == (not fires)
+        reverted = {"trigger_id": "t", "reason": "state_reverted", **skip_reason("state_reverted")}
+        assert (skipped == [reverted]) == (not fires)
     finally:
         await trigger_engine.stop()

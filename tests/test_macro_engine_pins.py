@@ -18,6 +18,7 @@ import pytest
 import openavc.core.macro_engine as macro_engine
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.macro_text import SKIP_REASONS
 from openavc.core.script_engine import COULD_NOT_FINISH
 from openavc.core.state_store import StateStore
 
@@ -83,9 +84,10 @@ async def test_a_queued_start_gives_up_and_is_skipped(
     assert len(started) == 1
     assert not first.done()
     assert len(engine._running["slow"]) == 1
+    gave_up = "The macro was still running after 0.06 seconds, so this queued run was dropped."
     assert skipped == [("macro.skipped.slow", {
         "macro_id": "slow", "name": "Slow",
-        "reason": "overlap=queue and the running instance did not finish within 0.06s",
+        "reason": gave_up, "code": "macro_queue_timeout", "message": gave_up,
     })]
     assert any(
         "overlap=queue: gave up after" in r.getMessage()
@@ -125,7 +127,10 @@ async def test_a_start_with_no_task_honours_the_cooldown_and_registers_nothing(
     assert engine._running == {}
     # The cooldown was stamped all the same, so the next start is refused.
     assert await engine.execute("cool") == "skipped"
-    assert skipped[-1][1]["reason"] == "cooldown (30s) not elapsed"
+    assert skipped[-1][1]["code"] == "macro_cooldown"
+    assert skipped[-1][1]["reason"] == (
+        "The macro's Cooldown (30 seconds) had not passed since it last started."
+    )
 
 
 async def test_a_start_with_no_task_still_preempts_its_cancel_group(
@@ -166,8 +171,8 @@ async def test_a_start_with_no_task_is_skipped_behind_a_running_skip_macro(
     assert await engine.execute("solo") == "skipped"
     assert skipped == [(
         "macro.skipped.solo",
-        {"macro_id": "solo", "name": "Solo",
-         "reason": "overlap=skip and an instance is already running"},
+        {"macro_id": "solo", "name": "Solo", "reason": SKIP_REASONS["macro_overlap"],
+         "code": "macro_overlap", "message": SKIP_REASONS["macro_overlap"]},
     )]
     monkeypatch.undo()
     running.cancel()

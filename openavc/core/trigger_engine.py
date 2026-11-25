@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING
+from typing import Any, Awaitable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
 from openavc.core.project_loader import TriggerConfig, reads_as
@@ -19,6 +19,7 @@ from openavc.core.macro_engine import (
     _QUEUE_MAX_WAIT_SECONDS,
     _QUEUE_POLL_SECONDS as _QUEUE_POLL_INTERVAL,
 )
+from openavc.core.macro_text import skip_reason
 from openavc.core.value_resolver import TRIGGER_PREFIX, read_operand
 from openavc.utils.logger import get_logger
 
@@ -173,6 +174,15 @@ class TriggerEngine:
         task.add_done_callback(self._bg_tasks.discard)
         task.add_done_callback(_log_task_exception)
         return task
+
+    def _skipped(self, trigger_id: str, code: str, **values: Any) -> Awaitable[None]:
+        """The ``trigger.skipped`` for a fire stopped for ``code``, a reason of
+        ``macro_text.SKIP_REASONS``, to await or ``_spawn``. ``reason`` is the
+        code too, the name readers before ``code`` match on."""
+        return self.events.emit(
+            "trigger.skipped",
+            {"trigger_id": trigger_id, "reason": code, **skip_reason(code, **values)},
+        )
 
     def load_triggers(self, macros_data: list[dict[str, Any]]) -> None:
         """Load trigger definitions from all macros."""
@@ -385,10 +395,13 @@ class TriggerEngine:
                 matched = eval_operator(op, actual, target)
             except ValueError:
                 log.error(f"Trigger {t['id']} has invalid operator '{op}'")
+                self._spawn(self._skipped(t["id"], "invalid_condition", operator=op))
                 return
             if not matched:
+                # Not a fire, so not a skipped one: the trigger fires when its
+                # key matches, and any other change to the key is not that.
                 log.debug(
-                    f"Trigger {t['id']} skipped — state_operator {op} not met "
+                    f"Trigger {t['id']} not fired — state_operator {op} not met "
                     f"(actual={actual!r}, target={target!r})"
                 )
                 return
@@ -529,10 +542,7 @@ class TriggerEngine:
                     elapsed = cooldown
             if elapsed < cooldown:
                 log.debug(f"Trigger {trigger_id} skipped — cooldown ({elapsed:.1f}s < {cooldown}s)")
-                self._spawn(self.events.emit(
-                    "trigger.skipped",
-                    {"trigger_id": trigger_id, "reason": "cooldown"},
-                ))
+                self._spawn(self._skipped(trigger_id, "cooldown"))
                 return
 
         # 3. Debounce
@@ -618,25 +628,20 @@ class TriggerEngine:
                         matched = eval_operator(op, current, target)
                     except ValueError:
                         log.error(f"Trigger {t['id']} has invalid operator '{op}'")
+                        await self._skipped(t["id"], "invalid_condition", operator=op)
                         return
                     if not matched:
                         log.info(
                             f"Trigger {t['id']} skipped — state reverted during delay"
                         )
-                        await self.events.emit(
-                            "trigger.skipped",
-                            {"trigger_id": t["id"], "reason": "state_reverted"},
-                        )
+                        await self._skipped(t["id"], "state_reverted")
                         return
 
             # Re-check guard conditions for all trigger types with delays
             conditions = t.get("conditions", [])
             if conditions and not self._check_conditions(conditions):
                 log.info(f"Trigger {t['id']} skipped — guard conditions no longer met after delay")
-                await self.events.emit(
-                    "trigger.skipped",
-                    {"trigger_id": t["id"], "reason": "guard_not_met"},
-                )
+                await self._skipped(t["id"], "guard_not_met")
                 return
 
             await self._execute_trigger(ts, context)
@@ -655,10 +660,7 @@ class TriggerEngine:
         conditions = t.get("conditions", [])
         if not self._check_conditions(conditions):
             log.debug(f"Trigger {trigger_id} skipped — conditions not met")
-            await self.events.emit(
-                "trigger.skipped",
-                {"trigger_id": trigger_id, "reason": "conditions_not_met"},
-            )
+            await self._skipped(trigger_id, "conditions_not_met")
             return
 
         # 6. Overlap policy
@@ -666,10 +668,7 @@ class TriggerEngine:
         if self.macros.is_macro_running(macro_id):
             if overlap == "skip":
                 log.debug(f"Trigger {trigger_id} skipped — macro already running")
-                await self.events.emit(
-                    "trigger.skipped",
-                    {"trigger_id": trigger_id, "reason": "macro_running"},
-                )
+                await self._skipped(trigger_id, "macro_running")
                 return
             elif overlap == "queue":
                 # Wait for running macro to finish, then re-check and fire. The
@@ -705,10 +704,7 @@ class TriggerEngine:
                     f"concurrent depth ({_MAX_OVERLAP_ALLOW_DEPTH}); likely a "
                     f"runaway self-trigger on macro '{ts.macro_name}'"
                 )
-                await self.events.emit(
-                    "trigger.skipped",
-                    {"trigger_id": trigger_id, "reason": "max_depth"},
-                )
+                await self._skipped(trigger_id, "max_depth", limit=_MAX_OVERLAP_ALLOW_DEPTH)
                 return
         elif depth > 0:
             # skip/queue already handled the running-macro case above; a
@@ -718,10 +714,7 @@ class TriggerEngine:
                 f"Trigger {trigger_id} blocked — circular chain detected "
                 f"(trigger already active for macro '{ts.macro_name}')"
             )
-            await self.events.emit(
-                "trigger.skipped",
-                {"trigger_id": trigger_id, "reason": "circular"},
-            )
+            await self._skipped(trigger_id, "circular")
             return
 
         # 8. Fire
@@ -750,17 +743,20 @@ class TriggerEngine:
                 return
             if not ts.trigger.get("enabled", True):
                 log.debug(f"Trigger {trigger_id} disabled during queue wait — aborting")
+                await self._skipped(trigger_id, "trigger_disabled")
                 return
             if not self.macros.is_macro_running(macro_id):
                 break
         else:
-            log.warning(f"Trigger {ts.trigger['id']} queue timeout — macro still running")
+            log.warning(f"Trigger {trigger_id} queue timeout — macro still running")
+            await self._skipped(trigger_id, "queue_timeout", seconds=_QUEUE_MAX_WAIT_SECONDS)
             return
 
         # Re-check conditions
         conditions = ts.trigger.get("conditions", [])
         if not self._check_conditions(conditions):
-            log.debug(f"Trigger {ts.trigger['id']} skipped — conditions not met after queue wait")
+            log.debug(f"Trigger {trigger_id} skipped — conditions not met after queue wait")
+            await self._skipped(trigger_id, "guard_not_met")
             return
 
         await self._fire_macro(ts, context)

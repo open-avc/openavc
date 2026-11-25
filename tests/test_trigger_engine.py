@@ -13,6 +13,7 @@ import openavc.core.trigger_engine as te
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.macro_text import skip_reason
 from openavc.core.state_store import StateStore
 from openavc.core.trigger_engine import TriggerEngine
 
@@ -542,7 +543,9 @@ async def test_delay_recheck_on_a_pattern_sees_the_key_revert(
     await asyncio.sleep(0.3)
 
     assert state.get("var.fired") is None
-    assert skipped == [{"trigger_id": "trg_1", "reason": "state_reverted"}]
+    assert skipped == [
+        {"trigger_id": "trg_1", "reason": "state_reverted", **skip_reason("state_reverted")}
+    ]
     await trigger_engine.stop()
 
 
