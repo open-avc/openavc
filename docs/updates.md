@@ -115,7 +115,7 @@ Copy `OpenAVC-Setup-<version>.exe` to the system and run it. It upgrades the exi
 
 ### macOS
 
-Copy `OpenAVC-<version>-macos-<arch>.pkg` to the system and run it. Use `arm64` for Apple Silicon and `x86_64` for Intel. It upgrades in place. Data lives in `/Library/Application Support/OpenAVC` and is not touched.
+Copy `OpenAVC-<version>-macos-<arch>.pkg` to the system and run it. Use `arm64` for Apple Silicon and `x86_64` for Intel. It upgrades in place and keeps the version it replaces for **Rollback**, and an update or rollback still waiting is dropped. This holds for a `.pkg` of a version later than v0.41.0. Data lives in `/Library/Application Support/OpenAVC` and is not touched.
 
 ### Linux and Raspberry Pi
 
