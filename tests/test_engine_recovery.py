@@ -380,7 +380,7 @@ def _leave_files_beside(folder, values):
     """A previous project's script, image, saved values and notice beside
     ``folder``'s project file."""
     (folder / "scripts").mkdir(parents=True, exist_ok=True)
-    (folder / "scripts" / "old.py").write_text("# the old project's script\n", encoding="utf-8")
+    (folder / "scripts" / "old.py").write_bytes(b"# the old project's script\n")
     (folder / "assets").mkdir(exist_ok=True)
     (folder / "assets" / "logo.png").write_bytes(b"PNG-old")
     (folder / "state.json").write_text(json.dumps(values), encoding="utf-8")
