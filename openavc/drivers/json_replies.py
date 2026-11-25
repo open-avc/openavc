@@ -286,7 +286,7 @@ class JsonReplies:
         updates: dict[str, Any] = {}
         if placement.outcome == PLACED:
             updates = {
-                pm["prop"]: self._mapped_reading(value, pm, self._convert_json_value)
+                pm["prop"]: self._mapped_reading(value, pm, self._convert_json_value, cm["type"])
                 for pm, value in present
             }
         reads.add(placement, updates)

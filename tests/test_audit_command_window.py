@@ -674,3 +674,18 @@ async def test_a_response_rule_failing_on_the_reply_is_not_the_device_refusing()
     await conn.emit("device.error", {"error": "lamp out", "source": "pending_settings"})
     await _done(trial)
     assert [e["error"] for e in trial.device_errors] == ["lamp out"]
+
+
+async def test_a_reply_word_that_is_neither_true_nor_false_is_not_the_device_refusing():
+    """A boolean variable given a word on neither true/false list is the
+    driver's reading, said on device.error, never a refusal on the record."""
+    conn = _Connection()
+    commands = _pass(conn, window_seconds=0.5)
+    trial = await commands.send("power_on")
+    await conn.emit("device.error", {
+        "error": 'The device sent "standby" for power, which is neither true nor false, '
+                 'so power has no value. Map "standby" in the driver\'s response rule.',
+        "source": "response_value",
+    })
+    await _done(trial)
+    assert trial.device_errors == []

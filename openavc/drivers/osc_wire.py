@@ -286,12 +286,14 @@ class OscWire:
         updates: dict[str, Any] = {}
         if placement.outcome == PLACED:
             for pm in cm["props"]:
-                value = self._osc_prop(pm, args)
+                value = self._osc_prop(pm, args, cm["type"])
                 if value is not _NO_ARG:
                     updates[pm["prop"]] = value
         reads.add(placement, updates)
 
-    def _osc_prop(self, pm: dict[str, Any], args: list[tuple[str, Any]]) -> Any:
+    def _osc_prop(
+        self, pm: dict[str, Any], args: list[tuple[str, Any]], child_type: str,
+    ) -> Any:
         """One child prop's value: its literal, else its positional arg."""
         if "value" in pm:
             return self._convert_declared(pm["value"], pm.get("type", "string"))
@@ -299,4 +301,4 @@ class OscWire:
         if not 0 <= arg_index < len(args):
             return _NO_ARG
         _, raw_value = args[arg_index]
-        return self._mapped_reading(raw_value, pm, self._convert_osc_value)
+        return self._mapped_reading(raw_value, pm, self._convert_osc_value, child_type)

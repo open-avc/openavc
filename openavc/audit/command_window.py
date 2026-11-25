@@ -26,7 +26,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.observe import recorded
-from openavc.drivers.reply_guard import RESPONSE_RULE_SOURCE
+from openavc.drivers.reply_guard import REPLY_PROBLEM_SOURCES
 
 if TYPE_CHECKING:
     from openavc.audit.commands import CommandTrial
@@ -85,8 +85,8 @@ class WindowListener:
     def _on_error(self, _event: str, payload: Any = None) -> None:
         if self.trial.status == DONE:
             return
-        if isinstance(payload, dict) and payload.get("source") == RESPONSE_RULE_SOURCE:
-            # The driver's own rule failing on a reply, not the device
+        if isinstance(payload, dict) and payload.get("source") in REPLY_PROBLEM_SOURCES:
+            # The driver's own reading of a reply failing, not the device
             # refusing the command: the run counts it as a contract event.
             return
         error = payload.get("error") if isinstance(payload, dict) else payload

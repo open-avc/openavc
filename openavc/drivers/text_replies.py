@@ -292,18 +292,18 @@ class TextReplies:
         updates: dict[str, Any] = {}
         if placement.outcome == PLACED:
             for pm in cm["props"]:
-                value = self._text_prop(pm, match)
+                value = self._text_prop(pm, match, cm["type"])
                 if value is not _UNREAD:
                     updates[pm["prop"]] = value
         reads.add(placement, updates)
 
-    def _text_prop(self, pm: dict[str, Any], match: re.Match[str]) -> Any:
+    def _text_prop(self, pm: dict[str, Any], match: re.Match[str], child_type: str) -> Any:
         if "value" in pm:
             return self._convert_declared(pm["value"], pm.get("type", "string"))
         raw_value = _group(match, pm["group"])
         if raw_value is None:
             return _UNREAD
-        return self._mapped_reading(raw_value, pm, self._convert_value)
+        return self._mapped_reading(raw_value, pm, self._convert_value, child_type)
 
     def _resolve_child_list(
         self, match: re.Match[str], cm: dict[str, Any]

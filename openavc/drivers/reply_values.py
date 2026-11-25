@@ -22,9 +22,12 @@ boolean writes no value (a word on neither of ``truth_words``' lists), which
 is invisible to the author, so a contract observer (a device audit, the
 Driver Builder's test) is told.
 
+A boolean variable given a value that is neither true nor false holds no
+value, and is reported once (``reply_guard``'s ``_unread_flag``).
+
 ``ReplyValues`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``,
-``_definition``, ``contract_observer``, ``_observe`` and
+``_definition``, ``contract_observer``, ``_observe``, ``_unread_flag`` and
 ``is_child_registered``.
 """
 
@@ -80,6 +83,7 @@ class ReplyValues:
     _definition: dict[str, Any]
     contract_observer: Any
     _observe: Callable[..., None]
+    _unread_flag: Callable[[str, Any], None]
     is_child_registered: Callable[[str, Any], bool]
 
     # The shared coercers (see compiled_protocol's module docs). Non-primitive
@@ -149,18 +153,23 @@ class ReplyValues:
         return coerce(raw, value_type)
 
     def _mapped_reading(
-        self, raw: Any, mapping: dict[str, Any], coerce: Any
+        self, raw: Any, mapping: dict[str, Any], coerce: Any, child_type: str | None = None,
     ) -> Any:
         """What one value the device sent becomes under its mapping: the
         ``map:`` entry it picks (``compiled_protocol.map_entry``, the lookup
         every value map follows), else the conversion and the coercer for its
         wire form (``coerce``: _convert_value, _convert_osc_value or
-        _convert_json_value)."""
+        _convert_json_value). ``child_type`` names a child's variable as
+        ``<type>.<prop>`` where a value is reported."""
         value_type = mapping.get("type", "string")
         found, mapped = compiled_protocol.map_entry(mapping.get("map"), raw)
         if found:
             return self._convert_declared(mapped, value_type)
-        return self._read_converted(raw, value_type, mapping, coerce)
+        value = self._read_converted(raw, value_type, mapping, coerce)
+        if value is None and value_type == "boolean":
+            name = mapping.get("state") or mapping.get("prop")
+            self._unread_flag(f"{child_type}.{name}" if child_type else str(name), raw)
+        return value
 
     def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:
         """Coerce a routed child id (regex capture or literal) to the type's

@@ -62,6 +62,12 @@ OSC = "osc"
 
 # The ``source`` of the ``device.error`` a failing rule raises.
 RESPONSE_RULE_SOURCE = "response_rule"
+# The ``source`` of the ``device.error`` a boolean variable raises the first
+# time a reply gives it a value that is neither true nor false.
+RESPONSE_VALUE_SOURCE = "response_value"
+#: What a reply's reading reports on ``device.error``: the driver's own
+#: problem, never the device refusing a command (the audit tells them apart).
+REPLY_PROBLEM_SOURCES = (RESPONSE_RULE_SOURCE, RESPONSE_VALUE_SOURCE)
 
 
 def _json_rule_text(rule: Any) -> str:
@@ -99,6 +105,22 @@ def rule_failure_sentence(rule: str, error: str) -> str:
         f'Response rule "{rule}" failed on a reply and was skipped: {error}. '
         f"Check this rule in the driver."
     )
+
+
+def unread_flag_sentence(state: str, word: str) -> str:
+    """What the log and ``device.error`` say about a boolean variable that
+    got a value that is neither true nor false."""
+    return (
+        f'The device sent "{word}" for {state}, which is neither true nor false, '
+        f'so {state} has no value. Map "{word}" in the driver\'s response rule.'
+    )
+
+
+def _says_nothing(raw: Any) -> bool:
+    """No value, or a blank field: nothing the device said to report."""
+    if isinstance(raw, str):
+        return not raw.strip()
+    return raw is None
 
 
 class _RuleGuard:
@@ -140,6 +162,9 @@ class ReplyGuard:
     def _init_reply_guard(self) -> None:
         # Each failing rule reported so far, by its text: reported once.
         self._failed_rules: set[str] = set()
+        # Each boolean variable that has had a value neither true nor false,
+        # by its name: reported once.
+        self._unread_flags: set[str] = set()
         # The device.error emits still running (held so none is collected).
         self._rule_failure_emits: set[asyncio.Task[None]] = set()
 
@@ -161,25 +186,40 @@ class ReplyGuard:
         self._failed_rules.add(where)
         sentence = rule_failure_sentence(where, error)
         log.warning(f"[{self.device_id}] {sentence}", exc_info=exc)
-        self._emit_rule_failure(sentence)
+        self._emit_reply_problem(sentence, RESPONSE_RULE_SOURCE)
 
-    def _emit_rule_failure(self, sentence: str) -> None:
-        """``device.error`` for a failing rule, as a task of its own; nothing
-        when no loop runs (a synchronous caller: the log has it)."""
+    def _unread_flag(self, state: str, raw: Any) -> None:
+        """A boolean variable ``state`` was given ``raw``, which is neither
+        true nor false (``truth_words``), so it holds no value: said in the
+        log and on ``device.error``, once per variable for the life of the
+        driver. No value, or a blank field, says nothing, so it is not
+        reported."""
+        if state in self._unread_flags or _says_nothing(raw):
+            return
+        self._unread_flags.add(state)
+        sentence = get_secret_registry().masked(
+            Exit.SENTENCE, unread_flag_sentence(state, str(raw)), self.device_id,
+        )
+        log.warning(f"[{self.device_id}] {sentence}")
+        self._emit_reply_problem(sentence, RESPONSE_VALUE_SOURCE)
+
+    def _emit_reply_problem(self, sentence: str, source: str) -> None:
+        """``device.error`` for a problem reading a reply, as a task of its
+        own; nothing when no loop runs (a synchronous caller: the log has
+        it)."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        task = loop.create_task(self._announce_rule_failure(sentence))
+        task = loop.create_task(self._announce_reply_problem(sentence, source))
         self._rule_failure_emits.add(task)
         task.add_done_callback(self._rule_failure_emits.discard)
 
-    async def _announce_rule_failure(self, sentence: str) -> None:
+    async def _announce_reply_problem(self, sentence: str, source: str) -> None:
         try:
             await self.events.emit(
                 f"device.error.{self.device_id}",
-                {"device_id": self.device_id, "error": sentence,
-                 "source": RESPONSE_RULE_SOURCE},
+                {"device_id": self.device_id, "error": sentence, "source": source},
             )
         except Exception:
             log.exception(f"[{self.device_id}] Failed to emit device.error")
