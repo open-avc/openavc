@@ -171,7 +171,8 @@ class KeepReplaced:
     project replaced, an edit saved while the replace waited included:
     ``before`` (a plain or coroutine function: the cloud push's rollback
     copy, which may refuse the push by raising), then a backup named
-    ``backup`` (``backup_manager.capture``). A failure in either leaves the
+    ``backup`` (``backup_manager.capture``, of the kind taken before a
+    change). A failure in either leaves the
     running project and its file as they were, and is raised as it is: a
     backup that could not be saved as ``BackupFailed``."""
 
@@ -182,7 +183,7 @@ class KeepReplaced:
         if self.before is not None:
             await _call(self.before)
         if self.backup is not None:
-            await backup_manager.capture(project_path, self.backup)
+            await backup_manager.capture(project_path, self.backup, kind=backup_manager.KIND_CHANGE)
 
 
 @dataclass(frozen=True)

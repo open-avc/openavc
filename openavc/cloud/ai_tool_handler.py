@@ -375,10 +375,10 @@ class AIToolHandler(
         (``read_project_files``), so a replace running meanwhile never
         swaps the files it has yet to read. With no engine, nothing can
         replace the project, and the backup is taken as it is."""
-        from openavc.core.backup_manager import capture
+        from openavc.core.backup_manager import KIND_CHANGE, capture
 
         def take():
-            return capture(Path(self._project_path), _AI_BACKUP)
+            return capture(Path(self._project_path), _AI_BACKUP, kind=KIND_CHANGE)
 
         engine = self._get_engine()
         await (engine.read_project_files(take) if engine is not None else take())

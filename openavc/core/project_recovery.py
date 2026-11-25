@@ -4,14 +4,16 @@ not the one that loaded.
 ``load_or_recover`` is the load (``Engine._load_project_safe`` asks it). First
 a replace of the project that a power cut stopped part way is put back: the
 backup it took before its first rename, which its "replace in progress"
-marker names (``core/project_swap``). Then a missing project file is seeded
-from the bundled starter project, a project file that will not parse is
-replaced from the newest backup that does, and only when no backup loads at
-all does the instance start an empty Recovery Project (``_Recovery``). Each
-replaces the whole project the way a running replace does, after keeping
-what it replaces under Backups, the file that would not load included. Which
-of those leaves a record, and what it says, is decided beside
-the record itself. The recovery always worked. What it did not do was tell
+marker names (``core/project_swap``). Then a project file that is missing or
+will not load is replaced from the newest of its backups that loads, the
+ones taken since another project last replaced it
+(``backup_manager.backups_since_replaced``: the backups before that hold the
+project that was closed). With none, a missing file is seeded from the
+bundled starter project, and otherwise the instance starts an empty Recovery
+Project (``_Recovery``). Each replaces the whole project the way a running
+replace does, after keeping what it replaces under Backups, the file that
+would not load included. Which of those leaves a record, and what it says,
+is decided beside the record itself. The recovery always worked. What it did not do was tell
 anybody. The two log lines it wrote
 scrolled past under device-poll noise, and the person whose last edit was in
 the window between the backup and the corrupt save had no way to know it was
@@ -28,8 +30,11 @@ a box that reboots nightly. Dismissing is the one thing that removes it, which
 means the acknowledgement is the integrator's, not the scheduler's.
 
 **A first boot with no project file is not a recovery.** A missing file with no
-backup to take its place is a fresh install, and there is nothing to report;
-the loud version is reserved for a project that existed and could not be read.
+backups at all is a fresh install, and there is nothing to report; the loud
+version is reserved for a project that existed: one that could not be read,
+or a missing one that has backups. The installers leave this first start's
+seeding to the runtime, so a reinstall over a system whose project file went
+missing never puts the starter in place before its backups are read.
 """
 
 from __future__ import annotations
@@ -69,13 +74,14 @@ ALL_KEYS = (KEY_STATE, KEY_REASON, KEY_BACKUP, KEY_CUTOFF, KEY_AT)
 NONE = ""
 RESTORED = "restored"   # a backup loaded in place of the project file
 RESET = "reset"         # nothing loaded; the instance started an empty project
+STARTER = "starter"     # a missing file with backups, none of them its project's that loads; the starter runs
 
 # system.project_recovery_reason values — what was wrong with the project file.
 UNREADABLE = "unreadable"   # present, and it would not parse or validate
 MISSING = "missing"         # not there at all
 INTERRUPTED = "interrupted"  # a replace of the project stopped part way
 
-_OUTCOMES = {RESTORED, RESET}
+_OUTCOMES = {RESTORED, RESET, STARTER}
 _REASONS = {UNREADABLE, MISSING, INTERRUPTED}
 
 
@@ -181,16 +187,16 @@ def load_or_recover(project_path: Path) -> ProjectConfig:
     """The project at ``project_path``, or what stands in for it.
 
     A replace that did not finish is put back first
-    (``_finish_interrupted_replace``). A missing file is seeded from the
-    bundled starter project. If the file is
-    missing with no seed, or cannot be read or validated, the newest backup
-    that loads replaces it; if none does, an empty Recovery Project is saved
-    in its place (``_Recovery``). A restored backup leaves a record
-    (``record``), and so does
-    an empty project started over a file that could not be read, because a
-    room that came up on two-minute-old settings has to say so to the person
-    whose newer edit is not in it. A missing file with nothing to restore is
-    a first boot and leaves none.
+    (``_finish_interrupted_replace``). A file that is missing, or cannot be
+    read or validated, is replaced by the newest of its project's backups
+    that loads; with none, a missing file by the bundled starter project,
+    and otherwise (or with no starter) an empty Recovery Project
+    (``_Recovery``). A restored backup leaves a record (``record``), and so
+    does the starter or an empty project started in place of a project that
+    existed (a file that could not be read, or a missing one with backups),
+    because a room that came up on two-minute-old settings, or on none of
+    its own, has to say so to the person whose edit is not in it. A missing
+    file with no backups at all is a first boot and leaves none.
     """
     _finish_interrupted_replace(project_path)
     try:
@@ -258,8 +264,11 @@ SET_ASIDE_REASONS = {
 
 class _Recovery:
     """What a start puts in place of a project file it could not load
-    (``failure``): the bundled starter for a missing one, else the newest
-    backup that loads, else an empty Recovery Project.
+    (``failure``): the newest of the project's backups that loads
+    (``backup_manager.backups_since_replaced``), else the bundled starter
+    for a missing file, else an empty Recovery Project. Either of the last
+    two says so when backups were there: the project they hold is not
+    running.
 
     Each replaces the project the way a running replace does
     (``core/project_replace``: prepared and checked as a load reads it
@@ -276,17 +285,22 @@ class _Recovery:
         self._set_aside_taken = False
 
     def run(self) -> ProjectConfig:
+        from openavc.core.backup_manager import backups_since_replaced, list_backups
+
         # A fresh install, or OPENAVC_PROJECT pointed at a folder not yet
         # created: the swap and the backup work beside the project file.
         self.project_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.failure == MISSING:
-            seeded = self._seed()
-            if seeded is not None:
-                return seeded
-        restored = self._restore_newest_backup()
+        # Read before this start keeps anything under Backups, so what it
+        # keeps is neither tried nor counted.
+        had_backups = bool(list_backups(self.project_path))
+        restored = self._restore_newest_backup(backups_since_replaced(self.project_path))
         if restored is not None:
             return restored
-        return self._start_empty()
+        if self.failure == MISSING:
+            seeded = self._seed(say_so=had_backups)
+            if seeded is not None:
+                return seeded
+        return self._start_empty(say_so=had_backups or self.failure == UNREADABLE)
 
     def _replace(self, prepared, *, spare: Path | None = None) -> None:
         """``prepared`` put in place of what is at the project file, which
@@ -314,18 +328,19 @@ class _Recovery:
         if kept is not None:
             _load_log.warning(f"Kept the project this start replaces under Backups: {kept.name}")
 
-    def _seed(self) -> ProjectConfig | None:
+    def _seed(self, *, say_so: bool) -> ProjectConfig | None:
         """The bundled starter project put in place and loaded, or None
         when there is no seed or it cannot be put in place or loaded.
 
-        A missing project file is the normal first-boot state when
-        install-time seeding did not reach this path: notably a Docker image
-        run with a *bind-mounted* /data, which shadows the seed copied into
-        the image layer (only named volumes inherit image content). Seeding
-        here boots every deployment on the starter project instead of an
-        empty Recovery Project, however /data was provided. The starter
-        brings no notice of what its load changed: a fresh install never
-        says it was updated.
+        A missing project file is the first start of every install type:
+        no installer copies the starter in, so a reinstall over a project
+        file that went missing leaves its backups to be read first, and a
+        Docker /data however it was provided (a bind mount shadows what the
+        image layer holds) starts the same way. The starter brings no
+        notice of what its load changed: a fresh install never says it was
+        updated. With ``say_so`` (backups were there, and none of them
+        loaded as the project's), the record says the starter is running
+        in place of a missing file (``STARTER``).
         """
         from openavc.core.project_replace import blank, read_as_loaded
         from openavc.system_config import get_seed_project_path
@@ -337,22 +352,24 @@ class _Recovery:
             starter, _ = read_as_loaded(seed.read_bytes())
             self._replace(blank(starter))
             _load_log.info(f"Seeded default project from {seed}")
-            return load_project(self.project_path)
+            project = load_project(self.project_path)
         except Exception as e:
             _load_log.warning(f"Failed to seed project from {seed}: {e}")
             return None
+        if say_so:
+            _load_log.warning("The project file was missing and no backup of it would open; started the starter project")
+            record(self.project_path.parent, outcome=STARTER, reason=MISSING)
+        return project
 
-    def _restore_newest_backup(self) -> ProjectConfig | None:
-        """The newest backup that loads, recorded as ``RESTORED`` for the
-        failure; None when none does. A backup that is not a project this
-        system loads is passed over before anything is written. The list is
-        read before this start keeps anything under Backups, so what it
-        keeps is never tried."""
-        from openavc.core.backup_manager import list_backups
+    def _restore_newest_backup(self, backups) -> ProjectConfig | None:
+        """The first of ``backups`` (newest first) that loads, recorded as
+        ``RESTORED`` for the failure; None when none does. A backup that is
+        not a project this system loads is passed over before anything is
+        written."""
         from openavc.core.project_replace import from_backup
 
         project_dir = self.project_path.parent
-        for backup in list_backups(self.project_path):
+        for backup in backups:
             backup_path = project_dir / backup.filename
             _load_log.info(f"Attempting restore from backup: {backup.filename}")
             try:
@@ -367,14 +384,15 @@ class _Recovery:
             return project
         return None
 
-    def _start_empty(self) -> ProjectConfig:
+    def _start_empty(self, *, say_so: bool) -> ProjectConfig:
         """An empty Recovery Project put in place.
 
-        A project file that was simply absent, with nothing to restore, is a
-        first boot rather than a loss, so it gets no record. Only a project
-        that existed and could not be read is worth interrupting somebody
-        for. The record is written after the swap, which moves any earlier
-        one away with the project it was about. A swap that cannot be made
+        A project file that was simply absent, with no backups, is a first
+        boot rather than a loss, so it gets no record. Only a project that
+        existed (``say_so``: one that could not be read, or a missing one
+        with backups) is worth interrupting somebody for. The record is
+        written after the swap, which moves any earlier one away with the
+        project it was about. A swap that cannot be made
         (a folder held open) leaves the files beside the project as they
         were and writes the Recovery Project's file alone, so the last
         resort still starts the room.
@@ -398,6 +416,6 @@ class _Recovery:
         except OSError as e:
             _load_log.error(f"Could not replace the project's files ({e}); writing the Recovery Project's file alone")
             save_project(self.project_path, empty)
-        if self.failure == UNREADABLE:
-            record(self.project_path.parent, outcome=RESET, reason=UNREADABLE)
+        if say_so:
+            record(self.project_path.parent, outcome=RESET, reason=self.failure)
         return empty

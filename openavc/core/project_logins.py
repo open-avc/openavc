@@ -310,10 +310,12 @@ class ProjectLoginsMixin:
         (``backup_manager.capture``). False when the backup failed, and the
         file must then stay as it is. With no project file there is nothing
         on disk to keep."""
-        from openavc.core.backup_manager import capture
+        from openavc.core.backup_manager import KIND_CHANGE, capture
 
         try:
-            backup = await capture(self.project_path, "Before moving device logins out of the project")
+            backup = await capture(
+                self.project_path, "Before moving device logins out of the project", kind=KIND_CHANGE,
+            )
         except Exception:
             log.exception("Could not back up the project, so its device logins stay in it for now")
             return False

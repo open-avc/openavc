@@ -3,7 +3,8 @@ Project backup manager — creates, lists, restores, and rotates ZIP backups.
 
 Backups are ZIP files stored in {project_dir}/backups/ containing:
   - project.avc          (the project file, whatever it is called on disk)
-  - backup_meta.json     (reason, timestamp, project name, version)
+  - backup_meta.json     (reason, kind, timestamp, project name and stamp,
+                          version)
   - scripts/             (all .py script files)
   - assets/              (uploaded images, folders intact)
   - ui/                  (custom controls, folders intact)
@@ -18,6 +19,13 @@ cloud pushes, manual request, periodic timer) — NOT on every save. Every door
 that takes one before it changes the project, or on request, asks ``capture``,
 which says when the backup could not be saved (``BackupFailed``): a door that
 replaces the project refuses, and one that goes on says no backup was saved.
+
+Each backup says what kind it is (``KIND_*``) and which project it holds (its
+``project.uuid``), because the backups belong to the project file's folder,
+not to one project: after another project is opened there, the backups
+before it hold the project that was closed. ``backups_since_replaced`` is
+THE rule for which backups are the running project's, read by a start whose
+project file is missing or will not load.
 
 The one backup taken with logins in the clear is the first start's, before the
 logins move out of the project into the login file; once they all have, it
@@ -66,6 +74,19 @@ ARCHIVE_PROJECT = "project.avc"
 # anywhere else they do not open.
 ARCHIVE_LOGINS = "device_logins.json"
 
+# What a backup is, written in its meta as "kind".
+KIND_AUTO = "auto"              # the periodic backup
+KIND_MANUAL = "manual"          # Create Backup, named by the person
+KIND_CHANGE = "change"          # before a change to the running project (the AI, a cloud push, the login move)
+KIND_REPLACE = "replace_boundary"  # before another project replaced it (open, import, blank, restore)
+KIND_SET_ASIDE = "set_aside"    # what a start replaced (core/project_recovery)
+KINDS = frozenset({KIND_AUTO, KIND_MANUAL, KIND_CHANGE, KIND_REPLACE, KIND_SET_ASIDE})
+
+# A backup from before kinds is judged by its reason, as each released door
+# wrote it: these are the ones another project replaced.
+_REPLACE_REASON_PREFIXES = ("Before opening ", "Before importing ")
+_REPLACE_REASONS = frozenset({"Before creating blank project", "Before restore", "Pre-restore backup"})
+
 
 def _logins_copy(data: object) -> str | None:
     """This system's saved logins for what ``data`` (the project file read as
@@ -104,6 +125,15 @@ class BackupInfo:
     project_name: str
     size_bytes: int
     format: str           # "zip" or "legacy"
+    kind: str = ""        # KIND_*; "" for a backup from before kinds
+    project_uuid: str = ""  # the held project's ``project.uuid``; "" when it had none
+
+    @property
+    def before_a_replace(self) -> bool:
+        """Taken just before another project replaced the one it holds."""
+        if self.kind:
+            return self.kind == KIND_REPLACE
+        return self.reason in _REPLACE_REASONS or self.reason.startswith(_REPLACE_REASON_PREFIXES)
 
 
 def backup_id(project_dir: Path, backup_path: Path) -> str:
@@ -134,18 +164,21 @@ def _reason_slug(reason: str) -> str:
     return slug[:40] or "backup"
 
 
-def _read_project(project_file: Path) -> tuple[object, str]:
-    """The project file read as JSON and the project's name, for a backup's
-    logins and its meta; (None, "") or a blank name when it cannot be read,
-    and the backup is taken all the same."""
+def _read_project(project_file: Path) -> tuple[object, dict]:
+    """The project file read as JSON and its ``project`` section, for a
+    backup's logins and its meta; (None, {}) or an empty section when it
+    cannot be read, and the backup is taken all the same."""
     try:
         data = json.loads(project_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return None, ""
-    try:
-        return data, data.get("project", {}).get("name", "")
-    except AttributeError:
-        return data, ""
+        return None, {}
+    meta = data.get("project") if isinstance(data, dict) else None
+    return data, meta if isinstance(meta, dict) else {}
+
+
+def _text(meta: dict, key: str) -> str:
+    value = meta.get(key)
+    return value if isinstance(value, str) else ""
 
 
 def _write_archive(zf: zipfile.ZipFile, project_file: Path, meta: dict, logins: str | None) -> None:
@@ -204,13 +237,17 @@ def create_backup(
     project_file: Path,
     reason: str,
     *,
+    kind: str = "",
     max_backups: int = MAX_BACKUPS,
     spare: Path | None = None,
 ) -> Path | None:
     """Create a ZIP backup of the current project state.
 
     ``project_file`` is the project file itself; the scripts, assets, ui/,
-    themes and state.json beside it go into the same archive. Returns the
+    themes and state.json beside it go into the same archive. ``kind`` is
+    what it is (``KIND_*``), which a door says through ``capture``; with
+    none it is judged by ``reason``, as a backup from before kinds is
+    (``BackupInfo.before_a_replace``). Returns the
     backup path, or None when there is no project file to back up. Raises
     the ``OSError`` when the backup cannot be saved (the disk full part way,
     no permission), leaving no part of it behind; a door asks ``capture``,
@@ -223,7 +260,7 @@ def create_backup(
     if not project_file.exists():
         log.debug(f"No project file to back up at {project_file}")
         return None
-    return _take(project_file, reason, max_backups=max_backups, spare=spare)
+    return _take(project_file, reason, kind=kind, max_backups=max_backups, spare=spare)
 
 
 def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
@@ -237,10 +274,10 @@ def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> 
     does; ``spare`` as there."""
     if not project_file.exists() and next(_beside_members(project_file.parent), None) is None:
         return None
-    return _take(project_file, reason, max_backups=MAX_BACKUPS, spare=spare)
+    return _take(project_file, reason, kind=KIND_SET_ASIDE, max_backups=MAX_BACKUPS, spare=spare)
 
 
-def _take(project_file: Path, reason: str, *, max_backups: int, spare: Path | None) -> Path:
+def _take(project_file: Path, reason: str, *, kind: str, max_backups: int, spare: Path | None) -> Path:
     """The backup ``create_backup`` and ``set_aside`` take, written and
     placed under Backups."""
     project_dir = project_file.parent
@@ -250,15 +287,19 @@ def _take(project_file: Path, reason: str, *, max_backups: int, spare: Path | No
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     slug = _reason_slug(reason)
 
-    data, project_name = _read_project(project_file)
+    data, held = _read_project(project_file)
     logins = _logins_copy(data) if data is not None else None
 
     meta = {
         "reason": reason,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "project_name": project_name,
+        "project_name": _text(held, "name"),
         "openavc_version": __version__,
     }
+    if kind:
+        meta["kind"] = kind
+    if _text(held, "uuid"):
+        meta["project_uuid"] = _text(held, "uuid")
 
     def place(finished: Path) -> Path:
         # The lock makes the free-name check and the rename one step, so two
@@ -293,9 +334,11 @@ class BackupFailed(Exception):
         self.cause = cause
 
 
-async def capture(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
+async def capture(project_file: Path, reason: str, *, kind: str, spare: Path | None = None) -> Path | None:
     """THE backup a door takes before it changes the project, or when asked
-    for one: ``create_backup`` named ``reason``, off the event loop. Returns
+    for one: ``create_backup`` named ``reason``, of ``kind`` (``KIND_*``,
+    which every door says, since the start's recovery reads it), off the
+    event loop. Returns
     the backup, or None when there is no project file, so nothing on disk is
     lost. Raises ``BackupFailed`` when it could not be saved, and the door
     hears it: a door that replaces the project (an import, opening another,
@@ -304,7 +347,7 @@ async def capture(project_file: Path, reason: str, *, spare: Path | None = None)
     login move leaves the logins where they are, and the cloud AI's change
     goes on with its answer saying no backup was saved."""
     try:
-        return await asyncio.to_thread(create_backup, project_file, reason, spare=spare)
+        return await asyncio.to_thread(create_backup, project_file, reason, kind=kind, spare=spare)
     except OSError as error:
         raise BackupFailed(error) from error
 
@@ -417,6 +460,8 @@ def list_backups(project_file: Path) -> list[BackupInfo]:
                     project_name=meta.get("project_name", ""),
                     size_bytes=f.stat().st_size,
                     format="zip",
+                    kind=_text(meta, "kind"),
+                    project_uuid=_text(meta, "project_uuid"),
                 ))
             except (OSError, zipfile.BadZipFile):
                 continue
@@ -468,6 +513,33 @@ def list_backups(project_file: Path) -> list[BackupInfo]:
     # Sort newest first by timestamp (fall back to filename).
     results.sort(key=lambda b: b.timestamp or b.filename, reverse=True)
     return results
+
+
+def backups_since_replaced(project_file: Path) -> list[BackupInfo]:
+    """THE backups of the project at ``project_file`` (``list_backups``,
+    newest first), when the file itself cannot say which project it is (it
+    is missing, or will not load): the ones taken since another project last
+    replaced it.
+
+    The walk stops at the first backup taken just before a replace (opening
+    another project, an import, a blank project, a restore:
+    ``BackupInfo.before_a_replace``), since that one and everything older
+    hold the project that was replaced, and at the first that holds a
+    different project than the newer ones (two ``project.uuid`` stamps that
+    differ: a file put in place by hand). A backup with no stamp (one from
+    before stamps, or one that holds no project file) is judged by its kind
+    alone."""
+    since: list[BackupInfo] = []
+    running = ""
+    for info in list_backups(project_file):
+        if info.before_a_replace:
+            break
+        if info.project_uuid:
+            if running and info.project_uuid != running:
+                break
+            running = info.project_uuid
+        since.append(info)
+    return since
 
 
 class BackupUnreadable(ValueError):

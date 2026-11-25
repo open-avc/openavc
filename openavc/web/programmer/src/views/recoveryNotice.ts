@@ -9,7 +9,7 @@
 export interface RecoveryNotice {
   /** Nothing was recovered, so the Dashboard shows nothing. */
   show: boolean;
-  /** No backup opened: an empty project is running, and the saved one is still unreadable. */
+  /** No backup of the project opened: an empty project or the starter is running in its place. */
   severe: boolean;
   title: string;
   body: string;
@@ -59,7 +59,7 @@ export function recoveryNotice(
   formatTime: (iso: string) => string = defaultFormat,
 ): RecoveryNotice {
   const outcome = String(state["system.project_recovery"] ?? "");
-  if (outcome !== "restored" && outcome !== "reset") return NOTHING;
+  if (outcome !== "restored" && outcome !== "reset" && outcome !== "starter") return NOTHING;
 
   const reason = String(state["system.project_recovery_reason"] ?? "");
   const cutoff = String(state["system.project_recovery_cutoff"] ?? "");
@@ -74,6 +74,20 @@ export function recoveryNotice(
   const opening = missing
     ? "The project file was missing at startup."
     : "The project file could not be read at startup.";
+
+  // A missing file whose backups hold no copy of it that opens. The
+  // backups that are listed are another project's, or would not open.
+  if (outcome === "starter") {
+    return {
+      show: true,
+      severe: true,
+      title: "Project file missing",
+      body: "The project file was missing at startup, and no backup of that project would open,"
+        + " so this system is running the starter project. Earlier backups are listed under Backups.",
+      backupFile: "",
+      action: "Review backups",
+    };
+  }
 
   if (outcome === "reset") {
     return {

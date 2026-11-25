@@ -539,11 +539,11 @@ class Engine(
         """The auto-backup, read as one project (``read_project_files``). A
         failed one waits the interval like a taken one, and the project stays
         due for the next."""
-        from openavc.core.backup_manager import capture
+        from openavc.core.backup_manager import KIND_AUTO, capture
 
         self._last_backup_time = time.time()
         try:
-            await self.read_project_files(lambda: capture(self.project_path, "Auto-backup"))
+            await self.read_project_files(lambda: capture(self.project_path, "Auto-backup", kind=KIND_AUTO))
             self._dirty_since_backup = False
         except Exception:
             log.debug("Periodic backup failed", exc_info=True)

@@ -296,7 +296,7 @@ class ProjectReplaceMixin:
             # The values changed since the last flush are in the backup.
             self.persister.flush()
         taken = await backup_manager.capture(
-            self.project_path, prepared.backup_reason, spare=prepared.spare,
+            self.project_path, prepared.backup_reason, kind=backup_manager.KIND_REPLACE, spare=prepared.spare,
         )
         staged = await asyncio.to_thread(self._stage_replace, prepared)
         try:

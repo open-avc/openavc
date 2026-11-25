@@ -92,24 +92,51 @@ def _left_as_it_was(engine: Engine, before: bytes) -> None:
 
 
 async def test_a_capture_with_no_project_file_has_nothing_to_keep(tmp_path):
-    assert await backup_manager.capture(tmp_path / "project.avc", "Before restore") is None
+    assert await backup_manager.capture(tmp_path / "project.avc", "Before restore", kind=backup_manager.KIND_REPLACE) is None
 
 
 async def test_a_capture_that_cannot_be_saved_says_why_and_leaves_no_part_of_it(engine, monkeypatch):
     _run_out_of_room(monkeypatch)
 
     with pytest.raises(backup_manager.BackupFailed) as failed:
-        await backup_manager.capture(engine.project_path, "Before restore")
+        await backup_manager.capture(engine.project_path, "Before restore", kind=backup_manager.KIND_REPLACE)
 
     assert failed.value.cause.errno == errno.ENOSPC
     assert _backups(engine) == []
 
 
 async def test_a_capture_names_its_backup(engine):
-    taken = await backup_manager.capture(engine.project_path, "Before restore")
+    taken = await backup_manager.capture(engine.project_path, "Before restore", kind=backup_manager.KIND_REPLACE)
 
     assert taken is not None and taken.is_file()
     assert [b.reason for b in backup_manager.list_backups(engine.project_path)] == ["Before restore"]
+
+
+async def test_a_capture_says_what_kind_of_backup_it_is():
+    """Which backups the start reads when the project file is missing is
+    decided by the kind each door writes, so no door can leave it out."""
+    import inspect
+
+    assert inspect.signature(backup_manager.capture).parameters["kind"].default is inspect.Parameter.empty
+
+
+async def test_each_door_writes_its_kind(engine, monkeypatch):
+    """The periodic backup, Create Backup (whatever the person names it) and
+    a door that replaces the project each say what their backup is."""
+    from openavc.core.project_replace import blank
+
+    await engine._take_periodic_backup()
+    async with _client(engine, monkeypatch) as client:
+        made = await client.post("/api/backups/create", json={"reason": "Before restore"})
+    assert made.status_code == 200
+    await engine.replace_with(blank(ProjectConfig(project={"id": "lobby", "name": "Lobby"})))
+
+    kinds = sorted((b.reason, b.kind) for b in backup_manager.list_backups(engine.project_path))
+    assert kinds == [
+        ("Auto-backup", backup_manager.KIND_AUTO),
+        ("Before creating blank project", backup_manager.KIND_REPLACE),
+        ("Before restore", backup_manager.KIND_MANUAL),
+    ]
 
 
 # --- The doors that replace the project refuse ----------------------------------

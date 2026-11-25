@@ -69,6 +69,22 @@ describe("recoveryNotice", () => {
     expect(n.action).toBe("Open Project");
   });
 
+  it("says the starter is running when a missing file left no backup of its project that opens", () => {
+    const n = recoveryNotice({
+      "system.project_recovery": "starter",
+      "system.project_recovery_reason": "missing",
+    }, at);
+    expect(n.show).toBe(true);
+    expect(n.severe).toBe(true);
+    expect(n.title).toBe("Project file missing");
+    expect(n.body).toBe(
+      "The project file was missing at startup, and no backup of that project would open,"
+      + " so this system is running the starter project. Earlier backups are listed under Backups.",
+    );
+    expect(n.backupFile).toBe("");
+    expect(n.action).toBe("Review backups");
+  });
+
   it("says a replace that did not finish put back the project it was replacing", () => {
     const n = recoveryNotice({
       "system.project_recovery": "restored",

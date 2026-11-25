@@ -991,7 +991,7 @@ async def list_backups_endpoint() -> dict[str, Any]:
 async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     """Create a manual backup of the current project."""
     from openavc.api.error_messages import backup_failure_why
-    from openavc.core.backup_manager import BackupFailed, backup_id, capture
+    from openavc.core.backup_manager import KIND_MANUAL, BackupFailed, backup_id, capture
 
     engine = _get_engine()
     project_dir = engine.project_path.parent
@@ -999,7 +999,7 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     reason = body.get("reason", "Manual backup")
 
     try:
-        path = await engine.read_project_files(lambda: capture(engine.project_path, reason))
+        path = await engine.read_project_files(lambda: capture(engine.project_path, reason, kind=KIND_MANUAL))
     except BackupFailed as e:
         raise _api_error(500, f"The backup could not be saved. {backup_failure_why(e.cause)}", e) from e
     if not path:
