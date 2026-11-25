@@ -112,18 +112,21 @@ async def get_script_source(script_id: str) -> dict[str, Any]:
 @router.put("/scripts/{script_id}/source", dependencies=[Depends(require_claimed_auth)])
 @endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def save_script_source(script_id: str, request: Request) -> dict[str, Any]:
-    """Save a script's Python source code to disk."""
-    cfg = _find_script_config(script_id)
-    if not cfg:
-        raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
+    """Save a script's Python source code to disk, under the project files'
+    hold (``Engine.holding_project_files``), so a save made while another
+    project replaces this one is refused by the project it lands in."""
     body = await request.json()
-    source = body.get("source", "")
-    if len(source) > 1_000_000:
-        raise HTTPException(status_code=413, detail="Script source too large (max 1 MB)")
-    scripts_dir = _get_scripts_dir()
-    path = _safe_script_path(scripts_dir, cfg["file"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, source)
+    async with _get_engine().holding_project_files():
+        cfg = _find_script_config(script_id)
+        if not cfg:
+            raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
+        source = body.get("source", "")
+        if len(source) > 1_000_000:
+            raise HTTPException(status_code=413, detail="Script source too large (max 1 MB)")
+        scripts_dir = _get_scripts_dir()
+        path = _safe_script_path(scripts_dir, cfg["file"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path, source)
     return {"status": "saved"}
 
 

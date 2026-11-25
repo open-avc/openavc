@@ -210,23 +210,23 @@ async def write_ui_file(project_id: str, file_path: str, request: Request) -> di
     encoded = content.encode("utf-8")
     _check_file_size(len(encoded), PurePosixPath(rel).name)
 
-    ui_dir = _ui_dir()
-    target = _target(ui_dir, rel)
-    existing = target if target.is_file() else None
-    _check_room_for(ui_dir, len(encoded), 0 if existing else 1, replacing=existing)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(target, content)
+    engine = _get_engine()
+    async with engine.holding_project_files():
+        ui_dir = _ui_dir()
+        target = _target(ui_dir, rel)
+        existing = target if target.is_file() else None
+        _check_room_for(ui_dir, len(encoded), 0 if existing else 1, replacing=existing)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(target, content)
+        # What the file will get wrong in a room, in the reply the editor is
+        # already reading. The same review the AI's write tool gets, from the
+        # same module -- a human starves a control by pasting a CDN script tag
+        # exactly as easily as the assistant does by writing one, and the
+        # editor is where they find out.
+        warnings = [f.message for f in review_saved_file(ui_dir, rel, project=engine.project)]
     log.info("Custom UI file saved: %s", rel)
     await announce_ui_files_changed(rel)
 
-    # What the file will get wrong in a room, in the reply the editor is already
-    # reading. The same review the AI's write tool gets, from the same module --
-    # a human starves a control by pasting a CDN script tag exactly as easily as
-    # the assistant does by writing one, and the editor is where they find out.
-    warnings = [
-        f.message
-        for f in review_saved_file(ui_dir, rel, project=_get_engine().project)
-    ]
     result: dict[str, Any] = {"status": "saved", "path": rel, "size": len(encoded)}
     if warnings:
         result["warnings"] = warnings
@@ -249,32 +249,43 @@ async def delete_ui_file(project_id: str, file_path: str) -> dict[str, str]:
     """
     _require_active_project(project_id)
     rel = _validated(file_path, require_extension=False)
+    engine = _get_engine()
+    async with engine.holding_project_files():
+        _remove_unless_shown(engine, rel)
+    log.info("Custom UI file deleted: %s", rel)
+    await announce_ui_files_changed(rel)
+    return {"status": "deleted", "path": rel}
+
+
+def _remove_unless_shown(engine, rel: str) -> None:
+    """The file or folder ``rel`` in ``ui/`` removed, refused while a page
+    of the running project still shows it. The caller holds the project
+    files."""
     target = _target(_ui_dir(), rel)
     if not (target.is_dir() or target.is_file()):
         raise HTTPException(status_code=404, detail="File not found")
-
     # Asked after the file is known to exist, so a page pointing at a name that
     # is already gone answers "not found" here and at the AI's door alike.
-    project = _get_engine().project
-    if project is not None:
-        still_shown = custom_file_users(project, rel)
-        if still_shown:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"'{rel}' is still shown by {', '.join(still_shown)}. "
-                    f"Point them at another file, or delete them first, "
-                    f"then this file can go."
-                ),
-            )
-
+    _refuse_while_shown(engine.project, rel)
     if target.is_dir():
         shutil.rmtree(target)
     else:
         target.unlink()
-    log.info("Custom UI file deleted: %s", rel)
-    await announce_ui_files_changed(rel)
-    return {"status": "deleted", "path": rel}
+
+
+def _refuse_while_shown(project, rel: str) -> None:
+    """A 409 naming each page and element of ``project`` that still shows
+    ``rel``; nothing when none does, or there is no project."""
+    still_shown = custom_file_users(project, rel) if project is not None else []
+    if still_shown:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"'{rel}' is still shown by {', '.join(still_shown)}. "
+                f"Point them at another file, or delete them first, "
+                f"then this file can go."
+            ),
+        )
 
 
 # ──── Upload: a dropped file, a dropped folder, or a .zip ────
@@ -300,11 +311,11 @@ async def upload_ui_file(
     """
     _require_active_project(project_id)
     content = await file.read()
-    ui_dir = _ui_dir()
     folder = path.strip().strip("/")
 
     if (file.filename or "").lower().endswith(".zip"):
-        unpacked = _unpack_zip(ui_dir, content, folder)
+        async with _get_engine().holding_project_files():
+            unpacked = _unpack_zip(_ui_dir(), content, folder)
         await announce_ui_files_changed(folder or ".")
         return unpacked
 
@@ -314,11 +325,13 @@ async def upload_ui_file(
     rel = _validated(f"{folder}/{name}" if folder else name)
     _check_file_size(len(content), PurePosixPath(rel).name)
 
-    target = _target(ui_dir, rel)
-    existing = target if target.is_file() else None
-    _check_room_for(ui_dir, len(content), 0 if existing else 1, replacing=existing)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(content)
+    async with _get_engine().holding_project_files():
+        ui_dir = _ui_dir()
+        target = _target(ui_dir, rel)
+        existing = target if target.is_file() else None
+        _check_room_for(ui_dir, len(content), 0 if existing else 1, replacing=existing)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
     log.info("Custom UI file uploaded: %s", rel)
     await announce_ui_files_changed(rel)
     return {"status": "saved", "written": [rel], "skipped": []}

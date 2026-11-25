@@ -132,11 +132,11 @@ async def create_theme(data: dict[str, Any]) -> dict[str, Any]:
     if themes.is_builtin(theme_id):
         raise HTTPException(status_code=409, detail=f"Cannot overwrite built-in theme '{theme_id}'")
 
-    custom_path = _theme_file(_custom_themes_dir(), theme_id)
-    if custom_path.exists():
-        raise HTTPException(status_code=409, detail=f"Custom theme '{theme_id}' already exists")
-
-    _write(custom_path, data)
+    async with _get_engine().holding_project_files():
+        custom_path = _theme_file(_custom_themes_dir(), theme_id)
+        if custom_path.exists():
+            raise HTTPException(status_code=409, detail=f"Custom theme '{theme_id}' already exists")
+        _write(custom_path, data)
     log.info(f"Created custom theme: {theme_id}")
     return {"status": "created", "theme_id": theme_id, "mode": themes.theme_mode(data)}
 
@@ -144,10 +144,11 @@ async def create_theme(data: dict[str, Any]) -> dict[str, Any]:
 @router.put("/themes/{theme_id}")
 async def update_theme(theme_id: str, data: dict[str, Any]) -> dict[str, Any]:
     """Update a custom theme."""
-    custom_path = _custom_theme_to_change(theme_id, "modify")
-    _check(data)
-    data["id"] = theme_id  # Prevent ID change via PUT
-    _write(custom_path, data)
+    async with _get_engine().holding_project_files():
+        custom_path = _custom_theme_to_change(theme_id, "modify")
+        _check(data)
+        data["id"] = theme_id  # Prevent ID change via PUT
+        _write(custom_path, data)
     log.info(f"Updated custom theme: {theme_id}")
     return {"status": "updated", "theme_id": theme_id}
 
@@ -155,8 +156,8 @@ async def update_theme(theme_id: str, data: dict[str, Any]) -> dict[str, Any]:
 @router.delete("/themes/{theme_id}")
 async def delete_theme(theme_id: str) -> dict[str, str]:
     """Delete a custom theme. Built-in themes cannot be deleted."""
-    custom_path = _custom_theme_to_change(theme_id, "delete")
-    custom_path.unlink()
+    async with _get_engine().holding_project_files():
+        _custom_theme_to_change(theme_id, "delete").unlink()
     log.info(f"Deleted custom theme: {theme_id}")
     return {"status": "deleted", "theme_id": theme_id}
 
@@ -217,19 +218,19 @@ async def import_theme(
     if themes.is_builtin(theme_id):
         raise HTTPException(status_code=409, detail=f"Cannot overwrite built-in theme '{theme_id}'")
 
-    custom_path = _theme_file(_custom_themes_dir(), theme_id)
-    if custom_path.exists() and not overwrite:
-        # The UI turns this one into an "overwrite?" prompt, so it needs the id
-        # and name as data — hence the sibling fields beside the readable detail.
-        raise StructuredApiError(
-            409,
-            f"A custom theme with id '{theme_id}' already exists.",
-            code="theme_exists",
-            theme_id=theme_id,
-            name=data.get("name", theme_id),
-        )
-
-    _write(custom_path, data)
+    async with _get_engine().holding_project_files():
+        custom_path = _theme_file(_custom_themes_dir(), theme_id)
+        if custom_path.exists() and not overwrite:
+            # The UI turns this one into an "overwrite?" prompt, so it needs the id
+            # and name as data — hence the sibling fields beside the readable detail.
+            raise StructuredApiError(
+                409,
+                f"A custom theme with id '{theme_id}' already exists.",
+                code="theme_exists",
+                theme_id=theme_id,
+                name=data.get("name", theme_id),
+            )
+        _write(custom_path, data)
     log.info(f"Imported theme: {theme_id} (overwrite={overwrite})")
     return {
         "status": "imported", "theme_id": theme_id, "name": data.get("name", ""),

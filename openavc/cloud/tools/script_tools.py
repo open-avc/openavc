@@ -13,8 +13,11 @@ next edit: the IDE's script lint, at the other door that writes a script.
 A create writes its file and a delete removes it inside the project change
 (``core/change_files.py``): a change that is not applied leaves the folder
 as it was, and a deleted script's file goes only once the project file no
-longer names it. Every tool here runs under the assistant's own lock, which
-is taken before the change door's (``_reload_lock``), never inside it.
+longer names it. A source replaced on its own is written, and the script
+reloaded, under the project files' hold (``Engine.holding_project_files``),
+so a replace of the whole project never carries it away unsaved. Every tool
+here runs under the assistant's own lock, which is taken before the change
+door's (``_reload_lock``, the same lock as that hold), never inside it.
 """
 
 from __future__ import annotations
@@ -88,6 +91,33 @@ def _find_script_in(project: Any, script_id: str) -> Any:
 
 def _find_script(engine: Any, script_id: str) -> Any:
     return _find_script_in(engine.project, script_id)
+
+
+def _replace_source(engine: Any, script_id: str, source: str) -> dict[str, Any]:
+    """The script's file holding ``source``, and the running script
+    reloaded from it, under the project files' hold the caller takes
+    (``Engine.holding_project_files``): the script is looked up in the
+    project its file belongs to, never one a replace is carrying away."""
+    script = _find_script(engine, script_id)
+    if script is None:
+        return {"error": f"Script '{script_id}' not found"}
+    try:
+        _refuse_syntax_error(script_id, source, script.file)
+    except ToolEditError as refused:
+        return refused.result
+    path = safe_path_within(_scripts_dir(engine), script.file)
+    if path is None:
+        return {"error": "Invalid script filename"}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+    # A source write alone is inert: the running script is reloaded like
+    # the IDE's reload button. reload_script imports the new version before
+    # unloading the old, so a broken edit leaves the previous version
+    # active (reported in the result).
+    result: dict[str, Any] = {"status": "saved"}
+    if engine.scripts:
+        result["reload"] = engine.scripts.reload_script(script.model_dump())
+    return _with_script_warnings(result, engine, script_id, source)
 
 
 def _refuse_syntax_error(script_id: str, source: str, filename: str) -> None:
@@ -270,28 +300,8 @@ class ScriptToolsMixin:
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"error": "No project loaded"}
-        script_id = input.get("script_id", "")
-        source = input.get("source", "")
-        script = _find_script(engine, script_id)
-        if script is None:
-            return {"error": f"Script '{script_id}' not found"}
-        try:
-            _refuse_syntax_error(script_id, source, script.file)
-        except ToolEditError as refused:
-            return refused.result
-        path = safe_path_within(_scripts_dir(engine), script.file)
-        if path is None:
-            return {"error": "Invalid script filename"}
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(source, encoding="utf-8")
-        # A source write alone is inert: the running script is reloaded like
-        # the IDE's reload button. reload_script imports the new version before
-        # unloading the old, so a broken edit leaves the previous version
-        # active (reported in the result).
-        result: dict[str, Any] = {"status": "saved"}
-        if engine.scripts:
-            result["reload"] = engine.scripts.reload_script(script.model_dump())
-        return _with_script_warnings(result, engine, script_id, source)
+        async with engine.holding_project_files():
+            return _replace_source(engine, input.get("script_id", ""), input.get("source", ""))
 
     async def _delete_script(self, input: dict) -> Any:
         engine = self._get_engine()

@@ -33,6 +33,11 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
 6. whatever happened, the persister started again, and the values the
    store holds written out.
 
+A door that writes or removes a file beside the project outside a change
+(an uploaded asset, a theme, a custom control, a script's source) holds the
+same lock from its checks to its write (``holding_project_files``), so its
+file lands before the backup or once the new project runs, never between.
+
 ``Engine.replace_project`` is the other way a whole project comes in, the
 cloud's push, which brings no files: it keeps the files beside the project,
 the saved values and the running project's stamp.
@@ -206,7 +211,24 @@ def _settle_imported(prepared: PreparedProject, running: ProjectConfig | None) -
 
 
 class ProjectReplaceMixin:
-    """``replace_with``: the running project replaced by a prepared one."""
+    """``replace_with``: the running project replaced by a prepared one,
+    and the hold a door takes so its file never lands inside a replace."""
+
+    def holding_project_files(self) -> asyncio.Lock:
+        """THE hold a door takes to write or remove a file beside the
+        project outside a project change: an uploaded image or sound, a
+        theme, a custom control, a script's source, through the
+        Programmer's doors and the AI's alike. It is the change lock that
+        :meth:`replace_with` holds from its backup to its load, held from
+        the door's checks to its write, so a file saved meanwhile lands
+        once the new project runs, never in the folder the swap carries
+        away after the backup has read it, and a delete asks the project
+        the files on disk belong to whether anything still shows the file.
+        A change writes its own files under the lock already
+        (``core/change_files``). Nothing that can wait on a change runs
+        inside the hold: the door announces what it changed once the hold
+        is let go."""
+        return self._reload_lock
 
     async def replace_with(self, prepared: PreparedProject, *, expected_revision: str | None = None):
         """Replace the running project, its files included, by ``prepared``

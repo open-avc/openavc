@@ -1,5 +1,6 @@
 """Custom themes remain usable when a project is moved or restored."""
 
+import asyncio
 import io
 import json
 import zipfile
@@ -22,7 +23,12 @@ def room(tmp_path, monkeypatch):
     active.mkdir()
     project = library.create_blank_project("studio", "Studio")
     project.ui.settings.theme_id = "studio-green"
-    engine = SimpleNamespace(project=project, project_path=active / "project.avc")
+    # The hold every door that writes a file beside the project takes
+    # (Engine.holding_project_files).
+    files_hold = asyncio.Lock()
+    engine = SimpleNamespace(
+        project=project, project_path=active / "project.avc", holding_project_files=lambda: files_hold,
+    )
     save_project(engine.project_path, project)
     monkeypatch.setattr(library.config, "SAVED_PROJECTS_DIR", tmp_path / "library")
     monkeypatch.setattr(project_routes, "_get_engine", lambda: engine)

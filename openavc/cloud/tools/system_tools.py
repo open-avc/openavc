@@ -59,6 +59,42 @@ async def _await_scan(discovery_engine: Any, timeout: Any) -> str | None:
     return None
 
 
+def _delete_unless_shown(engine: Any, safe_name: str) -> dict[str, Any]:
+    """The asset ``safe_name`` deleted, refused while something in the
+    running project still shows it. The caller holds the project files
+    (``Engine.holding_project_files``)."""
+    from openavc.api.assets import _assets_dir, _installed_themes
+
+    try:
+        assets_dir = _assets_dir()
+    except Exception:
+        log.debug("Assets directory not available", exc_info=True)
+        return {"error": "Assets directory not available"}
+
+    path = assets_dir / safe_name
+    if not path.exists():
+        return {"error": f"Asset '{safe_name}' not found"}
+
+    # Asked after the file is known to exist, so an element pointing at a
+    # name that is already gone answers "not found" here and at the REST
+    # door alike.
+    project = getattr(engine, "project", None)
+    if project is not None:
+        still_shown = asset_users(project, safe_name, themes=_installed_themes())
+        if still_shown:
+            return {
+                "error": (
+                    f"'{safe_name}' is still shown by "
+                    f"{', '.join(still_shown)}. Point them at another file, "
+                    f"or delete them first, then this asset can go."
+                ),
+                "still_shown_by": still_shown,
+            }
+
+    path.unlink()
+    return {"status": "deleted", "name": safe_name}
+
+
 # Which config keys hold credentials, and how a credential VALUE is masked out
 # of log text, both live in openavc/utils/log_redaction.py — the same rule the
 # transport TX/RX formatter and the log filter use. This module was where that
@@ -409,45 +445,16 @@ class SystemToolsMixin:
         gone draws the colour underneath and an icon that has gone draws
         nothing at all.
         """
-        from openavc.api.assets import _assets_dir, _installed_themes
-
         filename = input.get("filename", "")
         if not filename:
             return {"error": "filename is required"}
-
-        try:
-            assets_dir = _assets_dir()
-        except Exception:
-            log.debug("Assets directory not available", exc_info=True)
-            return {"error": "Assets directory not available"}
-
-        # Sanitize: use only the filename part
-        safe_name = Path(filename).name
-        path = assets_dir / safe_name
-        if not path.exists():
-            return {"error": f"Asset '{safe_name}' not found"}
-
-        # Asked after the file is known to exist, so an element pointing at a
-        # name that is already gone answers "not found" here and at the REST
-        # door alike.
         engine = self._get_engine()
-        project = getattr(engine, "project", None) if engine else None
-        if project is not None:
-            still_shown = asset_users(
-                project, safe_name, themes=_installed_themes()
-            )
-            if still_shown:
-                return {
-                    "error": (
-                        f"'{safe_name}' is still shown by "
-                        f"{', '.join(still_shown)}. Point them at another file, "
-                        f"or delete them first, then this asset can go."
-                    ),
-                    "still_shown_by": still_shown,
-                }
-
-        path.unlink()
-        return {"status": "deleted", "name": safe_name}
+        if engine is None:
+            return {"error": "Assets directory not available"}
+        # The check and the delete under the project files' hold, so the
+        # project asked is the one the file on disk belongs to.
+        async with engine.holding_project_files():
+            return _delete_unless_shown(engine, Path(filename).name)
 
     async def _get_isc_status(self, input: dict) -> Any:
         engine = self._get_engine()

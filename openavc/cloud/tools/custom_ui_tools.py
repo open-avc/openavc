@@ -22,6 +22,13 @@ already takes the project lock and fires the one-time pre-AI backup, and
 ``create_backup`` already collects ``ui/`` recursively with its folders intact.
 So the undo story for an assistant that writes a bad control is the one that
 already existed, with nothing new built for it.
+
+The write and the delete also hold the project files
+(``Engine.holding_project_files``) from their checks to the file, as the
+REST doors into this folder do: a replace of the whole project holds the
+same lock from its backup to its load, so a control written meanwhile is
+never carried away by the swap unsaved, and a delete asks the project the
+files on disk belong to whether a page still shows the file.
 """
 
 from __future__ import annotations
@@ -352,9 +359,6 @@ class CustomUIToolsMixin:
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"error": "No project loaded"}
-        ui_dir = self._ui_dir(create=True)
-        if ui_dir is None:
-            return {"error": "No project file on disk, so there is nowhere to put it."}
 
         content = input.get("content")
         if not isinstance(content, str):
@@ -372,7 +376,6 @@ class CustomUIToolsMixin:
                              f"image, font or sound has to be added in the IDE, and the "
                              f"control can then name it."
                 })
-            target = self._target(ui_dir, rel)
         except ToolEditError as exc:
             return exc.result
 
@@ -382,9 +385,31 @@ class CustomUIToolsMixin:
                 "error": f"'{rel}' is larger than the "
                          f"{MAX_FILE_SIZE // (1024 * 1024)} MB limit for a custom UI file."
             }
+        async with engine.holding_project_files():
+            reply = self._write_held(engine, rel, content, len(encoded))
+        if "error" not in reply:
+            log.info("Custom UI file written by AI: %s", rel)
+            # Every door into this folder owes the panels the same frame, or a
+            # wall panel keeps drawing the version from before the save.
+            from openavc.api.routes.ui_files import announce_ui_files_changed
+            await announce_ui_files_changed(rel)
+        return reply
+
+    def _write_held(self, engine: Any, rel: str, content: str, size: int) -> dict[str, Any]:
+        """``content`` written at ``rel`` in ``ui/`` and reviewed against the
+        running project, refused past the folder's caps. The caller holds
+        the project files (``Engine.holding_project_files``), so the folder
+        written is the running project's and the review reads that project."""
+        ui_dir = self._ui_dir(create=True)
+        if ui_dir is None:
+            return {"error": "No project file on disk, so there is nowhere to put it."}
+        try:
+            target = self._target(ui_dir, rel)
+        except ToolEditError as exc:
+            return exc.result
         existing = target if target.is_file() else None
         total, count = tree_totals(ui_dir, excluding=existing)
-        if total + len(encoded) > MAX_TOTAL_SIZE:
+        if total + size > MAX_TOTAL_SIZE:
             return {
                 "error": f"That would take the project's custom UI files over the "
                          f"{MAX_TOTAL_SIZE // (1024 * 1024)} MB limit. Large media "
@@ -395,29 +420,39 @@ class CustomUIToolsMixin:
 
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(target, content)
-        log.info("Custom UI file written by AI: %s", rel)
-
-        # Every door into this folder owes the panels the same frame, or a wall
-        # panel keeps drawing the version from before the save.
-        from openavc.api.routes.ui_files import announce_ui_files_changed
-        await announce_ui_files_changed(rel)
-
         findings = review_saved_file(ui_dir, rel, project=engine.project)
         return self._findings_reply({
             "status": "replaced" if existing else "created",
             "path": rel,
-            "size": len(encoded),
+            "size": size,
         }, findings)
 
     async def _delete_ui_file(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"error": "No project loaded"}
+        try:
+            rel = self._validated_path(input.get("path"), require_extension=False)
+        except ToolEditError as exc:
+            return exc.result
+        # The check and the delete under the project files' hold, so the
+        # project asked is the one the file on disk belongs to.
+        async with engine.holding_project_files():
+            reply = self._delete_held(engine, rel)
+        if "error" not in reply:
+            log.info("Custom UI file deleted by AI: %s", rel)
+            from openavc.api.routes.ui_files import announce_ui_files_changed
+            await announce_ui_files_changed(rel)
+        return reply
+
+    def _delete_held(self, engine: Any, rel: str) -> dict[str, Any]:
+        """The file or folder ``rel`` in ``ui/`` removed, refused while a
+        page of the running project still shows it. The caller holds the
+        project files (``Engine.holding_project_files``)."""
         ui_dir = self._ui_dir()
         if ui_dir is None:
             return {"error": "No project file on disk, so there is no ui/ folder."}
         try:
-            rel = self._validated_path(input.get("path"), require_extension=False)
             target = self._target(ui_dir, rel)
         except ToolEditError as exc:
             return exc.result
@@ -448,9 +483,6 @@ class CustomUIToolsMixin:
             shutil.rmtree(target)
         else:
             target.unlink()
-        log.info("Custom UI file deleted by AI: %s", rel)
-        from openavc.api.routes.ui_files import announce_ui_files_changed
-        await announce_ui_files_changed(rel)
         return {"status": "deleted", "path": rel}
 
     async def _set_project_stylesheet(self, input: dict) -> Any:

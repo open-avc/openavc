@@ -309,23 +309,22 @@ async def upload_asset(project_id: str, file: UploadFile = File(...)) -> dict[st
             detail=f"File too large ({len(content)} bytes). Maximum for {ext} files: {max_size} bytes.",
         )
 
-    assets_dir = _assets_dir()
-    total = _get_total_size(assets_dir)
-    if total + len(content) > MAX_TOTAL_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project asset quota exceeded. Total: {total} bytes, limit: {MAX_TOTAL_SIZE} bytes.",
-        )
-
     # SVG sanitization
     if ext == ".svg":
         _validate_svg(content)
 
-    # Write file
-    dest = assets_dir / filename
-    dest.write_bytes(content)
+    engine = _get_engine()
+    async with engine.holding_project_files():
+        assets_dir = _assets_dir()
+        total = _get_total_size(assets_dir)
+        if total + len(content) > MAX_TOTAL_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Project asset quota exceeded. Total: {total} bytes, limit: {MAX_TOTAL_SIZE} bytes.",
+            )
+        (assets_dir / filename).write_bytes(content)
     log.info(f"Asset uploaded: {filename} ({len(content)} bytes)")
-    publish_assets_state(_get_engine())
+    publish_assets_state(engine)
 
     return {
         "name": filename,
@@ -374,29 +373,32 @@ async def delete_asset(project_id: str, filename: str) -> dict[str, str]:
     """
     _require_active_project(project_id)
     safe_name = _sanitize_filename(filename)
-    assets_dir = _assets_dir()
-    path = assets_dir / safe_name
+    engine = _get_engine()
+    async with engine.holding_project_files():
+        _unlink_unless_shown(engine, _assets_dir() / safe_name)
+    log.info(f"Asset deleted: {safe_name}")
+    publish_assets_state(engine)
+    return {"status": "deleted", "name": safe_name}
 
+
+def _unlink_unless_shown(engine, path: Path) -> None:
+    """``path`` removed, refused while something in the running project
+    still shows it. The caller holds the project files."""
     if not path.exists():
         raise HTTPException(status_code=404, detail="Asset not found")
 
     # Asked after the file is known to exist, so an element pointing at a name
     # that is already gone answers "not found" here and at the AI's door alike.
-    engine = _get_engine()
-    project = getattr(engine, "project", None) if engine else None
+    project = getattr(engine, "project", None)
     if project is not None:
-        still_shown = asset_users(project, safe_name, themes=_installed_themes())
+        still_shown = asset_users(project, path.name, themes=_installed_themes())
         if still_shown:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"'{safe_name}' is still shown by {', '.join(still_shown)}. "
+                    f"'{path.name}' is still shown by {', '.join(still_shown)}. "
                     f"Point them at another file, or delete them first, "
                     f"then this asset can go."
                 ),
             )
-
     path.unlink()
-    log.info(f"Asset deleted: {safe_name}")
-    publish_assets_state(_get_engine())
-    return {"status": "deleted", "name": safe_name}
