@@ -515,6 +515,6 @@ async def preview_connect(driver: Any) -> ConnectPreview:
         await rec.capture.close()
     return ConnectPreview(
         available=True, steps=rec.steps,
-        poll_interval=float(driver.config.get("poll_interval", 0) or 0),
+        poll_interval=driver.configured_poll_interval(),
         keep_alive_interval=keep_alive,
     )

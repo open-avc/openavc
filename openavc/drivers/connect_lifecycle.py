@@ -641,7 +641,7 @@ class ConnectLifecycle:
         such a stage fails and tears the transport down, the loop notices the
         dead transport and exits on its own.
         """
-        poll_interval = self.config.get("poll_interval", 0)
+        poll_interval = self.configured_poll_interval()
         if poll_interval > 0:
             await self.start_polling(poll_interval)
             await self._end_if_ended(attempt)

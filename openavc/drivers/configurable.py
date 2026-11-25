@@ -357,9 +357,10 @@ class ConfigurableDriver(
             # to restore, permanently disabling polling after one bad attempt.
             self.config["poll_interval"] = saved_poll_interval
 
-        self._skip_on_first_poll(saved_poll_interval > 0)
-        if saved_poll_interval > 0:
-            await self.start_polling(saved_poll_interval)
+        interval = self.configured_poll_interval()
+        self._skip_on_first_poll(interval > 0)
+        if interval > 0:
+            await self.start_polling(interval)
 
     async def _initial_sync(self) -> None:
         """Register the declared child rosters, then send on_connect.

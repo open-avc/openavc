@@ -713,3 +713,72 @@ def test_a_limit_of_one_poll_is_said_as_one_poll(caplog) -> None:
     assert drv._failed_polls_fault(2, None).message == (
         "The device stopped answering: 2 polls in a row failed."
     )
+
+
+async def _answering_device():
+    async def handle(reader, writer):
+        try:
+            while True:
+                await reader.readuntil(b"\r")
+                writer.write(b"PWR=on\r")
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    return server, server.sockets[0].getsockname()[1]
+
+
+class _AcmeOwnLink(BaseDriver):
+    DRIVER_INFO = {"id": "acme_link", "name": "Acme Link", "transport": "tcp"}
+
+    async def poll(self) -> None:
+        await self.transport.send(b"PWR?\r")
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+def _yaml_widget_class() -> type[BaseDriver]:
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    return create_configurable_driver_class({
+        "id": "acme_text", "name": "Acme Text", "manufacturer": "Acme", "category": "utility",
+        "transport": "tcp", "default_config": {"port": 1},
+        "state_variables": {"power": {"type": "boolean", "label": "Power"}},
+        "commands": {}, "polling": {"queries": ["PWR?\\r"]},
+        "responses": [{"match": r"PWR=(\w+)", "set": {"power": "$1"}}],
+    })
+
+
+@pytest.mark.parametrize("kind", ["yaml", "python"])
+@pytest.mark.parametrize(
+    ("configured", "every"),
+    [(5, 5.0), ("5", 5.0), (" 2.5 ", 2.5), ("abc", 0.0), (True, 0.0), (float("nan"), 0.0),
+     (float("inf"), 0.0), (-3, 0.0), (None, 0.0)],
+)
+async def test_a_configured_poll_interval_is_read_as_a_usable_number(
+    kind: str, configured: Any, every: float,
+) -> None:
+    """A device config's poll_interval polls at that many seconds when it is
+    a usable number above 0, text that reads as one included, and polls
+    nothing otherwise: text that reads as none stopped the connect after the
+    device was reported connected, and an infinity polled once and never
+    again."""
+    cls = _yaml_widget_class() if kind == "yaml" else _AcmeOwnLink
+    server, port = await _answering_device()
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    drv = cls("acme1", {"host": "127.0.0.1", "port": port, "poll_interval": configured},
+              state, events)
+    try:
+        await drv.connect()
+        assert drv.running_poll_interval() == every
+        assert drv.get_state("connected") is True
+        # The config keeps what it was given.
+        assert drv.config["poll_interval"] is configured or drv.config["poll_interval"] == configured
+    finally:
+        await drv.disconnect()
+        server.close()

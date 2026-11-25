@@ -175,6 +175,15 @@ class PollLoop:
             self._poll_task = None
             log.debug(f"[{self.device_id}] Polling stopped")
 
+    def configured_poll_interval(self) -> float:
+        """The interval the device's config asks to be polled at: its
+        ``poll_interval`` in seconds when that is a usable number above 0,
+        text that reads as one included (drivers/usable_number); 0.0, no
+        polling, for anything else. What a connect hands start_polling; a
+        reader asking how the device IS polled asks running_poll_interval."""
+        number = usable_number(self.config.get("poll_interval", 0))
+        return number if number is not None and number > 0 else 0.0
+
     def running_poll_interval(self) -> float:
         """THE interval this device is polled at: the seconds start_polling
         was given, while its loop runs; 0.0 when no loop runs (never
