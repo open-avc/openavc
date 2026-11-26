@@ -419,7 +419,7 @@ class DeviceToolsMixin:
             }
         # The device's state goes as the state read tools send it.
         if isinstance(info.get("state"), dict):
-            info = {**info, "state": {k: cloud_state_value(v) for k, v in info["state"].items()}}
+            info = {**info, "state": {k: cloud_state_value(k, v) for k, v in info["state"].items()}}
         return info
 
     async def _update_device(self, input: dict) -> Any:

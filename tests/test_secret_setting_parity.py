@@ -234,11 +234,9 @@ def test_every_programmer_form_names_the_field_it_asks_about():
 #: what it masks away from this system, and why. Nothing else reads the name
 #: list: what decides a secret is the declaration (``drivers/secret_params``).
 NAME_LIST_READERS: dict[str, str] = {
-    "utils/log_redaction.py": "the list itself, and the log's own masking",
-    "core/state_store.py": "the state's debug log line",
+    "utils/log_redaction.py": "the list itself, the log's own masking, and a state value on its way out",
     "audit/commands.py": "the Device Audit's report",
     "support/problem_report.py": "a problem report",
-    "cloud/tools/system_tools.py": "the cloud AI's log tool",
     "core/device_logins.py":
         "the login file, for a device whose driver is not installed: it keeps a likely login out of the project",
 }

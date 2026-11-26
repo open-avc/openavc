@@ -49,7 +49,8 @@ from fnmatch import fnmatch
 from time import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from openavc.utils.log_redaction import IDENTITY_KEYS, REDACTED, is_secret_key
+from openavc.utils.log_redaction import REDACTED, named_secret_state, state_value_as
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -59,19 +60,13 @@ log = get_logger(__name__)
 
 
 def _loggable(key: str, value: Any) -> str:
-    """A state value as the debug log shows it: masked under a credential's
-    name (``auth_token``, ``password``), the rule a problem report applies to
-    state, since nothing registered such a value as a secret to mask. A
-    username is shown, as it is in every other log line."""
-    name = key.rsplit(".", 1)[-1]
-    if (
-        isinstance(value, str)
-        and value
-        and is_secret_key(name)
-        and name.lower() not in IDENTITY_KEYS
-    ):
+    """A state value as the debug log shows it: as the log may carry it
+    (``log_redaction.state_value_as``), a value under a credential's name as
+    ``***`` and a stream address without its password. A username is shown,
+    as it is in every other log line."""
+    if named_secret_state(key, value):
         return REDACTED
-    return repr(value)
+    return repr(state_value_as(Exit.LOG, key, value))
 
 
 @dataclass

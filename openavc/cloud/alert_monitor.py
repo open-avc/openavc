@@ -367,7 +367,7 @@ class AlertMonitor:
         alert_key = f"rule:{rule['id']}:{key}"
         alert_id = str(uuid.uuid4())
         self._active_alerts[alert_key] = alert_id
-        value = cloud_state_value(value)
+        value = cloud_state_value(key, value)
         return build_alert_payload(
             alert_id=alert_id,
             rule_id=rule["id"],
@@ -427,7 +427,7 @@ class AlertMonitor:
         alert_key = f"rule:{rule['id']}:{key}"
         alert_id = str(uuid.uuid4())
         self._active_alerts[alert_key] = alert_id
-        value = cloud_state_value(value)
+        value = cloud_state_value(key, value)
         held = f" for {duration:g}s" if duration else ""
         return build_alert_payload(
             alert_id=alert_id,

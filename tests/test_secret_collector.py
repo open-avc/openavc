@@ -185,3 +185,67 @@ async def test_a_replaced_device_s_old_password_is_masked_in_its_last_traffic(ma
     registry = get_secret_registry()
     assert registry.masked(Exit.LOG, "New-Pass-8812") == REDACTED
     assert registry.masked(Exit.LOG, "Old-Pass-4471") == "Old-Pass-4471"
+
+
+# --- A state value on its way out ---------------------------------------------------
+
+STREAM = "rtsp://op:streampw55@10.0.0.7/live"
+
+
+@pytest.mark.parametrize(("key", "value", "shown"), [
+    ("device.acme_widget.auth_token", "tok-998877", REDACTED),
+    ("device.acme_widget.stream_url", STREAM, "rtsp://op:***@10.0.0.7/live"),
+    ("device.acme_widget.power", "on", "on"),
+    ("device.acme_widget.username", "operator", "operator"),
+    ("device.acme_widget.level", 42, 42),
+    ("device.acme_widget.has_password", True, True),
+])
+def test_a_state_value_leaves_for_the_cloud_masked(key: str, value: Any, shown: Any):
+    from openavc.cloud.state_relay import cloud_state_value
+
+    assert cloud_state_value(key, value) == shown
+
+
+def test_a_registered_secret_in_a_state_value_is_masked_for_the_cloud():
+    from openavc.cloud.state_relay import cloud_state_value
+
+    get_secret_registry().add_runtime_secret("acme_widget", "sess-41a9c3")
+    assert cloud_state_value("device.acme_widget.last_reply", "OK sess-41a9c3") == (
+        f"OK {REDACTED}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_state_relay_sends_a_token_masked():
+    from unittest.mock import MagicMock
+
+    from openavc.cloud.state_relay import StateRelay
+
+    store = StateStore()
+    relay = StateRelay(MagicMock(), store)
+    store.set("device.acme_widget.auth_token", "tok-998877")
+    relay._on_state_change("device.acme_widget.auth_token", None, "tok-998877", "device.acme_widget")
+    queued = [entry for batch in relay._batches.values() for entry in batch]
+    assert [entry["value"] for entry in queued] == [REDACTED]
+
+
+def test_the_state_log_line_masks_a_stream_address_s_password(caplog):
+    import logging
+
+    store = StateStore()
+    with caplog.at_level(logging.DEBUG, logger="openavc.core.state_store"):
+        store.set("device.acme_widget.stream_url", STREAM)
+    lines = "\n".join(r.getMessage() for r in caplog.records if r.name == "openavc.core.state_store")
+    assert "streampw55" not in lines
+    assert "rtsp://op:***@10.0.0.7/live" in lines
+
+
+def test_driver_state_on_this_system_is_given_as_it_is():
+    from openavc.utils.log_redaction import state_value_as
+
+    get_secret_registry().add_runtime_secret("acme_widget", "streampw55")
+    assert state_value_as(Exit.DRIVER_STATE, "device.acme_widget.auth_token", "tok-998877") == "tok-998877"
+    assert state_value_as(Exit.DRIVER_STATE, "device.acme_widget.stream_url", STREAM) == STREAM
+    assert state_value_as(Exit.LOG, "device.acme_widget.stream_url", STREAM) == (
+        "rtsp://op:***@10.0.0.7/live"
+    )

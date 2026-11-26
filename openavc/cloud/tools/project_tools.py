@@ -93,7 +93,7 @@ class ProjectToolsMixin:
 
     async def _get_project_state(self, input: dict) -> Any:
         return {
-            k: cloud_state_value(v) for k, v in self._agent.state.snapshot().items()
+            k: cloud_state_value(k, v) for k, v in self._agent.state.snapshot().items()
             if not is_cloud_excluded_key(k)
         }
 
@@ -105,7 +105,7 @@ class ProjectToolsMixin:
                          f"isc.* state is never sent to the cloud)"
             }
         value = self._agent.state.get(key)
-        return {"key": key, "value": cloud_state_value(value)}
+        return {"key": key, "value": cloud_state_value(key, value)}
 
     async def _get_state_history(self, input: dict) -> Any:
         try:
@@ -115,8 +115,8 @@ class ProjectToolsMixin:
         return [
             {
                 **entry,
-                "old_value": cloud_state_value(entry.get("old_value")),
-                "new_value": cloud_state_value(entry.get("new_value")),
+                "old_value": cloud_state_value(entry["key"], entry.get("old_value")),
+                "new_value": cloud_state_value(entry["key"], entry.get("new_value")),
             }
             for entry in self._agent.state.get_history(count)
             if not is_cloud_excluded_key(entry["key"])

@@ -365,8 +365,9 @@ async def test_a_simulated_press_reports_its_changes_as_the_state_reads_do(engin
 def test_a_state_value_leaves_for_the_cloud_without_a_url_password():
     from openavc.cloud.state_relay import cloud_state_value
 
-    assert cloud_state_value("http://ops:pa55w0rd@192.0.2.5:8080/x") == "http://ops:***@192.0.2.5:8080/x"
-    assert cloud_state_value("rtsp://192.0.2.5/live") == "rtsp://192.0.2.5/live"
-    assert cloud_state_value("on") == "on"
-    assert cloud_state_value(42) == 42
-    assert cloud_state_value(None) is None
+    key = "device.cam1.stream_url"
+    assert cloud_state_value(key, "http://ops:pa55w0rd@192.0.2.5:8080/x") == "http://ops:***@192.0.2.5:8080/x"
+    assert cloud_state_value(key, "rtsp://192.0.2.5/live") == "rtsp://192.0.2.5/live"
+    assert cloud_state_value(key, "on") == "on"
+    assert cloud_state_value(key, 42) == 42
+    assert cloud_state_value(key, None) is None

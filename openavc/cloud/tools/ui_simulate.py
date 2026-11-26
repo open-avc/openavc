@@ -142,8 +142,8 @@ class _Capture:
             return
         self.changes.append({
             "key": key,
-            "old_value": cloud_state_value(old_val),
-            "new_value": cloud_state_value(new_val),
+            "old_value": cloud_state_value(key, old_val),
+            "new_value": cloud_state_value(key, new_val),
         })
 
 

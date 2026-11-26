@@ -40,7 +40,8 @@ from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import STATE_BATCH, build_state_batch_payload
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.utils.log_redaction import mask_url_password
+from openavc.utils.log_redaction import state_value_as
+from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -89,22 +90,19 @@ def is_cloud_excluded_key(key: str) -> bool:
     return key.startswith("system.cloud.") or key.startswith("isc.")
 
 
-def cloud_state_value(value: Any) -> Any:
-    """A state value as it may leave this system for the cloud: the password
-    of any address written ``scheme://user:password@host`` shown as ``***``.
+def cloud_state_value(key: str, value: Any) -> Any:
+    """The state value under ``key`` as it may leave this system for the
+    cloud: ``log_redaction.state_value_as`` for the cloud, so a value under a
+    credential's name, the password of a stream address and every registered
+    secret go masked. The relay, the alert monitor and the AI read tools all
+    send state through this.
 
     A camera driver's "Login in Stream Address" writes such an address into
     state so a panel on this system can play the stream: driver state on this
     system may carry a secret and the cloud may not
-    (``utils/secret_audience``). The relay, the alert monitor and the AI read
-    tools all send state through this; every other value is returned as it
-    is. A string without an ``@`` cannot hold such an
-    address, so it skips the pattern: a snapshot can be tens of thousands of
-    values.
+    (``utils/secret_audience``).
     """
-    if isinstance(value, str) and "@" in value:
-        return mask_url_password(value)
-    return value
+    return state_value_as(Exit.CLOUD, key, value)
 
 
 class StateRelay:
@@ -250,7 +248,7 @@ class StateRelay:
                 continue
             changes.append({
                 "key": key,
-                "value": cloud_state_value(value),
+                "value": cloud_state_value(key, value),
                 "ts": self._format_ts(now),
             })
 
@@ -283,7 +281,7 @@ class StateRelay:
 
         entry: dict[str, Any] = {
             "key": key,
-            "value": cloud_state_value(new_value),
+            "value": cloud_state_value(key, new_value),
             "ts": time.time(),
         }
 

@@ -182,8 +182,6 @@ def test_the_sweep_sees_a_direct_read():
 # (cloud/tools/system_tools.py) and the problem report also gather values by
 # their own rule, beside the registry's part they already ask the table for.
 OWN_RULE = {
-    "openavc/cloud/state_relay.py": Exit.CLOUD,          # a URL's password only
-    "openavc/core/state_store.py": Exit.LOG,             # by the value's name
     "openavc/core/device_info.py": Exit.PROGRAMMER,      # by the field's name
     "openavc/cloud/tools/plugin_tools.py": Exit.CLOUD,   # by the field's name
     "openavc/audit/redaction.py": Exit.REPORT,           # the audit's own set

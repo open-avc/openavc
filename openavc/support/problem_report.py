@@ -101,6 +101,7 @@ from openavc.utils.log_redaction import (
     get_secret_registry,
     is_secret_key,
     mask_secret_fields,
+    named_secret_state,
     secret_config_keys,
     secret_text,
     secret_values,
@@ -227,16 +228,13 @@ class Snapshot:
 
     def state_secrets(self) -> set[str]:
         """Values the driver wrote under a credential's name (``auth_token``,
-        ``password``), now or in the history: state is the one source the
-        platform never masks."""
-        out: set[str] = set()
+        ``password``, and, the report being about this one device, a
+        username), now or in the history: what every exit that may not carry
+        a secret masks of state (``log_redaction.named_secret_state``)."""
         pairs = [(k, v) for k, v in self.state.items()]
         for row in self.history:
             pairs += [(row.get("key"), row.get("old_value")), (row.get("key"), row.get("new_value"))]
-        for key, value in pairs:
-            if isinstance(value, str) and value and is_secret_key(str(key).rsplit(".", 1)[-1]):
-                out.add(value)
-        return out
+        return {value for key, value in pairs if named_secret_state(key, value, usernames=True)}
 
     def window_start(self) -> float | None:
         return self.traffic[0].t if self.traffic else None

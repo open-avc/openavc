@@ -184,6 +184,41 @@ def mask_url_password(text: str) -> str:
     return _URL_PASSWORD.sub(lambda m: m.group("head") + REDACTED, text)
 
 
+def named_secret_state(key: Any, value: Any, *, usernames: bool = False) -> bool:
+    """Whether ``value`` is text a driver wrote to state under a credential's
+    name (``auth_token``, ``password``: :func:`is_secret_key` on the key's
+    last part). A username names an account, so it counts only for an exit
+    about its one device (``usernames``, a report)."""
+    if not isinstance(value, str) or not value:
+        return False
+    name = str(key).rsplit(".", 1)[-1]
+    return is_secret_key(name) and (usernames or name.lower() not in IDENTITY_KEYS)
+
+
+def state_value_as(where: Any, key: Any, value: Any) -> Any:
+    """THE state value as the exit ``where`` may carry it
+    (:mod:`~openavc.utils.secret_audience`).
+
+    Driver state on this system may carry a secret: a camera's stream address
+    holds its login so a panel can play it, and is given as it is. Every
+    other exit (the log, the cloud's relay, alerts and AI tools) gets a value
+    under a credential's name as :data:`REDACTED`
+    (:func:`named_secret_state`), and text with the password of any
+    ``scheme://user:password@host`` address and every registered secret
+    masked. Anything else is returned as it is: a flag, a number, nothing.
+    """
+    if may_carry_secret(where):
+        return value
+    if named_secret_state(key, value):
+        return REDACTED
+    if not isinstance(value, str) or not value:
+        return value
+    if "@" in value:
+        value = mask_url_password(value)
+    registry = get_secret_registry()
+    return registry.masked(where, value) if registry.has_secrets() else value
+
+
 def mask_secrets_by_name(value: Any, _secret: bool = False) -> Any:
     """A copy of a nested config with every credential shown as :data:`REDACTED`.
 
