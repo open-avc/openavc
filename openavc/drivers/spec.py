@@ -3187,6 +3187,19 @@ DEFS = {
                 'type': 'boolean',
                 'doc': 'Generate a non-clashing default (appends device ID). Default false.',
             },
+            'secret': {
+                'type': 'boolean',
+                'doc': (
+                    "For a setting that is a login, such as an admin PIN: the "
+                    "Programmer masks its value and its input, the value is "
+                    "masked in the log once written, and it is never queued for "
+                    "a device that is offline (it is entered on the device's page "
+                    "once the device is online). The cloud assistant never writes "
+                    "one. A setting named password is a secret without it. Give "
+                    "it no default."
+                ),
+                'enhancement_since': '0.41.1',
+            },
             'values': {
                 'type': 'array',
                 'doc': 'Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected. ' + _VALUES_ONCE,

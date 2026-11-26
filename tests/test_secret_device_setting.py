@@ -100,6 +100,57 @@ def test_a_setting_named_password_declares_itself_on_any_device():
     assert not is_secret_device_setting(None, "admin_pin")
 
 
+_YAML_LOCK = """\
+id: acme_lock_check
+name: Acme Lock
+manufacturer: Acme
+category: utility
+version: 1.0.0
+author: Acme
+transport: tcp
+description: An invented lock.
+default_config:
+  host: ""
+  port: 4000
+config_schema:
+  host:
+    type: string
+    label: IP Address
+    required: true
+state_variables:
+  admin_pin:
+    type: string
+    label: Admin PIN
+device_settings:
+  admin_pin:
+    type: string
+    label: Admin PIN
+    help: The PIN that unlocks the keypad.
+    secret: true
+    write:
+      send: 'PIN {value}\\r'
+commands: {}
+"""
+
+
+def test_a_driver_may_mark_a_device_setting_secret(tmp_path):
+    """The contract takes the mark the platform's one rule reads; an older
+    platform loads the driver and ignores it, so it sets no install floor."""
+    import yaml
+
+    from openavc.drivers.check import check_driver_file
+    from openavc.drivers.spec import platform_requirements
+
+    path = tmp_path / "acme_lock_check.avcdriver"
+    path.write_text(_YAML_LOCK, encoding="utf-8")
+
+    result = check_driver_file(path)
+
+    assert result.errors == []
+    floors = platform_requirements(yaml.safe_load(_YAML_LOCK))
+    assert [where for where, _version in floors if "secret" in where] == []
+
+
 # --- The queue never takes one ----------------------------------------------------
 
 

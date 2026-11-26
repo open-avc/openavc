@@ -18,6 +18,7 @@ import {
 } from "./deviceSettingsHelpers";
 import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEditor";
 import { BooleanOptions } from "../shared/BooleanOptions";
+import { isSecretSetting, PASSWORD_FIELD } from "../shared/secretSetting";
 import { oscArgsAsText } from "./fieldText";
 import { HttpWriteFields } from "./SettingHttpWriteFields";
 import { VALUE_TYPE_OPTIONS } from "../shared/valueTypeTraits";
@@ -530,6 +531,29 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                       }
                     />
                     Unique per device
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-xs)",
+                      fontSize: "var(--font-size-sm)",
+                    }}
+                    title="A login, such as an admin PIN: masked, and never queued for a device that is offline"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSecretSetting(key, setting)}
+                      disabled={key === PASSWORD_FIELD}
+                      onChange={(e) =>
+                        // A login never carries a default.
+                        updateSetting(
+                          key,
+                          e.target.checked ? { secret: true, default: undefined } : { secret: undefined },
+                        )
+                      }
+                    />
+                    Secret
                   </label>
                 </div>
               </div>

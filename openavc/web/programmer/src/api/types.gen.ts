@@ -259,7 +259,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
   sendFrame: new Set(["after_length", "header", "length_endian", "length_size", "type"]),
   configSchemaEntry: new Set(["advanced", "columns", "default", "description", "help", "label", "learned_from", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
-  deviceSettingEntry: new Set(["default", "help", "label", "map", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
+  deviceSettingEntry: new Set(["default", "help", "label", "map", "max", "min", "regex", "secret", "setup", "state_key", "type", "unique", "values", "write"]),
   deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "query_params", "send"]),
   simulatorSection: new Set(["capacity", "command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "single_client", "state_machines"]),
   routingBlock: new Set(["command", "destination_child_type", "destination_param", "params", "planes", "source_child_type", "source_param"]),
@@ -1263,6 +1263,16 @@ export interface DriverDeviceSettingDef {
   setup?: boolean;
   /** Generate a non-clashing default (appends device ID). Default false. */
   unique?: boolean;
+  /**
+   * For a setting that is a login, such as an admin PIN: the Programmer masks
+   * its value and its input, the value is masked in the log once written, and
+   * it is never queued for a device that is offline (it is entered on the
+   * device's page once the device is online). The cloud assistant never writes
+   * one. A setting named password is a secret without it. Give it no default.
+   * Takes effect on platform 0.41.1; an older platform ignores it and still
+   * runs the driver, so it does not raise min_platform_version.
+   */
+  secret?: boolean;
   /**
    * Allowed values for an enum setting. Each entry is a bare wire value or a
    * {value, label} pair (label shown in the editor, value written to the

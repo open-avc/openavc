@@ -708,14 +708,14 @@ def test_the_walk_reaches_every_depth_of_the_registry() -> None:
 def test_the_walk_separates_a_name_declared_in_more_than_one_block() -> None:
     """The property the whole check rests on.
 
-    ``secret`` is declared on a config-schema entry and on a command
-    parameter. If those collapse into one entry, an implementation of either
-    satisfies both — which is exactly how a masked command parameter stayed
+    ``secret`` is declared on a config-schema entry, a device setting and a
+    command parameter. If those collapse into one entry, an implementation of
+    any satisfies all — which is exactly how a masked command parameter stayed
     invisible here while nine drivers shipped one.
     """
     fields = _contract_fields()
     blocks = sorted(b for b, n in fields if n == "secret" and b)
-    assert blocks == ["actionParamEntry", "configSchemaEntry", "paramEntry"], blocks
+    assert blocks == ["actionParamEntry", "configSchemaEntry", "deviceSettingEntry", "paramEntry"], blocks
 
     param_paths = fields[("paramEntry", "secret")]
     assert param_paths == frozenset({

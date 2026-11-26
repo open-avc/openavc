@@ -2420,6 +2420,10 @@
           "type": "boolean",
           "description": "Generate a non-clashing default (appends device ID). Default false."
         },
+        "secret": {
+          "type": "boolean",
+          "description": "For a setting that is a login, such as an admin PIN: the Programmer masks its value and its input, the value is masked in the log once written, and it is never queued for a device that is offline (it is entered on the device's page once the device is online). The cloud assistant never writes one. A setting named password is a secret without it. Give it no default. Takes effect on platform 0.41.1; an older platform ignores it and still runs the driver, so it does not raise min_platform_version."
+        },
         "values": {
           "type": "array",
           "description": "Allowed values for an enum setting. Each entry is a bare wire value or a {value, label} pair (label shown in the editor, value written to the device). A write that resolves to nothing in the set is rejected. List each value once: two entries are one value when they are the same JSON value (1 and 1.0 are one number, true is never 1, text is compared exactly).",
