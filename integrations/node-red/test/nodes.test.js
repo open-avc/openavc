@@ -318,7 +318,7 @@ describe("the editor's lookups", () => {
       expect(commands.body[0].params[0]).toMatchObject({ name: "input", type: "integer", required: true });
 
       const macros = await helper.request().get("/openavc/srv/macros").expect(200);
-      expect(macros.body.map((m) => m.id)).toEqual(["system_on", "bad", "skip_me", "flaky", "slow", "raises", "uneven"]);
+      expect(macros.body.map((m) => m.id)).toEqual(["system_on", "bad", "skip_me", "flaky", "slow", "raises", "uneven", "quiet_stop"]);
 
       const keys = await helper.request().get("/openavc/srv/state-keys").expect(200);
       expect(keys.body).toContain("var.status");

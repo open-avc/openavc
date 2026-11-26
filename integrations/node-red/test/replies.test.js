@@ -150,6 +150,13 @@ describe("macro outcomes", () => {
     expect(await run).toEqual({ success: true });
   });
 
+  it("a run that stopped answers a failure even when its error has no text", async () => {
+    const c = connect();
+    await once(c, "open");
+    expect(await c.executeMacro("bad")).toEqual({ success: false, error: "step 1/1 failed" });
+    expect(await c.executeMacro("quiet_stop")).toEqual({ success: false, error: "macro failed" });
+  });
+
   it("a run that raised around its steps answers its own request", async () => {
     const c = connect();
     await once(c, "open");

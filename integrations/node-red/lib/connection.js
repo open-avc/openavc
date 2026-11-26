@@ -76,7 +76,8 @@ const RUN_ENDINGS = {
   failed: (result) => {
     const stepErrors = (result.step_errors || []).map(stepError);
     const failures = stepErrors.length ? { step_errors: stepErrors } : {};
-    return result.error ? { success: false, error: result.error, ...failures } : { success: true, ...failures };
+    if (!("error" in result)) return { success: true, ...failures };
+    return { success: false, error: result.error || "macro failed", ...failures };
   },
   cancelled: () => ({ success: false, error: "macro cancelled" }),
   skipped,

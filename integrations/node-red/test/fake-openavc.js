@@ -64,6 +64,8 @@ class FakeOpenAVC {
       // Its first run is long and clean, a second one beside it short and
       // with a failed step: another client's run of the same macro.
       { id: "uneven", name: "Uneven" },
+      // Stops on an exception with no text of its own.
+      { id: "quiet_stop", name: "Quiet stop" },
     ];
     this.unevenRuns = 0;
     this.running = new Map(); // macro id -> [{timer, finish}]
@@ -317,8 +319,8 @@ class FakeOpenAVC {
 
   _finish(macro, asker, run) {
     const id = macro.id;
-    if (id === "bad") {
-      const stop = { error: "step 1/1 failed", message: "Always fails could not finish." };
+    if (id === "bad" || id === "quiet_stop") {
+      const stop = { error: id === "bad" ? "step 1/1 failed" : "", message: `${macro.name} could not finish.` };
       this._broadcast({ type: "macro.error", macro_id: id, name: macro.name, ...stop });
       this._result(asker, id, { outcome: "failed", step_errors: [], ...stop });
       return;
