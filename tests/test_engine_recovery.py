@@ -495,18 +495,26 @@ def test_a_start_on_the_recovery_project_keeps_the_file_that_would_not_load_and_
 
 
 def test_a_backup_that_is_not_a_project_is_never_written_over_the_live_files(tmp_path, monkeypatch):
+    """The Recovery Project starts on none of a tried backup's files, and the
+    saved values that were live are kept under Backups with the file that
+    would not load."""
     monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     project_path = tmp_path / "projects" / "default" / "project.avc"
     folder = project_path.parent
     folder.mkdir(parents=True)
     _corrupt(project_path)
-    _bad_backup(folder, {"var.from_the_bad_backup": 1})
+    live = json.dumps({"var.level": 3}).encode()
+    (folder / "state.json").write_bytes(live)
+    bad = _bad_backup(folder, {"var.level": 1})
 
     project = project_recovery.load_or_recover(project_path)
 
     assert project.project.id == "recovery"
     assert not (folder / "state.json").exists()
     assert not (folder / "scripts" / "bad.py").exists()
+    kept = _backups_holding(folder, "state.json")
+    kept.pop(bad.name)
+    assert list(kept.values()) == [live]
 
 
 def test_the_backup_a_start_restores_outlives_the_backup_it_takes_first(tmp_path):

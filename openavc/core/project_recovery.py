@@ -23,6 +23,9 @@ gone: the room came up, the panel worked, and the only available theory was
 So a recovery writes a small record beside the project and publishes it as
 ``system.project_recovery*`` state, which puts it on the Dashboard, in reach of
 a trigger, and (because ``system.*`` relays) on the cloud with everything else.
+A start that found no backup of the project that opens names the ones it
+tried, so the person reading the notice can tell those from the older
+backups, of a project that was replaced, still listed under Backups.
 
 **The record outlives the boot that wrote it, and only a person clears it.**
 A notice that vanished on the next restart would be the same problem again on
@@ -42,6 +45,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -67,8 +71,11 @@ KEY_REASON = "system.project_recovery_reason"
 KEY_BACKUP = "system.project_recovery_backup"
 KEY_CUTOFF = "system.project_recovery_cutoff"
 KEY_AT = "system.project_recovery_at"
+# The backups tried that would not open, newest first, one name a line, when
+# none of them did. A line, not a comma: a legacy backup's name is a file's.
+KEY_TRIED = "system.project_recovery_tried"
 
-ALL_KEYS = (KEY_STATE, KEY_REASON, KEY_BACKUP, KEY_CUTOFF, KEY_AT)
+ALL_KEYS = (KEY_STATE, KEY_REASON, KEY_BACKUP, KEY_CUTOFF, KEY_AT, KEY_TRIED)
 
 # system.project_recovery values.
 NONE = ""
@@ -96,8 +103,10 @@ def record(
     reason: str,
     backup: str = "",
     cutoff: str = "",
+    tried: Sequence[str] = (),
 ) -> None:
-    """Write the record for a recovery that just happened.
+    """Write the record for a recovery that just happened. ``tried`` names
+    the backups a start tried when none of them opened, newest first.
 
     Overwrites an older undismissed record: the newest one is the one that
     describes the project now running. Never raises — a boot that recovered
@@ -113,6 +122,7 @@ def record(
         "backup": backup,
         "cutoff": cutoff,
         "at": datetime.now(timezone.utc).isoformat(),
+        "tried": list(tried),
     }
     try:
         project_dir.mkdir(parents=True, exist_ok=True)
@@ -152,6 +162,16 @@ def publish(state: StateStore, project_dir: Path) -> None:
     state.set(KEY_BACKUP, str(data.get("backup", "")), source="system")
     state.set(KEY_CUTOFF, str(data.get("cutoff", "")), source="system")
     state.set(KEY_AT, str(data.get("at", "")), source="system")
+    state.set(KEY_TRIED, "\n".join(_tried(data)), source="system")
+
+
+def _tried(data: dict[str, Any]) -> list[str]:
+    """The record's tried backups: none for a record an earlier release
+    wrote, or one whose list is not a list of names."""
+    tried = data.get("tried")
+    if not isinstance(tried, list) or not all(isinstance(name, str) for name in tried):
+        return []
+    return tried
 
 
 def dismiss(state: StateStore, project_dir: Path) -> bool:
@@ -285,6 +305,8 @@ class _Recovery:
         self.failure = failure
         self._set_aside_taken = False
         self._to_try: list[Path] = []
+        # The backups that would not open, newest first, as list_backups names them.
+        self._tried: list[str] = []
 
     def run(self) -> ProjectConfig:
         from openavc.core.backup_manager import backups_since_replaced, list_backups
@@ -362,14 +384,20 @@ class _Recovery:
             _load_log.warning(f"Failed to seed project from {seed}: {e}")
             return None
         if say_so:
-            _load_log.warning("The project file was missing and no backup of it would open; started the starter project")
-            record(self.project_path.parent, outcome=STARTER, reason=MISSING)
+            _load_log.warning(f"The project file was missing and no backup of it would open{self._how_many_tried()}; "
+                              "started the starter project")
+            record(self.project_path.parent, outcome=STARTER, reason=MISSING, tried=self._tried)
         return project
+
+    def _how_many_tried(self) -> str:
+        """`` (3 tried)`` for the log, or nothing when none was."""
+        return f" ({len(self._tried)} tried)" if self._tried else ""
 
     def _restore_newest_backup(self, backups) -> ProjectConfig | None:
         """The first of ``backups`` (newest first) that loads, recorded as
-        ``RESTORED`` for the failure; None when none does. A backup that is
-        not a project this system loads is passed over before anything is
+        ``RESTORED`` for the failure; None when none does, each one named
+        for the record the start then writes. A backup that is not a
+        project this system loads is passed over before anything is
         written."""
         from openavc.core.project_replace import from_backup
 
@@ -382,6 +410,7 @@ class _Recovery:
                 project = load_project(self.project_path, keep_notes=True)
             except Exception as e:
                 _load_log.warning(f"Backup restore failed ({backup.filename}): {e}")
+                self._tried.append(backup.filename)
                 continue
             _load_log.info(f"Successfully restored project from backup: {backup.filename}")
             record(project_dir, outcome=RESTORED, reason=self.failure, backup=backup.filename,
@@ -404,7 +433,11 @@ class _Recovery:
         """
         from openavc.core.project_replace import blank
 
-        _load_log.warning("No backups available. Creating empty recovery project.")
+        if self._tried:
+            _load_log.warning(f"No backup of the project would open{self._how_many_tried()}. "
+                              "Creating empty recovery project.")
+        else:
+            _load_log.warning("No backups available. Creating empty recovery project.")
         now = datetime.now(timezone.utc).isoformat()
         empty = ProjectConfig(
             project=ProjectMeta(
@@ -422,5 +455,5 @@ class _Recovery:
             _load_log.error(f"Could not replace the project's files ({e}); writing the Recovery Project's file alone")
             save_project(self.project_path, empty)
         if say_so:
-            record(self.project_path.parent, outcome=RESET, reason=self.failure)
+            record(self.project_path.parent, outcome=RESET, reason=self.failure, tried=self._tried)
         return empty

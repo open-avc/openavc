@@ -15,6 +15,15 @@ import { showError } from "../store/toastStore";
 import { recoveryNotice, type RecoveryNotice as RecoveryNoticeCopy } from "./recoveryNotice";
 import { UpdateNotice } from "./UpdateNotice";
 
+/** A backup's name in the notice, as the Backups list shows it. */
+const BACKUP_NAME_STYLE = {
+  display: "block",
+  fontSize: 11,
+  color: "var(--text-muted)",
+  fontFamily: "var(--font-mono)",
+  wordBreak: "break-all",
+} as const;
+
 /** The recovery notice, then the update notice; each draws nothing when it
  *  has nothing to say. */
 export function ProjectNotices() {
@@ -67,16 +76,20 @@ function RecoveryNotice({ notice }: { notice: RecoveryNoticeCopy }) {
           {notice.body}
         </div>
         {!!notice.backupFile && (
-          <code style={{
-            display: "block",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            fontFamily: "var(--font-mono)",
-            marginTop: 6,
-            wordBreak: "break-all",
-          }}>
+          <code style={{ ...BACKUP_NAME_STYLE, marginTop: 6 }}>
             {notice.backupFile}
           </code>
+        )}
+        {notice.triedFiles.length > 0 && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{notice.triedHeading}</div>
+            {notice.triedFiles.map((name) => (
+              <code key={name} style={{ ...BACKUP_NAME_STYLE, marginTop: 2 }}>{name}</code>
+            ))}
+            {!!notice.triedMore && (
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{notice.triedMore}</div>
+            )}
+          </div>
         )}
         <button
           type="button"

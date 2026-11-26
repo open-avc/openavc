@@ -257,6 +257,99 @@ def test_an_unreadable_file_starts_on_its_own_newest_backup(folder, starter):
     assert project_recovery.read(folder)["backup"] == since
 
 
+# --- What a start that found none says it tried -----------------------------------
+
+
+def _broken(folder) -> None:
+    """The project file written so that it will not load, as a power cut
+    part way through a save leaves it."""
+    (folder / "project.avc").write_text('{"project": {"id": "hall"', encoding="utf-8")
+
+
+def _published(folder) -> dict:
+    from openavc.core.state_store import StateStore
+
+    state = StateStore()
+    project_recovery.publish(state, folder)
+    return {key: state.get(key) for key in project_recovery.ALL_KEYS}
+
+
+def test_an_unreadable_file_whose_backups_all_fail_names_each_one_it_tried(folder, no_starter):
+    """The record named no backup, so the notice could not say which of the
+    listed backups were the project's own copies that would not open."""
+    _room(folder, "Hall")
+    _broken(folder)
+    tried = [_backup(folder, "Auto-backup", KIND_AUTO) for _ in range(3)]
+
+    assert _start(folder).project.id == "recovery"
+
+    record = project_recovery.read(folder)
+    assert record["outcome"] == project_recovery.RESET
+    assert record["backup"] == ""
+    assert record["tried"] == tried[::-1]
+    assert _published(folder)[project_recovery.KEY_TRIED] == "\n".join(tried[::-1])
+
+
+def test_a_missing_file_whose_backups_all_fail_names_them_beside_the_starter(folder, starter):
+    _room(folder, "Room A")
+    _backup(folder, "Auto-backup", KIND_AUTO)
+    _opened_another(folder, "Hall")
+    _broken(folder)
+    tried = [_backup(folder, "Auto-backup", KIND_AUTO) for _ in range(2)]
+    (folder / "project.avc").unlink()
+
+    assert _start(folder).project.name == "Starter"
+
+    record = project_recovery.read(folder)
+    assert record["outcome"] == project_recovery.STARTER
+    assert record["tried"] == tried[::-1]
+
+
+def test_a_start_with_only_the_closed_projects_backups_tried_none(folder, starter):
+    _room(folder, "Room A")
+    _backup(folder, "Auto-backup", KIND_AUTO)
+    _opened_another(folder, "Room B")
+    (folder / "project.avc").unlink()
+
+    assert _start(folder).project.name == "Starter"
+
+    assert project_recovery.read(folder)["tried"] == []
+    assert _published(folder)[project_recovery.KEY_TRIED] == ""
+
+
+def test_a_start_that_restores_a_backup_names_none_tried(folder, starter):
+    """Only a start that found no backup to open names what it tried: the
+    restored one is named, and its time is the line after which work is
+    missing, whatever newer backup would not open."""
+    _room(folder, "Hall")
+    restored = _backup(folder, "Auto-backup", KIND_AUTO)
+    _broken(folder)
+    _backup(folder, "Auto-backup", KIND_AUTO)
+
+    assert _start(folder).project.name == "Hall"
+
+    record = project_recovery.read(folder)
+    assert record["backup"] == restored
+    assert record["tried"] == []
+    assert _published(folder)[project_recovery.KEY_TRIED] == ""
+
+
+@pytest.mark.parametrize("tried", [None, "backups/backup_a.zip", ["backups/backup_a.zip", 7], {"a": 1}])
+def test_a_record_with_no_list_of_names_publishes_none_tried(folder, tried):
+    """A record an earlier release wrote has no ``tried``; a damaged one is
+    read as naming none rather than becoming a second fault."""
+    data = {"outcome": project_recovery.RESET, "reason": project_recovery.UNREADABLE, "backup": "",
+            "cutoff": "", "at": "2026-11-25T10:00:00+00:00"}
+    if tried is not None:
+        data["tried"] = tried
+    (folder / project_recovery.MARKER_NAME).write_text(json.dumps(data), encoding="utf-8")
+
+    published = _published(folder)
+
+    assert published[project_recovery.KEY_STATE] == project_recovery.RESET
+    assert published[project_recovery.KEY_TRIED] == ""
+
+
 # --- Which backups are the running project's ---------------------------------------
 
 

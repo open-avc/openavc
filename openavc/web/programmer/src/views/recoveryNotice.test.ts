@@ -78,7 +78,7 @@ describe("recoveryNotice", () => {
     expect(n.severe).toBe(true);
     expect(n.title).toBe("Project file missing");
     expect(n.body).toBe(
-      "The project file was missing at startup, and no backup of that project would open,"
+      "The project file was missing at startup, and no backup of that project could be opened,"
       + " so this system is running the starter project. Earlier backups are listed under Backups.",
     );
     expect(n.backupFile).toBe("");
@@ -101,6 +101,58 @@ describe("recoveryNotice", () => {
     );
     expect(n.backupFile).toBe("backups/backup_20260903_211430_before_restore.zip");
     expect(n.action).toBe("Open Project");
+  });
+
+  it("names the backups it tried when none would open", () => {
+    const n = recoveryNotice({
+      "system.project_recovery": "reset",
+      "system.project_recovery_reason": "unreadable",
+      "system.project_recovery_tried":
+        "backups/backup_20260903_211430_auto.zip\nbackups/backup_20260903_204430_auto.zip",
+    }, at);
+    expect(n.body).toContain("No backup of it could be opened either");
+    expect(n.triedHeading).toBe("Backups that would not open:");
+    expect(n.triedFiles).toEqual([
+      "backups/backup_20260903_211430_auto.zip",
+      "backups/backup_20260903_204430_auto.zip",
+    ]);
+    expect(n.triedMore).toBe("");
+  });
+
+  it("names the backups it tried beside the starter", () => {
+    const n = recoveryNotice({
+      "system.project_recovery": "starter",
+      "system.project_recovery_reason": "missing",
+      "system.project_recovery_tried": "backups/backup_20260903_211430_auto.zip",
+    }, at);
+    expect(n.title).toBe("Project file missing");
+    expect(n.triedFiles).toEqual(["backups/backup_20260903_211430_auto.zip"]);
+  });
+
+  it("lists the five newest tried and counts the rest", () => {
+    const names = Array.from({ length: 7 }, (_, i) => `backups/backup_2026090${i}_000000_auto.zip`);
+    const n = recoveryNotice({
+      "system.project_recovery": "reset",
+      "system.project_recovery_tried": names.join("\n"),
+    }, at);
+    expect(n.triedFiles).toEqual(names.slice(0, 5));
+    expect(n.triedMore).toBe("and 2 more, listed under Backups");
+  });
+
+  it("lists nothing tried when none was, or when a backup opened", () => {
+    const none = recoveryNotice({
+      "system.project_recovery": "reset",
+      "system.project_recovery_tried": "",
+    }, at);
+    expect(none.triedHeading).toBe("");
+    expect(none.triedFiles).toEqual([]);
+    const restored = recoveryNotice({
+      "system.project_recovery": "restored",
+      "system.project_recovery_reason": "unreadable",
+      "system.project_recovery_tried": "backups/backup_20260903_211430_auto.zip",
+    }, at);
+    expect(restored.triedFiles).toEqual([]);
+    expect(recoveryNotice({}).triedFiles).toEqual([]);
   });
 
   it("ignores an outcome it does not know", () => {
