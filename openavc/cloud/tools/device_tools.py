@@ -26,6 +26,7 @@ from openavc.cloud.tools import ToolEditError, apply_tool_edit, note_applied
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, login_settings_in, marked_fields
 from openavc.core.device_config import split_connection_fields
 from openavc.core.device_manager import DeviceNotFoundError
+from openavc.core.pending_settings import shown_settings
 from openavc.core.required_config import (
     gaps_an_edit_makes,
     merged_device_config,
@@ -611,9 +612,18 @@ class DeviceToolsMixin:
 
         try:
             settings = engine.devices.get_device_settings(device_id)
-            return {"device_id": device_id, "settings": settings}
         except DeviceNotFoundError:
             return {"error": f"Device '{device_id}' not found"}
+        # A secret setting's value as ***: the answer is kept in the cloud
+        # chat history.
+        shown = shown_settings(
+            engine.devices.get_driver(device_id),
+            {key: entry.get("current_value") for key, entry in settings.items()},
+        )
+        return {
+            "device_id": device_id,
+            "settings": {key: {**entry, "current_value": shown[key]} for key, entry in settings.items()},
+        }
 
     async def _set_device_setting(self, input: dict) -> Any:
         engine = self._get_engine()

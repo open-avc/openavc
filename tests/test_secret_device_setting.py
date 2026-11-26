@@ -230,6 +230,8 @@ async def test_the_settings_read_answers_a_queued_secret_masked(manager, route):
     answer = await route.get_device_settings("lock1")
 
     assert answer["pending"] == {"admin_pin": REDACTED, "gain": 10}
+    # The mark reaches the Programmer, which masks the setting by it.
+    assert answer["settings"]["admin_pin"]["secret"] is True
 
 
 async def test_a_live_write_answers_a_secret_masked(manager, route):
@@ -255,6 +257,77 @@ async def test_the_queue_route_answers_a_secret_with_its_refusal(manager, route)
         await route.store_pending_settings("lock1", PendingSettingsRequest(settings={"admin_pin": PIN}))
 
     assert (refused.value.status_code, refused.value.detail) == (400, REFUSAL)
+
+
+# --- A YAML driver's write --------------------------------------------------------
+
+
+class _Line:
+    connected = True
+
+    def __init__(self) -> None:
+        self.sent: list[bytes] = []
+
+    async def send(self, data: bytes) -> None:
+        self.sent.append(data)
+
+
+async def test_a_yaml_driver_s_write_logs_a_secret_masked(caplog):
+    """A value under the masking's four-character floor is never learned, so
+    the write's own log line gives a secret setting as *** by its mark."""
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    cls = create_configurable_driver_class({
+        "id": "acme_lock_yaml", "name": "Acme Lock", "manufacturer": "Acme",
+        "category": "utility", "version": "1.0.0", "transport": "tcp",
+        "default_config": {"host": "", "port": 23},
+        "state_variables": {}, "commands": {},
+        "device_settings": {
+            "admin_pin": {"type": "string", "label": "Admin PIN", "secret": True,
+                          "write": {"send": "PIN {value}\\r"}},
+            "room_name": {"type": "string", "label": "Room Name",
+                          "write": {"send": "NAME {value}\\r"}},
+        },
+    })
+    driver = cls("yaml1", {"host": "127.0.0.1", "port": 23}, state, events)
+    driver.transport = _Line()
+
+    with caplog.at_level(logging.DEBUG, logger="openavc.drivers.configurable"):
+        await driver.set_device_setting("admin_pin", "Zq9")
+        await driver.set_device_setting("room_name", "Qx7")
+
+    assert driver.transport.sent[0].startswith(b"PIN Zq9")
+    written = [r.getMessage() for r in caplog.records if "Set device setting" in r.getMessage()]
+    assert written == [
+        f"[yaml1] Set device setting 'admin_pin' = '{REDACTED}'",
+        "[yaml1] Set device setting 'room_name' = 'Qx7'",
+    ]
+
+
+# --- The cloud AI's settings read -------------------------------------------------
+
+
+async def test_the_ai_s_settings_read_gives_a_secret_s_value_masked(manager):
+    from unittest.mock import MagicMock
+
+    from openavc.cloud.ai_tool_handler import AIToolHandler
+
+    driver = await _running(manager)
+    driver.state.set("device.lock1.admin_pin", PIN, source="driver")
+    driver.state.set("device.lock1.room_name", "Lobby", source="driver")
+
+    class _Engine:
+        devices = manager
+
+    handler = AIToolHandler(MagicMock(), MagicMock(), MagicMock())
+    handler._get_engine = lambda: _Engine()
+
+    answer = await handler._get_device_settings({"device_id": "lock1"})
+
+    assert answer["settings"]["admin_pin"]["current_value"] == REDACTED
+    assert answer["settings"]["room_name"]["current_value"] == "Lobby"
 
 
 def test_the_queue_module_asks_the_one_rule():

@@ -41,7 +41,9 @@ from typing import Any, Callable
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import UnknownDeviceSettingError
 from openavc.drivers.command_form import command_form
+from openavc.drivers.secret_params import is_secret_device_setting
 from openavc.drivers.setting_model import read_setting
+from openavc.utils.log_redaction import REDACTED
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -117,7 +119,10 @@ class SettingWrites:
             raise ConnectionError(f"[{self.device_id}] Not connected")
 
     def _setting_written(self, key: str, value: Any) -> None:
-        log.debug(f"[{self.device_id}] Set device setting '{key}' = {value!r}")
+        # A secret setting by its mark: a value under the masking's floor is
+        # never learned, so the log would carry it as written.
+        shown = REDACTED if is_secret_device_setting(self, key) else value
+        log.debug(f"[{self.device_id}] Set device setting '{key}' = {shown!r}")
 
     async def _write_setting_osc(
         self, key: str, value: Any, write_def: dict[str, Any], params: dict[str, Any],
