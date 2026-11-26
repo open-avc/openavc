@@ -50,7 +50,9 @@ def _write_project(project_file: Path, name: str, variables: object) -> None:
 
 def _write_files(folder: Path, script: str, logo: bytes) -> None:
     (folder / "scripts").mkdir(exist_ok=True)
-    (folder / "scripts" / "main.py").write_text(script, encoding="utf-8")
+    # Bytes, not text: Windows would write the script's newlines as \r\n,
+    # and a test reading it back out of a zip compares bytes.
+    (folder / "scripts" / "main.py").write_bytes(script.encode("utf-8"))
     (folder / "assets").mkdir(exist_ok=True)
     (folder / "assets" / "logo.png").write_bytes(logo)
 
