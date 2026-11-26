@@ -106,6 +106,8 @@ A project is copied three ways: the backup taken before an update or rollback, a
 
 An automatic rollback of an update to a version later than v0.41.0 leaves the cloud pairing as the system has it. On appliance hardware, it puts the project's themes back when the update started from a version later than v0.41.0.
 
+To get a project back as it was before an update without rolling back, copy that update's backup off the system and import it with **Import to Library** in the Program view. The project comes with its scripts, images, custom controls and custom themes, and on the system that took the backup its devices use the logins saved there. Its saved variable values are left out. Only the account the service runs as can read the backup: copy it with `sudo` on Linux and macOS, as an administrator on Windows, or with `docker compose cp openavc:/data/backups/<file> .` on Docker. This needs a version later than v0.41.0.
+
 If the backup cannot be made, for example because the disk is full, the update or rollback stops before anything changes and the Updates view says why. Free up disk space and try again. This holds on a system running a version later than v0.41.0.
 
 ## Deployment Types
@@ -251,7 +253,7 @@ v0.29.0 changed how the admin password is stored, from the password itself to a 
 
 Two ways to get back in, both needing access to the host's files:
 
-1. Restore the previous `system.json` from the backup taken just before the update. It is in the `backups` folder inside the data directory, named `pre-update-v0.28.0-<date>.zip`, with `system.json` at the top of the archive. This brings back the password you were using.
+1. Restore the previous `system.json` from the backup taken just before the update. It is in the `backups` folder inside the data directory, named `pre-update-v0.28.0-<date>.zip`, with `system.json` at the top of the archive. This brings back the password you were using. Only the account the service runs as can read the backup, so open it with `sudo` on Linux and macOS, or as an administrator on Windows. On Linux and the Raspberry Pi, give the restored file back to that account before you restart: `sudo chown openavc:openavc /var/lib/openavc/system.json`.
 2. Or set `auth.programmer_password` to `""` in `system.json` and restart. The system returns to unclaimed and the next visit to the Programmer offers the "create admin password" screen. Projects, devices and settings are untouched.
 
 This applies only when crossing back over v0.29.0. Rollbacks between v0.29.0 and later versions are not affected.

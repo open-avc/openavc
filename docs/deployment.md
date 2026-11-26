@@ -232,7 +232,7 @@ When an update is available, the response includes the version, changelog, and w
 | Docker | No | Shows notification with `docker compose pull` command |
 | Git/dev | No | Shows notification with `git pull` instructions |
 
-**Pre-update backups:** Before applying any update, OpenAVC automatically backs up your projects, drivers, and system.json to the `backups/` directory. The backup covers the data directory only. On Linux, logs live at `/var/log/openavc` (outside the data directory) and are rotated separately, so they are not part of the pre-update backup — by design, since logs aren't needed to restore a working system.
+**Pre-update backups:** Before applying any update, OpenAVC backs up your projects (a project kept outside the data directory included), drivers, plugins and `system.json` to the `backups/` directory. [What each backup holds](updates.md#what-each-backup-holds) lists the rest, and how to get a project back from one. Logs are not in it: on Linux they are kept at `/var/log/openavc` and rotated separately.
 
 **Rollback:** If the server fails to start after an update, it automatically rolls back to the previous version. You can also manually rollback via `POST /api/system/updates/rollback`.
 
