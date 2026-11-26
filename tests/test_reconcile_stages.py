@@ -153,7 +153,9 @@ def _before() -> dict:
             "id": "m_base", "name": "Base",
             "steps": [{"action": "state.set", "key": "var.fired", "value": True}],
             "triggers": [{"id": "t_base", "type": "state_change",
-                          "state_key": "var.poke", "state_operator": "any"}],
+                          "state_key": "var.poke", "state_operator": "any"},
+                         {"id": "t_gone", "type": "event", "event_pattern": "custom.never",
+                          "cooldown_seconds": 600}],
         }],
         "devices": [{"id": "d1", "driver": "generic_tcp", "name": "D1", "config": {}}],
         "device_groups": [{"id": "g1", "name": "G1", "device_ids": ["d1"]}],
@@ -167,8 +169,9 @@ def _before() -> dict:
 
 
 def _after() -> dict:
-    """A change to every section: a variable deleted and one added, macros,
-    groups, devices, connections, plugins, scripts, the mesh and the name."""
+    """A change to every section: a variable deleted and one added, a
+    trigger deleted and one added, macros, groups, devices, connections,
+    plugins, scripts, the mesh and the name."""
     project = _before()
     project["project"]["name"] = "New"
     project["variables"] = [
@@ -177,6 +180,7 @@ def _after() -> dict:
         {"id": "mirror", "type": "string", "default": "", "source_key": "var.fresh"},
     ]
     project["macros"][0]["name"] = "Base, renamed"
+    project["macros"][0]["triggers"] = project["macros"][0]["triggers"][:1]
     project["macros"].append({
         "id": "m_new", "name": "New", "steps": [],
         "triggers": [{"id": "t_new", "type": "state_change",
@@ -219,6 +223,8 @@ async def _running_engine(tmp_path) -> Engine:
     await eng._sync_plugins()
     eng._load_macro_definitions(macros=True, groups=True)
     await eng._restart_triggers(fire_startup=False)
+    # The trigger the change deletes has fired: its cooldown is running.
+    await eng.triggers._fire_macro(eng.triggers._triggers["t_gone"], {})
     eng.scripts = ScriptEngine(eng.state, eng.events, eng.devices, tmp_path, eng.macros)
     eng.scripts.install()
     eng.scripts.load_scripts([s.model_dump() for s in eng.project.scripts])
@@ -239,6 +245,12 @@ def _what_runs(eng) -> dict:
         "group g1": eng.macros._groups.members("g1"),
         "triggers": sorted(triggers._triggers),
         "trigger listeners": len(triggers._state_sub_ids),
+        # What each trigger keeps across a rebuild: its cooldown stamp, its
+        # cooldown baseline, its last run and its last scheduled fire.
+        "trigger stamps": eng.state.get_matching("system.trigger.*"),
+        "trigger cooldowns": dict(triggers._last_fired_monotonic),
+        "trigger last runs": dict(triggers._last_run),
+        "trigger schedules": dict(triggers._cron_last_fires),
         "scripts": {
             sid: sorted(loaded.handler_names) for sid, loaded in eng.scripts._scripts.items()
         },

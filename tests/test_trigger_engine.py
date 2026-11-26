@@ -1243,6 +1243,52 @@ async def test_cron_dedup_survives_reload(trigger_engine):
     assert "sched" not in trigger_engine._cron_last_fires
 
 
+async def test_an_undo_puts_back_what_the_rebuild_dropped_and_keeps_what_is_newer(
+    trigger_engine, macro_engine, core,
+):
+    """A change's undo hands back the records it took before the change. A
+    record written since (a fire handed over as the triggers stopped, a run
+    that ended mid-change) is newer than the one taken, and stays."""
+    state, _events = core
+    both = {
+        "id": "m", "name": "M",
+        "steps": [{"action": "state.set", "key": "var.x", "value": True}],
+        "triggers": [
+            {"id": "kept", "type": "schedule", "cooldown_seconds": 30},
+            {"id": "gone", "type": "schedule", "cooldown_seconds": 30},
+        ],
+    }
+    macro_engine.load_macros([both])
+    trigger_engine.load_triggers([both])
+    for trigger_id in ("kept", "gone"):
+        await trigger_engine._fire_macro(trigger_engine._triggers[trigger_id], {})
+    taken = trigger_engine.records()
+
+    # Written after the records were taken, for the trigger the change keeps.
+    state.set("system.trigger.kept.last_fired", time.time() + 5, source="system")
+    trigger_engine._last_fired_monotonic["kept"] += 5
+    trigger_engine._last_run["kept"] = te.LastRun("failed", at=time.time() + 5)
+    newer = (
+        state.get("system.trigger.kept.last_fired"),
+        trigger_engine._last_fired_monotonic["kept"],
+        trigger_engine._last_run["kept"],
+    )
+    trigger_engine.load_triggers([{**both, "triggers": both["triggers"][:1]}])
+
+    trigger_engine.put_back(taken)
+
+    assert (
+        state.get("system.trigger.kept.last_fired"),
+        trigger_engine._last_fired_monotonic["kept"],
+        trigger_engine._last_run["kept"],
+    ) == newer
+    assert trigger_engine._last_run["gone"] == taken.last_runs["gone"]
+    assert trigger_engine._last_fired_monotonic["gone"] == taken.cooldowns["gone"]
+    assert state.get("system.trigger.gone.last_fired") == (
+        taken.stamps["system.trigger.gone.last_fired"]
+    )
+
+
 # --- The process's time zone changes between polls ---
 #
 # Cron reads the wall clock; the loop compares in absolute time. A zone change

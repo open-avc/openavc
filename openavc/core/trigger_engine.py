@@ -4,6 +4,12 @@ OpenAVC TriggerEngine — fires macros from schedules, state changes, events, an
 Reads trigger definitions from macro configs, registers listeners, manages
 execution control (debounce, delay+re-check, cooldown, overlap), and prevents
 circular trigger chains.
+
+What of a trigger outlives a rebuild of the triggers (``load_triggers``, on a
+project change) is one rule, ``_drop_records_of_gone``: each record kept by
+trigger id stays for an id a trigger still has and goes with one nobody has.
+A change that is undone puts back what its rebuild dropped (``records`` and
+``put_back``).
 """
 
 from __future__ import annotations
@@ -66,6 +72,15 @@ _FIRE_HANDOVER_SECONDS = 2.0
 # What a state-change trigger's own test judges at the change: the value the
 # change carries, read from the context the change fires with.
 _CHANGED_VALUE = f"{TRIGGER_PREFIX}new_value"
+
+# The cooldown stamp each trigger publishes, ``system.trigger.<id>.last_fired``.
+_STAMP_PREFIX = "system.trigger."
+_STAMP_SUFFIX = ".last_fired"
+
+
+def _stamp_key(trigger_id: str) -> str:
+    return f"{_STAMP_PREFIX}{trigger_id}{_STAMP_SUFFIX}"
+
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -130,6 +145,19 @@ class _TriggerState:
         self.debounce_task: asyncio.Task | None = None
         self.delay_task: asyncio.Task | None = None
         self.pending_queue: list[asyncio.Task] = []
+
+
+class TriggerRecords(NamedTuple):
+    """What the trigger engine keeps of each trigger across a rebuild, by
+    trigger id: the cooldown stamps it published (by state key), the in-process
+    cooldown baselines, the last runs and the last scheduled fires. Taken
+    before a project change (``TriggerEngine.records``) and put back by its
+    undo (``put_back``)."""
+
+    stamps: dict[str, Any]
+    cooldowns: dict[str, float]
+    last_runs: dict[str, LastRun]
+    schedules: dict[str, datetime]
 
 
 def _completed_fields(run: LastRun) -> dict[str, Any]:
@@ -247,29 +275,56 @@ class TriggerEngine:
                     # (load_triggers is called again on project reload) but not
                     # across full server restart — StatePersister only watches
                     # variables flagged persist=True, never system.* keys.
-                    persisted = self.state.get(f"system.trigger.{trigger_id}.last_fired")
+                    persisted = self.state.get(_stamp_key(trigger_id))
                     if persisted and isinstance(persisted, (int, float)):
                         ts.last_fired = float(persisted)
                     ts.last_run = self._last_run.get(trigger_id)
                     self._triggers[trigger_id] = ts
                     count += 1
-        # Drop cron-dedup / cooldown baselines for triggers that no longer
-        # exist (renamed/removed), but keep them for surviving ids so a hot
-        # reload preserves both the no-double-fire and cooldown guarantees.
-        live_ids = set(self._triggers)
-        self._cron_last_fires = {
-            k: v for k, v in self._cron_last_fires.items() if k in live_ids
-        }
-        self._last_fired_monotonic = {
-            k: v for k, v in self._last_fired_monotonic.items() if k in live_ids
-        }
-        # Dropped with the rest: a record for an id nobody has any more is a
-        # leak, and an id that comes back must not inherit a stranger's run.
-        self._last_run = {
-            k: v for k, v in self._last_run.items() if k in live_ids
-        }
+        self._drop_records_of_gone(set(self._triggers))
         if count:
             log.info(f"Loaded {count} trigger(s)")
+
+    def _drop_records_of_gone(self, live_ids: set[str]) -> None:
+        """THE rule for what of a trigger outlives it: every per-trigger
+        record (its cooldown baseline, its last run, its last scheduled fire)
+        is kept for an id a trigger still has, so a hot reload keeps both the
+        cooldown and the no-double-fire guarantees, and dropped for one nobody
+        has any more. A record for a gone id is a leak, and an id that comes
+        back must not inherit a stranger's run."""
+        for records in (self._cron_last_fires, self._last_fired_monotonic, self._last_run):
+            for trigger_id in [k for k in records if k not in live_ids]:
+                del records[trigger_id]
+
+    def records(self) -> TriggerRecords:
+        """Every per-trigger record as it stands, for a project change to put
+        back if it is undone (``put_back``)."""
+        return TriggerRecords(
+            stamps=self.state.get_matching(_stamp_key("*")),
+            cooldowns=dict(self._last_fired_monotonic),
+            last_runs=dict(self._last_run),
+            schedules=dict(self._cron_last_fires),
+        )
+
+    def put_back(self, records: TriggerRecords) -> None:
+        """Each record ``records`` took that is gone now: a change that is
+        undone brings back the triggers it deleted with their cooldowns, last
+        runs and last scheduled fires, and the ``load_triggers`` that follows
+        keeps them, since their ids are live again. A record still here is
+        kept as it is: one written since the records were taken (a fire
+        handed over as the triggers stopped, a run that ended mid-change) is
+        the newer, and the rebuild drops whatever belongs to a trigger only
+        the change had."""
+        for taken, now in (
+            (records.cooldowns, self._last_fired_monotonic),
+            (records.last_runs, self._last_run),
+            (records.schedules, self._cron_last_fires),
+        ):
+            for trigger_id, record in taken.items():
+                now.setdefault(trigger_id, record)
+        for key, value in records.stamps.items():
+            if not self.state.has(key):
+                self.state.set(key, value, source="system")
 
     async def start(self, fire_startup: bool = True) -> None:
         """Register all trigger listeners and start the cron loop.
@@ -911,7 +966,7 @@ class TriggerEngine:
         # Stash cooldown timestamp in the in-memory state store so it's
         # picked up by load_triggers on a hot-reload (see paired read).
         # Not durable across server restart — see comment in load_triggers.
-        self.state.set(f"system.trigger.{trigger_id}.last_fired", ts.last_fired, source="system")
+        self.state.set(_stamp_key(trigger_id), ts.last_fired, source="system")
 
     def _record_run(
         self, ts: _TriggerState, outcome: str, *, error: str | None = None,

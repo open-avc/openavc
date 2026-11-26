@@ -47,7 +47,7 @@ import asyncio
 import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from openavc.core.device_sync import (
     add_devices,
@@ -59,6 +59,9 @@ from openavc.core.device_sync import (
 )
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from openavc.core.trigger_engine import TriggerRecords
 
 log = get_logger("openavc.core.engine")
 
@@ -101,6 +104,9 @@ class ReconcileRun:
     variables_before: tuple[dict[str, Any], frozenset[str] | None] | None = None
     # The values of the variables the change binds, before a binding wrote them.
     bound_before: dict[str, Any] = field(default_factory=dict)
+    # What the trigger engine kept of each trigger before the change, which
+    # the rebuild drops for a trigger the change deleted.
+    triggers_before: TriggerRecords | None = None
     # The parts the change could not run, read once every stage has run.
     failed: list[FailedPart] = field(default_factory=list)
     # What the plugins stage did to each plugin it moved, by id
@@ -126,7 +132,7 @@ RECONCILE_STAGES: tuple[Stage, ...] = (
     Stage("driver library", lambda run: run.origin is ProjectOrigin.LOAD,
           "_rescan_driver_library", "_keep_found_drivers"),
     Stage("trigger pause", lambda run: run.diff.requires_trigger_rebuild,
-          "_stop_triggers", "_restart_previous_triggers"),
+          "_pause_triggers", "_restart_previous_triggers"),
     Stage("macro cancel", lambda run: run.diff.macros or run.diff.device_groups,
           "_cancel_running_macros", "_leave_macros_cancelled"),
     Stage("variables", lambda run: run.diff.variables,
@@ -199,11 +205,14 @@ class ProjectReconcileMixin:
         """Nothing to undo: a driver found on disk is the library's, and the
         previous project can use it as well."""
 
-    async def _stop_triggers(self, run: ReconcileRun) -> None:
+    async def _pause_triggers(self, run: ReconcileRun) -> None:
         # Before any stage that deletes state keys (var.*, device.*,
         # plugin.*), so a state_change trigger cannot fire on a key that is
         # mid-cleanup. Macro changes land here too: the trigger definitions
-        # live in the macros.
+        # live in the macros. What each trigger has kept is taken first: the
+        # rebuild drops a deleted trigger's cooldown and last run, and the
+        # undo that brings the trigger back puts them back.
+        run.triggers_before = self.triggers.records()
         await self.triggers.stop()
 
     async def _restart_previous_triggers(self, run: ReconcileRun) -> None:
@@ -212,7 +221,14 @@ class ProjectReconcileMixin:
         # subscriptions, so every trigger fired twice per change. Never
         # re-fire startup triggers: the previous project was already running.
         await self.triggers.stop()
+        if run.triggers_before is not None:
+            self.triggers.put_back(run.triggers_before)
         await self._restart_triggers(fire_startup=False)
+
+    async def _stop_triggers(self, run: ReconcileRun) -> None:
+        """The undo of the trigger restart; the pause's undo then starts the
+        previous project's triggers."""
+        await self.triggers.stop()
 
     async def _cancel_running_macros(self, run: ReconcileRun) -> None:
         # Swapping macro/group definitions under a running macro would
