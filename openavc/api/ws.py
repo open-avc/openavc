@@ -30,6 +30,7 @@ from openavc.api.error_messages import (
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.macro_text import no_such_macro
+from openavc.core.run_starts import RunReport
 from openavc.core.panel_devices import (
     CLOSE_CODE_NOT_APPROVED,
     CLOSE_REASON_NOT_APPROVED,
@@ -470,7 +471,7 @@ async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
 
 
 async def _send_ws_error(
-    ws: WebSocket, source_type: str | None, message: str, element_id: str | None = None
+    ws: WebSocket, source_type: str | None, message: str, **about: str | None
 ) -> None:
     """Send an error frame — THE only producer of ``type: "error"`` answering a
     client's message. The one the server sends on its own, a plugin's failed
@@ -498,6 +499,11 @@ async def _send_ws_error(
     place); a client falls back to whatever it last sent, which is the same
     correlation it already uses to place the message.
 
+    ``request_id`` is the other correlation field, ``about`` like
+    ``element_id``: the client's own name for a ``macro.execute`` it asked,
+    on the failure of a run that raised after its receipt, which arrives out
+    of order (``_execute_macro``).
+
     Note the two other ways this socket reports a failure, both deliberate:
     a result ack (``command.ack``/``state.set.ack``) carries ``success: false``
     plus the correlation fields a generic error frame has no room for (which
@@ -508,8 +514,7 @@ async def _send_ws_error(
     frame: dict[str, Any] = {"type": "error", "message": message}
     if source_type:
         frame["source_type"] = source_type
-    if element_id:
-        frame["element_id"] = element_id
+    frame.update({name: value for name, value in about.items() if value})
     await _send_ws(ws, frame)
 
 
@@ -644,12 +649,12 @@ async def _ui_event(
         # failed action carries CommandFailure.panel on its record, and one that
         # raised is answered from the same record.
         log.exception(f"{msg_type} on '{element_id}' failed")
-        await _send_ws_error(ws, msg_type, describe_press_failure(e).panel, element_id)
+        await _send_ws_error(ws, msg_type, describe_press_failure(e).panel, element_id=element_id)
         return
     for action in dispatched or []:
         error = action.get("error")
         if error:
-            await _send_ws_error(ws, msg_type, str(error), element_id)
+            await _send_ws_error(ws, msg_type, str(error), element_id=element_id)
             return
 
 
@@ -730,7 +735,60 @@ async def _named_macro(ws: WebSocket, msg_type: str, engine: Any, msg: dict[str,
     return macro_id
 
 
-async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type: str) -> None:
+# The longest ``request_id`` a ``macro.execute`` may carry.
+_REQUEST_ID_MAX = 64
+
+
+async def _asked_macro(ws: WebSocket, engine: Any, msg: dict[str, Any]) -> Any:
+    """The macro a ``macro.execute`` names, or ``""`` once the refusal is
+    sent: a ``request_id`` that is not text of 1 to 64 characters (it is
+    echoed back exactly, so it must be something a client can compare), or
+    what ``_named_macro`` refuses. All before the run, in request order."""
+    request_id = msg.get("request_id")
+    if request_id is not None and not (
+        isinstance(request_id, str) and 0 < len(request_id) <= _REQUEST_ID_MAX
+    ):
+        await _send_ws_error(
+            ws, "macro.execute",
+            f"request_id must be text of 1 to {_REQUEST_ID_MAX} characters",
+        )
+        return ""
+    return await _named_macro(ws, "macro.execute", engine, msg)
+
+
+def _run_ending(engine: Any, macro_id: str, outcome: str, report: RunReport) -> dict[str, Any]:
+    """What a ``macro.execute.result`` says beyond its outcome, all of it this
+    run's own: a skipped run's reason from the reason table (``code``,
+    ``message``), and a failed run's ``step_errors`` and, when it stopped,
+    its ``error`` and ``message``. Read in the run's own task."""
+    if outcome == "skipped":
+        return engine.macros.starts.take_refusal() or {}
+    if outcome == "failed":
+        return report.failure(macro_id)
+    return {}
+
+
+def _heard_by(engine: Any, client_type: str, ending: dict[str, Any]) -> dict[str, Any]:
+    """A failed run's ending as this client hears it. A panel gets the copy
+    the hub sends a panel of each ``macro.step_error`` and of the run's
+    ``macro.error`` (``WSHub.panel_copy``: the room's sentence in ``error``),
+    so asking for its own run's ending tells it nothing the room's events
+    would not."""
+    if client_type != "panel" or "step_errors" not in ending:
+        return ending
+    copy = {**ending, "step_errors": [
+        engine.ws.panel_copy("macro.step_error", frame) for frame in ending["step_errors"]
+    ]}
+    if "error" in ending:
+        copy.update(engine.ws.panel_copy(
+            "macro.error", {"error": ending["error"], "message": ending.get("message")},
+        ))
+    return copy
+
+
+async def _execute_macro(
+    ws: WebSocket, engine: Any, msg: dict[str, Any], client_type: str,
+) -> None:
     """Acknowledge a macro at once, run it in the background, and tell this
     socket how its run ended.
 
@@ -738,32 +796,44 @@ async def _execute_macro(ws: WebSocket, engine: Any, macro_id: Any, client_type:
     otherwise hold this client's whole message loop: further taps queue in the
     socket and the panel reads as hung. Macro lifecycle events stream the
     progress to every client; ``macro.execute.result`` is this socket's own
-    run's ending, the word ``execute`` reports. A run that raised around its
-    steps is answered with an ``error`` frame instead. The run starts before
-    the receipt is written, so a client slow to take it never holds a press
-    back; either answer waits for the receipt, so it always comes first.
+    run's ending, the word ``execute`` reports and the rest ``_run_ending``
+    adds. A run that raised around its steps is answered with an ``error``
+    frame instead. The run starts before the receipt is written, so a client
+    slow to take it never holds a press back; either answer waits for the
+    receipt, so it always comes first.
+
+    The ask's ``request_id``, when it has one, rides the receipt, the result
+    and that error frame: one socket may hold several asks of one macro (a
+    Node-RED server's flows share one), and their endings come in any order.
     """
+    macro_id = await _asked_macro(ws, engine, msg)
+    if not macro_id:
+        return
+    asked = {"request_id": msg["request_id"]} if msg.get("request_id") else {}
     acked = asyncio.Event()
 
     async def _run_macro() -> None:
         try:
-            outcome = await engine.macros.execute(macro_id)
+            with engine.macros.starts.reporting() as report:
+                outcome = await engine.macros.execute(macro_id)
         except Exception as e:
             # Catch-all: whatever raised around the steps reaches nobody else.
             log.exception(f"macro.execute of '{macro_id}' failed")
             await acked.wait()
-            await _send_ws_error(ws, "macro.execute", _press_failure(e, client_type))
+            await _send_ws_error(ws, "macro.execute", _press_failure(e, client_type), **asked)
             return
+        ending = _heard_by(engine, client_type, _run_ending(engine, macro_id, outcome, report))
         await acked.wait()
-        await _send_ws(
-            ws, {"type": "macro.execute.result", "macro_id": macro_id, "outcome": outcome},
-        )
+        await _send_ws(ws, {
+            "type": "macro.execute.result", "macro_id": macro_id, **asked,
+            "outcome": outcome, **ending,
+        })
 
     task = asyncio.create_task(_run_macro())
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
     try:
-        await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+        await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id, **asked})
     finally:
         acked.set()
 
@@ -963,9 +1033,7 @@ async def _handle_message(
         # is the panel's preset button: a person pressing "Presentation Mode"
         # twice, or working a room quickly, must never be throttled. The macro
         # engine's own overlap/cooldown settings are the right control here.
-        macro_id = await _named_macro(ws, msg_type, engine, msg)
-        if macro_id:
-            await _execute_macro(ws, engine, macro_id, client_type)
+        await _execute_macro(ws, engine, msg, client_type)
 
     elif msg_type == "macro.cancel":
         macro_id = await _named_macro(ws, msg_type, engine, msg)

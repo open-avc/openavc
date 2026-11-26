@@ -476,9 +476,9 @@ class MacroEngine(MacroSteps):
             return "cancelled"
         except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
-            await self._announce_end(
-                macro_id, name, task, "error", error=str(e), message=stopped_message(e),
-            )
+            stop = {"error": str(e), "message": stopped_message(e)}
+            self.starts.stopped(macro_id, stop)
+            await self._announce_end(macro_id, name, task, "error", **stop)
             if _subroutine:  # its failure is the calling step's
                 raise
             return "failed"

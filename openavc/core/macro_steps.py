@@ -15,8 +15,9 @@ it, because every list in one run shares one ``StepRun``.
 
 Everything here reads the engine it is mixed into: ``state``, ``events``,
 ``devices``, ``_help``, ``_broadcast_ws``, ``_project_device_ids``,
-``_plugin_actions``, ``_max_conditional_depth``, ``_wording``, ``_group_command``
-and ``execute`` (a ``macro`` step runs another macro through the engine's own
+``_plugin_actions``, ``_max_conditional_depth``, ``_wording``, ``_group_command``,
+``starts`` (where a failed step's frame is kept for its run's caller) and
+``execute`` (a ``macro`` step runs another macro through the engine's own
 start, so its guards and its outcome apply).
 """
 
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
     from openavc.core.event_bus import EventBus
     from openavc.core.group_command import GroupCommand
     from openavc.core.macro_text import StepWording
+    from openavc.core.run_starts import RunStarts
     from openavc.core.state_store import StateStore
 
 # The macro engine's own logger: the log view files these lines under Macros
@@ -128,6 +130,7 @@ class MacroSteps:
         _project_device_ids: Callable[[], set[str] | None] | None
         _plugin_actions: dict[str, tuple[Any, str, str]]
         _max_conditional_depth: int
+        starts: RunStarts
 
         @property
         def _wording(self) -> StepWording: ...
@@ -221,13 +224,7 @@ class MacroSteps:
         error, message = self._wording.failure(step, e)
         # Emit step-level error event so the frontend can show it
         if run.macro_id:
-            await self.events.emit(
-                f"macro.step_error.{run.macro_id}",
-                self._wording.error_frame(
-                    run.macro_id, step, i, total,
-                    error=error, message=message, call_chain=run.call_chain,
-                ),
-            )
+            await self._announce_step_error(step, run, i, total, (error, message))
         if run.stop_on_error:
             # The worded sentence, not the exception: this text is the
             # run's macro.error, and a calling macro's step error. The
@@ -238,17 +235,23 @@ class MacroSteps:
         self, step: dict[str, Any], run: StepRun, i: int, total: int, unreported: Unreported,
     ) -> None:
         """Count, log and announce a failure the step handled itself."""
-        error, message = unreported
         step_detail = self._wording.failure_context(step, i, total)
         run.failures.append(step_detail)
-        log.error(f"Macro step failed: {step_detail} — {error}")
-        await self.events.emit(
-            f"macro.step_error.{run.macro_id}",
-            self._wording.error_frame(
-                run.macro_id or "", step, i, total, error=error, message=message,
-                call_chain=run.call_chain,
-            ),
+        log.error(f"Macro step failed: {step_detail} — {unreported[0]}")
+        await self._announce_step_error(step, run, i, total, unreported)
+
+    async def _announce_step_error(
+        self, step: dict[str, Any], run: StepRun, i: int, total: int, failure: Unreported,
+    ) -> None:
+        """Send a failed step's ``macro.step_error`` to the room, and keep the
+        frame for whoever opened a report on this run (``RunStarts``)."""
+        error, message = failure
+        frame = self._wording.error_frame(
+            run.macro_id or "", step, i, total, error=error, message=message,
+            call_chain=run.call_chain,
         )
+        self.starts.step_failed(frame)
+        await self.events.emit(f"macro.step_error.{run.macro_id}", frame)
 
     async def _execute_step(
         self, step: dict[str, Any], run: StepRun, step_path: StepPath,
