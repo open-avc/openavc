@@ -1,0 +1,224 @@
+{
+  "_comment": "A condition whose value names a key ($var.wanted), answer for answer. Each case's op compares the reading (actual) with what the key its value names holds in state; a value that names no key is compared as written. A key with no value (missing or null) is a reading that has not arrived: expected is what a reader that acts answers (a macro, a trigger), surface, where present, what a reader that shows or hides answers instead (the panel, the IDE's preview); 'error' is an operator the rule refuses. reads: the keys a condition reads, its own key and the one its value names, which wake a Wait Until and redraw a visible_when. tests/test_condition_references.py runs it over openavc/core/condition_eval.py and the panel's modules/compare.js and visibility.js, conditionEval.test.ts over the IDE's copy.",
+  "cases": [
+    {
+      "name": "a reference compares with what its key holds",
+      "op": "eq",
+      "actual": "ON",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "on"},
+      "expected": true
+    },
+    {
+      "name": "a reference holding another value",
+      "op": "eq",
+      "actual": "on",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "off"},
+      "expected": false
+    },
+    {
+      "name": "not equal to a reference holding another value",
+      "op": "ne",
+      "actual": "on",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "off"},
+      "expected": true
+    },
+    {
+      "name": "not equal to a reference holding the same value",
+      "op": "ne",
+      "actual": "on",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "ON"},
+      "expected": false
+    },
+    {
+      "name": "an alias against a reference",
+      "op": "==",
+      "actual": "on",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "on"},
+      "expected": true
+    },
+    {
+      "name": "a reference compares as a number",
+      "op": "eq",
+      "actual": 1,
+      "value": "$var.wanted",
+      "state": {"var.wanted": "1"},
+      "expected": true
+    },
+    {
+      "name": "a reference holding a boolean",
+      "op": "eq",
+      "actual": "on",
+      "value": "$var.flag",
+      "state": {"var.flag": true},
+      "expected": true
+    },
+    {
+      "name": "an ordering against a reference",
+      "op": "gt",
+      "actual": 50,
+      "value": "$var.limit",
+      "state": {"var.limit": 40},
+      "expected": true
+    },
+    {
+      "name": "an ordering against a reference read as a number",
+      "op": "lte",
+      "actual": "50",
+      "value": "$var.limit",
+      "state": {"var.limit": 40},
+      "expected": false
+    },
+    {
+      "name": "a reference whose key has no value never equals",
+      "op": "eq",
+      "actual": "on",
+      "value": "$var.unset",
+      "state": {},
+      "expected": false
+    },
+    {
+      "name": "a reference whose key has no value makes no decision, but on a panel it differs",
+      "op": "ne",
+      "actual": "on",
+      "value": "$var.unset",
+      "state": {},
+      "expected": false,
+      "surface": true
+    },
+    {
+      "name": "a reference whose key holds null has not arrived",
+      "op": "ne",
+      "actual": "on",
+      "value": "$var.unset",
+      "state": {"var.unset": null},
+      "expected": false,
+      "surface": true
+    },
+    {
+      "name": "neither side has arrived, not equal",
+      "op": "ne",
+      "actual": null,
+      "value": "$var.unset",
+      "state": {},
+      "expected": false,
+      "surface": true
+    },
+    {
+      "name": "neither side has arrived, equal",
+      "op": "eq",
+      "actual": null,
+      "value": "$var.unset",
+      "state": {},
+      "expected": false
+    },
+    {
+      "name": "an ordering against a reference with no value",
+      "op": "gt",
+      "actual": 5,
+      "value": "$var.unset",
+      "state": {},
+      "expected": false
+    },
+    {
+      "name": "an authored null still compares with nothing, on a panel too",
+      "op": "ne",
+      "actual": "on",
+      "value": null,
+      "state": {},
+      "expected": false
+    },
+    {
+      "name": "has a value reads no value, a reference included",
+      "op": "truthy",
+      "actual": "on",
+      "value": "$var.unset",
+      "state": {},
+      "expected": true
+    },
+    {
+      "name": "is empty reads no value, a reference included",
+      "op": "falsy",
+      "actual": "on",
+      "value": "$var.wanted",
+      "state": {"var.wanted": ""},
+      "expected": false
+    },
+    {
+      "name": "a reference is read once: the text it holds is not read again",
+      "op": "eq",
+      "actual": "$var.other",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "$var.other", "var.other": "on"},
+      "expected": true
+    },
+    {
+      "name": "a $ alone names no key and is compared as text",
+      "op": "eq",
+      "actual": "$",
+      "value": "$",
+      "state": {},
+      "expected": true
+    },
+    {
+      "name": "text with a $ inside it is compared as text",
+      "op": "eq",
+      "actual": "a$b",
+      "value": "a$b",
+      "state": {},
+      "expected": true
+    },
+    {
+      "name": "an unknown operator against a reference",
+      "op": "matches",
+      "actual": "on",
+      "value": "$var.wanted",
+      "state": {"var.wanted": "on"},
+      "expected": "error"
+    },
+    {
+      "name": "an unknown operator against a reference with no value",
+      "op": "matches",
+      "actual": "on",
+      "value": "$var.unset",
+      "state": {},
+      "expected": "error"
+    }
+  ],
+  "reads": [
+    {
+      "name": "a reference adds the key it names",
+      "condition": {"key": "device.proj.power", "operator": "eq", "value": "$var.wanted"},
+      "expected": ["device.proj.power", "var.wanted"]
+    },
+    {
+      "name": "a value reads only the condition's key",
+      "condition": {"key": "device.proj.power", "operator": "eq", "value": "on"},
+      "expected": ["device.proj.power"]
+    },
+    {
+      "name": "a reference to its own key is read once",
+      "condition": {"key": "var.level", "operator": "gt", "value": "$var.level"},
+      "expected": ["var.level"]
+    },
+    {
+      "name": "a condition with no value",
+      "condition": {"key": "var.level", "operator": "truthy"},
+      "expected": ["var.level"]
+    },
+    {
+      "name": "a $ alone names no key",
+      "condition": {"key": "var.level", "value": "$"},
+      "expected": ["var.level"]
+    },
+    {
+      "name": "a reference to the firing context",
+      "condition": {"key": "var.level", "value": "$trigger.new_value"},
+      "expected": ["var.level", "trigger.new_value"]
+    }
+  ]
+}

@@ -12,14 +12,23 @@
  * key missing too. The controls that read an authored map are also asked
  * which key a reading picks, over the corpus's `keys`.
  *
+ * A condition whose value names a key ($var.wanted) is asked too, over
+ * tests/fixtures/condition_reference_cases.json: the compare module's `holds`
+ * in both modes, a visible_when holding it against that state, and the keys
+ * a visible_when redraws on.
+ *
  * Invoked as: node panel_condition_harness.cjs <abs path to panel.js>
  * with NODE_PATH at openavc/web/programmer/node_modules so jsdom resolves and
  * { pairs: [[actual, target], ...], cases: [{ op, actual, target }, ...],
- *   keys: [{ keys, reading }, ...] } on stdin. Printed on stdout:
- * { <comparer>: [matched, ...] } with one answer per pair, `picks` with one
- * key (or null) per keys case for each map reader, the compare module's and
- * visibleWhen's answers per case, `zeroRow`, and `spellings`, the operator
- * spellings a visible_when knows.
+ *   keys: [{ keys, reading }, ...], references: [{ op, actual, value, state }, ...],
+ *   reads: [condition, ...] } on stdin (references and reads may be left out).
+ * Printed on stdout: { <comparer>: [matched, ...] } with one answer per pair,
+ * `picks` with one key (or null) per keys case for each map reader, the
+ * compare module's and visibleWhen's answers per case, `zeroRow`,
+ * `spellings`, the operator spellings a visible_when knows, and
+ * `references`: `holdsDecide`, `holdsSurface` and `visibleWhen` per reference
+ * case, `keys` per reads condition, and `redrawKeys`, the keys a visible_when
+ * holding each reads condition redraws on.
  */
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -155,7 +164,7 @@ const NONE = '\u0000none';
         },
     };
 
-    const { pairs, cases, keys } = JSON.parse(readFileSync(0, 'utf8'));
+    const { pairs, cases, keys, references = [], reads = [] } = JSON.parse(readFileSync(0, 'utf8'));
     const out = { spellings: [...visibility.OPERATORS.keys()], picks: {} };
     for (const [name, matches] of Object.entries(matchers)) {
         out[name] = pairs.map(([actual, target]) => matches(actual, target));
@@ -181,6 +190,22 @@ const NONE = '\u0000none';
     out.zeroRow = {
         atDraw: [zeroAtDraw(0), zeroAtDraw('0'), zeroAtDraw('')],
         afterReading: [zeroAfterReading(0), zeroAfterReading('0'), zeroAfterReading('')],
+    };
+    // A reference case's reading is the condition's own key, beside the
+    // state the case holds (a key with no value is left out of it).
+    const referenceState = (c) => ({ ...c.state, [KEY]: c.actual });
+    const readIn = (state) => (key) => state[key];
+    out.references = {
+        holdsDecide: references.map((c) => compare.holds(c.op, c.actual, c.value, readIn(c.state), compare.DECIDE)),
+        holdsSurface: references.map((c) => compare.holds(c.op, c.actual, c.value, readIn(c.state), compare.SURFACE)),
+        visibleWhen: references.map((c) => visibility.isShown(
+            visibility.visibilityOf({ bindings: { show: { visible_when: { key: KEY, operator: c.op, value: c.value } } } }),
+            referenceState(c),
+        )),
+        keys: reads.map((condition) => compare.conditionKeys(condition)),
+        redrawKeys: reads.map((condition) => visibility.visibilityOf(
+            { bindings: { show: { visible_when: condition } } },
+        )._keys),
     };
     process.stdout.write(JSON.stringify(out), () => process.exit(0));
 })().catch((e) => {

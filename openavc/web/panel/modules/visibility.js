@@ -10,7 +10,9 @@
  * How each operator compares is the server's rule (core/condition_eval.py),
  * through the panel's copy of it, modules/compare.js, in the surface mode: a
  * reading that has not arrived is unequal to every value, so a control shown
- * while `power != on` shows before the projector reports.
+ * while `power != on` shows before the projector reports. A value that names
+ * a key (`$var.wanted`) compares with what that key holds, and a change to
+ * that key draws the control again too.
  *
  * The rule worth knowing before changing anything here: the operator
  * spellings are a contract. The page review (ui/page_review.py) and the
@@ -21,7 +23,9 @@
  * spelling goes into those too. No DOM and no panel state.
  */
 
-import { OPERATOR_SPELLINGS, SURFACE, evalOperator } from './compare.js';
+import {
+    OPERATOR_SPELLINGS, SURFACE, conditionKeys, evalOperator, holds,
+} from './compare.js';
 
 /** Each operator spelling a condition may use, and the operator it names. */
 export const OPERATORS = OPERATOR_SPELLINGS;
@@ -41,17 +45,15 @@ export function visibilityOf(element) {
     if (!vw) return null;
     const conditions = vw.all || vw.any || [vw];
     const mode = vw.any ? 'any' : 'all';
-    const keys = conditions.map(c => c.key).filter(Boolean);
+    const keys = [...new Set(conditions.flatMap((c) => conditionKeys(c || {})))];
     return { conditions, mode, _keys: keys };
 }
 
 /** Whether a control with this visibility is shown while state reads `state`. */
 export function isShown(visibility, state) {
     const conditions = visibility.conditions || [];
-    const check = (cond) => {
-        const actual = state[cond.key];
-        return conditionHolds(cond.operator || 'eq', actual, cond.value);
-    };
+    const read = (key) => state[key];
+    const check = (cond) => holds(cond.operator || 'eq', read(cond.key), cond.value, read, SURFACE);
     return visibility.mode === 'any'
         ? conditions.some(check)
         : conditions.every(check);

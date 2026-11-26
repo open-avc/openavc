@@ -18,8 +18,13 @@
  * The panel shows and hides, so it reads in the rule's surface mode: a
  * reading that has not arrived is unequal to every value, and a control
  * shown while `power != on` shows before the projector reports. The acting
- * mode is here too, held as the same data, so the corpus pins both. No DOM
- * and no panel state.
+ * mode is here too, held as the same data, so the corpus pins both.
+ *
+ * A condition's value may name a key instead (`$var.wanted`): it is compared
+ * with what that key holds, and a key with no value is a reading that has
+ * not arrived (`holds`, run over
+ * tests/fixtures/condition_reference_cases.json with the other two copies).
+ * No DOM and no panel state.
  */
 
 import { asNumber } from './readings.js';
@@ -129,6 +134,41 @@ export function evalOperator(op, actual, target, mode = SURFACE) {
 /** Whether a reading equals an authored value; never while it has not arrived. */
 export function sameValue(actual, target) {
     return evalOperator('eq', actual, target);
+}
+
+/**
+ * The key a condition's value names (`$var.wanted` names `var.wanted`), or
+ * null for a value compared as written: anything but text that starts with
+ * `$` and goes on. `referenced_key` in core/value_resolver.py.
+ */
+export function referencedKey(value) {
+    return typeof value === 'string' && value.length > 1 && value.startsWith('$') ? value.slice(1) : null;
+}
+
+/** The keys a condition reads: its own, and the one its value names. A
+ *  change to either can change its answer. */
+export function conditionKeys(condition) {
+    const keys = condition.key ? [condition.key] : [];
+    const named = referencedKey(condition.value);
+    if (named !== null && !keys.includes(named)) keys.push(named);
+    return keys;
+}
+
+/**
+ * Whether `actual op value` holds for a reader in `mode`, a value that names
+ * a key (`referencedKey`) compared with what `read(key)` holds there. A key
+ * with no value is a reading that has not arrived: never equal, and
+ * not-equal only in the surface mode, as a reading that has not arrived is.
+ * `holds` in core/condition_eval.py.
+ */
+export function holds(op, actual, value, read, mode = SURFACE) {
+    const named = referencedKey(value);
+    if (named === null) return evalOperator(op, actual, value, mode);
+    const target = read(named);
+    if (!notArrived(target)) return evalOperator(op, actual, target, mode);
+    const canonical = OPERATOR_SPELLINGS.get(op);
+    if (canonical === 'truthy' || canonical === 'falsy') return evalOperator(canonical, actual, null, mode);
+    return canonical === 'ne' && MODES.get(mode) === true;
 }
 
 const byWords = (a, b) => {
