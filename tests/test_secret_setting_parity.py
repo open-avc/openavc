@@ -234,7 +234,8 @@ def test_every_programmer_form_names_the_field_it_asks_about():
 #: what it masks away from this system, and why. Nothing else reads the name
 #: list: what decides a secret is the declaration (``drivers/secret_params``).
 NAME_LIST_READERS: dict[str, str] = {
-    "utils/log_redaction.py": "the list itself, the log's own masking, and a state value on its way out",
+    "utils/log_redaction.py": "the list itself, and the log's own masking",
+    "utils/secret_exits.py": "a state value on its way out of this system",
     "audit/commands.py": "the Device Audit's report",
     "support/problem_report.py": "a problem report",
     "core/device_logins.py":

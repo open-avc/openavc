@@ -140,6 +140,8 @@ async def test_a_driver_s_stream_address_reaches_a_panel_with_its_login(registry
 # and the exit-named doors in front of it call them.
 _READS = {"redact_for", "redact_any", "secrets_for", "all_secrets"}
 _REGISTRY_MODULE = PACKAGE / "utils" / "log_redaction.py"
+# The rules built on the registry for each shape a value leaves in.
+_EXIT_RULES_MODULE = PACKAGE / "utils" / "secret_exits.py"
 
 
 def _registry_reads(source: str) -> list[str]:
@@ -179,9 +181,9 @@ def test_the_sweep_sees_a_direct_read():
 # --- No exit masks by a rule of its own ------------------------------------------
 
 # The masking helpers below are the redaction module's own steps: an exit asks
-# for what it may carry (the registry's masked / to_mask, or state_value_as,
-# text_as and config_as, which ask the table), never one step alone, so a
-# second rule cannot grow beside the table.
+# for what it may carry (the registry's masked / to_mask, or secret_exits'
+# state_value_as, text_as and config_as, which ask the table), never one step
+# alone, so a second rule cannot grow beside the table.
 _STEPS = {"mask_url_password", "redact_text", "mask_secrets_by_name", "redact_any", "redact_for"}
 
 
@@ -207,7 +209,7 @@ def test_no_exit_masks_by_a_rule_of_its_own():
     found = [
         f"{path.relative_to(PACKAGE.parent)}:{step}"
         for path in sorted(PACKAGE.rglob("*.py"))
-        if path != _REGISTRY_MODULE
+        if path not in (_REGISTRY_MODULE, _EXIT_RULES_MODULE)
         for step in _steps_taken(path.read_text(encoding="utf-8"))
     ]
     assert not found, (

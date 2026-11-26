@@ -40,8 +40,8 @@ from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import STATE_BATCH, build_state_batch_payload
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.utils.log_redaction import state_value_as
 from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import state_value_as
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ def is_cloud_excluded_key(key: str) -> bool:
 
 def cloud_state_value(key: str, value: Any) -> Any:
     """The state value under ``key`` as it may leave this system for the
-    cloud: ``log_redaction.state_value_as`` for the cloud, so a value under a
+    cloud: ``secret_exits.state_value_as`` for the cloud, so a value under a
     credential's name, the password of a stream address and every registered
     secret go masked. The relay, the alert monitor and the AI read tools all
     send state through this.

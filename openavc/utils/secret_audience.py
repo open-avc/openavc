@@ -17,10 +17,10 @@ three may:
 Every other exit may not carry one. An exit asks for what it may carry,
 naming itself: ``SecretRegistry.masked`` or ``SecretRegistry.to_mask`` for
 the registered values, which one collector gathers from every place a secret
-is held (``utils/log_redaction``), or the rules built on them, a state value
-(``state_value_as``), a text (``text_as``) and a config nothing declares the
-secrets of (``config_as``). Those are the only reads of the registry's values
-and the only masking outside the redaction module
+is held (``utils/log_redaction``), or the rules built on them in
+``utils/secret_exits``, for a state value, a text and a config nothing
+declares the secrets of. Those are the only reads of the registry's values
+and the only masking outside those two modules
 (``tests/test_secret_audience.py`` sweeps the code for any other). A setup
 run's result is still sent as it was given; this table is the rule it is
 held to.

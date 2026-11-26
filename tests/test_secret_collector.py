@@ -241,7 +241,7 @@ def test_the_state_log_line_masks_a_stream_address_s_password(caplog):
 
 
 def test_driver_state_on_this_system_is_given_as_it_is():
-    from openavc.utils.log_redaction import state_value_as
+    from openavc.utils.secret_exits import state_value_as
 
     get_secret_registry().add_runtime_secret("acme_widget", "streampw55")
     assert state_value_as(Exit.DRIVER_STATE, "device.acme_widget.auth_token", "tok-998877") == "tok-998877"
@@ -273,7 +273,11 @@ def test_a_plugin_config_sent_back_as_it_was_read_keeps_its_saved_text():
     get_secret_registry().set_project_secrets({"Bridge-Pass-1"})
     stored = {"password": "Bridge-Pass-1", "notes": "fallback login Bridge-Pass-1"}
     read = _masked(stored)["config"]
-    restored, unresolved = keep_masked_secrets({**read, "port": 1884}, stored, where=Exit.CLOUD)
+    from openavc.utils.secret_exits import text_as
+
+    restored, unresolved = keep_masked_secrets(
+        {**read, "port": 1884}, stored, shown=lambda text: text_as(Exit.CLOUD, text),
+    )
     assert unresolved == []
     assert restored == {**stored, "port": 1884}
 

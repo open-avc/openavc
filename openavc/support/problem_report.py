@@ -101,12 +101,12 @@ from openavc.utils.log_redaction import (
     get_secret_registry,
     is_secret_key,
     mask_secret_fields,
-    named_secret_state,
     secret_config_keys,
     secret_text,
     secret_values,
 )
 from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import named_secret_state
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -230,7 +230,7 @@ class Snapshot:
         """Values the driver wrote under a credential's name (``auth_token``,
         ``password``, and, the report being about this one device, a
         username), now or in the history: what every exit that may not carry
-        a secret masks of state (``log_redaction.named_secret_state``)."""
+        a secret masks of state (``secret_exits.named_secret_state``)."""
         pairs = [(k, v) for k, v in self.state.items()]
         for row in self.history:
             pairs += [(row.get("key"), row.get("old_value")), (row.get("key"), row.get("new_value"))]

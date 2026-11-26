@@ -44,8 +44,9 @@ from openavc.drivers.setting_model import read_setting
 # property check and the device audit import it from here.
 from openavc.drivers.spec import PLATFORM_DEVICE_KEYS as PLATFORM_DEVICE_KEYS
 from openavc.drivers.spec import transport_has
-from openavc.utils.log_redaction import redact_config, text_as
+from openavc.utils.log_redaction import redact_config
 from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import text_as
 
 if TYPE_CHECKING:
     from openavc.core.state_store import StateStore
@@ -102,7 +103,7 @@ def _orphan_summary(record: DeviceRecord) -> dict[str, Any]:
 def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
     """An orphaned device's config as the Programmer and the cloud AI may
     carry it: every credential masked by name, every other text as
-    ``log_redaction.text_as`` gives it (a stream address's password, any
+    ``secret_exits.text_as`` gives it (a stream address's password, any
     secret the system holds), and each login saved on this system shown as
     the marker rather than masked."""
     masked = _redact_config(config)

@@ -7,7 +7,7 @@ Programmer's Log (``PluginLoader.error_for_cloud``). The Programmer's plugin
 card still shows the plugin's text as it stands.
 
 For the same reason a plugin's passwords and keys never go into an answer: a
-config comes back as the cloud may carry it (``log_redaction.config_as``), a
+config comes back as the cloud may carry it (``secret_exits.config_as``), a
 field named like one as ``***`` at any depth and every secret the system holds
 masked in the rest, and a config sent back with ``***`` still in a field keeps
 the saved value there. Nor is one taken from the conversation:
@@ -22,12 +22,9 @@ from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_change, apply_tool_edit
 from openavc.core.plugin_extension_rules import plugin_namespace
-from openavc.utils.log_redaction import (
-    config_as,
-    keep_masked_secrets,
-    typed_secrets,
-)
+from openavc.utils.log_redaction import keep_masked_secrets, typed_secrets
 from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import config_as, text_as
 
 # Said with a config that had something masked, so the next write sends it back.
 MASKED_NOTE = (
@@ -378,7 +375,8 @@ class PluginToolsMixin:
         # The config the AI read had its passwords as ***; one sent back
         # unchanged means keep the saved value, never "the password is ***".
         new_config, unresolved = keep_masked_secrets(
-            new_config, engine.project.plugins[plugin_id].config, where=Exit.CLOUD,
+            new_config, engine.project.plugins[plugin_id].config,
+            shown=lambda text: text_as(Exit.CLOUD, text),
         )
         if unresolved:
             return {

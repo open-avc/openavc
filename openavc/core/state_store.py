@@ -49,8 +49,9 @@ from fnmatch import fnmatch
 from time import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from openavc.utils.log_redaction import REDACTED, named_secret_state, state_value_as
+from openavc.utils.log_redaction import REDACTED
 from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import named_secret_state, state_value_as
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ log = get_logger(__name__)
 
 def _loggable(key: str, value: Any) -> str:
     """A state value as the debug log shows it: as the log may carry it
-    (``log_redaction.state_value_as``), a value under a credential's name as
+    (``secret_exits.state_value_as``), a value under a credential's name as
     ``***`` and a stream address without its password. A username is shown,
     as it is in every other log line."""
     if named_secret_state(key, value):

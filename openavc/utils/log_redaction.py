@@ -97,7 +97,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from urllib.parse import quote, quote_plus
 
 from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
@@ -184,69 +184,6 @@ def mask_url_password(text: str) -> str:
     return _URL_PASSWORD.sub(lambda m: m.group("head") + REDACTED, text)
 
 
-def named_secret_state(key: Any, value: Any, *, usernames: bool = False) -> bool:
-    """Whether ``value`` is text a driver wrote to state under a credential's
-    name (``auth_token``, ``password``: :func:`is_secret_key` on the key's
-    last part). A username names an account, so it counts only for an exit
-    about its one device (``usernames``, a report)."""
-    if not isinstance(value, str) or not value:
-        return False
-    name = str(key).rsplit(".", 1)[-1]
-    return is_secret_key(name) and (usernames or name.lower() not in IDENTITY_KEYS)
-
-
-def state_value_as(where: Any, key: Any, value: Any) -> Any:
-    """THE state value as the exit ``where`` may carry it
-    (:mod:`~openavc.utils.secret_audience`).
-
-    Driver state on this system may carry a secret: a camera's stream address
-    holds its login so a panel can play it, and is given as it is. Every
-    other exit (the log, the cloud's relay, alerts and AI tools) gets a value
-    under a credential's name as :data:`REDACTED`
-    (:func:`named_secret_state`), and text with the password of any
-    ``scheme://user:password@host`` address and every registered secret
-    masked. Anything else is returned as it is: a flag, a number, nothing.
-    """
-    if may_carry_secret(where):
-        return value
-    if named_secret_state(key, value):
-        return REDACTED
-    return text_as(where, value)
-
-
-def text_as(where: Any, text: Any) -> Any:
-    """THE text as the exit ``where`` may carry it: as it is where it may
-    carry a secret; else with the password of any
-    ``scheme://user:password@host`` address and every registered secret
-    masked. Anything but text is returned as it is."""
-    if may_carry_secret(where) or not isinstance(text, str) or not text:
-        return text
-    if "@" in text:
-        text = mask_url_password(text)
-    registry = get_secret_registry()
-    return registry.masked(where, text) if registry.has_secrets() else text
-
-
-def _text_leaves(value: Any, shown: Any) -> Any:
-    """``value`` with each text inside it, at any depth, as ``shown`` gives it."""
-    if isinstance(value, dict):
-        return {key: _text_leaves(item, shown) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_text_leaves(item, shown) for item in value]
-    return shown(value) if isinstance(value, str) and value != REDACTED else value
-
-
-def config_as(where: Any, config: Any) -> Any:
-    """A config nothing declares the secrets of (a plugin's, an orphaned
-    device's) as the exit ``where`` may carry it: each field named like a
-    credential as :data:`REDACTED` (:func:`mask_secrets_by_name`) and every
-    other text as :func:`text_as` gives it. :func:`keep_masked_secrets`
-    with the same ``where`` is the way back."""
-    if may_carry_secret(where):
-        return config
-    return _text_leaves(mask_secrets_by_name(config), lambda text: text_as(where, text))
-
-
 def mask_secrets_by_name(value: Any, _secret: bool = False) -> Any:
     """A copy of a nested config with every credential shown as :data:`REDACTED`.
 
@@ -297,7 +234,7 @@ def _matching_item(item: Any, stored: list, index: int) -> Any:
 
 
 def keep_masked_secrets(
-    incoming: Any, stored: Any, _path: str = "", _secret: bool = False, *, where: Any = None,
+    incoming: Any, stored: Any, *, shown: Callable[[str], str] | None = None,
 ) -> tuple[Any, list[str]]:
     """Put back each saved credential that ``incoming`` carries as :data:`REDACTED`.
 
@@ -306,54 +243,70 @@ def keep_masked_secrets(
     it still says ``***``, never "set the password to ``***``". Returns the
     config to save and the places (``streams[1].password``) where ``***`` came
     back with no saved value to stand for; a caller refuses the write rather
-    than store the marker as somebody's password. With ``where``, a text the
-    read showed as :func:`config_as` gave it for that exit (a registered
-    secret quoted in a field of its own) keeps the saved text too.
+    than store the marker as somebody's password. With ``shown`` (how the
+    read showed each other text: ``secret_exits.text_as`` for its exit), a
+    text sent back as it was shown keeps the saved text too.
     """
-    unresolved: list[str] = []
-    if isinstance(incoming, dict):
-        saved = stored if isinstance(stored, dict) else {}
-        out = {}
-        for key, item in incoming.items():
-            out[key], missed = keep_masked_secrets(
-                item, saved.get(key), f"{_path}.{key}" if _path else str(key),
-                _secret or _named_secret(key), where=where,
+    keeper = _Keeper(shown)
+    return keeper.keep(incoming, stored, "", False), keeper.unresolved
+
+
+class _Keeper:
+    """One walk of :func:`keep_masked_secrets`: what it put back, and where
+    ``***`` stood for nothing saved."""
+
+    def __init__(self, shown: Callable[[str], str] | None) -> None:
+        self.shown = shown
+        self.unresolved: list[str] = []
+
+    def keep(self, incoming: Any, stored: Any, path: str, secret: bool) -> Any:
+        if isinstance(incoming, dict):
+            return self._mapping(incoming, stored if isinstance(stored, dict) else {}, path, secret)
+        if isinstance(incoming, list):
+            return self._list(incoming, stored if isinstance(stored, list) else [], path, secret)
+        if not isinstance(incoming, str) or REDACTED not in incoming:
+            return incoming
+        return self._leaf(incoming, stored, path, secret)
+
+    def _mapping(self, incoming: dict, saved: dict, path: str, secret: bool) -> dict:
+        return {
+            key: self.keep(
+                item, saved.get(key), f"{path}.{key}" if path else str(key),
+                secret or _named_secret(key),
             )
-            unresolved += missed
-        return out, unresolved
-    if isinstance(incoming, list):
-        saved_list = stored if isinstance(stored, list) else []
-        out_list = []
-        for index, item in enumerate(incoming):
-            restored, missed = keep_masked_secrets(
-                item, _matching_item(item, saved_list, index),
-                f"{_path}[{index}]", _secret, where=where,
-            )
-            out_list.append(restored)
-            unresolved += missed
-        return out_list, unresolved
-    if not isinstance(incoming, str) or REDACTED not in incoming:
-        return incoming, unresolved
-    if incoming == REDACTED and _secret:
-        if (
-            isinstance(stored, (str, int, float))
-            and not isinstance(stored, bool)
-            and stored not in ("", REDACTED)
-        ):
-            return stored, unresolved
-        return incoming, [_path]
-    if where is not None and isinstance(stored, str) and text_as(where, stored) == incoming:
-        return stored, unresolved
-    masked_url = any(
-        m.group("password") == REDACTED for m in _URL_PASSWORD.finditer(incoming)
-    )
-    if not masked_url:
-        return incoming, unresolved
-    if isinstance(stored, str) and mask_url_password(stored) == incoming:
-        return stored, unresolved
-    # The address changed around a masked password: the saved one cannot be
-    # known to belong to the new address.
-    return incoming, [_path]
+            for key, item in incoming.items()
+        }
+
+    def _list(self, incoming: list, saved: list, path: str, secret: bool) -> list:
+        return [
+            self.keep(item, _matching_item(item, saved, index), f"{path}[{index}]", secret)
+            for index, item in enumerate(incoming)
+        ]
+
+    def _leaf(self, incoming: str, stored: Any, path: str, secret: bool) -> Any:
+        """A text holding ``***``: the saved value it stands for, or itself."""
+        if incoming == REDACTED and secret:
+            return self._saved(stored, path)
+        if not isinstance(stored, str):
+            return self._address(incoming, path)
+        if self.shown is not None and self.shown(stored) == incoming:
+            return stored
+        if mask_url_password(stored) == incoming:
+            return stored
+        return self._address(incoming, path)
+
+    def _saved(self, stored: Any, path: str) -> Any:
+        if secret_text(stored) not in (None, "", REDACTED):
+            return stored
+        self.unresolved.append(path)
+        return REDACTED
+
+    def _address(self, incoming: str, path: str) -> str:
+        """An address whose password came back as ``***`` around a changed
+        address: the saved one cannot be known to belong to it."""
+        if any(m.group("password") == REDACTED for m in _URL_PASSWORD.finditer(incoming)):
+            self.unresolved.append(path)
+        return incoming
 
 
 def typed_secrets(
@@ -471,16 +424,19 @@ def secret_values(
         if isinstance(value, dict):
             values |= secret_values(value, floor=floor, usernames=usernames)
             continue
-        name = str(key)
-        if name in declared:
-            text = secret_text(value)
-        elif is_secret_key(name) and (usernames or name.lower() not in IDENTITY_KEYS):
-            text = value if isinstance(value, str) else None
-        else:
-            continue
+        text = _collected(str(key), value, declared, usernames)
         if text is not None and len(text) >= max(floor, 1):
             values.add(text)
     return values
+
+
+def _collected(name: str, value: Any, declared: set[str], usernames: bool) -> str | None:
+    """The field ``name``'s value as :func:`secret_values` takes it, or None."""
+    if name in declared:
+        return secret_text(value)
+    if not isinstance(value, str) or not is_secret_key(name):
+        return None
+    return value if usernames or name.lower() not in IDENTITY_KEYS else None
 
 
 def collect_secret_values(

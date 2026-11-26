@@ -71,25 +71,31 @@ def _config_schema(driver_id: Any) -> dict[str, Any] | None:
 
 
 def secrets_held_in_the_clear(project: Any) -> set[str]:
-    """Every secret value ``project`` holds in the clear, by the one
-    collector (``log_redaction.secret_values``): each device's settings on
-    its driver's ``config_schema``, each connection row's, each plugin's
-    config, and the logins its plugins and drivers declare
-    (``device_logins.find_logins``). A device that runs registers its own as
-    its driver is built; these cover the rest, a disabled device, one waiting
-    for its driver, a connection no device uses yet, a plugin's. A marker is
-    no secret."""
+    """Every secret value ``project`` holds in the clear: its settings by the
+    one collector (``_settings_held``) and the logins its drivers and plugins
+    declare (``device_logins.find_logins``). A device that runs registers its
+    own as its driver is built; these cover the rest, a disabled device, one
+    waiting for its driver, a connection no device uses yet, a plugin's. A
+    marker is no secret."""
+    values = _settings_held(project) | {
+        value for found in find_logins(project) for value in found.fields.values()
+        if isinstance(value, str)
+    }
+    return {v for v in values if v != SAVED_LOGIN and not saved_params.is_any_marker(v)}
+
+
+def _settings_held(project: Any) -> set[str]:
+    """The secret values in ``project``'s settings, by
+    ``log_redaction.secret_values``: each connection row's, each device's on
+    its driver's ``config_schema``, each plugin's config."""
     values: set[str] = set()
     for connection in (getattr(project, "connections", None) or {}).values():
         values |= secret_values(connection if isinstance(connection, dict) else None)
     for device in getattr(project, "devices", None) or []:
-        config = getattr(device, "config", None)
-        values |= secret_values(config, _config_schema(getattr(device, "driver", None)))
+        values |= secret_values(getattr(device, "config", None), _config_schema(getattr(device, "driver", None)))
     for _plugin_id, config in plugin_configs(project):
         values |= secret_values(config)
-    for found in find_logins(project):
-        values |= {v for v in found.fields.values() if isinstance(v, str)}
-    return {v for v in values if v != SAVED_LOGIN and not saved_params.is_any_marker(v)}
+    return values
 
 
 class ProjectLoginsMixin:
