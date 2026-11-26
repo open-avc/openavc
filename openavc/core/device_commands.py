@@ -155,9 +155,11 @@ class DeviceCommandsMixin:
         passes, so no door can run one by accident.
 
         ``saved`` is a macro step or a control's action naming the parameters
-        it saved on this system (``core/saved_params.py``); their values are
-        filled in here. A saved-on-this-system marker in any other parameter,
-        or from any other caller, is refused with CommandParamError.
+        it saved on this system, or the command route's ``saved`` list, which
+        the Programmer's Test of an action fills in (``core/saved_params.py``);
+        their values are filled in here where the driver marks the parameter
+        secret. Any other saved-on-this-system marker is refused with
+        CommandParamError.
         """
         driver = self._live_driver(device_id)
         # Before the connected-gate on purpose: a command name the driver does

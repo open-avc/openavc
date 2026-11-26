@@ -147,10 +147,12 @@ def fill_saved_params(
     """``params`` with each value saved on this system filled in, or refused.
 
     ``fill`` answers a parameter's saved value from its marker, and only for a
-    parameter whose stored value in the sending step or action was that
-    marker (``saved_params.filler``); it is asked only where the driver marks
-    the parameter secret. A marker of either kind it does not fill (one sent
-    from another door, copied into a parameter that is not secret, reached
+    parameter its sender named as saved: one whose stored value in the
+    sending step or action was that marker, or one the command route's
+    ``saved`` list names (the Programmer's Test of an action)
+    (``saved_params.filler``); it is asked only where the driver marks the
+    parameter secret. A marker of either kind it does not fill (one sent
+    without being named, copied into a parameter that is not secret, reached
     through a variable, or with nothing saved behind it) raises
     CommandParamError, and nothing is sent: a device is never handed a
     marker as its key.

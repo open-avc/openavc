@@ -33,14 +33,18 @@ a saved value.
 How it is sent
 --------------
 A step or an action tells ``DeviceManager.send_command`` which of its own
-parameters held a marker (``saved_kwargs``). The fill is in
-``core/command_gates.py`` (``fill_saved_params``), against the live driver's
-declaration: a value is filled in only for a parameter the step itself saved
-and the driver marks secret. Any marker still in the parameters then is
-refused before anything is sent, so a marker sent from any other door, copied
-into a parameter that is not secret, reached through a variable, or with
-nothing saved behind it never reaches a device, and the device is never sent
-a marker as its key. The log, a simulated press and a step's progress keep the
+parameters held a marker (``saved_kwargs``). The one other sender that names
+them is the command route's ``saved`` list (``api/models.CommandRequest``),
+which the Programmer's Test of an action fills in, saved or not; any caller
+allowed to send a command may name one there, which reaches no further than
+saving the marker in a step would. The fill is in ``core/command_gates.py``
+(``fill_saved_params``), against the live driver's declaration: a value is
+filled in only for a parameter its sender named as saved and the driver marks
+secret, when a value is saved behind it. Any marker still in the parameters
+then is refused before anything is sent, so a marker sent without being named
+(a script, the WebSocket, the AI), copied into a parameter that is not secret,
+reached through a variable, or with nothing saved behind it never reaches a
+device, and the device is never sent a marker as its key. The log, a simulated press and a step's progress keep the
 marker: they are handed the parameters before the fill.
 
 Which parameters are secret is the one answer the send gives too

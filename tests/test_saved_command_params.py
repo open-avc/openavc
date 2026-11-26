@@ -9,11 +9,13 @@ pinned here:
   panel is sent, and what the AI reads back.
 - Every way it comes in moves it: an edit, a project loaded with one in the
   clear, a Project Library copy.
-- It still runs: a macro step, a group step and a control's press send the
-  saved value; two steps holding the same marker both do.
+- It still runs: a macro step, a group step, a control's press and the Test
+  of an action not yet saved send the saved value; two steps holding the same
+  marker both do.
 - Nothing else sends it: a marker with nothing saved here, a marker sent from
-  any other door, one copied into a parameter the driver does not mark secret,
-  and one reached through a variable are refused, and nothing is sent.
+  any other door without being named as saved, one copied into a parameter the
+  driver does not mark secret, and one reached through a variable are refused,
+  and nothing is sent.
 - The log, a simulated press and a step's progress keep the marker.
 - Copies carry it as they carry a device login: a backup, an export sealed
   with a passphrase, a Project Library copy, and a rollback, which puts the
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -532,3 +535,15 @@ async def test_testing_an_unsaved_action_fills_in_its_saved_key(engine):
     assert plain.status_code == 400
     assert _AcmeStreamer.sent == [("enc1", "set_stream_key", {"channel": 1, "key": KEY})]
     _nowhere(sent.text)
+
+
+def test_the_driver_guide_says_what_fills_a_saved_value():
+    """The driver guide's account of a saved value is the send's: the step or
+    action that saved it fills it in, and so does the Test button beside an
+    action (the command door's ``saved`` list, above); the driver is never
+    sent the placeholder itself."""
+    guide = (Path(__file__).resolve().parents[1] / "docs" / "creating-drivers.md").read_text(encoding="utf-8")
+    [paragraph] = [line for line in guide.splitlines() if line.startswith("- `secret: true` masks the input")]
+    assert "**Test**" in paragraph
+    assert "never sent the placeholder" in paragraph
+    assert "any other way is refused" not in paragraph
