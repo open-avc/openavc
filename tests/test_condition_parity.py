@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from openavc.core.condition_eval import (
-    _OPERATOR_ALIASES,
+    OPERATOR_ALIASES,
     DECIDE,
     MODES,
     SURFACE,
@@ -103,4 +103,4 @@ def test_every_operator_comes_out_both_ways():
 
 def test_every_alias_is_in_the_corpus():
     used = {c["op"] for c in CASES}
-    assert set(_OPERATOR_ALIASES) <= used
+    assert set(OPERATOR_ALIASES) <= used

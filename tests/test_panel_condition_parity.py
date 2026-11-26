@@ -37,7 +37,7 @@ from pathlib import Path
 import pytest
 
 from openavc.core.condition_eval import (
-    _OPERATOR_ALIASES,
+    OPERATOR_ALIASES,
     DECIDE,
     SURFACE,
     eval_operator,
@@ -56,11 +56,11 @@ CASES = CORPUS["cases"]
 KEYS = CORPUS["keys"]
 
 #: Every spelling the rule takes: its own eight and the aliases onto them.
-RULE_SPELLINGS = {"eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy"} | set(_OPERATOR_ALIASES)
+RULE_SPELLINGS = {"eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy"} | set(OPERATOR_ALIASES)
 
 
 def _canonical(op: str) -> str:
-    return _OPERATOR_ALIASES.get(op, op)
+    return OPERATOR_ALIASES.get(op, op)
 
 
 def _pairs() -> list[tuple[str, object, object]]:

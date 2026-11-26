@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
-from openavc.core.condition_eval import eval_operator
+from openavc.core.condition_eval import CONDITIONAL, SKIP_IF, WAIT_UNTIL, judge
 from openavc.core.event_bus import check_project_emit
 from openavc.core.group_command import reached_nobody
 from openavc.core.macro_text import StepFailed
@@ -268,7 +268,7 @@ class MacroSteps:
         """
         action = step.get("action", "")
         skip_if = step.get("skip_if")
-        if skip_if and self._evaluate_condition(skip_if, run.context):
+        if skip_if and self._evaluate_condition(skip_if, SKIP_IF, run.context):
             log.debug(f"  Macro step skipped (skip_if): {action}")
             return None
         handler = self.STEP_HANDLERS.get(action)
@@ -281,16 +281,16 @@ class MacroSteps:
     # --- conditions and $-references ---
 
     def _evaluate_condition(
-        self, condition: dict[str, Any], context: dict[str, Any] | None = None
+        self, condition: dict[str, Any], where: str, context: dict[str, Any] | None = None,
     ) -> bool:
-        """Evaluate a step condition, its key read by ``read_operand``: a
-        ``trigger.<field>`` key from ``context``, the run's firing context
-        (None for a step handed none), any other key from the state."""
-        key = condition.get("key", "")
-        op = condition.get("operator", "eq")
-        target = condition.get("value")
-        actual = read_operand(key, state=self.state, context=context)
-        return eval_operator(op, actual, target)
+        """Whether a step's condition holds where it sits (``condition_eval``'s
+        ``judge``), its key read by ``read_operand``: a ``trigger.<field>``
+        key from ``context``, the run's firing context (None for a step handed
+        none), any other key from the state. A condition it cannot judge
+        raises, so the step fails before it acts."""
+        return judge(
+            condition, lambda key: read_operand(key, state=self.state, context=context), where,
+        )
 
     def _resolve_value(self, value: Any, context: dict[str, Any] | None = None) -> Any:
         """Resolve a $-reference to its current value.
@@ -423,7 +423,7 @@ class MacroSteps:
             raise RuntimeError(
                 f"Conditional nesting depth limit ({self._max_conditional_depth}) exceeded"
             )
-        result = self._evaluate_condition(condition, run.context)
+        result = self._evaluate_condition(condition, CONDITIONAL, run.context)
         await self._announce_branch(condition, result, run)
         branch = "then" if result else "else"
         steps = step.get(f"{branch}_steps") or []
@@ -528,7 +528,7 @@ class MacroSteps:
         """
         condition, timeout, on_timeout = _wait_until_args(step)
         key = condition.get("key", "")
-        if self._evaluate_condition(condition):
+        if self._evaluate_condition(condition, WAIT_UNTIL):
             # Already satisfied: no subscription, no wait.
             await self._report_wait(run, {
                 "condition_key": key,
@@ -563,7 +563,7 @@ class MacroSteps:
         satisfied = asyncio.Event()
 
         def _on_change(_k: str, _old: Any, _new: Any, _src: str) -> None:
-            if self._evaluate_condition(condition):
+            if self._evaluate_condition(condition, WAIT_UNTIL):
                 satisfied.set()
 
         sub_id = self.state.subscribe(key, _on_change)
@@ -578,7 +578,7 @@ class MacroSteps:
         try:
             # The value may have turned between the first check and the
             # subscription, when no change notification could reach it.
-            if self._evaluate_condition(condition):
+            if self._evaluate_condition(condition, WAIT_UNTIL):
                 satisfied.set()
             timed_out = not await _wait_event(satisfied, timeout)
         finally:

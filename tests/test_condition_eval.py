@@ -1,8 +1,25 @@
-"""Tests for condition evaluation operators."""
+"""Tests for condition evaluation: the operators, and a condition judged where it sits."""
 
 import pytest
 
-from openavc.core.condition_eval import eval_operator
+from openavc.core.condition_eval import (
+    ANY_CHANGE,
+    CONDITIONAL,
+    GUARD,
+    OPERATOR_ALIASES,
+    OPERATORS,
+    PLACES,
+    SKIP_IF,
+    STATE_TRIGGER,
+    WAIT_UNTIL,
+    ConditionIssue,
+    UnknownOperator,
+    canonical_operator,
+    condition_issues,
+    eval_operator,
+    judge,
+    state_condition,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -346,3 +363,83 @@ class TestCaseInsensitiveStrings:
         # A real bool on one side still coerces (unchanged by the case rule).
         assert eval_operator("eq", "on", True) is True
         assert eval_operator("eq", "On", True) is True
+
+
+# ---------------------------------------------------------------------------
+# A condition where it sits: judge, condition_issues
+# ---------------------------------------------------------------------------
+
+class TestOperatorNames:
+    def test_every_alias_names_an_operator(self):
+        assert set(OPERATOR_ALIASES.values()) <= set(OPERATORS)
+
+    @pytest.mark.parametrize("op", [*OPERATORS, *OPERATOR_ALIASES])
+    def test_each_spelling_reads_as_its_own_name(self, op):
+        assert canonical_operator(op) == OPERATOR_ALIASES.get(op, op)
+
+    @pytest.mark.parametrize("op", ["EQ", "Equals", "", None, ["eq"], {"eq": 1}, 1, ANY_CHANGE])
+    def test_anything_else_is_no_operator(self, op):
+        assert canonical_operator(op) is None
+
+    def test_an_unknown_operator_carries_it_as_written(self):
+        with pytest.raises(UnknownOperator) as raised:
+            eval_operator(["eq"], 1, 1)
+        assert raised.value.operator == ["eq"]
+        assert str(raised.value) == (
+            "Unknown condition operator: '['eq']'. "
+            "Valid operators: eq, ne, gt, lt, gte, lte, truthy, falsy"
+        )
+
+
+class TestJudge:
+    def test_it_reads_the_condition_s_key_through_read(self):
+        read: list[str] = []
+
+        def reader(key):
+            read.append(key)
+            return 5
+
+        assert judge({"key": "var.a", "operator": ">=", "value": 5}, reader, GUARD) is True
+        assert read == ["var.a"]
+
+    @pytest.mark.parametrize("where", [SKIP_IF, CONDITIONAL, WAIT_UNTIL, GUARD])
+    def test_an_operator_left_out_is_eq_and_any_is_no_operator(self, where):
+        assert judge({"key": "k", "value": 5}, lambda _k: 5, where) is True
+        with pytest.raises(UnknownOperator):
+            judge({"key": "k", "operator": ANY_CHANGE}, lambda _k: 5, where)
+        with pytest.raises(UnknownOperator):
+            judge({"key": "k", "operator": None, "value": 5}, lambda _k: 5, where)
+
+    @pytest.mark.parametrize("op", [ANY_CHANGE, "", None])
+    def test_a_state_trigger_s_any_holds_without_a_read(self, op):
+        def never(_key):
+            raise AssertionError("read")
+
+        assert judge({"key": "k", "operator": op}, never, STATE_TRIGGER) is True
+        assert judge({"key": "k"}, never, STATE_TRIGGER) is True
+
+    def test_a_state_trigger_judges_its_own_value(self):
+        trigger = {"state_key": "var.a", "state_operator": "eq", "state_value": "on"}
+        assert state_condition(trigger) == {"key": "var.a", "operator": "eq", "value": "on"}
+        assert state_condition(trigger, "trigger.new_value")["key"] == "trigger.new_value"
+        assert judge(state_condition(trigger), lambda _k: "ON", STATE_TRIGGER) is True
+        assert judge(state_condition(trigger), lambda _k: "off", STATE_TRIGGER) is False
+
+
+class TestConditionIssues:
+    def test_every_place_has_its_words(self):
+        assert set(PLACES) == {SKIP_IF, CONDITIONAL, WAIT_UNTIL, GUARD, STATE_TRIGGER}
+
+    @pytest.mark.parametrize("where", list(PLACES))
+    def test_a_condition_judge_reads_has_none(self, where):
+        assert condition_issues({"key": "var.a", "operator": "==", "value": 1}, where) == []
+
+    def test_a_state_trigger_takes_any_and_a_blank_operator(self):
+        for op in (ANY_CHANGE, "", None):
+            assert condition_issues({"key": "var.a", "operator": op}, STATE_TRIGGER) == []
+
+    def test_the_key_comes_before_the_operator(self):
+        assert condition_issues({"operator": "about"}, GUARD) == [
+            ConditionIssue("missing 'key'", "conditions.key"),
+            ConditionIssue("operator 'about' is not valid"),
+        ]

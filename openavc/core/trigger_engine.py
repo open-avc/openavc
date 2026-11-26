@@ -11,9 +11,15 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime, timezone
-from typing import Any, Awaitable, NamedTuple, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 
-from openavc.core.condition_eval import eval_operator
+from openavc.core.condition_eval import (
+    GUARD,
+    STATE_TRIGGER,
+    UnknownOperator,
+    judge,
+    state_condition,
+)
 from openavc.core.project_loader import TriggerConfig, reads_as
 from openavc.core.macro_engine import (
     _QUEUE_MAX_WAIT_SECONDS,
@@ -417,33 +423,25 @@ class TriggerEngine:
             return
         t = ts.trigger
 
-        # Check state_operator match. `or "any"`, not a `.get` default: a
-        # trigger saved without an operator carries the key with an explicit
-        # null (the project models dump every unset optional), so the default
-        # never applied and every fire died on `invalid operator 'None'`. The
-        # second reader of this field is in _delayed_fire below, and it was
-        # unreachable while this one refused -- so fixing one of them is what
-        # exposes the other.
-        op = t.get("state_operator") or "any"
-        target = t.get("state_value")
+        # The trigger's own condition, judged on the value the change carries,
+        # not what the state holds by now. An operator left out, blank or null
+        # is "any" (condition_eval.STATE_TRIGGER): every change fires.
         context = {"key": key, "old_value": old_value, "new_value": new_value}
-        if op != "any":
-            # The value the change carries, not what the state holds by now.
-            actual = read_operand(_CHANGED_VALUE, state=self.state, context=context)
-            try:
-                matched = eval_operator(op, actual, target)
-            except ValueError:
-                log.error(f"Trigger {t['id']} has invalid operator '{op}'")
-                self._spawn(self._skipped(t["id"], "invalid_condition", operator=op))
-                return
-            if not matched:
-                # Not a fire, so not a skipped one: the trigger fires when its
-                # key matches, and any other change to the key is not that.
-                log.debug(
-                    f"Trigger {t['id']} not fired — state_operator {op} not met "
-                    f"(actual={actual!r}, target={target!r})"
-                )
-                return
+        own = state_condition(t, _CHANGED_VALUE)
+        try:
+            matched = judge(own, self._reads(context), STATE_TRIGGER)
+        except UnknownOperator as bad:
+            log.error(f"Trigger {t['id']} has invalid operator '{bad.operator}'")
+            self._spawn(self._skipped(t["id"], "invalid_condition", operator=bad.operator))
+            return
+        if not matched:
+            # Not a fire, so not a skipped one: the trigger fires when its
+            # key matches, and any other change to the key is not that.
+            log.debug(
+                f"Trigger {t['id']} not fired — state_operator {own['operator']} not met "
+                f"(actual={new_value!r}, target={own['value']!r})"
+            )
+            return
 
         self._initiate_fire(ts, context)
 
@@ -659,22 +657,19 @@ class TriggerEngine:
                 # pattern (device.*.power) is one key under it: the pattern
                 # itself is no key, and reads as nothing.
                 changed_key = context.get("key", t.get("state_key", ""))
-                op = t.get("state_operator") or "any"  # see _on_state_change
-                target = t.get("state_value")
-                if op != "any":
-                    current = read_operand(changed_key, state=self.state, from_context=False)
-                    try:
-                        matched = eval_operator(op, current, target)
-                    except ValueError:
-                        log.error(f"Trigger {t['id']} has invalid operator '{op}'")
-                        await self._skipped(t["id"], "invalid_condition", operator=op)
-                        return
-                    if not matched:
-                        log.info(
-                            f"Trigger {t['id']} skipped — state reverted during delay"
-                        )
-                        await self._skipped(t["id"], "state_reverted")
-                        return
+                own = state_condition(t, changed_key)
+                try:
+                    matched = judge(own, self._reads(), STATE_TRIGGER)
+                except UnknownOperator as bad:
+                    log.error(f"Trigger {t['id']} has invalid operator '{bad.operator}'")
+                    await self._skipped(t["id"], "invalid_condition", operator=bad.operator)
+                    return
+                if not matched:
+                    log.info(
+                        f"Trigger {t['id']} skipped — state reverted during delay"
+                    )
+                    await self._skipped(t["id"], "state_reverted")
+                    return
 
             # Re-check guard conditions for all trigger types with delays
             conditions = t.get("conditions", [])
@@ -932,23 +927,29 @@ class TriggerEngine:
 
     # --- Condition evaluation ---
 
-    def _check_conditions(self, conditions: list[dict[str, Any]]) -> bool:
-        """Check all guard conditions. All must pass.
+    def _reads(self, context: dict[str, Any] | None = None) -> Callable[[str], Any]:
+        """What a condition's key reads here (``read_operand``): with a
+        ``context``, a ``trigger.`` key is that context's field; without one,
+        every key is a state key."""
+        if context is None:
+            return lambda key: read_operand(key, state=self.state, from_context=False)
+        return lambda key: read_operand(key, state=self.state, context=context)
 
-        A guard reads the state only (``read_operand`` with
-        ``from_context=False``): a ``trigger.`` key is a state key here, not
-        the firing context's field.
+    def _check_conditions(self, conditions: list[dict[str, Any]]) -> bool:
+        """Check all guard conditions (``condition_eval.judge``). All must pass.
+
+        A guard reads the state only: a ``trigger.`` key is a state key here,
+        not the firing context's field. One it cannot judge reads as not met.
         """
+        reads = self._reads()
         for cond in conditions:
-            key = cond.get("key", "")
-            op = cond.get("operator", "eq")
-            target = cond.get("value")
-            actual = read_operand(key, state=self.state, from_context=False)
             try:
-                if not eval_operator(op, actual, target):
+                if not judge(cond, reads, GUARD):
                     return False
-            except ValueError:
-                log.error(f"Invalid condition operator '{op}' for key '{key}'")
+            except UnknownOperator as bad:
+                log.error(
+                    f"Invalid condition operator '{bad.operator}' for key '{cond.get('key', '')}'"
+                )
                 return False
         return True
 

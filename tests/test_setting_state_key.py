@@ -286,7 +286,7 @@ _OWN_READING = re.compile(r"""\.get\(\s*["']state_key["']""")
 # Each module allowed one, and why: a ``state_key`` that is not a setting's.
 _OWN_READING_ALLOWED = {
     "core/trigger_engine.py": "a state-change trigger's key",
-    "core/macro_validation.py": "a state-change trigger's key",
+    "core/condition_eval.py": "a state-change trigger's key, in its own condition",
     "audit/command_text.py": "the audit's own effect and query records",
 }
 

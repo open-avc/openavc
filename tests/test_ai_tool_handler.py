@@ -366,16 +366,15 @@ class TestValidatorOperatorAliases:
     """Validator should accept all canonical names plus condition_eval aliases."""
 
     def test_condition_eval_aliases_in_valid_set(self):
-        from openavc.core.condition_eval import _OPERATOR_ALIASES
-        from openavc.core.macro_validation import VALID_CONDITION_OPS, VALID_STATE_TRIGGER_OPS
+        from openavc.core.condition_eval import OPERATOR_ALIASES, PLACES, condition_issues
 
-        for alias in _OPERATOR_ALIASES:
-            assert alias in VALID_CONDITION_OPS, (
-                f"Alias '{alias}' is normalized by condition_eval but rejected "
-                f"by the AI validator — drift will silently break AI tool calls "
-                f"that pass through existing macros."
-            )
-            assert alias in VALID_STATE_TRIGGER_OPS
+        for alias in OPERATOR_ALIASES:
+            for where in PLACES:
+                assert condition_issues({"key": "var.x", "operator": alias}, where) == [], (
+                    f"Alias '{alias}' is normalized by condition_eval but rejected "
+                    f"at {where} by the AI validator — drift will silently break AI "
+                    f"tool calls that pass through existing macros."
+                )
 
     def test_conditional_step_accepts_alias(self):
         from openavc.core.macro_validation import validate_macro_step

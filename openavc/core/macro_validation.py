@@ -4,7 +4,9 @@ The Pydantic models in ``project_loader`` check a macro's *shape* (field names
 and types). These rules check its *meaning*: that the step action exists, that
 the fields that action needs are filled in, that the command it names can
 actually run, that operator and trigger-type names are ones the runtime
-understands, and that referenced ids resolve.
+understands, and that referenced ids resolve. What a condition needs where it
+sits, and the sentence for what it lacks, is ``condition_eval``'s
+(``condition_issues``), the rule the runtime judges it by.
 
 It lives in core, not next to a caller, because more than one door creates
 macros and they must agree on what a valid macro is. Previously these rules
@@ -36,7 +38,15 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
+from openavc.core.condition_eval import (
+    CONDITIONAL,
+    GUARD,
+    SKIP_IF,
+    STATE_TRIGGER,
+    WAIT_UNTIL,
+    condition_issues,
+    state_condition,
+)
 from openavc.core.event_bus import check_project_emit, silent_pattern_sentence, silent_platform_pattern
 from openavc.core.project_loader import SECONDS_MIN, MacroStep, TriggerConfig, choice_rule
 from openavc.core.state_store import (
@@ -97,21 +107,6 @@ STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 # The words the schema declares (project_loader.OneOf); it takes any other and
 # keeps it as written, so these say which ones run.
 VALID_TRIGGER_TYPES = frozenset(choice_rule(TriggerConfig, "type").words)
-# Accept both canonical operator names and the user-facing aliases that
-# condition_eval normalizes at runtime (==, !=, >=, equals, greater_than, …).
-# Otherwise the AI tools reject macros loaded from human-edited project files
-# that use the aliases the project format docs and triggerHelpers emit.
-CANONICAL_CONDITION_OPS = frozenset((
-    "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
-))
-VALID_CONDITION_OPS = frozenset(CANONICAL_CONDITION_OPS | _COND_ALIASES.keys())
-VALID_STATE_TRIGGER_OPS = frozenset({"any"} | VALID_CONDITION_OPS)
-
-
-def _takes(ops: frozenset[str], op: Any) -> bool:
-    """Whether ``op`` is one of ``ops``; an operator that is not text is none."""
-    return isinstance(op, str) and op in ops
-
 VALID_OVERLAP_MODES = frozenset(choice_rule(TriggerConfig, "overlap").words)
 _ON_TIMEOUT_WORDS = choice_rule(MacroStep, "on_timeout").words
 
@@ -200,19 +195,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
             ))
 
     if action == "conditional":
-        cond = step.get("condition")
-        if isinstance(cond, dict):
-            if not cond.get("key"):
-                found.append(_finding(
-                    path, "conditional condition requires 'key'",
-                    action=action, missing="condition.key",
-                ))
-            op = cond.get("operator", "eq")
-            if not _takes(VALID_CONDITION_OPS, op):
-                found.append(_finding(
-                    path, f"condition operator '{op}' is not valid",
-                    action=action,
-                ))
+        found.extend(_condition_findings(step.get("condition"), CONDITIONAL, path, action))
         # Recursively validate then/else steps
         for branch in ("then_steps", "else_steps"):
             branch_steps = step.get(branch)
@@ -222,19 +205,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
                         found.extend(_step_findings(sub, f"{path}.{branch}[{i}]", lookups))
 
     if action == "wait_until":
-        cond = step.get("condition")
-        if isinstance(cond, dict):
-            if not cond.get("key"):
-                found.append(_finding(
-                    path, "wait_until condition requires 'key'",
-                    action=action, missing="condition.key",
-                ))
-            op = cond.get("operator", "eq")
-            if not _takes(VALID_CONDITION_OPS, op):
-                found.append(_finding(
-                    path, f"wait_until condition operator '{op}' is not valid",
-                    action=action,
-                ))
+        found.extend(_condition_findings(step.get("condition"), WAIT_UNTIL, path, action))
         # timeout is required as a field, but may be null to mean "never time out"
         if "timeout" not in step:
             found.append(_finding(
@@ -256,21 +227,21 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
                 action=action,
             ))
 
-    # Validate skip_if guard
-    skip_if = step.get("skip_if")
-    if isinstance(skip_if, dict):
-        if not skip_if.get("key"):
-            found.append(_finding(
-                path, "skip_if requires 'key'", action=action, missing="skip_if.key",
-            ))
-        op = skip_if.get("operator", "eq")
-        if not _takes(VALID_CONDITION_OPS, op):
-            found.append(_finding(
-                path, f"skip_if operator '{op}' is not valid",
-                action=action,
-            ))
-
+    found.extend(_condition_findings(step.get("skip_if"), SKIP_IF, path, action))
     return found
+
+
+def _condition_findings(
+    condition: Any, where: str, path: str, action: str,
+) -> list[dict[str, Any]]:
+    """What a condition at ``where`` lacks (``condition_eval.condition_issues``),
+    as findings. Nothing for one that is not a mapping: the step holds none."""
+    if not isinstance(condition, Mapping):
+        return []
+    return [
+        _finding(path, issue.sentence, action=action, missing=issue.missing)
+        for issue in condition_issues(condition, where)
+    ]
 
 
 def _refused_emit_findings(step: dict, path: str) -> list[dict[str, Any]]:
@@ -418,41 +389,16 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                     action=ttype,
                 ))
     elif ttype == "state_change":
-        if not trigger.get("state_key"):
-            found.append(_finding(
-                path, "state_change trigger requires 'state_key'",
-                action=ttype, missing="state_key",
-            ))
-        op = trigger.get("state_operator")
-        if op and not _takes(VALID_STATE_TRIGGER_OPS, op):
-            found.append(_finding(
-                path,
-                f"state_operator '{op}' is not valid. "
-                f"Use: any, eq, ne, gt, lt, gte, lte, truthy, falsy",
-                action=ttype,
-            ))
+        found.extend(_condition_findings(state_condition(trigger), STATE_TRIGGER, path, ttype))
     elif ttype == "event":
         found.extend(_event_trigger_findings(trigger, path))
 
     found.extend(_execution_findings(trigger, path, ttype))
 
-    # Validate guard conditions
     conditions = trigger.get("conditions")
     if isinstance(conditions, list):
         for i, c in enumerate(conditions):
-            if isinstance(c, dict):
-                if not c.get("key"):
-                    found.append(_finding(
-                        f"{path}.conditions[{i}]", "missing 'key'",
-                        action=ttype, missing="conditions.key",
-                    ))
-                op = c.get("operator", "eq")
-                if not _takes(VALID_CONDITION_OPS, op):
-                    found.append(_finding(
-                        f"{path}.conditions[{i}]", f"operator '{op}' is not valid",
-                        action=ttype,
-                    ))
-
+            found.extend(_condition_findings(c, GUARD, f"{path}.conditions[{i}]", ttype))
     return found
 
 

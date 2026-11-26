@@ -9,9 +9,9 @@ refused, and what the bindings point at is reviewed with the write by
 
 The names it accepts come from their homes, never a copy kept here: the
 interactions are page_references' ``ACTION_SLOTS``, the actions
-``ui_events.DISPATCHED_ACTIONS``, and the visible_when operators the canonical
-condition operators, ``macro_validation.CANONICAL_CONDITION_OPS`` (without the
-aliases the panel also evaluates). The panel evaluates a visible_when in
+``ui_events.DISPATCHED_ACTIONS``, and the visible_when operators the condition
+operators by their own names, ``condition_eval.OPERATORS`` (without the aliases
+the panel also evaluates). The panel evaluates a visible_when in
 ``OPERATORS`` in the panel's ``modules/visibility.js``, and the Builder offers the operators from
 ``OPERATORS`` in ``components/macros/ConditionEditor.tsx``; both mirror them by
 hand, so a new operator goes there too. The sentences listing the operators and the press
@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openavc.core.macro_validation import CANONICAL_CONDITION_OPS
+from openavc.core.condition_eval import OPERATORS
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.page_references import ACTION_SLOTS
 from openavc.utils.logger import get_logger
@@ -67,7 +67,7 @@ def normalize_bindings(bindings: dict) -> dict:
     return bindings
 
 
-_VALID_VISIBLE_WHEN_OPS = CANONICAL_CONDITION_OPS
+_VALID_VISIBLE_WHEN_OPS = frozenset(OPERATORS)
 _VISIBLE_WHEN_OPS_TEXT = "eq, ne, gt, lt, gte, lte, truthy, falsy"
 # Panel UI element `do` bindings: the runtime's own set, never a copy, since
 # refusing an action the runtime dispatches is a write door lying about the
