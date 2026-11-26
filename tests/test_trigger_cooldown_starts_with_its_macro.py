@@ -241,6 +241,65 @@ async def test_the_reason_survives_a_project_edit(triggers, macros, core):
 
 
 # ---------------------------------------------------------------------------
+# A deleted trigger takes its stamp with it
+# ---------------------------------------------------------------------------
+
+async def test_a_trigger_that_survives_an_edit_keeps_its_cooldown(triggers, macros, core):
+    state, events = core
+    _load(macros, triggers, _macro(GOOD_STEP))
+    await _fire(triggers)
+
+    _load(macros, triggers, _macro(GOOD_STEP))
+
+    assert state.get(STAMP_KEY) == triggers._triggers["trg"].last_fired > 0
+    assert await _cooldown_skips_next_fire(triggers, events)
+
+
+async def test_a_reused_id_does_not_inherit_the_deleted_triggers_cooldown(
+    triggers, macros, core,
+):
+    """A trigger deleted and later added again under the same id is a new
+    trigger: it does not wait out the old one's cooldown, and the old one's
+    stamp is gone from the state as soon as the old one is."""
+    state, events = core
+    _load(macros, triggers, _macro(GOOD_STEP))
+    await _fire(triggers)
+
+    macros.load_macros([_macro(GOOD_STEP)])
+    triggers.load_triggers([_macro(GOOD_STEP)])        # the trigger deleted
+    assert STAMP_KEY not in state.snapshot()
+
+    _load(macros, triggers, _macro(GOOD_STEP))         # another, under its id
+
+    _assert_no_cooldown_started(triggers, state)
+    assert not await _cooldown_skips_next_fire(triggers, events)
+
+
+async def test_only_the_deleted_triggers_stamp_goes(triggers, macros, core):
+    """Each id is judged on its own, a dotted one included, and a key the
+    trigger engine does not write is left alone."""
+    state, _events = core
+    both = {
+        **_macro(GOOD_STEP),
+        "triggers": [
+            {"id": "trg", "type": "schedule", "cooldown_seconds": 30},
+            {"id": "a.b", "type": "schedule", "cooldown_seconds": 30},
+        ],
+    }
+    macros.load_macros([both])
+    triggers.load_triggers([both])
+    for trigger_id in ("trg", "a.b"):
+        await triggers._fire_macro(triggers._triggers[trigger_id], {})
+    state.set("system.trigger_note", "kept", source="system")
+
+    triggers.load_triggers([{**both, "triggers": both["triggers"][1:]}])
+
+    assert STAMP_KEY not in state.snapshot()
+    assert state.get("system.trigger.a.b.last_fired") == triggers._triggers["a.b"].last_fired
+    assert state.get("system.trigger_note") == "kept"
+
+
+# ---------------------------------------------------------------------------
 # The start callback, at the macro engine (MacroEngine.starts)
 # ---------------------------------------------------------------------------
 

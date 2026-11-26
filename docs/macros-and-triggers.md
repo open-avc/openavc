@@ -258,7 +258,7 @@ A macro can guard against being run too often, or being run again while it's sti
 
 The important part is *where* these apply. A trigger has its own overlap and cooldown settings, but those only cover fires from that one trigger. The macro's own overlap and cooldown are enforced on the macro itself, so they hold no matter what starts it: a schedule, a panel button, a script loop, an automation, the AI assistant, or another macro. That closes the gap where a macro you carefully protected on its trigger could still be hammered from a script or a button.
 
-If both a trigger and its macro carry a guard, both apply: the trigger's settings decide whether it fires, then the macro's decide whether the run starts. The trigger's Cooldown counts from the last run it started, so a fire the macro turns away starts no Cooldown on the trigger, and the trigger card says why. (Because it protects against unthrottled re-runs, a macro's overlap defaults to **Allow** to preserve existing behavior, while a trigger's defaults to **Skip**.)
+If both a trigger and its macro carry a guard, both apply: the trigger's settings decide whether it fires, then the macro's decide whether the run starts. The trigger's Cooldown counts from the last run it started, so a fire the macro turns away starts no Cooldown on the trigger, and the trigger card says why. A trigger's Cooldown carries on when you save the project and ends when you delete the trigger, so a trigger you add later starts without one. (Because it protects against unthrottled re-runs, a macro's overlap defaults to **Allow** to preserve existing behavior, while a trigger's defaults to **Skip**.)
 
 ## Progress in Panel
 

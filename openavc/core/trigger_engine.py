@@ -7,9 +7,9 @@ circular trigger chains.
 
 What of a trigger outlives a rebuild of the triggers (``load_triggers``, on a
 project change) is one rule, ``_drop_records_of_gone``: each record kept by
-trigger id stays for an id a trigger still has and goes with one nobody has.
-A change that is undone puts back what its rebuild dropped (``records`` and
-``put_back``).
+trigger id, the published cooldown stamp included, stays for an id a trigger
+still has and goes with one nobody has. A change that is undone puts back
+what its rebuild dropped (``records`` and ``put_back``).
 """
 
 from __future__ import annotations
@@ -81,6 +81,10 @@ _STAMP_SUFFIX = ".last_fired"
 def _stamp_key(trigger_id: str) -> str:
     return f"{_STAMP_PREFIX}{trigger_id}{_STAMP_SUFFIX}"
 
+
+def _stamped_id(key: str) -> str:
+    """The trigger id a stamp key names, dots and all."""
+    return key[len(_STAMP_PREFIX):-len(_STAMP_SUFFIX)]
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -287,14 +291,18 @@ class TriggerEngine:
 
     def _drop_records_of_gone(self, live_ids: set[str]) -> None:
         """THE rule for what of a trigger outlives it: every per-trigger
-        record (its cooldown baseline, its last run, its last scheduled fire)
-        is kept for an id a trigger still has, so a hot reload keeps both the
-        cooldown and the no-double-fire guarantees, and dropped for one nobody
-        has any more. A record for a gone id is a leak, and an id that comes
-        back must not inherit a stranger's run."""
+        record (its cooldown stamp in the state, its cooldown baseline, its
+        last run, its last scheduled fire) is kept for an id a trigger still
+        has, so a hot reload keeps both the cooldown and the no-double-fire
+        guarantees, and dropped for one nobody has any more. A record for a
+        gone id is a leak, and an id that comes back must not inherit a
+        stranger's cooldown or run."""
         for records in (self._cron_last_fires, self._last_fired_monotonic, self._last_run):
             for trigger_id in [k for k in records if k not in live_ids]:
                 del records[trigger_id]
+        for key in self.state.get_matching(_stamp_key("*")):
+            if _stamped_id(key) not in live_ids:
+                self.state.delete(key, source="system")
 
     def records(self) -> TriggerRecords:
         """Every per-trigger record as it stands, for a project change to put
