@@ -58,6 +58,11 @@ trimming, learned settings, the driver validator):
     (``drivers/secret_params``);
   - the project's own: :data:`PROJECT_SECRET_FIELDS`, the mesh key.
 
+**One collector of a device's secret values** (:func:`secret_values`), which
+the registry, the Device Audit and a problem report all read: a secret is
+read as its text whatever type it holds (:func:`secret_text`), so a PIN a
+driver typed as a number is masked as its digits.
+
 **The name rule** (:func:`is_secret_key`) is the outbound redactors' net and
 nothing more: the logs, the traffic recorder's state lines, the Device Audit,
 a problem report and the cloud AI's log tool also mask a value named like a
@@ -87,7 +92,7 @@ import re
 from typing import Any, Iterable
 from urllib.parse import quote, quote_plus
 
-from openavc.drivers.spec import secret_settings
+from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
 from openavc.utils.secret_audience import Exit, may_carry_secret
 
 # Field names that look like a credential's: the outbound redactors' net
@@ -348,36 +353,69 @@ def mask_secret_fields(config: dict[str, Any], secret_keys: set[str]) -> dict[st
     }
 
 
+def secret_text(value: Any) -> str | None:
+    """THE reading of a secret value as the masking matches it: text as it
+    is, a number as its digits; None for anything else (a flag, nothing, a
+    list or a mapping). A PIN a driver typed as a number before a secret had
+    to be text reaches the wire as its digits, so it is masked as them."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def secret_values(
+    config: dict[str, Any] | None,
+    config_schema: dict[str, Any] | None = None,
+    *,
+    floor: int = MIN_SECRET_LEN,
+    usernames: bool = False,
+) -> set[str]:
+    """THE collector of one device's secret values, from its resolved config.
+
+    A field that holds a secret by
+    :func:`~openavc.drivers.spec.is_secret_setting` (the connection
+    ``password``, or one its ``config_schema`` marks) is read as its text
+    whatever type it holds (:func:`secret_text`), even under a name the name
+    list would never guess (``site_code``, ``pin``). A field only named like
+    a credential (:func:`is_secret_key`) is collected when it holds text:
+    the name is the outbound net, and a ``secret_port`` of 2000 must not mask
+    every "2000". A nested mapping is read by the name rule alone.
+
+    The registry takes the values of at least :data:`MIN_SECRET_LEN`
+    characters, usernames aside (:func:`collect_identity_values`); a report,
+    which masks every form of a value in one record, passes a lower
+    ``floor`` and ``usernames=True``.
+    """
+    if not isinstance(config, dict):
+        return set()
+    declared = _declared_secret(config_schema) | {PASSWORD_FIELD}
+    values: set[str] = set()
+    for key, value in config.items():
+        if isinstance(value, dict):
+            values |= secret_values(value, floor=floor, usernames=usernames)
+            continue
+        name = str(key)
+        if name in declared:
+            text = secret_text(value)
+        elif is_secret_key(name) and (usernames or name.lower() not in IDENTITY_KEYS):
+            text = value if isinstance(value, str) else None
+        else:
+            continue
+        if text is not None and len(text) >= max(floor, 1):
+            values.add(text)
+    return values
+
+
 def collect_secret_values(
     config: dict[str, Any] | None,
     config_schema: dict[str, Any] | None = None,
 ) -> set[str]:
-    """Every credential *value* in one device's resolved config, the
-    usernames (:data:`IDENTITY_KEYS`) aside: :func:`collect_identity_values`.
-
-    Two sources, per the redaction decision: fields the driver's
-    ``config_schema`` marks secret
-    (:func:`~openavc.drivers.spec.is_secret_setting`), and fields whose name
-    matches the conventional credential names above. A driver that marks a
-    field secret gets it redacted even when the field is called something the
-    name list would never guess (``site_code``, ``pin``).
-    """
-    if not isinstance(config, dict):
-        return set()
-
-    declared_secret = _declared_secret(config_schema)
-    values: set[str] = set()
-    for key, value in config.items():
-        if isinstance(value, dict):
-            values |= collect_secret_values(value)
-            continue
-        if not isinstance(value, str) or len(value) < MIN_SECRET_LEN:
-            continue
-        if str(key) in declared_secret or (
-            is_secret_key(key) and str(key).lower() not in IDENTITY_KEYS
-        ):
-            values.add(value)
-    return values
+    """What the secret registry masks for one device's config:
+    :func:`secret_values`, the usernames aside
+    (:func:`collect_identity_values`)."""
+    return secret_values(config, config_schema)
 
 
 def collect_identity_values(

@@ -371,7 +371,7 @@ async def set_connection(
     that would simulate is refused here, before anything connects).
     """
     from openavc.audit.sandbox import DriverSandbox, audit_device_id
-    from openavc.utils.log_redaction import collect_secret_values
+    from openavc.utils.log_redaction import secret_values
 
     run = current_run(session)
     if run is None or not run.choice.driver_id:
@@ -400,10 +400,7 @@ async def set_connection(
     secret_keys = secret_config_keys(effective, info.get("config_schema") or {})
 
     run.config = merged
-    run.secrets = collect_secret_values(effective, info.get("config_schema")) | {
-        str(effective[k]) for k in secret_keys
-        if isinstance(effective.get(k), str) and effective[k]
-    }
+    run.secrets = secret_values(effective, info.get("config_schema"), floor=1, usernames=True)
     run.published_secrets = _published_secrets(
         info, run.choice.identity or {}, effective, secret_keys,
     )

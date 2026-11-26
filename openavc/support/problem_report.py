@@ -102,6 +102,8 @@ from openavc.utils.log_redaction import (
     is_secret_key,
     mask_secret_fields,
     secret_config_keys,
+    secret_text,
+    secret_values,
 )
 from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
@@ -247,10 +249,7 @@ class Snapshot:
 def _secret_settings(snapshot: Snapshot) -> tuple[dict[str, Any], set[str]]:
     """The settings with credentials masked, and the values masked."""
     keys = secret_config_keys(snapshot.config, snapshot.schema)
-    values = {
-        snapshot.config[k] for k in keys
-        if isinstance(snapshot.config.get(k), str) and snapshot.config[k]
-    }
+    values = secret_values(snapshot.config, snapshot.schema, floor=1, usernames=True)
     return mask_secret_fields(snapshot.config, keys), values
 
 
@@ -270,8 +269,9 @@ def _context(raw: dict[str, Any] | None, commands: dict[str, Any]) -> tuple[dict
             # report's own net over what it sends away.
             secret = is_secret_param(commands, command, key) or is_secret_key(key)
             if secret and value not in (None, ""):
-                if isinstance(value, str):
-                    secrets.add(value)
+                text = secret_text(value)
+                if text:
+                    secrets.add(text)
                 masked[key] = REDACTED
             else:
                 masked[key] = value

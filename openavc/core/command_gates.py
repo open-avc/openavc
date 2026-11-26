@@ -63,7 +63,7 @@ from openavc.drivers.command_files import (
 from openavc.drivers.command_model import offline_capable
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import file_param_names, is_file_command
-from openavc.utils.log_redaction import REDACTED, get_secret_registry
+from openavc.utils.log_redaction import REDACTED, get_secret_registry, secret_text
 
 
 def _driver_info(driver: Any) -> dict[str, Any]:
@@ -104,16 +104,6 @@ def _secret_for_driver(driver: Any, command: str, key: str) -> bool:
     return secret_params.is_secret_param(_driver_info(driver).get("commands"), command, key)
 
 
-def _secret_text(value: Any) -> str | None:
-    """A value as the masking matches it: text as it is, a number as its
-    digits; None for anything else."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)
-    return None
-
-
 def register_secret_values(
     driver: Any, device_id: str, command: str, params: dict[str, Any] | None,
 ) -> None:
@@ -124,7 +114,7 @@ def register_secret_values(
     not learned; no refusal or announcement quotes a secret either way."""
     registry = get_secret_registry()
     for key, value in (params or {}).items():
-        text = _secret_text(value)
+        text = secret_text(value)
         if text is not None and is_secret_param(driver, command, key):
             registry.add_runtime_secret(device_id, text)
 

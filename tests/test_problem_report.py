@@ -186,6 +186,22 @@ def test_state_and_both_sides_of_history_are_masked(engine):
     assert report["state"]["device"]["power"] == "on"
 
 
+def test_a_secret_setting_held_as_a_number_is_masked_in_every_file(engine):
+    # A secret written into the project as a number (an import, the AI) is
+    # masked as its digits, wherever the device or the log repeats it.
+    engine.project.devices[0].config["access_code"] = 48213977
+    record_traffic("hall_widget", "tx", b"LOGIN 48213977\r", channel="tcp")
+    get_log_buffer().append(LogEntry(
+        time.time(), "INFO", "drivers.acme", "device",
+        "[hall_widget] code 48213977 refused", device="hall_widget",
+    ))
+    report, files = _build(engine)
+    assert report["device"]["settings"]["access_code"] == "***"
+    for name, text in files.items():
+        if not name.startswith("driver/"):
+            assert "48213977" not in text, f"the numeric secret survived in {name}"
+
+
 def test_a_command_password_is_masked_in_the_context_and_the_log(engine):
     report, files = _build(engine, context=_context())
     assert report["context"]["params"] == {"pin": "***"}
