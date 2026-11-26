@@ -35,11 +35,10 @@ import functools
 from pathlib import Path
 from typing import Any
 
-from openavc.core import saved_params
+from openavc.core import saved_markers, saved_params
 from openavc.core.device_logins import (
     DEVICE,
     PARAM,
-    SAVED_LOGIN,
     FoundLogin,
     LoginChange,
     StoreView,
@@ -81,7 +80,7 @@ def secrets_held_in_the_clear(project: Any) -> set[str]:
         value for found in find_logins(project) for value in found.fields.values()
         if isinstance(value, str)
     }
-    return {v for v in values if v != SAVED_LOGIN and not saved_params.is_any_marker(v)}
+    return {v for v in values if not saved_markers.is_marker(v, saved_markers.ANY)}
 
 
 def _settings_held(project: Any) -> set[str]:
@@ -134,7 +133,7 @@ class ProjectLoginsMixin:
         project holds the marker, as the project holds them where it does not
         (a move that could not finish), and as each plugin's latest own save
         holds them, which may not have reached the file yet."""
-        values = {v for v in project_secret_values(self.project) if v != SAVED_LOGIN}
+        values = {v for v in project_secret_values(self.project) if not saved_markers.is_marker(v, saved_markers.ANY)}
         if self.project is None:
             return values
         values |= secrets_held_in_the_clear(self.project)

@@ -21,8 +21,9 @@ import { syncDeviceFromServer } from "../../store/projectStore";
 /** What the project holds in a setting whose login is saved on this system,
  *  in place of the login. The server never sends the login itself, and never
  *  mistakes this for a new one: sent back, it keeps the saved login. Mirrors
- *  SAVED_LOGIN in openavc/core/device_logins.py
- *  (tests/test_saved_login_marker_parity.py). */
+ *  SAVED_LOGIN in openavc/core/saved_markers.py
+ *  (tests/test_saved_login_marker_parity.py; savedParams.test.ts runs the
+ *  shared cases). */
 export const SAVED_LOGIN = "<saved on this system>";
 
 /** The Edit Device form ready to save: a setting whose saved login was left

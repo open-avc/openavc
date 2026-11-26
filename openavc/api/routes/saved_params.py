@@ -14,7 +14,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error
 from openavc.api.host_policy import ProgrammerRoute
 from openavc.api.models import SavedParamRequest
-from openavc.core import saved_params
+from openavc.core import saved_markers, saved_params
 from openavc.core.device_logins import LoginFileUnreadable
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -23,7 +23,7 @@ router = APIRouter(route_class=ProgrammerRoute)
 @router.post("/saved-params")
 async def save_param(body: SavedParamRequest) -> dict[str, Any]:
     """Save a secret command parameter; answers the marker the step holds."""
-    if saved_params.is_any_marker(body.value):
+    if saved_markers.is_marker(body.value, saved_markers.ANY):
         raise api_error(400, "Enter the value itself.")
     try:
         marker = _get_engine().save_param_value(body.value)
@@ -35,6 +35,6 @@ async def save_param(body: SavedParamRequest) -> dict[str, Any]:
 @router.get("/saved-params/{name}")
 async def saved_param_state(name: str) -> dict[str, Any]:
     """Whether a value is saved on this system under a marker's name."""
-    if not saved_params.is_marker(saved_params.marker(name)):
+    if not saved_markers.is_marker(saved_params.marker(name), saved_markers.PARAM):
         raise api_error(404, "No saved value has that name.")
     return {"saved": _get_engine().saved_param_value(name) is not None}

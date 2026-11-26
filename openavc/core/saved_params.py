@@ -5,7 +5,8 @@ A command parameter the device's driver marks secret (``drivers/spec.py``
 ``password``) is kept in this system's login file, the way a device login is
 (``core/device_logins.py``), when somebody saves it in a macro step or a
 control's action. The step keeps a marker in its place that names the saved
-value: ``<saved on this system #`` and 16 hex digits and ``>``. So every copy
+value: ``<saved on this system #`` and 16 hex digits and ``>``
+(``core/saved_markers.py``, which says what a marker of either kind is). So every copy
 of the project (a backup, an export, a template, what the cloud keeps, what a
 panel is sent, what the AI reads) says a value is saved without carrying it.
 
@@ -58,20 +59,18 @@ this.
 from __future__ import annotations
 
 import copy
-import re
 import secrets as _secrets
 from collections.abc import Callable, Collection, Iterator
 from typing import Any
 
 from openavc.core.device_config import layered_config
+# ``marker(name)``: what a parameter holds when the value named ``name`` is
+# saved here; ``name_of(value)``: the name a parameter's marker gives.
+from openavc.core.saved_markers import ANY, PARAM, is_marker
+from openavc.core.saved_markers import param_marker as marker
+from openavc.core.saved_markers import param_name as name_of
 from openavc.drivers.registry import get_driver_class, get_driver_default_config
 from openavc.drivers.secret_params import device_commands, secret_params
-
-#: How every saved-on-this-system marker starts: a device login's
-#: (``device_logins.SAVED_LOGIN``) and a saved parameter's.
-SAVED_PREFIX = "<saved on this system"
-MARKER_PREFIX = f"{SAVED_PREFIX} #"
-_MARKER = re.compile(r"<saved on this system #([0-9a-f]{16})>")
 
 #: The one field each saved value is filed under in the login file.
 FIELD = "value"
@@ -83,32 +82,9 @@ COMMAND_ACTIONS = ("device.command", "group.command")
 _SECTIONS = ("macros", "ui")
 
 
-def marker(name: str) -> str:
-    """What a parameter holds when the value named ``name`` is saved here."""
-    return f"{MARKER_PREFIX}{name}>"
-
-
 def new_name() -> str:
     """A name for a value about to be saved."""
     return _secrets.token_hex(8)
-
-
-def name_of(value: Any) -> str | None:
-    """The name ``value`` gives, when it is a saved parameter's marker."""
-    if not isinstance(value, str):
-        return None
-    found = _MARKER.fullmatch(value)
-    return found.group(1) if found else None
-
-
-def is_marker(value: Any) -> bool:
-    """Whether ``value`` is a saved parameter's marker."""
-    return name_of(value) is not None
-
-
-def is_any_marker(value: Any) -> bool:
-    """Whether ``value`` is a saved-on-this-system marker of either kind."""
-    return isinstance(value, str) and value.startswith(SAVED_PREFIX) and value.endswith(">")
 
 
 def saved_names(params: Any) -> frozenset[str]:
@@ -116,7 +92,7 @@ def saved_names(params: Any) -> frozenset[str]:
     hold a saved parameter's marker."""
     if not isinstance(params, dict):
         return frozenset()
-    return frozenset(str(key) for key, value in params.items() if is_marker(value))
+    return frozenset(str(key) for key, value in params.items() if is_marker(value, PARAM))
 
 
 def filler(saved: Collection[str], lookup: Callable[[str], str | None]) -> Callable[[str, Any], str | None]:
@@ -216,7 +192,7 @@ def _groups(project: Any) -> dict[str, list[str]]:
 
 
 def _held_in_the_clear(value: Any) -> bool:
-    return isinstance(value, str) and value != "" and not value.startswith("$") and not is_any_marker(value)
+    return isinstance(value, str) and value != "" and not value.startswith("$") and not is_marker(value, ANY)
 
 
 class _Secrets:

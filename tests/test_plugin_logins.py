@@ -230,7 +230,7 @@ WALL = plugin_secrets.item_name("screens", "id", "wall")
 
 
 def test_the_marker_is_the_one_the_login_file_writes():
-    assert plugin_secrets._MARKER == SAVED_LOGIN
+    assert plugin_secrets.SAVED_LOGIN is SAVED_LOGIN
 
 
 def test_a_plugin_declares_its_logins_in_its_schema_and_its_lists():

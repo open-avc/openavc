@@ -1,0 +1,25 @@
+{
+  "$comment": "What counts as a saved-on-this-system marker (openavc/core/saved_markers.py). Each case is one value: whether it is the login marker, whether it is a saved parameter's marker, and the name a parameter's marker gives (null for any other value). Run by tests/test_saved_markers.py and by the Programmer's savedParams.test.ts.",
+  "cases": [
+    {"name": "the login marker", "value": "<saved on this system>", "login": true, "param": false, "param_name": null},
+    {"name": "a saved parameter's marker", "value": "<saved on this system #0123456789abcdef>", "login": false, "param": true, "param_name": "0123456789abcdef"},
+    {"name": "another saved parameter's marker", "value": "<saved on this system #fedcba9876543210>", "login": false, "param": true, "param_name": "fedcba9876543210"},
+    {"name": "text that starts like a marker", "value": "<saved on this system: see binder>", "login": false, "param": false, "param_name": null},
+    {"name": "a parameter's marker with no closing bracket", "value": "<saved on this system #0123456789abcdef", "login": false, "param": false, "param_name": null},
+    {"name": "a parameter's marker cut short", "value": "<saved on this system #abc>", "login": false, "param": false, "param_name": null},
+    {"name": "fifteen hex digits", "value": "<saved on this system #0123456789abcde>", "login": false, "param": false, "param_name": null},
+    {"name": "seventeen hex digits", "value": "<saved on this system #0123456789abcdef0>", "login": false, "param": false, "param_name": null},
+    {"name": "upper-case hex digits", "value": "<saved on this system #0123456789ABCDEF>", "login": false, "param": false, "param_name": null},
+    {"name": "a parameter's marker with a newline after it", "value": "<saved on this system #0123456789abcdef>\n", "login": false, "param": false, "param_name": null},
+    {"name": "the login marker with a space after it", "value": "<saved on this system> ", "login": false, "param": false, "param_name": null},
+    {"name": "the login marker with a space before it", "value": " <saved on this system>", "login": false, "param": false, "param_name": null},
+    {"name": "the login marker in a sentence", "value": "see <saved on this system>", "login": false, "param": false, "param_name": null},
+    {"name": "the login marker in capitals", "value": "<SAVED ON THIS SYSTEM>", "login": false, "param": false, "param_name": null},
+    {"name": "the prefix alone", "value": "<saved on this system", "login": false, "param": false, "param_name": null},
+    {"name": "a typed key", "value": "live-Acme-KEY-7f3a", "login": false, "param": false, "param_name": null},
+    {"name": "empty", "value": "", "login": false, "param": false, "param_name": null},
+    {"name": "nothing", "value": null, "login": false, "param": false, "param_name": null},
+    {"name": "a number", "value": 4821, "login": false, "param": false, "param_name": null},
+    {"name": "the login marker in a list", "value": ["<saved on this system>"], "login": false, "param": false, "param_name": null}
+  ]
+}

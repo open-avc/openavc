@@ -54,14 +54,11 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from openavc.core.plugin_declarations import config_secrets_problem as config_secrets_problem
+from openavc.core.saved_markers import ANY, SAVED_LOGIN, is_marker
 from openavc.drivers.spec import is_secret_setting
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
-
-#: The marker, as ``core/device_logins.SAVED_LOGIN`` (imported there from
-#: here would be circular: that module imports this one).
-_MARKER = "<saved on this system>"
 
 _ITEM = re.compile(r"^(?P<list>[^\[\]]+)\[(?P<id_key>[^=\[\]]+)=(?P<id>.*)\]$")
 
@@ -240,7 +237,7 @@ def places(config: Any, secrets: PluginSecrets) -> list[tuple[str, str, bool]]:
 
 
 def _usable(value: Any) -> bool:
-    return isinstance(value, str) and value != "" and value != _MARKER
+    return isinstance(value, str) and value != "" and not is_marker(value, ANY)
 
 
 def find(config: Any, secrets: PluginSecrets) -> dict[str, dict[str, str]]:
@@ -262,7 +259,7 @@ def marked(config: dict[str, Any], found: dict[str, dict[str, str]]) -> dict[str
             continue
         for field in fields:
             if _usable(get_field(holder, field)):
-                set_field(holder, field, _MARKER)
+                set_field(holder, field, SAVED_LOGIN)
     return out
 
 
@@ -274,7 +271,7 @@ def marked_places(config: Any, items: Iterable[tuple[str, Iterable[str]]]) -> li
         holder = holder_of(config, item)
         if holder is None:
             continue
-        found.extend((item, field) for field in fields if get_field(holder, field) == _MARKER)
+        found.extend((item, field) for field in fields if get_field(holder, field) == SAVED_LOGIN)
     return found
 
 
@@ -293,7 +290,7 @@ def fill(
         if holder is None:
             continue
         for field, value in fields.items():
-            if get_field(holder, field) == _MARKER and _usable(value):
+            if get_field(holder, field) == SAVED_LOGIN and _usable(value):
                 set_field(holder, field, value)
     return _blanked(out)
 
@@ -303,7 +300,7 @@ def _holds_marker(value: Any) -> bool:
         return any(_holds_marker(v) for v in value.values())
     if isinstance(value, list):
         return any(_holds_marker(v) for v in value)
-    return value == _MARKER
+    return value == SAVED_LOGIN
 
 
 def _blanked(value: Any) -> Any:
@@ -311,7 +308,7 @@ def _blanked(value: Any) -> Any:
         return {k: _blanked(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_blanked(v) for v in value]
-    return "" if value == _MARKER else value
+    return "" if value == SAVED_LOGIN else value
 
 
 def waiting(
@@ -323,7 +320,7 @@ def waiting(
     return [
         (item, field) for item, field, generated in places(config, secrets)
         if not generated
-        and get_field(holder_of(config, item), field) == _MARKER
+        and get_field(holder_of(config, item), field) == SAVED_LOGIN
         and saved(item, field) is None
     ]
 

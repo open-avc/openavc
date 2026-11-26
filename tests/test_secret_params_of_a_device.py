@@ -33,6 +33,7 @@ from openavc.core import command_gates, saved_params
 from openavc.core.device_config import layered_config
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import DeviceConfig
+from openavc.core.saved_markers import PARAM, is_marker
 from openavc.core.state_store import StateStore
 from openavc.drivers import registry
 from openavc.drivers.base import CommandParamError
@@ -154,7 +155,7 @@ def test_the_save_moves_exactly_the_parameters_the_send_treats_as_secret(_driver
 
     marked, values = saved_params.mark_clear(_project(config, connection, command, params))
     stored = marked["macros"][0]["steps"][0]["params"]
-    assert {k for k, v in stored.items() if saved_params.is_marker(v)} == secret
+    assert {k for k, v in stored.items() if is_marker(v, PARAM)} == secret
     assert sorted(values.values()) == sorted(params[k] for k in secret)
 
 
@@ -191,7 +192,7 @@ def test_a_parameter_named_password_is_saved_and_filled_in_though_the_command_li
     assert command_gates.is_secret_param(live, "set_label", "password")
     marked, values = saved_params.mark_clear(_project({}, {}, "set_label", params))
     stored = marked["macros"][0]["steps"][0]["params"]
-    assert stored["text"] == "Lobby" and saved_params.is_marker(stored["password"])
+    assert stored["text"] == "Lobby" and is_marker(stored["password"], PARAM)
     fill = saved_params.filler(saved_params.saved_names(stored), values.get)
     assert command_gates.fill_saved_params(live, "set_label", stored, fill) == params
 
@@ -203,7 +204,7 @@ def test_a_step_on_a_driver_not_installed_keeps_its_values_but_a_password():
     project["devices"][0]["driver"] = "acme_not_installed"
     marked, values = saved_params.mark_clear(project)
     stored = marked["macros"][0]["steps"][0]["params"]
-    assert stored["code"] == CODE and saved_params.is_marker(stored["password"])
+    assert stored["code"] == CODE and is_marker(stored["password"], PARAM)
     assert list(values.values()) == [KEY]
 
 
@@ -276,7 +277,7 @@ async def test_a_device_s_own_secret_parameter_is_saved_and_sent_by_the_engine(t
     eng = await _running_project(tmp_path, monkeypatch, {"commands": {"pair": PAIR}}, step)
     try:
         assert CODE not in eng.project_path.read_text(encoding="utf-8")
-        assert saved_params.is_marker(eng.project.macros[0].steps[0].params["code"])
+        assert is_marker(eng.project.macros[0].steps[0].params["code"], PARAM)
         assert await eng.macros.execute("go") == "completed"
         assert eng.devices._devices["enc1"].transport.sent == [f"PAIR {CODE}\r".encode()]
     finally:

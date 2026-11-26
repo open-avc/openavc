@@ -35,6 +35,7 @@ import pytest
 from openavc.api import rest
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core import saved_params
+from openavc.core.saved_markers import PARAM, is_marker
 from openavc.core.device_logins import (
     SAVED_LOGIN,
     DeviceLogins,
@@ -240,7 +241,7 @@ async def test_the_macro_sends_the_saved_key(engine, caplog):
         assert await engine.macros.execute("start") == "completed"
     assert _AcmeStreamer.sent == [("enc1", "set_stream_key", {"channel": 1, "key": KEY})]
     _nowhere(caplog.text)
-    assert saved_params.is_marker(_step_params(engine)["key"])
+    assert is_marker(_step_params(engine)["key"], PARAM)
 
 
 async def test_a_group_step_sends_the_saved_key_to_every_member(engine):
@@ -271,7 +272,7 @@ async def test_a_simulated_press_reports_the_marker(engine):
 
 async def test_a_password_parameter_is_saved_by_its_name(engine):
     await _edit(engine, _document(steps=[_command("pair", password=PIN)]))
-    assert saved_params.is_marker(_step_params(engine)["password"])
+    assert is_marker(_step_params(engine)["password"], PARAM)
     assert await engine.macros.execute("start") == "completed"
     assert _AcmeStreamer.sent == [("enc1", "pair", {"password": PIN})]
 
@@ -284,7 +285,7 @@ async def test_a_duplicated_step_shares_the_key_until_one_is_changed(engine):
     await _edit(engine, _document(steps=[_command(channel=1, key=saved), copy, changed]))
 
     assert _step_params(engine, 1)["key"] == saved
-    assert saved_params.is_marker(_step_params(engine, 2)["key"])
+    assert is_marker(_step_params(engine, 2)["key"], PARAM)
     assert _step_params(engine, 2)["key"] != saved
     assert await engine.macros.execute("start") == "completed"
     assert [p["key"] for _, _, p in _AcmeStreamer.sent] == [KEY, KEY, "other-KEY-9"]
@@ -387,7 +388,7 @@ async def test_the_backup_a_first_start_takes_holds_its_keys_sealed_once_they_mo
         members = {name: zf.read(name) for name in zf.namelist()}
     assert all(KEY.encode() not in content for content in members.values())
     kept = json.loads(members["project.avc"])
-    assert saved_params.is_marker(kept["macros"][0]["steps"][0]["params"]["key"])
+    assert is_marker(kept["macros"][0]["steps"][0]["params"]["key"], PARAM)
     # Restored on this system, every key comes back.
     same_key = tmp_path / "same_key"
     same_key.mkdir()
@@ -444,6 +445,31 @@ async def test_the_programmers_box_saves_a_value_and_gets_a_marker(engine):
     await _edit(engine, _document(steps=[_command(channel=1, key=saved)]))
     assert await engine.macros.execute("start") == "completed"
     assert _AcmeStreamer.sent == [("enc1", "set_stream_key", {"channel": 1, "key": KEY})]
+
+
+#: A key typed as text that only starts like a marker.
+LOOKS_SAVED = "<saved on this system: see binder>"
+
+
+async def test_text_that_only_starts_like_a_marker_is_saved_and_sent_as_typed(engine):
+    """A marker is read whole, as the Programmer reads it: text that starts
+    like one is a key like any other, moved out of the project, masked, and
+    sent as typed."""
+    from openavc.utils.log_redaction import get_secret_registry
+
+    await _edit(engine, _document(steps=[_command(channel=1, key=LOOKS_SAVED)]))
+    assert saved_params.name_of(_step_params(engine)["key"]) is not None
+    _nowhere(engine.project_path.read_text(encoding="utf-8"), value=LOOKS_SAVED)
+    assert LOOKS_SAVED in get_secret_registry().secrets_for("enc1")
+    assert await engine.macros.execute("start") == "completed"
+    await engine.devices.send_command("enc1", "set_stream_key", {"channel": 2, "key": LOOKS_SAVED})
+    assert _AcmeStreamer.sent == [
+        ("enc1", "set_stream_key", {"channel": 1, "key": LOOKS_SAVED}),
+        ("enc1", "set_stream_key", {"channel": 2, "key": LOOKS_SAVED}),
+    ]
+    async with _client() as http:
+        answer = await http.post("/api/saved-params", json={"value": LOOKS_SAVED})
+    assert answer.status_code == 200, answer.text
 
 
 # --- after the fill, and the Programmer's lint ----------------------------------------

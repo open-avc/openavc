@@ -3,7 +3,9 @@
 // naming the saved value in its place, and the browser never receives the
 // value: the parameter's box (SavedParamField) sends a typed value on its own
 // and puts the marker it gets back in the step. Mirrors
-// openavc/core/saved_params.py (tests/test_saved_login_marker_parity.py).
+// openavc/core/saved_markers.py: savedParams.test.ts runs the cases in
+// tests/fixtures/saved_marker_cases.json, as tests/test_saved_markers.py does
+// there (and tests/test_saved_login_marker_parity.py holds the pattern).
 
 import { isSecretSetting } from "./secretSetting";
 

@@ -38,7 +38,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.core import saved_params
+from openavc.core import saved_markers, saved_params
 
 from openavc.core.device_traffic import RX, TX, get_traffic_recorder
 from openavc.drivers import secret_params
@@ -133,7 +133,7 @@ def shown_params(driver: Any, command: str, params: Any) -> Any:
 
 
 def _hidden(driver: Any, command: str, key: str, value: Any) -> bool:
-    if value in (None, "") or saved_params.is_any_marker(value):
+    if value in (None, "") or saved_markers.is_marker(value, saved_markers.ANY):
         return False
     return is_secret_param(driver, command, key)
 
@@ -155,7 +155,7 @@ def fill_saved_params(
     CommandParamError, and nothing is sent: a device is never handed a
     marker as its key.
     """
-    marked = [key for key, value in (params or {}).items() if saved_params.is_any_marker(value)]
+    marked = [key for key, value in (params or {}).items() if saved_markers.is_marker(value, saved_markers.ANY)]
     if not marked:
         return params
     filled = dict(params or {})

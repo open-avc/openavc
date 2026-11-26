@@ -143,7 +143,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
 
-from openavc.core import plugin_secrets, saved_params
+from openavc.core import plugin_secrets, saved_markers, saved_params
 from openavc.drivers.registry import get_driver_class
 from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
 from openavc.utils.fileio import atomic_write_text
@@ -152,10 +152,9 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-#: What the project holds in a field whose login is saved on this system.
-#: Fixed, so two copies of one project stay byte-identical, and never shaped
-#: like a ``{{...}}`` placeholder, which template resolution passes through.
-SAVED_LOGIN = "<saved on this system>"
+#: What the project holds in a field whose login is saved on this system
+#: (``core/saved_markers``, which says what a marker is). Plugins import it from here.
+SAVED_LOGIN = saved_markers.SAVED_LOGIN
 
 LOGINS_FILENAME = "device_logins.json"
 KEY_FILENAME = "device_logins.key"
@@ -246,7 +245,7 @@ class FoundLogin:
 
 
 def _usable(value: Any) -> bool:
-    return isinstance(value, str) and value != "" and not saved_params.is_any_marker(value)
+    return isinstance(value, str) and value != "" and not saved_markers.is_marker(value, saved_markers.ANY)
 
 
 KIND_ORDER = {DEVICE: 0, PLUGIN: 1, PROJECT: 2, PARAM: 3}
