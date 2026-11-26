@@ -22,6 +22,11 @@ class FakeOpenAVC {
     // event.* frame is ignored in silence, which is what an unknown message
     // type gets.
     this.legacy = !!opts.legacy;
+    // legacyMacros: an OpenAVC from 0.33 to 0.41, before a macro's asker was
+    // told its own run's ending. The receipt echoes no request_id, nothing
+    // but the room's lifecycle frames says how a run ended, and a skip's
+    // reason is free text.
+    this.legacyMacros = !!opts.legacyMacros;
     // claimed: a password-protected system. REST answers 401 without the
     // key, and a programmer socket without it is refused at the upgrade.
     this.claimed = !!opts.claimed;
@@ -55,7 +60,12 @@ class FakeOpenAVC {
       { id: "skip_me", name: "Skips when running", overlap: "skip", ms: 200 },
       { id: "flaky", name: "One step fails" },
       { id: "slow", name: "Slow", ms: 400 },
+      { id: "raises", name: "Raises around its steps" },
+      // Its first run is long and clean, a second one beside it short and
+      // with a failed step: another client's run of the same macro.
+      { id: "uneven", name: "Uneven" },
     ];
+    this.unevenRuns = 0;
     this.running = new Map(); // macro id -> [{timer, finish}]
     this.connections = []; // {ws, url, headers, role, patterns, name, frames}
     this.received = []; // every inbound frame, in order
@@ -235,8 +245,11 @@ class FakeOpenAVC {
           this._send(ws, { type: "error", source_type: "macro.execute", message: `No macro named '${id}'.` });
           break;
         }
-        this._send(ws, { type: "macro.execute.ack", macro_id: id });
-        this._runMacro(macro);
+        // Like the real server: the ask's request_id rides its receipt, and
+        // its result goes to this socket alone.
+        const asked = !this.legacyMacros && frame.request_id ? { request_id: frame.request_id } : {};
+        this._send(ws, { type: "macro.execute.ack", macro_id: id, ...asked });
+        this._runMacro(macro, { ws, asked });
         break;
       }
       case "macro.cancel": {
@@ -250,6 +263,7 @@ class FakeOpenAVC {
         for (const r of runs.splice(0)) {
           clearTimeout(r.timer);
           this._broadcast({ type: "macro.cancelled", macro_id: id, name: id });
+          this._result(r.asker, id, { outcome: "cancelled" });
         }
         break;
       }
@@ -258,29 +272,68 @@ class FakeOpenAVC {
     }
   }
 
-  _runMacro(macro) {
+  // A run's lifecycle frames go to every client; its result to its asker.
+  _runMacro(macro, asker) {
     const id = macro.id;
     const runs = this.running.get(id) || [];
     if (macro.overlap === "skip" && runs.length) {
-      this._broadcast({ type: "macro.skipped", macro_id: id, name: macro.name, reason: "overlap=skip and an instance is already running" });
+      this._skip(macro, asker);
+      return;
+    }
+    if (id === "raises" && asker.asked.request_id) {
+      this._send(asker.ws, { type: "error", source_type: "macro.execute", message: "Something went wrong running Raises.", ...asker.asked });
       return;
     }
     this._broadcast({ type: "macro.started", macro_id: id, name: macro.name, total_steps: 1 });
-    const run = {};
+    const run = { asker };
+    let ms = macro.ms || 20;
+    if (id === "uneven") {
+      this.unevenRuns += 1;
+      run.fails = this.unevenRuns > 1;
+      ms = run.fails ? 20 : 200;
+    }
     run.timer = setTimeout(() => {
       const list = this.running.get(id) || [];
       list.splice(list.indexOf(run), 1);
-      if (id === "bad") {
-        this._broadcast({ type: "macro.error", macro_id: id, name: macro.name, error: "step 1/1 failed" });
-        return;
-      }
-      if (id === "flaky") {
-        this._broadcast({ type: "macro.step_error", macro_id: id, call_chain: [id], step_index: 0, total_steps: 2, action: "device.command", device: "projector", group: null, command: "power_on", error: "Device 'projector' is not connected", message: "Projector is not connected." });
-      }
-      this._broadcast({ type: "macro.completed", macro_id: id, name: macro.name });
-    }, macro.ms || 20);
+      this._finish(macro, asker, run);
+    }, ms);
     runs.push(run);
     this.running.set(id, runs);
+  }
+
+  _skip(macro, asker) {
+    const id = macro.id;
+    if (this.legacyMacros) {
+      this._broadcast({ type: "macro.skipped", macro_id: id, name: macro.name, reason: "overlap=skip and an instance is already running" });
+      return;
+    }
+    const reason = { code: "macro_overlap", message: "The macro was already running, and the macro's Overlap is set to Skip." };
+    this._broadcast({ type: "macro.skipped", macro_id: id, name: macro.name, reason: reason.message, ...reason });
+    this._result(asker, id, { outcome: "skipped", ...reason });
+  }
+
+  _finish(macro, asker, run) {
+    const id = macro.id;
+    if (id === "bad") {
+      const stop = { error: "step 1/1 failed", message: "Always fails could not finish." };
+      this._broadcast({ type: "macro.error", macro_id: id, name: macro.name, ...stop });
+      this._result(asker, id, { outcome: "failed", step_errors: [], ...stop });
+      return;
+    }
+    if (id === "flaky" || run.fails) {
+      const frame = { macro_id: id, call_chain: [id], step_index: 0, total_steps: 2, action: "device.command", device: "projector", group: null, command: "power_on", error: "Device 'projector' is not connected", message: "Projector is not connected." };
+      this._broadcast({ type: "macro.step_error", ...frame });
+      this._broadcast({ type: "macro.completed", macro_id: id, name: macro.name, outcome: "failed", failed_steps: 1 });
+      this._result(asker, id, { outcome: "failed", step_errors: [frame] });
+      return;
+    }
+    this._broadcast({ type: "macro.completed", macro_id: id, name: macro.name, outcome: "completed", failed_steps: 0 });
+    this._result(asker, id, { outcome: "completed" });
+  }
+
+  _result(asker, macroId, ending) {
+    if (this.legacyMacros || !asker) return;
+    this._send(asker.ws, { type: "macro.execute.result", macro_id: macroId, ...asker.asked, ...ending });
   }
 
   _send(ws, frame) {

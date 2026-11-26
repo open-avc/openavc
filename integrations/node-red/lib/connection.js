@@ -43,6 +43,51 @@ const KIND_TYPES = {
   cancel: "macro.cancel",
 };
 
+// One failed step as a macro request reports it, from a `macro.step_error`
+// frame: the macro it was in (this one, or one it ran), its number in that
+// macro, and the sentence OpenAVC's own panel shows.
+function stepError(frame) {
+  return {
+    macro: frame.macro_id,
+    step: (frame.step_index ?? -1) + 1,
+    action: frame.action,
+    device: frame.device || frame.group || "",
+    command: frame.command || "",
+    error: frame.message || frame.error || "step failed",
+  };
+}
+
+// A run the macro turned away, in the system's own words: the sentence, and
+// the reason table's code where the system sends one.
+function skipped(frame) {
+  const sentence = frame.message || frame.reason;
+  return {
+    success: false,
+    error: sentence ? `macro skipped: ${sentence}` : "macro skipped",
+    ...(frame.code ? { code: frame.code } : {}),
+  };
+}
+
+// What a macro request answers with, from its run's own result. A run that
+// carried on past a failed step completed, with what failed on the way; one
+// that stopped did not, and says why.
+function runResult(result) {
+  const stepErrors = (result.step_errors || []).map(stepError);
+  const failures = stepErrors.length ? { step_errors: stepErrors } : {};
+  switch (result.outcome) {
+    case "completed":
+      return { success: true };
+    case "failed":
+      return result.error ? { success: false, error: result.error, ...failures } : { success: true, ...failures };
+    case "cancelled":
+      return { success: false, error: "macro cancelled" };
+    case "skipped":
+      return skipped(result);
+    default:
+      return { success: false, error: `the macro ended as "${result.outcome}"` };
+  }
+}
+
 /**
  * One WebSocket to one OpenAVC instance, shared by every node on that server
  * config. It mirrors the state stream, forwards events, routes each reply
@@ -61,10 +106,19 @@ const KIND_TYPES = {
  * (`command.ack`, `state.set.ack`, `event.emit.ack`, `macro.execute.ack`,
  * `macro.cancel.ack`, and the `error` frame that refuses any of them) arrive
  * in the order the requests were sent. Every request therefore joins one
- * queue, and each receipt settles its head. A macro's receipt only says the
- * run was accepted; its outcome (`macro.completed`, `macro.error`,
- * `macro.cancelled`, `macro.skipped`) arrives whenever the run ends, out of
- * order, so an accepted macro moves to a second table keyed by macro id.
+ * queue, and each receipt settles its head.
+ *
+ * A macro's receipt only says the run was accepted; how it ended arrives
+ * whenever the run ends, out of order. Every ask names itself (`request_id`),
+ * and a server that echoes the name on the receipt sends this socket
+ * `macro.execute.result` with it when that run ends: its outcome, a skip's
+ * code and sentence from the system's reason table, the run's own step
+ * errors and why it stopped. The ask waits for that and nothing else, so a
+ * panel or another flow running the same macro meanwhile never answers it.
+ * A server that echoes nothing (0.33 to 0.41) sends no result either: there
+ * the ask waits in a table keyed by macro id for the room's lifecycle frames
+ * (`macro.completed`, `macro.error`, `macro.cancelled`, `macro.skipped`),
+ * which is the best that server allows.
  */
 class OpenAVCConnection extends EventEmitter {
   constructor(opts) {
@@ -112,9 +166,13 @@ class OpenAVCConnection extends EventEmitter {
     // out stays here as a tombstone until its reply arrives, so a late reply
     // to it cannot be mistaken for the reply to the request behind it.
     this._receipts = [];
-    // macro id -> accepted macro requests awaiting their outcome, oldest first.
+    // request id -> an accepted macro request awaiting its own result.
+    this._asks = new Map();
+    // macro id -> accepted macro requests awaiting the room's lifecycle
+    // frames instead, oldest first: a server that sends no result.
     this._outcomes = new Map();
     this._seq = 0;
+    this._askSeq = 0;
   }
 
   get url() {
@@ -305,15 +363,14 @@ class OpenAVCConnection extends EventEmitter {
         this._receipt("emit", msg.event, { success: true });
         break;
       case "macro.execute.ack": {
-        // Accepted, not finished: the outcome arrives as a lifecycle frame.
+        // Accepted, not finished.
         const entry = this._receipt("macro", msg.macro_id, null);
-        if (entry && !entry.done) {
-          const list = this._outcomes.get(msg.macro_id) || [];
-          list.push(entry);
-          this._outcomes.set(msg.macro_id, list);
-        }
+        if (entry && !entry.done) this._awaitEnding(entry, msg);
         break;
       }
+      case "macro.execute.result":
+        this._ownEnding(msg);
+        break;
       case "macro.cancel.ack":
         this._receipt("cancel", msg.macro_id, { success: true, cancelled: !!msg.cancelled });
         break;
@@ -333,7 +390,7 @@ class OpenAVCConnection extends EventEmitter {
         // A skip is the macro's guard turning away the LATEST ask while an
         // earlier run is still going (overlap) or has just gone (cooldown),
         // so it belongs to the newest accepted request, not the oldest.
-        this._outcome(msg.macro_id, { success: false, error: `macro skipped: ${msg.reason || "its own overlap or cooldown setting"}` }, true);
+        this._outcome(msg.macro_id, skipped(msg), true);
         break;
       case "error":
         this._onError(msg);
@@ -350,6 +407,14 @@ class OpenAVCConnection extends EventEmitter {
   // Anything that does not fit the head (a failure the server reports
   // outside the request order) is handed to the server node to log.
   _onError(msg) {
+    // A run that raised after its receipt is answered out of order, naming
+    // the ask it answers.
+    const ask = msg.request_id && this._asks.get(msg.request_id);
+    if (ask) {
+      this._asks.delete(msg.request_id);
+      this._settle(ask, { success: false, error: msg.message || "OpenAVC could not run the macro" });
+      return;
+    }
     const head = this._receipts[0];
     const fits = head && (!msg.source_type || KIND_TYPES[head.kind] === msg.source_type);
     if (fits) {
@@ -368,7 +433,7 @@ class OpenAVCConnection extends EventEmitter {
         reject(new Error(`not connected to OpenAVC${this.detail ? ` (${this.detail})` : ""}`));
         return;
       }
-      const entry = { kind, key, seq: ++this._seq, resolve, reject, timer: null, done: false, stepErrors: [] };
+      const entry = { kind, key, requestId: frame.request_id, seq: ++this._seq, resolve, reject, timer: null, done: false, stepErrors: [] };
       if (timeoutMs > 0) {
         entry.timer = setTimeout(() => {
           // Left in place as a tombstone: the reply still arrives in order.
@@ -396,6 +461,25 @@ class OpenAVCConnection extends EventEmitter {
     return head;
   }
 
+  // Where an accepted macro request waits: for its own result, when the
+  // receipt echoed its name, or else for the room's lifecycle frames.
+  _awaitEnding(entry, ack) {
+    if (ack.request_id && ack.request_id === entry.requestId) {
+      this._asks.set(entry.requestId, entry);
+      return;
+    }
+    const list = this._outcomes.get(ack.macro_id) || [];
+    list.push(entry);
+    this._outcomes.set(ack.macro_id, list);
+  }
+
+  _ownEnding(msg) {
+    const entry = this._asks.get(msg.request_id);
+    if (!entry) return;
+    this._asks.delete(msg.request_id);
+    this._settle(entry, runResult(msg));
+  }
+
   _outcome(macroId, result, newest = false) {
     const list = this._outcomes.get(macroId);
     if (!list || !list.length) return;
@@ -408,13 +492,7 @@ class OpenAVCConnection extends EventEmitter {
   _noteStepError(msg) {
     const list = this._outcomes.get(msg.macro_id);
     if (!list || !list.length) return;
-    list[0].stepErrors.push({
-      step: (msg.step_index ?? -1) + 1,
-      action: msg.action,
-      device: msg.device || msg.group || "",
-      command: msg.command || "",
-      error: msg.message || msg.error || "step failed",
-    });
+    list[0].stepErrors.push(stepError(msg));
   }
 
   _settle(entry, result) {
@@ -434,6 +512,8 @@ class OpenAVCConnection extends EventEmitter {
   _rejectAll(reason) {
     for (const entry of this._receipts) this._fail(entry, new Error(reason));
     this._receipts = [];
+    for (const entry of this._asks.values()) this._fail(entry, new Error(reason));
+    this._asks.clear();
     for (const list of this._outcomes.values()) {
       for (const entry of list) this._fail(entry, new Error(reason));
     }
@@ -452,7 +532,8 @@ class OpenAVCConnection extends EventEmitter {
   // No timeout on the outcome: a macro with delay steps runs for as long as
   // it runs. The request is rejected if the socket drops before it finishes.
   executeMacro(macroId) {
-    return this._request("macro", macroId, { type: "macro.execute", macro_id: macroId }, 0);
+    const frame = { type: "macro.execute", macro_id: macroId, request_id: `ask-${++this._askSeq}` };
+    return this._request("macro", macroId, frame, 0);
   }
 
   cancelMacro(macroId) {

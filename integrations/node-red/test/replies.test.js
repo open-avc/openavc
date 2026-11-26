@@ -113,12 +113,47 @@ describe("macro outcomes", () => {
     fake = await new FakeOpenAVC().start();
   });
 
-  it("a start the macro's own guard turns away answers with the reason", async () => {
+  it("a start the macro's own guard turns away answers with the reason table's code and sentence", async () => {
     const c = connect();
     await once(c, "open");
     const [first, second] = await Promise.all([c.executeMacro("skip_me"), c.executeMacro("skip_me")]);
     expect(first).toEqual({ success: true });
-    expect(second).toEqual({ success: false, error: "macro skipped: overlap=skip and an instance is already running" });
+    expect(second).toEqual({
+      success: false,
+      error: "macro skipped: The macro was already running, and the macro's Overlap is set to Skip.",
+      code: "macro_overlap",
+    });
+    const asks = fake.framesOfType("macro.execute").map((f) => f.request_id);
+    expect(new Set(asks).size).toBe(2);
+  });
+
+  it("another client's run turned away is not this flow's", async () => {
+    const flow = connect();
+    const panel = connect();
+    await Promise.all([once(flow, "open"), once(panel, "open")]);
+    const run = flow.executeMacro("skip_me");
+    await fake.waitFor(() => fake.running.get("skip_me")?.length || null);
+    expect(await panel.executeMacro("skip_me")).toMatchObject({ success: false, code: "macro_overlap" });
+    expect(await run).toEqual({ success: true });
+  });
+
+  it("another client's run of the same macro does not end this one, nor lend it its step errors", async () => {
+    const flow = connect();
+    const panel = connect();
+    await Promise.all([once(flow, "open"), once(panel, "open")]);
+    let settled = false;
+    const run = flow.executeMacro("uneven").then((r) => ((settled = true), r));
+    await fake.waitFor(() => fake.running.get("uneven")?.length || null);
+    const other = await panel.executeMacro("uneven");
+    expect(other.step_errors).toHaveLength(1);
+    expect(settled).toBe(false);
+    expect(await run).toEqual({ success: true });
+  });
+
+  it("a run that raised around its steps answers its own request", async () => {
+    const c = connect();
+    await once(c, "open");
+    expect(await c.executeMacro("raises")).toEqual({ success: false, error: "Something went wrong running Raises." });
   });
 
   it("cancel answers whether anything was running, and the run answers cancelled", async () => {
@@ -139,8 +174,38 @@ describe("macro outcomes", () => {
     const result = await c.executeMacro("flaky");
     expect(result.success).toBe(true);
     expect(result.step_errors).toEqual([
-      { step: 1, action: "device.command", device: "projector", command: "power_on", error: "Projector is not connected." },
+      { macro: "flaky", step: 1, action: "device.command", device: "projector", command: "power_on", error: "Projector is not connected." },
     ]);
+  });
+});
+
+// 0.33 to 0.41 tell no client its own run's ending: the connection matches
+// the room's lifecycle frames to its asks, as it always has.
+describe("macro outcomes, from a system that sends no result of its own (0.33 to 0.41)", () => {
+  beforeEach(async () => {
+    fake = await new FakeOpenAVC({ legacyMacros: true }).start();
+  });
+
+  it("a start the macro's own guard turns away answers with the system's reason", async () => {
+    const c = connect();
+    await once(c, "open");
+    const [first, second] = await Promise.all([c.executeMacro("skip_me"), c.executeMacro("skip_me")]);
+    expect(first).toEqual({ success: true });
+    expect(second).toEqual({ success: false, error: "macro skipped: overlap=skip and an instance is already running" });
+  });
+
+  it("a run finishes, fails, carries on past a step, or is cancelled", async () => {
+    const c = connect();
+    await once(c, "open");
+    expect(await c.executeMacro("system_on")).toEqual({ success: true });
+    expect(await c.executeMacro("bad")).toEqual({ success: false, error: "step 1/1 failed" });
+    expect((await c.executeMacro("flaky")).step_errors).toEqual([
+      { macro: "flaky", step: 1, action: "device.command", device: "projector", command: "power_on", error: "Projector is not connected." },
+    ]);
+    const run = c.executeMacro("slow");
+    await fake.waitFor(() => fake.running.get("slow")?.length || null);
+    expect(await c.cancelMacro("slow")).toEqual({ success: true, cancelled: true });
+    expect(await run).toEqual({ success: false, error: "macro cancelled" });
   });
 });
 

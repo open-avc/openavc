@@ -318,7 +318,7 @@ describe("the editor's lookups", () => {
       expect(commands.body[0].params[0]).toMatchObject({ name: "input", type: "integer", required: true });
 
       const macros = await helper.request().get("/openavc/srv/macros").expect(200);
-      expect(macros.body.map((m) => m.id)).toEqual(["system_on", "bad", "skip_me", "flaky", "slow"]);
+      expect(macros.body.map((m) => m.id)).toEqual(["system_on", "bad", "skip_me", "flaky", "slow", "raises", "uneven"]);
 
       const keys = await helper.request().get("/openavc/srv/state-keys").expect(200);
       expect(keys.body).toContain("var.status");
@@ -460,7 +460,11 @@ describe("openavc-macro, cancelling", () => {
     helper.getNode("m").receive({ macro: "skip_me" });
     await fake.waitFor(() => (seen.length === 2 ? true : null));
     expect(seen).toEqual([
-      { success: false, error: "macro skipped: overlap=skip and an instance is already running" },
+      {
+        success: false,
+        error: "macro skipped: The macro was already running, and the macro's Overlap is set to Skip.",
+        code: "macro_overlap",
+      },
       { success: true },
     ]);
 
@@ -469,7 +473,7 @@ describe("openavc-macro, cancelling", () => {
     const msg = await got;
     expect(msg.payload.success).toBe(true);
     expect(msg.payload.step_errors).toEqual([
-      { step: 1, action: "device.command", device: "projector", command: "power_on", error: "Projector is not connected." },
+      { macro: "flaky", step: 1, action: "device.command", device: "projector", command: "power_on", error: "Projector is not connected." },
     ]);
   });
 });

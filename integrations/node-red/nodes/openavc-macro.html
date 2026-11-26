@@ -70,10 +70,11 @@ Runs a macro and sends a message when it has finished, or cancels one that is ru
 ### Output, running
 
 : payload.success (boolean) : `true` when the macro completed
-: payload.error (string) : why it did not: a step that failed with the macro set to stop on errors, a cancellation, or a start the macro's own overlap or cooldown setting turned away
-: payload.step_errors (array) : present when a step failed but the macro carried on, as macros do unless set to stop on errors. Each entry names the `step`, `action`, `device`, `command` and `error`, in the words OpenAVC's own panel would show.
+: payload.error (string) : why it did not: a step that failed with the macro set to stop on errors, a cancellation, or a start the macro turned away ("macro skipped: " and OpenAVC's reason)
+: payload.code (string) : for a start the macro turned away, the reason's name: `macro_overlap`, `macro_cooldown`, `macro_queue_timeout` or `stopping` (OpenAVC 0.33 to 0.41 send the sentence alone)
+: payload.step_errors (array) : present when a step failed, whether the macro carried on past it (as macros do unless set to stop on errors) or stopped there. Each entry names the `macro` the step is in (this one, or a macro it ran), the `step`'s number in it, its `action`, `device` and `command`, and the `error`, in the words OpenAVC's own panel would show.
 
-A macro with delay steps takes as long as it takes; the output waits for it. A macro that does not complete also raises an error a **catch** node can pick up. A macro that completes with step errors does not (it completed), so check `payload.step_errors` if a half-done sequence matters to the flow.
+A macro with delay steps takes as long as it takes; the output waits for it. The answer is this run's own: a panel or another flow running the same macro meanwhile does not end it or add to its step errors (OpenAVC 0.33 to 0.41 do not say which run is whose, so on those it can). A macro that does not complete also raises an error a **catch** node can pick up. A macro that completes with step errors does not (it completed), so check `payload.step_errors` if a half-done sequence matters to the flow.
 
 ### Output, cancelling
 
