@@ -21,7 +21,8 @@ What is pinned here:
   never the key and never a login in the clear. Restored on this system it
   fills in a login this system no longer has, and never replaces one it has;
   restored on another system it fills in nothing.
-- An update backup holds the login file, never its key.
+- An update backup holds the login file, never its key. Imported into the
+  library on this system, its copy's devices get the logins saved here.
 
 An invented device throughout.
 """
@@ -548,6 +549,23 @@ async def test_an_update_backup_holds_the_login_file_and_never_its_key(engine, d
     assert members["device_logins.json"] == (data / "device_logins.json").read_bytes()
     assert not [name for name in members if name.endswith(KEY_FILENAME)]
     assert _readable_anywhere(members, PASSWORD) == []
+
+
+
+async def test_an_update_backup_imported_here_gets_this_systems_logins(engine, client, data):
+    from openavc.updater.backup import create_backup as create_update_backup
+
+    await _running(engine, _project(_device("proj1", "Projector"), proj1=PASSWORD))
+    path = create_update_backup(data, "0.0.0", engine.project_path)
+
+    imported = await client.post("/api/library/import", files={"file": (path.name, path.read_bytes())})
+    assert imported.status_code == 200, imported.text
+    copy_id = imported.json()["project_id"]
+    answer = await client.post(f"/api/library/{copy_id}/export", json={"passphrase": PASSPHRASE})
+
+    assert answer.status_code == 200, answer.text
+    opened = login_bundle.open_bundle(_members(answer.content)[login_bundle.BUNDLE_MEMBER], PASSPHRASE)
+    assert opened == [FoundLogin("proj1", DRIVER, {"password": PASSWORD})]
 
 
 # --- the crash copy ----------------------------------------------------------------
