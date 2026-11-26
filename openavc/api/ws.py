@@ -31,9 +31,9 @@ from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.api.ws_macros import cancel_macro, execute_macro
 from openavc.api.ws_send import (
     DISCONNECTS,
+    error_frame,
     press_failure as _press_failure,
     send_ws as _send_ws,
-    send_ws_error as _send_ws_error,
 )
 from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.panel_devices import (
@@ -464,6 +464,13 @@ async def _log_stream_task(ws: WebSocket, queue: asyncio.Queue) -> None:
         return  # Peer went away — subscription cleanup happens on disconnect
     except Exception:
         log.debug("WebSocket log stream ended on send failure", exc_info=True)
+
+
+async def _send_ws_error(
+    ws: WebSocket, source_type: str | None, message: str, **about: str | None
+) -> None:
+    """Send this socket the error frame (``ws_send.error_frame``)."""
+    await _send_ws(ws, error_frame(source_type, message, **about))
 
 
 _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, bool, or null)"

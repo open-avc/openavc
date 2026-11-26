@@ -788,7 +788,7 @@ def _error_frame_literals(path: Path) -> list[str]:
 def test_send_ws_error_is_the_only_error_frame_producer():
     """A second `{"type": "error"}` literal is how the shapes drifted apart.
 
-    Every failure on this socket goes through `send_ws_error`, so the frame
+    Every failure on this socket is built by `error_frame`, so the frame
     can't gain a field at one site and lose it at another. The socket's doors
     are three modules: the message handler, the macro doors, and the senders.
     """
@@ -800,7 +800,7 @@ def test_send_ws_error_is_the_only_error_frame_producer():
         for place in _error_frame_literals(Path(module.__file__))
     ]
     assert len(producers) == 1 and producers[0].startswith("ws_send.py:"), (
-        f"Expected exactly one 'error' frame literal (inside ws_send.send_ws_error); "
+        f"Expected exactly one 'error' frame literal (inside ws_send.error_frame); "
         f"found {producers}"
     )
 

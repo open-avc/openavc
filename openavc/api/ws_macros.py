@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from openavc.api.ws_send import log, press_failure, send_ws, send_ws_error
+from openavc.api.ws_send import error_frame, log, press_failure, send_ws
 from openavc.core.macro_text import no_such_macro
 from openavc.core.run_starts import RunReport
 
@@ -40,10 +40,10 @@ async def _named_macro(ws: WebSocket, msg_type: str, engine: Any, msg: dict[str,
     """
     macro_id = msg.get("macro_id", "")
     if not macro_id:
-        await send_ws_error(ws, msg_type, "Missing macro_id")
+        await send_ws(ws, error_frame(msg_type, "Missing macro_id"))
         return ""
     if not engine.macros.has_macro(macro_id):
-        await send_ws_error(ws, msg_type, no_such_macro(macro_id))
+        await send_ws(ws, error_frame(msg_type, no_such_macro(macro_id)))
         return ""
     return macro_id
 
@@ -66,10 +66,9 @@ async def _asked_macro(ws: WebSocket, engine: Any, msg: dict[str, Any]) -> Any:
     echoed back exactly, so it must be something a client can compare), or
     what ``_named_macro`` refuses. All before the run, in request order."""
     if not _echoable(msg.get("request_id")):
-        await send_ws_error(
-            ws, "macro.execute",
-            f"request_id must be text of 1 to {REQUEST_ID_MAX} characters",
-        )
+        await send_ws(ws, error_frame(
+            "macro.execute", f"request_id must be text of 1 to {REQUEST_ID_MAX} characters",
+        ))
         return ""
     return await _named_macro(ws, "macro.execute", engine, msg)
 
@@ -138,7 +137,7 @@ async def execute_macro(
             # Catch-all: whatever raised around the steps reaches nobody else.
             log.exception(f"macro.execute of '{macro_id}' failed")
             await acked.wait()
-            await send_ws_error(ws, "macro.execute", press_failure(e, client_type), **asked)
+            await send_ws(ws, error_frame("macro.execute", press_failure(e, client_type), **asked))
             return
         ending = _heard_by(engine, client_type, _run_ending(engine, macro_id, outcome, report))
         await acked.wait()

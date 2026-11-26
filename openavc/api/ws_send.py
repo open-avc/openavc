@@ -1,7 +1,7 @@
 """Sending one WebSocket client a frame: the helpers every door on the socket
 shares (``ws.py``'s message handler and the macro doors in ``ws_macros.py``).
 
-THE producer of the ``error`` frame is here (``send_ws_error``): one shape,
+THE producer of the ``error`` frame is here (``error_frame``): one shape,
 whatever refused what, so a field cannot be gained at one site and lost at
 another. ``press_failure`` is the sentence a failure is told in, for the
 client that sent it.
@@ -33,11 +33,11 @@ async def send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
         log.debug("WebSocket send failed", exc_info=True)
 
 
-async def send_ws_error(
-    ws: WebSocket, source_type: str | None, message: str, **about: str | None
-) -> None:
-    """Send an error frame — THE only producer of ``type: "error"`` answering a
-    client's message. The one the server sends on its own, a plugin's failed
+def error_frame(source_type: str | None, message: str, **about: str | None) -> dict[str, Any]:
+    """An error frame — THE only producer of ``type: "error"`` answering a
+    client's message. Each door sends it through its own module's sender
+    (``ws._send_ws_error``, ``ws_macros``), so a test that replaces one
+    module's sender sees every frame that module sends. The one the server sends on its own, a plugin's failed
     save of its settings, is broadcast to the Programmer with ``source_type``
     ``plugin.save_config`` (``core/project_logins.py``).
 
@@ -78,7 +78,7 @@ async def send_ws_error(
     if source_type:
         frame["source_type"] = source_type
     frame.update({name: value for name, value in about.items() if value})
-    await send_ws(ws, frame)
+    return frame
 
 
 def press_failure(exc: Exception, client_type: str) -> str:
