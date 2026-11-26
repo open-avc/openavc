@@ -61,7 +61,7 @@ from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from openavc.core.trigger_engine import TriggerRecords
+    from openavc.core.trigger_records import TriggerRecords
 
 log = get_logger("openavc.core.engine")
 
