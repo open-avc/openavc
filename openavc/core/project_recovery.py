@@ -5,7 +5,9 @@ not the one that loaded.
 THE order a start gets its project in. First a replace of the project that a
 power cut stopped part way is put back: the backup it took before its first
 rename, which its "replace in progress" marker names (``core/project_swap``),
-from then on a backup of the project that runs. Then a project file that is missing or
+from then on a backup of the project that runs; when it cannot be put back,
+what the swap had moved aside is kept under Backups and the files run as it
+left them. Then a project file that is missing or
 will not load is replaced from the newest of its backups that loads, the
 ones taken since another project last replaced it
 (``backup_manager.backups_since_replaced``: the backups before that hold the
@@ -83,13 +85,14 @@ NONE = ""
 RESTORED = "restored"   # a backup loaded in place of the project file
 RESET = "reset"         # nothing loaded; the instance started an empty project
 STARTER = "starter"     # a missing file with backups, none of them its project's that loads; the starter runs
+UNFINISHED = "unfinished"  # a replace a power cut stopped, its backup not put back; the files as it left them run
 
 # system.project_recovery_reason values — what was wrong with the project file.
 UNREADABLE = "unreadable"   # present, and it would not parse or validate
 MISSING = "missing"         # not there at all
 INTERRUPTED = "interrupted"  # a replace of the project stopped part way
 
-_OUTCOMES = {RESTORED, RESET, STARTER}
+_OUTCOMES = {RESTORED, RESET, STARTER, UNFINISHED}
 _REASONS = {UNREADABLE, MISSING, INTERRUPTED}
 
 
@@ -210,7 +213,9 @@ def load_or_recover(project_path: Path) -> ProjectConfig:
 
     1. A replace a power cut stopped part way is put back from the backup
        its marker names (``_finish_interrupted_replace``), that backup read
-       from then on as the running project's (``backup_manager.not_replaced``).
+       from then on as the running project's (``backup_manager.not_replaced``);
+       a backup that cannot be put back leaves what the swap had moved
+       aside kept under Backups, and the files as it left them go on.
     2. The project file is loaded.
     3. A file that is missing, or cannot be read or validated, is replaced
        by the newest of the backups taken since another project last
@@ -245,19 +250,26 @@ def _finish_interrupted_replace(project_path: Path) -> None:
     """A replace that a power cut stopped part way, put back: the backup its
     marker names restored, and recorded as ``RESTORED`` for ``INTERRUPTED``,
     so the room comes up on the project before the replace, never a mix of
-    two while that backup can be read. Once the marker is removed, that backup is read as the running
-    project's (``backup_manager.not_replaced``). What a replace left in its
-    working folder is removed either way. A backup that cannot be put back
-    is logged, and the load goes on with what is on disk."""
+    two. Once the marker is removed, that backup is read as the running
+    project's (``backup_manager.not_replaced``). A backup that cannot be put
+    back (gone, damaged, or none named) leaves what the swap had moved aside
+    kept under Backups first (``_keep_what_was_moved_aside``), and the load
+    goes on with what is on disk. What a replace left in its working folder
+    is removed either way."""
     from openavc.core import project_swap
 
     project_dir = project_path.parent
     marker = project_swap.read_marker(project_dir)
-    project_swap.clear_leftovers(project_dir)
     if marker is None:
+        project_swap.clear_leftovers(project_dir)
         return
     backup = marker["backup"]
+    if not backup:
+        _load_log.warning("A project replace did not finish, and it names no backup to put back")
     put_back = bool(backup) and _put_back_replaced(project_path, backup)
+    if not put_back:
+        _keep_what_was_moved_aside(project_path)
+    project_swap.clear_leftovers(project_dir)
     try:
         project_swap.clear_marker(project_dir)
     except OSError as e:
@@ -269,6 +281,31 @@ def _finish_interrupted_replace(project_path: Path) -> None:
         from openavc.core.backup_manager import not_replaced
 
         not_replaced(project_dir / backup)
+
+
+def _keep_what_was_moved_aside(project_path: Path) -> None:
+    """The entries of the project before a replace that its swap had moved
+    aside into its working folder (``project_swap.moved_aside``), kept under
+    Backups before that folder is removed, when the replace's own backup
+    cannot be put back; recorded as ``UNFINISHED``, naming that backup (none
+    when there was nothing to keep or it could not be saved). Its rotation
+    leaves alone every backup the start may go on to try. Never raises."""
+    from openavc.core import backup_manager, project_swap
+
+    project_dir = project_path.parent
+    kept = ""
+    to_try = [project_dir / backup.filename for backup in backup_manager.backups_since_replaced(project_path)]
+    try:
+        taken = backup_manager.set_aside(
+            project_path, SET_ASIDE_REASONS[INTERRUPTED], spare=to_try, source=project_swap.moved_aside(project_dir),
+        )
+    except OSError as e:
+        _load_log.error(f"The files an unfinished project replace had moved aside could not be kept under Backups: {e}")
+    else:
+        if taken is not None:
+            kept = backup_manager.backup_id(project_dir, taken)
+            _load_log.warning(f"Kept the files an unfinished project replace had moved aside under Backups: {taken.name}")
+    record(project_dir, outcome=UNFINISHED, reason=INTERRUPTED, backup=kept)
 
 
 def _put_back_replaced(project_path: Path, backup: str) -> bool:
@@ -295,6 +332,7 @@ def _put_back_replaced(project_path: Path, backup: str) -> bool:
 SET_ASIDE_REASONS = {
     UNREADABLE: "Before recovery (the project file would not load)",
     MISSING: "Before recovery (the project file was missing)",
+    INTERRUPTED: "Before recovery (opening or restoring a project did not finish)",
 }
 
 

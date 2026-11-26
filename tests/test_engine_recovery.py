@@ -3,7 +3,7 @@
 import json
 
 from openavc.core import project_recovery, project_update
-from openavc.core.backup_manager import create_backup
+from openavc.core.backup_manager import create_backup, list_backups
 from openavc.core.engine import Engine
 from openavc.core.project_loader import ProjectConfig, ProjectMeta, save_project
 
@@ -674,3 +674,85 @@ def test_a_start_whose_backups_all_fail_keeps_every_one_of_them(tmp_path, monkey
     assert project_recovery.load_or_recover(project_path).project.id == "recovery"
 
     assert all(path.exists() for path in tried)
+
+
+# --- A cut-off replace whose own backup cannot be put back ----------------------
+
+
+def _cut_off_with_no_backup(project_path, moved=("scripts", "state.json")):
+    """A replace a power cut stopped part way, its marker naming a backup
+    that is gone: what it had moved aside (``moved``) is in its working
+    folder, and the incoming project's script is in place."""
+    from openavc.core import project_swap
+
+    folder = project_path.parent
+    gone = folder / "backups" / "backup_20260101_000000_before_opening_lobby.zip"
+    gone.parent.mkdir(exist_ok=True)
+    gone.write_bytes(b"")
+    project_swap.write_marker(folder, "backups/" + gone.name)
+    gone.unlink()
+    aside = project_swap.moved_aside(folder)
+    aside.mkdir(parents=True)
+    for name in moved:
+        if (folder / name).exists():
+            (folder / name).rename(aside / name)
+    (folder / "scripts").mkdir(exist_ok=True)
+    (folder / "scripts" / "main.py").write_text("# the incoming script\n", encoding="utf-8")
+
+
+def test_a_cut_off_replace_with_its_project_file_moved_aside_comes_back_from_what_it_kept(tmp_path):
+    """The swap had moved every entry aside, the project file last: what
+    the start keeps of them is the whole project before the replace, and
+    the missing file is replaced from it."""
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    _real_project(project_path)
+    (project_path.parent / "scripts").mkdir()
+    (project_path.parent / "scripts" / "main.py").write_text("# the live script\n", encoding="utf-8")
+    _cut_off_with_no_backup(project_path, moved=("scripts", "project.avc"))
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "live"
+    assert (project_path.parent / "scripts" / "main.py").read_text(encoding="utf-8") == "# the live script\n"
+    notice = project_recovery.read(project_path.parent)
+    assert (notice["outcome"], notice["reason"]) == (project_recovery.RESTORED, project_recovery.MISSING)
+    held = next(b for b in list_backups(project_path) if b.filename == notice["backup"])
+    assert held.reason == project_recovery.SET_ASIDE_REASONS[project_recovery.INTERRUPTED]
+
+
+def test_a_cut_off_replace_of_a_missing_project_file_starts_the_starter_and_says_so(tmp_path):
+    """No project file before the replace and none swapped in: the starter
+    runs, and the notice says the file was missing, since files of a
+    project were there."""
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    project_path.parent.mkdir(parents=True)
+    (project_path.parent / "state.json").write_text('{"var.level": 3}', encoding="utf-8")
+    _cut_off_with_no_backup(project_path)
+
+    project_recovery.load_or_recover(project_path)
+
+    notice = project_recovery.read(project_path.parent)
+    assert (notice["outcome"], notice["reason"]) == (project_recovery.STARTER, project_recovery.MISSING)
+    assert any(b.reason == project_recovery.SET_ASIDE_REASONS[project_recovery.INTERRUPTED]
+               for b in list_backups(project_path))
+
+
+def test_what_a_cut_off_replace_keeps_never_rotates_away_a_backup_the_start_has_still_to_try(tmp_path):
+    """A full list whose only backup that opens is the oldest: keeping what
+    the cut-off swap moved aside must not remove it before the walk
+    reaches it."""
+    from openavc.core.backup_manager import MAX_BACKUPS
+
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    _real_project(project_path)
+    oldest = create_backup(project_path, "Auto backup")
+    _corrupt(project_path)
+    broken = [create_backup(project_path, f"Auto backup {n}") for n in range(MAX_BACKUPS - 1)]
+    _aged([oldest, *broken])
+    (project_path.parent / "state.json").write_text('{"var.level": 3}', encoding="utf-8")
+    _cut_off_with_no_backup(project_path)
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "live"
+    assert project_recovery.read(project_path.parent)["backup"] == f"backups/{oldest.name}"

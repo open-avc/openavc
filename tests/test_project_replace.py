@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -597,3 +598,46 @@ async def test_the_backup_a_kept_marker_names_is_written_again_only_once_put_bac
 
     assert project_swap.read_marker(folder) is None
     assert backup_manager.list_backups(hall.project_path)[0].kind == backup_manager.KIND_CHANGE
+
+
+def _the_backup_is_gone(folder: Path, backup: str) -> None:
+    (folder / backup).unlink()
+
+
+def _the_backup_is_empty(folder: Path, backup: str) -> None:
+    (folder / backup).write_bytes(b"")
+
+
+def _the_marker_names_none(folder: Path, backup: str) -> None:
+    project_swap.write_marker(folder, None)
+
+
+@pytest.mark.parametrize(
+    "spoil", [_the_backup_is_gone, _the_backup_is_empty, _the_marker_names_none], ids=["gone", "empty", "none"],
+)
+def test_a_start_that_cannot_put_back_a_cut_off_replace_keeps_what_it_had_moved_aside(tmp_path, spoil):
+    """With no backup to put back, the files the swap had moved aside (the
+    Hall's script and saved values) are kept under Backups before the
+    working folder goes, and the notice says the replace did not finish.
+    What runs is what the swap left."""
+    _write_project(tmp_path / "project.avc", "Hall", [LEVEL, MODE])
+    _write_files(tmp_path, "# the hall's script\n", b"PNG-hall")
+    (tmp_path / "state.json").write_text(json.dumps({"var.level": 7, "var.mode": "on"}), encoding="utf-8")
+    spoil(tmp_path, _cut_off_mid_swap(tmp_path))
+
+    project = project_recovery.load_or_recover(tmp_path / "project.avc")
+
+    assert project.project.name == "Lobby"
+    kept = [b for b in backup_manager.list_backups(tmp_path / "project.avc")
+            if b.reason == project_recovery.SET_ASIDE_REASONS[project_recovery.INTERRUPTED]]
+    assert len(kept) == 1
+    with zipfile.ZipFile(tmp_path / kept[0].filename) as zf:
+        assert zf.read("scripts/main.py") == b"# the hall's script\n"
+        assert json.loads(zf.read("state.json")) == {"var.level": 7, "var.mode": "on"}
+    notice = project_recovery.read(tmp_path)
+    assert notice is not None
+    assert (notice["outcome"], notice["reason"], notice["backup"]) == (
+        project_recovery.UNFINISHED, project_recovery.INTERRUPTED, kept[0].filename,
+    )
+    assert project_swap.read_marker(tmp_path) is None
+    assert not (tmp_path / project_swap.WORK_DIR).exists()

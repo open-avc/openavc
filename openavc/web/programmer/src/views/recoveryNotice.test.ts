@@ -103,6 +103,35 @@ describe("recoveryNotice", () => {
     expect(n.action).toBe("Open Project");
   });
 
+  it("says a replace that did not finish could not be put back, and where its files are kept", () => {
+    const n = recoveryNotice({
+      "system.project_recovery": "unfinished",
+      "system.project_recovery_reason": "interrupted",
+      "system.project_recovery_backup": "backups/backup_20260903_211430_before_recovery_opening_or_restoring.zip",
+    }, at);
+    expect(n.show).toBe(true);
+    expect(n.severe).toBe(true);
+    expect(n.title).toBe("Opening or restoring did not finish");
+    expect(n.body).toBe(
+      "Opening or restoring a project did not finish before this system stopped,"
+      + " and the project before it could not be put back."
+      + " This system is running the project files as they were left, which may mix the two projects."
+      + " Open or restore the project you want."
+      + " The files it had already moved out are kept under Backups:",
+    );
+    expect(n.backupFile).toBe("backups/backup_20260903_211430_before_recovery_opening_or_restoring.zip");
+    expect(n.action).toBe("Open Project");
+  });
+
+  it("says nothing was kept when an unfinished replace had moved nothing out", () => {
+    const n = recoveryNotice({
+      "system.project_recovery": "unfinished",
+      "system.project_recovery_reason": "interrupted",
+    }, at);
+    expect(n.body).not.toContain("kept under Backups");
+    expect(n.backupFile).toBe("");
+  });
+
   it("names the backups it tried when none would open", () => {
     const n = recoveryNotice({
       "system.project_recovery": "reset",

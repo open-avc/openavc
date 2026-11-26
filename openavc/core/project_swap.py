@@ -80,6 +80,13 @@ def _sync_folder(folder: Path) -> None:
         os.close(fd)
 
 
+def moved_aside(project_dir: Path) -> Path:
+    """Where a swap moves the live entries it replaces, in its working
+    folder: what a swap a power cut stopped leaves of the project before
+    it, until the working folder is removed."""
+    return project_dir / WORK_DIR / "old"
+
+
 def _sync_file(path: Path) -> None:
     """``path``'s contents on disk, and its name in its folder. Opened for
     writing, which Windows asks of a file it flushes."""
@@ -107,7 +114,7 @@ class Staged:
 
     @property
     def aside(self) -> Path:
-        return self.work / "old"
+        return moved_aside(self.project_dir)
 
     @property
     def partway(self) -> bool:

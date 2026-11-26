@@ -13,7 +13,8 @@ export interface RecoveryNotice {
   severe: boolean;
   title: string;
   body: string;
-  /** The backup that was loaded, to match against the Backups list. "" when none was. */
+  /** The backup that was loaded, or the one keeping what an unfinished
+   *  replace had moved out, to match against the Backups list. "" when none. */
   backupFile: string;
   /** Above the backups tried when none would open. "" when none was tried. */
   triedHeading: string;
@@ -90,6 +91,26 @@ function interruptedNotice({ backupFile, when }: Reading): RecoveryNotice {
   };
 }
 
+/** A restore or an open that stopped part way, whose backup could not be
+ *  put back (gone, damaged, or none taken): the files run as it left them, and what it had moved out is
+ *  kept under Backups (`backupFile`) when there was any. */
+function unfinishedNotice({ backupFile }: Reading): RecoveryNotice {
+  const kept = backupFile ? " The files it had already moved out are kept under Backups:" : "";
+  return {
+    show: true,
+    severe: true,
+    title: "Opening or restoring did not finish",
+    body: "Opening or restoring a project did not finish before this system stopped,"
+      + " and the project before it could not be put back."
+      + " This system is running the project files as they were left, which may mix the two projects."
+      + " Open or restore the project you want."
+      + kept,
+    backupFile,
+    ...NONE_TRIED,
+    action: "Open Project",
+  };
+}
+
 /** A missing file whose backups hold no copy of it that opens. The
  *  backups that are listed are another project's, or would not open:
  *  `tried` names the ones that would not. */
@@ -136,7 +157,7 @@ function restoredNotice({ opening, when, backupFile }: Reading): RecoveryNotice 
   };
 }
 
-const OUTCOMES = new Set(["restored", "reset", "starter"]);
+const OUTCOMES = new Set(["restored", "reset", "starter", "unfinished"]);
 
 /** The notice for the current state, or `show: false` when there is none.
  *
@@ -163,7 +184,8 @@ export function recoveryNotice(
   };
 
   if (outcome === "starter") return starterNotice(reading);
-  // Always "restored": the server puts back the backup a replace took.
+  if (outcome === "unfinished") return unfinishedNotice(reading);
+  // Otherwise "restored": the server put back the backup a replace took.
   if (reason === "interrupted") return interruptedNotice(reading);
   return outcome === "reset" ? resetNotice(reading) : restoredNotice(reading);
 }

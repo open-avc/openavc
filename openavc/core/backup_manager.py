@@ -269,47 +269,65 @@ def create_backup(
     if not project_file.exists():
         log.debug(f"No project file to back up at {project_file}")
         return None
-    return _take(project_file, reason, kind=kind, spare=() if spare is None else (spare,))
+    return _take(project_file, _Held(project_file, reason, kind), spare=() if spare is None else (spare,))
 
 
-def set_aside(project_file: Path, reason: str, *, spare: Collection[Path] = ()) -> Path | None:
+def set_aside(
+    project_file: Path, reason: str, *, spare: Collection[Path] = (), source: Path | None = None,
+) -> Path | None:
     """What a start is about to replace (``core/project_recovery``), kept
     under Backups first: the project file as it is, however unreadable, and
     what a backup carries from beside it (``_beside_members``), as the
     backup a running replace takes keeps them. When the project file is
     missing, the files beside it alone, a backup that restores nothing but
-    keeps them. Returns the backup, or None when there is nothing there
-    at all (a first start). Raises the ``OSError`` as ``create_backup``
-    does. ``spare`` are the backups the start is about to try, which its
-    rotation leaves alone (``cleanup_backups``)."""
-    if not project_file.exists() and next(_beside_members(project_file.parent), None) is None:
+    keeps them. ``source`` is the folder they are read from when it is not
+    the project file's: what a swap a power cut stopped had moved aside
+    into its working folder. Returns the backup, or None when there is
+    nothing there at all (a first start). Raises the ``OSError`` as
+    ``create_backup`` does. ``spare`` are the backups the start is about to
+    try, which its rotation leaves alone (``cleanup_backups``)."""
+    held_file = project_file if source is None else source / project_file.name
+    if not held_file.exists() and next(_beside_members(held_file.parent), None) is None:
         return None
-    return _take(project_file, reason, kind=KIND_SET_ASIDE, spare=spare)
+    return _take(project_file, _Held(held_file, reason, KIND_SET_ASIDE), spare=spare)
 
 
-def _take(project_file: Path, reason: str, *, kind: str, spare: Collection[Path]) -> Path:
-    """The backup ``create_backup`` and ``set_aside`` take, written and
-    placed under Backups, the oldest past ``MAX_BACKUPS`` rotated away."""
+@dataclass(frozen=True)
+class _Held:
+    """What a backup holds and what it is: ``file`` and what is beside it
+    (the project file, unless ``set_aside`` names another folder), listed
+    under ``reason``, of ``kind`` (``KIND_*``, or "" judged by the reason)."""
+
+    file: Path
+    reason: str
+    kind: str
+
+
+def _take(project_file: Path, held: _Held, *, spare: Collection[Path]) -> Path:
+    """The backup ``create_backup`` and ``set_aside`` take of ``held``,
+    written and placed under the project file's Backups, the oldest past
+    ``MAX_BACKUPS`` rotated away."""
     project_dir = project_file.parent
+    held_file, reason, kind = held.file, held.reason, held.kind
     from openavc.core.project_loader import _project_save_lock
 
     backup_d = _backup_dir(project_dir)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     slug = _reason_slug(reason)
 
-    data, held = _read_project(project_file)
+    data, section = _read_project(held_file)
     logins = _logins_copy(data) if data is not None else None
 
     meta = {
         "reason": reason,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "project_name": _text(held, "name"),
+        "project_name": _text(section, "name"),
         "openavc_version": __version__,
     }
     if kind:
         meta["kind"] = kind
-    if _text(held, "uuid"):
-        meta["project_uuid"] = _text(held, "uuid")
+    if _text(section, "uuid"):
+        meta["project_uuid"] = _text(section, "uuid")
 
     def place(finished: Path) -> Path:
         # The lock makes the free-name check and the rename one step, so two
@@ -325,7 +343,7 @@ def _take(project_file: Path, reason: str, *, kind: str, spare: Collection[Path]
     # concurrent save.
     try:
         backup_path = write_zip(
-            backup_d, "backup", lambda zf: _write_archive(zf, project_file, meta, logins), place=place,
+            backup_d, "backup", lambda zf: _write_archive(zf, held_file, meta, logins), place=place,
         )
     except OSError as e:
         log.error(f"Failed to create backup: {e}")
