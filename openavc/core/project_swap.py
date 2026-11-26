@@ -17,7 +17,8 @@ The marker (``write_marker``) names the backup a replace took of the project
 it replaces. It is on disk before the first rename and removed after the
 last, so a power cut part way through leaves it there, and the next start
 (``core/project_recovery.load_or_recover``) puts that backup back before it
-reads anything else: the project before the replace, never a mix of two.
+reads anything else: the project before the replace, never a mix of two,
+while that backup can be read.
 
 Engine-free, so the start reads it before there is an engine.
 """

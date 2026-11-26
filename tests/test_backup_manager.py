@@ -629,3 +629,47 @@ class TestAProjectFileWithItsOwnName:
             "precondition: save_project wrote its crash copy"
         )
         assert list_backups(hall) == []
+
+
+class TestNotReplaced:
+    """The backup a replace took, read as the running project's once the
+    replace did not happen."""
+
+    def test_it_is_walked_as_the_running_projects_and_keeps_everything_else(self, project_dir: Path):
+        project_file = project_dir / "project.avc"
+        taken = backup_manager.create_backup(project_file, "Before opening 'Lobby'", kind=backup_manager.KIND_REPLACE)
+        with zipfile.ZipFile(taken) as zf:
+            members = {name: zf.read(name) for name in zf.namelist() if name != "backup_meta.json"}
+        before = backup_manager.list_backups(project_file)[0]
+        written = taken.stat().st_mtime_ns
+        assert backup_manager.backups_since_replaced(project_file) == []
+
+        backup_manager.not_replaced(taken)
+
+        after = backup_manager.list_backups(project_file)[0]
+        assert (after.filename, after.reason, after.timestamp, after.project_name) == (
+            before.filename, before.reason, before.timestamp, before.project_name,
+        )
+        assert after.kind == backup_manager.KIND_CHANGE
+        assert taken.stat().st_mtime_ns == written
+        with zipfile.ZipFile(taken) as zf:
+            assert {name: zf.read(name) for name in zf.namelist() if name != "backup_meta.json"} == members
+        assert [b.filename for b in backup_manager.backups_since_replaced(project_file)] == [after.filename]
+
+    def test_a_backup_of_another_kind_is_left_as_it_is(self, project_dir: Path):
+        taken = backup_manager.create_backup(project_dir / "project.avc", "Auto-backup", kind=backup_manager.KIND_AUTO)
+        content = taken.read_bytes()
+
+        backup_manager.not_replaced(taken)
+        backup_manager.not_replaced(None)
+
+        assert taken.read_bytes() == content
+
+    def test_one_that_cannot_be_read_is_left_as_it_is(self, project_dir: Path):
+        broken = project_dir / "backups" / "backup_20260101_000000_before_opening_lobby.zip"
+        broken.parent.mkdir(exist_ok=True)
+        broken.write_bytes(b"not a zip")
+
+        backup_manager.not_replaced(broken)
+
+        assert broken.read_bytes() == b"not a zip"

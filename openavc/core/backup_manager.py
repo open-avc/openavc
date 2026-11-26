@@ -74,10 +74,13 @@ ARCHIVE_PROJECT = "project.avc"
 # anywhere else they do not open.
 ARCHIVE_LOGINS = "device_logins.json"
 
+# What the backup is: its reason, kind, time and held project.
+_ARCHIVE_META = "backup_meta.json"
+
 # What a backup is, written in its meta as "kind".
 KIND_AUTO = "auto"              # the periodic backup
 KIND_MANUAL = "manual"          # Create Backup, named by the person
-KIND_CHANGE = "change"          # before a change to the running project (the AI, a cloud push, the login move)
+KIND_CHANGE = "change"          # before a change to the running project (the AI, a cloud push, the login move; a replace that did not happen)
 KIND_REPLACE = "replace_boundary"  # before another project replaced it (open, import, blank, restore)
 KIND_SET_ASIDE = "set_aside"    # what a start replaced (core/project_recovery)
 KINDS = frozenset({KIND_AUTO, KIND_MANUAL, KIND_CHANGE, KIND_REPLACE, KIND_SET_ASIDE})
@@ -131,9 +134,16 @@ class BackupInfo:
     @property
     def before_a_replace(self) -> bool:
         """Taken just before another project replaced the one it holds."""
-        if self.kind:
-            return self.kind == KIND_REPLACE
-        return self.reason in _REPLACE_REASONS or self.reason.startswith(_REPLACE_REASON_PREFIXES)
+        return _before_a_replace(self.kind, self.reason)
+
+
+def _before_a_replace(kind: str, reason: str) -> bool:
+    """A backup of ``kind`` named ``reason`` was taken just before another
+    project replaced the one it holds; one with no kind is judged by its
+    reason."""
+    if kind:
+        return kind == KIND_REPLACE
+    return reason in _REPLACE_REASONS or reason.startswith(_REPLACE_REASON_PREFIXES)
 
 
 def backup_id(project_dir: Path, backup_path: Path) -> str:
@@ -187,7 +197,7 @@ def _write_archive(zf: zipfile.ZipFile, project_file: Path, meta: dict, logins: 
     beside the project file (``_beside_members``) and the sealed logins."""
     if project_file.exists():
         zf.write(project_file, ARCHIVE_PROJECT)
-    zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
+    zf.writestr(_ARCHIVE_META, json.dumps(meta, indent=2))
     for archive_path, f in _beside_members(project_file.parent):
         zf.write(f, archive_path)
     if logins is not None:
@@ -367,6 +377,45 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
     when the file holds no login in the clear, the move could not finish or
     the logins cannot be sealed.
     """
+    with zipfile.ZipFile(backup_path) as source:
+        replaced = _sealed_members(source, move)
+    if replaced is None or not _rewrite(backup_path, replaced):
+        return False
+    log.info(f"Backup {backup_path.name} now holds its logins sealed, not in the clear")
+    return True
+
+
+def not_replaced(backup_path: Path | None) -> None:
+    """The backup a replace took of the project it replaces
+    (``KIND_REPLACE``, or judged one by its reason), written again as one
+    taken before a change to the running project (``KIND_CHANGE``), when
+    the replace did not happen: it stopped part way and the project before
+    it runs again (``core/project_replace``), or a start put that backup
+    back (``core/project_recovery``). The project it holds is the one that runs,
+    so a later start whose project file is missing or will not load walks
+    on through it (``backups_since_replaced``) rather than stopping there,
+    as at a project another one replaced. Its reason, what the person was
+    doing, and the time it was taken are kept. None, or a backup of another
+    kind, is left as it is. Never raises: a backup that cannot be written
+    again is logged and stays as it was."""
+    if backup_path is None:
+        return
+    try:
+        meta = _read_zip_meta(backup_path)
+        if not _before_a_replace(_text(meta, "kind"), _text(meta, "reason")):
+            return
+        meta["kind"] = KIND_CHANGE
+        _rewrite(backup_path, {_ARCHIVE_META: json.dumps(meta, indent=2).encode("utf-8")})
+    except (OSError, ValueError, zipfile.BadZipFile):
+        log.exception("Could not mark backup %s as the running project's", backup_path.name)
+
+
+def _rewrite(backup_path: Path, replaced: dict[str, bytes]) -> bool:
+    """The backup at ``backup_path`` written again with each member
+    ``replaced`` names holding its bytes, every other member copied one at
+    a time, never read whole, its name and the time it was taken kept,
+    which the list shows and the rotation sorts by. False when it was
+    rotated away meanwhile."""
     from openavc.core.project_loader import _project_save_lock
 
     taken = backup_path.stat()
@@ -379,17 +428,12 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
             os.replace(finished, backup_path)
         return backup_path
 
-    with zipfile.ZipFile(backup_path) as source:
-        replaced = _sealed_members(source, move)
-    if replaced is None:
-        return False
-
     def fill(out: zipfile.ZipFile) -> None:
         # Opened again and closed before place: Windows refuses to replace a
         # file this process holds open.
         try:
             with zipfile.ZipFile(backup_path) as again:
-                _copy_sealed(again, out, replaced)
+                _copy_replacing(again, out, dict(replaced))
         except FileNotFoundError as gone:
             raise _RotatedAway from gone
 
@@ -397,18 +441,16 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
         write_zip(backup_path.parent, backup_path.stem, fill, place=place)
     except _RotatedAway:
         return False
-    log.info(f"Backup {backup_path.name} now holds its logins sealed, not in the clear")
     return True
 
 
 class _RotatedAway(Exception):
-    """The backup being sealed was rotated away while its copy was written."""
+    """The backup being written again was rotated away while its copy was written."""
 
 
-def _copy_sealed(source: zipfile.ZipFile, out: zipfile.ZipFile, replaced: dict[str, bytes]) -> None:
+def _copy_replacing(source: zipfile.ZipFile, out: zipfile.ZipFile, replaced: dict[str, bytes]) -> None:
     """Every member of ``source`` into ``out``, one at a time, never read
-    whole, the two ``replaced`` holds written in their place
-    (``seal_logins_in_backup``)."""
+    whole, those ``replaced`` holds written in their place (``_rewrite``)."""
     for info in source.infolist():
         if info.filename in replaced:
             out.writestr(copy.copy(info), replaced.pop(info.filename))
@@ -684,6 +726,6 @@ def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Collect
 def _read_zip_meta(path: Path) -> dict:
     """Read backup_meta.json from a ZIP backup."""
     with zipfile.ZipFile(path, "r") as zf:
-        if "backup_meta.json" in zf.namelist():
-            return json.loads(zf.read("backup_meta.json"))
+        if _ARCHIVE_META in zf.namelist():
+            return json.loads(zf.read(_ARCHIVE_META))
     return {}

@@ -1,10 +1,11 @@
 """Getting a project at boot, and saying out loud when the project on disk was
 not the one that loaded.
 
-``load_or_recover`` is the load (``Engine._load_project_safe`` asks it). First
-a replace of the project that a power cut stopped part way is put back: the
-backup it took before its first rename, which its "replace in progress"
-marker names (``core/project_swap``). Then a project file that is missing or
+``load_or_recover`` is the load (``Engine._load_project_safe`` asks it), and
+THE order a start gets its project in. First a replace of the project that a
+power cut stopped part way is put back: the backup it took before its first
+rename, which its "replace in progress" marker names (``core/project_swap``),
+from then on a backup of the project that runs. Then a project file that is missing or
 will not load is replaced from the newest of its backups that loads, the
 ones taken since another project last replaced it
 (``backup_manager.backups_since_replaced``: the backups before that hold the
@@ -204,19 +205,26 @@ def _write_atomic(path: Path, text: str) -> None:
 
 
 def load_or_recover(project_path: Path) -> ProjectConfig:
-    """The project at ``project_path``, or what stands in for it.
+    """The project at ``project_path``, or what stands in for it: THE
+    order a start gets its project in.
 
-    A replace that did not finish is put back first
-    (``_finish_interrupted_replace``). A file that is missing, or cannot be
-    read or validated, is replaced by the newest of its project's backups
-    that loads; with none, a missing file by the bundled starter project,
-    and otherwise (or with no starter) an empty Recovery Project
-    (``_Recovery``). A restored backup leaves a record (``record``), and so
-    does the starter or an empty project started in place of a project that
-    existed (a file that could not be read, or a missing one with backups),
-    because a room that came up on two-minute-old settings, or on none of
-    its own, has to say so to the person whose edit is not in it. A missing
-    file with no backups at all is a first boot and leaves none.
+    1. A replace a power cut stopped part way is put back from the backup
+       its marker names (``_finish_interrupted_replace``), that backup read
+       from then on as the running project's (``backup_manager.not_replaced``).
+    2. The project file is loaded.
+    3. A file that is missing, or cannot be read or validated, is replaced
+       by the newest of the backups taken since another project last
+       replaced it that loads (``backup_manager.backups_since_replaced``),
+       after what is there is kept under Backups (``_Recovery``).
+    4. With none, a missing file is replaced by the bundled starter project,
+       and otherwise (or with no starter) by an empty Recovery Project.
+
+    A restored backup leaves a record (``record``), and so does the starter
+    or an empty project started in place of a project that existed (a file
+    that could not be read, or a missing one with backups), because a room
+    that came up on two-minute-old settings, or on none of its own, has to
+    say so to the person whose edit is not in it. A missing file with no
+    backups at all is a first boot and leaves none.
     """
     _finish_interrupted_replace(project_path)
     try:
@@ -237,9 +245,10 @@ def _finish_interrupted_replace(project_path: Path) -> None:
     """A replace that a power cut stopped part way, put back: the backup its
     marker names restored, and recorded as ``RESTORED`` for ``INTERRUPTED``,
     so the room comes up on the project before the replace, never a mix of
-    two. What a replace left in its working folder is removed either way. A
-    backup that cannot be put back is logged, and the load goes on with
-    what is on disk."""
+    two while that backup can be read. Once the marker is removed, that backup is read as the running
+    project's (``backup_manager.not_replaced``). What a replace left in its
+    working folder is removed either way. A backup that cannot be put back
+    is logged, and the load goes on with what is on disk."""
     from openavc.core import project_swap
 
     project_dir = project_path.parent
@@ -248,17 +257,23 @@ def _finish_interrupted_replace(project_path: Path) -> None:
     if marker is None:
         return
     backup = marker["backup"]
-    if backup:
-        _put_back_replaced(project_path, backup)
+    put_back = bool(backup) and _put_back_replaced(project_path, backup)
     try:
         project_swap.clear_marker(project_dir)
     except OSError as e:
         _load_log.warning(f"Could not remove the replace-in-progress marker: {e}")
+        return
+    if put_back:
+        # Written again only once no marker names it: until then it is what
+        # the next start puts back.
+        from openavc.core.backup_manager import not_replaced
+
+        not_replaced(project_dir / backup)
 
 
-def _put_back_replaced(project_path: Path, backup: str) -> None:
+def _put_back_replaced(project_path: Path, backup: str) -> bool:
     """The backup a replace took of the project it replaced, restored and
-    recorded. Never raises."""
+    recorded; True when it was. Never raises."""
     from openavc.core.backup_manager import list_backups, restore_from_backup
 
     project_dir = project_path.parent
@@ -269,9 +284,10 @@ def _put_back_replaced(project_path: Path, backup: str) -> None:
         restore_from_backup(backup_path, project_path)
     except Exception as e:
         _load_log.error(f"The backup taken before a project replace could not be put back ({backup}): {e}")
-        return
+        return False
     taken = next((b.timestamp for b in list_backups(project_path) if b.filename == backup), "")
     record(project_dir, outcome=RESTORED, reason=INTERRUPTED, backup=backup, cutoff=taken)
+    return True
 
 
 #: The reason the backup a recovery takes of what it replaces is listed

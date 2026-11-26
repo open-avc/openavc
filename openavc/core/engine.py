@@ -405,9 +405,10 @@ class Engine(
         )
 
     def _load_project_safe(self) -> ProjectConfig:
-        """project.avc, or what stands in for it when it is missing or cannot
-        be read: the seed, a backup, or an empty Recovery Project, with the
-        record a recovery leaves (``project_recovery.load_or_recover``)."""
+        """project.avc, or what stands in for it when a replace was cut off
+        or the file is missing or cannot be read, in the order
+        ``project_recovery.load_or_recover`` keeps, with the record a
+        recovery leaves."""
         from openavc.core import project_recovery
 
         return project_recovery.load_or_recover(self.project_path)

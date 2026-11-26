@@ -30,7 +30,10 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
    load's variables stage, before its triggers run, as at a start. When
    that fails, the files before it are swapped back under the marker and
    the project before it loaded again, the variables back as they were,
-   and the failure is raised as ``ProjectNotAppliedError``;
+   and the failure is raised as ``ProjectNotAppliedError``. Any replace
+   not applied once its backup is taken leaves that backup a backup of the
+   project still running (``backup_manager.not_replaced``), so a later start
+   whose project file is missing or will not load reads it as that project's;
 6. whatever happened, the persister started again, and the values the
    store holds written out.
 
@@ -296,9 +299,23 @@ class ProjectReplaceMixin:
         if self.persister:
             # The values changed since the last flush are in the backup.
             self.persister.flush()
+        from openavc.core.project_changes import ProjectNotAppliedError
+
         taken = await backup_manager.capture(
             self.project_path, prepared.backup_reason, kind=backup_manager.KIND_REPLACE, spare=prepared.spare,
         )
+        try:
+            return await self._replace_from_capture(prepared, taken)
+        except ProjectNotAppliedError:
+            # Not replaced: the project the backup holds is the one running.
+            # A marker kept (a swap back that failed) still names the backup
+            # for the next start to put back, which writes it again then.
+            if project_swap.read_marker(self.project_path.parent) is None:
+                await asyncio.to_thread(backup_manager.not_replaced, taken)
+            raise
+
+    async def _replace_from_capture(self, prepared: PreparedProject, taken: Path | None):
+        """Steps 2 to 6, once the backup is ``taken``."""
         staged = await asyncio.to_thread(self._stage_replace, prepared)
         try:
             return await self._replace_staged(prepared, staged, taken)

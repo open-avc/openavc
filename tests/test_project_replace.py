@@ -499,3 +499,101 @@ async def test_the_backup_the_marker_names_is_on_disk_before_the_marker(hall, tm
     if os.name != "nt":  # Windows opens no folder to flush it
         backups_folder = os.stat(taken.parent)
         assert seen.index((backups_folder.st_dev, backups_folder.st_ino)) < seen.index(at_first_rename["marker"])
+
+
+# --- The backup of a replace that did not happen --------------------------------
+
+
+def _the_hall_comes_back_when_its_file_goes_missing(folder: Path) -> None:
+    """A later start that finds the Hall's project file missing opens the
+    Hall's newest backup, as it opens any backup of the running project."""
+    (folder / "project.avc").unlink()
+
+    project = project_recovery.load_or_recover(folder / "project.avc")
+
+    assert project.project.name == "Hall"
+    assert (folder / "scripts" / "main.py").read_text(encoding="utf-8") == "# the hall's script\n"
+    notice = project_recovery.read(folder)
+    assert (notice["outcome"], notice["reason"]) == (project_recovery.RESTORED, project_recovery.MISSING)
+
+
+def test_the_backup_a_start_puts_back_is_the_running_projects_for_a_later_start(tmp_path):
+    """The backup a cut-off replace took holds the project the start put
+    back, the one that runs, not a project another one replaced."""
+    _write_project(tmp_path / "project.avc", "Hall", [LEVEL, MODE])
+    _write_files(tmp_path, "# the hall's script\n", b"PNG-hall")
+    (tmp_path / "state.json").write_text(json.dumps({"var.level": 7}), encoding="utf-8")
+    _cut_off_mid_swap(tmp_path)
+    assert project_recovery.load_or_recover(tmp_path / "project.avc").project.name == "Hall"
+
+    _the_hall_comes_back_when_its_file_goes_missing(tmp_path)
+
+
+async def _the_lobby_will_not_start(engine: Engine, tmp_path: Path, monkeypatch) -> None:
+    reconcile = engine._reconcile
+
+    async def lobby_fails(run) -> None:
+        await reconcile(run)
+        if engine.project.project.name == "Lobby":
+            raise RuntimeError("a part of the Lobby would not start")
+
+    engine._reconcile = lobby_fails
+
+
+async def _a_rename_is_refused(engine: Engine, tmp_path: Path, monkeypatch) -> None:
+    rename = project_swap._rename_on_disk
+    calls = {"n": 0}
+
+    def refused_once(src: Path, dst: Path) -> None:
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise PermissionError(13, "The file is in use")
+        rename(src, dst)
+
+    monkeypatch.setattr(project_swap, "_rename_on_disk", refused_once)
+
+
+@pytest.mark.parametrize("failure", [_the_lobby_will_not_start, _a_rename_is_refused], ids=["load", "swap"])
+async def test_the_backup_a_failed_replace_took_is_the_running_projects_for_a_later_start(hall, tmp_path, monkeypatch, failure):
+    """A replace that did not happen leaves its backup holding the project
+    that still runs, not a project another one replaced."""
+    library_id = _library_lobby(tmp_path, monkeypatch)
+    await failure(hall, tmp_path, monkeypatch)
+
+    resp = await _open_lobby(hall, library_id, monkeypatch)
+
+    assert resp.status_code == 500, resp.text
+    hall.persister.stop()
+    _the_hall_comes_back_when_its_file_goes_missing(hall.project_path.parent)
+
+
+async def test_the_backup_a_kept_marker_names_is_written_again_only_once_put_back(hall, tmp_path, monkeypatch):
+    """A swap whose undo also fails keeps its marker, and the backup it
+    names is what the next start puts back: it is left as it was written
+    until that start has put it back and removed the marker."""
+    library_id = _library_lobby(tmp_path, monkeypatch)
+    folder = hall.project_path.parent
+    rename = project_swap._rename_on_disk
+    calls = {"n": 0}
+
+    def refused_from_the_third(src: Path, dst: Path) -> None:
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            raise PermissionError(13, "The file is in use")
+        rename(src, dst)
+
+    monkeypatch.setattr(project_swap, "_rename_on_disk", refused_from_the_third)
+
+    resp = await _open_lobby(hall, library_id, monkeypatch)
+
+    assert resp.status_code == 500, resp.text
+    taken = backup_manager.list_backups(hall.project_path)[0]
+    assert project_swap.read_marker(folder) == {"backup": taken.filename}
+    assert taken.kind == backup_manager.KIND_REPLACE
+    hall.persister.stop()
+    monkeypatch.setattr(project_swap, "_rename_on_disk", rename)
+
+    assert project_recovery.load_or_recover(hall.project_path).project.name == "Hall"
+
+    assert project_swap.read_marker(folder) is None
+    assert backup_manager.list_backups(hall.project_path)[0].kind == backup_manager.KIND_CHANGE
