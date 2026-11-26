@@ -40,7 +40,10 @@ from openavc.drivers.registry import (
     is_driver_registered,
 )
 from openavc.drivers.spec import is_secret_setting
+from openavc.utils.log_redaction import keep_masked_secrets
 from openavc.utils.logger import get_logger
+from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import text_as
 
 
 def _refuse_missing_required(driver_id: str, merged: dict, before: dict | None = None) -> None:
@@ -247,9 +250,12 @@ def _merge_sent_config(existing: Any, row: dict, driver_id: str, sent: dict | No
     replaces the protocol half because the IDE always sends the whole config;
     a generator sends the field it means to change, and replacing would read
     ``{"host": ...}`` as "and drop every other setting". Nothing is written.
+    A text sent back as the device's details showed it (``_as_stored``) keeps
+    what is stored.
     """
     raw_config = sent or {}
     _refuse_logins([driver_id, existing.driver], [str(k) for k in raw_config], adding=False)
+    raw_config = _as_stored(raw_config, {**existing.config, **row})
     protocol_sent, connection_sent = split_connection_fields(raw_config)
     protocol = {**existing.config, **protocol_sent}
     connection = {**row, **connection_sent}
@@ -257,6 +263,18 @@ def _merge_sent_config(existing: Any, row: dict, driver_id: str, sent: dict | No
         {k: v for k, v in protocol.items() if v is not None},
         {k: v for k, v in connection.items() if v is not None},
     )
+
+
+def _as_stored(sent: dict, stored: dict) -> dict:
+    """``sent`` with each value the device's details showed masked put back
+    as it is stored: a field named like a credential sent as ``***``, and a
+    text the details gave as ``secret_exits.text_as`` does (a stream
+    address's password, a login quoted in a field of its own), so a config
+    read and sent back is never saved with ``***`` in it."""
+    kept, _nothing_saved = keep_masked_secrets(
+        sent, stored, shown=lambda text: text_as(Exit.PROGRAMMER, text),
+    )
+    return kept
 
 
 def _settle_on_driver(project: Any, existing: Any, driver_id: str, input: dict) -> dict:

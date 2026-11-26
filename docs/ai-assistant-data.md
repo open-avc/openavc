@@ -22,9 +22,9 @@ What is never sent:
   enter or change one: logins are entered on the device's page in the Programmer. Plugin logins
   are shown to it as `***`.
 - The Programmer password or API key, and the system's cloud key.
-- A login the system holds, wherever something the assistant reads repeats it: a log line, a
-  device's state, a plugin's settings. It is shown as `***`, and so is a value a driver keeps in
-  a device's state under a login's name, such as a session token.
+- A login or key the system holds, four characters or longer, where something the assistant
+  reads repeats it: a log line, a device's state, a plugin's settings. It is shown as `***`, and
+  so is a value a driver keeps in a device's state under a login's name, such as a session token.
 
 One exception on 0.40.0: a stream key, password or PIN typed into a macro step or a control's
 action is saved in the project, so the assistant can read it with the macro or the page that

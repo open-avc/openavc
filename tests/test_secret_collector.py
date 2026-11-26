@@ -292,3 +292,20 @@ def test_an_orphaned_device_s_details_mask_every_secret():
         "host": "10.0.0.8", "password": REDACTED, "notes": f"spare {REDACTED}",
         "stream": "rtsp://op:***@10.0.0.8/live",
     }
+
+
+def test_an_orphaned_device_s_config_sent_back_as_it_was_read_keeps_its_saved_text():
+    # The assistant reads an orphaned device's details, then moves it to a
+    # driver, sending its config back whole: what the details showed masked
+    # is kept as it is stored, never saved as ***.
+    from types import SimpleNamespace
+
+    from openavc.cloud.tools.device_tools import _merge_sent_config
+    from openavc.core.device_info import _orphan_config
+
+    get_secret_registry().set_project_secrets({"Orph-Pass-61"})
+    stored = {"stream": STREAM, "notes": "spare Orph-Pass-61", "zone": 2}
+    existing = SimpleNamespace(id="spare", driver="acme_missing", config=dict(stored))
+    read = _orphan_config(stored)
+    protocol, _connection = _merge_sent_config(existing, {}, "acme_missing", {**read, "zone": 3})
+    assert protocol == {**stored, "zone": 3}
