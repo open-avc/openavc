@@ -280,6 +280,43 @@ async def test_a_pushed_project_that_is_not_valid_names_the_field_and_not_its_va
     assert PRIVATE not in json.dumps(payload)
 
 
+async def test_a_pushed_device_with_no_name_is_refused_without_its_login(engine):
+    """A missing field's error quotes the object the field is missing from:
+    for a device, the device, its login included."""
+    body = _renamed(engine)
+    body["devices"] = [{"id": "proj", "driver": "acme_widget", "config": {"password": PRIVATE}}]
+
+    payload = await _push(engine, body)
+
+    assert payload["success"] is False
+    assert payload["error"] == "Invalid project schema: devices.0.name: Field required"
+    assert PRIVATE not in json.dumps(payload)
+
+
+async def test_a_pushed_project_the_format_chain_cannot_read_is_refused_without_its_text(
+    engine, monkeypatch,
+):
+    """A migration step that raises on a document it cannot read writes its
+    own text, which can quote a value; the cloud keeps the answer, so it says
+    where the cause is instead."""
+    from openavc.core import project_migration
+
+    def unreadable(*_args, **_kwargs):
+        raise ValueError(f"could not convert string to float: '{PRIVATE}'")
+
+    monkeypatch.setattr(project_migration, "migrate_project", unreadable)
+
+    payload = await _push(engine, _renamed(engine))
+
+    assert payload["success"] is False
+    assert payload["error"] == (
+        "Not applied: this system could not read the pushed project. The "
+        "Programmer's Log has the details. The previous project is still running."
+    )
+    assert PRIVATE not in json.dumps(payload)
+    assert engine.project.project.name == "Hall"
+
+
 @pytest.mark.parametrize("failure", list(FAILURES))
 async def test_every_door_says_the_same_failure_in_the_same_words(tmp_path, monkeypatch, failure):
     """The step's own claim: one failure, one sentence, at every door."""

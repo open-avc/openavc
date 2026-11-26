@@ -13,6 +13,8 @@ import re
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from openavc import restart
 from openavc.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, SOFTWARE_UPDATE,
@@ -64,16 +66,12 @@ def _not_applied_answer(exc: Exception) -> str:
     return f"Not applied: {failure.sentence}"
 
 
-def _schema_problems(exc: Exception) -> str:
+def _schema_problems(exc: ValidationError) -> str:
     """A pushed project that is not valid, as each field and its message:
     never the value, which may be a login."""
-    from pydantic import ValidationError
-
     from openavc.api.errors import validation_error_lines
 
-    if isinstance(exc, ValidationError):
-        return "; ".join(validation_error_lines(exc.errors(include_url=False, include_input=False)))
-    return str(exc)
+    return "; ".join(validation_error_lines(exc.errors(include_url=False, include_input=False)))
 
 
 #: The reason the backup a push takes of the project it replaces is filed under.
@@ -85,6 +83,10 @@ _CHANGED_SINCE_READ = (
     "this system's project changed after the cloud read it, and this push would have "
     "replaced that change. Push again to merge into the project as it is now."
 )
+
+#: Why a push the format chain could not read was not applied. The cause,
+#: which can quote a value from the project, is in the local log.
+_UNREADABLE = "this system could not read the pushed project. The Programmer's Log has the details."
 
 #: Why a push with no openavc_version was not applied.
 _NO_VERSION = (
@@ -109,8 +111,12 @@ def _read_push(project_json: dict[str, Any]) -> tuple[Any, MigrationNotes]:
         return sent_project.read_sent_project(project_json, repair=True)
     except sent_project.ProjectVersionMissingError as missing:
         raise _PushRefused(not_applied(_NO_VERSION)) from missing
-    except (ValueError, TypeError) as invalid:
+    except ValidationError as invalid:
         raise _PushRefused(f"Invalid project schema: {_schema_problems(invalid)}") from invalid
+    except (ValueError, TypeError) as unreadable:
+        # A migration step's own text, which can quote a value.
+        log.warning(f"Config push refused: {type(unreadable).__name__}: {unreadable}")
+        raise _PushRefused(not_applied(_UNREADABLE)) from unreadable
 
 
 class _RollbackCopy:
