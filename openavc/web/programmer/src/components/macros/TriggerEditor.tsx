@@ -12,7 +12,7 @@ import { FIRING_CONTEXTS, type FiringContext } from "../../api/firingContext.gen
 import type { TriggerConfig, TriggerCondition, VariableConfig } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
-import { evalOperator, readsNoValue } from "../../api/conditionEval";
+import { holds, readsNoValue, referencedKey } from "../../api/conditionEval";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import {
   STATE_OPERATOR_WORDS,
@@ -905,9 +905,12 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
 
   // The runtime's own rule (conditionEval.ts mirrors condition_eval.py); an
   // operator it does not know does not pass, as the trigger engine treats it.
+  // A value that names a key ($var.wanted) is read from the state, as a guard
+  // reads it.
+  const read = (key: string) => currentState[key];
   const evaluateCondition = (cond: TriggerCondition): boolean => {
     try {
-      return evalOperator(cond.operator ?? "eq", currentState[cond.key], cond.value);
+      return holds(cond.operator ?? "eq", read(cond.key), cond.value, read);
     } catch {
       return false;
     }
@@ -935,6 +938,7 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
       </div>
       {conditions.map((cond, i) => {
         const actual = currentState[cond.key];
+        const named = referencedKey(cond.value);
         const passes = evaluateCondition(cond);
         return (
           <div key={i} style={{
@@ -953,10 +957,24 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
             <span style={{ color: "var(--text-muted)" }}>
               = {actual === undefined ? <em>undefined</em> : quotedValueText(actual)}
             </span>
+            {named && <StateReading stateKey={named} value={read(named)} />}
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** The key a condition's value names, and what it holds now. */
+function StateReading({ stateKey, value }: { stateKey: string; value: unknown }) {
+  return (
+    <>
+      <span style={{ color: "var(--text-muted)" }}>vs</span>
+      <code style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{stateKey}</code>
+      <span style={{ color: "var(--text-muted)" }}>
+        = {value === undefined ? <em>undefined</em> : quotedValueText(value)}
+      </span>
+    </>
   );
 }
 

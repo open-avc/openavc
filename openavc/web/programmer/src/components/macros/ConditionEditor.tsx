@@ -7,7 +7,7 @@ import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { valueText } from "../shared/booleanWords";
 import { OPERATORS, type Operator } from "../../api/conditionOperators.gen";
-import { knownOperator, readsNoValue } from "../../api/conditionEval";
+import { knownOperator, readsNoValue, referencedKey } from "../../api/conditionEval";
 import { operatorPicker } from "./operatorChoices";
 
 /** Each operator's words here; the operators and their order are the
@@ -47,6 +47,9 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
   const needsValue = !readsNoValue(picker.value);
   const [showHelp, setShowHelp] = useState(false);
   const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
+  // A value that names a key ($var.wanted) is compared with that key's value.
+  const named = needsValue ? referencedKey(condition.value) : null;
+  const namedValue = useConnectionStore((s) => (named ? s.liveState[named] : undefined));
   const selectedOp = operatorInfo(picker.value);
   // When the key is a boolean variable, offer a true/false picker for the
   // comparison value instead of a free-text box (matches the trigger editors
@@ -55,7 +58,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
   const boundVar = condition.key?.startsWith("var.")
     ? variables.find((v) => `var.${v.id}` === condition.key)
     : undefined;
-  const isBoolKey = boundVar?.type === "boolean";
+  const isBoolKey = boundVar?.type === "boolean" && named === null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
@@ -119,6 +122,12 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
               Current value: <strong>{valueText(liveValue)}</strong>
             </span>
           )}
+          {named && (
+            <span style={{ marginLeft: 8, color: "var(--text-secondary)" }}>
+              Compared with {named}
+              {namedValue !== undefined && <>: <strong>{valueText(namedValue)}</strong></>}
+            </span>
+          )}
         </div>
       )}
       {/* Expanded help */}
@@ -133,6 +142,9 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
               <strong>{OPERATOR_INFO[op].label}</strong> &mdash; {OPERATOR_INFO[op].hint}
             </div>
           ))}
+          <div style={{ marginTop: 4 }}>
+            To compare with another key, start the value with $, as in <code>$var.wanted</code>.
+          </div>
         </div>
       )}
     </div>

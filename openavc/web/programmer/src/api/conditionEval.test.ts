@@ -12,7 +12,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  DECIDE, SURFACE, evalOperator, matchKey, readTruth, takesOperator, writtenOperator, type ConditionMode,
+  DECIDE, SURFACE, conditionKeys, evalOperator, holds, matchKey, readTruth, takesOperator, writtenOperator,
+  type ConditionMode,
 } from "./conditionEval";
 import type { ConditionPlace } from "./conditionOperators.gen";
 
@@ -107,5 +108,39 @@ describe("writtenOperator reads an operator as the runtime does where it sits", 
     const stored = "operator" in c ? c.operator : undefined;
     expect(writtenOperator(stored, c.where)).toBe(c.written);
     expect(takesOperator(writtenOperator(stored, c.where), c.where)).toBe(c.taken);
+  });
+});
+
+type ReferenceCase = {
+  name: string;
+  op: string;
+  actual: unknown;
+  value: unknown;
+  state: Record<string, unknown>;
+  expected: boolean | "error";
+  surface?: boolean;
+};
+
+const REFERENCES = JSON.parse(readFileSync(
+  resolve(process.cwd(), "../../../tests/fixtures/condition_reference_cases.json"), "utf-8",
+));
+const REFERENCE_CASES: ReferenceCase[] = REFERENCES.cases;
+
+describe.each([DECIDE, SURFACE] as const)("holds reads a value that names a key as the runtime does (%s)", (mode) => {
+  it.each(REFERENCE_CASES.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const read = (key: string) => c.state[key];
+    if (c.expected === "error") {
+      expect(() => holds(c.op, c.actual, c.value, read, mode)).toThrow(/Unknown condition operator/);
+    } else {
+      const want = mode === SURFACE && c.surface !== undefined ? c.surface : c.expected;
+      expect(holds(c.op, c.actual, c.value, read, mode)).toBe(want);
+    }
+  });
+});
+
+describe("conditionKeys", () => {
+  it.each((REFERENCES.reads as { name: string; condition: Record<string, unknown>; expected: string[] }[])
+    .map((r) => [r.name, r] as const))("%s", (_name, r) => {
+    expect(conditionKeys(r.condition)).toEqual(r.expected);
   });
 });

@@ -13,6 +13,10 @@
  * compares with the words and numbers that mean it, a number written as text
  * equals the number, and a value that has not been reported never matches.
  *
+ * A condition's value may name a key (`$var.wanted`): `holds` compares with
+ * what that key holds, over tests/fixtures/condition_reference_cases.json,
+ * which the other two copies run too.
+ *
  * The operators, their other spellings and the places a condition sits are
  * not copied: they come from conditionOperators.gen.ts, rendered from
  * condition_eval.py, and the editors' pickers read them through
@@ -175,6 +179,42 @@ export function evalOperator(
 /** Whether a reading equals an authored value: `eq`, the same in both modes. */
 export function sameValue(actual: unknown, target: unknown): boolean {
   return evalOperator("eq", actual, target);
+}
+
+/** The key a condition's value names (`$var.wanted` names `var.wanted`), or
+ *  null for a value compared as written: anything but text that starts with
+ *  `$`. A `$` alone names the empty key, which never has a value.
+ *  `referenced_key` in core/value_resolver.py. */
+export function referencedKey(value: unknown): string | null {
+  return typeof value === "string" && value.startsWith("$") ? value.slice(1) : null;
+}
+
+/** The keys a condition reads: its own, and the one its value names
+ *  (`condition_keys` in condition_eval.py). */
+export function conditionKeys(condition: { key?: unknown; value?: unknown }): string[] {
+  const keys = typeof condition.key === "string" && condition.key ? [condition.key] : [];
+  const named = referencedKey(condition.value);
+  if (named && !keys.includes(named)) keys.push(named);
+  return keys;
+}
+
+/** `holds(op, actual, value, read, mode)` in condition_eval.py: `actual op
+ *  value`, a value that names a key compared with what `read` reads for it.
+ *  A key with no value is a reading that has not arrived: never equal, never
+ *  ordered, and not-equal only in the surface mode. Throws on an operator the
+ *  runtime does not know, as `evalOperator` does. */
+export function holds(
+  op: string, actual: unknown, value: unknown, read: (key: string) => unknown,
+  mode: ConditionMode = DECIDE,
+): boolean {
+  const named = referencedKey(value);
+  if (named === null) return evalOperator(op, actual, value, mode);
+  const target = read(named);
+  if (target !== null && target !== undefined) return evalOperator(op, actual, target, mode);
+  const canonical = knownOperator(op);
+  if (canonical === null) return evalOperator(op, actual, null, mode);
+  if ((VALUELESS_OPERATORS as readonly string[]).includes(canonical)) return evalOperator(canonical, actual, null, mode);
+  return canonical === "ne" && MODES[mode];
 }
 
 /** A value's words, as `value_words` in condition_eval.py spells them. */
