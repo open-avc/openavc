@@ -77,7 +77,7 @@ def test_the_backup_a_restore_is_about_to_read_is_neither_removed_nor_counted(tm
     folder.mkdir()
     oldest, *rest = [_dated(folder / f"backup_{n}_x.zip", 1_700_000_000 + n) for n in range(4)]
 
-    assert backup_manager.cleanup_backups(folder, keep=2, spare=oldest) == 1
+    assert backup_manager.cleanup_backups(folder, keep=2, spare=(oldest,)) == 1
 
     assert oldest.exists()
     assert sorted(p.name for p in folder.glob("backup_*.zip")) == sorted(

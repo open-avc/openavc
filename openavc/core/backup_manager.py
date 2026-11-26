@@ -48,7 +48,7 @@ import os
 import re
 import shutil
 import zipfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -259,10 +259,10 @@ def create_backup(
     if not project_file.exists():
         log.debug(f"No project file to back up at {project_file}")
         return None
-    return _take(project_file, reason, kind=kind, spare=spare)
+    return _take(project_file, reason, kind=kind, spare=() if spare is None else (spare,))
 
 
-def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> Path | None:
+def set_aside(project_file: Path, reason: str, *, spare: Collection[Path] = ()) -> Path | None:
     """What a start is about to replace (``core/project_recovery``), kept
     under Backups first: the project file as it is, however unreadable, and
     what a backup carries from beside it (``_beside_members``), as the
@@ -270,13 +270,14 @@ def set_aside(project_file: Path, reason: str, *, spare: Path | None = None) -> 
     missing, the files beside it alone, a backup that restores nothing but
     keeps them. Returns the backup, or None when there is nothing there
     at all (a first start). Raises the ``OSError`` as ``create_backup``
-    does; ``spare`` as there."""
+    does. ``spare`` are the backups the start is about to try, which its
+    rotation leaves alone (``cleanup_backups``)."""
     if not project_file.exists() and next(_beside_members(project_file.parent), None) is None:
         return None
     return _take(project_file, reason, kind=KIND_SET_ASIDE, spare=spare)
 
 
-def _take(project_file: Path, reason: str, *, kind: str, spare: Path | None) -> Path:
+def _take(project_file: Path, reason: str, *, kind: str, spare: Collection[Path]) -> Path:
     """The backup ``create_backup`` and ``set_aside`` take, written and
     placed under Backups, the oldest past ``MAX_BACKUPS`` rotated away."""
     project_dir = project_file.parent
@@ -667,13 +668,15 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
     log.info(f"Restored from backup: {backup_path.name}")
 
 
-def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Path | None = None) -> int:
+def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Collection[Path] = ()) -> int:
     """Remove the oldest project backups past the newest ``keep``
     (``utils/backup_zip.keep_newest``). Returns how many were removed.
 
-    ``spare`` is neither removed nor counted, so the list holds one more while
-    it is spared and nothing else goes in its place: a person going back
-    through the oldest backups one at a time still finds the next one.
+    Each in ``spare`` is neither removed nor counted, so the list holds that
+    many more while they are spared and nothing else goes in their place: a
+    person going back through the oldest backups one at a time still finds
+    the next one, and a start that tries every backup it has removes none of
+    them when it keeps what it replaces.
     """
     return keep_newest(backup_dir, "backup_*.zip", keep, spare=spare)
 

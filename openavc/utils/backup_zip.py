@@ -29,7 +29,7 @@ import logging
 import os
 import tempfile
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -73,18 +73,19 @@ def _remove_leftover(tmp: Path) -> None:
         log.warning("Could not remove the unfinished backup %s: %s", tmp.name, exc)
 
 
-def keep_newest(folder: Path, pattern: str, keep: int, *, spare: Path | None = None) -> int:
+def keep_newest(folder: Path, pattern: str, keep: int, *, spare: Collection[Path] = ()) -> int:
     """Remove the zips in ``folder`` matching ``pattern`` past the newest
-    ``keep``, by when each was written. ``spare`` is neither removed nor
-    counted, so the folder holds one more while it is spared: the backup a
-    restore is about to read, which is the oldest when somebody goes back the
-    furthest. Paths are compared resolved, since a folder reached through a
-    link names the same file two ways. A zip that cannot be removed is logged
-    and left. Returns how many were removed."""
+    ``keep``, by when each was written. Each in ``spare`` is neither removed
+    nor counted, so the folder holds that many more while they are spared:
+    the backup a restore is about to read, which is the oldest when somebody
+    goes back the furthest, or the backups a start is about to try. Paths
+    are compared resolved, since a folder reached through a link names the
+    same file two ways. A zip that cannot be removed is logged and left.
+    Returns how many were removed."""
     candidates = list(folder.glob(pattern))
-    if spare is not None:
-        spared = spare.resolve()
-        candidates = [path for path in candidates if path.resolve() != spared]
+    if spare:
+        spared = {path.resolve() for path in spare}
+        candidates = [path for path in candidates if path.resolve() not in spared]
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     removed = 0
     for old in candidates[keep:]:

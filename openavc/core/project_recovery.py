@@ -277,12 +277,14 @@ class _Recovery:
     beside its file (its scripts, file trees, saved values, notices) carries
     into the one that starts. Before the first swap, what is there is kept
     under Backups (``backup_manager.set_aside``), the file that would not
-    load included, never written over."""
+    load included, never written over, and that backup's rotation removes
+    none of the backups the start tries."""
 
     def __init__(self, project_path: Path, failure: str) -> None:
         self.project_path = project_path
         self.failure = failure
         self._set_aside_taken = False
+        self._to_try: list[Path] = []
 
     def run(self) -> ProjectConfig:
         from openavc.core.backup_manager import backups_since_replaced, list_backups
@@ -293,7 +295,9 @@ class _Recovery:
         # Read before this start keeps anything under Backups, so what it
         # keeps is neither tried nor counted.
         had_backups = bool(list_backups(self.project_path))
-        restored = self._restore_newest_backup(backups_since_replaced(self.project_path))
+        backups = backups_since_replaced(self.project_path)
+        self._to_try = [self.project_path.parent / backup.filename for backup in backups]
+        restored = self._restore_newest_backup(backups)
         if restored is not None:
             return restored
         if self.failure == MISSING:
@@ -302,26 +306,27 @@ class _Recovery:
                 return seeded
         return self._start_empty(say_so=had_backups or self.failure == UNREADABLE)
 
-    def _replace(self, prepared, *, spare: Path | None = None) -> None:
+    def _replace(self, prepared, *, restoring: bool = False) -> None:
         """``prepared`` put in place of what is at the project file, which
-        is kept under Backups first, once. ``spare`` is a backup being
-        restored: that backup's rotation leaves it alone, and an update
-        notice nobody has read yet stays, since it is the same project."""
+        is kept under Backups first, once. ``restoring``: it is one of the
+        project's backups, so an update notice nobody has read yet stays,
+        since it is the same project."""
         from openavc.core.project_replace import replace_files
 
         if not self._set_aside_taken:
-            self._set_aside(spare)
-        replace_files(prepared, self.project_path, keep_earlier_notes=spare is not None)
+            self._set_aside()
+        replace_files(prepared, self.project_path, keep_earlier_notes=restoring)
 
-    def _set_aside(self, spare: Path | None) -> None:
-        """What is at the project file and beside it, kept under Backups.
-        One that cannot be saved is logged and the start goes on: the room
-        must come up."""
+    def _set_aside(self) -> None:
+        """What is at the project file and beside it, kept under Backups,
+        its rotation leaving alone every backup this start tries. One that
+        cannot be saved is logged and the start goes on: the room must come
+        up."""
         from openavc.core import backup_manager
 
         self._set_aside_taken = True
         try:
-            kept = backup_manager.set_aside(self.project_path, SET_ASIDE_REASONS[self.failure], spare=spare)
+            kept = backup_manager.set_aside(self.project_path, SET_ASIDE_REASONS[self.failure], spare=self._to_try)
         except OSError as e:
             _load_log.error(f"The project this start replaces could not be kept under Backups: {e}")
             return
@@ -373,7 +378,7 @@ class _Recovery:
             backup_path = project_dir / backup.filename
             _load_log.info(f"Attempting restore from backup: {backup.filename}")
             try:
-                self._replace(from_backup(backup_path), spare=backup_path)
+                self._replace(from_backup(backup_path), restoring=True)
                 project = load_project(self.project_path, keep_notes=True)
             except Exception as e:
                 _load_log.warning(f"Backup restore failed ({backup.filename}): {e}")

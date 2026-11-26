@@ -609,3 +609,60 @@ def test_a_start_that_restores_a_backup_keeps_the_unread_update_notice(tmp_path)
 
     assert project_recovery.load_or_recover(project_path).project.id == "live"
     assert _notice_messages(tmp_path) == ["Kept until somebody reads it."]
+
+
+def _aged(paths):
+    """``paths`` given modification times oldest first, a second apart, so
+    the rotation orders them as they were written."""
+    import os
+
+    for age, path in enumerate(paths):
+        os.utime(path, (1_000_000 + age, 1_000_000 + age))
+
+
+def test_a_start_never_rotates_away_a_backup_it_has_still_to_try(tmp_path, monkeypatch):
+    """A full list whose newest backup reads as a project but will not load:
+    the backup kept of the file that would not load must not remove the
+    oldest, the one backup that opens, before the walk reaches it."""
+    from openavc.core.backup_manager import MAX_BACKUPS
+
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    _real_project(project_path)
+    oldest = create_backup(project_path, "Auto backup")
+    _corrupt(project_path)
+    broken = [create_backup(project_path, f"Auto backup {n}") for n in range(MAX_BACKUPS - 2)]
+    _real_project(project_path)
+    newest = create_backup(project_path, "Auto backup newest")
+    _corrupt(project_path)
+    _aged([oldest, *broken, newest])
+
+    load = project_recovery.load_project
+    calls = []
+
+    def the_first_restore_will_not_load(path, **kwargs):
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError(5, "Input/output error")
+        return load(path, **kwargs)
+
+    monkeypatch.setattr(project_recovery, "load_project", the_first_restore_will_not_load)
+
+    project = project_recovery.load_or_recover(project_path)
+
+    assert project.project.id == "live"
+    assert project_recovery.read(project_path.parent)["backup"] == f"backups/{oldest.name}"
+
+
+def test_a_start_whose_backups_all_fail_keeps_every_one_of_them(tmp_path, monkeypatch):
+    from openavc.core.backup_manager import MAX_BACKUPS
+
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
+    project_path = tmp_path / "projects" / "default" / "project.avc"
+    _real_project(project_path)
+    _corrupt(project_path)
+    tried = [create_backup(project_path, f"Auto backup {n}") for n in range(MAX_BACKUPS)]
+    _aged(tried)
+
+    assert project_recovery.load_or_recover(project_path).project.id == "recovery"
+
+    assert all(path.exists() for path in tried)
