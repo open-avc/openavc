@@ -1,6 +1,8 @@
 """Tests for WebSocket protocol — message handling, panel vs programmer, state validation."""
 
+import ast
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -766,6 +768,23 @@ async def test_macro_execute_failure_still_reaches_client():
 # ── The error frame is one shape from one producer ──
 
 
+def _is_error_type(key, value) -> bool:
+    return (
+        isinstance(key, ast.Constant) and key.value == "type"
+        and isinstance(value, ast.Constant) and value.value == "error"
+    )
+
+
+def _error_frame_literals(path: Path) -> list[str]:
+    """Where a module writes a ``{"type": "error"}`` literal, as file:line."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [
+        f"{path.name}:{node.lineno}" for node in ast.walk(tree)
+        if isinstance(node, ast.Dict)
+        and any(_is_error_type(k, v) for k, v in zip(node.keys, node.values))
+    ]
+
+
 def test_send_ws_error_is_the_only_error_frame_producer():
     """A second `{"type": "error"}` literal is how the shapes drifted apart.
 
@@ -773,24 +792,13 @@ def test_send_ws_error_is_the_only_error_frame_producer():
     can't gain a field at one site and lose it at another. The socket's doors
     are three modules: the message handler, the macro doors, and the senders.
     """
-    import ast
-    from pathlib import Path
-
     import openavc.api.ws_macros as ws_macros
     import openavc.api.ws_send as ws_send
 
-    producers = []
-    for module in (ws_module, ws_macros, ws_send):
-        path = Path(module.__file__)
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.Dict):
-                continue
-            for key, value in zip(node.keys, node.values):
-                if (
-                    isinstance(key, ast.Constant) and key.value == "type"
-                    and isinstance(value, ast.Constant) and value.value == "error"
-                ):
-                    producers.append(f"{path.name}:{node.lineno}")
+    producers = [
+        place for module in (ws_module, ws_macros, ws_send)
+        for place in _error_frame_literals(Path(module.__file__))
+    ]
     assert len(producers) == 1 and producers[0].startswith("ws_send.py:"), (
         f"Expected exactly one 'error' frame literal (inside ws_send.send_ws_error); "
         f"found {producers}"

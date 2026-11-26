@@ -285,20 +285,23 @@ class FakeOpenAVC {
       return;
     }
     this._broadcast({ type: "macro.started", macro_id: id, name: macro.name, total_steps: 1 });
-    const run = { asker };
-    let ms = macro.ms || 20;
-    if (id === "uneven") {
-      this.unevenRuns += 1;
-      run.fails = this.unevenRuns > 1;
-      ms = run.fails ? 20 : 200;
-    }
+    const run = { asker, fails: false };
     run.timer = setTimeout(() => {
       const list = this.running.get(id) || [];
       list.splice(list.indexOf(run), 1);
       this._finish(macro, asker, run);
-    }, ms);
+    }, this._runLength(macro, run));
     runs.push(run);
     this.running.set(id, runs);
+  }
+
+  // How long a run takes. An "uneven" run after the first is short and
+  // fails a step.
+  _runLength(macro, run) {
+    if (macro.id !== "uneven") return macro.ms || 20;
+    this.unevenRuns += 1;
+    run.fails = this.unevenRuns > 1;
+    return run.fails ? 20 : 200;
   }
 
   _skip(macro, asker) {
