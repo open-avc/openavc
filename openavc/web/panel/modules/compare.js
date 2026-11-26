@@ -139,10 +139,11 @@ export function sameValue(actual, target) {
 /**
  * The key a condition's value names (`$var.wanted` names `var.wanted`), or
  * null for a value compared as written: anything but text that starts with
- * `$` and goes on. `referenced_key` in core/value_resolver.py.
+ * `$`. A `$` alone names the empty key, which never has a value.
+ * `referenced_key` in core/value_resolver.py.
  */
 export function referencedKey(value) {
-    return typeof value === 'string' && value.length > 1 && value.startsWith('$') ? value.slice(1) : null;
+    return typeof value === 'string' && value.startsWith('$') ? value.slice(1) : null;
 }
 
 /** The keys a condition reads: its own, and the one its value names. A
@@ -150,7 +151,7 @@ export function referencedKey(value) {
 export function conditionKeys(condition) {
     const keys = condition.key ? [condition.key] : [];
     const named = referencedKey(condition.value);
-    if (named !== null && !keys.includes(named)) keys.push(named);
+    if (named && !keys.includes(named)) keys.push(named);
     return keys;
 }
 

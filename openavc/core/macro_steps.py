@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
-from openavc.core.condition_eval import CONDITIONAL, SKIP_IF, WAIT_UNTIL, judge
+from openavc.core.condition_eval import CONDITIONAL, SKIP_IF, WAIT_UNTIL, condition_keys, judge
 from openavc.core.event_bus import check_project_emit
 from openavc.core.group_command import reached_nobody
 from openavc.core.macro_text import StepFailed
@@ -284,10 +284,11 @@ class MacroSteps:
         self, condition: dict[str, Any], where: str, context: dict[str, Any] | None = None,
     ) -> bool:
         """Whether a step's condition holds where it sits (``condition_eval``'s
-        ``judge``), its key read by ``read_operand``: a ``trigger.<field>``
-        key from ``context``, the run's firing context (None for a step handed
-        none), any other key from the state. A condition it cannot judge
-        raises, so the step fails before it acts."""
+        ``judge``), its key, and a key its value names (``$var.wanted``), read
+        by ``read_operand``: a ``trigger.<field>`` key from ``context``, the
+        run's firing context (None for a step handed none), any other key from
+        the state. A condition it cannot judge raises, so the step fails
+        before it acts."""
         return judge(
             condition, lambda key: read_operand(key, state=self.state, context=context), where,
         )
@@ -523,8 +524,9 @@ class MacroSteps:
         """Pause until a state condition becomes true, with optional timeout.
 
         The condition is judged with no firing context (``_evaluate_condition``
-        with none): a state key reads the state, and a ``trigger.`` key reads
-        as a value that has not arrived, whatever the run was fired with.
+        with none): a state key reads the state, and a ``trigger.`` key, or a
+        ``$trigger.`` value, reads as a value that has not arrived, whatever
+        the run was fired with.
         """
         condition, timeout, on_timeout = _wait_until_args(step)
         key = condition.get("key", "")
@@ -558,7 +560,11 @@ class MacroSteps:
     async def _wait_for(
         self, condition: dict[str, Any], timeout: Any, run: StepRun,
     ) -> tuple[bool, float]:
-        """Wait for ``condition`` on the state store; ``(timed_out, elapsed)``."""
+        """Wait for ``condition`` on the state store; ``(timed_out, elapsed)``.
+
+        Woken by a change to any key the condition reads
+        (``condition_eval.condition_keys``): its own, and the one its value
+        names (``$var.wanted``)."""
         key = condition.get("key", "")
         satisfied = asyncio.Event()
 
@@ -566,7 +572,7 @@ class MacroSteps:
             if self._evaluate_condition(condition, WAIT_UNTIL):
                 satisfied.set()
 
-        sub_id = self.state.subscribe(key, _on_change)
+        sub_ids = [self.state.subscribe(read, _on_change) for read in condition_keys(condition)]
         started = time.monotonic()
         await self._report_wait(run, {
             "condition_key": key,
@@ -582,7 +588,8 @@ class MacroSteps:
                 satisfied.set()
             timed_out = not await _wait_event(satisfied, timeout)
         finally:
-            self.state.unsubscribe(sub_id)
+            for sub_id in sub_ids:
+                self.state.unsubscribe(sub_id)
         return timed_out, time.monotonic() - started
 
     async def _report_wait(self, run: StepRun, frame: dict[str, Any]) -> None:

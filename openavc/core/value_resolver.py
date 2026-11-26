@@ -3,8 +3,10 @@ firing context's field table.
 
 Three rules that share one question, what a name means at run time:
 
-- ``resolve_ref`` / ``resolve_in_text``: what a ``$`` reference in a value
-  stands for (below).
+- ``referenced_key``: whether a whole value is a ``$`` reference, and the key
+  it names, asked by ``resolve_ref`` and by a condition's value
+  (``condition_eval.holds``); ``resolve_ref`` / ``resolve_in_text``: what a
+  ``$`` reference in a value stands for (below).
 - ``read_operand``: what a condition's key reads, for every site that judges
   one -- a step's Skip If, a Conditional, a Wait Until, a trigger's guard and a
   state-change trigger's own test. A ``trigger.<field>`` key is the firing
@@ -142,6 +144,18 @@ def read_operand(
 _EMBEDDED_REF = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)")
 
 
+def referenced_key(value: Any) -> str | None:
+    """The key a whole value names (``$var.wanted`` names ``var.wanted``), or
+    None for a value used as written: anything but text that starts with
+    ``$``. A ``$`` alone names the empty key, which never has a value.
+
+    The panel's ``modules/compare.js`` and the Programmer's
+    ``conditionEval.ts`` read a condition's value the same way
+    (``referencedKey``), over ``tests/fixtures/condition_reference_cases.json``.
+    """
+    return value[1:] if isinstance(value, str) and value.startswith("$") else None
+
+
 def resolve_ref(
     value: Any,
     *,
@@ -151,13 +165,13 @@ def resolve_ref(
 ) -> Any:
     """Resolve a ``$``-reference to its current value.
 
-    Non-strings and strings that don't start with ``$`` pass through unchanged.
+    A value that names no key (``referenced_key``) passes through unchanged.
     See the module docstring for the namespace order and the precise rule for
     when an unknown reference warns.
     """
-    if not isinstance(value, str) or not value.startswith("$"):
+    ref = referenced_key(value)
+    if ref is None:
         return value
-    ref = value[1:]
     if event_ctx is not None and ref in event_ctx:
         return event_ctx[ref]
     if ref.startswith("trigger."):

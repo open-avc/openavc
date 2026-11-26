@@ -7,10 +7,12 @@ acts makes no decision on it, and one that shows or hides reads it as unequal
 to every value. The key a value names is read too: a change to it wakes a Wait
 Until and draws a ``visible_when`` again.
 
-``fixtures/condition_reference_cases.json`` holds the answers. The panel's
-copy (``modules/compare.js``, and a ``visible_when`` through
-``modules/visibility.js``) is run in Node through
-``fixtures/panel_condition_harness.cjs``.
+``fixtures/condition_reference_cases.json`` holds the answers, run here over
+the server's rule (``core/condition_eval.py`` ``holds`` and
+``condition_keys``) and the panel's copy (``modules/compare.js``, and a
+``visible_when`` through ``modules/visibility.js``) in Node through
+``fixtures/panel_condition_harness.cjs``; ``conditionEval.test.ts`` runs it
+over the Programmer's.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from openavc.core.condition_eval import DECIDE, SURFACE, UnknownOperator, condition_keys, holds
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +48,33 @@ def _never_on_the_panel(case: dict, surface: bool) -> bool:
     """The panel's answer: an operator the rule refuses never holds there."""
     want = _expected(case, surface)
     return False if want == "error" else want
+
+
+def _server_answer(case: dict, mode: str) -> object:
+    try:
+        return holds(case["op"], case["actual"], case["value"], case["state"].get, mode)
+    except UnknownOperator:
+        return "error"
+
+
+@pytest.mark.parametrize("mode", [DECIDE, SURFACE])
+def test_the_server_s_rule_answers_every_reference_case(mode: str) -> None:
+    differ = [
+        case["name"] for case in CASES
+        if _server_answer(case, mode) != _expected(case, mode == SURFACE)
+    ]
+    assert differ == []
+
+
+def test_the_server_reads_the_keys_a_condition_names() -> None:
+    assert [condition_keys(r["condition"]) for r in READS] == [r["expected"] for r in READS]
+
+
+def test_the_corpus_tells_a_reference_with_no_value_from_an_authored_null() -> None:
+    """The one place the two modes part on a reference: what a panel shows before the key has a value."""
+    parted = {case["name"] for case in CASES if "surface" in case}
+    assert "a reference whose key has no value makes no decision, but on a panel it differs" in parted
+    assert "an authored null still compares with nothing, on a panel too" not in parted
 
 
 @pytest.fixture(scope="module")

@@ -941,8 +941,10 @@ class TriggerEngine:
     def _check_conditions(self, conditions: list[dict[str, Any]]) -> bool:
         """Check all guard conditions (``condition_eval.judge``). All must pass.
 
-        A guard reads the state only: a ``trigger.`` key is a state key here,
-        not the firing context's field. One it cannot judge reads as not met.
+        A guard reads the state only: a ``trigger.`` key, or a ``$trigger.``
+        value, is a state key here, not the firing context's field. A value
+        that names any other key (``$var.wanted``) reads that key's value. One
+        it cannot judge reads as not met.
         """
         reads = self._reads()
         for cond in conditions:

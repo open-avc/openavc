@@ -7,8 +7,9 @@ conditional steps, a trigger's guards, a panel press the server resolves
 ``match_key`` is also every driver value map's lookup (a reply's, a device
 setting's and a command parameter's), asked by the driver runtime and the
 simulator through ``drivers/compiled_protocol.map_entry``; this module stays
-standard-library-only (and ``core.monitors`` and ``drivers.truth_words``) for
-them, since the simulator and the driver validator import it.
+standard-library-only (and ``core.monitors``, ``drivers.truth_words`` and
+``core.value_resolver``) for them, since the simulator and the driver
+validator import it.
 The rule, in the order it is applied:
 
 - a reading that has not arrived (None) is never equal; what it does to
@@ -21,7 +22,11 @@ The rule, in the order it is applied:
   exponent; never "1_000", "inf" or "nan", which compare as text);
 - two words compare apart from case;
 - an authored map is read in one order (``match_key``): the exact key, then
-  one apart from case, then one the reading equals as a boolean or number.
+  one apart from case, then one the reading equals as a boolean or number;
+- a condition's value that names a key (``$var.wanted``) is compared with
+  what that key holds, one with no value being a reading that has not
+  arrived (``holds``; ``condition_keys`` are the keys a condition reads),
+  over ``tests/fixtures/condition_reference_cases.json`` in every copy.
 
 Copied twice, and nowhere else: ``conditionEval.ts`` in the Programmer (the
 trigger editor's "Evaluated now", the page reviews) and the panel's
@@ -59,6 +64,7 @@ from dataclasses import dataclass
 from typing import Any, NamedTuple
 
 from openavc.core.monitors import as_number
+from openavc.core.value_resolver import referenced_key
 from openavc.drivers.truth_words import read_truth
 
 #: A reader that acts (a macro, a trigger, a reply gate, an alert) makes no
@@ -244,6 +250,46 @@ def same_value(actual: Any, target: Any) -> bool:
     return eval_operator("eq", actual, target)
 
 
+def holds(
+    op: str, actual: Any, value: Any, read: Callable[[str], Any], mode: str = DECIDE,
+) -> bool:
+    """Whether ``actual op value`` holds for a reader in ``mode``, a value
+    that names a key (``value_resolver.referenced_key``: ``$var.wanted``)
+    compared with what ``read`` reads for that key.
+
+    A key with no value is a reading that has not arrived, on the authored
+    side: never equal, never ordered, and not-equal only in the surface mode
+    (``MODES``), so ``power != $var.wanted`` makes no decision while
+    ``var.wanted`` is unset. A value is read once: text the key holds that
+    starts with ``$`` is compared as that text. The panel's
+    ``modules/compare.js`` and ``conditionEval.ts`` hold ``holds`` too, over
+    ``tests/fixtures/condition_reference_cases.json``.
+    """
+    named = referenced_key(value)
+    if named is None:
+        return eval_operator(op, actual, value, mode)
+    target = read(named)
+    if target is not None:
+        return eval_operator(op, actual, target, mode)
+    canonical = canonical_operator(op)
+    if canonical is None:
+        raise UnknownOperator(op)
+    if canonical in VALUELESS_OPERATORS:
+        return eval_operator(canonical, actual, None, mode)
+    return canonical == "ne" and MODES[mode]
+
+
+def condition_keys(condition: Mapping[str, Any]) -> list[str]:
+    """The keys a condition reads: its own, and the one its value names
+    (``referenced_key``). A change to either can change its answer, so a Wait
+    Until wakes on both and a panel draws a ``visible_when`` again on both."""
+    keys = [condition["key"]] if condition.get("key") else []
+    named = referenced_key(condition.get("value"))
+    if named and named not in keys:
+        keys.append(named)
+    return keys
+
+
 def value_words(value: Any) -> str:
     """A value as JavaScript spells it, so a map key reads the same on the
     panel: a boolean is "true", a whole number has no point (1.0 is "1")."""
@@ -370,16 +416,18 @@ def judge(condition: Mapping[str, Any], read: Callable[[str], Any], where: str) 
     place that acts on a condition asks.
 
     ``read`` is what the condition's key reads there: a state key, or a field
-    of the firing context (``value_resolver.read_operand``). ``ANY_CHANGE``,
-    at a place that takes it, holds without a read. An operator the place
-    does not take raises ``UnknownOperator``, the one answer for a condition
-    that cannot be judged.
+    of the firing context (``value_resolver.read_operand``). A value that
+    names a key (``$var.wanted``) is read through it too, so both sides follow
+    the place's rule for the firing context (``holds``). ``ANY_CHANGE``, at a
+    place that takes it, holds without a read. An operator the place does not
+    take raises ``UnknownOperator``, the one answer for a condition that
+    cannot be judged.
     """
     place = PLACES[where]
     op = written_operator(condition, where)
     if place.takes_any_change and op == ANY_CHANGE:
         return True
-    return eval_operator(op, read(condition.get("key", "")), condition.get("value"))
+    return holds(op, read(condition.get("key", "")), condition.get("value"), read)
 
 
 class ConditionIssue(NamedTuple):

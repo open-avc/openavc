@@ -157,12 +157,12 @@
       "expected": true
     },
     {
-      "name": "a $ alone names no key and is compared as text",
+      "name": "a $ alone names the empty key, which never has a value",
       "op": "eq",
       "actual": "$",
       "value": "$",
       "state": {},
-      "expected": true
+      "expected": false
     },
     {
       "name": "text with a $ inside it is compared as text",
@@ -211,7 +211,7 @@
       "expected": ["var.level"]
     },
     {
-      "name": "a $ alone names no key",
+      "name": "a $ alone names no key to watch",
       "condition": {"key": "var.level", "value": "$"},
       "expected": ["var.level"]
     },

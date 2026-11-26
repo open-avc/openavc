@@ -61,6 +61,9 @@ ALLOWED = {
     "openavc.core",
     "openavc.core.condition_eval",
     "openavc.core.monitors",
+    # THE rule for what a whole value's ``$`` names, which a condition's
+    # value follows. Standard library only.
+    "openavc.core.value_resolver",
     # THE words that mean true and false: every wire form reads a boolean
     # through it, and the condition rule does too. Standard library and
     # core.monitors only.
