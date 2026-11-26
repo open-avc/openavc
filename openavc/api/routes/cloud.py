@@ -17,6 +17,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import CloudPairRequest
 from openavc.cloud.protocol import ROOM_NAME_MAX_CHARS
+from openavc.utils.log_redaction import register_system_secrets
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_client
 
@@ -214,6 +215,7 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
     cfg.CLOUD_ENDPOINT = pair_data["endpoint"]
     cfg.CLOUD_SYSTEM_KEY = pair_data["system_key"]
     cfg.CLOUD_SYSTEM_ID = pair_data["system_id"]
+    register_system_secrets()
 
     # Start or restart the cloud agent with new credentials
     if engine.cloud_agent is not None:

@@ -28,7 +28,6 @@ from openavc.core.event_bus import EventBus
 from openavc.drivers.base import BaseDriver
 from openavc.transport.wire_log import format_wire_data
 from openavc.utils.log_redaction import (
-    MIN_SECRET_LEN,
     SecretRedactionFilter,
     SecretRegistry,
     collect_secret_values,
@@ -528,12 +527,19 @@ def test_device_manager_masks_configs_with_the_shared_rule():
     assert device_info._redact_config is redact_config
 
 
-def test_the_cloud_log_tool_masks_with_the_shared_rule():
-    """The cloud AI's view of a log line and the log itself agree on "secret"."""
+def test_the_cloud_log_tool_gathers_no_secrets_of_its_own():
+    """The cloud AI's view of a log line asks the one registry, as the log
+    does, so the two cannot disagree on "secret"."""
+    import ast
+
     from openavc.cloud.tools import system_tools
 
-    assert system_tools._redact_log_message is redact_text
-    assert system_tools._looks_secret is is_secret_key
+    names = {
+        node.id if isinstance(node, ast.Name) else node.attr
+        for node in ast.walk(ast.parse(inspect.getsource(system_tools)))
+        if isinstance(node, (ast.Name, ast.Attribute))
+    }
+    assert not names & {"is_secret_key", "redact_text", "secret_config_keys", "secret_values"}
 
 
 def test_the_audit_masks_its_connection_with_the_shared_rule():
@@ -558,12 +564,6 @@ def test_a_configs_secret_fields_come_from_their_name_and_the_driver():
         "host": "10.0.0.5", "password": "***", "username": "***",
         "site_code": "***", "pin": "", "user_label": "Lobby",
     }
-
-
-def test_min_secret_length_is_one_constant():
-    from openavc.cloud.tools import system_tools
-
-    assert system_tools.MIN_SECRET_LEN is MIN_SECRET_LEN
 
 
 # --------------------------------------------------------------------------

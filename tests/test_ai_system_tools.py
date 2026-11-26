@@ -17,10 +17,21 @@ import asyncio
 import time
 from types import SimpleNamespace
 
+import pytest
+
 import openavc.api.discovery as discovery_module
 import openavc.utils.log_buffer as log_buffer_module
 from openavc.cloud.tools.system_tools import SystemToolsMixin
+from openavc.core.project_loader import DeviceConfig
+from openavc.core.project_logins import secrets_held_in_the_clear
+from openavc.transport.wire_log import format_wire_data
 from openavc.utils.log_buffer import LogBuffer, LogEntry
+from openavc.utils.log_redaction import (
+    get_secret_registry,
+    project_secret_values,
+    register_config_secrets,
+    register_system_secrets,
+)
 
 
 class _Handler(SystemToolsMixin):
@@ -31,14 +42,19 @@ class _Handler(SystemToolsMixin):
         return self._engine
 
 
-def _engine_with_secret(password: str = "hunter22"):
-    device = SimpleNamespace(config={"password": password, "host": "10.0.0.2"})
-    project = SimpleNamespace(
-        devices=[device],
-        connections={"disp1": {"password": password, "host": "10.0.0.2"}},
-        plugins={},
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    get_secret_registry().clear()
+    yield
+    get_secret_registry().clear()
+
+
+def _registered(project) -> None:
+    """Hand the masking the project's secrets, as the engine does whenever
+    the project is replaced (``ProjectLoginsMixin._project_secrets``)."""
+    get_secret_registry().set_project_secrets(
+        project_secret_values(project) | secrets_held_in_the_clear(project),
     )
-    return SimpleNamespace(project=project)
 
 
 def _entry(message: str, *, level: str = "INFO", age_seconds: float = 0.0) -> LogEntry:
@@ -74,13 +90,16 @@ async def test_get_logs_filters_before_slicing(monkeypatch):
     assert result[0]["message"] == "connection refused"
 
 
-async def test_get_logs_redacts_known_secrets(monkeypatch):
+async def test_get_logs_redacts_a_running_device_s_login(monkeypatch):
     buffer = _install_buffer(
         monkeypatch,
         [_entry("TX: PASS hunter22\\r", level="DEBUG"), _entry("poll ok")],
     )
+    # What a driver registers as it is built (BaseDriver), from the config
+    # its settings and its connection row resolve to.
+    register_config_secrets("disp1", {"password": "hunter22", "host": "10.0.0.2"}, None)
 
-    result = await _Handler(_engine_with_secret())._get_logs({"count": 10})
+    result = await _Handler(None)._get_logs({"count": 10})
     messages = [e["message"] for e in result]
     assert "TX: PASS ***\\r" in messages
     assert not any("hunter22" in m for m in messages)
@@ -89,10 +108,25 @@ async def test_get_logs_redacts_known_secrets(monkeypatch):
     assert any("hunter22" in e.message for e in buffer._entries)
 
 
+async def test_get_logs_redacts_what_the_project_holds_in_the_clear(monkeypatch):
+    # A disabled device runs no driver, and a connection no device uses yet is
+    # no driver's: the project's registration covers both.
+    project = SimpleNamespace(
+        devices=[DeviceConfig(id="spare", driver="", name="Spare", enabled=False,
+                              config={"password": "spare-pw-71"})],
+        connections={"disp1": {"password": "conn-pw-82", "host": "10.0.0.2"}},
+        plugins={},
+    )
+    _registered(project)
+    _install_buffer(monkeypatch, [_entry("TX: spare-pw-71 conn-pw-82", level="DEBUG")])
+
+    result = await _Handler(None)._get_logs({"count": 10})
+    assert [e["message"] for e in result] == ["TX: *** ***"]
+
+
 async def test_get_logs_redacts_plugin_config_secrets(monkeypatch):
-    # Plugin entries in a loaded project are PluginConfig models, not dicts —
-    # the harvest must read .config off the model, or plugin credentials in
-    # DEBUG transport lines ship to the cloud unscrubbed.
+    # Plugin entries in a loaded project are PluginConfig models, not dicts:
+    # a credential in .config, declared or only named like one, is masked.
     from openavc.core.project_loader import PluginConfig
 
     project = SimpleNamespace(
@@ -104,12 +138,13 @@ async def test_get_logs_redacts_plugin_config_secrets(monkeypatch):
             ),
         },
     )
+    _registered(project)
     _install_buffer(
         monkeypatch,
         [_entry("TX: AUTH tok-9f8e7d6c", level="DEBUG"), _entry("poll ok")],
     )
 
-    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    result = await _Handler(None)._get_logs({"count": 10})
     messages = [e["message"] for e in result]
     assert "TX: AUTH ***" in messages
     assert not any("tok-9f8e7d6c" in m for m in messages)
@@ -122,10 +157,27 @@ async def test_get_logs_redacts_the_projects_mesh_key(monkeypatch):
         devices=[], connections={}, plugins={},
         isc=ISCConfig(enabled=False, auth_key="mesh-key-4417"),
     )
+    _registered(project)
     _install_buffer(monkeypatch, [_entry("peer joined with mesh-key-4417")])
 
-    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    result = await _Handler(None)._get_logs({"count": 10})
     assert [e["message"] for e in result] == ["peer joined with ***"]
+
+
+async def test_get_logs_redacts_this_system_s_own_secrets(monkeypatch):
+    import openavc.config as runtime
+    import openavc.system_config as system_config
+
+    system = {"auth": {"programmer_password": "env-admin-pw", "api_key": "env-api-key-3"},
+              "cloud": {"system_id": "sys-1"}}
+    monkeypatch.setattr(system_config, "get_system_config",
+                        lambda: SimpleNamespace(to_dict=lambda: system))
+    monkeypatch.setattr(runtime, "CLOUD_SYSTEM_KEY", "cloud-key-5521", raising=False)
+    register_system_secrets()
+    _install_buffer(monkeypatch, [_entry("env-admin-pw env-api-key-3 cloud-key-5521 sys-1")])
+
+    result = await _Handler(None)._get_logs({"count": 10})
+    assert [e["message"] for e in result] == ["*** *** *** sys-1"]
 
 
 async def test_get_logs_redacts_a_setting_the_driver_marks_secret(monkeypatch):
@@ -146,15 +198,31 @@ async def test_get_logs_redacts_a_setting_the_driver_marks_secret(monkeypatch):
 
     monkeypatch.setattr(registry, "_DRIVER_REGISTRY", dict(registry._DRIVER_REGISTRY))
     registry.register_driver(_AcmeCoded)
-    device = SimpleNamespace(
-        driver="acme_coded_logs",
+    device = DeviceConfig(
+        id="coded", driver="acme_coded_logs", name="Coded", enabled=False,
         config={"host": "10.0.0.4", "site_code": "9931-ALPHA", "admin_code": "7731-BRAVO"},
     )
-    project = SimpleNamespace(devices=[device], connections={}, plugins={})
+    _registered(SimpleNamespace(devices=[device], connections={}, plugins={}))
     _install_buffer(monkeypatch, [_entry("TX: SITE 9931-ALPHA ADMIN 7731-BRAVO", level="DEBUG")])
 
-    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    result = await _Handler(None)._get_logs({"count": 10})
     assert [e["message"] for e in result] == ["TX: SITE *** ADMIN ***"]
+
+
+async def test_get_logs_shows_a_username_outside_its_device_s_traffic(monkeypatch):
+    # A username names an account rather than unlocking one: masked where its
+    # own device's traffic is formatted, shown in every other line, as the
+    # log shows it here.
+    register_config_secrets("disp1", {"username": "operator", "password": "hunter22"}, None)
+    _install_buffer(monkeypatch, [
+        _entry(format_wire_data(b"LOGIN operator hunter22", device_id="disp1"), level="DEBUG"),
+        _entry("Display 1 signed in as operator"),
+    ])
+
+    result = await _Handler(None)._get_logs({"count": 10})
+    assert [e["message"] for e in result] == [
+        "LOGIN *** ***", "Display 1 signed in as operator",
+    ]
 
 
 async def test_get_logs_redaction_respects_word_boundaries(monkeypatch):
@@ -162,8 +230,7 @@ async def test_get_logs_redaction_respects_word_boundaries(monkeypatch):
     # redaction mangled unrelated words that merely contain it (republic,
     # publication). Scrub the value where it stands as its own token; leave
     # coincidental substrings intact.
-    device = SimpleNamespace(config={"community": "public", "host": "10.0.0.9"})
-    project = SimpleNamespace(devices=[device], connections={}, plugins={})
+    register_config_secrets("switch1", {"community": "public", "host": "10.0.0.9"}, None)
     _install_buffer(
         monkeypatch,
         [
@@ -171,7 +238,7 @@ async def test_get_logs_redaction_respects_word_boundaries(monkeypatch):
             _entry("the republic issued a publication", level="INFO"),
         ],
     )
-    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    result = await _Handler(None)._get_logs({"count": 10})
     messages = [e["message"] for e in result]
     # The standalone secret token is scrubbed...
     assert "SNMP community=*** accepted" in messages

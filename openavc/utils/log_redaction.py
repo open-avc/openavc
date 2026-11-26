@@ -14,8 +14,16 @@ cannot drift apart:
     formatter sees. Covered by :class:`SecretRedactionFilter` on the live
     handlers.
   - **The cloud AI's ``get_logs`` tool** (``cloud/tools/system_tools.py``),
-    which was the *only* redaction the core had before this module and is now
-    a second caller of the same rule rather than a private copy of it.
+    which once gathered its own list and now asks the registry, as every
+    other exit does.
+
+**One registry of every secret the system holds** (:class:`SecretRegistry`),
+fed where each comes from rather than gathered by each exit: a device's
+config as its driver is built (:func:`register_config_secrets`, kept until
+its instance has disconnected), a token or a secret parameter as it is
+learned, the project's own and every secret it holds in the clear each time
+the project is replaced, and this system's own at the start and on pairing
+(:func:`register_system_secrets`).
 
 **Exact-match on values already known to be secret, never pattern-guessing at
 the bytes.** A regex hunting for password-shaped text in wire traffic is both
@@ -467,6 +475,55 @@ def project_secret_values(project: Any) -> set[str]:
     return values
 
 
+# The sections of the system config that hold this system's own credentials:
+# the Programmer's password and the API key (as typed when the environment
+# supplies them, else as stored), and the cloud pairing's key.
+SYSTEM_SECRET_SECTIONS: tuple[str, ...] = ("auth", "cloud")
+
+
+def system_secret_values(system: dict[str, Any] | None, cloud_key: Any = "") -> set[str]:
+    """This system's own secrets: a credential's value in
+    :data:`SYSTEM_SECRET_SECTIONS` of the system config ``system`` (as
+    ``SystemConfig.to_dict`` gives it), and the cloud pairing's key."""
+    values: set[str] = set()
+    for section in SYSTEM_SECRET_SECTIONS:
+        values |= secret_values((system or {}).get(section))
+    if isinstance(cloud_key, str) and cloud_key:
+        values.add(cloud_key)
+    return values
+
+
+def register_system_secrets() -> None:
+    """Hand the registry this system's own secrets
+    (:func:`system_secret_values`), as they stand now: at the start, and
+    whenever the cloud pairing changes. Never raises."""
+    try:
+        import openavc.config as runtime
+        from openavc.system_config import get_system_config
+
+        get_secret_registry().set_system_secrets(system_secret_values(
+            get_system_config().to_dict(), getattr(runtime, "CLOUD_SYSTEM_KEY", ""),
+        ))
+    except Exception:  # never block a start or a pairing on the masking
+        logging.getLogger(__name__).debug("Could not register this system's secrets", exc_info=True)
+
+
+def register_config_secrets(
+    device_id: str, config: dict[str, Any] | None, config_schema: dict[str, Any] | None,
+) -> None:
+    """THE door a device's config reaches the registry by: its secret values
+    and its usernames (:func:`secret_values`), the saved-on-this-system
+    marker left out, since it is no secret and masked would read as one."""
+    from openavc.core.device_logins import SAVED_LOGIN
+
+    held = {k: v for k, v in (config or {}).items() if v != SAVED_LOGIN}
+    get_secret_registry().set_config_secrets(
+        device_id,
+        collect_secret_values(held, config_schema),
+        identities=collect_identity_values(held, config_schema),
+    )
+
+
 def _percent_forms(secret: str) -> list[str]:
     """How a secret reads in a URL or a form body: percent-encoded (either
     case of hex), and with a space as ``+``."""
@@ -605,9 +662,12 @@ class SecretRegistry:
     registered at runtime via ``redact_in_log`` (session tokens the device
     issued, which config cannot know and a reconnect must not drop).
 
-    Plus the project's own secrets (:data:`PROJECT_SECRET_FIELDS`), replaced
-    wholesale whenever the project is, and masked everywhere a device's are:
-    in every log line and in each device's own traffic.
+    Plus the secrets that are no one device's, each source replaced wholesale
+    whenever it changes and masked everywhere a device's are, in every log
+    line and in each device's own traffic: the project's
+    (:meth:`set_project_secrets`: the mesh key, the plugin logins, and every
+    secret the project holds in the clear) and this system's own
+    (:meth:`set_system_secrets`: :func:`system_secret_values`).
 
     Compiled patterns are cached per device and for the union, and invalidated
     on every mutation.
@@ -618,7 +678,8 @@ class SecretRegistry:
         self._runtime: dict[str, set[str]] = {}
         # Usernames: masked in the device's own traffic, not in every line.
         self._identity: dict[str, set[str]] = {}
-        self._project: set[str] = set()
+        # The secrets no one device holds, by source ("project", "system").
+        self._shared: dict[str, frozenset[str]] = {}
         self._device_patterns: dict[str, re.Pattern[str] | None] = {}
         self._all_pattern: re.Pattern[str] | None = None
         self._all_dirty = True
@@ -635,14 +696,28 @@ class SecretRegistry:
         self._invalidate(device_id)
 
     def set_project_secrets(self, values: Iterable[str]) -> None:
-        """Replace the project's own secrets (:func:`project_secret_values`)."""
-        kept = {v for v in values if isinstance(v, str) and len(v) >= MIN_SECRET_LEN}
-        if kept == self._project:
+        """Replace the project's secrets: its own (:func:`project_secret_values`),
+        the plugin logins, and every secret it holds in the clear."""
+        self._set_shared("project", values)
+
+    def set_system_secrets(self, values: Iterable[str]) -> None:
+        """Replace this system's own secrets (:func:`system_secret_values`)."""
+        self._set_shared("system", values)
+
+    def _set_shared(self, source: str, values: Iterable[str]) -> None:
+        kept = frozenset(v for v in values if isinstance(v, str) and len(v) >= MIN_SECRET_LEN)
+        if kept == self._shared.get(source, frozenset()):
             return
-        self._project = kept
+        if kept:
+            self._shared[source] = kept
+        else:
+            self._shared.pop(source, None)
         # Every device's pattern carries them.
         self._device_patterns.clear()
         self._all_dirty = True
+
+    def _shared_values(self) -> set[str]:
+        return set().union(*self._shared.values())
 
     def add_runtime_secret(self, device_id: str, value: str) -> None:
         """Mask ``value`` in this device's traffic and every log line, from
@@ -667,7 +742,7 @@ class SecretRegistry:
         self._config.clear()
         self._runtime.clear()
         self._identity.clear()
-        self._project.clear()
+        self._shared.clear()
         self._device_patterns.clear()
         self._all_pattern = None
         self._all_dirty = True
@@ -679,13 +754,13 @@ class SecretRegistry:
             self._config.get(device_id, set())
             | self._runtime.get(device_id, set())
             | self._identity.get(device_id, set())
-            | self._project
+            | self._shared_values()
         )
 
     def all_secrets(self) -> set[str]:
         """What to mask in every log line: every device's secrets and the
         project's, not the usernames."""
-        values: set[str] = set(self._project)
+        values: set[str] = self._shared_values()
         for group in (self._config, self._runtime):
             for entry in group.values():
                 values |= entry
@@ -710,7 +785,7 @@ class SecretRegistry:
 
     def has_secrets(self) -> bool:
         """Whether :meth:`redact_any` has anything to mask."""
-        return bool(self._config or self._runtime or self._project)
+        return bool(self._config or self._runtime or self._shared)
 
     def to_mask(self, where: Any, device_id: str | None = None) -> set[str]:
         """The values the exit ``where`` must not carry

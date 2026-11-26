@@ -7,17 +7,8 @@ from typing import Any
 from openavc.cloud.tools import apply_tool_edit
 from openavc.core import file_news
 from openavc.core.asset_references import asset_users
-from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.themes import ThemeRefused, all_themes, find_theme, project_themes_dir, theme_mode
-from openavc.drivers.registry import get_driver_class
-from openavc.utils.log_redaction import (
-    MIN_SECRET_LEN,
-    get_secret_registry,
-    is_secret_key,
-    project_secret_values,
-    redact_text,
-    secret_config_keys,
-)
+from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.secret_audience import Exit
 from openavc.utils.logger import get_logger
 
@@ -96,84 +87,8 @@ def _delete_unless_shown(engine: Any, safe_name: str) -> dict[str, Any]:
     return {"status": "deleted", "name": safe_name}
 
 
-# Which config keys hold credentials, and how a credential VALUE is masked out
-# of log text, both live in openavc/utils/log_redaction.py — the same rule the
-# transport TX/RX formatter and the log filter use. This module was where that
-# rule was first written; it is now one of its callers, so the cloud AI's view
-# of a log line and the log itself can never disagree about what a secret is.
-_looks_secret = is_secret_key
-_redact_log_message = redact_text
-
-
 class SystemToolsMixin:
     """Logs, discovery, themes, assets, ISC, and async waiting tools."""
-
-    def _collect_secret_values(self) -> set[str]:
-        """Every secret string the runtime knows about.
-
-        Device/connection/plugin configs and the system config carry the
-        credentials that transports put on the wire; at DEBUG those wire
-        payloads land in the log buffer verbatim. Scrubbing the known
-        VALUES (rather than pattern-guessing over free text) removes them
-        from anything shipped to the cloud without mangling the rest of
-        the line. Values shorter than 4 chars are skipped so a trivial
-        substring can't blank unrelated text.
-        """
-        secrets: set[str] = set()
-
-        def harvest(mapping: Any, schema: Any = None) -> None:
-            if not isinstance(mapping, dict):
-                return
-            # Named like a credential, or a secret by the driver's own schema.
-            keys = secret_config_keys(mapping, schema if isinstance(schema, dict) else None)
-            for key, value in mapping.items():
-                if (
-                    isinstance(value, str)
-                    and len(value) >= MIN_SECRET_LEN
-                    and (key in keys or _looks_secret(str(key)))
-                ):
-                    secrets.add(value)
-
-        engine = self._get_engine()
-        if engine and engine.project:
-            for device in engine.project.devices:
-                cls = get_driver_class(getattr(device, "driver", "") or "")
-                schema = cls.DRIVER_INFO.get("config_schema") if cls is not None else None
-                harvest(getattr(device, "config", None), schema)
-            for conn in (engine.project.connections or {}).values():
-                harvest(conn)
-            plugins = getattr(engine.project, "plugins", None) or {}
-            for plugin_cfg in plugins.values():
-                # Project plugin entries are PluginConfig models whose
-                # secrets live in .config; raw dicts appear in tests and
-                # forward-compat paths.
-                if isinstance(plugin_cfg, dict):
-                    harvest(plugin_cfg)
-                    harvest(plugin_cfg.get("config"))
-                else:
-                    harvest(getattr(plugin_cfg, "config", None))
-            # The project's own (the mesh key).
-            secrets |= {
-                value for value in project_secret_values(engine.project)
-                if len(value) >= MIN_SECRET_LEN
-            }
-        # What the project holds as the marker, saved on this system instead:
-        # the device logins, the plugin logins and the mesh key the engine
-        # registered from the login file (Engine._register_project_secrets).
-        # The marker itself is no secret, and masked it would read as one.
-        secrets |= get_secret_registry().to_mask(Exit.CLOUD)
-        secrets.discard(SAVED_LOGIN)
-
-        try:
-            from openavc.system_config import get_system_config
-
-            data = get_system_config().to_dict()
-            for section in ("auth", "cloud", "isc"):
-                harvest(data.get(section))
-        except Exception:
-            log.debug("Could not read system config for log redaction", exc_info=True)
-
-        return secrets
 
     async def _get_logs(self, input: dict) -> Any:
         import time
@@ -213,14 +128,13 @@ class SystemToolsMixin:
         entries = entries[-count:]
 
         # This result ships to the cloud AI (and its stored conversation
-        # history): scrub known credential values from the message text —
-        # transport TX/RX lines at DEBUG carry them verbatim.
-        secrets = self._collect_secret_values()
-        if secrets:
-            for entry in entries:
-                message = entry.get("message", "")
-                if isinstance(message, str):
-                    entry["message"] = _redact_log_message(message, secrets)
+        # history), which may not carry a secret: every one the system holds
+        # is masked, as the one collector gathered it (utils/log_redaction).
+        registry = get_secret_registry()
+        for entry in entries:
+            message = entry.get("message", "")
+            if isinstance(message, str):
+                entry["message"] = registry.masked(Exit.CLOUD, message)
         return entries
 
     async def _wait(self, input: dict) -> Any:

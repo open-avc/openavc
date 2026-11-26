@@ -65,7 +65,11 @@ class RuntimeServicesMixin:
         if await self._start_mdns_advertiser() is False:
             failed.append("mdns_announcement")
         from openavc.cloud.config import apply_saved_cloud_config
+        from openavc.utils.log_redaction import register_system_secrets
         apply_saved_cloud_config()
+        # The masking learns this system's own secrets, the pairing's key
+        # among them, before the agent that presents it starts.
+        register_system_secrets()
         if await self._start_cloud_agent() is False:
             failed.append("cloud_agent")
         return tuple(failed)

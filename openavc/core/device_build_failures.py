@@ -38,13 +38,8 @@ from openavc.core.connection_fault import (
     simulator_error_text,
 )
 from openavc.core.device_errors import DriverBuildError
-from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.installed_equipment import driver_label
-from openavc.utils.log_redaction import (
-    collect_identity_values,
-    collect_secret_values,
-    get_secret_registry,
-)
+from openavc.utils.log_redaction import register_config_secrets
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -79,13 +74,7 @@ def _register_logins(device_id: str, config: dict[str, Any], driver_class: type)
     the end of its constructor (``_register_config_secrets``), for a
     constructor that raised before it got there."""
     schema = (getattr(driver_class, "DRIVER_INFO", None) or {}).get("config_schema")
-    # The marker is not a login, and is masked nowhere.
-    config = {k: v for k, v in config.items() if v != SAVED_LOGIN}
-    get_secret_registry().set_config_secrets(
-        device_id,
-        collect_secret_values(config, schema),
-        identities=collect_identity_values(config, schema),
-    )
+    register_config_secrets(device_id, config, schema)
 
 
 class DeviceBuildFailuresMixin:

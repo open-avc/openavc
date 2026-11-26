@@ -43,7 +43,7 @@ from openavc.core.connection_fault import (
     ConnectionFaultError,
     default_fault_message,
 )
-from openavc.core.device_logins import SAVED_LOGIN, marked_fields
+from openavc.core.device_logins import marked_fields
 from openavc.core.device_traffic import record_traffic
 from openavc.core.event_bus import EventBus
 from openavc.drivers.bridge_ports import BridgePorts
@@ -114,11 +114,7 @@ from openavc.core.state_store import StateStore
 # Drivers have imported FrameParser from here; it stays importable.
 from openavc.transport.frame_parsers import FrameParser  # noqa: F401
 from openavc.transport.http_client import capture_driver_clients, capture_driver_websockets
-from openavc.utils.log_redaction import (
-    collect_identity_values,
-    collect_secret_values,
-    get_secret_registry,
-)
+from openavc.utils.log_redaction import get_secret_registry, register_config_secrets
 from openavc.utils.logger import get_logger
 
 # Re-exported for drivers: raise ConnectionFaultError(msg, code=...) instead of
@@ -315,13 +311,8 @@ class BaseDriver(
     def _register_config_secrets(self) -> None:
         """Publish this device's config credentials to the redaction registry."""
         try:
-            schema = self.DRIVER_INFO.get("config_schema")
-            # The marker is not a login, and is masked nowhere.
-            config = {k: v for k, v in (self.config or {}).items() if v != SAVED_LOGIN}
-            get_secret_registry().set_config_secrets(
-                self.device_id,
-                collect_secret_values(config, schema),
-                identities=collect_identity_values(config, schema),
+            register_config_secrets(
+                self.device_id, self.config, self.DRIVER_INFO.get("config_schema"),
             )
         except Exception:  # pragma: no cover - never block a driver from loading
             log.debug(

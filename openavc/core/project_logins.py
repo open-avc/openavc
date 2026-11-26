@@ -33,6 +33,7 @@ import asyncio
 import copy
 import functools
 from pathlib import Path
+from typing import Any
 
 from openavc.core import saved_params
 from openavc.core.device_logins import (
@@ -44,22 +45,51 @@ from openavc.core.device_logins import (
     StoreView,
     held_as_saved,
     in_project,
+    find_logins,
     find_plugin_logins,
     keep_waiting_logins,
     marked_fields,
     move_logins,
     param_owner,
+    plugin_configs,
     plugin_logins_waiting,
     saved_isc_key,
     saved_logins_of,
 )
 from openavc.core.device_sync import resolve_each
 from openavc.core.project_loader import ProjectConfig, refresh_crash_copy, save_project_async
-from openavc.drivers.registry import is_driver_registered
-from openavc.utils.log_redaction import get_secret_registry, project_secret_values
+from openavc.drivers.registry import get_driver_class, is_driver_registered
+from openavc.utils.log_redaction import get_secret_registry, project_secret_values, secret_values
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.engine")
+
+
+def _config_schema(driver_id: Any) -> dict[str, Any] | None:
+    cls = get_driver_class(driver_id) if isinstance(driver_id, str) and driver_id else None
+    return (getattr(cls, "DRIVER_INFO", None) or {}).get("config_schema")
+
+
+def secrets_held_in_the_clear(project: Any) -> set[str]:
+    """Every secret value ``project`` holds in the clear, by the one
+    collector (``log_redaction.secret_values``): each device's settings on
+    its driver's ``config_schema``, each connection row's, each plugin's
+    config, and the logins its plugins and drivers declare
+    (``device_logins.find_logins``). A device that runs registers its own as
+    its driver is built; these cover the rest, a disabled device, one waiting
+    for its driver, a connection no device uses yet, a plugin's. A marker is
+    no secret."""
+    values: set[str] = set()
+    for connection in (getattr(project, "connections", None) or {}).values():
+        values |= secret_values(connection if isinstance(connection, dict) else None)
+    for device in getattr(project, "devices", None) or []:
+        config = getattr(device, "config", None)
+        values |= secret_values(config, _config_schema(getattr(device, "driver", None)))
+    for _plugin_id, config in plugin_configs(project):
+        values |= secret_values(config)
+    for found in find_logins(project):
+        values |= {v for v in found.fields.values() if isinstance(v, str)}
+    return {v for v in values if v != SAVED_LOGIN and not saved_params.is_any_marker(v)}
 
 
 class ProjectLoginsMixin:
@@ -101,6 +131,7 @@ class ProjectLoginsMixin:
         values = {v for v in project_secret_values(self.project) if v != SAVED_LOGIN}
         if self.project is None:
             return values
+        values |= secrets_held_in_the_clear(self.project)
         key = saved_isc_key(self.project, self.device_logins)
         if key:
             values.add(key)

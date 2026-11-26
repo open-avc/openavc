@@ -95,3 +95,20 @@ async def test_a_failed_reconcile_puts_the_previous_key_back(engine, monkeypatch
 
     assert engine.project.isc.auth_key == "mesh-key-4417"
     assert clean_registry.redact_any("mesh-key-4417 mesh-key-9902") == "*** mesh-key-9902"
+
+
+async def test_a_save_registers_what_the_project_holds_in_the_clear(engine, clean_registry):
+    # A plugin not installed here: nothing can say which of its settings are
+    # logins, so the save leaves them where they are, and the masking still
+    # learns the one named like a credential.
+    from openavc.core.project_loader import PluginConfig
+
+    engine.project = _project("")
+    engine._apply_project_settings()
+    try:
+        project = _project("", name="Hall B")
+        project.plugins = {"acme_bridge": PluginConfig(enabled=False, config={"api_token": "tok-5512-hall"})}
+        await engine.apply_project(project)
+        assert clean_registry.redact_any("auth tok-5512-hall") == "auth ***"
+    finally:
+        await engine.stop()

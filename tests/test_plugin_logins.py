@@ -756,14 +756,13 @@ async def test_a_mesh_key_change_reloads_the_running_mesh(engine, data):
 
 
 async def test_the_assistants_log_hides_a_plugin_login_saved_here(engine, data):
-    from openavc.cloud.tools.system_tools import SystemToolsMixin
+    from openavc.utils.log_redaction import get_secret_registry
+    from openavc.utils.secret_audience import Exit
 
     _write(engine.project_path, _project())
     await engine.reload_project()
 
-    tools = SystemToolsMixin.__new__(SystemToolsMixin)
-    tools._get_engine = lambda: engine
-    secrets = tools._collect_secret_values()
+    secrets = get_secret_registry().to_mask(Exit.CLOUD)
     assert {"Bridge-Pass-1", "Feed-Pass-L", "Mesh-Key-123"} <= secrets
     assert SAVED_LOGIN not in secrets
 
