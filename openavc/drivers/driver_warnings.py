@@ -172,7 +172,7 @@ def credential_name_warnings(
     A nudge, never a refusal: the mark is what makes a value secret, and only
     the author knows whether a ``pin`` is one. A field that takes a number or
     a choice draws nothing, since a secret takes text
-    (``param_aid_checks.secret_type_issues``). ``judged(place, definition)``
+    (``param_aid_checks.secret_type_errors``). ``judged(place, definition)``
     skips one a Python driver's checker could not read whole. A config field
     merged in or built in code is keyed by a marker no credential's name ends
     in, so it is passed over."""
