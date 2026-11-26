@@ -106,6 +106,12 @@ CANONICAL_CONDITION_OPS = frozenset((
 ))
 VALID_CONDITION_OPS = frozenset(CANONICAL_CONDITION_OPS | _COND_ALIASES.keys())
 VALID_STATE_TRIGGER_OPS = frozenset({"any"} | VALID_CONDITION_OPS)
+
+
+def _takes(ops: frozenset[str], op: Any) -> bool:
+    """Whether ``op`` is one of ``ops``; an operator that is not text is none."""
+    return isinstance(op, str) and op in ops
+
 VALID_OVERLAP_MODES = frozenset(choice_rule(TriggerConfig, "overlap").words)
 _ON_TIMEOUT_WORDS = choice_rule(MacroStep, "on_timeout").words
 
@@ -202,7 +208,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
                     action=action, missing="condition.key",
                 ))
             op = cond.get("operator", "eq")
-            if op not in VALID_CONDITION_OPS:
+            if not _takes(VALID_CONDITION_OPS, op):
                 found.append(_finding(
                     path, f"condition operator '{op}' is not valid",
                     action=action,
@@ -224,7 +230,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
                     action=action, missing="condition.key",
                 ))
             op = cond.get("operator", "eq")
-            if op not in VALID_CONDITION_OPS:
+            if not _takes(VALID_CONDITION_OPS, op):
                 found.append(_finding(
                     path, f"wait_until condition operator '{op}' is not valid",
                     action=action,
@@ -258,7 +264,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
                 path, "skip_if requires 'key'", action=action, missing="skip_if.key",
             ))
         op = skip_if.get("operator", "eq")
-        if op not in VALID_CONDITION_OPS:
+        if not _takes(VALID_CONDITION_OPS, op):
             found.append(_finding(
                 path, f"skip_if operator '{op}' is not valid",
                 action=action,
@@ -418,7 +424,7 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                 action=ttype, missing="state_key",
             ))
         op = trigger.get("state_operator")
-        if op and op not in VALID_STATE_TRIGGER_OPS:
+        if op and not _takes(VALID_STATE_TRIGGER_OPS, op):
             found.append(_finding(
                 path,
                 f"state_operator '{op}' is not valid. "
@@ -441,7 +447,7 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                         action=ttype, missing="conditions.key",
                     ))
                 op = c.get("operator", "eq")
-                if op not in VALID_CONDITION_OPS:
+                if not _takes(VALID_CONDITION_OPS, op):
                     found.append(_finding(
                         f"{path}.conditions[{i}]", f"operator '{op}' is not valid",
                         action=ttype,

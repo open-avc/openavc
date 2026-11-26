@@ -110,17 +110,18 @@ def reads_as_on(value: Any) -> bool:
 def eval_operator(op: str, actual: Any, target: Any, mode: str = DECIDE) -> bool:
     """Whether ``actual op target`` holds, for a reader in ``mode`` (``MODES``).
 
-    Aliases are normalized first; an operator nobody knows raises ValueError.
+    Aliases are normalized first; an operator nobody knows raises ValueError,
+    and so does one that is not text.
     """
-    op = _OPERATOR_ALIASES.get(op, op)
+    canonical = _OPERATOR_ALIASES.get(op, op) if isinstance(op, str) else None
 
-    if op in ("eq", "ne"):
-        return _equality(op, actual, target, mode)
-    if op in _ORDERINGS:
-        return _ordering(_ORDERINGS[op], actual, target)
-    if op == "truthy":
+    if canonical in ("eq", "ne"):
+        return _equality(canonical, actual, target, mode)
+    if canonical in _ORDERINGS:
+        return _ordering(_ORDERINGS[canonical], actual, target)
+    if canonical == "truthy":
         return bool(actual)
-    if op == "falsy":
+    if canonical == "falsy":
         return not bool(actual)
     raise ValueError(
         f"Unknown condition operator: '{op}'. "

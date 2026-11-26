@@ -37,8 +37,8 @@ ABSENT = object()
 #: Spellings a macro step or a guard reads, each meaning "equal".
 EQUALS = ["eq", "==", "equals", "equal", ABSENT]
 #: Spellings neither reads: a word nobody knows, a canonical name in the wrong
-#: case, a blank one and an explicit null.
-UNREADABLE = ["contains", "EQ", "", None]
+#: case, a blank one, an explicit null and one that is not text at all.
+UNREADABLE = ["contains", "EQ", "", None, ["eq"]]
 
 
 def _id(op: Any) -> str:
@@ -321,7 +321,7 @@ async def test_a_guard_it_cannot_read_after_a_queue_wait_is_no_longer_met(
 #: operator also read as.
 STATE_FIRES = ["eq", "==", "equals", "any", "", None, ABSENT]
 #: Each is skipped as an invalid condition.
-STATE_UNREADABLE = ["contains", "EQ"]
+STATE_UNREADABLE = ["contains", "EQ", ["eq"]]
 
 
 def _state_trigger(op: Any, **extra: Any) -> list[dict[str, Any]]:
