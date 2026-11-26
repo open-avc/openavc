@@ -497,65 +497,11 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                   />
                 </div>
 
-                <div style={{ display: "flex", gap: "var(--space-lg)" }}>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--space-xs)",
-                      fontSize: "var(--font-size-sm)",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={setting.setup ?? false}
-                      onChange={(e) =>
-                        updateSetting(key, { setup: e.target.checked || undefined })
-                      }
-                    />
-                    Prompt during setup
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--space-xs)",
-                      fontSize: "var(--font-size-sm)",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={setting.unique ?? false}
-                      onChange={(e) =>
-                        updateSetting(key, { unique: e.target.checked || undefined })
-                      }
-                    />
-                    Unique per device
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--space-xs)",
-                      fontSize: "var(--font-size-sm)",
-                    }}
-                    title="A login, such as an admin PIN: masked, and never queued for a device that is offline"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSecretSetting(key, setting)}
-                      disabled={key === PASSWORD_FIELD}
-                      onChange={(e) =>
-                        // A login never carries a default.
-                        updateSetting(
-                          key,
-                          e.target.checked ? { secret: true, default: undefined } : { secret: undefined },
-                        )
-                      }
-                    />
-                    Secret
-                  </label>
-                </div>
+                <SettingFlags
+                  settingKey={key}
+                  setting={setting}
+                  onChange={(partial) => updateSetting(key, partial)}
+                />
               </div>
             )}
           </div>
@@ -586,6 +532,61 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
 // true). A boolean or enum setting gets one row per value it takes; any
 // other type edits the map row by row, like a command parameter's.
 // ──────────────────────────────────────────────────────────────────────────
+const flagStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-xs)",
+  fontSize: "var(--font-size-sm)",
+} as const;
+
+/** A setting's three marks: prompted during setup, unique per device, and a
+ *  login. Marking a login drops its default, since a login never has one; a
+ *  setting named password is one whatever it declares. */
+function SettingFlags({
+  settingKey,
+  setting,
+  onChange,
+}: {
+  settingKey: string;
+  setting: DriverDeviceSettingDef;
+  onChange: (partial: Partial<DriverDeviceSettingDef>) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: "var(--space-lg)" }}>
+      <label style={flagStyle}>
+        <input
+          type="checkbox"
+          checked={setting.setup ?? false}
+          onChange={(e) => onChange({ setup: e.target.checked || undefined })}
+        />
+        Prompt during setup
+      </label>
+      <label style={flagStyle}>
+        <input
+          type="checkbox"
+          checked={setting.unique ?? false}
+          onChange={(e) => onChange({ unique: e.target.checked || undefined })}
+        />
+        Unique per device
+      </label>
+      <label
+        style={flagStyle}
+        title="A login, such as an admin PIN: masked, and never queued for a device that is offline"
+      >
+        <input
+          type="checkbox"
+          checked={isSecretSetting(settingKey, setting)}
+          disabled={settingKey === PASSWORD_FIELD}
+          onChange={(e) =>
+            onChange(e.target.checked ? { secret: true, default: undefined } : { secret: undefined })
+          }
+        />
+        Secret
+      </label>
+    </div>
+  );
+}
+
 const SETTING_MAP_TITLE = "Send a different word for a value, e.g. ON instead of true";
 
 function SettingWireValueMap({

@@ -15,6 +15,23 @@ const LOGIN_NOT_QUEUED = "Not queued: enter it on the device's page once the dev
 
 type SettingResult = { success: boolean; error?: string; pending?: boolean; notQueued?: boolean };
 
+/** What a live write that failed leaves for one setting: queued for a device
+ *  that is not connected (503), a login excepted, else the error. */
+function failedWriteResult(e: unknown, key: string, def: unknown): SettingResult {
+  if (!(e instanceof ApiError && e.status === 503)) return { success: false, error: parseApiError(e) };
+  return isSecretSetting(key, def) ? { success: false, notQueued: true } : { success: true, pending: true };
+}
+
+/** How the dialog ends once every setting has a result: a banner for a
+ *  failure, open while a login waits to be entered on the device's page, a
+ *  short pause to show what was queued, else closed at once. */
+function finishAfter(results: Record<string, SettingResult>): "failed" | "stay" | "linger" | "close" {
+  const all = Object.values(results);
+  if (all.some((r) => !r.success && !r.pending && !r.notQueued)) return "failed";
+  if (all.some((r) => r.notQueued)) return "stay";
+  return all.some((r) => r.pending) ? "linger" : "close";
+}
+
 /** Generate a non-clashing default value for a unique device setting. */
 function generateUniqueDefault(
   baseDefault: string,
@@ -116,15 +133,8 @@ export function DeviceSettingsSetupDialog({
       } catch (e) {
         // 503 = "device not connected": stash the value to push once it's back
         // online (see storePendingSettings below), rather than reporting a fail.
-        const isConnectionError = e instanceof ApiError && e.status === 503;
-        if (isConnectionError && isSecretSetting(key, deviceSettings[key])) {
-          newResults[key] = { success: false, notQueued: true };
-        } else if (isConnectionError) {
-          failedSettings[key] = coercedValues[key];
-          newResults[key] = { success: true, pending: true };
-        } else {
-          newResults[key] = { success: false, error: parseApiError(e) };
-        }
+        newResults[key] = failedWriteResult(e, key, deviceSettings[key]);
+        if (newResults[key].pending) failedSettings[key] = coercedValues[key];
       }
     }
 
@@ -149,22 +159,12 @@ export function DeviceSettingsSetupDialog({
     }
 
     setResults(newResults);
-    const anyHardFailed = Object.values(newResults).some((r) => !r.success && !r.pending && !r.notQueued);
-    const anyPending = Object.values(newResults).some((r) => r.pending);
-    const anyNotQueued = Object.values(newResults).some((r) => r.notQueued);
-
-    if (anyHardFailed) {
-      setError("Some settings failed to save. You can retry or skip.");
-    } else if (anyNotQueued) {
-      // Stays open so the login's line is read.
-      setError("");
-    } else if (anyPending) {
-      // All settings either applied or queued — close with a brief delay so user sees the message
-      setError("");
-      setTimeout(onClose, 1500);
-    } else {
-      onClose();
-    }
+    const finish = finishAfter(newResults);
+    setError(finish === "failed" ? "Some settings failed to save. You can retry or skip." : "");
+    // All settings either applied or queued: close with a brief delay so the
+    // user sees the message.
+    if (finish === "linger") setTimeout(onClose, 1500);
+    else if (finish === "close") onClose();
     setSaving(false);
   };
 

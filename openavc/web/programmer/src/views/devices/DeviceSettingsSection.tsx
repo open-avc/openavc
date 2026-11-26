@@ -19,7 +19,7 @@ import { parseApiError } from "../../api/errors";
 import type { DeviceSettingValue } from "../../api/types";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { normalizeOptionList, settingValueText } from "../../components/shared/paramOptions";
-import { isSecretSetting, maskedInputType } from "../../components/shared/secretSetting";
+import { isSecretSetting } from "../../components/shared/secretSetting";
 import { useConnectionStore } from "../../store/connectionStore";
 import { validateSettingValue } from "./deviceUtils";
 import { sectionTitleStyle, surfaceStyle } from "./deviceSectionStyles";
@@ -194,6 +194,7 @@ function SettingRow({
   onStartEdit: () => void;
 }) {
   const help = String(def?.help ?? "");
+  const secret = isSecretSetting(settingKey, def);
   return (
     <div style={{ padding: "var(--space-md)", borderBottom: "1px solid var(--border-color)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
@@ -207,8 +208,8 @@ function SettingRow({
             child is a button, so React keeps that button as Edit turns
             into Cancel and back, and keyboard focus stays on it. */}
         {editor
-          ? settingEditor(settingKey, def, editor)
-          : settingReading({ settingKey, def, currentValue, pending, pendingValue, connected, onStartEdit })}
+          ? settingEditor(def, secret, editor)
+          : settingReading({ def, secret, currentValue, pending, pendingValue, connected, onStartEdit })}
       </div>
       {result && <SaveResultLine result={result} />}
     </div>
@@ -218,16 +219,16 @@ function SettingRow({
 /** The value on the device, a pending mark, and the edit button, which waits
  *  for the device to be connected. */
 function settingReading({
-  settingKey,
   def,
+  secret,
   currentValue,
   pending,
   pendingValue,
   connected,
   onStartEdit,
 }: {
-  settingKey: string;
   def: DeviceSettingValue | undefined;
+  secret: boolean;
   currentValue: unknown;
   pending: boolean;
   pendingValue: unknown;
@@ -244,7 +245,7 @@ function settingReading({
           color: known ? "var(--text-primary)" : "var(--text-muted)",
         }}
       >
-        {!known ? "(not set)" : isSecretSetting(settingKey, def) ? MASKED_VALUE : settingValueText(def, currentValue)}
+        {!known ? "(not set)" : secret ? MASKED_VALUE : settingValueText(def, currentValue)}
       </span>
       {pending && <PendingMark def={def} value={pendingValue} connected={connected} />}
       <button
@@ -310,14 +311,10 @@ const editorButtonStyle = {
   alignItems: "center",
 } as const;
 
-function settingEditor(
-  settingKey: string,
-  def: DeviceSettingValue | undefined,
-  { value, onChange, saving, onSave, onCancel }: EditorProps,
-) {
+function settingEditor(def: DeviceSettingValue | undefined, secret: boolean, { value, onChange, saving, onSave, onCancel }: EditorProps) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-      <SettingInput settingKey={settingKey} def={def} value={value} onChange={onChange} onSave={onSave} onCancel={onCancel} />
+      <SettingInput def={def} secret={secret} value={value} onChange={onChange} onSave={onSave} onCancel={onCancel} />
       <button
         onClick={onSave}
         disabled={saving}
@@ -337,8 +334,9 @@ const NUMBER_TYPES = new Set(["integer", "number", "float"]);
 const selectStyle = { fontSize: "var(--font-size-sm)", padding: "2px 6px" } as const;
 
 type InputProps = {
-  settingKey: string;
   def: DeviceSettingValue | undefined;
+  /** A login: a password box the browser does not fill. */
+  secret: boolean;
   value: string;
   onChange: (value: string) => void;
   onSave: () => void;
@@ -372,13 +370,12 @@ function SettingInput(props: InputProps) {
 /** A number box carries the setting's range (its placeholder says it) and
  *  whole steps for an integer; a secret is a password box the browser does
  *  not fill; anything else is a text box. */
-function boxAttributes(settingKey: string, def: DeviceSettingValue | undefined, fieldType: string) {
+function boxAttributes(def: DeviceSettingValue | undefined, fieldType: string, secret: boolean) {
   const min = def?.min;
   const max = def?.max;
   const ranged = min !== undefined && max !== undefined;
-  const secret = isSecretSetting(settingKey, def);
   return {
-    type: maskedInputType(settingKey, def, NUMBER_TYPES.has(fieldType) ? "number" : "text"),
+    type: secret ? "password" : NUMBER_TYPES.has(fieldType) ? "number" : "text",
     autoComplete: secret ? "new-password" : undefined,
     min,
     max,
@@ -388,12 +385,12 @@ function boxAttributes(settingKey: string, def: DeviceSettingValue | undefined, 
 }
 
 /** Enter saves, Escape cancels. */
-function SettingTextBox({ settingKey, def, value, onChange, onSave, onCancel, fieldType }: InputProps & { fieldType: string }) {
+function SettingTextBox({ def, secret, value, onChange, onSave, onCancel, fieldType }: InputProps & { fieldType: string }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      {...boxAttributes(settingKey, def, fieldType)}
+      {...boxAttributes(def, fieldType, secret)}
       style={{ ...selectStyle, width: 180 }}
       autoFocus
       onKeyDown={(e) => {
