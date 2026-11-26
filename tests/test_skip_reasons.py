@@ -77,7 +77,7 @@ def _one_macro(trigger: dict[str, Any], macro_id: str = "m") -> list[dict[str, A
 def test_a_reason_is_its_code_and_its_sentence() -> None:
     assert skip_reason("cooldown") == {
         "code": "cooldown",
-        "message": "The trigger's Cooldown had not passed since it last fired.",
+        "message": "The trigger's Cooldown had not passed since it last started its macro.",
     }
     assert skip_reason("macro_cooldown", seconds=60.0) == {
         "code": "macro_cooldown",
@@ -257,7 +257,7 @@ async def test_a_skip_that_already_had_a_code_now_carries_its_sentence(
     await events.emit("go", {})
     await asyncio.sleep(0.02)
     assert skipped == [("trigger.skipped", _trigger_skip(
-        "t", "cooldown", "The trigger's Cooldown had not passed since it last fired.",
+        "t", "cooldown", "The trigger's Cooldown had not passed since it last started its macro.",
     ))]
     await trigger_engine.stop()
 

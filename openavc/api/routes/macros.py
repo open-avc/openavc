@@ -162,10 +162,12 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
 async def list_triggers() -> dict[str, Any]:
     """List all triggers with status.
 
-    Each entry carries `last_fired` and, alongside it, `last_outcome` /
-    `last_error` — how that fire actually ended. `last_fired` moves before
-    the macro runs, so on its own a trigger whose macro fails every night
-    shows a fresh timestamp and reads as healthy.
+    Each entry carries `last_fired` (when it last started its macro) and,
+    alongside it, its last-run record: `last_outcome` / `last_error`, how its
+    last fire actually ended, `last_reason`, why a skipped one did not go
+    ahead (`code` and `message`), and `last_run_at`, when. On its own
+    `last_fired` shows a trigger whose macro fails every night with a fresh
+    timestamp, which reads as healthy.
     """
     engine = _get_engine()
     return {"triggers": engine.triggers.list_triggers()}

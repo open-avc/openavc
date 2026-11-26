@@ -16,14 +16,15 @@ people is ``macro_text``; a group's fan-out is ``group_command``.
 
 Every way a macro starts -- a trigger, a panel press, a script, a plugin, the
 IDE, the AI, another macro -- passes through ``execute``, so a guard written
-there holds for all of them.
+there holds for all of them. A caller with a throttle of its own (a trigger's
+cooldown) stamps it only on a run that starts, and reads a refused start's
+reason back, through ``starts`` (``run_starts``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
-import weakref
 from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 
@@ -33,6 +34,7 @@ from openavc.core.macro_steps import MacroSteps
 from openavc.core.macro_text import StepWording, skip_reason, stopped_message
 from openavc.core.project_loader import MacroConfig, reads_as
 from openavc.core.run_cancels import RunCancels
+from openavc.core.run_starts import RunStarts, call_start_hook
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
 
@@ -204,12 +206,10 @@ class MacroEngine(MacroSteps):
         # Strong references to the tasks start() runs, so a macro nobody is
         # awaiting any more is not collected out from under itself.
         self._detached: set[asyncio.Task] = set()
-        # The reason the start a task ran was refused (_report_skipped), which
-        # execute_detached answers its door with. Weak: an entry goes with its
-        # task, and a long-lived caller's task only ever holds its latest.
-        self._refusals: weakref.WeakKeyDictionary[asyncio.Task, dict[str, str]] = (
-            weakref.WeakKeyDictionary()
-        )
+        # Per task: the callback its next start calls as it takes its slot,
+        # and the reason a refused start gave (_report_skipped), which
+        # execute_detached answers its door with.
+        self.starts = RunStarts()
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
         # Plugin-registered actions: action_type -> (handler, plugin_id, label)
@@ -252,9 +252,9 @@ class MacroEngine(MacroSteps):
         against other concurrent execute() callers. This is the macro-level
         counterpart to the trigger's overlap/cooldown: because it sits at the
         single execute() chokepoint, it applies no matter how the macro was
-        fired. When a trigger also carries its own guard the two stack — the
-        trigger's runs first, upstream, and this one is the floor — so the
-        stricter of the two always wins.
+        fired. When a trigger also carries its own guard, the trigger's runs
+        first, upstream, and this one after it; a start this one refuses is
+        not a start, so it never begins the trigger's cooldown (``starts``).
         """
         if cooldown > 0:
             last = self._last_started_monotonic.get(macro_id)
@@ -530,6 +530,8 @@ class MacroEngine(MacroSteps):
         With no current task (a synthetic execute()) there is nothing to
         register: the throttle and the preemption still apply, without the lock.
         """
+        # Taken first, so a start refused on any path drops it with the start.
+        on_start = self.starts.take_hook(task)
         if self._closed:
             return skip_reason("stopping"), []
         if guards.overlap == "queue":
@@ -539,10 +541,11 @@ class MacroEngine(MacroSteps):
         if task is None:
             return self._claim(macro_id, None, guards)
         async with self._start_lock:
-            return self._claim(macro_id, task, guards)
+            return self._claim(macro_id, task, guards, on_start)
 
     def _claim(
         self, macro_id: str, task: asyncio.Task | None, guards: _StartGuards,
+        on_start: Callable[[], None] | None = None,
     ) -> tuple[dict[str, str] | None, list[tuple[str, asyncio.Task]]]:
         blocked = self._throttle_reason(macro_id, guards.overlap, guards.cooldown)
         if blocked is not None:
@@ -551,6 +554,7 @@ class MacroEngine(MacroSteps):
             self._running.setdefault(macro_id, set()).add(task)
         if guards.cooldown > 0:
             self._last_started_monotonic[macro_id] = time.monotonic()
+        call_start_hook(on_start)
         return None, self._preempt(guards.cancel_group, task)
 
     def _preempt(
@@ -581,9 +585,7 @@ class MacroEngine(MacroSteps):
         # Kept for the task the refused start ran in, so execute_detached can
         # hand its operator door the same reason (RunEnd). After the event,
         # so this start's reason is the last one written for its task.
-        task = asyncio.current_task()
-        if task is not None:
-            self._refusals[task] = reason
+        self.starts.refused(reason)
 
     async def _report_completed(
         self, macro_id: str, name: str, task: asyncio.Task | None, failed_steps: int,
@@ -739,5 +741,5 @@ class MacroEngine(MacroSteps):
         # macro whose every step failed and for one that was cancelled out from
         # under the caller.
         outcome = task.result()
-        reason = self._refusals.pop(task, None) if outcome == "skipped" else None
+        reason = self.starts.take_refusal(task) if outcome == "skipped" else None
         return RunEnd(outcome, reason)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime, timezone
-from typing import Any, Awaitable, TYPE_CHECKING
+from typing import Any, Awaitable, NamedTuple, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
 from openavc.core.project_loader import TriggerConfig, reads_as
@@ -78,6 +78,24 @@ except ImportError:
     HAS_CRONITER = False
 
 
+class LastRun(NamedTuple):
+    """THE trigger's last-run record: how its last automatic fire ended, which
+    ``list_triggers`` (``/api/triggers``, the AI's tool) and the trigger card
+    read, and ``trigger.completed`` announces.
+
+    ``outcome`` is the macro engine's word, or ``error`` for a macro that does
+    not exist, with ``error`` its reason. ``reason`` is a skipped run's
+    ``macro_text.skip_reason`` (``code`` and ``message``): why it did not go
+    ahead. ``at`` is when it was written (wall clock), since ``last_fired``
+    moves only when the macro starts and a refused fire does not move it.
+    """
+
+    outcome: str
+    error: str | None = None
+    reason: dict[str, str] | None = None
+    at: float = 0.0
+
+
 class _TriggerState:
     """Runtime state for a single trigger."""
 
@@ -86,8 +104,7 @@ class _TriggerState:
         "macro_id",
         "macro_name",
         "last_fired",
-        "last_outcome",
-        "last_error",
+        "last_run",
         "debounce_task",
         "delay_task",
         "pending_queue",
@@ -97,16 +114,39 @@ class _TriggerState:
         self.trigger = trigger
         self.macro_id = macro_id
         self.macro_name = macro_name
+        # When the trigger last started its macro: the cooldown's baseline
+        # (_stamp_cooldown).
         self.last_fired: float = 0
-        # How the last automatic fire ended, and why if it did not end well.
-        # `last_fired` moves before the macro runs and never reads back what
-        # happened, so on its own a trigger whose macro fails every night
-        # shows a FRESH timestamp — which reads as working.
-        self.last_outcome: str | None = None
-        self.last_error: str | None = None
+        # How the last automatic fire ended (LastRun). `last_fired` never
+        # reads back what happened, so on its own a trigger whose macro fails
+        # every night shows a FRESH timestamp — which reads as working.
+        self.last_run: LastRun | None = None
         self.debounce_task: asyncio.Task | None = None
         self.delay_task: asyncio.Task | None = None
         self.pending_queue: list[asyncio.Task] = []
+
+
+def _completed_fields(run: LastRun) -> dict[str, Any]:
+    """What ``trigger.completed`` says of a fire's end: its outcome, the
+    error a missing macro gave, and a refused start's ``code`` and
+    ``message``."""
+    fields: dict[str, Any] = {"outcome": run.outcome}
+    if run.error is not None:
+        fields["error"] = run.error
+    return {**fields, **(run.reason or {})}
+
+
+def _last_run_fields(run: LastRun | None) -> dict[str, Any]:
+    """A last-run record as ``list_triggers`` gives it: every field ``None``
+    until the trigger has fired once, since never run is not run and fine."""
+    if run is None:
+        return {"last_outcome": None, "last_error": None, "last_reason": None, "last_run_at": None}
+    return {
+        "last_outcome": run.outcome,
+        "last_error": run.error,
+        "last_reason": run.reason,
+        "last_run_at": run.at,
+    }
 
 
 class TriggerEngine:
@@ -154,13 +194,13 @@ class TriggerEngine:
         # process); absent only after a full restart, where the persisted
         # wall-clock timestamp is the fallback.
         self._last_fired_monotonic: dict[str, float] = {}
-        # trigger_id -> (outcome, error) of its last automatic fire, held here
+        # trigger_id -> the LastRun of its last automatic fire, held here
         # rather than only on the _TriggerState because load_triggers rebuilds
         # those from scratch and the reconcile calls it on any device,
         # connection, variable, plugin or macro edit. That rebuild advertises
         # itself as loss-free; a record wiped by saving anything is a record
         # nobody debugging a nightly failure can rely on.
-        self._last_run: dict[str, tuple[str, str | None]] = {}
+        self._last_run: dict[str, LastRun] = {}
         self._running = False
 
     def _spawn(self, coro: Any) -> asyncio.Task:
@@ -204,9 +244,7 @@ class TriggerEngine:
                     persisted = self.state.get(f"system.trigger.{trigger_id}.last_fired")
                     if persisted and isinstance(persisted, (int, float)):
                         ts.last_fired = float(persisted)
-                    last_run = self._last_run.get(trigger_id)
-                    if last_run is not None:
-                        ts.last_outcome, ts.last_error = last_run
+                    ts.last_run = self._last_run.get(trigger_id)
                     self._triggers[trigger_id] = ts
                     count += 1
         # Drop cron-dedup / cooldown baselines for triggers that no longer
@@ -783,21 +821,12 @@ class TriggerEngine:
     async def _fire_macro(
         self, ts: _TriggerState, context: dict[str, Any]
     ) -> None:
-        """Actually execute the macro and emit trigger events."""
+        """Actually execute the macro and emit trigger events (_run_macro)."""
         t = ts.trigger
         trigger_id = t["id"]
         macro_id = ts.macro_id
         trigger_type = t.get("type", "unknown")
 
-        ts.last_fired = time.time()
-        # Monotonic baseline for the cooldown check — immune to wall-clock
-        # jumps within this process (incl. across a hot reload). The wall-clock
-        # value below is the cross-restart fallback / display value.
-        self._last_fired_monotonic[trigger_id] = time.monotonic()
-        # Stash cooldown timestamp in the in-memory state store so it's
-        # picked up by load_triggers on a hot-reload (see paired read).
-        # Not durable across server restart — see comment in load_triggers.
-        self.state.set(f"system.trigger.{trigger_id}.last_fired", ts.last_fired, source="system")
         self._active_trigger_depth[trigger_id] = (
             self._active_trigger_depth.get(trigger_id, 0) + 1
         )
@@ -821,7 +850,7 @@ class TriggerEngine:
         # a trigger left pointing at a deleted one. Either way the trigger
         # pipeline is isolated from the macro's failure, which is the design;
         # what it stops doing is throwing the answer away.
-        outcome = "error"
+        outcome, reason = "error", None
         error: str | None = None
         try:
             await self.events.emit(
@@ -837,7 +866,7 @@ class TriggerEngine:
             # Pass the trigger context (event payload / state-change snapshot)
             # so the macro can resolve $trigger.<field> refs and branch on what
             # fired it. Direct/REST/script runs pass no context (refs -> None).
-            outcome = await self.macros.execute(macro_id, context=context)
+            outcome, reason = await self._run_macro(ts, context)
         except Exception as e:  # Catch-all: isolates macro execution errors from trigger pipeline
             log.exception(f"Trigger {trigger_id} macro execution failed")
             error = str(e)
@@ -853,19 +882,53 @@ class TriggerEngine:
 
         # The LAST run, not a sticky fault: a trigger somebody has fixed has to
         # be able to come back to healthy on its own.
-        ts.last_outcome = outcome
-        ts.last_error = error
-        self._last_run[trigger_id] = (outcome, error)
-        payload = {
+        run = self._record_run(ts, outcome, error=error, reason=reason)
+        await self.events.emit("trigger.completed", {
             "trigger_id": trigger_id,
             "macro_id": macro_id,
             "macro_name": ts.macro_name,
             "trigger_type": trigger_type,
-            "outcome": outcome,
-        }
-        if error is not None:
-            payload["error"] = error
-        await self.events.emit("trigger.completed", payload)
+            **_completed_fields(run),
+        })
+
+    async def _run_macro(
+        self, ts: _TriggerState, context: dict[str, Any],
+    ) -> tuple[str, dict[str, str] | None]:
+        """Run the trigger's macro and say how it ended: the outcome, and a
+        refused start's reason. The trigger's cooldown starts as the run
+        starts (_stamp_cooldown, through the macro engine's ``starts``), so a
+        fire the macro refuses (its own Cooldown, its Overlap set to Skip, a
+        queued run that waited too long) starts none."""
+        with self.macros.starts.on_next_start(lambda: self._stamp_cooldown(ts)):
+            outcome = await self.macros.execute(ts.macro_id, context=context)
+        return outcome, self.macros.starts.take_refusal() if outcome == "skipped" else None
+
+    def _stamp_cooldown(self, ts: _TriggerState) -> None:
+        """Start the trigger's cooldown: its macro has just started. Called by
+        the macro engine as the run takes its slot, so a fire the macro
+        refuses starts none."""
+        trigger_id = ts.trigger["id"]
+        ts.last_fired = time.time()
+        # Monotonic baseline for the cooldown check — immune to wall-clock
+        # jumps within this process (incl. across a hot reload). The wall-clock
+        # value below is the cross-restart fallback / display value.
+        self._last_fired_monotonic[trigger_id] = time.monotonic()
+        # Stash cooldown timestamp in the in-memory state store so it's
+        # picked up by load_triggers on a hot-reload (see paired read).
+        # Not durable across server restart — see comment in load_triggers.
+        self.state.set(f"system.trigger.{trigger_id}.last_fired", ts.last_fired, source="system")
+
+    def _record_run(
+        self, ts: _TriggerState, outcome: str, *, error: str | None = None,
+        reason: dict[str, str] | None = None,
+    ) -> LastRun:
+        """Write the trigger's last-run record (LastRun), the one place it is
+        written: a fire that ends, or one that is ended without running with
+        its ``reason`` from macro_text's table."""
+        run = LastRun(outcome, error, reason, time.time())
+        ts.last_run = run
+        self._last_run[ts.trigger["id"]] = run
+        return run
 
     # --- Condition evaluation ---
 
@@ -902,12 +965,12 @@ class TriggerEngine:
                 "enabled": t.get("enabled", True),
                 "macro_id": ts.macro_id,
                 "macro_name": ts.macro_name,
+                # When it last started its macro (a refused fire does not move it).
                 "last_fired": ts.last_fired if ts.last_fired > 0 else None,
-                # How that fire ended. `last_fired` alone cannot say: it moves
-                # before the macro runs, so a trigger that errors every time
-                # carries a fresh timestamp and reads as healthy.
-                "last_outcome": ts.last_outcome,
-                "last_error": ts.last_error,
+                # How the last fire ended (LastRun). `last_fired` alone cannot
+                # say: it moves as the macro starts, so a trigger that errors
+                # every time carries a fresh timestamp and reads as healthy.
+                **_last_run_fields(ts.last_run),
                 "has_pending_delay": ts.delay_task is not None and not ts.delay_task.done() if ts.delay_task else False,
                 "has_pending_debounce": ts.debounce_task is not None and not ts.debounce_task.done() if ts.debounce_task else False,
             })

@@ -12,7 +12,9 @@ import type { SkipNote } from "../store/logStore";
  *
  * A skip is not a run. It never ends the run in flight that refused it, and
  * never becomes the trigger's last-run record, which the server keeps: a busy
- * trigger's cooldown skips would otherwise erase a failure it still holds.
+ * trigger's cooldown skips would otherwise erase a failure it still holds. A
+ * fire the trigger made that its macro refused is a run: the record keeps its
+ * reason (`trigger.completed`'s `code` and `message`, `triggerRuns.runSkip`).
  */
 
 type Message = Record<string, unknown>;

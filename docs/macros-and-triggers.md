@@ -258,7 +258,7 @@ A macro can guard against being run too often, or being run again while it's sti
 
 The important part is *where* these apply. A trigger has its own overlap and cooldown settings, but those only cover fires from that one trigger. The macro's own overlap and cooldown are enforced on the macro itself, so they hold no matter what starts it: a schedule, a panel button, a script loop, an automation, the AI assistant, or another macro. That closes the gap where a macro you carefully protected on its trigger could still be hammered from a script or a button.
 
-If both a trigger and its macro carry a guard, both apply and the stricter one wins. Adding a guard to a macro can only ever tighten its behavior, never loosen a trigger's, so it's safe to set a sensible macro-level default and still tune individual triggers. (Because it protects against unthrottled re-runs, a macro's overlap defaults to **Allow** to preserve existing behavior, while a trigger's defaults to **Skip**.)
+If both a trigger and its macro carry a guard, both apply: the trigger's settings decide whether it fires, then the macro's decide whether the run starts. The trigger's Cooldown counts from the last run it started, so a fire the macro turns away starts no Cooldown on the trigger, and the trigger card says why. (Because it protects against unthrottled re-runs, a macro's overlap defaults to **Allow** to preserve existing behavior, while a trigger's defaults to **Skip**.)
 
 ## Progress in Panel
 
@@ -400,8 +400,10 @@ nothing, because that is not the same as one that fired and worked.
 
 When a fire does not go ahead, the card says **Skipped:** with the reason, for
 example that its Cooldown had not passed, its conditions were not met, or its
-macro was still running. The line stays until the trigger next fires, and is
-shown only while the Programmer is open and connected.
+macro was still running. The line stays until the trigger next fires. A fire
+its macro turned away is kept as the trigger's last run, so the card still
+says why after the Programmer is reopened; any other reason is shown only
+while the Programmer is open and connected.
 
 This matters most for the automation nobody watches. A nightly shutdown whose
 projector command has been failing for a month still fires on time, so a

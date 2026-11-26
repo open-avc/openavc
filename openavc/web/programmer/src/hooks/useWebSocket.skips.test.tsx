@@ -45,7 +45,7 @@ const TRIGGER_SKIPPED = {
   trigger_id: "trg_dusk",
   reason: "cooldown",
   code: "cooldown",
-  message: "The trigger's Cooldown had not passed since it last fired.",
+  message: "The trigger's Cooldown had not passed since it last started its macro.",
 };
 const MACRO_SKIPPED = {
   type: "macro.skipped",
@@ -61,6 +61,7 @@ beforeEach(() => {
   socket.disconnects.length = 0;
   useLogStore.setState({
     triggerSkips: {},
+    triggerRuns: {},
     macroSkips: {},
     triggerPending: {},
     runningMacros: {},
@@ -75,7 +76,7 @@ describe("useWebSocket: a fire or a run that did not go ahead", () => {
     receive(TRIGGER_SKIPPED);
     expect(useLogStore.getState().triggerSkips.trg_dusk).toMatchObject({
       code: "cooldown",
-      message: "The trigger's Cooldown had not passed since it last fired.",
+      message: "The trigger's Cooldown had not passed since it last started its macro.",
     });
   });
 
@@ -131,6 +132,28 @@ describe("useWebSocket: a fire or a run that did not go ahead", () => {
     receive(MACRO_SKIPPED);
     receive({ type: "macro.started", macro_id: "lights_on", total_steps: 2 });
     expect(useLogStore.getState().macroSkips.lights_on).toBeUndefined();
+  });
+
+  it("keeps the macro's reason on the trigger's last run when the macro refused the fire", () => {
+    renderHook(() => useWebSocket());
+    receive({
+      type: "trigger.completed", trigger_id: "trg_dusk", macro_id: "lights_on",
+      macro_name: "Lights On", trigger_type: "schedule", outcome: "skipped",
+      code: "macro_overlap", message: MACRO_SKIPPED.message,
+    });
+    expect(useLogStore.getState().triggerRuns.trg_dusk).toMatchObject({
+      outcome: "skipped",
+      reason: { code: "macro_overlap", message: MACRO_SKIPPED.message },
+    });
+  });
+
+  it("gives a run that started no reason", () => {
+    renderHook(() => useWebSocket());
+    receive({
+      type: "trigger.completed", trigger_id: "trg_dusk", macro_id: "lights_on",
+      macro_name: "Lights On", trigger_type: "schedule", outcome: "completed",
+    });
+    expect(useLogStore.getState().triggerRuns.trg_dusk.reason).toBeUndefined();
   });
 
   it("forgets both on a dropped connection, which may have missed a fire", () => {

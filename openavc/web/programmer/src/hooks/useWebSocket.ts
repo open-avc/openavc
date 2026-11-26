@@ -3,7 +3,7 @@ import { actOnProjectReload, reloadStillNeeded, type ProjectReloadMessage } from
 import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
-import type { GroupCommandResult, LogEntry, PlacedResult, StepPathSegment, TriggerRun } from "../store/logStore";
+import type { GroupCommandResult, LogEntry, PlacedResult, StepPathSegment } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
@@ -15,6 +15,7 @@ import { usePluginStore } from "../store/pluginStore";
 import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
 import { invalidatePluginMacroActions } from "../components/macros/pluginMacroActions";
+import { completedRun } from "../components/macros/triggerRuns";
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
 import { BASE } from "../api/base";
@@ -492,11 +493,7 @@ export function useWebSocket() {
         // overwriting here would erase the overnight failure somebody opened
         // the IDE to look at.
         if (msg.trigger_type !== "test") {
-          useLogStore.getState().setTriggerRun(msg.trigger_id as string, {
-            outcome: msg.outcome as TriggerRun["outcome"],
-            error: msg.error as string | undefined,
-            firedAt: Date.now() / 1000,
-          });
+          useLogStore.getState().setTriggerRun(msg.trigger_id as string, completedRun(msg));
         }
       }
 

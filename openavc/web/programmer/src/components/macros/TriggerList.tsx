@@ -8,7 +8,7 @@ import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
 import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
 import { issuesAt, issueLabel, issueText, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
-import { isFailedRun } from "./triggerRuns";
+import { cardRun, isFailedRun } from "./triggerRuns";
 import { didNotStart, type RunAnswer } from "./runAnswer";
 import { SkipLine } from "./SkipLine";
 import { useLogStore } from "../../store/logStore";
@@ -23,7 +23,9 @@ import * as api from "../../api/restClient";
  *  `last_fired`, is set BEFORE the macro runs, so failing looked fresh.
  *
  *  A clean run says so too rather than showing nothing, because "it ran and it
- *  worked" is the answer somebody opens this card to get. */
+ *  worked" is the answer somebody opens this card to get. A skipped run the
+ *  server gave a reason for says the reason instead (`runSkip`), on the
+ *  card's skip line. */
 const RUN_LABELS: Record<TriggerRun["outcome"], string> = {
   completed: "Ran OK",
   failed: "Last run failed",
@@ -32,7 +34,7 @@ const RUN_LABELS: Record<TriggerRun["outcome"], string> = {
   skipped: "Last run skipped",
 };
 
-/** "4m ago" — how long since it last fired, in the coarsest unit that still
+/** "4m ago" — how long since its last run, in the coarsest unit that still
  *  says something. Precision past the minute is noise here. */
 function timeAgo(seconds: number): string {
   const delta = Date.now() / 1000 - seconds;
@@ -293,7 +295,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
             const pending = pendingTriggers[trigger.id];
             const lintIssues = issuesAt(issues, "trigger", i);
             const lastRun = triggerRuns[trigger.id];
-            const runLabel = lastRun ? RUN_LABELS[lastRun.outcome] : null;
+            const { outcome: runOutcome, skip } = cardRun(lastRun, skips[trigger.id]);
+            const runLabel = runOutcome && RUN_LABELS[runOutcome];
             // THE shared rule, so this card and the dashboard cannot disagree.
             const runFailed = isFailedRun(lastRun?.outcome);
 
@@ -403,7 +406,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                       title={
                         [
                           lastRun.error,
-                          lastRun.firedAt ? `Fired ${timeAgo(lastRun.firedAt)}` : null,
+                          lastRun.endedAt ? `Fired ${timeAgo(lastRun.endedAt)}` : null,
                         ]
                           .filter(Boolean)
                           .join("\n") || undefined
@@ -423,7 +426,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     >
                       {runFailed && <XCircle size={10} />}
                       {runLabel}
-                      {!runFailed && lastRun.firedAt ? ` ${timeAgo(lastRun.firedAt)}` : ""}
+                      {!runFailed && lastRun.endedAt ? ` ${timeAgo(lastRun.endedAt)}` : ""}
                     </span>
                   )}
                   {/* Will not fire as built */}
@@ -479,9 +482,9 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                 </div>
 
                 {/* Why its latest fire did not go ahead, until it next fires. */}
-                {skips[trigger.id] && (
+                {skip && (
                   <SkipLine
-                    skip={skips[trigger.id]}
+                    skip={skip}
                     style={{ padding: "0 var(--space-md) var(--space-sm) calc(var(--space-md) + 22px)" }}
                   />
                 )}

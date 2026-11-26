@@ -109,7 +109,7 @@ def stopped_message(exc: BaseException) -> str:
 #: step; ``{seconds}`` reads as ``_seconds_text`` writes it.
 SKIP_REASONS: dict[str, str] = {
     # A trigger's fire.
-    "cooldown": "The trigger's Cooldown had not passed since it last fired.",
+    "cooldown": "The trigger's Cooldown had not passed since it last started its macro.",
     "conditions_not_met": "The trigger's conditions were not met.",
     "guard_not_met": "The trigger's conditions were no longer met when its wait ended.",
     "state_reverted": "The value changed back before the trigger's delay ended.",

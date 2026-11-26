@@ -207,7 +207,7 @@ def test_a_field_has_one_description_wherever_it_appears() -> None:
 #: in, and where that context comes from.
 KNOWN_DOORS = {
     # Each trigger type's context, built where its trigger fires.
-    ("openavc/core/trigger_engine.py", "_fire_macro"),
+    ("openavc/core/trigger_engine.py", "_run_macro"),
     # A control's macro action.
     ("openavc/core/ui_events.py", "execute_action"),
     # A Run Macro step hands on its own run's context.

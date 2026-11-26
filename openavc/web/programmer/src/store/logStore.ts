@@ -87,13 +87,16 @@ export interface TriggerPending {
  *
  *  Server-side truth, not a session flash: seeded from `GET /api/triggers` so
  *  a trigger that failed overnight still says so when the IDE is opened in the
- *  morning, then kept current by the `trigger.completed` message. `firedAt` is
- *  the server's own `last_fired`, which moves BEFORE the macro runs -- on its
- *  own it made a trigger that errors every time look freshly successful. */
+ *  morning, then kept current by the `trigger.completed` message. `reason` is
+ *  why a skipped run did not go ahead (its macro refused it), the code and
+ *  sentence from the server's reason table. `endedAt` is when the record was
+ *  written (epoch seconds), not `last_fired`, which a refused fire does not
+ *  move. */
 export interface TriggerRun {
   outcome: "completed" | "failed" | "cancelled" | "skipped" | "error";
   error?: string;
-  firedAt?: number;
+  reason?: { code: string; message: string };
+  endedAt?: number;
 }
 
 /** Why a trigger's fire or a macro's run did not go ahead, as the server's

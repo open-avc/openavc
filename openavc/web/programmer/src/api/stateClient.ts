@@ -75,9 +75,11 @@ export async function testTrigger(
 
 /** A trigger as the RUNTIME sees it, which the project file cannot say.
  *
- *  `last_fired` is set before the macro runs, so it is `last_outcome` that
- *  separates a trigger doing its job from one that has been erroring every
- *  night. */
+ *  `last_fired` is when it last started its macro, so it is `last_outcome`
+ *  that separates a trigger doing its job from one that has been erroring
+ *  every night. `last_reason` is why a skipped last run did not go ahead, and
+ *  `last_run_at` when that record was written; an older server sends
+ *  neither. */
 export interface TriggerStatus {
   id: string;
   type: string;
@@ -87,6 +89,8 @@ export interface TriggerStatus {
   last_fired: number | null;
   last_outcome: "completed" | "failed" | "cancelled" | "skipped" | "error" | null;
   last_error: string | null;
+  last_reason?: { code: string; message: string } | null;
+  last_run_at?: number | null;
 }
 
 export async function listTriggers(): Promise<{ triggers: TriggerStatus[] }> {

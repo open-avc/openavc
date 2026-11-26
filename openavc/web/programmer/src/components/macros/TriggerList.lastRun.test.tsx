@@ -55,12 +55,12 @@ function renderCard(run?: TriggerRun) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useLogStore.setState({ triggerRuns: {}, recentlyFired: {}, triggerPending: {} });
+  useLogStore.setState({ triggerRuns: {}, recentlyFired: {}, triggerPending: {}, triggerSkips: {} });
 });
 
 describe("the card's last-run marker", () => {
   it("says so when the last fire failed", () => {
-    renderCard({ outcome: "failed", firedAt: Date.now() / 1000 - 120 });
+    renderCard({ outcome: "failed", endedAt: Date.now() / 1000 - 120 });
     expect(screen.getByText("Last run failed")).toBeTruthy();
   });
 
@@ -71,7 +71,7 @@ describe("the card's last-run marker", () => {
 
   it("says a clean run is clean rather than saying nothing", () => {
     // "It ran and it worked" is the answer somebody opens this card to get.
-    renderCard({ outcome: "completed", firedAt: Date.now() / 1000 - 120 });
+    renderCard({ outcome: "completed", endedAt: Date.now() / 1000 - 120 });
     expect(screen.getByText(/Ran OK/)).toBeTruthy();
     expect(screen.queryByText("Last run failed")).toBeNull();
   });
@@ -103,7 +103,7 @@ describe("a fire that did not go ahead", () => {
         },
       },
     });
-    renderCard({ outcome: "completed", firedAt: Date.now() / 1000 - 3600 });
+    renderCard({ outcome: "completed", endedAt: Date.now() / 1000 - 3600 });
     expect(screen.getByText(/The trigger's conditions were not met\./)).toBeTruthy();
     expect(screen.getByText(/Skipped/)).toBeTruthy();
     // The last run it did make is still what the marker says.
@@ -113,11 +113,51 @@ describe("a fire that did not go ahead", () => {
   it("is said for this trigger only", () => {
     useLogStore.setState({
       triggerSkips: {
-        trg_other: { code: "cooldown", message: "The trigger's Cooldown had not passed since it last fired.", at: Date.now() },
+        trg_other: { code: "cooldown", message: "The trigger's Cooldown had not passed since it last started its macro.", at: Date.now() },
       },
     });
     renderCard();
     expect(screen.queryByText(/Skipped/)).toBeNull();
+  });
+});
+
+describe("a last run its macro refused", () => {
+  // The macro's own Cooldown, its Overlap set to Skip, a queue that waited too
+  // long: the trigger fired and the macro did not start. The server keeps the
+  // macro's reason on the trigger's last run, so it is still there after a
+  // reload, and it is said once, as the reason, not as a bare marker.
+  const MESSAGE = "The macro's Cooldown (60 seconds) had not passed since it last started.";
+  const REFUSED: TriggerRun = {
+    outcome: "skipped",
+    reason: { code: "macro_cooldown", message: MESSAGE },
+    endedAt: Date.now() / 1000 - 60,
+  };
+
+  it("says why, once, from the trigger's own record", () => {
+    renderCard(REFUSED);
+    expect(screen.getByText(MESSAGE, { exact: false })).toBeTruthy();
+    expect(screen.getAllByText(/skipped/i)).toHaveLength(1);
+    expect(screen.queryByText("Last run skipped")).toBeNull();
+  });
+
+  it("gives way to a newer fire of the trigger's own that did not go ahead", () => {
+    useLogStore.setState({
+      triggerSkips: {
+        [TRIGGER.id]: {
+          code: "conditions_not_met",
+          message: "The trigger's conditions were not met.",
+          at: Date.now(),
+        },
+      },
+    });
+    renderCard(REFUSED);
+    expect(screen.getByText(/The trigger's conditions were not met\./)).toBeTruthy();
+    expect(screen.queryByText(MESSAGE, { exact: false })).toBeNull();
+  });
+
+  it("still says the run was skipped when the server gave no reason", () => {
+    renderCard({ outcome: "skipped" });
+    expect(screen.getByText("Last run skipped")).toBeTruthy();
   });
 });
 
