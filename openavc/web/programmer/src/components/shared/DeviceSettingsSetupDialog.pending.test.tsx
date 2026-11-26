@@ -110,3 +110,59 @@ describe("DeviceSettingsSetupDialog: settings queued for a device not connected 
     expect(useProjectStore.getState().revision).toBe("r1");
   });
 });
+
+// A setting the driver marks secret is a login: the queue is saved with the
+// project, so the server never queues one. The dialog queues the device's other
+// settings and says where the login is entered.
+const lockInfo = {
+  id: "acme_lock",
+  name: "Acme Lock",
+  device_settings: {
+    high_density: { type: "boolean", label: "High Density", setup: true, default: false },
+    admin_pin: { type: "string", label: "Admin PIN", secret: true, setup: true },
+  },
+} as unknown as DriverInfo;
+
+async function applyToLock(onClose = vi.fn()) {
+  const user = userEvent.setup();
+  const { container } = render(
+    <DeviceSettingsSetupDialog
+      deviceId={DEVICE_ID}
+      driverInfo={lockInfo}
+      existingDeviceIds={[DEVICE_ID]}
+      onClose={onClose}
+    />,
+  );
+  await user.selectOptions(screen.getByRole("combobox"), "true");
+  await user.type(container.querySelector('input[type="password"]') as HTMLInputElement, "4821");
+  await user.click(screen.getByRole("button", { name: "Apply Settings" }));
+  return onClose;
+}
+
+describe("DeviceSettingsSetupDialog: a login for a device not connected yet", () => {
+  it("queues the other settings and not the login, and says where to enter it", async () => {
+    seedStore();
+    const onClose = await applyToLock();
+    await waitFor(() => expect(mocks.storePendingSettings).toHaveBeenCalled());
+    expect(mocks.storePendingSettings).toHaveBeenCalledWith(DEVICE_ID, { high_density: true });
+    expect(
+      await screen.findByText("Not queued: enter it on the device's page once the device is online."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Some settings failed/)).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("queues nothing when the login is the only setting left", async () => {
+    seedStore();
+    mocks.setDeviceSetting.mockImplementation(async (_device: string, key: string) => {
+      if (key === "admin_pin") {
+        throw new ApiError(503, JSON.stringify({ detail: "Device 'acme_matrix_1' is not connected" }));
+      }
+      return { success: true };
+    });
+    await applyToLock();
+    await screen.findByText("Not queued: enter it on the device's page once the device is online.");
+    expect(mocks.storePendingSettings).not.toHaveBeenCalled();
+    expect(screen.getByText("Saved")).toBeTruthy();
+  });
+});

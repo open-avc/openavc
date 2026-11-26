@@ -39,7 +39,7 @@ from openavc.drivers.registry import (
     get_driver_class,
     is_driver_registered,
 )
-from openavc.drivers.spec import is_secret_setting
+from openavc.drivers.secret_params import is_secret_device_setting
 from openavc.utils.log_redaction import keep_masked_secrets
 from openavc.utils.logger import get_logger
 from openavc.utils.secret_audience import Exit
@@ -634,8 +634,8 @@ class DeviceToolsMixin:
             return {"error": "Setting value must be a string, number, boolean, or null"}
 
         driver = engine.devices.get_driver(device_id)
-        declared = (driver.DRIVER_INFO.get("device_settings") or {}) if driver is not None else {}
-        if is_secret_setting(setting_key, declared.get(setting_key)):
+        if is_secret_device_setting(driver, setting_key):
+            declared = (driver.DRIVER_INFO.get("device_settings") or {}) if driver is not None else {}
             definition = declared.get(setting_key)
             return {
                 "error": _login_refusal([param_label(setting_key, definition)], under_edit=False),

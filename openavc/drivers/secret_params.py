@@ -1,5 +1,5 @@
-"""Which parameters of a command on a device hold a secret: THE answer every
-reader asks.
+"""Which parameters of a command on a device, and which of its settings, hold
+a secret: THE answer every reader asks.
 
 A parameter is secret by its own declaration, the rule every setting follows
 (``spec.is_secret_setting``): it is marked ``secret: true`` (or carries the
@@ -27,6 +27,12 @@ places hold it, and one builder (``inline_merge.own_commands``) makes both:
 So a device whose own command declares a secret parameter has it saved and
 filled in, and one whose own command replaces a driver command of the same
 name is judged on the device's command, at the save and at the send alike.
+
+A device setting is secret by the same rule, on the ``device_settings`` its
+driver declares (``is_secret_device_setting``). Every setting door asks it: the
+cloud AI's write refuses one, the queue of settings waiting for a device never
+takes one, and a live write has the device's masking learn its value
+(``core/pending_settings``).
 """
 
 from __future__ import annotations
@@ -71,3 +77,13 @@ def device_commands(driver_class: Any, config: dict[str, Any]) -> dict[str, Any]
     (``inline_merge.declared_commands``); none for a driver not installed,
     where only a parameter named ``password`` is a secret."""
     return declared_commands(driver_class, config) if driver_class is not None else {}
+
+
+def is_secret_device_setting(driver: Any, key: Any) -> bool:
+    """Whether setting ``key`` of a device holds a secret, by the
+    ``device_settings`` its driver declares: ``driver`` is the running driver
+    or its class, or None for a device whose driver is not installed, where
+    only a setting named ``password`` is one."""
+    info = getattr(driver, "DRIVER_INFO", None)
+    declared = info.get("device_settings") if isinstance(info, dict) else None
+    return is_secret_setting(key, declared.get(key) if isinstance(declared, dict) else None)

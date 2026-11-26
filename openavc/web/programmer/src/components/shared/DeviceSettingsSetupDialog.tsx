@@ -9,6 +9,12 @@ import { normalizeOptionList } from "./paramOptions";
 import { BooleanOptions } from "./BooleanOptions";
 import { isSecretSetting } from "./secretSetting";
 
+/** A login is never queued for a device that is not connected: the server
+ *  refuses one, so the queue (saved with the project) never holds it. */
+const LOGIN_NOT_QUEUED = "Not queued: enter it on the device's page once the device is online.";
+
+type SettingResult = { success: boolean; error?: string; pending?: boolean; notQueued?: boolean };
+
 /** Generate a non-clashing default value for a unique device setting. */
 function generateUniqueDefault(
   baseDefault: string,
@@ -60,7 +66,7 @@ export function DeviceSettingsSetupDialog({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [results, setResults] = useState<Record<string, { success: boolean; error?: string; pending?: boolean }>>({});
+  const [results, setResults] = useState<Record<string, SettingResult>>({});
 
   if (setupKeys.length === 0) {
     // No setup settings — shouldn't be shown
@@ -87,7 +93,7 @@ export function DeviceSettingsSetupDialog({
 
     setSaving(true);
     setError("");
-    const newResults: Record<string, { success: boolean; error?: string; pending?: boolean }> = {};
+    const newResults: Record<string, SettingResult> = {};
 
     // Coerce all values first
     const coercedValues: Record<string, unknown> = {};
@@ -111,7 +117,9 @@ export function DeviceSettingsSetupDialog({
         // 503 = "device not connected": stash the value to push once it's back
         // online (see storePendingSettings below), rather than reporting a fail.
         const isConnectionError = e instanceof ApiError && e.status === 503;
-        if (isConnectionError) {
+        if (isConnectionError && isSecretSetting(key, deviceSettings[key])) {
+          newResults[key] = { success: false, notQueued: true };
+        } else if (isConnectionError) {
           failedSettings[key] = coercedValues[key];
           newResults[key] = { success: true, pending: true };
         } else {
@@ -141,11 +149,15 @@ export function DeviceSettingsSetupDialog({
     }
 
     setResults(newResults);
-    const anyHardFailed = Object.values(newResults).some((r) => !r.success && !r.pending);
+    const anyHardFailed = Object.values(newResults).some((r) => !r.success && !r.pending && !r.notQueued);
     const anyPending = Object.values(newResults).some((r) => r.pending);
+    const anyNotQueued = Object.values(newResults).some((r) => r.notQueued);
 
     if (anyHardFailed) {
       setError("Some settings failed to save. You can retry or skip.");
+    } else if (anyNotQueued) {
+      // Stays open so the login's line is read.
+      setError("");
     } else if (anyPending) {
       // All settings either applied or queued — close with a brief delay so user sees the message
       setError("");
@@ -262,14 +274,16 @@ export function DeviceSettingsSetupDialog({
                   style={{
                     fontSize: 11,
                     marginTop: 2,
-                    color: result.success ? (result.pending ? "var(--accent)" : "var(--color-success)") : "var(--color-error)",
+                    color: result.success
+                      ? (result.pending ? "var(--accent)" : "var(--color-success)")
+                      : result.notQueued ? "var(--color-warning)" : "var(--color-error)",
                   }}
                 >
                   {result.success
                     ? result.pending
                       ? "Queued: will be applied when device connects"
                       : "Saved"
-                    : result.error}
+                    : result.notQueued ? LOGIN_NOT_QUEUED : result.error}
                 </div>
               )}
             </div>

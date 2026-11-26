@@ -12,6 +12,16 @@ carried to a driver that declares other settings, meets the one that sends it,
 and a value it refuses leaves the queue unsent and says so. A live write
 settles the queue's entry for that setting.
 
+A setting the driver marks secret (``drivers/secret_params.is_secret_device_setting``,
+the one rule every setting door asks) is a login, and the queue never holds
+one, since the queue is saved with the project and travels in every copy of
+it: the intake refuses one (``SecretSettingNotQueued``), and one already
+queued (a project that came in holding it) is refused before it is sent and
+taken off the queue. A live write sends it, the device's masking learning its
+value first, as it learns a secret command parameter's. Every place a queue
+or a write is shown (the settings read, the cleared announcement, a write's
+answer) gives a secret setting as ``***`` (``shown_settings``).
+
 The rule worth knowing before changing it: a send that does not raise is not
 proof the device got it. On UDP, or on a socket being redirected under the
 driver, nothing raises and nothing arrives. So a setting the device reports
@@ -50,7 +60,11 @@ from openavc.drivers.base import (
     UnknownDeviceSettingError,
     validate_device_setting_value,
 )
+from openavc.drivers.param_labels import param_label
+from openavc.drivers.registry import get_driver_class
+from openavc.drivers.secret_params import is_secret_device_setting
 from openavc.drivers.setting_model import read_setting
+from openavc.utils.log_redaction import REDACTED, get_secret_registry, secret_text
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -248,6 +262,45 @@ def _cleared_payload(clear: PendingClear, pending: dict[str, Any]) -> dict[str, 
     }
 
 
+class SecretSettingNotQueued(DeviceSettingValueError):
+    """A setting its driver marks secret, sent to the queue: a login is
+    entered on the device's page while the device is online, never queued.
+    Names the setting by its label, never its value."""
+
+    def __init__(self, key: str, definition: Any) -> None:
+        super().__init__(
+            f"{param_label(key, definition)} is a login. "
+            f"Enter it on the device's page while the device is online"
+        )
+
+
+def _secret_refusal(driver: Any, key: str) -> SecretSettingNotQueued | None:
+    """The queue's refusal of setting ``key`` when ``driver`` (the running
+    driver, its class, or None) marks it secret, else None."""
+    if not is_secret_device_setting(driver, key):
+        return None
+    declared = getattr(driver, "DRIVER_INFO", {}).get("device_settings") or {}
+    return SecretSettingNotQueued(key, declared.get(key))
+
+
+def shown_settings(driver: Any, settings: dict[str, Any]) -> dict[str, Any]:
+    """``settings`` (key -> value) as a door may answer, log or announce
+    them: each secret setting's value as ``***``, an empty one as it is."""
+    return {
+        key: REDACTED if value not in (None, "") and is_secret_device_setting(driver, key) else value
+        for key, value in settings.items()
+    }
+
+
+def _learn_secret(driver: Any, device_id: str, key: str, value: Any) -> None:
+    """Have the device's masking learn a secret setting's value, so its
+    traffic, a reply that echoes it, and every log line mask it, as a secret
+    command parameter's is (``core/command_gates.register_secret_values``)."""
+    text = secret_text(value)
+    if text is not None and is_secret_device_setting(driver, key):
+        get_secret_registry().add_runtime_secret(device_id, text)
+
+
 def _checked_value(driver: BaseDriver, device_id: str, key: str, value: Any) -> Any:
     """``value`` for setting ``key`` checked against the driver's declaration
     and coerced to its declared type, for a live write and for the queue's
@@ -316,6 +369,22 @@ class PendingSettingsMixin:
         pending = config.get("pending_settings")
         return dict(pending) if isinstance(pending, dict) else {}
 
+    def queued_settings_shown(self, device_id: str) -> dict[str, Any]:
+        """The device's queue as a door may show it: ``queued_settings``
+        with each secret setting as ``***``."""
+        return shown_settings(self.declaring_driver(device_id), self.queued_settings(device_id))
+
+    def declaring_driver(self, device_id: str) -> Any:
+        """What declares the device's settings: its running driver, else the
+        installed class of the driver its record names (a disabled device, one
+        whose driver failed), else None (its driver is not installed)."""
+        driver = self._devices.get(device_id)
+        if driver is not None:
+            return driver
+        record = self._device_configs.get(device_id) or {}
+        driver_id = record.get("driver")
+        return get_driver_class(driver_id) if isinstance(driver_id, str) else None
+
     async def set_device_setting(
         self, device_id: str, key: str, value: Any
     ) -> Any:
@@ -328,8 +397,12 @@ class PendingSettingsMixin:
         # Runtime value gate — the IDE editor's min/max/values/regex checks
         # are an authoring aid; scripts, macros, cloud, and raw REST bypass
         # them, so the write is validated (and coerced to the declared type)
-        # here regardless of caller.
+        # here regardless of caller. A secret's value is learned by the
+        # device's masking as given, so a refused one is masked too, and as
+        # the driver gets it.
+        _learn_secret(driver, device_id, key, value)
         value = _checked_value(driver, device_id, key, value)
+        _learn_secret(driver, device_id, key, value)
 
         result = await driver.set_device_setting(key, value)
         # A live write settles the question the queue was holding. Without
@@ -364,7 +437,9 @@ class PendingSettingsMixin:
         """Store pending settings for a device (will be applied on next connect).
 
         Validated against the driver's schema when it is installed; an
-        orphaned device stores them as given (``_checked_intake``). Kept by
+        orphaned device stores them as given (``_checked_intake``). A setting
+        the driver marks secret is refused (``SecretSettingNotQueued``), and
+        then nothing is stored. Kept by
         the queue keeper, which with the engine's saves them to the project
         first and raises when it cannot; the running queue takes them once
         it has.
@@ -395,7 +470,7 @@ class PendingSettingsMixin:
         the queue it left."""
         await self.events.emit(
             "device.pending_settings_applied",
-            _cleared_payload(clear, self.queued_settings(clear.device_id)),
+            _cleared_payload(clear, self.queued_settings_shown(clear.device_id)),
         )
 
     def take_project_queue(self, device_id: str, queue: dict[str, Any]) -> None:
@@ -443,8 +518,14 @@ class PendingSettingsMixin:
         reconnect with only a warn log. A device no driver runs (waiting for
         its driver, disabled, its driver failed) stores as given, there being
         no schema to check against yet; the send checks it
-        (:meth:`_send_pending`).
+        (:meth:`_send_pending`). A setting the driver marks secret is refused
+        either way, by the running driver's declaration or the installed
+        class's.
         """
+        for key in settings:
+            refusal = _secret_refusal(self.declaring_driver(device_id), key)
+            if refusal is not None:
+                raise refusal
         driver = self._devices.get(device_id)
         if driver is None:
             return dict(settings)
@@ -498,6 +579,13 @@ class PendingSettingsMixin:
         queued and says so."""
         device_id = run.device_id
         queued = value
+        secret = _secret_refusal(run.driver, key)
+        if secret is not None:
+            # Queued before the queue refused secrets, or by a project that
+            # came in holding one: never sent from here, and off the queue,
+            # so out of the project.
+            await self._refuse_pending(run, key, queued, secret)
+            return
         try:
             # Checked against the declaration before it reaches the driver,
             # whose own set_device_setting doesn't validate. Intake checks it
@@ -537,9 +625,9 @@ class PendingSettingsMixin:
     async def _refuse_pending(
         self, run: _PendingPass, key: str, queued: Any, refusal: DeviceSettingValueError,
     ) -> None:
-        """A queued setting this driver's declaration refuses: not sent, and
-        taken off the queue, since no connect would ever send it. The same
-        refusal intake gives, said on ``device.error.<id>``."""
+        """A queued setting this driver's declaration refuses, or a secret
+        one: not sent, and taken off the queue, since no connect would ever
+        send it. The same refusal intake gives, said on ``device.error.<id>``."""
         run.refused[key] = queued
         log.warning(f"[{run.device_id}] Pending setting '{key}' was not sent: {refusal}")
         await self._report_pending_error(

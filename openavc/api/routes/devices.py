@@ -24,6 +24,7 @@ from openavc.api.models import (
 )
 from openavc.core.device_errors import DeviceNotOrphanedError
 from openavc.core.device_manager import DeviceNotFoundError
+from openavc.core.pending_settings import shown_settings
 from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.device_config import split_connection_fields
@@ -875,14 +876,15 @@ async def get_setup_run(device_id: str, run_id: str) -> dict[str, Any]:
 @router.get("/devices/{device_id}/settings")
 async def get_device_settings(device_id: str) -> dict[str, Any]:
     """Get device settings with current values for a device, and the values
-    queued for it (``pending``, key -> value) that have not landed yet."""
+    queued for it (``pending``, key -> value) that have not landed yet, a
+    secret one as ``***``."""
     engine = _get_engine()
     try:
         settings = engine.devices.get_device_settings(device_id)
         return {
             "device_id": device_id,
             "settings": settings,
-            "pending": engine.devices.queued_settings(device_id),
+            "pending": engine.devices.queued_settings_shown(device_id),
         }
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
@@ -892,13 +894,15 @@ async def get_device_settings(device_id: str) -> dict[str, Any]:
 async def set_device_setting(
     device_id: str, setting_key: str, body: DeviceSettingRequest
 ) -> dict[str, Any]:
-    """Write a device setting value to the device."""
+    """Write a device setting value to the device. The answer gives the
+    value written, a secret one as ``***``."""
     engine = _get_engine()
     try:
         await engine.devices.set_device_setting(device_id, setting_key, body.value)
     except Exception as e:
         raise setting_failure(device_id, setting_key, e) from e
-    return {"success": True, "device_id": device_id, "key": setting_key, "value": body.value}
+    shown = shown_settings(engine.devices.declaring_driver(device_id), {setting_key: body.value})
+    return {"success": True, "device_id": device_id, "key": setting_key, "value": shown[setting_key]}
 
 
 @router.post("/devices/{device_id}/settings/pending")
