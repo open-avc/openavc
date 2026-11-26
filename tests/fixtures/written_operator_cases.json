@@ -1,0 +1,22 @@
+{
+  "_comment": "What a condition's operator reads as where it sits, and whether that place takes it: core/condition_eval.py written_operator and condition_issues, and the Programmer's writtenOperator and takesOperator (api/conditionEval.ts), which its pickers and the trigger summaries read. Run by tests/test_condition_written_operator.py and conditionEval.test.ts. A case with no 'operator' is one saved without it; 'written' null is an explicit null kept as written.",
+  "cases": [
+    {"name": "a State Change trigger saved with no operator fires on any change", "where": "state_trigger", "written": "any", "taken": true},
+    {"name": "a State Change trigger's null operator fires on any change", "where": "state_trigger", "operator": null, "written": "any", "taken": true},
+    {"name": "a State Change trigger's blank operator fires on any change", "where": "state_trigger", "operator": "", "written": "any", "taken": true},
+    {"name": "a State Change trigger's any is itself", "where": "state_trigger", "operator": "any", "written": "any", "taken": true},
+    {"name": "any in capitals is no operator", "where": "state_trigger", "operator": "ANY", "written": "ANY", "taken": false},
+    {"name": "a space is no operator, and not blank", "where": "state_trigger", "operator": " ", "written": " ", "taken": false},
+    {"name": "a State Change trigger takes an alias as written", "where": "state_trigger", "operator": ">=", "written": ">=", "taken": true},
+    {"name": "a State Change trigger takes an operator's own name", "where": "state_trigger", "operator": "falsy", "written": "falsy", "taken": true},
+    {"name": "a Skip If saved with no operator reads as eq", "where": "skip_if", "written": "eq", "taken": true},
+    {"name": "a Skip If's blank operator is no operator", "where": "skip_if", "operator": "", "written": "", "taken": false},
+    {"name": "a Skip If's null operator is no operator", "where": "skip_if", "operator": null, "written": null, "taken": false},
+    {"name": "a Conditional takes an alias as written", "where": "conditional", "operator": "greater_than", "written": "greater_than", "taken": true},
+    {"name": "a Wait Until takes an alias as written", "where": "wait_until", "operator": "==", "written": "==", "taken": true},
+    {"name": "a guard does not take any", "where": "guard", "operator": "any", "written": "any", "taken": false},
+    {"name": "a guard takes an alias as written", "where": "guard", "operator": "!=", "written": "!=", "taken": true},
+    {"name": "a word nobody knows is kept as written and not taken", "where": "guard", "operator": "contains", "written": "contains", "taken": false},
+    {"name": "an operator in another case is no operator", "where": "conditional", "operator": "EQ", "written": "EQ", "taken": false}
+  ]
+}

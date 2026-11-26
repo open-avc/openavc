@@ -43,7 +43,11 @@ asked by every place that acts on one (``core/macro_steps.py``,
 (``core/macro_validation.py``) for every one it checks. A condition ``judge``
 cannot read raises ``UnknownOperator``, and each place still says what that
 does there (``UnknownOperator``'s docstring); ``tests/test_condition_sites_pinned.py``
-holds each place's answer.
+holds each place's answer. The Programmer's operator pickers, its trigger
+summaries and ``conditionEval.ts`` read the operator lists and the places from
+``conditionOperators.gen.ts``, rendered from here by ``core/condition_gen``
+(run it after changing them), and read an operator where it sits as
+``written_operator`` does, over ``tests/fixtures/written_operator_cases.json``.
 """
 
 from __future__ import annotations
@@ -77,6 +81,10 @@ MODES: dict[str, bool] = {DECIDE: False, SURFACE: True}
 #: takes onto one of them; anything else, a name in another case included, is
 #: no operator.
 OPERATORS: tuple[str, ...] = ("eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy")
+
+#: The operators that read no value: whether the reading holds one at all.
+#: An editor asks for no value under them.
+VALUELESS_OPERATORS: tuple[str, ...] = ("truthy", "falsy")
 
 #: The other spellings of an operator, each mapped to its own name.
 OPERATOR_ALIASES: dict[str, str] = {
@@ -339,9 +347,16 @@ def state_condition(trigger: Mapping[str, Any], key: str | None = None) -> dict[
     }
 
 
-def _written_operator(condition: Mapping[str, Any], place: Place) -> Any:
-    """The operator ``condition`` names at ``place``, as written."""
-    if place.takes_any_change:
+def written_operator(condition: Mapping[str, Any], where: str) -> Any:
+    """The operator ``condition`` names at ``where`` (``PLACES``), as written:
+    at a place that takes ``ANY_CHANGE``, one left out, blank or null reads as
+    it; elsewhere one left out reads as ``eq``. Kept as written otherwise, so
+    an alias stays itself and a word nobody knows stays that word.
+
+    The Programmer's ``writtenOperator`` reads it the same way, over
+    ``tests/fixtures/written_operator_cases.json``.
+    """
+    if PLACES[where].takes_any_change:
         return condition.get("operator") or ANY_CHANGE
     return condition.get("operator", "eq")
 
@@ -361,7 +376,7 @@ def judge(condition: Mapping[str, Any], read: Callable[[str], Any], where: str) 
     that cannot be judged.
     """
     place = PLACES[where]
-    op = _written_operator(condition, place)
+    op = written_operator(condition, where)
     if place.takes_any_change and op == ANY_CHANGE:
         return True
     return eval_operator(op, read(condition.get("key", "")), condition.get("value"))
@@ -382,7 +397,7 @@ def condition_issues(condition: Mapping[str, Any], where: str) -> list[Condition
     issues: list[ConditionIssue] = []
     if not condition.get("key"):
         issues.append(ConditionIssue(place.no_key, place.key_field))
-    op = _written_operator(condition, place)
+    op = written_operator(condition, where)
     if not _takes(place, op):
         issues.append(ConditionIssue(place.bad_operator.format(op=op)))
     return issues

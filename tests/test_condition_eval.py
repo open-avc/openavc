@@ -8,6 +8,7 @@ from openavc.core.condition_eval import (
     GUARD,
     OPERATOR_ALIASES,
     OPERATORS,
+    VALUELESS_OPERATORS,
     PLACES,
     SKIP_IF,
     STATE_TRIGGER,
@@ -372,6 +373,13 @@ class TestCaseInsensitiveStrings:
 class TestOperatorNames:
     def test_every_alias_names_an_operator(self):
         assert set(OPERATOR_ALIASES.values()) <= set(OPERATORS)
+
+    @pytest.mark.parametrize("op", VALUELESS_OPERATORS)
+    @pytest.mark.parametrize("actual", ["on", "", 0, 1, None, True, False])
+    def test_an_operator_that_reads_no_value_never_reads_one(self, op, actual):
+        # An editor asks for no value under these, so none may change the answer.
+        assert op in OPERATORS
+        assert eval_operator(op, actual, None) == eval_operator(op, actual, "on") == eval_operator(op, actual, 0)
 
     @pytest.mark.parametrize("op", [*OPERATORS, *OPERATOR_ALIASES])
     def test_each_spelling_reads_as_its_own_name(self, op):
