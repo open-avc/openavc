@@ -197,7 +197,7 @@ def test_with_no_project_the_redaction_gets_no_project_secrets(tmp_path):
 
     eng._register_project_secrets()
 
-    assert get_secret_registry()._project == set()
+    assert get_secret_registry()._shared.get("project", frozenset()) == frozenset()
 
 
 def test_secrets_that_cannot_be_read_never_stop_the_project(tmp_path, caplog):
@@ -214,7 +214,7 @@ def test_secrets_that_cannot_be_read_never_stop_the_project(tmp_path, caplog):
     with caplog.at_level(logging.DEBUG, logger=ENGINE_LOG):
         eng._register_project_secrets()
 
-    assert get_secret_registry()._project == {"Left-Over-Secret"}
+    assert get_secret_registry()._shared.get("project") == {"Left-Over-Secret"}
     assert "Could not register the project's secrets for log redaction" in [
         r.getMessage() for r in caplog.records if r.name == ENGINE_LOG
     ]
@@ -421,15 +421,15 @@ async def test_a_load_that_changed_the_project_but_moved_no_login_keeps_the_cras
 
 
 def test_a_device_login_saved_here_is_not_one_of_the_projects_secrets(tmp_path):
-    """The redaction's project secrets are the mesh key and plugin logins; a
-    device's login is masked under that device, never as the project's."""
+    """A device's login saved here is masked under that device, never as the
+    project's: the project holds only the marker in its place."""
     eng = Engine(str(_project_path(tmp_path)))
     eng.project = eng._move_logins(_project_with_a_login(), typed=False)
     assert eng.project.devices[0].config["password"] == SAVED_LOGIN
 
     eng._register_project_secrets()
 
-    assert "Widget-Pass-1" not in get_secret_registry()._project
+    assert "Widget-Pass-1" not in get_secret_registry()._shared.get("project", frozenset())
 
 
 # --- the services at shutdown -----------------------------------------------------
