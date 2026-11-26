@@ -194,13 +194,26 @@ async def test_a_panel_is_told_a_failure_in_the_room_s_words(engine):
 
 
 async def test_another_run_s_step_errors_stay_off_this_result(engine):
-    engine.macros.devices.send_command = AsyncMock(
-        side_effect=[RuntimeError("no answer"), None],
-    )
+    # The first run's command is held until the second run has started, so
+    # the first run is the one that fails, and it fails while the second is
+    # going. Two equal delays cannot order them: on a clock as coarse as
+    # Windows' they end on the same tick, in either order.
+    sent: list[str] = []
+    answer = asyncio.Event()
+
+    async def _send(*_args, **_kwargs):
+        sent.append("power_on")
+        if len(sent) == 1:
+            await answer.wait()
+            raise RuntimeError("no answer")
+
+    engine.macros.devices.send_command = AsyncMock(side_effect=_send)
     first, second = FakeWS(), FakeWS()
     await _ask(first, "power", "programmer")
-    await _until(lambda: engine.macros.is_macro_running("power"))
+    await _until(lambda: sent)
     await _ask(second, "power", "programmer")
+    await asyncio.sleep(0.02)
+    answer.set()
     await _settle(first, second)
 
     [failed] = first.results()
