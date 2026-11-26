@@ -68,24 +68,23 @@ function skipped(frame) {
   };
 }
 
-// What a macro request answers with, from its run's own result. A run that
+// What a macro request answers with, by its run's outcome. A run that
 // carried on past a failed step completed, with what failed on the way; one
 // that stopped did not, and says why.
+const RUN_ENDINGS = {
+  completed: () => ({ success: true }),
+  failed: (result) => {
+    const stepErrors = (result.step_errors || []).map(stepError);
+    const failures = stepErrors.length ? { step_errors: stepErrors } : {};
+    return result.error ? { success: false, error: result.error, ...failures } : { success: true, ...failures };
+  },
+  cancelled: () => ({ success: false, error: "macro cancelled" }),
+  skipped,
+};
+
 function runResult(result) {
-  const stepErrors = (result.step_errors || []).map(stepError);
-  const failures = stepErrors.length ? { step_errors: stepErrors } : {};
-  switch (result.outcome) {
-    case "completed":
-      return { success: true };
-    case "failed":
-      return result.error ? { success: false, error: result.error, ...failures } : { success: true, ...failures };
-    case "cancelled":
-      return { success: false, error: "macro cancelled" };
-    case "skipped":
-      return skipped(result);
-    default:
-      return { success: false, error: `the macro ended as "${result.outcome}"` };
-  }
+  const ending = Object.hasOwn(RUN_ENDINGS, result.outcome) ? RUN_ENDINGS[result.outcome] : null;
+  return ending ? ending(result) : { success: false, error: `the macro ended as "${result.outcome}"` };
 }
 
 /**

@@ -28,9 +28,14 @@ from openavc.api.error_messages import (
     friendly_error,
 )
 from openavc.api.panel_access import Admission, admit as admit_panel
+from openavc.api.ws_macros import cancel_macro, execute_macro
+from openavc.api.ws_send import (
+    DISCONNECTS,
+    press_failure as _press_failure,
+    send_ws as _send_ws,
+    send_ws_error as _send_ws_error,
+)
 from openavc.core.event_bus import check_event_emit, event_visible
-from openavc.core.macro_text import no_such_macro
-from openavc.core.run_starts import RunReport
 from openavc.core.panel_devices import (
     CLOSE_CODE_NOT_APPROVED,
     CLOSE_REASON_NOT_APPROVED,
@@ -58,7 +63,7 @@ WS_RATE_LIMIT_WINDOW_SEC = 1.0
 
 # Exceptions that mean the peer went away mid-send. These are expected and
 # swallowed silently; anything else is a real send failure and gets logged.
-_WS_DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, ConnectionError, OSError)
+_WS_DISCONNECT_EXCEPTIONS = DISCONNECTS
 
 # The engine lives in a single shared slot in openavc.api._engine. This handler
 # reads it through get_engine_optional() rather than holding its own reference,
@@ -99,8 +104,9 @@ _event_subscriptions: dict[int, tuple[str, tuple[str, ...]]] = {}
 INTEGRATION_KEY = "system.integration.{name}.connected"
 _integration_connections: dict[str, int] = {}
 
-# Strong refs for background macro runs spawned by macro.execute — asyncio
-# only weakly references tasks, so an unreferenced one can be GC'd mid-run.
+# Strong refs for background work a message starts (an event.emit's
+# handlers; the macro doors keep their own) — asyncio only weakly references
+# tasks, so an unreferenced one can be GC'd mid-run.
 _bg_tasks: set[asyncio.Task] = set()
 
 
@@ -460,64 +466,6 @@ async def _log_stream_task(ws: WebSocket, queue: asyncio.Queue) -> None:
         log.debug("WebSocket log stream ended on send failure", exc_info=True)
 
 
-async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
-    """Send a JSON message to the client, silently ignoring disconnects."""
-    try:
-        await ws.send_json(msg)
-    except _WS_DISCONNECT_EXCEPTIONS:
-        pass  # Client disconnected mid-send
-    except Exception:
-        log.debug("WebSocket send failed", exc_info=True)
-
-
-async def _send_ws_error(
-    ws: WebSocket, source_type: str | None, message: str, **about: str | None
-) -> None:
-    """Send an error frame — THE only producer of ``type: "error"`` answering a
-    client's message. The one the server sends on its own, a plugin's failed
-    save of its settings, is broadcast to the Programmer with ``source_type``
-    ``plugin.save_config`` (``core/project_logins.py``).
-
-    One shape: ``{type, message}`` plus ``source_type`` naming the inbound
-    message that failed, whenever that is known. It is omitted (not set to a
-    placeholder) for connection-level failures where nothing was parsed —
-    rate limiting and malformed JSON — because inventing a message type there
-    would be a lie a client can't distinguish from a real one.
-
-    A partly-failed interaction sends one too: the message itself was accepted
-    and the rest of the binding ran, but one action inside it did not reach its
-    device (see ``_run_ui_event``). ``source_type`` still names the interaction,
-    because that is what the person pressed.
-
-    ``element_id`` names the control that interaction came from, and is present
-    on exactly those two: a refused interaction, and one whose action did not
-    reach its device. A panel moves a control the moment it is touched, so a
-    command that never ran leaves the operator's own value standing on screen
-    with nothing coming to correct it — the client puts the control back, and
-    this is what tells it which one. Absent for everything a control did not
-    cause (a rate limit, malformed JSON, a bad ``element_id`` in the first
-    place); a client falls back to whatever it last sent, which is the same
-    correlation it already uses to place the message.
-
-    ``request_id`` is the other correlation field, ``about`` like
-    ``element_id``: the client's own name for a ``macro.execute`` it asked,
-    on the failure of a run that raised after its receipt, which arrives out
-    of order (``_execute_macro``).
-
-    Note the two other ways this socket reports a failure, both deliberate:
-    a result ack (``command.ack``/``state.set.ack``) carries ``success: false``
-    plus the correlation fields a generic error frame has no room for (which
-    device, which key); and a macro's outcome travels on its *lifecycle*
-    events to every client and on ``macro.execute.result`` to the client that
-    asked. See the WebSocket section of the API reference for the rule.
-    """
-    frame: dict[str, Any] = {"type": "error", "message": message}
-    if source_type:
-        frame["source_type"] = source_type
-    frame.update({name: value for name, value in about.items() if value})
-    await _send_ws(ws, frame)
-
-
 _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, bool, or null)"
 
 # A panel's messages are handled one at a time, in order. An interaction is
@@ -679,11 +627,6 @@ _PANEL_ALLOWED_TYPES = frozenset({
 })
 
 
-def _press_failure(exc: Exception, client_type: str) -> str:
-    """A press's own failure, in the words for the client that sent it."""
-    return describe_press_failure(exc).for_reader(at_panel=client_type == "panel")
-
-
 async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
     """Parse one inbound frame and dispatch it, turning every failure into an
     error frame.
@@ -714,143 +657,6 @@ async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
         # control, so a panel is told what a press that failed tells it.
         failed_type = msg.get("type") if isinstance(msg, dict) else None
         await _send_ws_error(ws, failed_type, _press_failure(exc, client_type))
-
-
-async def _named_macro(ws: WebSocket, msg_type: str, engine: Any, msg: dict[str, Any]) -> Any:
-    """The macro a ``macro.execute`` or ``macro.cancel`` names, or ``""`` once
-    the refusal is sent: no macro named, or one the project does not have.
-
-    A missing macro is the sentence a bound button gets (``no_such_macro``),
-    because it is the same failure: a matrix preset and a button that runs a
-    macro are one thing to whoever is standing at the panel. Answered before
-    any task, so the run that cannot happen never starts.
-    """
-    macro_id = msg.get("macro_id", "")
-    if not macro_id:
-        await _send_ws_error(ws, msg_type, "Missing macro_id")
-        return ""
-    if not engine.macros.has_macro(macro_id):
-        await _send_ws_error(ws, msg_type, no_such_macro(macro_id))
-        return ""
-    return macro_id
-
-
-# The longest ``request_id`` a ``macro.execute`` may carry.
-_REQUEST_ID_MAX = 64
-
-
-async def _asked_macro(ws: WebSocket, engine: Any, msg: dict[str, Any]) -> Any:
-    """The macro a ``macro.execute`` names, or ``""`` once the refusal is
-    sent: a ``request_id`` that is not text of 1 to 64 characters (it is
-    echoed back exactly, so it must be something a client can compare), or
-    what ``_named_macro`` refuses. All before the run, in request order."""
-    request_id = msg.get("request_id")
-    if request_id is not None and not (
-        isinstance(request_id, str) and 0 < len(request_id) <= _REQUEST_ID_MAX
-    ):
-        await _send_ws_error(
-            ws, "macro.execute",
-            f"request_id must be text of 1 to {_REQUEST_ID_MAX} characters",
-        )
-        return ""
-    return await _named_macro(ws, "macro.execute", engine, msg)
-
-
-def _run_ending(engine: Any, macro_id: str, outcome: str, report: RunReport) -> dict[str, Any]:
-    """What a ``macro.execute.result`` says beyond its outcome, all of it this
-    run's own: a skipped run's reason from the reason table (``code``,
-    ``message``), and a failed run's ``step_errors`` and, when it stopped,
-    its ``error`` and ``message``. Read in the run's own task."""
-    if outcome == "skipped":
-        return engine.macros.starts.take_refusal() or {}
-    if outcome == "failed":
-        return report.failure(macro_id)
-    return {}
-
-
-def _heard_by(engine: Any, client_type: str, ending: dict[str, Any]) -> dict[str, Any]:
-    """A failed run's ending as this client hears it. A panel gets the copy
-    the hub sends a panel of each ``macro.step_error`` and of the run's
-    ``macro.error`` (``WSHub.panel_copy``: the room's sentence in ``error``),
-    so asking for its own run's ending tells it nothing the room's events
-    would not."""
-    if client_type != "panel" or "step_errors" not in ending:
-        return ending
-    copy = {**ending, "step_errors": [
-        engine.ws.panel_copy("macro.step_error", frame) for frame in ending["step_errors"]
-    ]}
-    if "error" in ending:
-        copy.update(engine.ws.panel_copy(
-            "macro.error", {"error": ending["error"], "message": ending.get("message")},
-        ))
-    return copy
-
-
-async def _execute_macro(
-    ws: WebSocket, engine: Any, msg: dict[str, Any], client_type: str,
-) -> None:
-    """Acknowledge a macro at once, run it in the background, and tell this
-    socket how its run ended.
-
-    A macro with delay steps (warm-up sequences run tens of seconds) would
-    otherwise hold this client's whole message loop: further taps queue in the
-    socket and the panel reads as hung. Macro lifecycle events stream the
-    progress to every client; ``macro.execute.result`` is this socket's own
-    run's ending, the word ``execute`` reports and the rest ``_run_ending``
-    adds. A run that raised around its steps is answered with an ``error``
-    frame instead. The run starts before the receipt is written, so a client
-    slow to take it never holds a press back; either answer waits for the
-    receipt, so it always comes first.
-
-    The ask's ``request_id``, when it has one, rides the receipt, the result
-    and that error frame: one socket may hold several asks of one macro (a
-    Node-RED server's flows share one), and their endings come in any order.
-    """
-    macro_id = await _asked_macro(ws, engine, msg)
-    if not macro_id:
-        return
-    asked = {"request_id": msg["request_id"]} if msg.get("request_id") else {}
-    acked = asyncio.Event()
-
-    async def _run_macro() -> None:
-        try:
-            with engine.macros.starts.reporting() as report:
-                outcome = await engine.macros.execute(macro_id)
-        except Exception as e:
-            # Catch-all: whatever raised around the steps reaches nobody else.
-            log.exception(f"macro.execute of '{macro_id}' failed")
-            await acked.wait()
-            await _send_ws_error(ws, "macro.execute", _press_failure(e, client_type), **asked)
-            return
-        ending = _heard_by(engine, client_type, _run_ending(engine, macro_id, outcome, report))
-        await acked.wait()
-        await _send_ws(ws, {
-            "type": "macro.execute.result", "macro_id": macro_id, **asked,
-            "outcome": outcome, **ending,
-        })
-
-    task = asyncio.create_task(_run_macro())
-    _bg_tasks.add(task)
-    task.add_done_callback(_bg_tasks.discard)
-    try:
-        await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id, **asked})
-    finally:
-        acked.set()
-
-
-async def _cancel_macro(ws: WebSocket, engine: Any, macro_id: Any) -> None:
-    """Stop every running invocation of a macro. Open to a panel on the same
-    terms as ``macro.execute``: whoever may start a thirty-second warm-up may
-    stop it. The ack says whether anything was running to stop; the run
-    itself reports its end as ``macro.cancelled``. The cancel waits up to a
-    grace period for the steps to unwind, too long to hold this client's
-    message loop, so it runs in the background like the execute does."""
-    running = engine.macros.is_macro_running(macro_id)
-    if running:
-        task = asyncio.create_task(engine.macros.cancel(macro_id))
-        _bg_tasks.add(task)
-        task.add_done_callback(_bg_tasks.discard)
-    await _send_ws(ws, {"type": "macro.cancel.ack", "macro_id": macro_id, "cancelled": running})
 
 
 async def _handle_message(
@@ -1033,12 +839,10 @@ async def _handle_message(
         # is the panel's preset button: a person pressing "Presentation Mode"
         # twice, or working a room quickly, must never be throttled. The macro
         # engine's own overlap/cooldown settings are the right control here.
-        await _execute_macro(ws, engine, msg, client_type)
+        await execute_macro(ws, engine, msg, client_type)
 
     elif msg_type == "macro.cancel":
-        macro_id = await _named_macro(ws, msg_type, engine, msg)
-        if macro_id:
-            await _cancel_macro(ws, engine, macro_id)
+        await cancel_macro(ws, engine, msg)
 
     elif msg_type == "project.reload":
         try:

@@ -769,26 +769,31 @@ async def test_macro_execute_failure_still_reaches_client():
 def test_send_ws_error_is_the_only_error_frame_producer():
     """A second `{"type": "error"}` literal is how the shapes drifted apart.
 
-    Every failure on this socket goes through `_send_ws_error`, so the frame
-    can't gain a field at one site and lose it at another.
+    Every failure on this socket goes through `send_ws_error`, so the frame
+    can't gain a field at one site and lose it at another. The socket's doors
+    are three modules: the message handler, the macro doors, and the senders.
     """
     import ast
     from pathlib import Path
 
-    source = Path(ws_module.__file__).read_text(encoding="utf-8")
+    import openavc.api.ws_macros as ws_macros
+    import openavc.api.ws_send as ws_send
+
     producers = []
-    for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.Dict):
-            continue
-        for key, value in zip(node.keys, node.values):
-            if (
-                isinstance(key, ast.Constant) and key.value == "type"
-                and isinstance(value, ast.Constant) and value.value == "error"
-            ):
-                producers.append(node.lineno)
-    assert len(producers) == 1, (
-        f"Expected exactly one 'error' frame literal (inside _send_ws_error); "
-        f"found {len(producers)} at lines {producers}"
+    for module in (ws_module, ws_macros, ws_send):
+        path = Path(module.__file__)
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Dict):
+                continue
+            for key, value in zip(node.keys, node.values):
+                if (
+                    isinstance(key, ast.Constant) and key.value == "type"
+                    and isinstance(value, ast.Constant) and value.value == "error"
+                ):
+                    producers.append(f"{path.name}:{node.lineno}")
+    assert len(producers) == 1 and producers[0].startswith("ws_send.py:"), (
+        f"Expected exactly one 'error' frame literal (inside ws_send.send_ws_error); "
+        f"found {producers}"
     )
 
 

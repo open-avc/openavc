@@ -224,7 +224,10 @@ class MacroSteps:
         error, message = self._wording.failure(step, e)
         # Emit step-level error event so the frontend can show it
         if run.macro_id:
-            await self._announce_step_error(step, run, i, total, (error, message))
+            await self._announce_step_error(run, self._wording.error_frame(
+                run.macro_id, step, i, total,
+                error=error, message=message, call_chain=run.call_chain,
+            ))
         if run.stop_on_error:
             # The worded sentence, not the exception: this text is the
             # run's macro.error, and a calling macro's step error. The
@@ -235,21 +238,18 @@ class MacroSteps:
         self, step: dict[str, Any], run: StepRun, i: int, total: int, unreported: Unreported,
     ) -> None:
         """Count, log and announce a failure the step handled itself."""
+        error, message = unreported
         step_detail = self._wording.failure_context(step, i, total)
         run.failures.append(step_detail)
-        log.error(f"Macro step failed: {step_detail} — {unreported[0]}")
-        await self._announce_step_error(step, run, i, total, unreported)
-
-    async def _announce_step_error(
-        self, step: dict[str, Any], run: StepRun, i: int, total: int, failure: Unreported,
-    ) -> None:
-        """Send a failed step's ``macro.step_error`` to the room, and keep the
-        frame for whoever opened a report on this run (``RunStarts``)."""
-        error, message = failure
-        frame = self._wording.error_frame(
+        log.error(f"Macro step failed: {step_detail} — {error}")
+        await self._announce_step_error(run, self._wording.error_frame(
             run.macro_id or "", step, i, total, error=error, message=message,
             call_chain=run.call_chain,
-        )
+        ))
+
+    async def _announce_step_error(self, run: StepRun, frame: dict[str, Any]) -> None:
+        """Send a failed step's ``macro.step_error`` to the room, and keep the
+        frame for whoever opened a report on this run (``RunStarts``)."""
         self.starts.step_failed(frame)
         await self.events.emit(f"macro.step_error.{run.macro_id}", frame)
 
