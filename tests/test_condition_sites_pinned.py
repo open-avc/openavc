@@ -30,6 +30,7 @@ from openavc.core.macro_text import skip_reason
 from openavc.core.macro_validation import macro_issues
 from openavc.core.state_store import StateStore
 from openavc.core.trigger_engine import TriggerEngine
+from tests.helpers import wait_for_condition
 
 #: An operator left out of the condition altogether.
 ABSENT = object()
@@ -241,9 +242,14 @@ async def _fire_guarded(trigger_engine, macro_engine, core, condition) -> tuple[
     trigger_engine.load_triggers(_guarded(condition))
     await trigger_engine.start()
     await events.emit("go", {})
-    await asyncio.sleep(0.05)
+    await _an_outcome(skipped, fired)
     await trigger_engine.stop()
     return skipped, fired
+
+
+async def _an_outcome(skipped: list, fired: list) -> None:
+    """Until the trigger has fired or been skipped."""
+    await wait_for_condition(lambda: bool(skipped or fired), timeout=2, interval=0.01)
 
 
 def _skip(code: str, **about: Any) -> dict[str, Any]:
@@ -342,7 +348,7 @@ async def _change(trigger_engine, macro_engine, core, op) -> tuple[list, list]:
     trigger_engine.load_triggers(_state_trigger(op))
     await trigger_engine.start()
     state.set("var.level", 5, source="test")
-    await asyncio.sleep(0.05)
+    await _an_outcome(skipped, fired)
     await trigger_engine.stop()
     return skipped, fired
 
@@ -386,7 +392,7 @@ async def _after_delay(trigger_engine, macro_engine, core, op) -> tuple[list, li
     trigger_engine.load_triggers(_state_trigger(op, delay_seconds=1))
     trigger_engine._running = True
     await trigger_engine._delayed_fire(trigger_engine._triggers["t"], 0, {"key": "var.level"})
-    await asyncio.sleep(0.05)
+    await _an_outcome(skipped, fired)
     return skipped, fired
 
 
