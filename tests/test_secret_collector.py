@@ -249,3 +249,42 @@ def test_driver_state_on_this_system_is_given_as_it_is():
     assert state_value_as(Exit.LOG, "device.acme_widget.stream_url", STREAM) == (
         "rtsp://op:***@10.0.0.7/live"
     )
+
+
+# --- A config shown away from this system --------------------------------------------
+
+
+def test_a_plugin_s_config_reaches_the_assistant_with_every_secret_masked():
+    from openavc.cloud.tools.plugin_tools import _masked
+
+    # The plugin's login, saved here and registered, quoted again in a field
+    # nothing names like a credential.
+    get_secret_registry().set_project_secrets({"Bridge-Pass-1"})
+    config = {"password": "Bridge-Pass-1", "notes": "fallback login Bridge-Pass-1", "port": 1883}
+    assert _masked(config)["config"] == {
+        "password": REDACTED, "notes": f"fallback login {REDACTED}", "port": 1883,
+    }
+
+
+def test_a_plugin_config_sent_back_as_it_was_read_keeps_its_saved_text():
+    from openavc.cloud.tools.plugin_tools import _masked
+    from openavc.utils.log_redaction import keep_masked_secrets
+
+    get_secret_registry().set_project_secrets({"Bridge-Pass-1"})
+    stored = {"password": "Bridge-Pass-1", "notes": "fallback login Bridge-Pass-1"}
+    read = _masked(stored)["config"]
+    restored, unresolved = keep_masked_secrets({**read, "port": 1884}, stored, where=Exit.CLOUD)
+    assert unresolved == []
+    assert restored == {**stored, "port": 1884}
+
+
+def test_an_orphaned_device_s_details_mask_every_secret():
+    from openavc.core.device_info import _orphan_config
+
+    get_secret_registry().set_project_secrets({"Orph-Pass-61"})
+    config = {"host": "10.0.0.8", "password": "Orph-Pass-61", "notes": "spare Orph-Pass-61",
+              "stream": "rtsp://op:streampw55@10.0.0.8/live"}
+    assert _orphan_config(config) == {
+        "host": "10.0.0.8", "password": REDACTED, "notes": f"spare {REDACTED}",
+        "stream": "rtsp://op:***@10.0.0.8/live",
+    }

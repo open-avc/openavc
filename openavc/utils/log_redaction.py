@@ -211,12 +211,40 @@ def state_value_as(where: Any, key: Any, value: Any) -> Any:
         return value
     if named_secret_state(key, value):
         return REDACTED
-    if not isinstance(value, str) or not value:
-        return value
-    if "@" in value:
-        value = mask_url_password(value)
+    return text_as(where, value)
+
+
+def text_as(where: Any, text: Any) -> Any:
+    """THE text as the exit ``where`` may carry it: as it is where it may
+    carry a secret; else with the password of any
+    ``scheme://user:password@host`` address and every registered secret
+    masked. Anything but text is returned as it is."""
+    if may_carry_secret(where) or not isinstance(text, str) or not text:
+        return text
+    if "@" in text:
+        text = mask_url_password(text)
     registry = get_secret_registry()
-    return registry.masked(where, value) if registry.has_secrets() else value
+    return registry.masked(where, text) if registry.has_secrets() else text
+
+
+def _text_leaves(value: Any, shown: Any) -> Any:
+    """``value`` with each text inside it, at any depth, as ``shown`` gives it."""
+    if isinstance(value, dict):
+        return {key: _text_leaves(item, shown) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_text_leaves(item, shown) for item in value]
+    return shown(value) if isinstance(value, str) and value != REDACTED else value
+
+
+def config_as(where: Any, config: Any) -> Any:
+    """A config nothing declares the secrets of (a plugin's, an orphaned
+    device's) as the exit ``where`` may carry it: each field named like a
+    credential as :data:`REDACTED` (:func:`mask_secrets_by_name`) and every
+    other text as :func:`text_as` gives it. :func:`keep_masked_secrets`
+    with the same ``where`` is the way back."""
+    if may_carry_secret(where):
+        return config
+    return _text_leaves(mask_secrets_by_name(config), lambda text: text_as(where, text))
 
 
 def mask_secrets_by_name(value: Any, _secret: bool = False) -> Any:
@@ -269,7 +297,7 @@ def _matching_item(item: Any, stored: list, index: int) -> Any:
 
 
 def keep_masked_secrets(
-    incoming: Any, stored: Any, _path: str = "", _secret: bool = False,
+    incoming: Any, stored: Any, _path: str = "", _secret: bool = False, *, where: Any = None,
 ) -> tuple[Any, list[str]]:
     """Put back each saved credential that ``incoming`` carries as :data:`REDACTED`.
 
@@ -278,7 +306,9 @@ def keep_masked_secrets(
     it still says ``***``, never "set the password to ``***``". Returns the
     config to save and the places (``streams[1].password``) where ``***`` came
     back with no saved value to stand for; a caller refuses the write rather
-    than store the marker as somebody's password.
+    than store the marker as somebody's password. With ``where``, a text the
+    read showed as :func:`config_as` gave it for that exit (a registered
+    secret quoted in a field of its own) keeps the saved text too.
     """
     unresolved: list[str] = []
     if isinstance(incoming, dict):
@@ -287,7 +317,7 @@ def keep_masked_secrets(
         for key, item in incoming.items():
             out[key], missed = keep_masked_secrets(
                 item, saved.get(key), f"{_path}.{key}" if _path else str(key),
-                _secret or _named_secret(key),
+                _secret or _named_secret(key), where=where,
             )
             unresolved += missed
         return out, unresolved
@@ -297,7 +327,7 @@ def keep_masked_secrets(
         for index, item in enumerate(incoming):
             restored, missed = keep_masked_secrets(
                 item, _matching_item(item, saved_list, index),
-                f"{_path}[{index}]", _secret,
+                f"{_path}[{index}]", _secret, where=where,
             )
             out_list.append(restored)
             unresolved += missed
@@ -312,6 +342,8 @@ def keep_masked_secrets(
         ):
             return stored, unresolved
         return incoming, [_path]
+    if where is not None and isinstance(stored, str) and text_as(where, stored) == incoming:
+        return stored, unresolved
     masked_url = any(
         m.group("password") == REDACTED for m in _URL_PASSWORD.finditer(incoming)
     )

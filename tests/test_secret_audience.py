@@ -13,9 +13,11 @@ The WebSocket rows are the client types ``core/ws_hub.MESSAGE_AUDIENCE``
 names, so who a push reaches comes from that table and whether it may carry
 a secret from this one.
 
-A sweep keeps every exit on the table: no module reads the secret registry's
-values or masks with them except through ``SecretRegistry.masked`` and
-``SecretRegistry.to_mask``, which name the exit.
+Two sweeps keep every exit on the table: no module reads the secret
+registry's values except through ``SecretRegistry.masked`` and
+``SecretRegistry.to_mask``, which name the exit, and none masks with one of
+the redaction module's own steps (a URL's password, a credential's name)
+instead of asking for what its exit may carry.
 """
 
 from __future__ import annotations
@@ -174,26 +176,50 @@ def test_the_sweep_sees_a_direct_read():
     assert _registry_reads(stray) == ["4 redact_any"]
 
 
-# --- The exits that still mask by a rule of their own ------------------------------
+# --- No exit masks by a rule of its own ------------------------------------------
 
-# Each masks what it sends by its own rule, not yet by the registry through the
-# table. When one is moved onto ``masked`` / ``to_mask`` its entry goes, and
-# this test says so. Not the whole list: the AI's log tool
-# (cloud/tools/system_tools.py) and the problem report also gather values by
-# their own rule, beside the registry's part they already ask the table for.
-OWN_RULE = {
-    "openavc/core/device_info.py": Exit.PROGRAMMER,      # by the field's name
-    "openavc/cloud/tools/plugin_tools.py": Exit.CLOUD,   # by the field's name
-    "openavc/audit/redaction.py": Exit.REPORT,           # the audit's own set
-}
+# The masking helpers below are the redaction module's own steps: an exit asks
+# for what it may carry (the registry's masked / to_mask, or state_value_as,
+# text_as and config_as, which ask the table), never one step alone, so a
+# second rule cannot grow beside the table.
+_STEPS = {"mask_url_password", "redact_text", "mask_secrets_by_name", "redact_any", "redact_for"}
 
 
-@pytest.mark.parametrize("module", sorted(OWN_RULE))
-def test_an_exit_on_its_own_rule_is_listed_until_it_asks_the_table(module: str):
-    path = PACKAGE.parent / module
-    assert path.is_file(), f"{module} is gone: drop it from OWN_RULE"
-    assert not may_carry_secret(OWN_RULE[module])
-    text = path.read_text(encoding="utf-8")
-    assert ".masked(" not in text and ".to_mask(" not in text, (
-        f"{module} asks the table now: drop it from OWN_RULE"
+def _named(node: ast.AST) -> str | None:
+    """The name a reference, an attribute or an import names, or None."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return node.name if isinstance(node, ast.alias) else None
+
+
+def _steps_taken(source: str) -> list[str]:
+    """Each place in ``source`` naming one of the masking steps, as ``line name``."""
+    return [
+        f"{node.lineno} {_named(node)}"
+        for node in ast.walk(ast.parse(source))
+        if _named(node) in _STEPS
+    ]
+
+
+def test_no_exit_masks_by_a_rule_of_its_own():
+    found = [
+        f"{path.relative_to(PACKAGE.parent)}:{step}"
+        for path in sorted(PACKAGE.rglob("*.py"))
+        if path != _REGISTRY_MODULE
+        for step in _steps_taken(path.read_text(encoding="utf-8"))
+    ]
+    assert not found, (
+        "these mask with one of the redaction module's steps; ask for what the "
+        f"exit may carry instead (state_value_as, text_as, config_as, masked): {found}"
     )
+
+
+def test_the_own_rule_sweep_sees_a_private_rule():
+    stray = (
+        "from openavc.utils.log_redaction import mask_url_password\n"
+        "def shown(value):\n"
+        "    return mask_url_password(value)\n"
+    )
+    assert _steps_taken(stray) == ["1 mask_url_password", "3 mask_url_password"]

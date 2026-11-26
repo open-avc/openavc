@@ -14,14 +14,16 @@ three may:
     address carries its login so a panel can play the stream. Leaving this
     system, the same value is the cloud's row.
 
-Every other exit may not carry one. An exit that masks with the registered
-values reads them through ``SecretRegistry.masked`` or
-``SecretRegistry.to_mask``, naming itself: those two are the only reads of
-the registry's values outside the registry (``tests/test_secret_audience.py``
-sweeps the code for any other). Not every exit asks yet: some mask by a rule
-of their own (a URL's password, a credential's name), and a few still send a
-secret as they were given it (a setup run's result). This table is the rule
-they are held to.
+Every other exit may not carry one. An exit asks for what it may carry,
+naming itself: ``SecretRegistry.masked`` or ``SecretRegistry.to_mask`` for
+the registered values, which one collector gathers from every place a secret
+is held (``utils/log_redaction``), or the rules built on them, a state value
+(``state_value_as``), a text (``text_as``) and a config nothing declares the
+secrets of (``config_as``). Those are the only reads of the registry's values
+and the only masking outside the redaction module
+(``tests/test_secret_audience.py`` sweeps the code for any other). A setup
+run's result is still sent as it was given; this table is the rule it is
+held to.
 
 A command's secret parameter is the send's to keep in
 (``core/command_gates.py``): it holds the declaration, so a refusal names the

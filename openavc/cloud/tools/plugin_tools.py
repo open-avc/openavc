@@ -7,8 +7,9 @@ Programmer's Log (``PluginLoader.error_for_cloud``). The Programmer's plugin
 card still shows the plugin's text as it stands.
 
 For the same reason a plugin's passwords and keys never go into an answer: a
-config comes back with them as ``***`` (``mask_secrets_by_name``, by field
-name, at any depth), and a config sent back with ``***`` still in a field keeps
+config comes back as the cloud may carry it (``log_redaction.config_as``), a
+field named like one as ``***`` at any depth and every secret the system holds
+masked in the rest, and a config sent back with ``***`` still in a field keeps
 the saved value there. Nor is one taken from the conversation:
 ``update_plugin_config`` refuses a login typed into the config (a field the
 plugin declares as one, a field named like one, a password in an address), as
@@ -22,10 +23,11 @@ from typing import Any
 from openavc.cloud.tools import ToolEditError, apply_tool_change, apply_tool_edit
 from openavc.core.plugin_extension_rules import plugin_namespace
 from openavc.utils.log_redaction import (
+    config_as,
     keep_masked_secrets,
-    mask_secrets_by_name,
     typed_secrets,
 )
+from openavc.utils.secret_audience import Exit
 
 # Said with a config that had something masked, so the next write sends it back.
 MASKED_NOTE = (
@@ -36,7 +38,7 @@ MASKED_NOTE = (
 
 def _masked(config: Any) -> dict[str, Any]:
     """The config as an answer may carry it, and the note when it hid something."""
-    shown = mask_secrets_by_name(config)
+    shown = config_as(Exit.CLOUD, config)
     return {"config": shown, **({"masked": MASKED_NOTE} if shown != config else {})}
 
 
@@ -376,7 +378,7 @@ class PluginToolsMixin:
         # The config the AI read had its passwords as ***; one sent back
         # unchanged means keep the saved value, never "the password is ***".
         new_config, unresolved = keep_masked_secrets(
-            new_config, engine.project.plugins[plugin_id].config,
+            new_config, engine.project.plugins[plugin_id].config, where=Exit.CLOUD,
         )
         if unresolved:
             return {
