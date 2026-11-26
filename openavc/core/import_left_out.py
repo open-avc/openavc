@@ -1,18 +1,22 @@
-"""THE account an import into the Project Library gives of what it left out.
+"""THE project file an import into the Project Library takes from a zip, and
+THE account it gives of what it left out.
 
 A copy in the Project Library is a project file with its scripts, images,
-custom controls and custom themes, read from the top of the zip the way an
-export writes them (``core/project_library``). A zip can hold more than a
-copy keeps, and the import names each part of it that it recognises and did
-not bring, so nothing is dropped without a word:
+custom controls and custom themes, read from beside it in the zip
+(``core/project_library``): at the top, the way an export and a project
+backup write them, or in the folder that holds it, the way the backup an
+update takes keeps a project (``projects/<name>/``, or
+``project_unit.UPDATE_BACKUP_PROJECT`` for the project that ran when it was
+kept outside the projects folder, which ``project_member`` takes first).
 
-- the saved variable values and the device logins of a project backup
-  (``core/backup_manager``): a copy keeps no saved values, and a backup's
-  logins open only on the system that took it, where restoring the backup
-  brings them back;
-- a project file kept in a folder of the zip, as the backup an update takes
-  holds it (``updater/backup``): only the project file is imported, and what
-  sits beside it there (``core/project_unit``) is named;
+A zip can hold more than a copy keeps, and the import names each part of it
+that it recognises and did not bring, so nothing is dropped without a word:
+
+- the saved variable values beside the project file, and the device logins
+  of a project backup or an update's backup (``core/backup_manager``,
+  ``updater/backup``): a copy keeps no saved values, and a backup's logins
+  open only on the system that took it, where restoring a project backup
+  from Backups brings them back;
 - every other project file in the zip, since one import brings one project.
 
 Anything else (a backup's own record, the system's files in an update's
@@ -37,8 +41,8 @@ WORDS = {
     project_unit.STATE_FILE: "saved variable values",
 }
 
-#: What an import reads from beside a project file at the top of the zip.
-_READ_AT_TOP = (project_unit.SCRIPTS_DIR, *project_unit.FILE_TREES)
+#: What an import reads from beside a project file.
+_READ = (project_unit.SCRIPTS_DIR, *project_unit.FILE_TREES)
 
 _LOGINS = "device logins"
 
@@ -47,7 +51,7 @@ _LOGINS = "device logins"
 #: own trees in an update's backup (``updater/backup``) and the copies macOS
 #: adds when it zips a folder.
 _NOT_PROJECTS = frozenset({
-    *_READ_AT_TOP, "drivers", "plugins", "driver_repo", "plugin_repo", "__MACOSX",
+    *_READ, "drivers", "plugins", "driver_repo", "plugin_repo", "__MACOSX",
 })
 
 
@@ -59,23 +63,33 @@ def is_project_file(name: str) -> bool:
     return path.suffix == ".avc" and not folders & _NOT_PROJECTS and not path.name.startswith("._")
 
 
+def project_member(names: Sequence[str]) -> str | None:
+    """The project file an import of a zip holding ``names`` brings: the one
+    an update's backup keeps for the project that ran, when it holds one
+    (``project_unit.UPDATE_BACKUP_PROJECT``), since its ``projects/`` folder
+    may also hold a project the system no longer runs; otherwise the first.
+    None when the zip holds none."""
+    found = [name for name in names if is_project_file(name)]
+    ran = [name for name in found if str(PurePosixPath(name).parent) == project_unit.UPDATE_BACKUP_PROJECT]
+    return next(iter(ran or found), None)
+
+
+def folder_of(project_member: str) -> str:
+    """What each entry beside the project file ``project_member`` starts
+    with in the zip: nothing at its top, ``<folder>/`` in a folder of it."""
+    folder = str(PurePosixPath(project_member).parent)
+    return "" if folder == "." else f"{folder}/"
+
+
 def left_out(names: Sequence[str], project_member: str) -> list[str]:
     """The import's warning for each part of a zip holding ``names`` that the
     copy made from its project file ``project_member`` does not bring."""
-    folder = str(PurePosixPath(project_member).parent)
-    if folder == ".":
-        logins = [_LOGINS] if ARCHIVE_LOGINS in names else []
-        notes = [_from_a_backup(_beside(names, "", _READ_AT_TOP) + logins)]
-    else:
-        notes = [_from_a_folder(folder, _beside(names, f"{folder}/", ())), _logins_alone(names)]
-    return [note for note in (*notes, _other_projects(names, project_member)) if note]
-
-
-def _beside(names: Sequence[str], prefix: str, read: Sequence[str]) -> list[str]:
-    """The words for each entry beside the project file, under ``prefix``,
-    that the zip holds and the import does not ``read``."""
-    return [WORDS[entry] for entry in project_unit.BESIDE_PROJECT
-            if entry not in read and _holds(names, prefix + entry)]
+    folder = folder_of(project_member)
+    parts = [WORDS[entry] for entry in project_unit.BESIDE_PROJECT
+             if entry not in _READ and _holds(names, folder + entry)]
+    parts += [_LOGINS] if ARCHIVE_LOGINS in names else []
+    kept = _not_kept(parts) if folder else _from_a_backup(parts)
+    return [note for note in (kept, _other_projects(names, project_member)) if note]
 
 
 def _holds(names: Sequence[str], entry: str) -> bool:
@@ -92,19 +106,10 @@ def _from_a_backup(parts: list[str]) -> str:
     )
 
 
-def _from_a_folder(folder: str, parts: list[str]) -> str:
+def _not_kept(parts: list[str]) -> str:
     if not parts:
         return ""
-    return (
-        f"Only the project file was imported, from this file's {folder} folder: the {_listed(parts)} "
-        f"beside it were left out. A file made with Export brings a project with its files."
-    )
-
-
-def _logins_alone(names: Sequence[str]) -> str:
-    if ARCHIVE_LOGINS not in names:
-        return ""
-    return "The device logins in this file were left out."
+    return f"The {_listed(parts, 'the ')} in this file were left out."
 
 
 def _other_projects(names: Sequence[str], project_member: str) -> str:

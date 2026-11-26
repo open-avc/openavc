@@ -40,12 +40,14 @@ def copy_tree(source: Path, destination: Path) -> None:
         shutil.copy2(source_file, destination / source_file.name)
 
 
-def extract_from_zip(zf: zipfile.ZipFile, destination: Path) -> None:
-    """Skip non-theme members and unsafe paths without flattening them."""
+def extract_from_zip(zf: zipfile.ZipFile, destination: Path, prefix: str = "themes") -> None:
+    """The archive's themes under ``prefix`` into ``destination``, skipping
+    non-theme members and unsafe paths without flattening them."""
+    marker = f"{prefix}/"
     for name in zf.namelist():
-        if not name.startswith("themes/"):
+        if not name.startswith(marker):
             continue
-        filename = name[len("themes/"):]
+        filename = name[len(marker):]
         if not _is_theme_filename(filename):
             continue
         target = safe_path_within(destination, filename)

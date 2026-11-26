@@ -58,6 +58,12 @@ FILE_TREES = (ASSETS_DIR, UI_DIR, THEMES_DIR)
 #: Everything beside the project file that belongs to the project.
 BESIDE_PROJECT = (SCRIPTS_DIR, *FILE_TREES, STATE_FILE)
 
+#: The folder of an update's backup holding the project the system ran when
+#: that project is not in the data folder's ``projects/`` (``updater/backup``):
+#: the whole folder of one kept elsewhere, or the project's own entries of one
+#: at the data root.
+UPDATE_BACKUP_PROJECT = "external-project"
+
 #: This system's pairing with OpenAVC Cloud (``cloud/config``).
 CLOUD_PAIRING_FILE = "cloud.json"
 #: This system's instance id (``core/isc``).

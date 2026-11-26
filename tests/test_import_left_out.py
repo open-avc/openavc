@@ -93,7 +93,13 @@ def test_a_project_backup_without_logins_names_its_saved_values(library, tmp_pat
     ]
 
 
-def test_an_update_backup_names_what_sits_beside_its_project_file(library, tmp_path):
+EVERY_FILE = {
+    "project.avc", "scripts/lights.py", "assets/logos/house.png", "ui/meter/index.html",
+    "themes/house.json",
+}
+
+
+def test_an_update_backup_brings_its_project_with_the_files_beside_it(library, tmp_path):
     data_dir = tmp_path / "data"
     _project_folder(data_dir / "projects" / "default")
     (data_dir / "system.json").write_text("{}")
@@ -102,26 +108,102 @@ def test_an_update_backup_names_what_sits_beside_its_project_file(library, tmp_p
 
     result, copy = _imported(backup.read_bytes(), backup.name)
 
-    assert _copy_holds(copy) == {"project.avc"}
+    assert _copy_holds(copy) == EVERY_FILE
     assert result["warnings"] == [
-        f"Only the project file was imported, from this file's projects/default folder: the {EVERY_PART} "
-        f"beside it were left out. A file made with Export brings a project with its files.",
-        "The device logins in this file were left out.",
+        "The saved variable values and the device logins in this file were left out.",
     ]
 
 
-def test_an_update_backup_kept_outside_the_projects_folder_is_named_the_same(library, tmp_path):
+def test_an_update_backup_kept_outside_the_projects_folder_brings_its_files_the_same(library, tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     project_file = _project_folder(tmp_path / "elsewhere" / "room")
     backup = update_backup(data_dir, "0.41.0", project_path=project_file)
 
-    result, _copy = _imported(backup.read_bytes(), backup.name)
+    result, copy = _imported(backup.read_bytes(), backup.name)
 
-    assert result["warnings"] == [
-        f"Only the project file was imported, from this file's external-project folder: the {EVERY_PART} "
-        f"beside it were left out. A file made with Export brings a project with its files.",
-    ]
+    assert _copy_holds(copy) == EVERY_FILE
+    assert result["warnings"] == ["The saved variable values in this file were left out."]
+
+
+def test_an_update_backup_kept_at_the_data_root_brings_its_files_and_not_the_systems(library, tmp_path):
+    data_dir = tmp_path / "data"
+    project_file = _project_folder(data_dir)
+    (data_dir / "system.json").write_text("{}")
+    (data_dir / "cloud.json").write_text("{}")
+    backup = update_backup(data_dir, "0.41.0", project_path=project_file)
+
+    result, copy = _imported(backup.read_bytes(), backup.name)
+
+    assert _copy_holds(copy) == EVERY_FILE
+    assert result["warnings"] == ["The saved variable values in this file were left out."]
+
+
+def test_the_project_that_ran_is_taken_over_one_left_in_the_projects_folder(library, tmp_path):
+    data_dir = tmp_path / "data"
+    _project_folder(data_dir / "projects" / "default", "starter_room")
+    project_file = _project_folder(tmp_path / "elsewhere" / "room")
+    (project_file.parent / "scripts" / "lights.py").write_text("ran = True\n")
+    backup = update_backup(data_dir, "0.41.0", project_path=project_file)
+
+    result, copy = _imported(backup.read_bytes(), backup.name)
+
+    assert result["id"] == "acme_room"
+    assert (copy / "scripts" / "lights.py").read_text() == "ran = True\n"
+    assert result["warnings"][-1] == (
+        "This file holds more than one project. Only external-project/project.avc was imported; "
+        "projects/default/project.avc was left out."
+    )
+
+
+def test_another_projects_files_are_not_brought_with_it(library, tmp_path):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as zf:
+        zf.writestr("projects/a/project.avc", json.dumps(PROJECT))
+        zf.writestr("projects/a/scripts/own.py", "x = 1\n")
+        zf.writestr("projects/b/project.avc", json.dumps({**PROJECT, "project": {"id": "b_room", "name": "B"}}))
+        zf.writestr("projects/b/scripts/other.py", "x = 2\n")
+        zf.writestr("projects/b/assets/other.png", b"\x89PNG\r\n\x1a\n")
+        zf.writestr("scripts/top.py", "x = 3\n")
+
+    result, copy = _imported(stream.getvalue(), "two.zip")
+
+    assert result["id"] == "acme_room"
+    assert _copy_holds(copy) == {"project.avc", "scripts/own.py"}
+
+
+def test_a_path_out_of_the_folder_is_never_written(library, tmp_path):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as zf:
+        zf.writestr("room/project.avc", json.dumps(PROJECT))
+        zf.writestr("room/assets/../../../escaped.png", b"\x89PNG\r\n\x1a\n")
+        zf.writestr("room/ui/../../../escaped.html", "<div></div>")
+        zf.writestr("room/themes/../../escaped.json", "{}")
+        zf.writestr("room/scripts/C:evil.py", "x = 1\n")
+
+    result, copy = _imported(stream.getvalue(), "room.zip")
+
+    assert _copy_holds(copy) == {"project.avc"}
+    assert not [p for p in tmp_path.rglob("escaped*")]
+
+
+def test_an_update_backup_comes_in_through_the_librarys_import(library, tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from openavc.api.routes import project as project_routes
+
+    data_dir = tmp_path / "data"
+    _project_folder(data_dir / "projects" / "default")
+    backup = update_backup(data_dir, "0.41.0")
+    app = FastAPI()
+    app.include_router(project_routes.router, prefix="/api")
+
+    answer = TestClient(app).post("/api/library/import", files={"file": (backup.name, backup.read_bytes())})
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["warnings"] == ["The saved variable values in this file were left out."]
+    assert _copy_holds(project_library._lib_dir() / "acme_room") == EVERY_FILE
 
 
 def test_a_file_holding_two_projects_names_the_one_left_out(library, tmp_path):

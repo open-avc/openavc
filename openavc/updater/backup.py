@@ -68,7 +68,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from openavc.core.project_unit import BESIDE_PROJECT, FILE_TREES, SCRIPTS_DIR, SYSTEM_BESIDE_PROJECT
+from openavc.core.project_unit import (
+    BESIDE_PROJECT, FILE_TREES, SCRIPTS_DIR, SYSTEM_BESIDE_PROJECT, UPDATE_BACKUP_PROJECT,
+)
 from openavc.utils.backup_zip import keep_newest, write_zip
 from openavc.utils.fileio import atomic_write_text, make_private, private_dir
 from openavc.utils.paths import files_below, is_link
@@ -197,7 +199,7 @@ def _write_update_archive(
     # the projects/ walk. The data-root case selects only project entries,
     # never the supervisor, update cache or backups.
     if project_path is not None and project_path.exists():
-        links["external-project"] = _backup_extra_project(zf, project_path, data_dir)
+        links[UPDATE_BACKUP_PROJECT] = _backup_extra_project(zf, project_path, data_dir)
     recorded = {tree: found for tree, found in links.items() if found}
     if recorded:
         zf.writestr(LINKS_MEMBER, json.dumps(recorded, indent=2, sort_keys=True))
@@ -351,7 +353,7 @@ def _backup_extra_project(zf: zipfile.ZipFile, project_path: Path, data_dir: Pat
     for path in files:
         if not _in_user_backups(path, root):
             rel = path.relative_to(root).as_posix()
-            zf.write(path, f"external-project/{rel}")
+            zf.write(path, f"{UPDATE_BACKUP_PROJECT}/{rel}")
     return links
 
 
@@ -364,7 +366,7 @@ def _selected_external_members(members: list, root_names: set[str] | None) -> li
         return members
     return [
         member for member in members
-        if member.filename.removeprefix("external-project/").partition("/")[0] in root_names
+        if member.filename.removeprefix(f"{UPDATE_BACKUP_PROJECT}/").partition("/")[0] in root_names
     ]
 
 
@@ -455,7 +457,7 @@ def _restore_trees(job: _Restore, data_dir: Path, project_path: Path | None) -> 
     if projects:
         restored |= _restore_projects_tree(_ProjectsTree(job, data_dir, projects))
     external_dir = _extra_project_tree(project_path, data_dir)[0] if project_path is not None else None
-    external = _put_back(members, "external-project/", external_dir)
+    external = _put_back(members, f"{UPDATE_BACKUP_PROJECT}/", external_dir)
     if external and project_path is not None:
         restored |= _restore_external_files(job, external, data_dir, project_path)
     return restored
@@ -512,7 +514,7 @@ def _opened(backup_path: Path) -> zipfile.ZipFile:
 
 
 #: The trees of a pre-update backup a restore writes back.
-_RESTORED_TREES = ("projects/", "external-project/")
+_RESTORED_TREES = ("projects/", f"{UPDATE_BACKUP_PROJECT}/")
 
 
 def _read_through(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
@@ -959,10 +961,10 @@ def _restore_external_files(job: _Restore, members: list, data_dir: Path, projec
     external_dir, root_names = _extra_project_tree(project_path, data_dir)
     if external_dir is None:
         return False
-    links = job.links.get("external-project", {})
+    links = job.links.get(UPDATE_BACKUP_PROJECT, {})
     restored = False
     for member in _selected_external_members(members, root_names):
-        rel = _member_relpath(member.filename, "external-project/")
+        rel = _member_relpath(member.filename, f"{UPDATE_BACKUP_PROJECT}/")
         if rel is None:
             continue
         target = external_dir / rel

@@ -450,7 +450,8 @@ def _project_meta(project_id: str, data: dict[str, Any],
 def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
     """Extract a .zip template into the library WITHOUT installing drivers.
 
-    Only extracts project.avc, scripts, and assets. The .zip file itself
+    Only extracts project.avc and what sits beside it (its scripts, assets,
+    custom controls and themes). The .zip file itself
     is preserved alongside the project so drivers can be installed later
     when the user opens the project.
     """
@@ -462,11 +463,11 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
     with zipfile.ZipFile(zip_path, "r") as zf:
         _check_zip_safety(zf)
         # Extract and migrate the project file
-        avc_names = [n for n in zf.namelist() if import_left_out.is_project_file(n)]
-        if not avc_names:
+        member = import_left_out.project_member(zf.namelist())
+        if member is None:
             raise ValueError(f"No .avc file found in {zip_path.name}")
 
-        data = json.loads(zf.read(avc_names[0]).decode("utf-8"))
+        data = json.loads(zf.read(member).decode("utf-8"))
         data, _ = migrate_project(data)
         from openavc.core.project_loader import ProjectConfig
         ProjectConfig(**data)  # validate before writing
@@ -476,24 +477,8 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
             project_dir / "project.avc",
             json.dumps(data, indent=4, ensure_ascii=False),
         )
-
-        # Extract scripts
-        for name in zf.namelist():
-            if name.startswith("scripts/") and name.endswith(".py"):
-                target = plain_file_in(project_dir / "scripts", Path(name).name)
-                if target is None:
-                    log.warning("Skipping script with an unsafe file name: %r", name)
-                    continue
-                target.parent.mkdir(exist_ok=True)
-                target.write_bytes(zf.read(name))
-
-        # Extract assets, folders intact — the rules are core/asset_tree.py's,
-        # the same ones backup restore and bundle import write under.
-        asset_tree.extract_from_zip(zf, project_dir / "assets")
-
-        # Extract custom UI files (a starter template may ship a control)
-        extract_from_zip(zf, project_dir / "ui")
-        theme_tree.extract_from_zip(zf, project_dir / "themes")
+        # A starter template may ship scripts, images, a control or a theme.
+        _extract_beside(zf, member, project_dir)
 
     # Copy the original .zip alongside the project so bundled drivers
     # can be installed when the user opens it
@@ -1482,6 +1467,31 @@ def _check_missing_plugins(
     return missing
 
 
+def _extract_beside(zf: zipfile.ZipFile, member: str, project_dir: Path) -> None:
+    """What sits beside the project file ``member`` in the zip, into the
+    library copy ``project_dir``: its scripts and its file trees
+    (``core/project_unit``), read at the top of an export or a template, or
+    in the folder an update's backup keeps the project in
+    (``import_left_out.folder_of``). The scripts are flat, each one plain
+    file name (``plain_file_in``); a tree keeps its folders, and what it may
+    hold is its own module's (``core/asset_tree``, ``core/custom_ui``,
+    ``core/theme_tree``), so a member it does not take, or one whose path
+    leaves the tree, is skipped and the rest goes ahead."""
+    folder = import_left_out.folder_of(member)
+    scripts = f"{folder}{project_unit.SCRIPTS_DIR}/"
+    for name in zf.namelist():
+        if name.startswith(scripts) and name.endswith(".py"):
+            target = plain_file_in(project_dir / project_unit.SCRIPTS_DIR, Path(name).name)
+            if target is None:
+                log.warning("Skipping script with an unsafe file name: %r", name)
+                continue
+            target.parent.mkdir(exist_ok=True)
+            target.write_bytes(zf.read(name))
+    asset_tree.extract_from_zip(zf, project_dir / project_unit.ASSETS_DIR, folder + project_unit.ASSETS_DIR)
+    extract_from_zip(zf, project_dir / project_unit.UI_DIR, folder + project_unit.UI_DIR)
+    theme_tree.extract_from_zip(zf, project_dir / project_unit.THEMES_DIR, folder + project_unit.THEMES_DIR)
+
+
 def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
     from openavc.core.project_migration import migrate_project
 
@@ -1490,11 +1500,11 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         _check_zip_safety(zf)  # zip-bomb guard
         _check_bundled_driver_identity(zf)
 
-        avc_names = [n for n in zf.namelist() if import_left_out.is_project_file(n)]
-        if not avc_names:
+        member = import_left_out.project_member(zf.namelist())
+        if member is None:
             raise ValueError("No .avc file found in zip")
 
-        data = json.loads(zf.read(avc_names[0]).decode("utf-8"))
+        data = json.loads(zf.read(member).decode("utf-8"))
         notes = MigrationNotes()
         data, _ = migrate_project(data, notes)
         ProjectConfig(**data)  # validate
@@ -1518,24 +1528,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
                 project_dir / "project.avc",
                 json.dumps(data, indent=4, ensure_ascii=False),
             )
-
-            for name in zf.namelist():
-                if name.startswith("scripts/") and name.endswith(".py"):
-                    target = plain_file_in(project_dir / "scripts", Path(name).name)
-                    if target is None:
-                        log.warning("Skipping script with an unsafe file name: %r", name)
-                        continue
-                    target.parent.mkdir(exist_ok=True)
-                    target.write_bytes(zf.read(name))
-
-            # Extract bundled assets, folders intact (see core/asset_tree.py).
-            asset_tree.extract_from_zip(zf, project_dir / "assets")
-
-            # Extract custom UI files, folders intact — a control is a folder,
-            # and a flattened one does not run. The path rules, file types and
-            # caps are core/custom_ui.py's, the same ones the IDE writes under.
-            extract_from_zip(zf, project_dir / "ui")
-            theme_tree.extract_from_zip(zf, project_dir / "themes")
+            _extract_beside(zf, member, project_dir)
         except BaseException:
             shutil.rmtree(project_dir, ignore_errors=True)
             raise
@@ -1572,7 +1565,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
     if sealed_problem:
         warnings.append(sealed_problem)
-    warnings += import_left_out.left_out(zf.namelist(), avc_names[0])
+    warnings += import_left_out.left_out(zf.namelist(), member)
 
     log.info(f"Imported project '{pid}' from .zip bundle")
     result: dict[str, Any] = {
