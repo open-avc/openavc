@@ -6,19 +6,26 @@ import { useProjectStore } from "../../store/projectStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { valueText } from "../shared/booleanWords";
+import { OPERATORS, type Operator } from "../../api/conditionOperators.gen";
+import { knownOperator, readsNoValue } from "../../api/conditionEval";
+import { operatorPicker } from "./operatorChoices";
 
-const OPERATORS = [
-  { value: "eq", label: "equals", hint: "Matches the value (text ignores case)" },
-  { value: "ne", label: "not equals", hint: "Matches a different reported value (text ignores case)" },
-  { value: "gt", label: "greater than", hint: "Numeric comparison: value > target" },
-  { value: "lt", label: "less than", hint: "Numeric comparison: value < target" },
-  { value: "gte", label: "greater or equal", hint: "Numeric comparison: value >= target" },
-  { value: "lte", label: "less or equal", hint: "Numeric comparison: value <= target" },
-  { value: "truthy", label: "has a value", hint: "True when the value is not empty, not zero, and not null" },
-  { value: "falsy", label: "is empty or zero", hint: "True when the value is empty, zero, false, or null" },
-];
+/** Each operator's words here; the operators and their order are the
+ *  runtime's (operatorChoices.ts). */
+const OPERATOR_INFO: Readonly<Record<Operator, { label: string; hint: string }>> = {
+  eq: { label: "equals", hint: "Matches the value (text ignores case)" },
+  ne: { label: "not equals", hint: "Matches a different reported value (text ignores case)" },
+  gt: { label: "greater than", hint: "Numeric comparison: value > target" },
+  lt: { label: "less than", hint: "Numeric comparison: value < target" },
+  gte: { label: "greater or equal", hint: "Numeric comparison: value >= target" },
+  lte: { label: "less or equal", hint: "Numeric comparison: value <= target" },
+  truthy: { label: "has a value", hint: "True when the value is not empty, not zero, and not null" },
+  falsy: { label: "is empty or zero", hint: "True when the value is empty, zero, false, or null" },
+};
 
-const NO_VALUE_OPS = new Set(["truthy", "falsy"]);
+const OPERATOR_WORDS = Object.fromEntries(
+  OPERATORS.map((op) => [op, OPERATOR_INFO[op].label]),
+) as Record<Operator, string>;
 
 interface ConditionEditorProps {
   condition: StepCondition;
@@ -30,10 +37,12 @@ interface ConditionEditorProps {
 }
 
 export function ConditionEditor({ condition, onChange, showTriggerContext = false }: ConditionEditorProps) {
-  const needsValue = !NO_VALUE_OPS.has(condition.operator);
+  const picker = operatorPicker(condition.operator, OPERATOR_WORDS);
+  const needsValue = !readsNoValue(picker.value);
   const [showHelp, setShowHelp] = useState(false);
   const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
-  const selectedOp = OPERATORS.find((o) => o.value === condition.operator);
+  const named = knownOperator(picker.value);
+  const selectedOp = named === null ? undefined : OPERATOR_INFO[named];
   // When the key is a boolean variable, offer a true/false picker for the
   // comparison value instead of a free-text box (matches the trigger editors
   // and the Set Variable step).
@@ -55,11 +64,11 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
           style={{ flex: 2, minWidth: 140 }}
         />
         <select
-          value={condition.operator}
+          value={picker.value}
           onChange={(e) => onChange({ ...condition, operator: e.target.value })}
           style={{ ...selectStyle, flex: 1, minWidth: 100 }}
         >
-          {OPERATORS.map((op) => (
+          {picker.choices.map((op) => (
             <option key={op.value} value={op.value}>{op.label}</option>
           ))}
         </select>
@@ -115,8 +124,8 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
           color: "var(--text-secondary)", lineHeight: 1.5,
         }}>
           {OPERATORS.map((op) => (
-            <div key={op.value} style={{ marginBottom: 2 }}>
-              <strong>{op.label}</strong> &mdash; {op.hint}
+            <div key={op} style={{ marginBottom: 2 }}>
+              <strong>{OPERATOR_INFO[op].label}</strong> &mdash; {OPERATOR_INFO[op].hint}
             </div>
           ))}
         </div>

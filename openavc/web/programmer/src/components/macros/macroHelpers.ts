@@ -1,5 +1,7 @@
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup, TriggerConfig } from "../../api/types";
 import { quotedValueText } from "../shared/booleanWords";
+import { ANY_CHANGE } from "../../api/conditionOperators.gen";
+import { writtenOperator } from "../../api/conditionEval";
 import type { StepNames } from "./commandLabels";
 
 export interface StepTypeInfo {
@@ -377,7 +379,7 @@ function _stateChangeHandler(body: string[], trigger: TriggerConfig, writeSteps:
  * (compare() mirrors the trigger engine's coercion), its guards, its delay
  * and re-check. */
 function _pushStateChecks(body: string[], trigger: TriggerConfig): void {
-  const checksValue = Boolean(trigger.state_operator) && trigger.state_operator !== "any";
+  const checksValue = writtenOperator(trigger.state_operator, "state_trigger") !== ANY_CHANGE;
   if (checksValue) {
     body.push(_newValueGuard(trigger));
     body.push("        return");
@@ -397,7 +399,7 @@ function _pushStateChecks(body: string[], trigger: TriggerConfig): void {
 /** The line that ends a state change handler whose new value fails the
  * trigger's operator. */
 function _newValueGuard(trigger: TriggerConfig): string {
-  const op = trigger.state_operator ?? "";
+  const op = String(writtenOperator(trigger.state_operator, "state_trigger"));
   if (op === "truthy") return "    if not new_value:";
   if (op === "falsy") return "    if new_value:";
   return `    if not compare(new_value, "${_pyEscape(op)}", ${_pyValue(trigger.state_value ?? "", false)}):`;

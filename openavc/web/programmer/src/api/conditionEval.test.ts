@@ -11,7 +11,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { DECIDE, SURFACE, evalOperator, matchKey, readTruth, type ConditionMode } from "./conditionEval";
+import {
+  DECIDE, SURFACE, evalOperator, matchKey, readTruth, takesOperator, writtenOperator, type ConditionMode,
+} from "./conditionEval";
+import type { ConditionPlace } from "./conditionOperators.gen";
 
 type Case = {
   name: string;
@@ -81,5 +84,28 @@ const TRUTH_CASES: [unknown, boolean | null][] = JSON.parse(
 describe("readTruth reads what the runtime reads", () => {
   it.each(TRUTH_CASES.map((c) => [JSON.stringify(c[0]), c] as const))("%s", (_name, c) => {
     expect(readTruth(c[0])).toBe(c[1]);
+  });
+});
+
+// What an operator reads as where it sits (core/condition_eval.py
+// written_operator), over the cases tests/test_condition_written_operator.py
+// runs: a State Change trigger saved with no operator, a null one or a blank
+// one fires on any change, so its editor and summary say so too.
+type WrittenCase = {
+  name: string;
+  where: ConditionPlace;
+  operator?: string | null;
+  written: string | null;
+  taken: boolean;
+};
+const WRITTEN_CASES: WrittenCase[] = JSON.parse(
+  readFileSync(resolve(corpusPath, "..", "written_operator_cases.json"), "utf-8"),
+).cases;
+
+describe("writtenOperator reads an operator as the runtime does where it sits", () => {
+  it.each(WRITTEN_CASES.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const stored = "operator" in c ? c.operator : undefined;
+    expect(writtenOperator(stored, c.where)).toBe(c.written);
+    expect(takesOperator(writtenOperator(stored, c.where), c.where)).toBe(c.taken);
   });
 });

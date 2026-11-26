@@ -12,11 +12,11 @@ import { FIRING_CONTEXTS, type FiringContext } from "../../api/firingContext.gen
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
-import { evalOperator } from "../../api/conditionEval";
+import { evalOperator, readsNoValue } from "../../api/conditionEval";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import {
-  STATE_OPERATORS,
-  CONDITION_OPERATORS,
+  STATE_OPERATOR_WORDS,
+  CONDITION_OPERATOR_WORDS,
   CRON_PRESETS,
   isValidCron,
   describeCron,
@@ -29,6 +29,7 @@ import {
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { quotedValueText } from "../shared/booleanWords";
 import { NumericInput } from "../shared/NumericInput";
+import { operatorPicker } from "./operatorChoices";
 
 interface TriggerEditorProps {
   trigger: TriggerConfig;
@@ -405,8 +406,8 @@ function StateChangeEditor({
   onChange: (patch: Partial<TriggerConfig>) => void;
 }) {
   const variables = useProjectStore((s) => s.project?.variables) ?? [];
-  const op = trigger.state_operator ?? "any";
-  const needsValue = !["any", "truthy", "falsy"].includes(op);
+  const picker = operatorPicker(trigger.state_operator, STATE_OPERATOR_WORDS, "state_trigger");
+  const needsValue = !readsNoValue(picker.value, "state_trigger");
 
   // Determine variable type for value input
   const selectedKey = trigger.state_key ?? "";
@@ -429,11 +430,11 @@ function StateChangeEditor({
       <div style={rowStyle}>
         <label style={labelStyle}>Operator</label>
         <select
-          value={op}
+          value={picker.value}
           onChange={(e) => onChange({ state_operator: e.target.value })}
           style={inputStyle}
         >
-          {STATE_OPERATORS.map((o) => (
+          {picker.choices.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
@@ -759,7 +760,8 @@ function ConditionsEditor({
       </div>
 
       {conditions.map((cond, i) => {
-        const needsValue = !["truthy", "falsy"].includes(cond.operator);
+        const picker = operatorPicker(cond.operator, CONDITION_OPERATOR_WORDS, "guard");
+        const needsValue = !readsNoValue(picker.value, "guard");
         const selectedKey = cond.key ?? "";
         const selectedVar = selectedKey.startsWith("var.")
           ? variables.find((v) => `var.${v.id}` === selectedKey)
@@ -787,11 +789,11 @@ function ConditionsEditor({
               style={{ flex: 1 }}
             />
             <select
-              value={cond.operator}
+              value={picker.value}
               onChange={(e) => updateCondition(i, { operator: e.target.value })}
               style={{ ...inputStyle, flex: "none", width: 100 }}
             >
-              {CONDITION_OPERATORS.map((o) => (
+              {picker.choices.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>

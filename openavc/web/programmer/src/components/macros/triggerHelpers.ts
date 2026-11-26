@@ -1,5 +1,8 @@
 import type { TriggerConfig, DeviceConfig, MacroConfig } from "../../api/types";
 import { quotedValueText } from "../shared/booleanWords";
+import { ANY_CHANGE, type Operator } from "../../api/conditionOperators.gen";
+import { knownOperator, writtenOperator } from "../../api/conditionEval";
+import type { OperatorWords } from "./operatorChoices";
 
 export interface TriggerTypeInfo {
   type: string;
@@ -41,17 +44,18 @@ export const TRIGGER_TYPES: TriggerTypeInfo[] = [
     icon: "Activity",
     summary: (t) => {
       const key = t.state_key ?? "?";
-      const op = t.state_operator ?? "any";
-      if (op === "any") return `${key} changes`;
-      if (op === "truthy") return `${key} becomes truthy`;
-      if (op === "falsy") return `${key} becomes falsy`;
-      return `${key} ${OPERATOR_LABELS[op] ?? op} ${quotedValueText(t.state_value ?? "")}`;
+      const op = writtenOperator(t.state_operator, "state_trigger");
+      const named = knownOperator(op);
+      if (op === ANY_CHANGE) return `${key} changes`;
+      if (named === "truthy") return `${key} becomes truthy`;
+      if (named === "falsy") return `${key} becomes falsy`;
+      return `${key} ${named === null ? String(op) : OPERATOR_LABELS[named]} ${quotedValueText(t.state_value ?? "")}`;
     },
     defaults: () => ({
       type: "state_change",
       enabled: true,
       state_key: "",
-      state_operator: "any",
+      state_operator: ANY_CHANGE,
       delay_seconds: 0,
       debounce_seconds: 0,
       cooldown_seconds: 0,
@@ -103,8 +107,8 @@ export function getTriggerType(type: string): TriggerTypeInfo | undefined {
   return TRIGGER_TYPES.find((t) => t.type === type);
 }
 
-export const OPERATOR_LABELS: Record<string, string> = {
-  any: "changes (any)",
+/** How a trigger summary writes each operator. */
+export const OPERATOR_LABELS: Readonly<Record<Operator, string>> = {
   eq: "=",
   ne: "!=",
   gt: ">",
@@ -115,28 +119,31 @@ export const OPERATOR_LABELS: Record<string, string> = {
   falsy: "is falsy",
 };
 
-export const STATE_OPERATORS = [
-  { value: "any", label: "Changes (any value)" },
-  { value: "eq", label: "Equals" },
-  { value: "ne", label: "Not Equals" },
-  { value: "gt", label: "Greater Than" },
-  { value: "lt", label: "Less Than" },
-  { value: "gte", label: "Greater or Equal" },
-  { value: "lte", label: "Less or Equal" },
-  { value: "truthy", label: "Becomes Truthy" },
-  { value: "falsy", label: "Becomes Falsy" },
-];
+/** A State Change trigger's operator picker's words (operatorChoices.ts
+ *  lists the runtime's operators in its order). */
+export const STATE_OPERATOR_WORDS: OperatorWords = {
+  [ANY_CHANGE]: "Changes (any value)",
+  eq: "Equals",
+  ne: "Not Equals",
+  gt: "Greater Than",
+  lt: "Less Than",
+  gte: "Greater or Equal",
+  lte: "Less or Equal",
+  truthy: "Becomes Truthy",
+  falsy: "Becomes Falsy",
+};
 
-export const CONDITION_OPERATORS = [
-  { value: "eq", label: "Equals" },
-  { value: "ne", label: "Not Equals" },
-  { value: "gt", label: "Greater Than" },
-  { value: "lt", label: "Less Than" },
-  { value: "gte", label: "Greater or Equal" },
-  { value: "lte", label: "Less or Equal" },
-  { value: "truthy", label: "Is Truthy" },
-  { value: "falsy", label: "Is Falsy" },
-];
+/** A trigger guard's operator picker's words. */
+export const CONDITION_OPERATOR_WORDS: OperatorWords = {
+  eq: "Equals",
+  ne: "Not Equals",
+  gt: "Greater Than",
+  lt: "Less Than",
+  gte: "Greater or Equal",
+  lte: "Less or Equal",
+  truthy: "Is Truthy",
+  falsy: "Is Falsy",
+};
 
 // --- Cron presets ---
 

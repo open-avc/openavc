@@ -13,6 +13,11 @@
  * compares with the words and numbers that mean it, a number written as text
  * equals the number, and a value that has not been reported never matches.
  *
+ * The operators, their other spellings and the places a condition sits are
+ * not copied: they come from conditionOperators.gen.ts, rendered from
+ * condition_eval.py, and the editors' pickers read them through
+ * `writtenOperator` and `knownOperator` here.
+ *
  * State holds strings, numbers, booleans and null, and that is what is
  * mirrored. Two limits: text is lower-cased where Python case-folds (they differ
  * only outside ASCII, "ß" for one), and Python's int and float are one number
@@ -21,6 +26,10 @@
 
 import { asNumber } from "./monitorHelpers";
 import { FALSE_WORDS, TRUE_WORDS } from "./types.gen";
+import {
+  ANY_CHANGE, OPERATORS, OPERATOR_ALIASES, PLACES, VALUELESS_OPERATORS,
+  type ConditionPlace, type Operator,
+} from "./conditionOperators.gen";
 
 /** A reader that acts (a macro, a trigger) makes no decision on a reading
  *  that has not arrived: never equal, never not-equal. The default. */
@@ -33,31 +42,39 @@ export type ConditionMode = typeof DECIDE | typeof SURFACE;
  *  condition_eval.py. */
 export const MODES: Record<ConditionMode, boolean> = { [DECIDE]: false, [SURFACE]: true };
 
-const OPERATOR_ALIASES: Record<string, string> = {
-  equals: "eq",
-  not_equals: "ne",
-  "==": "eq",
-  "!=": "ne",
-  ">": "gt",
-  "<": "lt",
-  ">=": "gte",
-  "<=": "lte",
-  equal: "eq",
-  not_equal: "ne",
-  greater_than: "gt",
-  less_than: "lt",
-  greater_or_equal: "gte",
-  less_or_equal: "lte",
-};
+/** An operator's own name: itself, or the one its other spelling names (the
+ *  runtime's list, conditionOperators.gen.ts). Null for anything else, a name
+ *  in another case and one that is not text included: `canonical_operator`. */
+export function knownOperator(op: unknown): Operator | null {
+  if (typeof op !== "string") return null;
+  if (Object.prototype.hasOwnProperty.call(OPERATOR_ALIASES, op)) return OPERATOR_ALIASES[op as keyof typeof OPERATOR_ALIASES];
+  return (OPERATORS as readonly string[]).includes(op) ? (op as Operator) : null;
+}
 
-/** Every spelling the rule takes, its own eight and the aliases onto them. */
-export const OPERATOR_SPELLINGS: ReadonlySet<string> = new Set([
-  "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy", ...Object.keys(OPERATOR_ALIASES),
-]);
+/** The operator a condition names where it sits, as written: at a place that
+ *  takes a State Change trigger's own `any`, one left out, blank or null reads
+ *  as it; elsewhere one left out reads as `eq`. An alias stays itself and a
+ *  word nobody knows stays that word: `written_operator`, over
+ *  tests/fixtures/written_operator_cases.json. With no place given, a
+ *  condition that does not take `any` (a control's visibility, say). */
+export function writtenOperator(op: unknown, where?: ConditionPlace): unknown {
+  if (where !== undefined && PLACES[where].takes_any_change) return op || ANY_CHANGE;
+  return op === undefined ? "eq" : op;
+}
 
-/** A spelling as the operator it names, or itself when it names none. */
-export function canonicalOperator(op: string): string {
-  return OPERATOR_ALIASES[op] ?? op;
+/** Whether the place takes `op` (written as `writtenOperator` reads it): an
+ *  operator or another spelling of one, or `any` where it is a place's own. */
+export function takesOperator(op: unknown, where?: ConditionPlace): boolean {
+  if (knownOperator(op) !== null) return true;
+  return op === ANY_CHANGE && where !== undefined && PLACES[where].takes_any_change;
+}
+
+/** Whether `op` asks for no value to compare with where it sits: an operator
+ *  that reads none, or a place's own `any`. */
+export function readsNoValue(op: unknown, where?: ConditionPlace): boolean {
+  const canonical = knownOperator(op);
+  if (canonical !== null) return (VALUELESS_OPERATORS as readonly string[]).includes(canonical);
+  return takesOperator(op, where);
 }
 
 /** A value as a number to compare: `asNumber`'s reading, and a boolean as 1
@@ -90,7 +107,7 @@ function pythonTruthy(value: unknown): boolean {
 }
 
 type Order = <T extends number | string>(a: T, t: T) => boolean;
-const ORDERINGS: Record<string, Order> = {
+const ORDERINGS: Record<Exclude<Operator, "eq" | "ne" | "truthy" | "falsy">, Order> = {
   gt: (a, t) => a > t,
   lt: (a, t) => a < t,
   gte: (a, t) => a >= t,
@@ -147,14 +164,12 @@ function same(actual: unknown, target: unknown): boolean {
 export function evalOperator(
   op: string, actual: unknown, target: unknown, mode: ConditionMode = DECIDE,
 ): boolean {
-  const canonical = typeof op === "string" ? canonicalOperator(op) : "";
+  const canonical = knownOperator(op);
   if (canonical === "eq" || canonical === "ne") return equality(canonical, actual, target, mode);
-  if (canonical in ORDERINGS) return ordering(ORDERINGS[canonical], actual, target);
   if (canonical === "truthy") return pythonTruthy(actual);
   if (canonical === "falsy") return !pythonTruthy(actual);
-  throw new Error(
-    `Unknown condition operator: '${op}'. Valid operators: eq, ne, gt, lt, gte, lte, truthy, falsy`,
-  );
+  if (canonical !== null) return ordering(ORDERINGS[canonical], actual, target);
+  throw new Error(`Unknown condition operator: '${op}'. Valid operators: ${OPERATORS.join(", ")}`);
 }
 
 /** Whether a reading equals an authored value: `eq`, the same in both modes. */

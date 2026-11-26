@@ -28,6 +28,7 @@ import {
   ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
 } from "../api/monitorHelpers";
 import { parseApiError } from "../api/errors";
+import { writtenOperator } from "../api/conditionEval";
 import { driverLabel } from "../components/shared/driverLabel";
 import { asleepHeadline, summarizeDashboardDevices } from "./dashboardDevices";
 
@@ -903,7 +904,7 @@ export function DashboardView() {
       failed: isFailedRun(triggerRuns[String(t.id)]?.outcome),
       detail: String(
         t.type === "schedule" ? t.cron ?? ""
-          : t.type === "state_change" ? `${t.state_key ?? ""} ${t.state_operator ?? "any"}`
+          : t.type === "state_change" ? `${t.state_key ?? ""} ${String(writtenOperator(t.state_operator, "state_trigger"))}`
           : t.type === "event" ? t.event_pattern ?? ""
           : t.type === "startup" ? `delay ${t.delay_seconds ?? 0}s`
           : ""
