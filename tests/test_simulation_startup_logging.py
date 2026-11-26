@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from openavc.core.simulation import (
+    _UI_PORT_SEARCH_SPAN,
     SIMULATOR_UI_PORT,
     SimulationManager,
     _choose_ui_port,
@@ -299,6 +300,32 @@ def test_a_held_port_is_stepped_over_rather_than_fatal(probe_answers):
     assert probe_answers[chosen] is True
 
 
+_LAST_PORT = 65535
+_BLOCK = 20
+
+
+def _run_start(handed_out, room: int) -> int | None:
+    """The port above the first one in ``handed_out`` with ``room`` ports
+    above it before the last one, or None. The system can hand out a port
+    near the top, and a run counted up from there would ask for ports that
+    do not exist."""
+    return next((port + 1 for port in handed_out if port + room < _LAST_PORT), None)
+
+
+def _ports_handed_out(tries: int = 50):
+    for _ in range(tries):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            yield probe.getsockname()[1]
+
+
+def test_a_run_starts_where_it_and_the_walk_fit_below_the_last_port():
+    room = _BLOCK + _UI_PORT_SEARCH_SPAN
+    assert _run_start([65530, 50000], room) == 50001
+    assert _run_start([_LAST_PORT - room - 1], room) == _LAST_PORT - room
+    assert _run_start([_LAST_PORT - room], room) is None
+
+
 def test_a_whole_contiguous_block_is_stepped_over(probe_answers):
     """A reserved range is hundreds of ports wide, not one.
 
@@ -309,10 +336,10 @@ def test_a_whole_contiguous_block_is_stepped_over(probe_answers):
     """
     holders = []
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.bind(("127.0.0.1", 0))
-            base = probe.getsockname()[1] + 1
-        for offset in range(20):
+        base = _run_start(_ports_handed_out(), _BLOCK + _UI_PORT_SEARCH_SPAN)
+        if base is None:
+            pytest.skip("the system handed out no port with room above it for the run")
+        for offset in range(_BLOCK):
             s_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 s_.bind(("127.0.0.1", base + offset))
