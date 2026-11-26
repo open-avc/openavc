@@ -18,6 +18,7 @@ saved values and the persister.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -458,3 +459,43 @@ def test_a_start_clears_what_a_finished_replace_left_behind(tmp_path):
     assert project.project.name == "Lobby"
     assert not (tmp_path / project_swap.WORK_DIR).exists()
     assert project_recovery.read(tmp_path) is None
+
+
+async def test_the_backup_the_marker_names_is_on_disk_before_the_marker(hall, tmp_path, monkeypatch):
+    """A power cut part way through the swap leaves the next start a backup
+    it can put back: the backup the marker names is written through to the
+    disk, and its name in its folder, before the marker is."""
+    library_id = _library_lobby(tmp_path, monkeypatch)
+    folder = hall.project_path.parent
+    synced: list[tuple[int, int]] = []
+    fsync = os.fsync
+
+    def watched_fsync(fd: int) -> None:
+        info = os.fstat(fd)
+        synced.append((info.st_dev, info.st_ino))
+        fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", watched_fsync)
+    at_first_rename: dict = {}
+    rename = project_swap._rename_on_disk
+
+    def watched_rename(src: Path, dst: Path) -> None:
+        if not at_first_rename:
+            marker = os.stat(folder / project_swap.MARKER_NAME)
+            at_first_rename["synced"] = list(synced)
+            at_first_rename["marker"] = (marker.st_dev, marker.st_ino)
+        rename(src, dst)
+
+    monkeypatch.setattr(project_swap, "_rename_on_disk", watched_rename)
+
+    resp = await _open_lobby(hall, library_id, monkeypatch)
+
+    assert resp.status_code == 200, resp.text
+    taken = folder / backup_manager.list_backups(hall.project_path)[0].filename
+    backup = os.stat(taken)
+    seen = at_first_rename["synced"]
+    assert (backup.st_dev, backup.st_ino) in seen
+    assert seen.index((backup.st_dev, backup.st_ino)) < seen.index(at_first_rename["marker"])
+    if os.name != "nt":  # Windows opens no folder to flush it
+        backups_folder = os.stat(taken.parent)
+        assert seen.index((backups_folder.st_dev, backups_folder.st_ino)) < seen.index(at_first_rename["marker"])

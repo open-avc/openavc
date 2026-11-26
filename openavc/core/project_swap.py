@@ -79,6 +79,14 @@ def _sync_folder(folder: Path) -> None:
         os.close(fd)
 
 
+def _sync_file(path: Path) -> None:
+    """``path``'s contents on disk, and its name in its folder. Opened for
+    writing, which Windows asks of a file it flushes."""
+    with open(path, "r+b") as handle:
+        os.fsync(handle.fileno())
+    _sync_folder(path.parent)
+
+
 @dataclass
 class Staged:
     """What is coming in, staged under ``WORK_DIR`` beside the live project,
@@ -193,9 +201,13 @@ def clear_leftovers(project_dir: Path) -> None:
 
 def write_marker(project_dir: Path, backup: str | None) -> None:
     """The marker naming ``backup`` (``backup_manager.backup_id``), or none
-    when there was no project file to back up, on disk before this returns.
-    Raises when it cannot be written: a replace with no marker does not
-    start its renames."""
+    when there was no project file to back up, on disk before this returns,
+    and the backup it names on disk before the marker is: a backup written
+    a moment ago can still be only in memory, and a power cut would leave
+    the next start a marker naming an empty file. Raises when either cannot
+    be written: a replace with no marker does not start its renames."""
+    if backup is not None:
+        _sync_file(project_dir / backup)
     path = project_dir / MARKER_NAME
     fd, tmp = tempfile.mkstemp(dir=str(project_dir), prefix=".replace_", suffix=".tmp")
     try:

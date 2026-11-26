@@ -19,7 +19,8 @@ project file (a ``fill`` for the swap); and the logins it brings. Then
 2. what comes in staged beside the live project (``core/project_swap``);
 3. the state persister stopped, so no value is written over the files being
    swapped;
-4. the "replace in progress" marker written, naming that backup; every entry
+4. the "replace in progress" marker written, naming that backup, which is
+   on disk before it (``project_swap.write_marker``); every entry
    the project is made of swapped by renames, the project file, its saved
    values (``state.json``) and the start's notice (``recovery.json``)
    included; the marker removed. A power cut in between has the next start
