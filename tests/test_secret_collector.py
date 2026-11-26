@@ -116,3 +116,72 @@ def test_a_numeric_pin_is_masked_in_every_exit_that_may_not_carry_one():
     for where in (Exit.LOG, Exit.CLOUD, Exit.REPORT, Exit.SENTENCE, Exit.PROGRAMMER):
         assert registry.masked(where, "sent PIN 482913") == f"sent PIN {REDACTED}", where
     assert registry.masked(Exit.DEVICE, "PIN 482913", "acme_widget") == "PIN 482913"
+
+
+# --- A device on its way out --------------------------------------------------------
+
+
+class _AcmeLogout(BaseDriver):
+    """An invented device that signs out with its password as it disconnects."""
+
+    DRIVER_INFO = {
+        "id": "acme_widget_logout",
+        "name": "Acme Widget",
+        "transport": "tcp",
+        "config_schema": {"host": {"type": "string"}, "password": {"type": "string"}},
+        "state_variables": {},
+        "commands": {},
+    }
+    lines: list[str] = []
+
+    async def connect(self) -> None:
+        self.set_state("connected", True)
+
+    async def disconnect(self) -> None:
+        password = str(self.config.get("password", ""))
+        _AcmeLogout.lines.append(
+            format_wire_data(f"LOGOUT {password}\r".encode(), device_id=self.device_id),
+        )
+        self.set_state("connected", False)
+
+    async def send_command(self, command: str, params=None):  # pragma: no cover
+        return None
+
+
+@pytest.fixture
+async def manager():
+    from openavc.core.device_manager import DeviceManager
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    _DRIVER_REGISTRY[_AcmeLogout.DRIVER_INFO["id"]] = _AcmeLogout
+    _AcmeLogout.lines = []
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    dm = DeviceManager(state, events)
+    yield dm
+    await dm.disconnect_all()
+    _DRIVER_REGISTRY.pop(_AcmeLogout.DRIVER_INFO["id"], None)
+
+
+def _logout_device(password: str) -> dict[str, Any]:
+    return {
+        "id": "acme_widget", "driver": "acme_widget_logout", "name": "Acme Widget",
+        "config": {"host": "10.0.0.5", "password": password},
+    }
+
+
+async def test_a_removed_device_s_password_is_masked_in_its_last_traffic(manager):
+    await manager.add_device(_logout_device("Retiring-Pass-31"))
+    await manager.remove_device("acme_widget")
+    assert _AcmeLogout.lines == [f"LOGOUT {REDACTED}"]
+    # Once it is gone, its password masks nothing.
+    assert get_secret_registry().masked(Exit.LOG, "Retiring-Pass-31") == "Retiring-Pass-31"
+
+
+async def test_a_replaced_device_s_old_password_is_masked_in_its_last_traffic(manager):
+    await manager.add_device(_logout_device("Old-Pass-4471"))
+    await manager.update_device("acme_widget", _logout_device("New-Pass-8812"))
+    assert _AcmeLogout.lines == [f"LOGOUT {REDACTED}"]
+    registry = get_secret_registry()
+    assert registry.masked(Exit.LOG, "New-Pass-8812") == REDACTED
+    assert registry.masked(Exit.LOG, "Old-Pass-4471") == "Old-Pass-4471"

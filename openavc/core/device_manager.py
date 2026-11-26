@@ -449,16 +449,17 @@ class DeviceManager(
         # backoff it never earned would make its first reconnect mysteriously
         # slow.
         self._forget_flap_history(device_id)
-        # Forget this device's credentials, so a password that is no longer
-        # configured anywhere stops masking text in an unrelated device's log.
-        get_secret_registry().forget(device_id)
-
         driver = self._devices.pop(device_id, None)
         if driver:
             try:
                 await driver.disconnect()
             except Exception:
                 log.exception(f"Error disconnecting '{device_id}'")
+        # Forget this device's credentials once its instance is done with
+        # them: its disconnect still signs out with them, and that traffic is
+        # masked like the rest. Forgotten, a password no longer configured
+        # anywhere stops masking text in an unrelated device's log.
+        get_secret_registry().forget(device_id)
 
         # And its record when no driver ran it: waiting for its driver, or
         # one its driver or its settings failed.
