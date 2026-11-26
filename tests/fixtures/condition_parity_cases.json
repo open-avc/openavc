@@ -631,6 +631,15 @@
       "actual": 1,
       "target": 2,
       "expected": "error"
+    },
+    {
+      "name": "an operator that is not text, even one naming an ordering",
+      "op": [
+        "gt"
+      ],
+      "actual": 2,
+      "target": 1,
+      "expected": "error"
     }
   ],
   "keys": [

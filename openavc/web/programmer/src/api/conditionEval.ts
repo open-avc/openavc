@@ -142,11 +142,12 @@ function same(actual: unknown, target: unknown): boolean {
 
 /** `eval_operator(op, actual, target, mode)`. Throws on an operator the
  *  runtime does not know, as the runtime does; a trigger treats that as not
- *  passing. */
+ *  passing. One that is not text names none, though a one-item list would
+ *  look up as its item. */
 export function evalOperator(
   op: string, actual: unknown, target: unknown, mode: ConditionMode = DECIDE,
 ): boolean {
-  const canonical = canonicalOperator(op);
+  const canonical = typeof op === "string" ? canonicalOperator(op) : "";
   if (canonical === "eq" || canonical === "ne") return equality(canonical, actual, target, mode);
   if (canonical in ORDERINGS) return ordering(ORDERINGS[canonical], actual, target);
   if (canonical === "truthy") return pythonTruthy(actual);

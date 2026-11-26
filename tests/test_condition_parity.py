@@ -95,12 +95,16 @@ def test_every_tier_of_the_key_order_picks_a_key():
     assert all(tiers.values()), tiers
 
 
+#: The cases whose operator is text: the rest are refusals of one that is not.
+NAMED = [c for c in CASES if isinstance(c["op"], str)]
+
+
 def test_every_operator_comes_out_both_ways():
-    seen = {(c["op"], c["expected"]) for c in CASES}
+    seen = {(c["op"], c["expected"]) for c in NAMED}
     missing = [(op, want) for op in OPERATORS for want in (True, False) if (op, want) not in seen]
     assert missing == []
 
 
 def test_every_alias_is_in_the_corpus():
-    used = {c["op"] for c in CASES}
+    used = {c["op"] for c in NAMED}
     assert set(OPERATOR_ALIASES) <= used

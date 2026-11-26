@@ -59,8 +59,9 @@ KEYS = CORPUS["keys"]
 RULE_SPELLINGS = {"eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy"} | set(OPERATOR_ALIASES)
 
 
-def _canonical(op: str) -> str:
-    return OPERATOR_ALIASES.get(op, op)
+def _canonical(op: object) -> object:
+    """An operator's own name; anything that is not text is left as it is."""
+    return OPERATOR_ALIASES.get(op, op) if isinstance(op, str) else op
 
 
 def _pairs() -> list[tuple[str, object, object]]:
