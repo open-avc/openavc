@@ -9,7 +9,7 @@ import { useState } from "react";
 import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-react";
 import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import { FIRING_CONTEXTS, type FiringContext } from "../../api/firingContext.gen";
-import type { TriggerConfig, TriggerCondition } from "../../api/types";
+import type { TriggerConfig, TriggerCondition, VariableConfig } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { evalOperator, readsNoValue } from "../../api/conditionEval";
@@ -410,10 +410,7 @@ function StateChangeEditor({
   const needsValue = !readsNoValue(picker.value, "state_trigger");
 
   // Determine variable type for value input
-  const selectedKey = trigger.state_key ?? "";
-  const selectedVar = selectedKey.startsWith("var.")
-    ? variables.find((v) => `var.${v.id}` === selectedKey)
-    : undefined;
+  const selectedVar = variableFor(trigger.state_key, variables);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -444,7 +441,7 @@ function StateChangeEditor({
           <label style={labelStyle}>Value</label>
           {selectedVar?.type === "boolean" ? (
             <select
-              value={trigger.state_value != null ? String(trigger.state_value) : ""}
+              value={valueBoxText(trigger.state_value)}
               onChange={(e) => onChange({ state_value: e.target.value === "true" })}
               style={inputStyle}
             >
@@ -454,14 +451,8 @@ function StateChangeEditor({
           ) : (
             <input
               type={selectedVar?.type === "number" ? "number" : "text"}
-              value={trigger.state_value != null ? String(trigger.state_value) : ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "true") onChange({ state_value: true });
-                else if (v === "false") onChange({ state_value: false });
-                else if (v !== "" && !isNaN(Number(v))) onChange({ state_value: Number(v) });
-                else onChange({ state_value: v });
-              }}
+              value={valueBoxText(trigger.state_value)}
+              onChange={(e) => onChange({ state_value: typedValue(e.target.value) })}
               placeholder="Value"
               style={inputStyle}
             />
@@ -759,80 +750,15 @@ function ConditionsEditor({
         Only run if ALL conditions are true
       </div>
 
-      {conditions.map((cond, i) => {
-        const picker = operatorPicker(cond.operator, CONDITION_OPERATOR_WORDS, "guard");
-        const needsValue = !readsNoValue(picker.value, "guard");
-        const selectedKey = cond.key ?? "";
-        const selectedVar = selectedKey.startsWith("var.")
-          ? variables.find((v) => `var.${v.id}` === selectedKey)
-          : undefined;
-
-        return (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              marginBottom: "var(--space-xs)",
-              padding: "var(--space-xs)",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-color)",
-              borderRadius: "var(--border-radius)",
-            }}
-          >
-            <VariableKeyPicker
-              value={cond.key}
-              onChange={(key) => updateCondition(i, { key })}
-              showDeviceState
-              placeholder="Key..."
-              style={{ flex: 1 }}
-            />
-            <select
-              value={picker.value}
-              onChange={(e) => updateCondition(i, { operator: e.target.value })}
-              style={{ ...inputStyle, flex: "none", width: 100 }}
-            >
-              {picker.choices.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            {needsValue && (
-              selectedVar?.type === "boolean" ? (
-                <select
-                  value={cond.value != null ? String(cond.value) : ""}
-                  onChange={(e) => updateCondition(i, { value: e.target.value === "true" })}
-                  style={{ ...inputStyle, flex: "none", width: 80 }}
-                >
-                  <option value="">...</option>
-                  <BooleanOptions />
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={cond.value != null ? String(cond.value) : ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "true") updateCondition(i, { value: true });
-                    else if (v === "false") updateCondition(i, { value: false });
-                    else if (v !== "" && !isNaN(Number(v))) updateCondition(i, { value: Number(v) });
-                    else updateCondition(i, { value: v });
-                  }}
-                  placeholder="Value"
-                  style={{ ...inputStyle, flex: "none", width: 80 }}
-                />
-              )
-            )}
-            <button
-              onClick={() => deleteCondition(i)}
-              style={iconBtnStyle}
-              title="Remove condition"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        );
-      })}
+      {conditions.map((cond, i) => (
+        <GuardRow
+          key={i}
+          cond={cond}
+          variables={variables}
+          onUpdate={(patch) => updateCondition(i, patch)}
+          onDelete={() => deleteCondition(i)}
+        />
+      ))}
 
       <button
         onClick={addCondition}
@@ -856,6 +782,116 @@ function ConditionsEditor({
       <ConditionPreview conditions={conditions} />
     </div>
   );
+}
+
+/** One guard: its key, its operator (the runtime's, operatorChoices.ts), its
+ *  value and its remove button. */
+function GuardRow({
+  cond,
+  variables,
+  onUpdate,
+  onDelete,
+}: {
+  cond: TriggerCondition;
+  variables: VariableConfig[];
+  onUpdate: (patch: Partial<TriggerCondition>) => void;
+  onDelete: () => void;
+}) {
+  const picker = operatorPicker(cond.operator, CONDITION_OPERATOR_WORDS, "guard");
+  const needsValue = !readsNoValue(picker.value, "guard");
+  const isBoolean = variableFor(cond.key, variables)?.type === "boolean";
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-xs)",
+        marginBottom: "var(--space-xs)",
+        padding: "var(--space-xs)",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--border-radius)",
+      }}
+    >
+      <VariableKeyPicker
+        value={cond.key}
+        onChange={(key) => onUpdate({ key })}
+        showDeviceState
+        placeholder="Key..."
+        style={{ flex: 1 }}
+      />
+      <select
+        value={picker.value}
+        onChange={(e) => onUpdate({ operator: e.target.value })}
+        style={{ ...inputStyle, flex: "none", width: 100 }}
+      >
+        {picker.choices.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {needsValue && (
+        <GuardValue value={cond.value} isBoolean={isBoolean} onChange={(value) => onUpdate({ value })} />
+      )}
+      <button
+        onClick={onDelete}
+        style={iconBtnStyle}
+        title="Remove condition"
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  );
+}
+
+/** A guard's value: true or false for a boolean variable, else a box whose
+ *  text is read as `typedValue` reads it. */
+function GuardValue({
+  value,
+  isBoolean,
+  onChange,
+}: {
+  value: unknown;
+  isBoolean: boolean;
+  onChange: (value: unknown) => void;
+}) {
+  const style = { ...inputStyle, flex: "none", width: 80 } as const;
+  if (isBoolean) {
+    return (
+      <select value={valueBoxText(value)} onChange={(e) => onChange(e.target.value === "true")} style={style}>
+        <option value="">...</option>
+        <BooleanOptions />
+      </select>
+    );
+  }
+  return (
+    <input
+      type="text"
+      value={valueBoxText(value)}
+      onChange={(e) => onChange(typedValue(e.target.value))}
+      placeholder="Value"
+      style={style}
+    />
+  );
+}
+
+/** The project variable a `var.` key names, if any. */
+function variableFor(key: string | undefined, variables: VariableConfig[]): VariableConfig | undefined {
+  return key?.startsWith("var.") ? variables.find((v) => `var.${v.id}` === key) : undefined;
+}
+
+/** A value as its box shows it: blank for none. */
+function valueBoxText(value: unknown): string {
+  return value != null ? String(value) : "";
+}
+
+/** What a value box's text is saved as: true or false for those words, a
+ *  number for a number, else the text. */
+function typedValue(text: string): unknown {
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (text !== "" && !isNaN(Number(text))) return Number(text);
+  return text;
 }
 
 // --- Condition Preview (8.9) ---

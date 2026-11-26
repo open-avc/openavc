@@ -27,6 +27,12 @@ const OPERATOR_WORDS = Object.fromEntries(
   OPERATORS.map((op) => [op, OPERATOR_INFO[op].label]),
 ) as Record<Operator, string>;
 
+/** The words for the operator `op` names, itself or under another spelling. */
+function operatorInfo(op: string): { label: string; hint: string } | undefined {
+  const named = knownOperator(op);
+  return named === null ? undefined : OPERATOR_INFO[named];
+}
+
 interface ConditionEditorProps {
   condition: StepCondition;
   onChange: (updated: StepCondition) => void;
@@ -41,8 +47,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
   const needsValue = !readsNoValue(picker.value);
   const [showHelp, setShowHelp] = useState(false);
   const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
-  const named = knownOperator(picker.value);
-  const selectedOp = named === null ? undefined : OPERATOR_INFO[named];
+  const selectedOp = operatorInfo(picker.value);
   // When the key is a boolean variable, offer a true/false picker for the
   // comparison value instead of a free-text box (matches the trigger editors
   // and the Set Variable step).
