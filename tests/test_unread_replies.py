@@ -71,7 +71,14 @@ def _build(definition: dict[str, Any], port: int) -> Any:
     return cls(device_id="acme1", config=config, state=StateStore(), events=EventBus())
 
 
-async def _until(predicate: Any, timeout: float) -> bool:
+# How long a wait below gives its answer before the test calls it missing. A
+# guard against a hang, not a claim: each check is judged in poll cycles, and
+# a loaded CI runner has stalled this whole process for longer than a few
+# seconds between two polls.
+_WAIT_S = 20.0
+
+
+async def _until(predicate: Any, timeout: float = _WAIT_S) -> bool:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while loop.time() < deadline:
@@ -141,7 +148,7 @@ async def test_replies_no_rule_reads_are_reported_and_the_device_stays_up(
     drv = _build(_acme(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE, 3.0)
+        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE)
         await asyncio.sleep(_INTERVAL * 6)
         assert drv.get_state("last_error") == _SENTENCE
         assert drv.get_state("connected") is True
@@ -169,7 +176,7 @@ async def test_replies_that_never_end_the_way_the_driver_frames_say_so(
     await drv.connect()
     try:
         assert await _until(
-            lambda: drv.get_state("last_error") == _UNENDED_SENTENCE, 3.0,
+            lambda: drv.get_state("last_error") == _UNENDED_SENTENCE,
         )
         await asyncio.sleep(_INTERVAL * 4)
         assert drv.get_state("last_error") == _UNENDED_SENTENCE
@@ -180,7 +187,7 @@ async def test_replies_that_never_end_the_way_the_driver_frames_say_so(
         assert "the last one was" not in warnings[0]
         # A reply the rules read ends it and clears the sentence.
         state["reply"] = b"PWR=ON\r"
-        assert await _until(lambda: not drv.get_state("last_error"), 3.0)
+        assert await _until(lambda: not drv.get_state("last_error"))
     finally:
         await drv.disconnect()
 
@@ -195,17 +202,17 @@ async def test_it_ends_on_the_first_cycle_a_reply_is_read(
     drv = _build(_acme(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE, 3.0)
+        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE)
         state["reply"] = b"PWR=ON\r"
-        assert await _until(lambda: drv.get_state("power") == "ON", 3.0)
-        assert await _until(lambda: not drv.get_state("last_error"), 3.0)
+        assert await _until(lambda: drv.get_state("power") == "ON")
+        assert await _until(lambda: not drv.get_state("last_error"))
         assert any(
             "read again" in r.getMessage() for r in caplog.records
             if r.name == _LOGGER and r.levelno == logging.INFO
         )
         # A second episode is reported again.
         state["reply"] = b"Password: \r"
-        assert await _until(lambda: len(_warnings(caplog)) == 2, 3.0)
+        assert await _until(lambda: len(_warnings(caplog)) == 2)
     finally:
         await drv.disconnect()
 
@@ -221,11 +228,11 @@ async def test_a_hold_ends_with_its_connection(talking_server, caplog) -> None:
     drv = _build(_acme(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE, 3.0)
+        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE)
         await drv.disconnect()
         state["reply"] = b""
         await drv.connect()
-        assert await _until(lambda: not drv.get_state("last_error"), 3.0)
+        assert await _until(lambda: not drv.get_state("last_error"))
         assert drv._unread_replies_hold is False
     finally:
         await drv.disconnect()
@@ -262,7 +269,7 @@ async def test_a_driver_without_last_error_gets_the_log_line_only(
     drv = _build(_acme(last_error=False), port)
     await drv.connect()
     try:
-        assert await _until(lambda: len(_warnings(caplog)) == 1, 3.0)
+        assert await _until(lambda: len(_warnings(caplog)) == 1)
         assert drv.get_state("last_error") is None
         assert drv.get_state("connected") is True
     finally:
@@ -282,7 +289,7 @@ async def test_it_runs_beside_a_liveness_probe(talking_server, caplog) -> None:
     drv = _build(definition, port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE, 3.0)
+        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE)
         assert drv.get_state("connected") is True
     finally:
         await drv.disconnect()
@@ -311,7 +318,7 @@ async def test_a_probe_that_drops_a_device_answering_otherwise_names_why(
     drv = _build(_probed(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("connected") is False, 5.0)
+        assert await _until(lambda: drv.get_state("connected") is False)
         assert drv.last_fault.code == "no_response"
         assert drv.last_fault.message == _SENTENCE
     finally:
@@ -331,14 +338,14 @@ async def test_the_verdict_lasts_through_the_held_reconnect(
     drv = _build(_probed(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("connected") is False, 5.0)
+        assert await _until(lambda: drv.get_state("connected") is False)
         drv._hold_next_connect = True
         await drv.connect()
         assert drv._held is True
         assert drv._unread_replies_hold is True
         await asyncio.sleep(_INTERVAL * 5)
         assert drv.get_state("last_error") == _SENTENCE
-        assert await _until(lambda: drv.transport is None or not drv._held, 5.0)
+        assert await _until(lambda: drv.transport is None or not drv._held)
         assert drv.last_fault.message == _SENTENCE
         assert len(_warnings(caplog)) == 1
     finally:
@@ -357,11 +364,11 @@ async def test_a_held_reconnect_into_silence_says_the_probe_went_unanswered(
     drv = _build(_probed(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("connected") is False, 5.0)
+        assert await _until(lambda: drv.get_state("connected") is False)
         state["reply"] = b""
         drv._hold_next_connect = True
         await drv.connect()
-        assert await _until(lambda: drv.transport is None or not drv._held, 5.0)
+        assert await _until(lambda: drv.transport is None or not drv._held)
         assert drv.last_fault.message == drv.HEALTH_FAULT_MESSAGE
     finally:
         await drv.disconnect()
@@ -379,7 +386,7 @@ async def test_a_cycle_that_hears_nothing_is_the_silence_checks(
     drv = _build(_acme(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("connected") is False, 3.0)
+        assert await _until(lambda: drv.get_state("connected") is False)
         assert drv.last_fault.code == "no_response"
         assert _warnings(caplog) == []
         assert not drv.get_state("last_error")
