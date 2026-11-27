@@ -10,6 +10,7 @@
  */
 import type { SelectOption, SelectGroup } from "./SearchableSelect";
 import { isFileCommand } from "./commandFiles";
+import { isRegularPage, opensOver } from "./pageType";
 
 /** One entry in a driver's declared command map, as `GET /api/devices/{id}`
  *  returns it. Everything is optional: a command may declare nothing but its
@@ -103,11 +104,8 @@ export function pageGroups(
     label: p.name || p.id,
     hint: p.id,
   });
-  const regular = pages.filter((p) => (p.page_type ?? "page") === "page");
-  const overlay = pages.filter((p) => {
-    const t = p.page_type ?? "page";
-    return t === "overlay" || t === "sidebar";
-  });
+  const regular = pages.filter(isRegularPage);
+  const overlay = pages.filter(opensOver);
   const groups: SelectGroup[] = [];
   if (regular.length > 0) groups.push({ label: "Pages", options: regular.map(option) });
   if (overlay.length > 0) {

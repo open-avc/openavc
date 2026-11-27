@@ -624,6 +624,11 @@
             "type": "object"
           },
           "page_type": {
+            "enum": [
+              "page",
+              "overlay",
+              "sidebar"
+            ],
             "type": "string"
           },
           "render_mode": {
@@ -704,6 +709,11 @@
             "type": "string"
           },
           "page_type": {
+            "enum": [
+              "page",
+              "overlay",
+              "sidebar"
+            ],
             "type": "string"
           },
           "render_mode": {

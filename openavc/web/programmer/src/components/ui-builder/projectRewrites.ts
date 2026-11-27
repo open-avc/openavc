@@ -47,7 +47,8 @@ import type {
   UISettings,
   VariableConfig,
 } from "../../api/types";
-import { ELEMENT_ID_RULE, PAGE_RULES } from "../../api/projectValues.gen";
+import { ELEMENT_ID_RULE } from "../../api/projectValues.gen";
+import { isRegularPage } from "../shared/pageType";
 import { isPlainObject, own } from "./authoredValues";
 import { NESTED_ACTION_FIELDS } from "./bindingActions";
 import { isElementId } from "./elementId";
@@ -449,13 +450,10 @@ export function removePageFromGroups(groups: PageGroup[], pageId: string): PageG
   return mapPreserve(groups, (group) => withField(group, "pages", (pages) => filterPreserve(pages, (pid) => pid !== pageId)));
 }
 
-/** The page types that open over the page on screen; every other page is a regular page. */
-const OPENS_OVER: readonly string[] = PAGE_RULES.opens_over;
-
 /** The page that stands in for one that is missing: the first regular page,
  *  else the first page (the page rules' `fallback_page`, openavc/ui/page_rules.py). */
 export function fallbackPage(pages: UIPage[]): UIPage | undefined {
-  return pages.find((p) => !OPENS_OVER.includes(p.page_type ?? "")) ?? pages[0];
+  return pages.find(isRegularPage) ?? pages[0];
 }
 
 /** The panel settings once the page is gone: an idle page that was the deleted

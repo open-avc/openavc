@@ -41,6 +41,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import { useUiFilesStore } from "../../store/uiFilesStore";
 import { useThemeFilesStore } from "../../store/themeFilesStore";
 import { isCustomPage } from "./customPage";
+import { opensOver, pageTypeOf } from "../shared/pageType";
 import { showError, showInfo } from "../../store/toastStore";
 
 interface CanvasProps {
@@ -864,8 +865,8 @@ export function Canvas({
   // Shrinking it here was half of why a working Cancel button looked broken:
   // the preview never rendered an overlay at all, it rendered the dialog's page
   // flat inside a dialog-sized box.
-  const pageType = page.page_type || "page";
-  const isOverlay = pageType === "overlay" || pageType === "sidebar";
+  const pageType = pageTypeOf(page);
+  const isOverlay = opensOver(page);
   const boxedOverlay = isOverlay && !previewMode;
   const overlayWidth = boxedOverlay
     ? Math.round((((page.overlay?.width ?? PAGE_RULES.overlay_box[pageType === "sidebar" ? "sidebar" : "overlay"].width) / 100) * screenWidth))

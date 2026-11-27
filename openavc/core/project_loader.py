@@ -51,6 +51,7 @@ from openavc.utils.logger import get_logger
 from openavc.core.project_migration import CURRENT_VERSION
 from openavc.core.state_store import GLOB_CHARS
 from openavc.drivers.registry import get_driver_class
+from openavc.ui.page_rules import PAGE_TYPES, UNKNOWN_TYPE_READS_AS
 
 log = get_logger(__name__)
 
@@ -712,7 +713,10 @@ class OverlayConfig(_ForwardCompatModel):
 class UIPage(_ForwardCompatModel):
     id: str
     name: str
-    page_type: str = "page"
+    # How the page is shown, the page rules' words (ui/page_rules.py): a page in
+    # place of the one on screen, or an overlay or sidebar over it. A word this
+    # release does not know is drawn as a page, as every reader draws it.
+    page_type: Annotated[str, OneOf(PAGE_TYPES, otherwise=UNKNOWN_TYPE_READS_AS)] = "page"
     # How this page is drawn. "elements" is the ordinary page: the renderer lays
     # out the elements below. "custom" hands the whole screen to a page the
     # integrator wrote themselves, in the project's ui/ tree, in one sandboxed

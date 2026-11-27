@@ -47,6 +47,7 @@ import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
 import { NumericInput } from "../shared/NumericInput";
 import { LAYER } from "../shared/layers";
+import { isRegularPage, pageTypeOf } from "../shared/pageType";
 import {
   SCREEN_PRESETS,
   addPage,
@@ -91,12 +92,6 @@ interface TabMenuState {
   y: number;
   pageId: string;
 }
-
-/** A tab that can be the home page. The loader materialises page_type as
- *  "page" on every round-trip, so testing `!page.page_type` alone matches
- *  only never-saved pages — the guard that kept the home affordances from
- *  ever showing on a loaded project. */
-const isRegularPage = (p: UIPage) => !p.page_type || p.page_type === "page";
 
 
 const toolButton: React.CSSProperties = {
@@ -463,7 +458,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
           // all mutations, so it stays shut there.
           if (!previewMode) setTabMenu({ x: e.clientX, y: e.clientY, pageId: page.id });
         }}
-        title={`${page.name}${isRegularPage(page) ? "" : ` (${page.page_type})`}: ${
+        title={`${page.name}${isRegularPage(page) ? "" : ` (${pageTypeOf(page)})`}: ${
           isCustomPage(page)
             ? "shows a page you wrote"
             : `${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}`
@@ -476,10 +471,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
         ) : !page.page_type ? (
           <Square size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         ) : null}
-        {!isCustomPage(page) && page.page_type === "overlay" && (
+        {!isCustomPage(page) && pageTypeOf(page) === "overlay" && (
           <Layers size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         )}
-        {!isCustomPage(page) && page.page_type === "sidebar" && (
+        {!isCustomPage(page) && pageTypeOf(page) === "sidebar" && (
           <PanelRight size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         )}
         {renamingPageId === page.id ? (

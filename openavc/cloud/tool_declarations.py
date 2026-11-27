@@ -23,14 +23,17 @@ byte. ``tests/test_ai_tool_declarations.py`` holds every row to its handler's
 source both ways: each input a handler reads is declared, each declared input
 is read, and the defaults, the waits and what changes match the code.
 
-Pure data and stdlib, so the hello and the generator read it without loading
-a tool.
+Pure data and stdlib, and the page rules' words (``ui/page_rules.py``, which
+imports nothing), so the hello and the generator read it without loading a
+tool.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from openavc.ui.page_rules import PAGE_TYPES
 
 #: The declarations' own shape; bumps only when that shape changes.
 FORMAT = 1
@@ -254,14 +257,14 @@ TOOLS: dict[str, Tool] = {
     "delete_macro": Tool(LOCKED, {"macro_id": STRING}, ("macro_id",), changes=PROJECT),
     "add_ui_page": Tool(LOCKED, {
         "id": STRING, "name": STRING, "elements": OBJECTS,
-        "layouts": array(LAYOUT), "snap": OBJECT, "page_type": STRING,
+        "layouts": array(LAYOUT), "snap": OBJECT, "page_type": one_of(*PAGE_TYPES),
         "overlay": OBJECT, "background": OBJECT,
         "render_mode": one_of("elements", "custom"), "custom_file": STRING,
         "custom_config": OBJECT, "grant": OBJECT,
     }, ("id",), changes=PROJECT),
     "update_ui_page": Tool(LOCKED, {
         "page_id": STRING, "name": STRING, "layouts": array(LAYOUT), "snap": OBJECT,
-        "page_type": STRING, "overlay": OBJECT, "background": OBJECT,
+        "page_type": one_of(*PAGE_TYPES), "overlay": OBJECT, "background": OBJECT,
         "render_mode": one_of("elements", "custom"), "custom_file": nullable(STRING),
         "custom_config": OBJECT, "grant": nullable(OBJECT),
     }, ("page_id",), changes=PROJECT),

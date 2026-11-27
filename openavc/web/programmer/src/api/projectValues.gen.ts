@@ -228,6 +228,15 @@ export const PROJECT_VALUES = {
     }
   },
   "UIPage": {
+    "page_type": {
+      "default": "page",
+      "words": [
+        "page",
+        "overlay",
+        "sidebar"
+      ],
+      "otherwise": "page"
+    },
     "render_mode": {
       "default": "elements",
       "words": [

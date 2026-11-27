@@ -11905,9 +11905,8 @@ const PAGE_CASES = {
         ui: POPUP_UI,
         steps: [['nav', 'pop'], ['nav', 'dlg'], ['nav', '$back'], ['wait', 500], ['nav', '$back'], ['nav', 'pop'], ['nav', 'home']],
     },
-    // The Preview shows it as a regular page too. It is not one when the
-    // Preview picks the page a dialog opens over, so a dialog shown after it
-    // opens over the first regular page instead.
+    // The Preview shows it as a regular page too, and a dialog shown after it
+    // opens over it, so the dialog's `$back` lands on it.
     unknown_page_type_in_the_preview: {
         ...PREVIEW,
         steps: [init(POPUP_UI, { pageId: 'home' }), showPage({ pageId: 'pop' }), showPage({ pageId: 'pop' }), showPage({ pageId: 'dlg' }),

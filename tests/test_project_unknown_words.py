@@ -5,7 +5,7 @@ loading here, and with a rollback or a fleet push to an older system that
 project would be set aside for a backup:
 
 - a word in a fixed-choice field this release does not know (a trigger type,
-  an overlap, an orientation, a picture size, a page's contents). Each such
+  an overlap, an orientation, a picture size, a page's type or contents). Each such
   field declares its words and what a word it does not know reads as
   (``project_loader.OneOf``); the word is kept as written, so the project goes
   back to the release that saved it unchanged, and the load says what it does
@@ -61,6 +61,7 @@ CHOICES = {
     (MacroStep, "on_timeout"): "fail",
     (Layout, "orientation"): None,
     (PageBackground, "image_size"): "cover",
+    (UIPage, "page_type"): "page",
     (UIPage, "render_mode"): "elements",
     (DriverDependency, "source"): "unknown",
     (PluginDependency, "source"): "unknown",
@@ -84,7 +85,7 @@ def _project(version: str = CURRENT_VERSION, word: str = UNKNOWN) -> dict:
             ],
         }],
         "ui": {"pages": [{
-            "id": "main", "name": "Main", "render_mode": word,
+            "id": "main", "name": "Main", "page_type": word, "render_mode": word,
             "background": {"image": "assets://bg.png", "image_size": word},
             "elements": [],
             "layouts": [
@@ -158,6 +159,7 @@ def test_a_project_holding_words_this_release_does_not_know_loads_and_is_saved_a
     assert macro.steps[0].on_timeout == UNKNOWN
     assert [t.type for t in macro.triggers] == [UNKNOWN, "startup"]
     assert macro.triggers[1].overlap == UNKNOWN
+    assert page.page_type == UNKNOWN
     assert page.render_mode == UNKNOWN
     assert page.background.image_size == UNKNOWN
     assert page.layouts[1].orientation == UNKNOWN
@@ -167,6 +169,7 @@ def test_a_project_holding_words_this_release_does_not_know_loads_and_is_saved_a
     assert written["macros"][0]["overlap"] == UNKNOWN
     assert written["macros"][0]["triggers"][0]["type"] == UNKNOWN
     assert written["ui"]["pages"][0]["layouts"][1]["orientation"] == UNKNOWN
+    assert written["ui"]["pages"][0]["page_type"] == UNKNOWN
 
 
 # --- what the load says -------------------------------------------------------
@@ -190,6 +193,8 @@ def test_the_load_says_what_each_word_it_does_not_know_does_here():
         (FOUND, "Macros > Warm Up > t2",
          f"Overlap {w} is not one this version of OpenAVC knows, so it works as Skip."),
         (FOUND, "Main > page",
+         f"Page type {w} is not one this version of OpenAVC knows, so it is drawn as a Page."),
+        (FOUND, "Main > page",
          f"Contents {w} is not one this version of OpenAVC knows, so the page draws the controls placed on it."),
         (FOUND, "Main > page",
          f"Background picture size {w} is not one this version of OpenAVC knows, so the picture is drawn as Cover."),
@@ -203,6 +208,7 @@ def test_a_project_with_only_words_this_release_knows_says_nothing():
     data = _project(word="queue")
     data["macros"][0]["steps"][0]["on_timeout"] = "continue"
     data["macros"][0]["triggers"][0]["type"] = "startup"
+    data["ui"]["pages"][0]["page_type"] = "page"
     data["ui"]["pages"][0]["render_mode"] = "elements"
     data["ui"]["pages"][0]["background"]["image_size"] = "contain"
     data["ui"]["pages"][0]["layouts"][1]["orientation"] = "portrait"
@@ -475,6 +481,7 @@ def _plain() -> dict:
     data = _project(word="queue")
     data["macros"][0]["steps"][0]["on_timeout"] = "continue"
     data["macros"][0]["triggers"][0]["type"] = "startup"
+    data["ui"]["pages"][0]["page_type"] = "page"
     data["ui"]["pages"][0]["render_mode"] = "elements"
     data["ui"]["pages"][0]["background"]["image_size"] = "contain"
     data["ui"]["pages"][0]["layouts"][1]["orientation"] = "portrait"
@@ -557,3 +564,28 @@ async def test_an_edit_that_adds_a_word_this_release_does_not_know_is_refused(tm
     )}
     assert engine.project.ui.pages[0].background.image_size == "contain"
 
+
+
+@pytest.mark.asyncio
+async def test_an_ai_edit_that_makes_a_page_a_modal_is_refused_and_names_the_page_types(tmp_path, monkeypatch):
+    from openavc.cloud.tools import apply_tool_edit
+
+    engine, _ = await _edit_rig(tmp_path, monkeypatch, _plain())
+
+    def mutate(project):
+        project.ui.pages[0].page_type = "modal"
+
+    result = await apply_tool_edit(engine, mutate)
+
+    assert result == {"error": (
+        "Page type 'modal' is not one this version of OpenAVC knows. Use: page, overlay, sidebar"
+    )}
+    assert engine.project.ui.pages[0].page_type == "page"
+
+
+def test_the_page_types_are_the_page_rules_words():
+    from openavc.ui import page_rules
+
+    rule = _declared_choices()[(UIPage, "page_type")]
+    assert rule.words == page_rules.PAGE_TYPES
+    assert rule.otherwise == page_rules.UNKNOWN_TYPE_READS_AS

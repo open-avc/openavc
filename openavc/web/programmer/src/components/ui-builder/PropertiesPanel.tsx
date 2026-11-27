@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { NumericInput } from "../shared/NumericInput";
+import { isRegularPage, pageTypeOf } from "../shared/pageType";
 import { PAGE_RULES, PROJECT_VALUES } from "../../api/projectValues.gen";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
@@ -642,9 +643,9 @@ function MasterElementProperties({
                     onChange={() => handleTogglePage(p.id)}
                   />
                   {p.name}
-                  {p.page_type && p.page_type !== "page" && (
+                  {!isRegularPage(p) && (
                     <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      ({p.page_type})
+                      ({pageTypeOf(p)})
                     </span>
                   )}
                 </label>
@@ -738,7 +739,7 @@ function PageProperties({
 }) {
   const bg = page.background || {};
   const overlay = page.overlay || {};
-  const pageType = page.page_type || "page";
+  const pageType = pageTypeOf(page);
   const isOverlay = pageType === "overlay";
   const isSidebar = pageType === "sidebar";
   const isOverlayOrSidebar = isOverlay || isSidebar;

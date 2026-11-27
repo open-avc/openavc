@@ -108,6 +108,7 @@ _SAID: dict[tuple[type[BaseModel], str], tuple[str, str]] = {
     (MacroStep, "on_timeout"): ("On timeout", "a timeout fails the macro"),
     (TriggerConfig, "type"): ("Trigger type", "the trigger never fires"),
     (TriggerConfig, "overlap"): ("Overlap", "it works as Skip"),
+    (UIPage, "page_type"): ("Page type", "it is drawn as a Page"),
     (UIPage, "render_mode"): ("Contents", "the page draws the controls placed on it"),
     (PageBackground, "image_size"): ("Background picture size", "the picture is drawn as Cover"),
     (Layout, "orientation"): ('Orientation of layout "{layout}"', "no screen is matched to that layout"),
@@ -183,6 +184,7 @@ class _Words:
             self.check((TriggerConfig, "overlap"), trigger, where)
 
     def page(self, page: dict) -> None:
+        self.check((UIPage, "page_type"), page)
         self.check((UIPage, "render_mode"), page)
         self.check((PageBackground, "image_size"), page.get("background"))
         for layout in _dicts(page.get("layouts")):

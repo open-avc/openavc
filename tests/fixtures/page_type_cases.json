@@ -1,0 +1,14 @@
+[
+  {"page": {"id": "p"}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": null}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": ""}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": "page"}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": "overlay"}, "reads_as": "overlay"},
+  {"page": {"id": "p", "page_type": "sidebar"}, "reads_as": "sidebar"},
+  {"page": {"id": "p", "page_type": "modal"}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": "popup"}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": "Overlay"}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": " sidebar"}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": 5}, "reads_as": "page"},
+  {"page": {"id": "p", "page_type": true}, "reads_as": "page"}
+]

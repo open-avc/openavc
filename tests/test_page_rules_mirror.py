@@ -13,9 +13,6 @@ those functions over one corpus and the answers are compared with the Python
 functions over the same corpus, so a change to either lands in both.
 
 Left out of the corpus, because the two sides answer differently today:
-- a page of a type this release does not know (``modal``) in a list the panel
-  falls back through: the page rules read it as a regular page, as navigation
-  draws it, and ``fallbackPage`` passes over it;
 - a box side written as text that starts with a number and goes on
   (``"40px"``), or as a list holding one: the panel reads that number, the
   rules the default (the project schema takes neither);
@@ -55,13 +52,17 @@ ABSENT = "<absent>"
 WRITTEN_TYPES = [ABSENT, None, "", "page", "overlay", "sidebar", "modal", "popup", "Overlay", " sidebar", 5, True]
 
 #: The types a page in a list the panel falls back through is written as: the
-#: three words and the blanks.
-KNOWN_TYPES = {"main": ABSENT, "home": "page", "blank": "", "none": None, "dialog": "overlay", "drawer": "sidebar"}
+#: three words, the blanks, and words this release does not know.
+KNOWN_TYPES = {
+    "main": ABSENT, "home": "page", "blank": "", "none": None, "dialog": "overlay", "drawer": "sidebar",
+    "confirm": "modal", "popup": "popup", "shouted": "Overlay",
+}
 
 #: Page lists, by the ids of KNOWN_TYPES, in order.
 PAGE_LISTS = [
     [], ["main"], ["dialog"], ["dialog", "drawer"], ["dialog", "main", "home"], ["drawer", "dialog", "home"],
     ["blank", "dialog"], ["dialog", "none"], ["home", "main"], ["drawer", "dialog", "blank", "main"],
+    ["dialog", "confirm", "home"], ["drawer", "popup"], ["shouted", "dialog"], ["confirm", "dialog"],
 ]
 
 #: The page asked for, for each list: one of its pages, one it does not hold, none.
@@ -216,7 +217,9 @@ def test_a_plain_page_runs_author_markup_only_under_a_custom_master_that_draws_o
 def test_the_corpus_reaches_every_answer(panel_answers: dict) -> None:
     """Each answer the rules can give is in the corpus, so none goes unheld."""
     assert set(panel_answers["opens_over"]) == {True, False}
-    assert {got for got in panel_answers["fallback"]} >= {None, "main", "home", "dialog", "blank", "none"}
+    assert {got for got in panel_answers["fallback"]} >= {
+        None, "main", "home", "dialog", "blank", "none", "confirm", "popup", "shouted",
+    }
     boxes = {json.dumps(box, sort_keys=True) for box in panel_answers["boxes"]}
     defaults = {json.dumps(overlay_box(_page("p", t)), sort_keys=True) for t in ("overlay", "sidebar")}
     assert defaults < boxes
@@ -254,6 +257,16 @@ def test_a_type_this_release_does_not_know_reads_as_a_regular_page() -> None:
         page = _page("p", written)
         known = written if written in page_rules.PAGE_TYPES else "page"
         assert page_type_of(page) == known, written
+
+
+def test_the_builder_reads_a_page_type_as_the_rules_do() -> None:
+    """The Builder's page-type reader (``components/shared/pageType.ts``) runs
+    the same cases in its own test."""
+    cases = json.loads((Path(__file__).parent / "fixtures" / "page_type_cases.json").read_text(encoding="utf-8"))
+    for case in cases:
+        assert page_type_of(case["page"]) == case["reads_as"], case["page"]
+    held = {json.dumps(case["page"].get("page_type", ABSENT)) for case in cases}
+    assert held == {json.dumps(written) for written in WRITTEN_TYPES}
 
 
 def test_the_navigation_words_are_moves_and_the_prefix_names_no_page() -> None:

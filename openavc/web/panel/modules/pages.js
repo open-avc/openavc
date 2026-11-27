@@ -8,9 +8,10 @@
  * `PAGE_RULES`), and `tests/test_page_rules_mirror.py` runs these functions
  * against that module's.
  *
- * A page's type decides how it is shown. A regular page (no type, or
- * 'page') replaces the one on screen and goes into the history `$back`
- * walks; an overlay or a sidebar opens over it, in a box of its own. The
+ * A page's type decides how it is shown. A regular page ('page', none, or a
+ * type the page rules do not know) replaces the one on screen and goes into
+ * the history `$back` walks; an overlay or a sidebar opens over it, in a box
+ * of its own. The
  * rule worth knowing before changing it: a path that shows a page asks
  * `opensOver` here. Navigation and the Builder's Preview do, and so does the
  * panel's page draw (`pageOpening`), which is how the idle return and a
@@ -40,9 +41,13 @@ import { PAGE_RULES } from './project_values.gen.js';
 /** How many regular pages `$back` can walk back through. */
 const HISTORY_LIMIT = 50;
 
-/** How a page is shown. A page with no type is a regular page. */
+/**
+ * How a page is shown: its type when the page rules know it, else what an
+ * unknown type, or none, reads as (a regular page).
+ */
 function pageTypeOf(page) {
-    return page.page_type || 'page';
+    const written = page.page_type;
+    return PAGE_RULES.page_types.includes(written) ? written : PAGE_RULES.unknown_type_reads_as;
 }
 
 /** Does this page open over the one on screen: an overlay or a sidebar? */
@@ -52,7 +57,7 @@ export function opensOver(page) {
 
 /** A regular page: shown in place of the one on screen. */
 function isRegularPage(page) {
-    return pageTypeOf(page) === 'page';
+    return !opensOver(page);
 }
 
 /** The page drawn when the current one names nothing: the first regular page, else the first. */
