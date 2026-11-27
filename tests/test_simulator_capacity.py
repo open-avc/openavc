@@ -88,11 +88,22 @@ def _lines(count: int) -> list[bytes]:
     return [f"PING {i:02}\r".encode() for i in range(count)]
 
 
-async def _replies(reader: asyncio.StreamReader) -> list[bytes]:
+#: How long the replies a test expects may take to arrive, on a busy machine.
+EXPECTED_WITHIN = 5.0
+
+
+async def _replies(reader: asyncio.StreamReader, expect: int = 0) -> list[bytes]:
+    """The lines answered until nothing more arrives for QUIET seconds. With
+    ``expect``, that many are waited for first (up to EXPECTED_WITHIN), so an
+    answer a busy machine delivers late is not read as silence."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + EXPECTED_WITHIN
     out = b""
     while True:
+        lines = [line for line in out.split(b"\r") if line]
+        wait = max(deadline - loop.time(), QUIET) if len(lines) < expect else QUIET
         try:
-            chunk = await asyncio.wait_for(reader.read(4096), timeout=QUIET)
+            chunk = await asyncio.wait_for(reader.read(4096), timeout=wait)
         except asyncio.TimeoutError:
             break
         if not chunk:
@@ -138,7 +149,7 @@ async def test_a_burst_over_the_buffer_loses_bytes_and_says_how_many(echo):
     writer.write(b"".join(_lines(10)))
     await writer.drain()
     # 32 bytes are four whole lines; the other 48 bytes are lost.
-    assert await _replies(reader) == [b"OK " + line.rstrip(b"\r") for line in _lines(4)]
+    assert await _replies(reader, expect=4) == [b"OK " + line.rstrip(b"\r") for line in _lines(4)]
     assert sim.to_info_dict()["capacity"]["bytes_lost"] == 48
 
 
@@ -150,7 +161,7 @@ async def test_the_same_lines_paced_are_all_answered(echo):
         writer.write(line)
         await writer.drain()
         await asyncio.sleep(0.04)
-    assert len(await _replies(reader)) == 10
+    assert len(await _replies(reader, expect=10)) == 10
     assert sim.to_info_dict()["capacity"]["bytes_lost"] == 0
 
 
@@ -192,7 +203,7 @@ async def test_silence_lasts_until_the_connection_closes(echo):
     reader2, writer2 = await connect()
     writer2.write(b"PING 42\r")
     await writer2.drain()
-    assert await _replies(reader2) == [b"OK PING 42"]
+    assert await _replies(reader2, expect=1) == [b"OK PING 42"]
 
 
 async def test_switching_it_on_applies_to_a_connection_already_open(echo):
@@ -200,12 +211,23 @@ async def test_switching_it_on_applies_to_a_connection_already_open(echo):
     reader, writer = await connect()
     writer.write(b"PING 00\r")
     await writer.drain()
-    assert await _replies(reader) == [b"OK PING 00"]
+    assert await _replies(reader, expect=1) == [b"OK PING 00"]
     sim.set_capacity(enabled=True, rx_buffer=16, process_ms=10)
     writer.write(b"".join(_lines(6)))
     await writer.drain()
-    assert len(await _replies(reader)) == 2
+    assert len(await _replies(reader, expect=2)) == 2
     assert sim.to_info_dict()["capacity"]["bytes_lost"] == 32
+
+
+async def test_a_reply_later_than_the_quiet_gap_is_read_when_it_is_expected(echo):
+    # The second answer comes 0.4 s after the first, past QUIET: a test that
+    # expects it waits for it, as it would for one a busy machine runs late.
+    sim, connect = echo
+    sim.set_capacity(enabled=True, rx_buffer=1024, process_ms=400)
+    reader, writer = await connect()
+    writer.write(b"".join(_lines(2)))
+    await writer.drain()
+    assert len(await _replies(reader, expect=2)) == 2
 
 
 async def test_off_it_loses_nothing(echo):
@@ -213,7 +235,7 @@ async def test_off_it_loses_nothing(echo):
     reader, writer = await connect()
     writer.write(b"".join(_lines(40)))
     await writer.drain()
-    assert len(await _replies(reader)) == 40
+    assert len(await _replies(reader, expect=40)) == 40
     assert sim.to_info_dict()["capacity"]["bytes_lost"] == 0
 
 
@@ -223,7 +245,8 @@ async def test_switching_it_on_starts_the_count_again(echo):
     reader, writer = await connect()
     writer.write(b"".join(_lines(3)))
     await writer.drain()
-    await _replies(reader)
+    # 8 bytes are one whole line; the other 16 are lost.
+    assert len(await _replies(reader, expect=1)) == 1
     assert sim.to_info_dict()["capacity"]["bytes_lost"] == 16
     sim.set_capacity(enabled=False)
     assert sim.to_info_dict()["capacity"]["bytes_lost"] == 16
