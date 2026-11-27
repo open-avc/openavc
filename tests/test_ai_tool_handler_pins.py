@@ -222,11 +222,12 @@ class TestDoBindings:
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": mode}]}}
         assert validate_bindings(b) is None
 
-    def test_a_list_mode_raises_today(self):
-        # Present behaviour, not a refusal: the membership test cannot hash it.
-        b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": ["toggle"]}]}}
-        with pytest.raises(TypeError):
-            validate_bindings(b)
+    @pytest.mark.parametrize("mode", [["toggle"], {"toggle": 1}])
+    def test_a_list_or_object_mode_is_refused(self, mode):
+        b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": mode}]}}
+        assert validate_bindings(b) == _refusal(
+            f"do.press[0]: mode '{mode}' is not valid. Use: tap, toggle, hold_repeat, tap_hold"
+        )
 
     def test_toggle_needs_a_key_and_an_off_action(self):
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": "toggle"}]}}

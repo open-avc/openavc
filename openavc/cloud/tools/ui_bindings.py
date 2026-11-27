@@ -267,7 +267,8 @@ def _check_press_mode(first: dict, errors: list[str]) -> None:
     """What the button's mode needs: a toggle its key and off action, a
     tap-and-hold its hold action."""
     mode = first.get("mode", "tap")
-    if mode and mode not in _VALID_MODES:
+    # A list or object is no mode, and is refused rather than hashed.
+    if mode and (not isinstance(mode, str) or mode not in _VALID_MODES):
         errors.append(
             f"do.press[0]: mode '{mode}' is not valid. Use: {_MODES_TEXT}"
         )

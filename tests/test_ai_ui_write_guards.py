@@ -967,3 +967,27 @@ async def test_a_page_grant_is_shape_checked_like_an_element_grant(
     })
     assert payload["success"] is False
     assert "not shaped right" in payload["result"]["error"]
+
+
+# --- A page read and sent back --------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operator", ["==", "equals", "greater_than"])
+async def test_an_element_read_with_another_spelling_of_an_operator_goes_back(
+    handler, mock_engine, mock_agent, operator,
+):
+    """An element whose visibility uses a spelling the panel reads, written by
+    hand, comes back through the AI's write untouched: update_ui_element
+    replaces the bindings whole, so a refusal would name an operator the AI
+    never wrote."""
+    title = mock_engine.project.ui.pages[0].elements[1]
+    title.bindings = {"show": {"visible_when": {"key": "var.room", "operator": operator, "value": 1}}}
+    page = _result(await _run(handler, mock_engine, mock_agent, "get_ui_page", {"page_id": "main"}))
+    read = next(el for el in page["elements"] if el["id"] == "title")
+    result = _result(await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "bindings": read["bindings"],
+    }))
+    assert result["status"] == "updated"
+    saved = mock_engine.project.ui.pages[0].elements[1].bindings
+    assert saved["show"]["visible_when"]["operator"] == operator
