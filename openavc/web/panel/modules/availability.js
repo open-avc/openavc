@@ -156,9 +156,8 @@ export function devicesFlipped(changedKeys) {
 /** The device whose presence word a changed key holds (`device.<id>.presence`), or null. */
 function reachabilityOf(key) {
     if (typeof key !== 'string') return null;
-    const parts = key.split('.');
-    if (parts.length !== 3 || parts[0] !== 'device' || parts[2] !== 'presence') return null;
-    return parts[1] || null;
+    const id = key.split('.')[1];
+    return id && key === `device.${id}.presence` ? id : null;
 }
 
 /**
