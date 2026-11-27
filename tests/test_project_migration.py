@@ -25,6 +25,7 @@ from openavc.core.project_migration import (
     migrate_0_15_to_0_16,
     migrate_0_16_to_0_17,
     migrate_0_17_to_0_18,
+    migrate_0_18_to_0_19,
     migrate_project,
 )
 from openavc.core.project_loader import ProjectConfig
@@ -406,7 +407,8 @@ class TestFullMigrationChain:
         data = migrate_0_14_to_0_15(data)
         data = migrate_0_15_to_0_16(data)
         data = migrate_0_16_to_0_17(data)
-        data = migrate_0_17_to_0_18(data)  # Now at CURRENT_VERSION
+        data = migrate_0_17_to_0_18(data)
+        data = migrate_0_18_to_0_19(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
@@ -1261,3 +1263,20 @@ class TestEdgeCases:
 
         assert migrated is False
         assert result2["openavc_version"] == CURRENT_VERSION
+
+
+def test_0_18_to_0_19_is_a_stamp_that_moves_nothing():
+    """A condition's value naming a key ($var.wanted) is read as one from
+    0.19.0; the stamp says so and changes nothing in the file."""
+    data = {
+        "openavc_version": "0.18.0",
+        "project": {"id": "acme_room", "name": "Acme Room"},
+        "macros": [{"id": "m", "name": "M", "steps": [{
+            "action": "conditional",
+            "condition": {"key": "device.acme_widget.input", "operator": "eq", "value": "$var.wanted"},
+        }]}],
+    }
+    before = copy.deepcopy(data)
+    out = migrate_0_18_to_0_19(data)
+    assert out["openavc_version"] == "0.19.0"
+    assert {**out, "openavc_version": "0.18.0"} == before

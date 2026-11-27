@@ -41,7 +41,7 @@ def _migrate(data: dict) -> tuple[dict, MigrationNotes]:
     notes = MigrationNotes()
     out, migrated = migrate_project(data, notes)
     assert migrated
-    assert out["openavc_version"] == CURRENT_VERSION == "0.18.0"
+    assert out["openavc_version"] == CURRENT_VERSION == "0.19.0"
     return out, notes
 
 
@@ -206,7 +206,7 @@ def test_a_project_with_nothing_to_rename_says_nothing():
 
     out, notes = _migrate(data)
 
-    before["openavc_version"] = "0.18.0"
+    before["openavc_version"] = CURRENT_VERSION
     assert out == before
     assert not notes
 

@@ -831,6 +831,27 @@ def migrate_0_16_to_0_17(data: dict, notes: MigrationNotes | None = None) -> dic
     return data
 
 
+def migrate_0_18_to_0_19(data: dict, notes: MigrationNotes | None = None) -> dict:
+    """
+    Migrate from 0.18.0 to 0.19.0 -- a condition's value can name a key.
+
+    A version stamp: nothing in an existing project moves. What the stamp
+    records is that a condition's value starting with `$` (`$var.wanted`) now
+    compares with what that key holds, at a macro's Skip If, Conditional and
+    Wait Until, a trigger's guards and a State Change trigger's own value, and
+    a control's `visible_when` (`condition_eval.holds`). Before 0.19.0 it was
+    compared as the text, so `power == $var.wanted` never held and `!=` always
+    did.
+
+    The same shape as 0.14.0's press context: open a 0.19.0 project on a
+    platform that reads the value as text and every such condition silently
+    takes the other branch. The version is what says which meaning the project
+    was written against. No saved project held one, so none changes meaning.
+    """
+    data["openavc_version"] = "0.19.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -850,6 +871,7 @@ MIGRATIONS = [
     ("0.15.0", "0.16.0", migrate_0_15_to_0_16),
     ("0.16.0", "0.17.0", migrate_0_16_to_0_17),
     ("0.17.0", "0.18.0", migrate_0_17_to_0_18),
+    ("0.18.0", "0.19.0", migrate_0_18_to_0_19),
 ]
 
 # The format this platform writes: where the chain ends.
