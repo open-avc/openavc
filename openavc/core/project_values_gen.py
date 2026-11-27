@@ -24,6 +24,9 @@ the save refuses.
 Beside it, both files carry the page rules (``ui/page_rules.py``) as
 ``PAGE_RULES``: the page types, which open over the page on screen, the
 navigation words, and the box an overlay draws in for a side it leaves blank.
+The Builder's file also carries how a control's id is spelled
+(``ui/page_structure.element_id_rule``) as ``ELEMENT_ID_RULE``, the pattern
+and the sentence its rename refuses with; the panel names no control.
 
 Data only. Run:  python -m openavc.core.project_values_gen
 A test compares both committed files against a fresh render, so a bound changed
@@ -43,6 +46,7 @@ from pydantic.types import AllowInfNan
 
 from openavc.core.project_loader import OneOf, ProjectConfig, UISettings, blank_rule
 from openavc.ui.page_rules import page_rules_table
+from openavc.ui.page_structure import element_id_rule
 from openavc.utils.generated import write_artifacts
 
 TS_ARTIFACT = "openavc/web/programmer/src/api/projectValues.gen.ts"
@@ -273,6 +277,13 @@ BANNER = """\
 // blank; a sidebar is always `sidebar_height` tall.
 """
 
+TS_ELEMENT_ID_NOTE = """
+// ELEMENT_ID_RULE, from the element id rule (openavc/ui/page_structure.py),
+// is how a control's id is spelled: `pattern` is the whole id (a lowercase
+// letter, then lowercase letters, digits and underscores), and `sentence`
+// what a rename that breaks it is told.
+"""
+
 TS_BODY = """
 /** One project value: what a blank one is, and the range it may hold. */
 export interface ProjectValue {
@@ -292,6 +303,8 @@ export interface ProjectValue {
 export const PROJECT_VALUES = %(table)s as const satisfies Record<string, Record<string, ProjectValue>>;
 
 export const PAGE_RULES = %(page_rules)s as const;
+
+export const ELEMENT_ID_RULE = %(element_id_rule)s as const;
 """
 
 PANEL_BODY = """
@@ -306,10 +319,17 @@ _BODIES = {TS_ARTIFACT: TS_BODY, PANEL_ARTIFACT: PANEL_BODY}
 ARTIFACTS = tuple(_BODIES)
 
 
+#: What each file adds to the banner.
+_NOTES = {TS_ARTIFACT: TS_ELEMENT_ID_NOTE, PANEL_ARTIFACT: ""}
+
+
 def render(artifact: str) -> str:
     table = json.dumps(project_values(), indent=2, ensure_ascii=False)
     page_rules = json.dumps(page_rules_table(), indent=2, ensure_ascii=False)
-    return BANNER + _BODIES[artifact] % {"table": table, "page_rules": page_rules}
+    element_id = json.dumps(element_id_rule(), indent=2, ensure_ascii=False)
+    return BANNER + _NOTES[artifact] + _BODIES[artifact] % {
+        "table": table, "page_rules": page_rules, "element_id_rule": element_id,
+    }
 
 
 def main() -> int:

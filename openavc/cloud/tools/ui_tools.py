@@ -24,6 +24,7 @@ from openavc.cloud.tools.ui_review import UIReview, WriteNotes, master_findings
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_structure import (
     element_id_holders,
+    element_id_issue,
     id_taken,
     master_parent_issue,
     page_id_issue,
@@ -487,10 +488,11 @@ class _NewElements:
         self.problems.append(problem)
 
     def taken(self, el_id: Any) -> str | None:
-        """Why a new control cannot have this id, or None when it can: a
+        """Why a new control cannot have this id, or None when it can: it is
+        not spelled as an id may be (``page_structure.element_id_issue``), a
         control already holds it (``page_structure.id_taken``), or another in
         this call does."""
-        issue = id_taken(el_id, self.id_holders.get(el_id, ()))
+        issue = element_id_issue(el_id) or id_taken(el_id, self.id_holders.get(el_id, ()))
         if issue is not None:
             return issue.message
         if el_id in self.seen:
@@ -500,7 +502,11 @@ class _NewElements:
         return None
 
     def claim(self, el_id: Any) -> bool:
-        """Take the id for this call, or refuse it (the refusal kept); True when taken."""
+        """Take the id for this call, or refuse it (the refusal kept); True when
+        taken. A definition with no id is left to the model, which refuses it
+        as required."""
+        if el_id is None:
+            return True
         taken = self.taken(el_id)
         if taken:
             self.refuse(taken)
@@ -546,8 +552,8 @@ class _NewElements:
 class _NewControls(_NewElements):
     """New controls for a page that already exists, built here and landed together.
 
-    An id must be free on every page and master, and used once in the call
-    (``taken``). A container must be a group on the page or one accepted
+    An id must be spelled as one may be, free on every page and master, and
+    used once in the call (``taken``). A container must be a group on the page or one accepted
     earlier in the same call: a container and its children can arrive
     together, so each control accepted becomes a candidate parent for the next
     (``holders`` grows as they are).
@@ -566,7 +572,7 @@ class _NewControls(_NewElements):
         self.check()
 
     def _take(self, el_data: dict) -> None:
-        if not self.claim(el_data.get("id", "?")):
+        if not self.claim(el_data.get("id")):
             return
         made = self.prepare(el_data, self._build)
         if made is not None:
@@ -606,15 +612,17 @@ def _refuse_master_parent(master_id: Any, data: dict) -> None:
 
 def _new_master(project: Any, el_data: dict) -> Any:
     """A master built from its definition, refused in this order: what its
-    definition may not say, an id already taken (a master draws on every page
-    it names, so its id may be no page's control and no other master's), a
-    container, its bindings."""
+    definition may not say, an id not spelled as one may be, an id already
+    taken (a master draws on every page it names, so its id may be no page's
+    control and no other master's), a container, its bindings."""
     from openavc.core.project_loader import MasterElement
 
     what = f"Master element '{el_data['id']}'"
     _refuse_bad_master_definition(el_data, what)
     holders = element_id_holders(project.ui.pages, project.ui.master_elements)
-    taken = id_taken(el_data["id"], holders.get(el_data["id"], ()), master=True)
+    taken = element_id_issue(el_data["id"], master=True) or id_taken(
+        el_data["id"], holders.get(el_data["id"], ()), master=True,
+    )
     if taken is not None:
         raise ToolEditError({"error": taken.message})
     _refuse_master_parent(el_data["id"], el_data)

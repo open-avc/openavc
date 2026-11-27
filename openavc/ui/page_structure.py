@@ -7,6 +7,17 @@ Structure:
   reaches the first control holding it, pages in order and then the masters
   (``core/ui_events.find_element``), so a second control with it would run
   the first one's actions (``element_id_holders``, ``id_taken``).
+- **An element id is spelled as the Builder takes one**: a lowercase letter,
+  then lowercase letters, digits and underscores (``ELEMENT_ID_SPELLING``,
+  ``element_id_issue``). The id is a segment of every state key and event the
+  control owns, and the event bus matches a glob subscription with
+  ``fnmatch``, which folds case where the file system does (Windows), so an
+  id that differs from another only in case is one control there and two
+  everywhere else. The Builder reads the pattern and its sentence from the
+  table this module serves (``element_id_rule``, rendered by
+  ``core/project_values_gen``) for its rename; the AI's create doors refuse
+  a new control's id that breaks it, and a report says it of an id a saved
+  project already holds.
 - **A page id is used once, and names a page.** One starting with ``$`` is
   read by the panel as one of its own moves (``page_rules.names_no_page``),
   so a Page Nav to that page never lights (``page_id_issue``).
@@ -69,6 +80,7 @@ which keeps this module importable by the project schema.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
@@ -78,6 +90,7 @@ from openavc.core.condition_eval import canonical_operator
 from openavc.ui.page_rules import NAVIGATION_PREFIX, NAVIGATION_WORDS, names_no_page
 
 ELEMENT_ID_TAKEN = "element_id_taken"
+ELEMENT_ID_SPELLED = "element_id_spelled"
 PAGE_ID_TAKEN = "page_id_taken"
 PAGE_ID_NAMES_NO_PAGE = "page_id_names_no_page"
 LAYOUT_ID_REPEATED = "layout_id_repeated"
@@ -182,8 +195,43 @@ def id_taken(element_id: Any, holders: Sequence[str | None], *, master: bool = F
     return Issue(ELEMENT_ID_TAKEN, message, element=element_id)
 
 
+#: What a control's id may be, judged whole (``fullmatch``, so a line break
+#: after it is refused as JavaScript's ``^...$`` refuses it).
+ELEMENT_ID_SPELLING = r"[a-z][a-z0-9_]*"
+_ELEMENT_ID_RE = re.compile(ELEMENT_ID_SPELLING)
+
+#: The rule in one sentence: the Builder's rename says it under the field, and
+#: a door or a report says it after the control it is about.
+ELEMENT_ID_SENTENCE = (
+    "ID must start with a lowercase letter and contain only lowercase letters, "
+    "digits, and underscores."
+)
+
+
+def is_element_id(value: Any) -> bool:
+    """Whether ``value`` is spelled as a control's id may be."""
+    return isinstance(value, str) and _ELEMENT_ID_RE.fullmatch(value) is not None
+
+
+def element_id_issue(element_id: Any, *, master: bool = False) -> Issue | None:
+    """Why a control (a master, when ``master``) cannot be named
+    ``element_id``, or None when it can. A control with no id (None) is not
+    this rule's: the schema says an id is required."""
+    if element_id is None or is_element_id(element_id):
+        return None
+    named = f"Master element '{element_id}'" if master else f"Element '{element_id}'"
+    return Issue(ELEMENT_ID_SPELLED, f"{named}: {ELEMENT_ID_SENTENCE}", element=element_id)
+
+
+def element_id_rule() -> dict[str, str]:
+    """The rule as data for the Builder: the pattern as a JavaScript test
+    writes it, and the sentence."""
+    return {"pattern": f"^{ELEMENT_ID_SPELLING}$", "sentence": ELEMENT_ID_SENTENCE}
+
+
 def _element_id_issues(pages: Sequence[Any], masters: Sequence[Any]) -> list[Issue]:
-    """Each control a press never reaches because one before it has its id."""
+    """Each control whose id is not spelled as one may be, and each a press
+    never reaches because one before it has its id."""
     seen: dict[Any, list[str | None]] = {}
     issues: list[Issue] = []
     places = [(page, element) for page in pages for element in _listed(page, "elements")]
@@ -191,9 +239,11 @@ def _element_id_issues(pages: Sequence[Any], masters: Sequence[Any]) -> list[Iss
     for page, element in places:
         element_id = _id(element)
         page_id = None if page is None else _id(page)
-        issue = id_taken(element_id, seen.get(element_id, ()), master=page is None)
-        if issue is not None:
-            issues.append(replace(issue, page=page_id))
+        found = (
+            element_id_issue(element_id, master=page is None),
+            id_taken(element_id, seen.get(element_id, ()), master=page is None),
+        )
+        issues.extend(replace(issue, page=page_id) for issue in found if issue is not None)
         seen.setdefault(element_id, []).append(page_id)
     return issues
 
@@ -422,7 +472,8 @@ def master_parent_issue(master_id: Any, parent: Any) -> Issue | None:
 def page_issues(pages: Iterable[Any], masters: Iterable[Any] = ()) -> list[Issue]:
     """Everything the project's pages and masters hold that they may not.
 
-    The page ids first, then the controls a press never reaches, then each
+    The page ids first, then each control's id (its spelling, and the
+    controls a press never reaches), then each
     page's arrangements, containers and bindings, page by page, then each
     master's container and bindings. A binding issue names its control.
     """

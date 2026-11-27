@@ -22,7 +22,7 @@ Toggle the palette with **Ctrl+E**.
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
 
 **Right panel: Properties.** Configure the selected element:
-- Basic properties (ID, type, label). Type a new ID and press Enter or click away to save it; Escape puts the old one back. Changing a control's ID updates the rest of the project with it: the `ui.<id>.` keys bindings, macros and variables read, a `$ui.<id>.` value, and a macro trigger on the control's panel events (`ui.press.<id>`). Scripts are not changed, so update any that use the old ID yourself
+- Basic properties (ID, type, label). Type a new ID and press Enter or click away to save it; Escape puts the old one back. An ID starts with a lowercase letter and uses only lowercase letters, digits and underscores. Changing a control's ID updates the rest of the project with it: the `ui.<id>.` keys bindings, macros and variables read, a `$ui.<id>.` value, and a macro trigger on the control's panel events (`ui.press.<id>`). Scripts are not changed, so update any that use the old ID yourself
 - Layout (position and size in percent, container, aspect lock)
 - Style (colors, font size, border radius)
 - Bindings (the critical programming section, where logic meets the UI)
@@ -108,6 +108,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 Validate also lists what a page holds that it should not, the same things the AI assistant is refused when it tries to write them. A binding left half set up in the Bindings panel shows here; the rest mostly come from a hand-edited or imported file:
 
 - **Two controls with the same id**, on one page, on two pages, or as a master element. A press on the second one runs the first one's actions.
+- **A control id that breaks the ID rule**: anything but a lowercase letter followed by lowercase letters, digits and underscores, such as `Power-On`. Rename it in the control's Basic properties.
 - **Two pages with the same id**, or a page id starting with `$`, which the panel reads as one of its own moves.
 - **Arrangements that clash**: two with the same id or the same orientation, or one that inherits from itself, from an arrangement that is not on the page, or round in a loop.
 - **A control in the wrong container**: one that is not on the page, is not a group, or is the control itself or inside it. A master element is never inside a container.

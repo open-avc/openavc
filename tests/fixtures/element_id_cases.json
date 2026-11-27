@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {"name": "one_letter", "id": "b", "expected": true},
+    {"name": "letters_digits_underscores", "id": "b_2_x", "expected": true},
+    {"name": "a_type_and_a_count", "id": "status_led_12", "expected": true},
+    {"name": "trailing_underscore", "id": "btn_", "expected": true},
+    {"name": "empty", "id": "", "expected": false},
+    {"name": "capital_first", "id": "Btn", "expected": false},
+    {"name": "capital_inside", "id": "powerOn", "expected": false},
+    {"name": "hyphen_and_capitals", "id": "Upper-Case", "expected": false},
+    {"name": "space", "id": "a b", "expected": false},
+    {"name": "digit_first", "id": "1a", "expected": false},
+    {"name": "underscore_first", "id": "_a", "expected": false},
+    {"name": "hyphen", "id": "btn-1", "expected": false},
+    {"name": "dot", "id": "btn.1", "expected": false},
+    {"name": "colon", "id": "plugin:acme_tiles:status_tile_1", "expected": false},
+    {"name": "accented_letter", "id": "café", "expected": false},
+    {"name": "line_break_after", "id": "a\n", "expected": false},
+    {"name": "line_break_before", "id": "\na", "expected": false},
+    {"name": "tab", "id": "a\tb", "expected": false}
+  ]
+}

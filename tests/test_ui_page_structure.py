@@ -102,6 +102,14 @@ PRIMARY = {"id": "landscape", "primary": True}
 
 #: (what is swapped in, the issues it makes: code, page, element, layout)
 CASES = {
+    "a page control whose id is not spelled as one may be": (
+        _add_element(0, {"id": "Upper-Case", "type": "button"}),
+        [(ps.ELEMENT_ID_SPELLED, "main", "Upper-Case", None)],
+    ),
+    "a master whose id is not spelled as one may be": (
+        _add_master({"id": "a b", "type": "label", "pages": "*"}),
+        [(ps.ELEMENT_ID_SPELLED, None, "a b", None)],
+    ),
     "an element id used twice on one page": (
         _add_element(0, {"id": "power", "type": "label"}),
         [(ps.ELEMENT_ID_TAKEN, "main", "power", None)],

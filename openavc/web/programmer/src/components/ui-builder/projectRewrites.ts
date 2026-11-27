@@ -47,9 +47,10 @@ import type {
   UISettings,
   VariableConfig,
 } from "../../api/types";
-import { PAGE_RULES } from "../../api/projectValues.gen";
+import { ELEMENT_ID_RULE, PAGE_RULES } from "../../api/projectValues.gen";
 import { isPlainObject, own } from "./authoredValues";
 import { NESTED_ACTION_FIELDS } from "./bindingActions";
+import { isElementId } from "./elementId";
 import { takenElementIds } from "./takenElementIds";
 
 /** The same array back when `fn` handed back every item as it was; otherwise
@@ -241,10 +242,10 @@ export interface RenameResult {
 
 /**
  * Validate a proposed element ID. Returns null if valid, else an error
- * message. Allowed chars: lowercase letters, digits, underscores. Must
- * start with a letter. Must not collide with any existing element ID
- * across all pages or master_elements (excluding the element being
- * renamed itself).
+ * message. Spelled as the platform's rule says (`ELEMENT_ID_RULE`: a
+ * lowercase letter, then lowercase letters, digits and underscores), and
+ * must not collide with any existing element ID across all pages or
+ * master_elements (excluding the element being renamed itself).
  */
 export function validateElementId(
   newId: string,
@@ -254,9 +255,7 @@ export function validateElementId(
 ): string | null {
   if (!newId) return "ID cannot be empty.";
   if (newId === currentId) return null;
-  if (!/^[a-z][a-z0-9_]*$/.test(newId)) {
-    return "ID must start with a lowercase letter and contain only lowercase letters, digits, and underscores.";
-  }
+  if (!isElementId(newId)) return ELEMENT_ID_RULE.sentence;
   const existing = takenElementIds(pages, masterElements.map((m) => m.id));
   existing.delete(currentId);
   if (existing.has(newId)) return `An element with ID "${newId}" already exists.`;

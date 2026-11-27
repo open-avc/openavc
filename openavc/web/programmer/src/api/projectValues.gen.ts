@@ -28,6 +28,11 @@
 // of the screen, each type that opens over draws in for a side it leaves
 // blank; a sidebar is always `sidebar_height` tall.
 
+// ELEMENT_ID_RULE, from the element id rule (openavc/ui/page_structure.py),
+// is how a control's id is spelled: `pattern` is the whole id (a lowercase
+// letter, then lowercase letters, digits and underscores), and `sentence`
+// what a rename that breaks it is told.
+
 /** One project value: what a blank one is, and the range it may hold. */
 export interface ProjectValue {
   readonly default?: string | number | boolean | null;
@@ -320,4 +325,9 @@ export const PAGE_RULES = {
     }
   },
   "sidebar_height": 100
+} as const;
+
+export const ELEMENT_ID_RULE = {
+  "pattern": "^[a-z][a-z0-9_]*$",
+  "sentence": "ID must start with a lowercase letter and contain only lowercase letters, digits, and underscores."
 } as const;
