@@ -7832,6 +7832,26 @@ const tests = {
         assert(JSON.stringify(lit(m)) === '["a"]', `back, its reading lit: ${lit(m)}`);
     },
 
+    list_rows_drawn_again_light_nothing_while_the_selection_device_is_unreachable() {
+        // The rows come from a variable, which is always there, and the
+        // selection from a device. With the device away its reading is only
+        // a memory, so rows drawn again light nothing, as a reading does.
+        const lit = (m) => [...m.node().querySelectorAll('.list-item')]
+            .filter((row) => row.classList.contains('active')).map((row) => row.dataset.value);
+        const m = levelMount({
+            id: 'x', type: 'list',
+            bindings: { show: { items: { source: 'state', key_pattern: 'var.st.*' }, value: { key: CHOICE_KEY } } },
+        }, { state: { 'device.d.connected': true, 'device.d.presence': 'online', 'var.st.a': 'A', 'var.st.b': 'B', [CHOICE_KEY]: 'b' } });
+        assert(JSON.stringify(lit(m)) === '["b"]', `at draw: ${lit(m)}`);
+        m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
+        assert(lit(m).length === 0, `unreachable: ${lit(m)}`);
+        m.set('var.st.c', 'C');
+        assert(m.node().querySelectorAll('.list-item').length === 3, 'the rows were drawn again');
+        assert(lit(m).length === 0, `unreachable, rows drawn again: ${lit(m)}`);
+        m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
+        assert(JSON.stringify(lit(m)) === '["b"]', `back, its reading lit: ${lit(m)}`);
+    },
+
     list_static_shows_the_reported_row_through_a_redraw() {
         // A read-only list lights the row its selection binding reports, at
         // draw and after its rows are drawn again, and a tap does nothing.

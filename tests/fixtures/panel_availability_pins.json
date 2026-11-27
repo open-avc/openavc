@@ -696,8 +696,6 @@
    {
     "c": {
      "r_list": {
-      "r.0.0@class": "list-item active",
-      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
       "r.0.2@": "div class style data-value",
       "r.0.2@class": "list-item",
       "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
@@ -721,12 +719,6 @@
     ]
    },
    {
-    "c": {
-     "r_list": {
-      "r.0.0@class": "list-item",
-      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
-     }
-    },
     "e": [
      "r_feedback:feedback",
      "r_toggle:toggle_look",

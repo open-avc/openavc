@@ -76,8 +76,14 @@ export class ListControl {
     }
 
     /** The selection the device reports, if it reports one, replaces the picks
-     *  with the row it names. */
+     *  with the row it names. While the last reading found its device away
+     *  nothing is picked: rows drawn again light no memory, as a reading
+     *  does (showListSelection). */
     _takeReportedPick(items) {
+        if (this.offline) {
+            this.selectedValues.clear();
+            return;
+        }
         const reading = this._selection();
         if (nothingToShow(reading)) return;
         this.selectedValues.clear();
