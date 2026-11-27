@@ -109,13 +109,18 @@ def _shown(value: Any) -> str:
 
 
 def _exactly(context: dict[str, Any]) -> FireNow:
-    named = [f"{name} = {_shown(value)}" for name, value in context.items() if value != ""]
+    """The context as given, its sentence naming each field that holds a
+    value (a schedule saved with no cron holds none)."""
+    named = [
+        f"{name} = {_shown(value)}" for name, value in context.items() if value not in ("", None)
+    ]
     listed = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
     return FireNow(context, f"Fired with {listed}.")
 
 
 def _state_change(trigger: Mapping[str, Any], state: Any) -> FireNow:
-    key = trigger.get("state_key") or ""
+    # The key the trigger watches, as its own test names it.
+    key = state_condition(trigger)["key"] or ""
     if not isinstance(key, str) or not key:
         return FireNow({}, NO_EVENT_DATA)
     if any(c in key for c in GLOB_CHARS):

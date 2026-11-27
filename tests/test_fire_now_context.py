@@ -114,6 +114,26 @@ async def test_a_schedule_trigger_says_what_it_handed(state):
     assert fired_with == "Fired with trigger_type = schedule and cron = 0 18 * * 1-5."
 
 
+async def test_a_saved_schedule_with_no_cron_names_only_what_it_has(state):
+    """A trigger saved through the project holds every field it left out as
+    null."""
+    from openavc.core.project_loader import TriggerConfig
+
+    saved = TriggerConfig(id="t", type="schedule").model_dump()
+    context, fired_with = await _fire_now(state, saved)
+    assert context == {"trigger_type": "schedule", "cron": None}
+    assert fired_with == "Fired with trigger_type = schedule."
+
+
+async def test_a_saved_state_trigger_with_no_key_fires_without_event_data(state):
+    from openavc.core.project_loader import TriggerConfig
+
+    saved = TriggerConfig(id="t", type="state_change").model_dump()
+    context, fired_with = await _fire_now(state, saved)
+    assert context == {}
+    assert fired_with == "Fired without event data."
+
+
 async def test_a_startup_trigger_says_what_it_handed(state):
     _, fired_with = await _fire_now(state, {"type": "startup"})
     assert fired_with == "Fired with trigger_type = startup."
