@@ -259,6 +259,19 @@ async def test_waiting_for_its_driver(book_path, widget_class):
     assert readers.word() == "waiting_for_driver"
 
 
+@pytest.mark.parametrize(("enabled", "word", "trouble"), [(True, "offline", 1), (False, "disabled", 0)])
+async def test_settings_that_could_not_be_worked_out(book_path, widget_class, enabled, word, trouble):
+    # Turned off in the project, it is disabled, whatever kept it from running.
+    from openavc.core.device_sync import UnresolvedDevice
+
+    dm = DeviceManager(state=StateStore(), events=EventBus())
+    readers = _Readers(dm)
+    entry = {"id": "widget", "name": "Widget", "driver": WIDGET, "enabled": enabled}
+    await dm.keep_unresolved(UnresolvedDevice(entry, "its settings", ValueError("a map, not a list")))
+    assert readers.now() == {"quiet": False, "trouble": trouble, "goes_out": False}
+    assert readers.word() == word
+
+
 async def test_a_driver_that_could_not_set_it_up(book_path, widget_class):
     dm, readers = await _manager(book_path, driver="acme_widget_broken")
     assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": False}

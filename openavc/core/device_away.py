@@ -259,7 +259,9 @@ class DeviceAwayMixin:
         )
         status = self.status_of(device_id)
         return presence_word(PresenceParts(
-            disabled=status == DISABLED,
+            # Turned off in the project, whatever else keeps it from running
+            # (settings that could not be worked out keep the record's state).
+            disabled=status == DISABLED or part("enabled") is False,
             waiting_for_driver=status == ORPHANED,
             online=bool(connected),
             restarting=bool(part("restarting")) or self.restart_seconds_left(device_id) is not None,
