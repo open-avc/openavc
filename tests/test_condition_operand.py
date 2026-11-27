@@ -3,17 +3,21 @@
 One corpus of keys, each with the state and the firing context it is judged
 under and the value each kind of site reads for it, run through every site
 that judges a condition: a step's Skip If, a Conditional step (and the value
-its run reports), a Wait Until step, a trigger's guard, and a state-change
-trigger's own test, at the change and again after its delay. The same corpus
-runs through ``value_resolver.read_operand``, the one reader the sites ask, so
-a site that stops asking it, or asks it the wrong way, fails here.
+its run reports), a Wait Until step, a trigger's guard at the fire and again
+after a delay or a queue wait, and a state-change trigger's own test, at the
+change and again after its delay. The same corpus runs through
+``value_resolver.read_operand``, the one reader the sites ask, so a site that
+stops asking it, or asks it the wrong way, fails here.
 
-The sites differ today in where a ``trigger.<field>`` key is read from:
+The sites differ in where a ``trigger.<field>`` key is read from:
 
-- ``context``: Skip If and Conditional read the run's firing context.
+- ``context``: Skip If, Conditional and a trigger's guard read the firing
+  context: a guard checked again after a wait reads the one it fired with.
 - ``empty``: a Wait Until is handed no firing context, so the field is a value
   that has not arrived.
-- ``state``: a trigger's guard reads the state store for every key.
+- ``state``: a site that reads the state only (``from_context=False``) reads
+  the state store for every key: a state-change trigger's own test after its
+  delay reads the watched key there.
 
 Each site's judgement of a probe is checked against ``eval_operator`` applied
 to the reading the corpus expects, so the probes tell the four readings apart
@@ -33,6 +37,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
 from openavc.core.macro_text import skip_reason
 from openavc.core.state_store import StateStore
+import openavc.core.trigger_engine as trigger_engine_module
 from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.value_resolver import read_operand
 
@@ -220,9 +225,22 @@ async def test_a_wait_until_is_handed_no_firing_context(_id, key, values, contex
 # --- a trigger's guard ---------------------------------------------------------
 
 
+#: The paths a fire checks its guards on, each with the reason a guard not met
+#: there is skipped with.
+GUARD_PATHS = {
+    "at the fire": "conditions_not_met",
+    "after its delay": "guard_not_met",
+    "after a queue wait": "guard_not_met",
+}
+
+
 async def _guard_lets_it_fire(
-    key: str, probe: dict[str, Any], values: dict[str, Any], context: dict[str, Any] | None,
-) -> bool:
+    path: str, key: str, probe: dict[str, Any], values: dict[str, Any],
+    context: dict[str, Any] | None,
+) -> tuple[bool, list[str]]:
+    """Whether an event trigger guarded by ``key`` and ``probe`` runs its macro
+    when ``custom.go`` fires with ``context`` as its payload, checked on
+    ``path``, and the reasons any fire was skipped with."""
     state = _state(values)
     events = EventBus()
     state.set_event_bus(events)
@@ -233,29 +251,77 @@ async def _guard_lets_it_fire(
     trigger_engine = TriggerEngine(state, events, macros)
     trigger_engine.load_triggers([{"id": "m", "name": "M", "triggers": [{
         "id": "t", "type": "event", "enabled": True, "event_pattern": "custom.go",
-        "conditions": [{"key": key, **probe}],
+        "conditions": [{"key": key, **probe}], "delay_seconds": 1, "overlap": "queue",
     }]}])
+    skipped: list[str] = []
     done = asyncio.Event()
 
-    async def on_end(_event: str, _payload: dict[str, Any]) -> None:
+    async def on_end(event: str, payload: dict[str, Any]) -> None:
+        if event == "trigger.skipped":
+            skipped.append(payload["reason"])
         done.set()
 
     events.on("trigger.completed", on_end)
     events.on("trigger.skipped", on_end)
+    ts = trigger_engine._triggers["t"]
+    # What the event trigger hands its macro when custom.go fires.
+    fired_with = {"event": "custom.go", **(context or {})}
     await trigger_engine.start(fire_startup=False)
     try:
-        await events.emit("custom.go", dict(context or {}))
+        if path == "at the fire":
+            await trigger_engine._execute_trigger(ts, fired_with)
+        elif path == "after its delay":
+            await trigger_engine._delayed_fire(ts, 0, fired_with)
+        else:
+            macros.is_macro_running = lambda _macro_id: False
+            await asyncio.wait_for(trigger_engine._queued_fire(ts, fired_with), 2)
         await asyncio.wait_for(done.wait(), 2)
     finally:
         await trigger_engine.stop()
-    return state.get("var.ran") is True
+    return state.get("var.ran") is True, skipped
 
 
+@pytest.mark.parametrize("path", GUARD_PATHS)
 @pytest.mark.parametrize(("_id", "key", "values", "context", "reads"), CASES, ids=CASE_IDS)
-async def test_a_guard_reads_the_state_only(_id, key, values, context, reads) -> None:
+async def test_a_guard_reads_the_firing_context(
+    path, _id, key, values, context, reads, monkeypatch,
+) -> None:
+    monkeypatch.setattr(trigger_engine_module, "_QUEUE_POLL_INTERVAL", 0.01)
     for probe in PROBES:
-        fired = await _guard_lets_it_fire(key, probe, values, context)
-        assert fired == _expected(reads["state"], probe), probe
+        fired, skipped = await _guard_lets_it_fire(path, key, probe, values, context)
+        holds = _expected(reads["context"], probe)
+        assert (fired, skipped) == (holds, [] if holds else [GUARD_PATHS[path]]), probe
+
+
+async def test_a_guard_fired_by_an_event_reads_the_event_s_payload() -> None:
+    """The whole path from the event: the payload's field is the guard's key."""
+    for level, fires in ((5, True), (4, False)):
+        state = StateStore()
+        events = EventBus()
+        state.set_event_bus(events)
+        macros = _macros(state, events)
+        macros.load_macros([{"id": "m", "name": "M", "steps": [
+            {"action": "state.set", "key": "var.ran", "value": True},
+        ]}])
+        trigger_engine = TriggerEngine(state, events, macros)
+        trigger_engine.load_triggers([{"id": "m", "name": "M", "triggers": [{
+            "id": "t", "type": "event", "enabled": True, "event_pattern": "custom.go",
+            "conditions": [{"key": "trigger.level", "operator": "gte", "value": 5}],
+        }]}])
+        done = asyncio.Event()
+
+        async def on_end(_event: str, _payload: dict[str, Any]) -> None:
+            done.set()
+
+        events.on("trigger.completed", on_end)
+        events.on("trigger.skipped", on_end)
+        await trigger_engine.start(fire_startup=False)
+        try:
+            await events.emit("custom.go", {"level": level})
+            await asyncio.wait_for(done.wait(), 2)
+        finally:
+            await trigger_engine.stop()
+        assert (state.get("var.ran") is True) == fires, level
 
 
 # --- a state-change trigger's own test -----------------------------------------
@@ -332,3 +398,38 @@ async def test_a_delayed_state_trigger_judges_the_state_after_its_delay(then, fi
         assert (skipped == [reverted]) == (not fires)
     finally:
         await trigger_engine.stop()
+
+
+@pytest.mark.parametrize(("guarded", "fires"), [
+    (5, True),
+    (7, False),
+], ids=["the guard holds on the change it fired on", "the guard holds only on the state now"])
+async def test_a_delayed_state_trigger_s_guard_reads_the_change_it_fired_on(guarded, fires) -> None:
+    """After its delay the trigger's own test reads the watched key in the
+    state, and its guard reads the values from the moment it fired."""
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    macros = _macros(state, events)
+    macros.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "state.set", "key": "var.ran", "value": True},
+    ]}])
+    trigger_engine = TriggerEngine(state, events, macros)
+    trigger_engine.load_triggers([{"id": "m", "name": "M", "triggers": [{
+        "id": "t", "type": "state_change", "enabled": True, "state_key": "var.watched",
+        "state_operator": "gte", "state_value": 5, "delay_seconds": 1,
+        "conditions": [{"key": "trigger.new_value", "operator": "eq", "value": guarded}],
+    }]}])
+    skipped: list[str] = []
+
+    async def on_skip(_event: str, payload: dict[str, Any]) -> None:
+        skipped.append(payload["reason"])
+
+    events.on("trigger.skipped", on_skip)
+    # By the end of the delay the key has moved on from the change it fired on.
+    state.set("var.watched", 7, source="test")
+    trigger_engine._running = True
+    await trigger_engine._delayed_fire(
+        trigger_engine._triggers["t"], 0, {"key": "var.watched", "old_value": 1, "new_value": 5},
+    )
+    assert (state.get("var.ran") is True, skipped) == (fires, [] if fires else ["guard_not_met"])

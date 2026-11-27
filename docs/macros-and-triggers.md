@@ -215,7 +215,7 @@ The same `$` picker now appears on UI Builder bindings, so a touch panel button 
 
 ### Reading what ran the macro
 
-A macro can read what ran it as `$trigger.<field>`: in a step's value, through the **What ran this macro** group of the `$` picker, or as the key of a **Conditional** or **Skip this step if...** condition (`trigger.new_value`).
+A macro can read what ran it as `$trigger.<field>`: in a step's value, through the **What ran this macro** group of the `$` picker, or as the key of a **Conditional** or **Skip this step if...** condition (`trigger.new_value`). A trigger's own guard conditions read the same fields.
 
 | What ran the macro | What the macro can read |
 |--------------------|-------------------------|
@@ -387,7 +387,7 @@ Trigger safety features prevent runaway automation:
 - **Debounce.** Prevent rapid re-firing (configurable seconds).
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
 - **Cooldown.** Minimum interval between executions. Debounce, Delay and Cooldown each take 0 or more seconds; 0 turns that one off.
-- **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases, and a value starting with `$` compares with that key's current value.
+- **Guard conditions.** Additional conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases, and a value starting with `$` compares with that key's current value. A guard on `trigger.<field>` reads what fired the trigger (see [Reading what ran the macro](#reading-what-ran-the-macro)), so an event trigger can check a field of its event, such as `trigger.source` equals `hdmi1`. After a delay or a queue wait, it still reads the values from the moment the trigger fired.
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes, or drop the fire if that takes more than five minutes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 

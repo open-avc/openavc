@@ -192,6 +192,25 @@ async def test_a_guard_compares_with_what_the_key_its_value_names_holds(
     assert (len(fired), len(skipped)) == ((1, 0) if fires else (0, 1))
 
 
+@pytest.mark.parametrize(("wanted", "fires"), [("on", True), ("off", False)])
+async def test_a_guard_compares_with_a_trigger_value_from_the_event_that_fired_it(
+    wanted, fires, trigger_engine, macro_engine, core,
+):
+    state, events = core
+    state.set("var.power", "on", source="test")
+    skipped, fired = _record(events, "trigger.skipped"), _record(events, "trigger.fired")
+    macro_engine.load_macros([{"id": "m", "name": "M", "steps": []}])
+    trigger_engine.load_triggers(_one_macro({
+        "type": "event", "event_pattern": "go",
+        "conditions": [{"key": "var.power", "operator": "eq", "value": "$trigger.wanted"}],
+    }))
+    await trigger_engine.start()
+    await events.emit("go", {"wanted": wanted})
+    await _outcome(skipped, fired)
+    await trigger_engine.stop()
+    assert (len(fired), len(skipped)) == ((1, 0) if fires else (0, 1))
+
+
 def _state_trigger(**extra: Any) -> list[dict[str, Any]]:
     return _one_macro({
         "type": "state_change", "state_key": "var.level",

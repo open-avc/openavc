@@ -766,7 +766,7 @@ class TriggerEngine:
 
             # Re-check guard conditions for all trigger types with delays
             conditions = t.get("conditions", [])
-            if conditions and not self._check_conditions(conditions):
+            if conditions and not self._check_conditions(conditions, context):
                 log.info(f"Trigger {t['id']} skipped — guard conditions no longer met after delay")
                 await self._skipped(t["id"], "guard_not_met")
                 return
@@ -785,7 +785,7 @@ class TriggerEngine:
 
         # 5. Guard conditions
         conditions = t.get("conditions", [])
-        if not self._check_conditions(conditions):
+        if not self._check_conditions(conditions, context):
             log.debug(f"Trigger {trigger_id} skipped — conditions not met")
             await self._skipped(trigger_id, "conditions_not_met")
             return
@@ -882,7 +882,7 @@ class TriggerEngine:
 
         # Re-check conditions
         conditions = ts.trigger.get("conditions", [])
-        if not self._check_conditions(conditions):
+        if not self._check_conditions(conditions, context):
             log.debug(f"Trigger {trigger_id} skipped — conditions not met after queue wait")
             await self._skipped(trigger_id, "guard_not_met")
             return
@@ -1038,15 +1038,19 @@ class TriggerEngine:
             return lambda key: read_operand(key, state=self.state, from_context=False)
         return lambda key: read_operand(key, state=self.state, context=context)
 
-    def _check_conditions(self, conditions: list[dict[str, Any]]) -> bool:
+    def _check_conditions(
+        self, conditions: list[dict[str, Any]], context: dict[str, Any],
+    ) -> bool:
         """Check all guard conditions (``condition_eval.judge``). All must pass.
 
-        A guard reads the state only: a ``trigger.`` key, or a ``$trigger.``
-        value, is a state key here, not the firing context's field. A value
-        that names any other key (``$var.wanted``) reads that key's value. One
-        it cannot judge reads as not met.
+        A guard reads ``context``, the firing context the fire was made with,
+        as a macro's Skip If does: a ``trigger.`` key, or a ``$trigger.``
+        value, is that context's field, so a guard checked again after a
+        delay or a queue wait reads the values from the moment it fired. Any
+        other key, and a value that names one (``$var.wanted``), reads the
+        state as it is now. One it cannot judge reads as not met.
         """
-        reads = self._reads()
+        reads = self._reads(context)
         for cond in conditions:
             try:
                 if not judge(cond, reads, GUARD):
