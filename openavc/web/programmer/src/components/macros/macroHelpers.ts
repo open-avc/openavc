@@ -779,8 +779,47 @@ export function getConversionWarnings(
     warnings.push("Schedule triggers are not converted: scripts have no Schedule trigger. To run the script on this schedule, keep the Schedule trigger on this macro and replace the macro's steps with one Emit Event step. The generated script shows the handler to add.");
   }
   warnings.push(..._runMacroWarnings(macro, macros));
+  warnings.push(..._timingWarnings(macro));
 
   return warnings;
+}
+
+/** The trigger types a script gets a handler for; a schedule is a comment. */
+const HANDLED_TRIGGERS = new Set(["state_change", "event", "startup"]);
+
+/** A warning for each enabled trigger, and for the macro, whose timing the
+ * script leaves out: a handler runs its steps each time it is called, so a
+ * trigger's Debounce, Cooldown and Overlap set to Queue, and the macro's own
+ * Cooldown and Overlap, have no part in it. Defaults say nothing. */
+function _timingWarnings(macro: MacroConfig): string[] {
+  const handled = (macro.triggers ?? []).filter((t) => t.enabled && HANDLED_TRIGGERS.has(t.type));
+  const warnings = handled.flatMap((t) => {
+    const left = [
+      (t.debounce_seconds ?? 0) > 0 ? "Debounce" : null,
+      (t.cooldown_seconds ?? 0) > 0 ? "Cooldown" : null,
+      t.overlap === "queue" ? "Overlap (Queue)" : null,
+    ].filter((name): name is string => name !== null);
+    if (left.length === 0) return [];
+    const [are, them] = left.length > 1 ? ["are", "them"] : ["is", "it"];
+    return [
+      `Trigger "${t.id}": its ${_andList(left)} ${are} not converted, so the script runs on every change or event the trigger would wait out or turn away. To keep ${them}, keep the trigger on this macro and replace the macro's steps with one Emit Event step for the script to listen for.`,
+    ];
+  });
+  const own = [
+    (macro.cooldown_seconds ?? 0) > 0 ? "Cooldown" : null,
+    macro.overlap === "skip" || macro.overlap === "queue" ? "Overlap" : null,
+  ].filter((name): name is string => name !== null);
+  if (handled.length > 0 && own.length > 0) {
+    warnings.push(
+      `The macro's own ${_andList(own)} ${own.length > 1 ? "are" : "is"} not converted, so the script runs its steps where the macro would turn a run away.`,
+    );
+  }
+  return warnings;
+}
+
+/** "A", "A and B", "A, B and C". */
+function _andList(names: string[]): string {
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
 }
 
 /** A warning for each macro a Run Macro step runs that reads what ran the
