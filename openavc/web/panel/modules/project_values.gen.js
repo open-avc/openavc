@@ -1,5 +1,6 @@
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the project models (openavc/core/project_loader.py).
+// Rendered from the project models (openavc/core/project_loader.py) and the
+// page rules (openavc/ui/page_rules.py).
 // Regenerate with:  python -m openavc.core.project_values_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 //
@@ -17,6 +18,15 @@
 // never as a size of 0. A fixed-choice field lists its `words`, and any other
 // word, a blank one included, reads as the one `otherwise` names (null: as
 // nothing). Such a word is kept as written, never refused.
+//
+// PAGE_RULES says what a page is: `page_types` the types this release draws,
+// `opens_over` those that open over the page on screen in a box of their own,
+// and `unknown_type_reads_as` what any other type, or none, reads as. A
+// master's `pages` of `every_page` draws on every page. `navigation_words` are
+// the moves the panel makes itself, and a target starting with
+// `navigation_prefix` names no page. `overlay_box` is the box, as percentages
+// of the screen, each type that opens over draws in for a side it leaves
+// blank; a sidebar is always `sidebar_height` tall.
 
 export const PROJECT_VALUES = {
   "DriverDependency": {
@@ -266,4 +276,33 @@ export const PROJECT_VALUES = {
       "default": true
     }
   }
+};
+
+export const PAGE_RULES = {
+  "page_types": [
+    "page",
+    "overlay",
+    "sidebar"
+  ],
+  "opens_over": [
+    "overlay",
+    "sidebar"
+  ],
+  "unknown_type_reads_as": "page",
+  "every_page": "*",
+  "navigation_words": [
+    "$back",
+    "$dismiss"
+  ],
+  "navigation_prefix": "$",
+  "overlay_box": {
+    "overlay": {
+      "width": 31.25,
+      "height": 37.5
+    },
+    "sidebar": {
+      "width": 25
+    }
+  },
+  "sidebar_height": 100
 };

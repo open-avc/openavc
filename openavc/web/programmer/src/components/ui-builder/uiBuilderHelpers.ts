@@ -30,6 +30,7 @@ import { CASCADE_STEP, autoPlace } from "./gestureBoxes";
 // (openavc/ui/minimums_gen.py), because it is a measured fact rather than a
 // design decision.
 import { REM_BASE_PX } from "../../api/uiMinimums.gen";
+import { PAGE_RULES } from "../../api/projectValues.gen";
 
 // --- Element type palette definitions ---
 
@@ -261,10 +262,8 @@ export function addPage(
   if (pageType === "overlay") {
     newPage.page_type = "overlay";
     newPage.overlay = {
-      // Percentages of the viewport now, not raw px: 400x300 on the 1280x800
-      // reference is what an overlay has always looked like.
-      width: 31.25,
-      height: 37.5,
+      // The page rules' dialog box, as percentages of the viewport.
+      ...PAGE_RULES.overlay_box.overlay,
       position: "center",
       backdrop: "dim",
       dismiss_on_backdrop: true,

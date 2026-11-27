@@ -83,6 +83,7 @@ from openavc.ui.page_geometry import (
     primary_layout,
     resolved_placements,
 )
+from openavc.ui.page_rules import names_page
 from openavc.ui.review_finding import Finding
 from openavc.ui.review_icons import unknown_icon_findings
 
@@ -1380,11 +1381,6 @@ def master_box(master: Mapping[str, Any], orientation: str) -> dict[str, float] 
     return None if raw is None else _drawn_box(raw)
 
 
-def master_draws_on(pages: Any, page_id: str) -> bool:
-    """Whether a master appears on this page. The panel's own test, exactly."""
-    return pages == "*" or (isinstance(pages, list) and page_id in pages)
-
-
 def _master_scope(pages: Any) -> str:
     """How widely a master draws, said the way it matters to the reader.
 
@@ -1434,7 +1430,7 @@ def _master_here(master: Any, drawn: DrawnPage) -> _MasterHere | None:
     a master the page's controls cannot be drawn over.
     """
     m = _mapping(master)
-    if m.get("hidden") or not master_draws_on(m.get("pages", "*"), drawn.page_id):
+    if m.get("hidden") or not names_page(m.get("pages", "*"), drawn.page_id):
         return None
     box = master_box(m, drawn.orientation)
     if box is None:

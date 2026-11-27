@@ -4,8 +4,9 @@ Where an element sits is worked out in more than one place: the panel draws
 it (`web/panel/modules/layout.js`), `ui/page_geometry.py` folds a page's
 layouts for the AI's write path and the reviewer, and `ui/page_review.py`
 reads which elements an arrangement hides, picks the box a master element is
-drawn in, defaults a box's missing coordinates and decides which pages a
-master draws on (`namesPage` in `web/panel/modules/pages.js`). The Builder's
+drawn in and defaults a box's missing coordinates, and the page rules
+(`ui/page_rules.py`) decide which pages a master's `pages` names (`namesPage`
+in `web/panel/modules/pages.js`). The Builder's
 `pageGeometry.ts` is another copy of the fold. Nothing held the panel's copy
 to any of them: a change to how a layout inherits, or to which of a master's
 boxes is drawn, could land in one and not the others, and the review would
@@ -38,7 +39,8 @@ import pytest
 from openavc.core.project_loader import ProjectConfig
 from openavc.core.project_migration import migrate_project
 from openavc.ui.page_geometry import resolved_placements
-from openavc.ui.page_review import _Arrangement, _drawn_box, _stored_master_box, master_draws_on
+from openavc.ui.page_review import _Arrangement, _drawn_box, _stored_master_box
+from openavc.ui.page_rules import names_page
 from tests import gates
 
 PANEL_MODULES = Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "modules"
@@ -199,11 +201,11 @@ def test_a_side_that_is_no_finite_number_loads_as_the_box_the_panel_drew(panel_a
         assert drawn == [loaded, loaded], side
 
 
-def test_a_master_draws_on_the_pages_the_review_says(panel_answers: dict) -> None:
+def test_a_master_names_the_pages_the_rules_say(panel_answers: dict) -> None:
     answers = iter(panel_answers["names"])
     for on in MASTER_PAGES:
         for page_id in PAGE_IDS:
-            assert next(answers) == master_draws_on(on, page_id), (on, page_id)
+            assert next(answers) == names_page(on, page_id), (on, page_id)
 
 
 def test_the_corpus_reaches_every_fallback(panel_answers: dict) -> None:

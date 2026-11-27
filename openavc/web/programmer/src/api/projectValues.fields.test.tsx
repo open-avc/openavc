@@ -5,7 +5,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // schema's, rendered into projectValues.gen.ts. The Builder's fields take
 // their ranges and blanks from that table and from nowhere else, so a range
 // changed on the schema reaches every field that edits it. Here the table is
-// swapped for one with other numbers, and each field follows it.
+// swapped for one with other numbers, and each field follows it; so are the
+// page rules beside it, whose overlay box is what a blank side shows.
 
 vi.mock("./projectValues.gen", () => ({
   PROJECT_VALUES: {
@@ -35,6 +36,7 @@ vi.mock("./projectValues.gen", () => ({
       cooldown_seconds: { default: 2, min: 1, finite: true, integer: false },
     },
   },
+  PAGE_RULES: { overlay_box: { overlay: { width: 41.5, height: 27.5 }, sidebar: { width: 22 } } },
 }));
 
 import type { MacroConfig, ProjectConfig, TriggerConfig, UIElement, UIPage, UISettings } from "./types";
@@ -147,10 +149,35 @@ describe("The Builder's fields read the project schema's table", () => {
     } as unknown as UIPage;
     const project = { ui: { settings: {}, pages: [page], master_elements: [] } } as unknown as ProjectConfig;
     render(<PropertiesPanel element={null} page={page} project={project} onChange={vi.fn()} onPageChange={onPageChange} />);
-    typeAndLeave(screen.getByPlaceholderText("31.25") as HTMLInputElement, "200");
+    typeAndLeave(screen.getByPlaceholderText("41.5") as HTMLInputElement, "200");
     expect(onPageChange).toHaveBeenLastCalledWith({ overlay: { position: "center", width: 90 } });
-    typeAndLeave(screen.getByPlaceholderText("37.5") as HTMLInputElement, "2");
+    typeAndLeave(screen.getByPlaceholderText("27.5") as HTMLInputElement, "2");
     expect(onPageChange).toHaveBeenLastCalledWith({ overlay: { position: "center", height: 15 } });
+  });
+
+  it("a page made an overlay or a sidebar starts at the page rules' box", () => {
+    const onPageChange = vi.fn();
+    const page = { id: "p", name: "P", elements: [], layouts: [] } as unknown as UIPage;
+    const project = { ui: { settings: {}, pages: [page], master_elements: [] } } as unknown as ProjectConfig;
+    render(<PropertiesPanel element={null} page={page} project={project} onChange={vi.fn()} onPageChange={onPageChange} />);
+    const type = screen.getByDisplayValue("Page") as HTMLSelectElement;
+    fireEvent.change(type, { target: { value: "overlay" } });
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      overlay: expect.objectContaining({ width: 41.5, height: 27.5 }),
+    }));
+    fireEvent.change(type, { target: { value: "sidebar" } });
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      overlay: expect.objectContaining({ width: 22 }),
+    }));
+  });
+
+  it("a sidebar's blank Width shows the page rules' sidebar width", () => {
+    const page = {
+      id: "drawer", name: "Drawer", page_type: "sidebar", elements: [], layouts: [], overlay: {},
+    } as unknown as UIPage;
+    const project = { ui: { settings: {}, pages: [page], master_elements: [] } } as unknown as ProjectConfig;
+    render(<PropertiesPanel element={null} page={page} project={project} onChange={vi.fn()} onPageChange={vi.fn()} />);
+    expect(screen.getByPlaceholderText("22")).toBeTruthy();
   });
 });
 

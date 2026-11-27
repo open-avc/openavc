@@ -35,6 +35,7 @@ import { patchForTextPath } from "./textPathPatch";
 import { reviewWarningsByElement, sliderThemeDefaults } from "./pageReview";
 import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
+import { PAGE_RULES } from "../../api/projectValues.gen";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useUiFilesStore } from "../../store/uiFilesStore";
 import { useThemeFilesStore } from "../../store/themeFilesStore";
@@ -866,12 +867,12 @@ export function Canvas({
   const isOverlay = pageType === "overlay" || pageType === "sidebar";
   const boxedOverlay = isOverlay && !previewMode;
   const overlayWidth = boxedOverlay
-    ? Math.round((((page.overlay?.width ?? (pageType === "sidebar" ? 25 : 31.25)) / 100) * screenWidth))
+    ? Math.round((((page.overlay?.width ?? PAGE_RULES.overlay_box[pageType === "sidebar" ? "sidebar" : "overlay"].width) / 100) * screenWidth))
     : screenWidth;
   const overlayHeight = boxedOverlay
     ? (pageType === "sidebar"
         ? screenHeight
-        : Math.round((((page.overlay?.height ?? 37.5) / 100) * screenHeight)))
+        : Math.round((((page.overlay?.height ?? PAGE_RULES.overlay_box.overlay.height) / 100) * screenHeight)))
     : screenHeight;
 
   // Type scales with vmin, which on real glass resolves against the SCREEN —

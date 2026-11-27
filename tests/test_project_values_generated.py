@@ -30,6 +30,7 @@ from openavc.core.project_values_gen import (
     project_values,
     render,
 )
+from openavc.ui.page_rules import page_rules_table
 from tests import gates
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -286,17 +287,18 @@ def test_a_blank_whose_fallback_cannot_be_drawn_stops_the_generator(default, rul
 
 
 def test_the_panel_module_imports_to_the_same_table() -> None:
-    """The panel's copy is an ES module a browser can load as it stands."""
+    """The panel's copy is an ES module a browser can load as it stands, and
+    carries the page rules beside the values."""
     if shutil.which("node") is None:
         gates.skip_or_fail(gates.NODE, "node not installed")
     module = REPO_ROOT / "openavc" / "web" / "panel" / "modules" / "project_values.gen.js"
     script = (
         "const m = await import(process.argv[1]);"
-        "console.log(JSON.stringify(m.PROJECT_VALUES));"
+        "console.log(JSON.stringify([m.PROJECT_VALUES, m.PAGE_RULES]));"
     )
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", script, module.as_uri()],
         capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout) == project_values()
+    assert json.loads(proc.stdout) == [project_values(), page_rules_table()]

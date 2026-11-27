@@ -88,8 +88,10 @@ from openavc.drivers.param_labels import param_label
 from openavc.drivers.param_validation import required_param_sentence
 from openavc.ui.matrix_model import resolve_axis
 from openavc.ui.page_review import _NESTED_ACTION_FIELDS, Finding, _entry_name
+from openavc.ui.page_rules import NAVIGATION_WORDS
 
-#: Navigation targets that are not page ids and never will be.
+#: Navigation targets that are not page ids and never will be: the page rules'
+#: navigation words (``ui/page_rules.py``).
 #:
 #: The panel resolves both itself (``navigateToPage``): ``$back`` dismisses an
 #: open overlay or pops the page history, ``$dismiss`` closes an overlay and
@@ -98,7 +100,7 @@ from openavc.ui.page_review import _NESTED_ACTION_FIELDS, Finding, _entry_name
 #: reported the documented spelling as a dangling page. What that costs is not
 #: the warning -- it is that believing it means hardcoding a page id into a
 #: confirm dialog's Cancel button, which makes the dialog single-use.
-NAVIGATION_SENTINELS = frozenset({"$back", "$dismiss"})
+NAVIGATION_SENTINELS = frozenset(NAVIGATION_WORDS)
 
 #: Every interaction slot an element can carry actions under. The same set
 #: ``ui_events`` dispatches and the Builder's ACTION_SLOTS enumerates.

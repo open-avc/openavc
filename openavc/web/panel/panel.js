@@ -52,8 +52,8 @@ import {
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
 import {
-    closeOverlayFrame, drawOverlayFrame, fallbackPage, isCustomPage, namesPage, opensOver, pageBehind,
-    pageDrawsNothing, pageRunsAuthorMarkup, rememberPage,
+    closeOverlayFrame, drawOverlayFrame, isCustomPage, namesPage, opensOver, pageBehind,
+    pageDrawsNothing, pageRunsAuthorMarkup, rememberPage, standIn,
 } from './modules/pages.js';
 import {
     carries, definitionIn, demoStateOf, isBuilderFrame, listenToBuilder, postToBuilder, startingTextSizes,
@@ -1265,8 +1265,7 @@ class PanelApp {
 
     /** The page to draw: the current one, else the one standing in for it (made current); null when there are no pages. */
     _pageToDraw() {
-        const pages = this.uiDef.pages || [];
-        const page = pages.find(p => p.id === this.currentPage) || (pages.length ? fallbackPage(pages) : null);
+        const page = standIn(this.uiDef.pages || [], this.currentPage);
         if (page) this.currentPage = page.id;
         return page;
     }

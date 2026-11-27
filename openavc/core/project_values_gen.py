@@ -21,6 +21,10 @@ path, ``style.cell_size``. A bound the table has no word for stops the
 generator rather than being left out: left out, the Builder would offer a value
 the save refuses.
 
+Beside it, both files carry the page rules (``ui/page_rules.py``) as
+``PAGE_RULES``: the page types, which open over the page on screen, the
+navigation words, and the box an overlay draws in for a side it leaves blank.
+
 Data only. Run:  python -m openavc.core.project_values_gen
 A test compares both committed files against a fresh render, so a bound changed
 without regenerating, or a file edited by hand, fails CI.
@@ -38,6 +42,7 @@ from pydantic.fields import FieldInfo
 from pydantic.types import AllowInfNan
 
 from openavc.core.project_loader import OneOf, ProjectConfig, UISettings, blank_rule
+from openavc.ui.page_rules import page_rules_table
 from openavc.utils.generated import write_artifacts
 
 TS_ARTIFACT = "openavc/web/programmer/src/api/projectValues.gen.ts"
@@ -238,7 +243,8 @@ def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dic
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the project models (openavc/core/project_loader.py).
+// Rendered from the project models (openavc/core/project_loader.py) and the
+// page rules (openavc/ui/page_rules.py).
 // Regenerate with:  python -m openavc.core.project_values_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 //
@@ -256,6 +262,15 @@ BANNER = """\
 // never as a size of 0. A fixed-choice field lists its `words`, and any other
 // word, a blank one included, reads as the one `otherwise` names (null: as
 // nothing). Such a word is kept as written, never refused.
+//
+// PAGE_RULES says what a page is: `page_types` the types this release draws,
+// `opens_over` those that open over the page on screen in a box of their own,
+// and `unknown_type_reads_as` what any other type, or none, reads as. A
+// master's `pages` of `every_page` draws on every page. `navigation_words` are
+// the moves the panel makes itself, and a target starting with
+// `navigation_prefix` names no page. `overlay_box` is the box, as percentages
+// of the screen, each type that opens over draws in for a side it leaves
+// blank; a sidebar is always `sidebar_height` tall.
 """
 
 TS_BODY = """
@@ -275,10 +290,14 @@ export interface ProjectValue {
 }
 
 export const PROJECT_VALUES = %(table)s as const satisfies Record<string, Record<string, ProjectValue>>;
+
+export const PAGE_RULES = %(page_rules)s as const;
 """
 
 PANEL_BODY = """
 export const PROJECT_VALUES = %(table)s;
+
+export const PAGE_RULES = %(page_rules)s;
 """
 
 _BODIES = {TS_ARTIFACT: TS_BODY, PANEL_ARTIFACT: PANEL_BODY}
@@ -289,7 +308,8 @@ ARTIFACTS = tuple(_BODIES)
 
 def render(artifact: str) -> str:
     table = json.dumps(project_values(), indent=2, ensure_ascii=False)
-    return BANNER + _BODIES[artifact] % {"table": table}
+    page_rules = json.dumps(page_rules_table(), indent=2, ensure_ascii=False)
+    return BANNER + _BODIES[artifact] % {"table": table, "page_rules": page_rules}
 
 
 def main() -> int:

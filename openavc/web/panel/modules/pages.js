@@ -3,6 +3,11 @@
  * page asks, so the runtime's navigation, the Builder's Preview and the
  * redraw checks read a page one way.
  *
+ * The rules themselves are the project schema's page rules
+ * (`openavc/ui/page_rules.py`, generated into `project_values.gen.js` as
+ * `PAGE_RULES`), and `tests/test_page_rules_mirror.py` runs these functions
+ * against that module's.
+ *
  * A page's type decides how it is shown. A regular page (no type, or
  * 'page') replaces the one on screen and goes into the history `$back`
  * walks; an overlay or a sidebar opens over it, in a box of its own. The
@@ -14,9 +19,8 @@
  * return and a `?page=` link still draw the page they name as a regular page.
  *
  * A master element draws on every page its `pages` names, '*' or a list of
- * ids (`namesPage`), unless it is hidden. The AI's page review asks the same
- * question (`master_draws_on` in `ui/page_review.py`, held to this one by
- * `tests/test_panel_layout_mirror.py`), so the two agree on what draws.
+ * ids (`namesPage`, held to the page rules' `names_page` by
+ * `tests/test_panel_layout_mirror.py`), unless it is hidden.
  *
  * Functions of the definition, except `rememberPage`, which adds to the
  * history it is handed, and `drawOverlayFrame` and `closeOverlayFrame`, which
@@ -25,19 +29,10 @@
  */
 
 import { pct } from './layout.js';
+import { PAGE_RULES } from './project_values.gen.js';
 
 /** How many regular pages `$back` can walk back through. */
 const HISTORY_LIMIT = 50;
-
-// Overlay and sidebar boxes, as percentages of the viewport. These are the
-// old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
-// against the 1280x800 reference, so an overlay that never set a size keeps
-// the proportions it had.
-const OVERLAY_DEFAULTS = {
-    dialogWidth: 31.25,
-    dialogHeight: 37.5,
-    sidebarWidth: 25,
-};
 
 /** How a page is shown. A page with no type is a regular page. */
 function pageTypeOf(page) {
@@ -46,8 +41,7 @@ function pageTypeOf(page) {
 
 /** Does this page open over the one on screen: an overlay or a sidebar? */
 export function opensOver(page) {
-    const type = pageTypeOf(page);
-    return type === 'overlay' || type === 'sidebar';
+    return PAGE_RULES.opens_over.includes(pageTypeOf(page));
 }
 
 /** A regular page: shown in place of the one on screen. */
@@ -58,6 +52,11 @@ function isRegularPage(page) {
 /** The page drawn when the current one names nothing: the first regular page, else the first. */
 export function fallbackPage(pages) {
     return pages.find(isRegularPage) || pages[0];
+}
+
+/** The page drawn for `pageId`: that page, else `fallbackPage` (null: there are no pages). */
+export function standIn(pages, pageId) {
+    return pages.find(p => p.id === pageId) || fallbackPage(pages) || null;
 }
 
 /**
@@ -83,7 +82,7 @@ export function rememberPage(history, leaving, opening) {
 /** Does a master element's `pages` name this page ('*' names every page)? */
 export function namesPage(master, page) {
     const on = master.pages;
-    return on === '*' || (Array.isArray(on) && !!page && on.includes(page.id));
+    return on === PAGE_RULES.every_page || (Array.isArray(on) && !!page && on.includes(page.id));
 }
 
 /** A page that is the author's own markup filling the screen. */
@@ -174,16 +173,31 @@ export function closeOverlayFrame(container) {
     setTimeout(() => { if (container.parentNode) container.remove(); }, 500);
 }
 
-/** A sidebar is a strip on one side of the screen; anything else is a dialog. */
+/**
+ * The box an overlay or sidebar page draws in, `{ width, height }` as
+ * percentages of the screen: each side it sets, else its type's default. A
+ * sidebar is the screen's height, whatever its own height says.
+ */
+export function overlayBox(page) {
+    const overlay = page.overlay || {};
+    if (pageTypeOf(page) === 'sidebar') {
+        return { width: pct(overlay.width, PAGE_RULES.overlay_box.sidebar.width), height: PAGE_RULES.sidebar_height };
+    }
+    const box = PAGE_RULES.overlay_box.overlay;
+    return { width: pct(overlay.width, box.width), height: pct(overlay.height, box.height) };
+}
+
+/** A sidebar is a strip on one side of the screen, its height the CSS's; anything else is a dialog. */
 function sizeOverlayBox(content, page, overlay) {
+    const box = overlayBox(page);
     if (pageTypeOf(page) === 'sidebar') {
         const side = overlay.side || 'right';
         content.className = `overlay-content overlay-sidebar overlay-sidebar-${side}`;
-        content.style.width = pct(overlay.width, OVERLAY_DEFAULTS.sidebarWidth) + '%';
+        content.style.width = box.width + '%';
         return;
     }
     const position = overlay.position || 'center';
     content.className = `overlay-content overlay-dialog overlay-pos-${position}`;
-    content.style.width = pct(overlay.width, OVERLAY_DEFAULTS.dialogWidth) + '%';
-    content.style.height = pct(overlay.height, OVERLAY_DEFAULTS.dialogHeight) + '%';
+    content.style.width = box.width + '%';
+    content.style.height = box.height + '%';
 }

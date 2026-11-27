@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { NumericInput } from "../shared/NumericInput";
-import { PROJECT_VALUES } from "../../api/projectValues.gen";
+import { PAGE_RULES, PROJECT_VALUES } from "../../api/projectValues.gen";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { CustomControlConfig } from "./PropertySections/CustomControlConfig";
@@ -725,8 +725,9 @@ function MasterElementProperties({
   );
 }
 
-/** An overlay's or sidebar's width and height: the project schema's range. */
+/** An overlay's or sidebar's width and height: the project schema's range, and the page rules' box for a blank side. */
 const OVERLAY_BOX = PROJECT_VALUES.OverlayConfig;
+const { overlay: DIALOG_BOX, sidebar: SIDEBAR_BOX } = PAGE_RULES.overlay_box;
 
 function PageProperties({
   page,
@@ -769,8 +770,8 @@ function PageProperties({
       onChange({
         page_type: "overlay",
         overlay: {
-          width: overlay.width ?? 31.25,
-          height: overlay.height ?? 37.5,
+          width: overlay.width ?? DIALOG_BOX.width,
+          height: overlay.height ?? DIALOG_BOX.height,
           position: overlay.position ?? "center",
           backdrop: overlay.backdrop ?? "dim",
           dismiss_on_backdrop: overlay.dismiss_on_backdrop ?? true,
@@ -781,7 +782,7 @@ function PageProperties({
       onChange({
         page_type: "sidebar",
         overlay: {
-          width: overlay.width ?? 25,
+          width: overlay.width ?? SIDEBAR_BOX.width,
           side: overlay.side ?? "right",
           backdrop: overlay.backdrop ?? "dim",
           dismiss_on_backdrop: overlay.dismiss_on_backdrop ?? true,
@@ -888,7 +889,7 @@ function PageProperties({
                 allowEmpty
                 min={OVERLAY_BOX.width.min}
                 max={OVERLAY_BOX.width.max}
-                placeholder={isSidebar ? "25" : "31.25"}
+                placeholder={String(isSidebar ? SIDEBAR_BOX.width : DIALOG_BOX.width)}
                 style={{ flex: 1 }}
               />
               <span style={{ fontSize: 10, color: "var(--text-muted)" }}>% of screen</span>
@@ -903,7 +904,7 @@ function PageProperties({
                   allowEmpty
                   min={OVERLAY_BOX.height.min}
                   max={OVERLAY_BOX.height.max}
-                  placeholder="37.5"
+                  placeholder={String(DIALOG_BOX.height)}
                   style={{ flex: 1 }}
                 />
                 <span style={{ fontSize: 10, color: "var(--text-muted)" }}>% of screen</span>
