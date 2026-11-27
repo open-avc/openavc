@@ -13,7 +13,8 @@ alone can supply:
 - a State Change trigger on one key: ``key``, and the key's current value as
   ``new_value`` only when that value passes the trigger's own test, since
   every real fire's does; failing that, for ``eq``, the value the trigger
-  fires on; failing that, no ``new_value``, and the sentence says why.
+  fires on; failing that, no ``new_value``, and the sentence says why: an
+  operator nobody knows is said as itself, since no change gets past it.
   ``old_value`` is never known;
 - a State Change trigger on a pattern, and an event trigger: nothing. Which
   key changed, and what an event carried, only a real fire knows.
@@ -30,11 +31,12 @@ from typing import Any, NamedTuple
 from openavc.core.condition_eval import (
     NOT_ARRIVED,
     STATE_TRIGGER,
-    UnknownOperator,
     canonical_operator,
+    condition_issues,
     judge,
     read_value,
     state_condition,
+    written_operator,
 )
 from openavc.core.project_loader import TriggerConfig, reads_as
 from openavc.core.state_store import GLOB_CHARS
@@ -125,8 +127,16 @@ def _state_change(trigger: Mapping[str, Any], state: Any) -> FireNow:
     if any(c in key for c in GLOB_CHARS):
         return FireNow({}, _PATTERN)
     context: dict[str, Any] = {"key": key}
+    own = state_condition(trigger)
+    if condition_issues(own, STATE_TRIGGER):
+        # It has a key, so what it lacks is an operator it takes.
+        return FireNow(context, (
+            f"This trigger uses '{written_operator(own, STATE_TRIGGER)}', an operator this "
+            f"system does not know, so no change fires it; fired without new_value. "
+            f"{_OLD_VALUE_UNKNOWN}"
+        ))
     current = state.get(key)
-    if current is not None and _would_fire(trigger, {**context, "new_value": current}, state):
+    if current is not None and passes_own_test(trigger, {**context, "new_value": current}, state):
         return FireNow(
             {**context, "new_value": current},
             f"Fired with new_value = {_shown(current)}, the current value. {_OLD_VALUE_UNKNOWN}",
@@ -160,13 +170,6 @@ def _not_the_current_value(
         f"{why}; fired with new_value = {_shown(target)}, the value it fires on. "
         f"{_OLD_VALUE_UNKNOWN}",
     )
-
-
-def _would_fire(trigger: Mapping[str, Any], context: dict[str, Any], state: Any) -> bool:
-    try:
-        return passes_own_test(trigger, context, state)
-    except UnknownOperator:
-        return False
 
 
 def _fires_on(trigger: Mapping[str, Any], context: dict[str, Any], state: Any) -> Any:

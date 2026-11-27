@@ -231,15 +231,21 @@ async def test_a_value_reads_as_a_sentence_writes_it(state):
     assert fired_with.startswith("Fired with new_value = Yes, the current value.")
 
 
-async def test_an_operator_nobody_knows_still_fires(state):
+@pytest.mark.parametrize("level", [5, None], ids=["with a value", "with none yet"])
+async def test_an_operator_nobody_knows_still_fires_and_says_so(state, level):
     """The real fire refuses it; Fire now bypasses the trigger's test, so it
-    runs, with nothing the test could have passed."""
-    state.set("var.level", 5)
+    runs, with nothing the test could have passed, and says it is the
+    operator, not the value, that no change gets past."""
+    if level is not None:
+        state.set("var.level", level)
     context, fired_with = await _fire_now(state, {
         "type": "state_change", "state_key": "var.level", "state_operator": "about", "state_value": 5,
     })
     assert context == {"key": "var.level"}
-    assert fired_with.startswith("The current value (5) would not fire this trigger;")
+    assert fired_with == (
+        "This trigger uses 'about', an operator this system does not know, so no change "
+        "fires it; fired without new_value. old_value is unknown."
+    )
 
 
 async def test_old_value_is_never_handed(state):
