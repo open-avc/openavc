@@ -1,7 +1,7 @@
 """Render the firing context's field table into the IDE.
 
-What each producer of a macro run (a trigger by its type, a control, Fire now)
-puts in the run's firing context, and what each field holds, is written once:
+What each producer of a macro run (a trigger by its type, a control) puts in
+the run's firing context, and what each field holds, is written once:
 ``FIRING_CONTEXTS`` in ``openavc/core/value_resolver.py``. This writes it to
 ``openavc/web/programmer/src/api/firingContext.gen.ts``, which the state-key
 picker's trigger group and the trigger editor read, so a field a producer
@@ -34,13 +34,13 @@ BANNER = """\
 //
 // What each producer of a macro run puts in the run's firing context, which a
 // step reads as `$trigger.<field>` and a condition as the key
-// `trigger.<field>`. Keyed by the producer: a trigger's own type, `press` for
-// a control that runs the macro, `fire_now` for Fire now in the trigger list.
-// `name` is what ran the macro, `fields` what the macro can read, and
-// `carries_payload` that the context also holds every field of the event's
-// own payload, under the names its sender gave them. A macro run by a Run
-// Macro step reads the context of the macro that ran it; a run started any
-// other way has none.
+// `trigger.<field>`. Keyed by the producer: a trigger's own type, and `press`
+// for a control that runs the macro. `name` is what ran the macro, `fields`
+// what the macro can read, and `carries_payload` that the context also holds
+// every field of the event's own payload, under the names its sender gave
+// them. Fire now in the trigger list hands the fields of its trigger's type
+// that the trigger alone can supply. A macro run by a Run Macro step reads the
+// context of the macro that ran it; a run started any other way has none.
 """
 
 BODY = """

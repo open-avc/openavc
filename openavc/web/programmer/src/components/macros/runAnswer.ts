@@ -4,7 +4,7 @@
  * THE sentences for a run's answer (`POST /macros/{id}/execute`, and Fire
  * now's `POST /triggers/{id}/test`): the macro editor's Test button and a
  * button action's Test read `runTrouble`, and Fire now says `didNotStart`
- * after "Trigger fired, but". Why a run did not start is the server's
+ * after what the macro was handed. Why a run did not start is the server's
  * `message`, from its reason table, never a guess here.
  */
 
@@ -13,10 +13,9 @@ import type { RunAnswer } from "../../api/restClient";
 export type { RunAnswer };
 
 /** A run the macro refused: that it did not start, then the server's reason.
- *  An answer without one names no cause. `lead` comes first in the sentence
- *  ("Trigger fired, but" on Fire now). */
-export function didNotStart(answer: RunAnswer, lead = ""): string {
-  const head = lead ? `${lead} the macro didn't start.` : "The macro didn't start.";
+ *  An answer without one names no cause. */
+export function didNotStart(answer: RunAnswer): string {
+  const head = "The macro didn't start.";
   return answer.message ? `${head} ${answer.message}` : head;
 }
 

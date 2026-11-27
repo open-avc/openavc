@@ -1,7 +1,7 @@
 """Every producer of a macro run hands over the fields the table lists.
 
 ``value_resolver.FIRING_CONTEXTS`` lists what each producer (a trigger by its
-type, a control, Fire now) puts in a run's firing context; the IDE's picker,
+type, a control) puts in a run's firing context; the IDE's picker,
 the trigger editor and docs/macros-and-triggers.md list fields from it. Each
 producer is fired here through its real path and the context it hands the
 macro is compared with its row, so a field a producer starts sending that the
@@ -126,13 +126,6 @@ async def _startup(monkeypatch, tmp_path) -> dict[str, Any] | None:
         await triggers.stop()
 
 
-async def _fire_now(monkeypatch, tmp_path) -> dict[str, Any] | None:
-    _state, _events, _macros, triggers, captured = _engines()
-    _load(triggers, {"type": "state_change", "state_key": "var.level", "state_operator": "any"})
-    await triggers.test_trigger("t")
-    return await _first_run(captured)
-
-
 async def _press(monkeypatch, tmp_path) -> dict[str, Any] | None:
     path = tmp_path / "project.avc"
     path.write_text(json.dumps({
@@ -168,7 +161,6 @@ PRODUCERS: dict[str, Callable[..., Awaitable[dict[str, Any] | None]]] = {
     "schedule": _schedule,
     "startup": _startup,
     "press": _press,
-    "fire_now": _fire_now,
 }
 
 
@@ -208,6 +200,9 @@ def test_a_field_has_one_description_wherever_it_appears() -> None:
 KNOWN_DOORS = {
     # Each trigger type's context, built where its trigger fires.
     ("openavc/core/trigger_engine.py", "_run_macro"),
+    # Fire now: the fields of its trigger's type the trigger alone can supply
+    # (tests/test_fire_now_context.py).
+    ("openavc/core/trigger_engine.py", "test_trigger"),
     # A control's macro action.
     ("openavc/core/ui_events.py", "execute_action"),
     # A Run Macro step hands on its own run's context.

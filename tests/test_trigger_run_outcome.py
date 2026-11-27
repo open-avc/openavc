@@ -266,14 +266,14 @@ async def test_fire_now_reports_the_outcome(triggers, macros):
     macros.load_macros([_macro("m", BAD_STEP)])
     triggers.load_triggers([_with_trigger(_macro("m", BAD_STEP))])
 
-    assert (await triggers.test_trigger("trg")).outcome == "failed"
+    assert (await triggers.test_trigger("trg")).end.outcome == "failed"
 
 
 async def test_fire_now_reports_a_clean_run_too(triggers, macros):
     macros.load_macros([_macro("m", GOOD_STEP)])
     triggers.load_triggers([_with_trigger(_macro("m", GOOD_STEP))])
 
-    assert (await triggers.test_trigger("trg")).outcome == "completed"
+    assert (await triggers.test_trigger("trg")).end.outcome == "completed"
 
 
 async def test_fire_now_still_refuses_an_unknown_trigger(triggers, macros):
@@ -304,7 +304,7 @@ async def test_fire_now_does_not_overwrite_the_stored_record(triggers, macros):
     assert _status(triggers)["last_outcome"] == "failed"
 
     macros.load_macros([_macro("m", GOOD_STEP)])
-    assert (await triggers.test_trigger("trg")).outcome == "completed"
+    assert (await triggers.test_trigger("trg")).end.outcome == "completed"
 
     assert _status(triggers)["last_outcome"] == "failed"
     assert _status(triggers)["last_fired"] is not None
@@ -345,7 +345,7 @@ async def test_fire_now_answers_while_a_waiting_macro_runs(
 
     # Bounded so the door failing to answer is a FAILURE and not a hung test —
     # which is precisely what it did before: it awaited the run inline.
-    assert (await asyncio.wait_for(triggers.test_trigger("trg"), timeout=5)).outcome == "running"
+    assert (await asyncio.wait_for(triggers.test_trigger("trg"), timeout=5)).end.outcome == "running"
 
     for task in list(macros._detached):
         task.cancel()
@@ -396,7 +396,10 @@ def test_the_fire_now_door_answers_the_outcome(client, triggers, macros):
     resp = client.post("/api/triggers/trg/test")
 
     assert resp.status_code == 200
-    assert resp.json() == {"status": "failed", "trigger_id": "trg"}
+    assert resp.json() == {
+        "status": "failed", "trigger_id": "trg",
+        "fired_with": "Fired with trigger_type = schedule.",
+    }
 
 
 def test_the_fire_now_door_still_404s_an_unknown_trigger(client, triggers, macros):

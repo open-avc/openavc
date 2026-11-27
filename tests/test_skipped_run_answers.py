@@ -98,10 +98,10 @@ async def test_a_run_that_started_carries_no_reason(macros, triggers):
 async def test_fire_now_says_why_the_macro_refused(macros, triggers):
     await _in_cooldown(macros, triggers)
 
-    end = await triggers.test_trigger("trg")
+    fired = await triggers.test_trigger("trg")
 
-    assert end.outcome == "skipped"
-    assert end.reason == REFUSED
+    assert fired.end.outcome == "skipped"
+    assert fired.end.reason == REFUSED
 
 
 async def test_execute_still_reports_the_word_alone(macros, triggers):
@@ -148,7 +148,10 @@ async def test_the_fire_now_door_answers_the_reason(client, macros, triggers):
     resp = client.post("/api/triggers/trg/test")
 
     assert resp.status_code == 200
-    assert resp.json() == {"status": "skipped", "trigger_id": "trg", **REFUSED}
+    assert resp.json() == {
+        "status": "skipped", "trigger_id": "trg", **REFUSED,
+        "fired_with": "Fired with trigger_type = schedule.",
+    }
 
 
 async def test_a_run_that_started_answers_no_reason(client, macros, triggers):

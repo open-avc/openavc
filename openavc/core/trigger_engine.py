@@ -38,7 +38,15 @@ from openavc.core.macro_engine import (
 from openavc.core.macro_text import skip_reason
 from openavc.core import trigger_records
 from openavc.core.trigger_records import TriggerRecords, stamp_key, stamp_of
-from openavc.core.value_resolver import TRIGGER_PREFIX, read_operand
+from openavc.core.trigger_context import (
+    CHANGED_VALUE,
+    event_context,
+    fire_now,
+    schedule_context,
+    startup_context,
+    state_change_context,
+)
+from openavc.core.value_resolver import read_operand
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -74,11 +82,6 @@ _CANCEL_DRAIN_SECONDS = 2.0
 # goes on by itself; at a shutdown it finds the macro engine closed.
 _FIRE_HANDOVER_SECONDS = 2.0
 
-# What a state-change trigger's own test judges at the change: the value the
-# change carries, read from the context the change fires with.
-_CHANGED_VALUE = f"{TRIGGER_PREFIX}new_value"
-
-
 def _log_task_exception(task: asyncio.Task) -> None:
     """Done-callback to log unhandled exceptions from fire-and-forget tasks."""
     if task.cancelled():
@@ -111,6 +114,19 @@ class LastRun(NamedTuple):
     error: str | None = None
     reason: dict[str, str] | None = None
     at: float = 0.0
+
+
+class FireNowEnd(NamedTuple):
+    """How a Fire now went: how its macro's run ended, and the sentence
+    saying what the macro was handed (``trigger_context.fire_now``)."""
+
+    end: RunEnd
+    fired_with: str
+
+    def answer(self) -> dict[str, str]:
+        """The fields a door's reply carries: the run's (``RunEnd.answer``)
+        and ``fired_with``."""
+        return {**self.end.answer(), "fired_with": self.fired_with}
 
 
 class _TriggerState:
@@ -516,8 +532,8 @@ class TriggerEngine:
         # The trigger's own condition, judged on the value the change carries,
         # not what the state holds by now. An operator left out, blank or null
         # is "any" (condition_eval.STATE_TRIGGER): every change fires.
-        context = {"key": key, "old_value": old_value, "new_value": new_value}
-        own = state_condition(t, _CHANGED_VALUE)
+        context = state_change_context(key, old_value, new_value)
+        own = state_condition(t, CHANGED_VALUE)
         try:
             matched = judge(own, self._reads(context), STATE_TRIGGER)
         except UnknownOperator as bad:
@@ -541,7 +557,7 @@ class TriggerEngine:
         """Called when a subscribed event fires."""
         if not self._running:
             return
-        self._initiate_fire(ts, {"event": event, **payload})
+        self._initiate_fire(ts, event_context(event, payload))
 
     async def _fire_startup(self, ts: _TriggerState, delay: float) -> None:
         """Fire a startup trigger after optional delay."""
@@ -550,7 +566,7 @@ class TriggerEngine:
         await self._wait_out_a_pause()
         if not self._running:
             return
-        await self._execute_trigger(ts, {"trigger_type": "startup"})
+        await self._execute_trigger(ts, startup_context())
 
     async def _cron_loop(self) -> None:
         """Check schedule triggers on a fixed interval, with catch-up.
@@ -606,7 +622,7 @@ class TriggerEngine:
                         if self._already_fired(t["id"], prev_at):
                             continue
                         self._cron_last_fires[t["id"]] = now_at
-                        self._initiate_fire(ts, {"trigger_type": "schedule", "cron": cron_expr})
+                        self._initiate_fire(ts, schedule_context(cron_expr))
                     except Exception:  # Catch-all: isolates individual trigger evaluation errors
                         log.exception(f"Error checking cron trigger '{t['id']}'")
                 last_check = now_at
@@ -1092,19 +1108,22 @@ class TriggerEngine:
             })
         return result
 
-    async def test_trigger(self, trigger_id: str) -> RunEnd | None:
-        """Fire a trigger's macro immediately, bypassing conditions.
+    async def test_trigger(self, trigger_id: str) -> FireNowEnd | None:
+        """Fire a trigger's macro immediately, bypassing conditions, with the
+        context the trigger can supply (``trigger_context.fire_now``).
 
         Returns how the run ended, the macro engine's ``RunEnd`` —
         ``completed``, ``failed``, ``cancelled``, ``skipped`` with the reason
         the macro refused it, or ``running`` when it is still going after the
-        operator wait — and ``None`` when there is nothing to fire, which is
-        what the doors answer 404 off. It said ``fired`` for a macro whose every step
+        operator wait — with the sentence saying what the macro was handed,
+        and ``None`` when there is nothing to fire, which is what the doors
+        answer 404 off. It said ``fired`` for a macro whose every step
         failed, which is the same lie the macro door used to tell.
         """
         ts = self._triggers.get(trigger_id)
         if not ts:
             return None
+        fired = fire_now(ts.trigger, self.state)
         # Emit trigger.fired so the Macro editor flashes the trigger card the same
         # as a real fire — this button is the primary "test automation" affordance.
         # The only listener forwards it to WS clients; deliberately no cooldown /
@@ -1128,7 +1147,7 @@ class TriggerEngine:
             # meant a `wait_until` with no timeout — the documented shape for
             # "wait for the projector" — held the request until the socket
             # died. The macro keeps running either way.
-            end = await self.macros.execute_detached(ts.macro_id)
+            end = await self.macros.execute_detached(ts.macro_id, fired.context)
         except ValueError:
             log.warning(f"Trigger {trigger_id} test: macro '{ts.macro_id}' not found")
             return None
@@ -1142,4 +1161,4 @@ class TriggerEngine:
                 "outcome": end.outcome,
             },
         )
-        return end
+        return FireNowEnd(end, fired.fired_with)

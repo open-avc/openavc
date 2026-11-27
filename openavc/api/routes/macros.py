@@ -198,11 +198,13 @@ async def test_trigger(trigger_id: str) -> dict[str, Any]:
     /macros/{id}/execute` answers with, for the same reason: this said
     ``fired`` for a macro whose every step failed. A 404 means there was
     nothing to fire. A ``skipped`` answer carries ``code`` and ``message``,
-    the macro's reason for refusing the run.
+    the macro's reason for refusing the run. ``fired_with`` is the sentence
+    saying what the macro was handed as ``$trigger.*``: what the trigger can
+    supply without a real change or event (``core/trigger_context.fire_now``).
     """
     _rate_limit_test(f"test_trigger:{trigger_id}")
     engine = _get_engine()
-    end = await engine.triggers.test_trigger(trigger_id)
-    if end is None:
+    fired = await engine.triggers.test_trigger(trigger_id)
+    if fired is None:
         raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found")
-    return {**end.answer(), "trigger_id": trigger_id}
+    return {**fired.answer(), "trigger_id": trigger_id}

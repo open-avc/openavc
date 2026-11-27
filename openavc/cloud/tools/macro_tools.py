@@ -554,13 +554,17 @@ class MacroToolsMixin:
             return {"error": "Too many requests — wait a moment before testing the same trigger again."}
         engine = self._get_engine()
         if engine and engine.triggers:
-            end = await engine.triggers.test_trigger(trigger_id)
-            if end is None:
+            fired = await engine.triggers.test_trigger(trigger_id)
+            if fired is None:
                 return {"error": f"Trigger '{trigger_id}' not found"}
             # Firing a trigger runs a macro, so how that run ended means the
             # same thing here as it does through run_macro. This answered
-            # "fired" for a macro whose every step failed.
-            return _run_answer(end, trigger_id=trigger_id)
+            # "fired" for a macro whose every step failed. fired_with says
+            # what the macro was handed as $trigger.*, as the IDE's toast does.
+            return {
+                **_run_answer(fired.end, trigger_id=trigger_id),
+                "fired_with": fired.fired_with,
+            }
         return {"error": "Trigger engine not available"}
 
     async def _check_references(self, input: dict) -> Any:

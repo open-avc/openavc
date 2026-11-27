@@ -169,8 +169,25 @@ describe("Fire now", () => {
     await userEvent.click(screen.getByTitle("Fire now (bypasses conditions)"));
 
     await waitFor(() => expect(mocks.showError).toHaveBeenCalled());
-    expect(mocks.showError.mock.calls[0][0]).toContain("the macro failed");
+    expect(mocks.showError.mock.calls[0][0]).toContain("The macro failed");
     expect(mocks.showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("leads with what the macro was handed, in the server's words", async () => {
+    // It ran the macro with no `$trigger.*` values and said only that it
+    // completed, so a test could pass on a branch the real fire never takes.
+    mocks.testTrigger.mockResolvedValueOnce({
+      status: "completed",
+      fired_with: "Fired with new_value = on, the current value. old_value is unknown.",
+    } as never);
+    renderCard();
+
+    await userEvent.click(screen.getByTitle("Fire now (bypasses conditions)"));
+
+    await waitFor(() => expect(mocks.showSuccess).toHaveBeenCalled());
+    expect(mocks.showSuccess.mock.calls[0][0]).toBe(
+      "Fired with new_value = on, the current value. old_value is unknown. The macro completed.",
+    );
   });
 
   it("confirms a clean run", async () => {
@@ -190,6 +207,7 @@ describe("Fire now", () => {
       status: "skipped",
       code: "macro_cooldown",
       message: "The macro's Cooldown (600 seconds) had not passed since it last started.",
+      fired_with: "Fired without event data.",
     } as never);
     renderCard();
 
@@ -197,7 +215,7 @@ describe("Fire now", () => {
 
     await waitFor(() => expect(mocks.showInfo).toHaveBeenCalled());
     expect(mocks.showInfo.mock.calls[0][0]).toBe(
-      "Trigger fired, but the macro didn't start. The macro's Cooldown (600 seconds) had not passed since it last started.",
+      "Fired without event data. The macro didn't start. The macro's Cooldown (600 seconds) had not passed since it last started.",
     );
   });
 

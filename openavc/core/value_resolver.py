@@ -75,11 +75,12 @@ class FiringContext(NamedTuple):
 _TRIGGER_TYPE = ContextField("trigger_type", 'The kind of trigger, "schedule" or "startup"')
 
 #: The fields each producer of a run puts in its firing context, keyed by the
-#: producer: a trigger's own type, ``press`` for a control's macro action and
-#: ``fire_now`` for Fire now in the trigger list. A field's name has one
-#: description wherever it appears. A child macro run by a Run Macro step
-#: reads its parent's context; a run started any other way (the Run button,
-#: the API, a script, a plugin, the AI assistant) has none.
+#: producer: a trigger's own type, and ``press`` for a control's macro action.
+#: A field's name has one description wherever it appears. Fire now in the
+#: trigger list hands the fields of its trigger's type that the trigger alone
+#: can supply (``core/trigger_context.fire_now``). A child macro run by a Run
+#: Macro step reads its parent's context; a run started any other way (the
+#: Run button, the API, a script, a plugin, the AI assistant) has none.
 #: ``python -m openavc.core.firing_context_gen`` renders this into the IDE,
 #: and ``tests/test_firing_context_fields.py`` holds every producer to it.
 FIRING_CONTEXTS: dict[str, FiringContext] = {
@@ -110,7 +111,6 @@ FIRING_CONTEXTS: dict[str, FiringContext] = {
         ContextField("tag", "The Tag you gave the control in the UI Builder"),
         ContextField("element", "The control's ID"),
     )),
-    "fire_now": FiringContext("Fire now in the trigger list", ()),
 }
 
 

@@ -9,12 +9,13 @@ import { TRIGGER_TYPES, getTriggerType, generateTriggerId, triggerCardKeys } fro
 import { issuesAt, issueLabel, issueText, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
 import { cardRun, isFailedRun } from "./triggerRuns";
-import { didNotStart, type RunAnswer } from "./runAnswer";
+import { didNotStart } from "./runAnswer";
 import { SkipLine } from "./SkipLine";
 import { useLogStore } from "../../store/logStore";
 import type { SkipNote, TriggerRun } from "../../store/logStore";
 import { showSuccess, showError, showInfo } from "../../store/toastStore";
 import * as api from "../../api/restClient";
+import type { FireNowAnswer } from "../../api/restClient";
 
 /** What the card says about a trigger's last automatic fire.
  *
@@ -44,30 +45,32 @@ function timeAgo(seconds: number): string {
   return `${Math.floor(delta / 86400)}d ago`;
 }
 
-/** What the person who pressed Fire now is told. The button reported nothing
- *  at all for a macro whose every step failed. A macro that refused the run
- *  says why in the server's words (`fireNowResult`). */
-const FIRE_NOW_RESULTS: Record<string, { message: string; kind: "ok" | "bad" | "info" }> = {
-  completed: { message: "Trigger fired. The macro completed.", kind: "ok" },
-  failed: {
-    message: "Trigger fired, but the macro failed. Open the macro to see which step.",
-    kind: "bad",
-  },
-  cancelled: {
-    message: "Trigger fired. Something cancelled the macro part-way through.",
-    kind: "info",
-  },
-  running: { message: "Trigger fired. The macro is still running.", kind: "info" },
+/** How the macro's run went, said after what it was handed. The button
+ *  reported nothing at all for a macro whose every step failed. A macro that
+ *  refused the run says why in the server's words (`fireNowResult`). */
+const FIRE_NOW_ENDINGS: Record<string, { message: string; kind: "ok" | "bad" | "info" }> = {
+  completed: { message: "The macro completed.", kind: "ok" },
+  failed: { message: "The macro failed. Open the macro to see which step.", kind: "bad" },
+  cancelled: { message: "Something cancelled the macro part-way through.", kind: "info" },
+  running: { message: "The macro is still running.", kind: "info" },
 };
 
-function fireNowResult(answer: RunAnswer): { message: string; kind: "ok" | "bad" | "info" } {
+/** What the person who pressed Fire now is told: the server's sentence on
+ *  what the macro was handed as `$trigger.*` (`fired_with`), then how the
+ *  run went. */
+function fireNowResult(answer: FireNowAnswer): { message: string; kind: "ok" | "bad" | "info" } {
+  const lead = answer.fired_with ?? "Trigger fired.";
   if (answer.status === "skipped") {
-    return { message: didNotStart(answer, "Trigger fired, but"), kind: "info" };
+    return { message: `${lead} ${didNotStart(answer)}`, kind: "info" };
   }
-  return FIRE_NOW_RESULTS[answer.status] ?? { message: "Trigger fired.", kind: "info" };
+  const ending = FIRE_NOW_ENDINGS[answer.status];
+  return ending ? { message: `${lead} ${ending.message}`, kind: ending.kind } : { message: lead, kind: "info" };
 }
 
 const SHOW_RESULT = { ok: showSuccess, bad: showError, info: showInfo };
+
+/** Long enough to read what the macro was handed as well as how it ran. */
+const FIRE_NOW_TOAST_MS = 10000;
 
 /** Fire now: fire the trigger, then say how its macro's run went. It answered
  *  the same whatever the macro did, so pressing it on a broken trigger looked
@@ -75,7 +78,7 @@ const SHOW_RESULT = { ok: showSuccess, bad: showError, info: showInfo };
 async function fireNow(triggerId: string): Promise<void> {
   try {
     const result = fireNowResult(await api.testTrigger(triggerId));
-    SHOW_RESULT[result.kind](result.message);
+    SHOW_RESULT[result.kind](result.message, FIRE_NOW_TOAST_MS);
   } catch (e) {
     showError("Could not fire the trigger.");
     console.error("Fire trigger failed:", e);

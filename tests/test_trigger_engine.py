@@ -702,8 +702,8 @@ async def test_test_trigger(trigger_engine, macro_engine, core):
 
     # How the run ended, not the fact that it was dispatched — it used to
     # answer True for a macro whose every step failed.
-    outcome = await trigger_engine.test_trigger("trg_test")
-    assert outcome.outcome == "completed"
+    fired_now = await trigger_engine.test_trigger("trg_test")
+    assert fired_now.end.outcome == "completed"
     assert state.get("var.tested") is True
     # The "Fire now" button must emit trigger.fired so the Macro editor flashes
     # the trigger card the same as a real fire.

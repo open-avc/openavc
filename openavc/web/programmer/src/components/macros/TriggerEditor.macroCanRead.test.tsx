@@ -29,8 +29,8 @@ describe("What a trigger type's macro can read", () => {
     expect(cron?.getAttribute("title")).toBe("The trigger's schedule, as a cron expression");
   });
 
-  it("says nothing for a type that gives nothing", () => {
-    const { container } = render(<MacroCanRead type="fire_now" />);
+  it("says nothing for a type the table does not list", () => {
+    const { container } = render(<MacroCanRead type="no_such_type" />);
     expect(container.textContent).toBe("");
   });
 });

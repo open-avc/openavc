@@ -6,13 +6,13 @@
 //
 // What each producer of a macro run puts in the run's firing context, which a
 // step reads as `$trigger.<field>` and a condition as the key
-// `trigger.<field>`. Keyed by the producer: a trigger's own type, `press` for
-// a control that runs the macro, `fire_now` for Fire now in the trigger list.
-// `name` is what ran the macro, `fields` what the macro can read, and
-// `carries_payload` that the context also holds every field of the event's
-// own payload, under the names its sender gave them. A macro run by a Run
-// Macro step reads the context of the macro that ran it; a run started any
-// other way has none.
+// `trigger.<field>`. Keyed by the producer: a trigger's own type, and `press`
+// for a control that runs the macro. `name` is what ran the macro, `fields`
+// what the macro can read, and `carries_payload` that the context also holds
+// every field of the event's own payload, under the names its sender gave
+// them. Fire now in the trigger list hands the fields of its trigger's type
+// that the trigger alone can supply. A macro run by a Run Macro step reads the
+// context of the macro that ran it; a run started any other way has none.
 
 /** One field of a firing context, read as `trigger.<name>`. */
 export interface ContextField {
@@ -108,11 +108,6 @@ export const FIRING_CONTEXTS = {
         "description": "The control's ID"
       }
     ],
-    "carries_payload": false
-  },
-  "fire_now": {
-    "name": "Fire now in the trigger list",
-    "fields": [],
     "carries_payload": false
   }
 } as const satisfies Readonly<Record<string, FiringContext>>;

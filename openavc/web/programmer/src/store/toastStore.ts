@@ -37,14 +37,14 @@ export function showError(message: string): void {
   useToastStore.getState().addToast(message, "error", 10000);
 }
 
-/** Shorthand for showing an info toast. */
-export function showInfo(message: string): void {
-  useToastStore.getState().addToast(message, "info", 3000);
+/** Shorthand for showing an info toast; `duration` (ms) for a longer one. */
+export function showInfo(message: string, duration = 3000): void {
+  useToastStore.getState().addToast(message, "info", duration);
 }
 
-/** Shorthand for showing a success toast. */
-export function showSuccess(message: string): void {
-  useToastStore.getState().addToast(message, "success", 3000);
+/** Shorthand for showing a success toast; `duration` (ms) for a longer one. */
+export function showSuccess(message: string, duration = 3000): void {
+  useToastStore.getState().addToast(message, "success", duration);
 }
 
 /** A warning that stays until it is dismissed: something the reader has to

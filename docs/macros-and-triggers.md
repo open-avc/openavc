@@ -224,9 +224,10 @@ A macro can read what ran it as `$trigger.<field>`: in a step's value, through t
 | A schedule trigger | `$trigger.trigger_type` (`schedule`), `$trigger.cron` |
 | A startup trigger | `$trigger.trigger_type` (`startup`) |
 | A control that runs the macro | `$trigger.tag`, `$trigger.element` (the control's ID), `$trigger.value`, `$trigger.input`, `$trigger.output`, `$trigger.mute` |
-| Fire now in the trigger list | Nothing |
 
 An event's fields keep the names its sender gave them. An **Emit Event** step with the payload field `source` gives the macro `$trigger.source`, and a device error (`device.error.<device_id>`) gives `$trigger.device_id` and `$trigger.error`. To use one, type it into the picker's search box: `trigger.source`.
+
+**Fire now** in the trigger list gives the macro what the trigger can supply with no real change or event, and its message says what it gave. A startup or schedule trigger gives what it gives when it fires. A state change trigger gives `$trigger.key`, and as `$trigger.new_value` the key's current value when that value would fire the trigger; otherwise, for **Equals**, the value it fires on; otherwise nothing. `$trigger.old_value` is always empty. An event trigger, and a state change trigger on a pattern, give nothing.
 
 A macro run by a **Run Macro** step reads what ran the macro that called it. Run any other way (the **Test** button, a script, the API), `$trigger.*` reads as empty.
 
@@ -374,7 +375,7 @@ A **State Change** trigger does not have to match a value. Leave the operator on
 
 The schedule trigger includes a visual cron builder with two modes: a **field-by-field editor** (separate inputs for minute, hour, day, month, weekday with labels) and a raw expression editor. A dropdown of common examples ("Every weekday at 8am", "First Monday of month", "Every 15 minutes during business hours") lets you start from a template. Times are in the system's time zone, shown under the schedule (see [Time Zone](scheduling-guide.md#time-zone)).
 
-**Fire Now:** Click the **Fire Now** button on any trigger to manually execute it immediately, without waiting for the condition to be met. Useful for testing.
+**Fire Now:** Click the **Fire Now** button on any trigger to manually execute it immediately, without waiting for the condition to be met. Useful for testing. The macro reads what the trigger can supply (see [Reading what ran the macro](#reading-what-ran-the-macro)), and the message says which values it was given.
 
 **Condition Preview:** under a trigger's **Conditions**, a live line reads "Evaluated now: ALL TRUE, trigger would fire" or "FALSE, trigger would not fire", with each key's current value beside it. A condition on a field of what fired the trigger (`trigger.new_value`) shows "known when it fires", and while the rest hold the line reads "TRUE so far".
 

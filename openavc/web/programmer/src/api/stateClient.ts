@@ -67,9 +67,15 @@ export async function cancelMacro(
   return request(`/macros/${macroId}/cancel`, { method: "POST" });
 }
 
-export async function testTrigger(
-  triggerId: string
-): Promise<RunAnswer & { trigger_id: string }> {
+/** How a Fire now went (`RunAnswer`), and `fired_with`: the server's
+ *  sentence on what the macro was handed as `$trigger.*`, which is what the
+ *  trigger can supply with no real change or event. */
+export interface FireNowAnswer extends RunAnswer {
+  trigger_id: string;
+  fired_with?: string;
+}
+
+export async function testTrigger(triggerId: string): Promise<FireNowAnswer> {
   return request(`/triggers/${triggerId}/test`, { method: "POST" });
 }
 
