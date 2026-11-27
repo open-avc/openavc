@@ -81,6 +81,15 @@ export function UsageRow({ usage }: { usage: VariableUsage }) {
 // variablesShared.helpers.ts so they can be unit-tested without React.
 // ==========================================================================
 
+/** A master element as the Used By list names it, and where a click on it goes. */
+function masterLabel(mel: { id: string; label?: string; type: string }): string {
+  return `Master Elements → ${mel.label || mel.type} (${mel.id})`;
+}
+
+function masterNav(mel: { id: string }): { view: ViewId; focus: FocusTarget } {
+  return { view: "ui-builder", focus: { type: "element", id: mel.id, detail: "master" } };
+}
+
 /** Recursively scan macro steps for var.* references */
 function scanStepsForVarUsages(
   steps: import("../../api/types").MacroStep[],
@@ -192,6 +201,11 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
         });
       });
     }
+  }
+  for (const mel of project.ui.master_elements ?? []) {
+    scanBindingForVars(mel.bindings, (varId, detail) => {
+      addUsage(varId, { type: "ui", icon: Layout, label: masterLabel(mel), detail, nav: masterNav(mel) });
+    });
   }
 
   // Script references — var.* keys. A wildcard reference (e.g. var.*) matches
@@ -317,6 +331,11 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
         });
       });
     }
+  }
+  for (const mel of project.ui.master_elements ?? []) {
+    scanBindingForAllKeys(mel.bindings, (key, detail) => {
+      addUsage(key, { type: "ui", icon: Layout, label: masterLabel(mel), detail, nav: masterNav(mel) });
+    });
   }
 
   // Script references — match against all keys, supporting wildcards
