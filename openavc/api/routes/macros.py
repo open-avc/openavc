@@ -136,18 +136,13 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
 
-    if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
-        raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
-
-    for entry in body["macros"]:
-        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
-            raise _api_error(400, "Every macro needs a non-empty 'id'")
+    macros = _posted_macros(body)
     # A trigger's id names one trigger across every macro posted, in the order
     # posted, which is the project's: the one the engine keeps is the last.
-    holders = trigger_holders(body["macros"])
+    holders = trigger_holders(macros)
 
     results: dict[str, Any] = {}
-    for entry in body["macros"]:
+    for entry in macros:
         results[entry["id"]] = {
             "issues": macro_issues(
                 entry.get("steps") or [],
@@ -161,6 +156,20 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
             )
         }
     return {"macros": results}
+
+
+def _posted_macros(body: Any) -> list[dict[str, Any]]:
+    """The macros a lint request posts, each with a non-empty id; a 400 for
+    anything else."""
+    if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
+        raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
+    if not all(_has_id(entry) for entry in body["macros"]):
+        raise _api_error(400, "Every macro needs a non-empty 'id'")
+    return body["macros"]
+
+
+def _has_id(entry: Any) -> bool:
+    return isinstance(entry, dict) and isinstance(entry.get("id"), str) and bool(entry["id"])
 
 
 # --- Triggers ---
