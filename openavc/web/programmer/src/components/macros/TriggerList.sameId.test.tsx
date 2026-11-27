@@ -7,7 +7,8 @@ import userEvent from "@testing-library/user-event";
  * and the one that never fires says so when it is opened.
  */
 
-vi.mock("../../api/restClient", () => ({ testTrigger: vi.fn() }));
+const mocks = vi.hoisted(() => ({ testTrigger: vi.fn(async () => ({ status: "completed" })) }));
+vi.mock("../../api/restClient", () => ({ testTrigger: mocks.testTrigger }));
 
 import { TriggerList } from "./TriggerList";
 import type { MacroIssue } from "./macroLint";
@@ -41,5 +42,20 @@ describe("two triggers sharing an id", () => {
     expect(screen.getByText(
       "This trigger never fires because Trigger 2 has the same id. Delete this trigger and add it again.",
     )).toBeTruthy();
+  });
+
+  it("turns Fire now off on the trigger that never fires, which would run the other one", async () => {
+    render(
+      <TriggerList triggers={TRIGGERS as never} issues={ISSUES} devices={[]} allMacros={[]} onUpdate={() => {}} />,
+    );
+    const [first, second] = screen.getAllByRole("button", { name: /Fire now/ });
+    expect((first as HTMLButtonElement).disabled).toBe(true);
+    expect(first.getAttribute("title")).toBe("Fire now is off for a trigger that never fires. Delete it and add it again.");
+    expect((second as HTMLButtonElement).disabled).toBe(false);
+
+    await userEvent.click(first);
+    expect(mocks.testTrigger).not.toHaveBeenCalled();
+    await userEvent.click(second);
+    expect(mocks.testTrigger).toHaveBeenCalledWith("t1");
   });
 });

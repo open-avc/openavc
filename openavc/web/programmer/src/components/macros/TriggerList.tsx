@@ -82,6 +82,23 @@ async function fireNow(triggerId: string): Promise<void> {
   }
 }
 
+/** Fire now, turned off on a trigger that never fires: its id is another
+ *  trigger's, and firing the id would run that one. */
+function FireNowButton({ triggerId, neverFires }: { triggerId: string; neverFires: boolean }) {
+  return (
+    <button
+      onClick={() => fireNow(triggerId)}
+      disabled={neverFires}
+      style={{ ...iconBtnStyle, color: "var(--accent)", opacity: neverFires ? 0.4 : 1 }}
+      title={neverFires
+        ? "Fire now is off for a trigger that never fires. Delete it and add it again."
+        : "Fire now (bypasses conditions)"}
+    >
+      <Play size={14} />
+    </button>
+  );
+}
+
 interface TriggerListProps {
   triggers: TriggerConfig[];
   /** The whole macro's issues; this list reads the trigger half. A cron with
@@ -459,13 +476,10 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     style={{ display: "flex", gap: 2, flexShrink: 0 }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button
-                      onClick={() => fireNow(trigger.id)}
-                      style={{ ...iconBtnStyle, color: "var(--accent)" }}
-                      title="Fire now (bypasses conditions)"
-                    >
-                      <Play size={14} />
-                    </button>
+                    <FireNowButton
+                      triggerId={trigger.id}
+                      neverFires={lintIssues.some((x) => x.same_id_as)}
+                    />
                     <button
                       onClick={() => toggleEnabled(i)}
                       style={iconBtnStyle}
