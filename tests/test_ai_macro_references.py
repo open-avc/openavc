@@ -30,8 +30,22 @@ def _seed() -> dict:
             {"id": "mode", "type": "string", "default": ""},
             {"id": "spare", "type": "string", "default": ""},
             {"id": "room_state", "type": "string", "default": ""},
+            {"id": "wanted", "type": "string", "default": ""},
         ],
         "macros": [
+            {
+                "id": "follow", "name": "Follow",
+                "steps": [
+                    {"action": "delay", "seconds": 1,
+                     "skip_if": {"key": "device.acme.input", "operator": "eq", "value": "$var.wanted"}},
+                ],
+                "triggers": [
+                    {"id": "t_guard", "type": "event", "event_pattern": "go",
+                     "conditions": [{"key": "device.acme.power", "operator": "ne", "value": "$var.wanted"}]},
+                    {"id": "t_state", "type": "state_change", "state_key": "device.acme.level",
+                     "state_operator": "eq", "state_value": "$var.wanted"},
+                ],
+            },
             {"id": "lights_on", "name": "Lights On", "steps": []},
             {
                 "id": "start", "name": "Start Meeting",
@@ -176,6 +190,15 @@ async def test_deleting_a_shown_variable_carries_the_impact(handler) -> None:
     result = await handler._delete_variable({"id": "mode"})
     assert result["status"] == "deleted"
     assert [b["element_id"] for b in result["impact"]["bindings"]] == ["present", "mode_text"]
+
+
+async def test_a_variable_a_condition_compares_with_is_reported(handler) -> None:
+    """A condition whose value names the variable (``$var.wanted``) reads it."""
+    refs = await _refs(handler, "variable", "wanted")
+    assert [(m["macro_id"], m["steps"]) for m in refs["macros"]] == [("follow", 1)]
+    assert [(t["macro_id"], t["trigger_id"], t["field"]) for t in refs["triggers"]] == [
+        ("follow", "t_guard", "condition_value"), ("follow", "t_state", "state_value"),
+    ]
 
 
 async def test_an_unused_variable_still_reports_nothing(handler) -> None:

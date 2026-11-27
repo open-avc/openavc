@@ -5,7 +5,7 @@ from typing import Any
 from openavc.cloud.tools import ToolEditError, apply_tool_edit, merge_forward_compat
 from openavc.core.macro_engine import RunEnd
 from openavc.core.monitors import drop_monitors_for_variable
-from openavc.core.value_resolver import embedded_refs
+from openavc.core.value_resolver import embedded_refs, referenced_key
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -134,13 +134,22 @@ def _mentions(value: Any, text: str) -> bool:
     return False
 
 
+def _condition_reads(condition: Any, key: str) -> bool:
+    """A condition that tests ``key``, or compares with it (a value that names
+    it, ``$key``; ``value_resolver.referenced_key``)."""
+    if condition is None:
+        return False
+    return getattr(condition, "key", None) == key or referenced_key(getattr(condition, "value", None)) == key
+
+
 def _step_uses_key(step: Any, key: str) -> bool:
-    """A step that sets ``key``, tests it, takes ``$key`` as a parameter, or
-    names it in a help message, which resolves ``$key`` inside the sentence."""
+    """A step that sets ``key``, tests it or compares with it, takes ``$key``
+    as a parameter, or names it in a help message, which resolves ``$key``
+    inside the sentence."""
     if getattr(step, "key", None) == key:
         return True
     for guard in (getattr(step, "condition", None), getattr(step, "skip_if", None)):
-        if guard is not None and getattr(guard, "key", None) == key:
+        if _condition_reads(guard, key):
             return True
     if getattr(step, "action", None) == "help.request" and key in embedded_refs(
         getattr(step, "message", None)
@@ -656,9 +665,15 @@ class MacroToolsMixin:
                 for t in m.triggers:
                     if t.state_key == state_key:
                         result["triggers"].append({"macro_id": m.id, "trigger_id": t.id, "field": "state_key"})
+                    if t.type == "state_change" and referenced_key(t.state_value) == state_key:
+                        result["triggers"].append({"macro_id": m.id, "trigger_id": t.id, "field": "state_value"})
                     for condition in t.conditions:
                         if condition.key == state_key:
                             result["triggers"].append({"macro_id": m.id, "trigger_id": t.id, "field": "condition"})
+                        elif referenced_key(condition.value) == state_key:
+                            result["triggers"].append(
+                                {"macro_id": m.id, "trigger_id": t.id, "field": "condition_value"},
+                            )
             # Check scripts
             result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
 
