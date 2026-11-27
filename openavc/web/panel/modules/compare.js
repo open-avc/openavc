@@ -121,7 +121,7 @@ function truthy(value) {
 /**
  * Whether `actual op target` holds for a reader in `mode` (the panel's is
  * SURFACE). An operator the rule does not know never holds; the server
- * refuses it instead, and a page review names it.
+ * refuses it instead, and the Builder's Validate names it.
  */
 export function evalOperator(op, actual, target, mode = SURFACE) {
     const canonical = OPERATOR_SPELLINGS.get(op);

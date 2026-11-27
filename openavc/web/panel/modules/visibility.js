@@ -19,7 +19,8 @@
  * Builder's (reviewStacking.ts) reason about which spellings the panel
  * evaluates and what each one means, and tests/test_ui_page_review_mirrors.py
  * runs OPERATORS here and holds the reviews' sets to them; the AI's binding
- * check (cloud/tools/ui_bindings.py) takes the canonical names. A new
+ * check (cloud/tools/ui_bindings.py) and the Builder's Validate take every
+ * spelling the platform's list holds, and Validate names any other. A new
  * spelling goes into those too. No DOM and no panel state.
  */
 
