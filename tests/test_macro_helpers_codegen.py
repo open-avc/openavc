@@ -208,6 +208,7 @@ SCENARIOS = [
     "trigger_context_guard_event",
     "reference_steps",
     "reference_trigger_value",
+    "recheck_trigger_value",
 ]
 
 
@@ -500,6 +501,15 @@ class TestValuesThatNameAKey:
         r2 = _exec_script(source, {**decoy, "trigger.new_value": "on"})
         asyncio.run(self._state_handler(r2)("var.wanted", None, "off"))
         assert ("var.then" in r2.state.data, r2.state.data.get("var.else")) == (False, True)
+
+
+    @pytest.mark.parametrize(("now", "runs"), [(5, True), (1, False)])
+    def test_a_delayed_state_trigger_checks_again_against_the_change_it_fired_on(self, generated, now, runs):
+        """After the delay the watched key reads the state and
+        ``$trigger.old_value`` the change, as the engine re-checks it."""
+        r = _exec_script(generated["recheck_trigger_value"]["script"], {"var.level": now})
+        asyncio.run(self._state_handler(r)("var.level", 1, 5))
+        assert ("var.after" in r.state.data) is runs
 
 
 class TestOfflineGuards:

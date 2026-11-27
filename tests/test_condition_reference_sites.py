@@ -252,3 +252,26 @@ async def test_a_delayed_state_trigger_checks_again_against_the_key_its_value_na
     await trigger_engine._delayed_fire(trigger_engine._triggers["t"], 0, {"key": "var.level"})
     await _outcome(skipped, fired)
     assert ([s["reason"] for s in skipped], fired) == (["state_reverted"], [])
+
+
+@pytest.mark.parametrize(("now", "fires"), [(5, True), (1, False)])
+async def test_a_delayed_state_trigger_checks_again_against_the_change_it_fired_on(
+    now, fires, trigger_engine, macro_engine, core,
+):
+    """A value that names a field of what fired it (``$trigger.old_value``) reads
+    the change the trigger fired on after the delay, as the watched key reads
+    the state: the level is still above the one it rose from, or back at it."""
+    state, events = core
+    state.set("var.level", now, source="test")
+    skipped, fired = _record(events, "trigger.skipped"), _record(events, "trigger.fired")
+    macro_engine.load_macros([{"id": "m", "name": "M", "steps": []}])
+    trigger_engine.load_triggers(_one_macro({
+        "type": "state_change", "state_key": "var.level",
+        "state_operator": "gt", "state_value": "$trigger.old_value", "delay_seconds": 1,
+    }))
+    trigger_engine._running = True
+    await trigger_engine._delayed_fire(
+        trigger_engine._triggers["t"], 0, {"key": "var.level", "old_value": 1, "new_value": 5},
+    )
+    await _outcome(skipped, fired)
+    assert ([s["reason"] for s in skipped], len(fired)) == (([], 1) if fires else (["state_reverted"], 0))

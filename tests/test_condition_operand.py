@@ -15,9 +15,9 @@ The sites differ in where a ``trigger.<field>`` key is read from:
   context: a guard checked again after a wait reads the one it fired with.
 - ``empty``: a Wait Until is handed no firing context, so the field is a value
   that has not arrived.
-- ``state``: a site that reads the state only (``from_context=False``) reads
-  the state store for every key: a state-change trigger's own test after its
-  delay reads the watched key there.
+
+A state-change trigger's own test after its delay reads the watched key in the
+state (``test_a_delayed_state_trigger_judges_the_state_after_its_delay``).
 
 Each site's judgement of a probe is checked against ``eval_operator`` applied
 to the reading the corpus expects, so the probes tell the four readings apart
@@ -50,47 +50,47 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, Any] | None, dict[str, Any
     (
         "a state key", "var.level",
         {"var.level": FROM_STATE}, {"level": FROM_CONTEXT},
-        {"context": FROM_STATE, "empty": FROM_STATE, "state": FROM_STATE},
+        {"context": FROM_STATE, "empty": FROM_STATE},
     ),
     (
         "a trigger field, with a state key of the same name", "trigger.value",
         {"trigger.value": FROM_STATE}, {"value": FROM_CONTEXT},
-        {"context": FROM_CONTEXT, "empty": None, "state": FROM_STATE},
+        {"context": FROM_CONTEXT, "empty": None},
     ),
     (
         "a trigger field the context lacks", "trigger.value",
         {}, {"other": FROM_CONTEXT},
-        {"context": None, "empty": None, "state": None},
+        {"context": None, "empty": None},
     ),
     (
         "a trigger field on a run with no context", "trigger.value",
         {"trigger.value": FROM_STATE}, None,
-        {"context": None, "empty": None, "state": FROM_STATE},
+        {"context": None, "empty": None},
     ),
     (
         "a trigger field holding False", "trigger.value",
         {}, {"value": False},
-        {"context": False, "empty": None, "state": None},
+        {"context": False, "empty": None},
     ),
     (
         "a state key with no value", "var.missing",
         {}, {"missing": FROM_CONTEXT},
-        {"context": None, "empty": None, "state": None},
+        {"context": None, "empty": None},
     ),
     (
         "a state key holding None", "var.none",
         {"var.none": None}, {},
-        {"context": None, "empty": None, "state": None},
+        {"context": None, "empty": None},
     ),
     (
         "a state key holding False", "var.off",
         {"var.off": False}, {},
-        {"context": False, "empty": False, "state": False},
+        {"context": False, "empty": False},
     ),
     (
         "a $ on the left is a key, not a reference", "$var.level",
         {"var.level": FROM_STATE}, {"level": FROM_CONTEXT},
-        {"context": None, "empty": None, "state": None},
+        {"context": None, "empty": None},
     ),
 ]
 CASE_IDS = [c[0] for c in CASES]
@@ -153,7 +153,6 @@ def test_the_reader_answers_each_kind_of_site(_id, key, values, context, reads) 
     state = _state(values)
     assert read_operand(key, state=state, context=context) == reads["context"]
     assert read_operand(key, state=state) == reads["empty"]
-    assert read_operand(key, state=state, context=context, from_context=False) == reads["state"]
 
 
 def test_the_reader_logs_nothing_for_a_key_with_no_value(caplog) -> None:

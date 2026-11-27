@@ -10,8 +10,8 @@ Three rules that share one question, what a name means at run time:
 - ``read_operand``: what a condition's key reads, for every site that judges
   one -- a step's Skip If, a Conditional, a Wait Until, a trigger's guard and a
   state-change trigger's own test. A ``trigger.<field>`` key is the firing
-  context's field at a site that reads the context, and any other key is the
-  state store's value.
+  context's field (none at a Wait Until, which is handed no context), and any
+  other key is the state store's value.
 - ``FIRING_CONTEXTS``: the fields each producer puts in that context, which a
   ``trigger.<field>`` key and a ``$trigger.<field>`` reference read, and what
   each holds. The IDE's picker and trigger editor list them from it.
@@ -119,22 +119,19 @@ def read_operand(
     *,
     state: Any,
     context: Mapping[str, Any] | None = None,
-    from_context: bool = True,
 ) -> Any:
     """What a condition's ``key`` reads at the site judging it.
 
-    A ``trigger.<field>`` key reads the firing context's field when the site
-    reads the context (``from_context``, the default); a field the context
-    lacks, and every field of a run with no context, is a value that has not
-    arrived (None). Any other key, and every key at a site that reads the
-    state only (``from_context=False``), is the state store's value, None when
-    it has none.
+    A ``trigger.<field>`` key reads the firing context's field; a field the
+    context lacks, and every field of a run with no context (a Wait Until's),
+    is a value that has not arrived (None). Any other key is the state store's
+    value, None when it has none.
 
     A key is read as written: a leading ``$`` is part of the key here, not a
     reference. Nothing is logged for a key with no value, since a Wait Until
     reads its key again on every change.
     """
-    if from_context and key.startswith(TRIGGER_PREFIX):
+    if key.startswith(TRIGGER_PREFIX):
         return (context or {}).get(key[len(TRIGGER_PREFIX):])
     return state.get(key)
 

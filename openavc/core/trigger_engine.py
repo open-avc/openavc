@@ -752,7 +752,7 @@ class TriggerEngine:
                 changed_key = context.get("key", t.get("state_key", ""))
                 own = state_condition(t, changed_key)
                 try:
-                    matched = judge(own, self._reads(), STATE_TRIGGER)
+                    matched = judge(own, self._rechecks(changed_key, context), STATE_TRIGGER)
                 except UnknownOperator as bad:
                     log.error(f"Trigger {t['id']} has invalid operator '{bad.operator}'")
                     await self._skipped(t["id"], "invalid_condition", operator=bad.operator)
@@ -1030,13 +1030,19 @@ class TriggerEngine:
 
     # --- Condition evaluation ---
 
-    def _reads(self, context: dict[str, Any] | None = None) -> Callable[[str], Any]:
-        """What a condition's key reads here (``read_operand``): with a
-        ``context``, a ``trigger.`` key is that context's field; without one,
-        every key is a state key."""
-        if context is None:
-            return lambda key: read_operand(key, state=self.state, from_context=False)
+    def _reads(self, context: dict[str, Any]) -> Callable[[str], Any]:
+        """What a condition's key reads here (``read_operand``): a ``trigger.``
+        key is a field of ``context``, what the trigger fired with, and any
+        other key a state key."""
         return lambda key: read_operand(key, state=self.state, context=context)
+
+    def _rechecks(self, changed_key: str, context: dict[str, Any]) -> Callable[[str], Any]:
+        """What a State Change trigger's own test reads after its delay: the
+        key that changed, in the state as it is now, and a value that names a
+        field of what fired it (``$trigger.old_value``) from the change it
+        fired on. Any other key a value names reads the state."""
+        fired = self._reads(context)
+        return lambda key: self.state.get(key) if key == changed_key else fired(key)
 
     def _check_conditions(
         self, conditions: list[dict[str, Any]], context: dict[str, Any],

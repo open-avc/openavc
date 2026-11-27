@@ -518,13 +518,11 @@ function _pyParamsDict(params: Record<string, unknown>): string {
  * names a key (`$var.wanted`, `referencedKey`) a read of that key, where the
  * macro engine reads it at `site` (`_read`, as `condition_eval.read_value` reads it
  * through the place's reader). A key with no value reads None, which compare()
- * never finds equal or ordered, as the engine makes no decision on it. A
- * State Change trigger's re-check after its delay reads the state only
- * (`"state"`), `trigger.` keys included. */
-function _conditionValue(value: unknown, site: "step" | "wait_until" | "state"): string {
+ * never finds equal or ordered, as the engine makes no decision on it. */
+function _conditionValue(value: unknown, site: "step" | "wait_until"): string {
   const named = referencedKey(value);
   if (named === null) return _pyValue(value, false);
-  return site === "state" ? `state.get("${_pyEscape(named)}")` : _read(named, site);
+  return _read(named, site);
 }
 
 /** Positive-sense condition expression (true when the condition matches), its
@@ -547,7 +545,8 @@ function _conditionExpr(
  * (`TriggerEngine._check_conditions`) reads a `trigger.<field>` key and a
  * `$trigger.` value from the change or event the handler was fired with, as a
  * step does (`_read`); a State Change trigger's own test, checked again after
- * its delay, reads the state only (`TriggerEngine._delayed_fire`). */
+ * its delay, reads the watched key in the state, and its value as a guard
+ * does (`TriggerEngine._rechecks`). */
 function _conditionToGuard(
   cond: { key?: string; operator?: string; value?: unknown },
   indent: string,
@@ -558,7 +557,7 @@ function _conditionToGuard(
   const op = cond.operator ?? "eq";
   if (op === "truthy") return `${indent}if not ${actual}:`;
   if (op === "falsy") return `${indent}if ${actual}:`;
-  const compared = _conditionValue(cond.value ?? "", site === "guard" ? "step" : "state");
+  const compared = _conditionValue(cond.value ?? "", "step");
   return `${indent}if not compare(${actual}, "${_pyEscape(op)}", ${compared}):`;
 }
 

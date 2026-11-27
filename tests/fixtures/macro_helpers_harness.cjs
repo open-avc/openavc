@@ -288,4 +288,17 @@ gen("reference_trigger_value", {
   }],
 });
 
+// --- A State Change trigger's own test, checked again after its delay, reads
+// the watched key in the state and a value naming a field of what fired it
+// from the change ---
+gen("recheck_trigger_value", {
+  id: "m18",
+  name: "A Rise Held Through A Delay",
+  steps: [{ action: "state.set", key: "var.after", value: "ran" }],
+  triggers: [{
+    type: "state_change", enabled: true, state_key: "var.level",
+    state_operator: "gt", state_value: "$trigger.old_value", delay_seconds: 0.01,
+  }],
+});
+
 process.stdout.write(JSON.stringify(results));
