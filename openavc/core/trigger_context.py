@@ -119,9 +119,8 @@ def _exactly(context: dict[str, Any]) -> FireNow:
 
 
 def _state_change(trigger: Mapping[str, Any], state: Any) -> FireNow:
-    # The key the trigger watches, as its own test names it.
-    key = state_condition(trigger)["key"] or ""
-    if not isinstance(key, str) or not key:
+    key = _watched_key(trigger)
+    if not key:
         return FireNow({}, NO_EVENT_DATA)
     if any(c in key for c in GLOB_CHARS):
         return FireNow({}, _PATTERN)
@@ -132,6 +131,23 @@ def _state_change(trigger: Mapping[str, Any], state: Any) -> FireNow:
             {**context, "new_value": current},
             f"Fired with new_value = {_shown(current)}, the current value. {_OLD_VALUE_UNKNOWN}",
         )
+    return _not_the_current_value(trigger, context, current, state)
+
+
+def _watched_key(trigger: Mapping[str, Any]) -> str:
+    """The key a State Change trigger watches, as its own test names it; ""
+    for none."""
+    key = state_condition(trigger)["key"]
+    return key if isinstance(key, str) else ""
+
+
+def _not_the_current_value(
+    trigger: Mapping[str, Any], context: dict[str, Any], current: Any, state: Any,
+) -> FireNow:
+    """Fire now when the key's current value would not fire the trigger, or
+    it has none: an ``eq`` trigger's own value, else no ``new_value``, the
+    sentence saying why."""
+    key = context["key"]
     why = (
         f"{key} has no value yet" if current is None
         else f"The current value ({_shown(current)}) would not fire this trigger"
