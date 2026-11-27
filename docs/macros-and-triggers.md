@@ -94,6 +94,8 @@ Comparisons automatically handle type differences between device state and your 
 
 `eq`/`ne` against a value that has not been reported yet (a device that has not polled, or a key that does not exist) never match: `power != "on"` will not fire while `power` is still unknown, so an automation cannot act on state a device has not sent. To branch on a missing or empty value, use `falsy`.
 
+To compare with another key instead of a fixed value, start the value with `$`. `device.projector.input == $var.wanted_input` holds when the projector's input matches whatever `var.wanted_input` holds at that moment, and a **Wait Until** on it finishes when either key changes to match. A key with no value yet makes no decision, as an unreported value does. In a **Conditional** or **Skip If**, `$trigger.<field>` reads what ran the macro (see [Reading what ran the macro](#reading-what-ran-the-macro)). The condition editor shows the key's current value beside it, and **Validate** names a `$var.` reference to a variable the project does not define.
+
 Conditionals can be nested (a conditional inside a conditional) up to 5 levels deep. Macros that call other macros via "Run Macro" steps can nest up to 10 levels deep. For most rooms, one level of each is enough.
 
 ## Wait Until
@@ -385,7 +387,7 @@ Trigger safety features prevent runaway automation:
 - **Debounce.** Prevent rapid re-firing (configurable seconds).
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
 - **Cooldown.** Minimum interval between executions. Debounce, Delay and Cooldown each take 0 or more seconds; 0 turns that one off.
-- **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases.
+- **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases, and a value starting with `$` compares with that key's current value.
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes, or drop the fire if that takes more than five minutes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 

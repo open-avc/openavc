@@ -354,6 +354,8 @@ You can add multiple conditions and choose AND or OR logic. With AND (the defaul
 
 A condition compares values the way a macro condition does (see [How a state value matches what you wrote](#shows-appearance)), with one difference: before the device reports, **not equal** holds and **equals** does not, so a Turn On control shown while the power is not on is there from the start. A condition with no value to compare never holds; use **falsy** to show a control while a value is unset.
 
+A value starting with `$` compares with another key's current value: `device.projector.input` equals `$var.wanted_input` shows the control while the projector is on the input the panel asked for, and the panel redraws it when either key changes. Until that key has a value, **not equal** holds and **equals** does not, as before a device reports.
+
 Visibility conditions are evaluated client-side in the panel, so they respond instantly without a server round-trip. They also work alongside the `ui.*.visible` state-key overrides (see [Direct UI control from macros and scripts](#direct-ui-control-from-macros-and-scripts)), which take priority when set.
 
 ### Shows: Items (lists)
