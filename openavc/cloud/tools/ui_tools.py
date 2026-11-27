@@ -682,12 +682,19 @@ def _new_page(project: Any, page_id: str, input: dict) -> Any:
     page = _page_model(page_id, elements, {
         name: input[name] for name in _PAGE_FIELDS if name in input
     })
+    _refuse_new_page_structure(page)
+    place_in_primary(page, boxes)
+    return page
+
+
+def _refuse_new_page_structure(page: Any) -> None:
+    """A new page's arrangements as the update door refuses them, then its
+    controls' containers as the element doors refuse them, each control
+    named."""
     refuse_new_page_layouts(page)
     containers = parent_issues(page)
     if containers:
         raise _batch_error([issue.message for issue in containers], "added")
-    place_in_primary(page, boxes)
-    return page
 
 
 def _page_model(page_id: str, elements: list, given: dict) -> Any:

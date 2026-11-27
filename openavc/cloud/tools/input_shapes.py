@@ -29,23 +29,27 @@ from typing import Any
 from openavc.cloud.tool_declarations import TOOLS
 
 
+#: Each JSON type's Python types and its words, a boolean before a number
+#: since a bool is an int.
+_KIND_WORDS = (
+    (bool, "a boolean"),
+    ((int, float), "a number"),
+    (str, "a string"),
+    (list, "an array"),
+    (dict, "an object"),
+)
+
+
 def json_kind(value: Any) -> str:
     """What ``value`` is, in the JSON words the tool definitions use."""
     if value is None:
         return "null"
-    if isinstance(value, bool):
-        return "a boolean"
     if isinstance(value, float) and not math.isfinite(value):
         return _not_finite_words(value)
-    if isinstance(value, (int, float)):
-        return "a number"
-    if isinstance(value, str):
-        return "a string"
-    if isinstance(value, list):
-        return "an array"
-    if isinstance(value, dict):
-        return "an object"
-    return type(value).__name__
+    return next(
+        (words for kinds, words in _KIND_WORDS if isinstance(value, kinds)),
+        type(value).__name__,
+    )
 
 
 def _not_finite_words(value: float) -> str:
