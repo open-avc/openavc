@@ -241,4 +241,41 @@ gen("trigger_context_guard", {
   }],
 });
 
+// --- A condition's value that names a key reads that key where the engine
+// reads it: a step from the state or the run's firing context, a Wait Until
+// with no context, a trigger's own test from the change, a guard from the
+// state only ---
+gen("reference_steps", {
+  id: "m15",
+  name: "Values That Name A Key",
+  steps: [
+    { action: "state.set", key: "var.ran", value: true,
+      skip_if: { key: "var.power", operator: "eq", value: "$var.wanted" } },
+    { action: "conditional", condition: { key: "var.power", operator: "eq", value: "$var.wanted" },
+      then_steps: [{ action: "state.set", key: "var.then", value: true }],
+      else_steps: [{ action: "state.set", key: "var.else", value: true }] },
+    { action: "wait_until", condition: { key: "var.power", operator: "eq", value: "$var.wanted" },
+      timeout: 0, on_timeout: "continue" },
+  ],
+  triggers: [{
+    type: "state_change", enabled: true, state_key: "var.level",
+    state_operator: "gte", state_value: "$var.limit",
+    conditions: [{ key: "var.power", operator: "eq", value: "$var.wanted" }],
+  }],
+});
+
+gen("reference_trigger_value", {
+  id: "m16",
+  name: "A Value Naming A Trigger Field",
+  steps: [{
+    action: "conditional", condition: { key: "var.power", operator: "eq", value: "$trigger.new_value" },
+    then_steps: [{ action: "state.set", key: "var.then", value: true }],
+    else_steps: [{ action: "state.set", key: "var.else", value: true }],
+  }],
+  triggers: [{
+    type: "state_change", enabled: true, state_key: "var.wanted",
+    conditions: [{ key: "var.power", operator: "ne", value: "$trigger.new_value" }],
+  }],
+});
+
 process.stdout.write(JSON.stringify(results));

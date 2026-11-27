@@ -1,7 +1,7 @@
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup, TriggerConfig } from "../../api/types";
 import { quotedValueText } from "../shared/booleanWords";
 import { ANY_CHANGE } from "../../api/conditionOperators.gen";
-import { writtenOperator } from "../../api/conditionEval";
+import { referencedKey, writtenOperator } from "../../api/conditionEval";
 import type { StepNames } from "./commandLabels";
 
 export interface StepTypeInfo {
@@ -402,7 +402,7 @@ function _newValueGuard(trigger: TriggerConfig): string {
   const op = String(writtenOperator(trigger.state_operator, "state_trigger"));
   if (op === "truthy") return "    if not new_value:";
   if (op === "falsy") return "    if new_value:";
-  return `    if not compare(new_value, "${_pyEscape(op)}", ${_pyValue(trigger.state_value ?? "", false)}):`;
+  return `    if not compare(new_value, "${_pyEscape(op)}", ${_conditionValue(trigger.state_value ?? "", "step")}):`;
 }
 
 /** An event trigger's handler: its guards, then the steps. */
@@ -514,10 +514,22 @@ function _pyParamsDict(params: Record<string, unknown>): string {
   return `{${entries.join(", ")}}`;
 }
 
+/** What a condition compares with: its value as written, or for one that
+ * names a key (`$var.wanted`, `referencedKey`) a read of that key, where the
+ * macro engine reads it at `site` (`_read`, as `condition_eval.holds` reads it
+ * through the place's reader). A key with no value reads None, which compare()
+ * never finds equal or ordered, as the engine makes no decision on it. A guard
+ * reads the state only (`"guard"`), `trigger.` keys included. */
+function _conditionValue(value: unknown, site: "step" | "wait_until" | "guard"): string {
+  const named = referencedKey(value);
+  if (named === null) return _pyValue(value, false);
+  return site === "guard" ? `state.get("${_pyEscape(named)}")` : _read(named, site);
+}
+
 /** Positive-sense condition expression (true when the condition matches), its
- * key read where the macro engine reads it at `site` (`_read`).
- * Comparison operators go through compare(), which applies the same alias
- * normalization and type coercion as the macro/trigger engines. */
+ * key and a key its value names read where the macro engine reads them at
+ * `site` (`_read`). Comparison operators go through compare(), which applies
+ * the same alias normalization and type coercion as the macro/trigger engines. */
 function _conditionExpr(
   cond: { key?: string; operator?: string; value?: unknown },
   site: "step" | "wait_until" = "step",
@@ -526,12 +538,12 @@ function _conditionExpr(
   const op = cond.operator ?? "eq";
   if (op === "truthy") return actual;
   if (op === "falsy") return `not ${actual}`;
-  return `compare(${actual}, "${_pyEscape(op)}", ${_pyValue(cond.value ?? "", false)})`;
+  return `compare(${actual}, "${_pyEscape(op)}", ${_conditionValue(cond.value ?? "", site)})`;
 }
 
 /** Generate a guard condition (if ... return) line for a trigger condition/operator.
- * A guard reads the state only, `trigger.` keys included, as the trigger
- * engine's guard does (`TriggerEngine._check_conditions`). */
+ * A guard reads the state only, `trigger.` keys and `$trigger.` values
+ * included, as the trigger engine's guard does (`TriggerEngine._check_conditions`). */
 function _conditionToGuard(
   cond: { key?: string; operator?: string; value?: unknown },
   indent: string
@@ -540,7 +552,7 @@ function _conditionToGuard(
   const op = cond.operator ?? "eq";
   if (op === "truthy") return `${indent}if not state.get("${key}"):`;
   if (op === "falsy") return `${indent}if state.get("${key}"):`;
-  return `${indent}if not compare(state.get("${key}"), "${_pyEscape(op)}", ${_pyValue(cond.value ?? "", false)}):`;
+  return `${indent}if not compare(state.get("${key}"), "${_pyEscape(op)}", ${_conditionValue(cond.value ?? "", "guard")}):`;
 }
 
 function _generateStepLines(

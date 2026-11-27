@@ -205,6 +205,8 @@ SCENARIOS = [
     "trigger_context",
     "trigger_context_wait_until",
     "trigger_context_guard",
+    "reference_steps",
+    "reference_trigger_value",
 ]
 
 
@@ -437,6 +439,57 @@ class TestTriggerContext:
         """Only a script whose steps read the context builds it."""
         for scenario in ("legacy_plain", "trigger_gte", "dollar_params", "trigger_context_guard"):
             assert "trigger = " not in generated[scenario]["script"], scenario
+
+
+class TestValuesThatNameAKey:
+    """A condition's value that names a key (``$var.wanted``) compares with what
+    that key holds, read where the engine reads it (``condition_eval.holds``
+    through each place's reader)."""
+
+    @staticmethod
+    def _state_handler(r):
+        assert len(r.state_handlers) == 1
+        return r.state_handlers[0][1]
+
+    def test_a_step_s_conditions_compare_with_the_key_their_value_names(self, generated):
+        r = _exec_script(generated["reference_steps"]["script"], {"var.power": "on", "var.wanted": "ON"})
+        r.run()
+        assert ("var.ran" in r.state.data, r.state.data.get("var.then"), "var.else" in r.state.data) == (
+            False, True, False,
+        )
+        r2 = _exec_script(generated["reference_steps"]["script"], {"var.power": "on", "var.wanted": "off"})
+        r2.run()
+        assert (r2.state.data.get("var.ran"), "var.then" in r2.state.data, r2.state.data.get("var.else")) == (
+            True, False, True,
+        )
+
+    def test_a_key_with_no_value_makes_no_decision(self, generated):
+        r = _exec_script(generated["reference_steps"]["script"], {"var.power": "on"})
+        r.run()
+        assert (r.state.data.get("var.ran"), r.state.data.get("var.else")) == (True, True)
+
+    def test_a_state_trigger_tests_its_change_and_its_guard_against_the_named_keys(self, generated):
+        state = {"var.limit": 40, "var.power": "on", "var.wanted": "on"}
+        r = _exec_script(generated["reference_steps"]["script"], state)
+        handler = self._state_handler(r)
+        asyncio.run(handler("var.level", 0, 50))
+        assert r.state.data.get("var.then") is True
+        for changed in ({"var.limit": 60}, {"var.wanted": "off"}):
+            r2 = _exec_script(generated["reference_steps"]["script"], {**state, **changed})
+            asyncio.run(self._state_handler(r2)("var.level", 0, 50))
+            assert "var.then" not in r2.state.data and "var.else" not in r2.state.data, changed
+
+    def test_a_trigger_value_reads_the_run_s_context_in_a_step_and_the_state_in_a_guard(self, generated):
+        """The engine's guard reads the state only, so ``$trigger.new_value``
+        there reads a state key that has no value and the guard makes no
+        decision; the macro's step reads the change it was fired with."""
+        source = generated["reference_trigger_value"]["script"]
+        r = _exec_script(source, {"var.power": "on"})
+        asyncio.run(self._state_handler(r)("var.wanted", None, "on"))
+        assert r.state.data.get("var.then") is None and r.state.data.get("var.else") is None
+        r2 = _exec_script(source, {"var.power": "on", "trigger.new_value": "off"})
+        asyncio.run(self._state_handler(r2)("var.wanted", None, "ON"))
+        assert (r2.state.data.get("var.then"), "var.else" in r2.state.data) == (True, False)
 
 
 class TestOfflineGuards:
