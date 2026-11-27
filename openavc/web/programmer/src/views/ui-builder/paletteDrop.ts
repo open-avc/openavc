@@ -20,6 +20,7 @@ import {
   paletteDragPlacement,
   pointerToPercent,
   resolveDropParent,
+  takenElementIds,
 } from "../../components/ui-builder/uiBuilderHelpers";
 
 export interface Point {
@@ -46,13 +47,10 @@ export function topLevelBoxes(page: UIPage, layoutId: string | null): Placement[
     .map((el) => getPlacement(page, el.id, layoutId));
 }
 
-/** Every id a new control may not take: page controls and masters share the
- *  ui.<id> namespace, on every page. */
+/** Every id a new control may not take, as `takenElementIds` says: page
+ *  controls and masters share the ui.<id> namespace, on every page. */
 export function takenIds(pages: UIPage[], masters: MasterElement[]): Set<string> {
-  return new Set([
-    ...pages.flatMap((p) => p.elements.map((e) => e.id)),
-    ...masters.map((m) => m.id),
-  ]);
+  return takenElementIds(pages, masters.map((m) => m.id));
 }
 
 /** The canvas a drop measures against: its rect is the scaled one, so zoom is

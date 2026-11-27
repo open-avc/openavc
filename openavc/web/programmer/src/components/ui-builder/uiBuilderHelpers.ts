@@ -7,6 +7,7 @@ import type {
   PageGroup,
 } from "../../api/types";
 import { firstFree, generateId } from "./newElement";
+import { takenElementIds } from "./takenElementIds";
 import {
   DEFAULT_PLACEMENT,
   GEOMETRY_PRECISION,
@@ -88,6 +89,7 @@ export {
   defaultAspectLock,
   createDefaultElement,
 } from "./newElement";
+export { takenElementIds } from "./takenElementIds";
 
 // --- Style units: the px the author types, the rem the panel stores ---
 //
@@ -220,17 +222,6 @@ export {
   aspectLockOf,
   autoPlace,
 } from "./gestureBoxes";
-
-/**
- * Every id a new control on any page may not take: every page's controls, and
- * the reserved ones (master elements share the ui.<id> namespace, so a copy, or
- * a control promoted to or demoted from a master, cannot be named onto one).
- */
-export function takenElementIds(pages: UIPage[], reservedIds: string[]): Set<string> {
-  const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
-  for (const id of reservedIds) taken.add(id);
-  return taken;
-}
 
 // --- Page mutations (return new pages array) ---
 

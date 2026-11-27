@@ -50,6 +50,7 @@ import type {
 import { PAGE_RULES } from "../../api/projectValues.gen";
 import { isPlainObject, own } from "./authoredValues";
 import { NESTED_ACTION_FIELDS } from "./bindingActions";
+import { takenElementIds } from "./takenElementIds";
 
 /** The same array back when `fn` handed back every item as it was; otherwise
  *  the new one. */
@@ -256,9 +257,7 @@ export function validateElementId(
   if (!/^[a-z][a-z0-9_]*$/.test(newId)) {
     return "ID must start with a lowercase letter and contain only lowercase letters, digits, and underscores.";
   }
-  const existing = new Set<string>();
-  for (const p of pages) for (const el of p.elements) existing.add(el.id);
-  for (const m of masterElements) existing.add(m.id);
+  const existing = takenElementIds(pages, masterElements.map((m) => m.id));
   existing.delete(currentId);
   if (existing.has(newId)) return `An element with ID "${newId}" already exists.`;
   return null;
