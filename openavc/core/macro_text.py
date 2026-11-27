@@ -113,9 +113,9 @@ SKIP_REASONS: dict[str, str] = {
     "conditions_not_met": "The trigger's conditions were not met.",
     "guard_not_met": "The trigger's conditions were no longer met when its wait ended.",
     "state_reverted": "The value changed back before the trigger's delay ended.",
-    "invalid_condition": (
-        "A condition on the trigger uses '{operator}', an operator this system does not know."
-    ),
+    # "uses 'about', an operator this system does not know", or for a blank
+    # one "has a blank operator, ...": _operator_text.
+    "invalid_condition": "A condition on the trigger {operator}.",
     "macro_running": "The macro was still running, and the trigger's Overlap is set to Skip.",
     "queue_timeout": (
         "The macro was still running after {seconds}, so the trigger's queued fire was "
@@ -154,8 +154,19 @@ def _seconds_text(seconds: float) -> str:
     return f"{number} second" if number == "1" else f"{number} seconds"
 
 
+def _operator_text(operator: Any) -> str:
+    """What ``invalid_condition`` says of an operator nobody knows: the word
+    as written, or for a blank one (which the project model takes) that it
+    is blank, never a pair of empty quotes."""
+    if not str(operator).strip():
+        return "has a blank operator, which this system does not know"
+    return f"uses '{operator}', an operator this system does not know"
+
+
 # How a field is written into a sentence, where ``str`` would not do.
-_FIELD_TEXT: dict[str, Callable[[Any], str]] = {"seconds": _seconds_text}
+_FIELD_TEXT: dict[str, Callable[[Any], str]] = {
+    "seconds": _seconds_text, "operator": _operator_text,
+}
 
 
 def skip_reason(code: str, **values: Any) -> dict[str, str]:

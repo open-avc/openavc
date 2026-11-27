@@ -95,6 +95,17 @@ def test_a_number_of_seconds_reads_as_a_person_says_it(seconds, said) -> None:
     )
 
 
+@pytest.mark.parametrize(("operator", "said"), [
+    ("about", "A condition on the trigger uses 'about', an operator this system does not know."),
+    ("", "A condition on the trigger has a blank operator, which this system does not know."),
+    ("   ", "A condition on the trigger has a blank operator, which this system does not know."),
+])
+def test_an_operator_nobody_knows_reads_as_a_person_says_it(operator, said) -> None:
+    """The word as written; a blank one, which the project model takes, as
+    blank rather than as a pair of quotes."""
+    assert skip_reason("invalid_condition", operator=operator)["message"] == said
+
+
 def test_a_code_the_table_does_not_hold_is_refused() -> None:
     with pytest.raises(KeyError):
         skip_reason("busy")
