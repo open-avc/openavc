@@ -421,3 +421,26 @@ def test_a_report_asks_the_review_of_any_json_without_raising(element):
     master = {**element, "id": f"master_{element['id']}"}
     issues = pr.reported_issues([{"id": "p", "elements": [element]}], [master])
     assert all(issue.message for issue in issues)
+
+
+_BINDING_ACTIONS_TS = (
+    Path(__file__).resolve().parents[1] / "openavc" / "web" / "programmer" / "src"
+    / "components" / "ui-builder" / "bindingActions.ts"
+)
+
+
+def test_the_builders_incomplete_badge_asks_for_the_fields_an_action_requires():
+    # The binding card badges an action Incomplete by its own table
+    # (RUNS_ONLY_WITH); Validate shows the platform's sentence for the same
+    # action. Held equal here, so the badge and the row cannot disagree. A
+    # value_map is the card's own case there (a map with no options), as here
+    # (a map that is no object).
+    import re
+
+    source = _BINDING_ACTIONS_TS.read_text(encoding="utf-8")
+    table = re.search(r"const RUNS_ONLY_WITH = new Map<[^>]*>\(\[(.*?)\]\);", source, re.S)
+    assert table, "RUNS_ONLY_WITH not found in bindingActions.ts"
+    rows = re.findall(r'\["([\w.]+)",\s*\[([^\]]*)\]\]', table.group(1))
+    builder = {action: tuple(re.findall(r'"(\w+)"', fields)) for action, fields in rows}
+    platform = {action: fields for action, fields in ps.ACTION_REQUIRED_FIELDS.items() if action != "value_map"}
+    assert builder == platform
