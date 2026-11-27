@@ -771,6 +771,80 @@ const tests = {
         assert(app.root.textContent.includes('camera heading'), 'the fallback is drawn');
     },
 
+    // A link to a dialog opens it as a dialog, over the home page, and once:
+    // its Cancel lands on home, and a save or a reconnect does not open it again.
+    startup_opens_a_linked_dialog_over_the_home_page() {
+        const dialog = { ...startupPage('help'), page_type: 'overlay' };
+        const app = openingPanel([dialog, startupPage('camera'), startupPage('main')], '?page=help');
+        try {
+            assert(app.currentPage === 'camera', `the page behind the dialog is home, got ${app.currentPage}`);
+            assert(app.overlayStack.join() === 'help', `the dialog is open over it, got [${app.overlayStack}]`);
+            const box = document.querySelector('.panel-overlay[data-page-id="help"]');
+            assert(box && box.textContent.includes('help heading'), 'the dialog is drawn in its own box');
+            assert(app.root.textContent.includes('camera heading'), 'home is drawn behind it');
+            assert(!app.root.textContent.includes('help heading'), 'the dialog is not drawn as the page');
+            app.navigateToPage('$back');
+            assert(app.overlayStack.length === 0, 'its Cancel closes it');
+            assert(app.currentPage === 'camera', 'and leaves home on screen');
+            app.handleMessage({ type: 'ui.definition', ui: app.uiDef });
+            assert(app.overlayStack.length === 0, 'a new definition does not open the linked dialog again');
+            assert(app.currentPage === 'camera', 'nor move off home');
+        } finally {
+            app.dismissAllOverlays();
+        }
+    },
+
+    startup_opens_a_linked_sidebar_over_the_home_page() {
+        const drawer = { ...startupPage('drawer'), page_type: 'sidebar' };
+        const app = openingPanel([startupPage('main'), drawer], '?page=drawer');
+        try {
+            assert(app.currentPage === 'main', `the page behind the sidebar is home, got ${app.currentPage}`);
+            assert(app.overlayStack.join() === 'drawer', `the sidebar is open over it, got [${app.overlayStack}]`);
+        } finally {
+            app.dismissAllOverlays();
+        }
+    },
+
+    startup_draws_a_linked_dialog_as_the_page_when_there_is_no_page_to_put_it_over() {
+        const dialog = { ...startupPage('help'), page_type: 'overlay' };
+        const app = openingPanel([dialog], '?page=help');
+        try {
+            assert(app.currentPage === 'help', `the dialog is the page, got ${app.currentPage}`);
+            assert(app.overlayStack.length === 0, 'with nothing to open it over');
+            assert(app.root.textContent.includes('help heading'), 'and is drawn');
+        } finally {
+            app.dismissAllOverlays();
+        }
+    },
+
+    // The idle page is a dialog: the idle return opens it over home, the last
+    // person's page and history forgotten, and leaves it be once it is up.
+    idle_opens_a_dialog_idle_page_over_the_home_page() {
+        const dialog = { ...startupPage('welcome'), page_type: 'overlay' };
+        const app = openingPanel([startupPage('main'), startupPage('details'), dialog]);
+        app.uiSettings = { ...app.uiSettings, idle_page: 'welcome' };
+        try {
+            app.navigateToPage('details');
+            app.lock._goIdle();
+            assert(app.currentPage === 'main', `the page behind the idle dialog is home, got ${app.currentPage}`);
+            assert(app.overlayStack.join() === 'welcome', `the idle dialog is open over it, got [${app.overlayStack}]`);
+            assert(app.pageHistory.length === 0, 'the last person\'s history is forgotten');
+            assert(!app.root.textContent.includes('welcome heading'), 'the dialog is not drawn as the page');
+            const box = document.querySelector('.panel-overlay[data-page-id="welcome"]');
+            app.lock._goIdle();
+            assert(document.querySelector('.panel-overlay[data-page-id="welcome"]') === box,
+                'already showing the idle dialog, the idle return draws nothing again');
+            assert(app.overlayStack.join() === 'welcome', 'and the dialog stays open');
+            app.navigateToPage('$back');
+            assert(app.overlayStack.length === 0, 'its Cancel closes it');
+            assert(app.currentPage === 'main', 'and leaves home on screen');
+            app.lock._goIdle();
+            assert(app.overlayStack.join() === 'welcome', 'a later idle return opens it again');
+        } finally {
+            app.dismissAllOverlays();
+        }
+    },
+
     // matrix routes re-evaluate on incremental state.update for any of
     // their key patterns (route / audio route / labels), not just on full render.
     h001_matrix_reeval() {

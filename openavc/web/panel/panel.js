@@ -53,7 +53,7 @@ import {
 } from './modules/layout.js';
 import {
     closeOverlayFrame, drawOverlayFrame, isCustomPage, namesPage, opensOver, pageBehind,
-    pageDrawsNothing, pageRunsAuthorMarkup, rememberPage, standIn,
+    pageDrawsNothing, pageOpening, pageRunsAuthorMarkup, rememberPage, showsOpening, standIn,
 } from './modules/pages.js';
 import {
     carries, definitionIn, demoStateOf, isBuilderFrame, listenToBuilder, postToBuilder, startingTextSizes,
@@ -1143,6 +1143,10 @@ class PanelApp {
      * in the middle of goes with the old draw: a digit half typed on a
      * dialog's keypad is not kept. A page standing in for one that went is
      * another page, and arrives the way a page change does.
+     *
+     * A dialog or sidebar named as the page (a `?page=` link, the idle page)
+     * is opened over the page drawn behind it, which becomes the page
+     * (`_pageToDraw`), so it is opened once: a later redraw draws that page.
      */
     renderCurrentPage({ inPlace = false } = {}) {
         if (!this.uiDef) return;
@@ -1151,16 +1155,18 @@ class PanelApp {
             return;
         }
         const reopen = inPlace ? this.overlayStack : [];
-        this._pageDraw = { again: false, inPlace };
+        const draw = { again: false, inPlace, opens: null };
+        this._pageDraw = draw;
         try {
             do {
-                this._pageDraw.again = false;
+                draw.again = false;
                 this._drawCurrentPage();
-            } while (this._pageDraw.again);
+            } while (draw.again);
         } finally {
             this._pageDraw = null;
         }
         this._reopenOverlays(reopen);
+        if (draw.opens) this.renderOverlay(draw.opens);
     }
 
     /** Open again, in order and at once, each overlay of `ids` whose page is still there and still opens over the page. */
@@ -1263,9 +1269,18 @@ class PanelApp {
         this._surfaces.page = new Surface(nextPageId);
     }
 
-    /** The page to draw: the current one, else the one standing in for it (made current); null when there are no pages. */
+    /**
+     * The page to draw: the current one, else the one standing in for it,
+     * made current; null when there are no pages. A dialog or sidebar is
+     * opened over the page behind it once that is drawn (`pageOpening`),
+     * except on the design canvas, which draws it flat to author it.
+     */
     _pageToDraw() {
-        const page = standIn(this.uiDef.pages || [], this.currentPage);
+        const pages = this.uiDef.pages || [];
+        const { page, over } = this.editMode
+            ? { page: standIn(pages, this.currentPage), over: null }
+            : pageOpening(pages, this.currentPage);
+        if (over) this._pageDraw.opens = over;
         if (page) this.currentPage = page.id;
         return page;
     }
@@ -2798,14 +2813,14 @@ class PanelApp {
     }
 
     /** Back to the idle page, overlays closed and the history of the last
-     *  person's navigation forgotten -- unless the panel is already there. */
+     *  person's navigation forgotten -- unless the panel is already there.
+     *  An idle page that is a dialog opens over the home page (`pageOpening`). */
     _returnToIdlePage(idlePage) {
-        if (this.currentPage !== idlePage || this.overlayStack.length > 0) {
-            this.dismissAllOverlays();
-            this.currentPage = idlePage;
-            this.pageHistory = [];
-            this.renderCurrentPage();
-        }
+        if (showsOpening(this.uiDef?.pages || [], idlePage, this.currentPage, this.overlayStack)) return;
+        this.dismissAllOverlays();
+        this.currentPage = idlePage;
+        this.pageHistory = [];
+        this.renderCurrentPage();
     }
 
     // --- Helpers ---

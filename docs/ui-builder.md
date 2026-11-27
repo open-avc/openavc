@@ -204,7 +204,7 @@ Click the **+** dropdown to create an **Overlay** or **Sidebar** page:
 - **Overlay**: Floats centered on top of the current page with a dim/blur backdrop. Use for confirmation dialogs, settings panels, PIN entry.
 - **Sidebar**: Slides in from the left or right edge. Use for settings drawers, advanced options.
 
-Navigate to an overlay the same way as any page (page_nav target or button navigate action). The current page stays visible underneath. To dismiss an overlay, use `$back` (phone-style: closes the overlay if one is open, otherwise returns to the previous page) or `$dismiss` (overlay-close only, no page-history fallback). Both are available in the Navigate Page dropdown.
+Navigate to an overlay the same way as any page (page_nav target or button navigate action). The current page stays visible underneath. An overlay chosen as the **Idle Page**, or opened with a `?page=` link, opens over the home page. To dismiss an overlay, use `$back` (phone-style: closes the overlay if one is open, otherwise returns to the previous page) or `$dismiss` (overlay-close only, no page-history fallback). Both are available in the Navigate Page dropdown.
 
 Opening an overlay that is already open does nothing, so one close always takes it down. Closing an overlay drops anything its keypads, dropdowns and text fields had not sent yet, such as digits still waiting out a keypad's **Send Delay**.
 

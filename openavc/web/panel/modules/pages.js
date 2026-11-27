@@ -12,11 +12,12 @@
  * 'page') replaces the one on screen and goes into the history `$back`
  * walks; an overlay or a sidebar opens over it, in a box of its own. The
  * rule worth knowing before changing it: a path that shows a page asks
- * `opensOver` here. Navigation and the Builder's Preview do. Preview once set
- * the page it was handed and drew it, and a dialog came out as a flat page
- * with no backdrop and an empty overlay stack, so its Cancel did nothing: the
- * type had been read in one of the two paths and not the other. The idle
- * return and a `?page=` link still draw the page they name as a regular page.
+ * `opensOver` here. Navigation and the Builder's Preview do, and so does the
+ * panel's page draw (`pageOpening`), which is how the idle return and a
+ * `?page=` link open a dialog they name. Preview once set the page it was
+ * handed and drew it, and a dialog came out as a flat page with no backdrop
+ * and an empty overlay stack, so its Cancel did nothing: the type had been
+ * read in one of the two paths and not the other.
  *
  * A master element draws on every page its `pages` names, '*' or a list of
  * ids (`namesPage`, held to the page rules' `names_page` by
@@ -66,6 +67,31 @@ export function standIn(pages, pageId) {
  */
 export function pageBehind(pages, currentId) {
     return pages.find(p => p.id === currentId && isRegularPage(p)) || pages.find(isRegularPage);
+}
+
+/**
+ * What drawing `pageId` afresh puts on screen: `{ page, over }`, the regular
+ * page drawn and the dialog or sidebar opened over it (null: none). The page
+ * the id names, or the one standing in for it, is drawn itself, unless it
+ * opens over: then it opens over the first regular page, which is where its
+ * `$back` lands. With no regular page to open it over, it is drawn as the
+ * page. `page` is null when there are no pages.
+ */
+export function pageOpening(pages, pageId) {
+    const page = standIn(pages, pageId);
+    const behind = page && opensOver(page) ? pageBehind(pages) : null;
+    return behind ? { page: behind, over: page } : { page, over: null };
+}
+
+/**
+ * Is the screen already what `pageOpening` draws for `pageId`: that page
+ * showing (`currentId`), with its dialog alone open over it, or nothing open
+ * when it has none? `overlays` are the ids open, oldest first.
+ */
+export function showsOpening(pages, pageId, currentId, overlays) {
+    const { page, over } = pageOpening(pages, pageId);
+    if (!over) return currentId === (page ? page.id : pageId) && overlays.length === 0;
+    return currentId === page.id && overlays.length === 1 && overlays[0] === over.id;
 }
 
 /**
