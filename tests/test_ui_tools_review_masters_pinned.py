@@ -168,6 +168,68 @@ async def test_one_page_is_reviewed_without_the_masters():
     assert result["finding_count"] == len(result["pages"]["main"])
 
 
+#: Two pages and a master that hold what a page may not: an id used twice
+#: (once on each page, once more as a master), a look's states as a list, an
+#: operator nobody knows, a master in a container. Each control has a box and
+#: something to draw, so the page review says nothing of its own.
+_HELD = _project(
+    masters=[{"id": "go", "type": "button", "label": "Go", "pages": "*", "parent": "box",
+              "placements": {"landscape": {"x": 80, "y": 80, "w": 15, "h": 15}}}],
+    pages=[
+        {"id": "first", "name": "First", "elements": [
+            {"id": "go", "type": "button", "label": "Go",
+             "bindings": {"show": {"look": {"key": "var.on", "states": [{"label": "On"}]},
+                                   "visible_when": {"key": "var.mode", "operator": "constructor"}}}},
+        ], "layouts": [{"id": "landscape", "primary": True, "placements": {
+            "go": {"x": 10, "y": 30, "w": 20, "h": 15}}}]},
+        {"id": "second", "name": "Second", "elements": [
+            {"id": "go", "type": "button", "label": "Go"},
+        ], "layouts": [{"id": "landscape", "primary": True, "placements": {
+            "go": {"x": 10, "y": 30, "w": 20, "h": 15}}}]},
+    ],
+)
+
+
+@pytest.mark.asyncio
+async def test_what_the_pages_hold_that_they_may_not_comes_first_where_it_is():
+    result = await _call(_engine(_HELD), "review_ui", {})
+    assert result["pages"] == {
+        "first": [
+            "Element 'go': show.look.states must be an object mapping state values to style props",
+            "Element 'go': show.visible_when: operator 'constructor' is not valid, so the panel "
+            "reads that condition as false. Use: eq, ne, gt, lt, gte, lte, truthy, falsy",
+        ],
+        "second": ["Element 'go' already exists on page 'first'"],
+    }
+    assert result["master_elements"] == [
+        "Element 'go' already exists on page 'first'",
+        "Master element 'go': a master element is placed on the screen, not inside a container, "
+        "so it cannot have a 'parent'.",
+    ]
+    assert result["finding_count"] == 5
+    assert result["status"] == "findings"
+
+
+@pytest.mark.asyncio
+async def test_one_page_named_is_told_of_an_id_another_page_holds_first():
+    result = await _call(_engine(_HELD), "review_ui", {"page_id": "second"})
+    assert result["pages"] == {"second": ["Element 'go' already exists on page 'first'"]}
+    assert "master_elements" not in result
+    assert result["finding_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_two_pages_with_one_id_keep_both_pages_findings():
+    pages = [
+        {"id": "twin", "name": "One", "elements": [{"id": "a", "type": "label"}]},
+        {"id": "twin", "name": "Two", "elements": [{"id": "b", "type": "label"}]},
+    ]
+    result = await _call(_engine(_project(masters=[], pages=pages)), "review_ui", {})
+    said = result["pages"]["twin"]
+    assert said[0] == "UI page 'twin' already exists"
+    assert any(m.startswith("a (label)") for m in said) and any(m.startswith("b (label)") for m in said)
+
+
 @pytest.mark.asyncio
 async def test_a_clean_page_in_full():
     assert await _call(_engine(), "review_ui", {"page_id": "clean"}) == {
@@ -176,8 +238,8 @@ async def test_a_clean_page_in_full():
         "finding_count": 0,
         "status": "clean",
         "note": (
-            "Nothing to report: every control has a box it fits in, no two collide, "
-            "and every binding points at something that exists."
+            "Nothing to report: every id is used once, every control has a box it fits in, "
+            "no two collide, and every binding points at something that exists."
         ),
     }
 

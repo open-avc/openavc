@@ -9,6 +9,7 @@ import { act, screen, fireEvent, within } from "@testing-library/react";
 vi.mock("../api/restClient", async (orig) => (await import("../test/uiBuilderMocks")).restModule(orig));
 vi.mock("../api/wsClient", async () => (await import("../test/uiBuilderMocks")).wsModule);
 vi.mock("../api/commandIssues", async () => (await import("../test/uiBuilderMocks")).commands);
+vi.mock("../api/pageIssues", async () => (await import("../test/uiBuilderMocks")).pageChecks);
 vi.mock("../store/toastStore", async (orig) => (await import("../test/uiBuilderMocks")).toastModule(orig));
 vi.mock("@dnd-kit/core", async (orig) => (await import("../test/uiBuilderMocks")).dndKit(orig));
 vi.mock("react-resizable-panels", async () => (await import("../test/uiBuilderMocks")).stubs.panels);

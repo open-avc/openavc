@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { validateProject } from "./validateProject";
+import type { PageIssue } from "../../api/pageIssues";
 import type { ProjectConfig } from "../../api/types";
 
 // Validate is the list an integrator reads before handing a room over. These
@@ -56,8 +57,8 @@ function project({ elements = [], pages, masters = [], macros = [], groups, idle
 
 /** What Validate says apart from the page review, which has its own pins and
  *  whose sentences open with the element's id and type. */
-function checked(p: ProjectConfig, answers?: Map<Record<string, unknown>, string[]>) {
-  return validateProject(p, answers).filter(
+function checked(p: ProjectConfig, answers?: Map<Record<string, unknown>, string[]>, held?: PageIssue[]) {
+  return validateProject(p, answers, held).filter(
     (i) => !(i.elementId && i.message.startsWith(`${i.elementId} (`)),
   );
 }
@@ -422,9 +423,9 @@ describe("validateProject: an interactive control that does nothing", () => {
 });
 
 describe("validateProject: one control's findings, in order", () => {
-  it("says the target, the grant, the actions, the state, the visibility, then the missing container", () => {
+  it("says the target, the grant, the actions, the state, then the visibility", () => {
     const nav = {
-      id: "nav1", type: "page_nav", label: "Go", target_page: "ghost_page", parent: "ghost_parent",
+      id: "nav1", type: "page_nav", label: "Go", target_page: "ghost_page",
       grant: { devices: ["ghost_grant"] },
       bindings: {
         do: { press: [{ action: "macro", macro: "ghost_macro" }] },
@@ -437,7 +438,6 @@ describe("validateProject: one control's findings, in order", () => {
       ["error", 'Macro "ghost_macro" not found', "Main > nav1 > press"],
       ["warning", 'State key references unknown device "ghost_look"', "Main > nav1 > appearance"],
       ["warning", 'Visibility condition references unknown device "ghost_vis"', "Main > nav1 > visible_when"],
-      ["error", 'Container "ghost_parent" does not exist', "Main > nav1"],
     ]);
   });
 });
@@ -453,7 +453,7 @@ describe("validateProject: a page and its arrangements", () => {
       id: "main", name: "Main", grant: { devices: ["amp", "ghost_dev"] }, elements,
       layouts: [
         { id: "landscape", orientation: "landscape", primary: true, placements: { ...placed(elements), ghost_el: { x: 0, y: 0, w: 1, h: 1 } }, hidden: ["gone_el"] },
-        { id: "portrait", orientation: "portrait", inherits: "nowhere", placements: {}, hidden: [] },
+        { id: "portrait", orientation: "portrait", inherits: "landscape", placements: {}, hidden: [] },
         { id: "tall", orientation: "portrait", inherits: "landscape", hidden: ["b1"] },
       ],
     }];
@@ -461,7 +461,6 @@ describe("validateProject: a page and its arrangements", () => {
       { severity: "error", message: 'Granted device "ghost_dev" not found, so the page shown here cannot read or control it', location: "Main > page", pageId: "main" },
       { severity: "warning", message: 'Arrangement "landscape" positions "ghost_el", which is not an element on this page', location: "Main > landscape", pageId: "main" },
       { severity: "warning", message: 'Arrangement "landscape" hides "gone_el", which is not an element on this page', location: "Main > landscape", pageId: "main" },
-      { severity: "error", message: 'Arrangement inherits from "nowhere", which does not exist — controls without their own position here fall back to default boxes', location: "Main > portrait", pageId: "main" },
       { severity: "error", message: 'Macro "ghost" not found', ...at("b1", " > press") },
       {
         severity: "warning",
@@ -760,32 +759,48 @@ describe("validateProject: a condition's value that names a key", () => {
   });
 });
 
-describe("validateProject: a visibility condition's operator", () => {
-  const shown = (id: string, visible_when: unknown) => ({ id, type: "label", text: "T", bindings: { show: { visible_when } } });
-  const cond = (operator: unknown) => ({ key: "var.mode", operator, value: "on" });
-  const said = (id: string, op: string) => ({
-    severity: "error",
-    message: `Visibility condition operator "${op}" is not valid, so the panel reads that condition as false`,
-    location: `Main > ${id} > visible_when`, pageId: "main", elementId: id,
-  });
+describe("validateProject: what the platform says the pages hold", () => {
+  const issue = (code: string, message: string, at: Partial<PageIssue>): PageIssue =>
+    ({ code, message, page: null, element: null, layout: null, ...at });
+  const button = { id: "b1", type: "button", label: "B", bindings: { do: { press: [{ action: "macro", macro: "ghost" }] } } };
 
-  it("names an operator nobody knows, alone and in either group, as the panel reads it", () => {
-    const elements = [
-      shown("l1", cond("contains")),
-      shown("l2", { all: [cond("eq"), cond("EQ")] }),
-      shown("l3", { any: [cond("between"), cond("ne")] }),
-      shown("l4", cond(["eq"])),
+  it("is each page's first, under its control, its arrangement or the page; a master's comes before the masters' own", () => {
+    const master = { id: "mb", type: "button", label: "M", pages: ["ghost_page"], placement: { x: 0, y: 85, w: 20, h: 12.5 }, bindings: { do: { press: [{ action: "macro", macro: "all_on" }] } } };
+    const held = [
+      issue("page_id_names_no_page", "UI page '$x': ...", { page: "other" }),
+      issue("element_id_taken", "Element 'mb' already exists on page 'main'", { element: "mb" }),
+      issue("inherits_missing", "Layout 'portrait': inherits 'ghost' ...", { page: "main", layout: "portrait" }),
+      issue("parent_missing", "Element 'b1': container 'ghost' is not an element on page 'main'", { page: "main", element: "b1" }),
     ];
-    expect(checked(project({ elements }))).toEqual([
-      said("l1", "contains"), said("l2", "EQ"), said("l3", "between"), said("l4", '["eq"]'),
+    expect(checked(project({ elements: [button], masters: [master] }), undefined, held)).toEqual([
+      { severity: "error", message: "Layout 'portrait': inherits 'ghost' ...", location: "Main > portrait", pageId: "main" },
+      { severity: "error", message: "Element 'b1': container 'ghost' is not an element on page 'main'", ...at("b1") },
+      { severity: "error", message: 'Macro "ghost" not found', ...at("b1", " > press") },
+      { severity: "error", message: "UI page '$x': ...", location: "Other > page", pageId: "other" },
+      { severity: "error", message: "Element 'mb' already exists on page 'main'", location: "Master Elements > mb", elementId: "mb" },
+      { severity: "error", message: 'References deleted page "ghost_page"', location: "Master Elements > mb" },
     ]);
   });
 
-  it("takes every spelling the panel reads, and a blank, null or left-out one, which it reads as eq", () => {
-    const elements = [
-      shown("l1", { all: ["eq", "==", "equals", "greater_than", "<=", "truthy"].map(cond) }),
-      shown("l2", { any: [cond(""), cond(null), { key: "var.mode", value: "on" }] }),
+  it("says what two pages with one id hold once, under the first", () => {
+    const pages = [
+      { id: "twin", name: "One", elements: [], layouts: [] },
+      { id: "twin", name: "Two", elements: [], layouts: [] },
     ];
-    expect(checked(project({ elements }))).toEqual([]);
+    const held = [issue("page_id_taken", "UI page 'twin' already exists", { page: "twin" })];
+    expect(checked(project({ pages }), undefined, held)).toEqual([
+      { severity: "error", message: "UI page 'twin' already exists", location: "One > page", pageId: "twin" },
+    ]);
+  });
+
+  it("claims nothing of its own when the platform was not asked", () => {
+    const pages = [{
+      id: "main", name: "Main",
+      elements: [
+        { id: "kid", type: "label", text: "T", parent: "ghost", bindings: { show: { visible_when: { key: "var.mode", operator: "constructor" } } } },
+      ],
+      layouts: [{ id: "landscape", primary: true, placements: { kid: { x: 0, y: 0, w: 20, h: 12.5 } } }, { id: "portrait", orientation: "portrait", inherits: "ghost" }],
+    }];
+    expect(checked(project({ pages }))).toEqual([]);
   });
 });

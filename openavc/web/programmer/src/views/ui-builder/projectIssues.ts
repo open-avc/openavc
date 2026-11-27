@@ -3,6 +3,10 @@
  * the toolbar's Validate opens, the count its button carries and the count the
  * Dashboard's update notice gives all come from here, so they never disagree.
  *
+ * Two answers come from the platform, asked together: what it says about each
+ * command (`api/commandIssues.ts`) and what the pages hold that they may not
+ * (`api/pageIssues.ts`).
+ *
  * A version is the project object the store holds; an edit replaces it, so a
  * cached answer belongs to the version it was asked of. Validate pressed asks
  * again (`fresh`), since the platform's answer about commands can change
@@ -11,6 +15,7 @@
 import { useEffect, useState } from "react";
 import type { ProjectConfig } from "../../api/types";
 import { commandIssues } from "../../api/commandIssues";
+import { pageIssues } from "../../api/pageIssues";
 import {
   projectCommandActions,
   validateProject,
@@ -23,7 +28,8 @@ const asked = new WeakMap<ProjectConfig, Promise<ValidationIssue[]>>();
 export function projectIssues(project: ProjectConfig, fresh = false): Promise<ValidationIssue[]> {
   const known = fresh ? undefined : asked.get(project);
   if (known) return known;
-  const found = commandIssues(projectCommandActions(project)).then((issues) => validateProject(project, issues));
+  const found = Promise.all([commandIssues(projectCommandActions(project)), pageIssues(project.ui)])
+    .then(([commands, pages]) => validateProject(project, commands, pages));
   asked.set(project, found);
   return found;
 }

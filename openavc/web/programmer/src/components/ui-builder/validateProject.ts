@@ -2,8 +2,10 @@
  * The Builder's Validate: what a project's controls, pages, master elements,
  * macro steps, triggers and idle page name that is not there (a condition's
  * value naming a variable or device the project lacks included), what the
- * platform said about each command, and what the page review says about each
- * page.
+ * platform said about each command and about what the pages hold that they
+ * may not (an id two controls share, a container or an inherits that names
+ * nothing or loops, a binding the panel cannot read: `api/pageIssues.ts`),
+ * and what the page review says about each page.
  *
  * A control's checks are `CONTROL_CHECKS`, run in order for page and master
  * elements alike; a new check is one function and one entry there. What an
@@ -28,7 +30,8 @@ import type {
   UIElement,
   UIPage,
 } from "../../api/types";
-import { knownOperator, readsNoValue, referencedKey } from "../../api/conditionEval";
+import { readsNoValue, referencedKey } from "../../api/conditionEval";
+import type { PageIssue } from "../../api/pageIssues";
 import {
   ACTION_SLOTS,
   REFERENCE_NOUNS,
@@ -228,22 +231,6 @@ function unknownNamed(condition: ConditionRead, refs: ProjectRefs, where?: "stat
   return deviceId !== null && !refs.deviceIds.has(deviceId) ? `unknown device "${deviceId}"` : null;
 }
 
-/** A visibility condition's operator nobody knows, which the panel reads as
- *  false, in Validate's words; null for one the panel reads. The panel reads a
- *  blank, null or left-out operator as `eq` (`isShown` in
- *  web/panel/modules/visibility.js), and every other spelling through the
- *  runtime's list (`knownOperator`). */
-function unknownVisibilityOperator(condition: ConditionRead): ControlIssue | null {
-  const op = condition.operator || "eq";
-  if (knownOperator(op) !== null) return null;
-  const written = typeof op === "string" ? op : JSON.stringify(op);
-  return {
-    severity: "error",
-    message: `Visibility condition operator "${written}" is not valid, so the panel reads that condition as false`,
-    where: " > visible_when",
-  };
-}
-
 /** What one visibility condition reads that is not there: a device the
  *  project does not have, or a key its value names that it does not define. */
 function visibilityReferenceIssues(c: ConditionRead, refs: ProjectRefs): ControlIssue[] {
@@ -259,21 +246,15 @@ function visibilityReferenceIssues(c: ConditionRead, refs: ProjectRefs): Control
   return issues;
 }
 
-/** A visibility condition names an operator nobody knows, reads a device that
- *  is not in the project, or its value names a key the project does not
- *  define. `all` is read before `any`, and a single condition stands on its
- *  own. */
+/** A visibility condition reads a device that is not in the project, or its
+ *  value names a key the project does not define. `all` is read before `any`,
+ *  and a single condition stands on its own. An operator nobody knows is the
+ *  platform's to say (`api/pageIssues.ts`). */
 function visibilityIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   const vw = shownBinding(el, "visible_when");
   if (!vw) return [];
-  const issues: ControlIssue[] = [];
   const conditions = (vw.all || vw.any || [vw]) as ConditionRead[];
-  for (const c of conditions) {
-    const operator = unknownVisibilityOperator(c);
-    if (operator) issues.push(operator);
-    issues.push(...visibilityReferenceIssues(c, refs));
-  }
-  return issues;
+  return conditions.flatMap((c) => visibilityReferenceIssues(c, refs));
 }
 
 /** The conditions whose value names a key the project does not define, each
@@ -338,45 +319,38 @@ function pageGrantIssues(page: UIPage, refs: ProjectRefs): ValidationIssue[] {
   return issues;
 }
 
-/** The arrangements themselves: a dangling inherits silently collapses the
- *  variant (everything without its own box falls to default placements), and
- *  orphaned ids are the residue a bad rename or hand edit leaves. */
+/** The ids an arrangement positions or hides that are not on the page: the
+ *  residue a bad rename or hand edit leaves. What an arrangement inherits is
+ *  the platform's to judge (`api/pageIssues.ts`). */
 function arrangementIssues(page: UIPage, onPage: ReadonlySet<string>): ValidationIssue[] {
-  const layoutIds = new Set((page.layouts ?? []).map((l) => l.id));
-  const issues: ValidationIssue[] = [];
-  for (const layout of page.layouts ?? []) issues.push(...layoutIssues(layout, page, layoutIds, onPage));
-  return issues;
+  return (page.layouts ?? []).flatMap((layout) => layoutIssues(layout, page, onPage));
 }
 
-function layoutIssues(
-  layout: Layout,
-  page: UIPage,
-  layoutIds: ReadonlySet<string>,
-  onPage: ReadonlySet<string>,
-): ValidationIssue[] {
+function layoutIssues(layout: Layout, page: UIPage, onPage: ReadonlySet<string>): ValidationIssue[] {
   const at = { location: `${page.name} > ${layout.id}`, pageId: page.id };
   const strays = (ids: Iterable<string>, says: (elId: string) => string): ValidationIssue[] =>
     [...ids].filter((elId) => !onPage.has(elId)).map((elId) => ({ severity: "warning", message: says(elId), ...at }));
-  const dangling: ValidationIssue[] = layout.inherits && !layoutIds.has(layout.inherits)
-    ? [{ severity: "error", message: `Arrangement inherits from "${layout.inherits}", which does not exist \u2014 controls without their own position here fall back to default boxes`, ...at }]
-    : [];
   return [
-    ...dangling,
     ...strays(Object.keys(layout.placements ?? {}), (elId) => `Arrangement "${layout.id}" positions "${elId}", which is not an element on this page`),
     ...strays(layout.hidden ?? [], (elId) => `Arrangement "${layout.id}" hides "${elId}", which is not an element on this page`),
   ];
 }
 
-/** A parent that doesn't exist leaves the child unrendered \u2014 the runtime
- *  draws children into their container, and there is no container. */
-function containerIssues(el: UIElement, page: UIPage, onPage: ReadonlySet<string>): ValidationIssue[] {
-  if (!el.parent || onPage.has(el.parent)) return [];
-  return [{ severity: "error", message: `Container "${el.parent}" does not exist`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id }];
+/** Where Validate places one issue the platform found in the pages: under its
+ *  page and control (or arrangement), or among the master elements. */
+function heldIssue(issue: PageIssue, page?: UIPage): ValidationIssue {
+  const said: ValidationIssue = { severity: "error", message: issue.message, location: "" };
+  if (!page) {
+    return { ...said, location: `Master Elements > ${issue.element ?? ""}`, ...(issue.element ? { elementId: issue.element } : {}) };
+  }
+  const where = issue.element ?? issue.layout ?? "page";
+  return { ...said, location: `${page.name} > ${where}`, pageId: page.id, ...(issue.element ? { elementId: issue.element } : {}) };
 }
 
 /**
- * Everything Validate says about one page: its grant, its arrangements, each
- * control in turn, then what the page review says.
+ * Everything Validate says about one page: what the platform found it holds
+ * that it may not, its grant, its arrangements, each control in turn, then
+ * what the page review says.
  *
  * Geometry and binding reach come back from the shared review -- the same code,
  * the same numbers and the same sentences the AI write path answers with, so
@@ -390,15 +364,14 @@ function pageIssues(
   page: UIPage,
   refs: ProjectRefs,
   review: Pick<ReviewOptions, "theme" | "masters">,
+  held: readonly PageIssue[],
 ): ValidationIssue[] {
   const onPage = new Set(page.elements.map((e) => e.id));
   return [
+    ...held.map((issue) => heldIssue(issue, page)),
     ...pageGrantIssues(page, refs),
     ...arrangementIssues(page, onPage),
-    ...page.elements.flatMap((el) => [
-      ...controlIssues(el, page.id, page.name, refs),
-      ...containerIssues(el, page, onPage),
-    ]),
+    ...page.elements.flatMap((el) => controlIssues(el, page.id, page.name, refs)),
     ...reviewPage(page, review).map((finding): ValidationIssue => ({
       severity: "warning",
       message: finding.message,
@@ -501,16 +474,28 @@ function idlePageIssues(project: ProjectConfig, pageIds: ReadonlySet<string>): V
   return [{ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" }];
 }
 
+/** The platform's page issues by the page they are on, in its order; a
+ *  master's under null. Two pages with one id share one list, said once,
+ *  under the first. */
+function heldByPage(held: readonly PageIssue[]): Map<string | null, PageIssue[]> {
+  const byPage = new Map<string | null, PageIssue[]>();
+  for (const issue of held) byPage.set(issue.page, [...(byPage.get(issue.page) ?? []), issue]);
+  return byPage;
+}
+
 /**
  * @param commandIssues What the platform says about each `device.command` in
  *   the project, keyed by the action object (see `api/commandIssues.ts`).
  *   Omitted means it was not asked or could not be reached, and nothing is
  *   claimed either way -- this file cannot see the drivers, and guessing is
  *   how Validate came to answer "No Issues" for a control the device refuses.
+ * @param held What the platform says the pages and master elements hold that
+ *   they may not (`api/pageIssues.ts`). Omitted, likewise, claims nothing.
  */
 export function validateProject(
   project: ProjectConfig,
   commandIssues?: Map<Record<string, unknown>, string[]>,
+  held: readonly PageIssue[] = [],
 ): ValidationIssue[] {
   const refs: ProjectRefs = {
     pageIds: new Set(project.ui.pages.map((p) => p.id)),
@@ -522,8 +507,15 @@ export function validateProject(
   };
   const theme = sliderThemeDefaults(project);
   const review = { theme, masters: project.ui.master_elements ?? [] };
+  const byPage = heldByPage(held);
+  const onPages = project.ui.pages.flatMap((page) => {
+    const here = byPage.get(page.id) ?? [];
+    byPage.delete(page.id);
+    return pageIssues(page, refs, review, here);
+  });
   return [
-    ...project.ui.pages.flatMap((page) => pageIssues(page, refs, review)),
+    ...onPages,
+    ...(byPage.get(null) ?? []).map((issue) => heldIssue(issue)),
     ...(project.ui.master_elements || []).flatMap((mel) => masterIssues(mel, refs, theme)),
     ...macroIssues(project.macros, refs),
     ...idlePageIssues(project, refs.pageIds),

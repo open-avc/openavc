@@ -431,7 +431,8 @@ _PRIMARY = {"id": "landscape", "primary": True}
     ([_PRIMARY, {"id": "tall", "orientation": "landscape"}],
      "Layout 'tall': there is already a landscape arrangement ('landscape')."),
     ([_PRIMARY, {"id": "tall", "orientation": "portrait", "inherits": "ghost"}],
-     "Layout 'tall': inherits 'ghost', which is not an arrangement on this page. "
+     "Layout 'tall': inherits 'ghost', which is not an arrangement on this page, so each control it does not place itself "
+     "takes its default box. "
      "Available: landscape"),
     ([{**_PRIMARY, "inherits": "landscape"}], "Layout 'landscape' cannot inherit from itself"),
     ([{**_PRIMARY, "inherits": "tall"},
@@ -439,7 +440,8 @@ _PRIMARY = {"id": "landscape", "primary": True}
      "Layout inheritance loops: 'landscape' eventually inherits from itself"),
     ([_PRIMARY, {"id": "landscape", "orientation": "portrait", "inherits": "ghost"}],
      "Layout 'landscape' appears more than once on page 'p6'; Layout 'landscape': inherits "
-     "'ghost', which is not an arrangement on this page."),
+     "'ghost', which is not an arrangement on this page, so each control it does not place "
+     "itself takes its default box."),
 ])
 @pytest.mark.asyncio
 async def test_add_page_refuses_the_layouts_the_update_door_refuses(layouts, error):
@@ -533,7 +535,8 @@ async def test_master_doors_refuse_a_parent(tool, payload):
      "Layout 'landscape': 'placements' must be an object keyed by element id"),
     ([{"id": "v2", "inherits": "v2"}], "Layout 'v2' cannot inherit from itself"),
     ([{"id": "v2", "inherits": "ghost"}],
-     "Layout 'v2': inherits 'ghost', which is not an arrangement on this page. "
+     "Layout 'v2': inherits 'ghost', which is not an arrangement on this page, so each control it does not place itself "
+     "takes its default box. "
      "Available: landscape, portrait"),
     ([{"id": "portrait", "inherits": "portrait"}], "Layout 'portrait' cannot inherit from itself"),
     ([{"id": "v2", "orientation": "portrait"}],
@@ -549,10 +552,12 @@ async def test_master_doors_refuse_a_parent(tool, payload):
     ([{"id": "landscape", "inherits": "portrait"}],
      "Layout inheritance loops: 'landscape' eventually inherits from itself"),
     ([{"id": "v2", "orientation": "portrait", "inherits": "ghost"}],
-     "Layout 'v2': inherits 'ghost', which is not an arrangement on this page. "
+     "Layout 'v2': inherits 'ghost', which is not an arrangement on this page, so each control it does not place itself "
+     "takes its default box. "
      "Available: landscape, portrait"),
     ([{"id": "landscape", "inherits": "ghost", "orientation": "portrait"}],
-     "Layout 'landscape': inherits 'ghost', which is not an arrangement on this page. "
+     "Layout 'landscape': inherits 'ghost', which is not an arrangement on this page, so each control it does not place itself "
+     "takes its default box. "
      "Available: portrait"),
     ([{"id": "landscape", "hidden": []}, "x"], "Each layout needs an 'id'"),
     ([{"id": "portrait", "orientation": "landscape", "inherits": None},

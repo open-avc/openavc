@@ -31,19 +31,34 @@ Three of a binding's issues are not about its shape but what it may do, each
 with a code of its own: the retired flat model (``LEGACY_BINDINGS``), a
 ``state.set`` on a device's key (``DEVICE_STATE_WRITE``, device state is
 read-only), and a two-way value that is not a variable
-(``WRITE_BACK_NOT_VARIABLE``).
+(``WRITE_BACK_NOT_VARIABLE``). Three more have a code of their own because
+the page review says them too, so a report can leave them to it
+(``page_report``): an action
+with no name (``ACTION_UNNAMED``), one nothing dispatches (``ACTION_UNKNOWN``),
+and a value, look or items binding with no key (``SHOW_WITHOUT_KEY``).
 
 Every answer is an :class:`Issue`: a code, the sentence, and where it is.
 ``page_issues`` is the whole project's, the one traversal, written over the
 same questions the AI's page doors ask before they build, so a door and a
-report cannot come to different conclusions. ``refusal`` joins issues into the
-sentence a door refuses with. Nothing here refuses, and the project model does
-not ask it: a whole-project save or load never refuses a project for an issue
-it already holds, and a door asks only about what it is writing, so a
-project that already holds one still takes every other edit.
+report cannot come to different conclusions. It reads a project as the panel
+and the runtime do: an interaction written as one action object rather than a
+list runs as a list of one, so it is no issue in a project that holds it
+(a door wraps it before it asks). ``refusal`` joins issues into the sentence a
+door refuses with. Nothing here refuses, and the project model does not ask
+it: a whole-project save or load never refuses a project for an issue it
+already holds, and a door asks only about what it is writing, so a project
+that already holds one still takes every other edit.
+
+What a report says (the Builder's Validate, through
+``POST /api/ui/page-issues``, and the AI's ``review_ui``) is
+``ui/page_report.py``'s: these issues, less the three binding issues the page
+review says of the same control in its own words. A door, which refuses
+before anything is reviewed, says those itself.
 
 Duck-typed, as ``page_geometry.py`` and ``page_rules.py``: a page, layout,
-control or master is a mapping or anything with attributes. The names a
+control or master is a mapping or anything with attributes, and any JSON is
+read without raising (an id that is a list or an object is read as its JSON
+text, ``_id``), since a report is asked of whatever a client posts. The names a
 binding is checked against come from their homes, never a copy kept here: the
 interactions are ``page_references.ACTION_SLOTS`` and the actions
 ``ui_events.DISPATCHED_ACTIONS``. Those modules reach the device manager and
@@ -53,6 +68,7 @@ which keeps this module importable by the project schema.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
@@ -74,6 +90,9 @@ PARENT_NOT_CONTAINER = "parent_not_container"
 PARENT_LOOP = "parent_loop"
 MASTER_PARENT = "master_parent"
 BINDING = "binding"
+ACTION_UNNAMED = "action_unnamed"
+ACTION_UNKNOWN = "action_unknown"
+SHOW_WITHOUT_KEY = "show_without_key"
 LEGACY_BINDINGS = "legacy_bindings"
 DEVICE_STATE_WRITE = "device_state_write"
 WRITE_BACK_NOT_VARIABLE = "write_back_not_variable"
@@ -118,6 +137,18 @@ def _listed(obj: Any, key: str) -> list:
     return list(value) if isinstance(value, (list, tuple)) else []
 
 
+def _id(obj: Any, key: str = "id") -> Any:
+    """The id ``obj`` holds under ``key``, as one that can be looked up: itself,
+    or for a list or an object (which no model reading holds, but posted JSON
+    can) its JSON text."""
+    value = _read(obj, key)
+    try:
+        hash(value)
+    except TypeError:
+        return json.dumps(value, sort_keys=True, default=str)
+    return value
+
+
 # --- element ids -------------------------------------------------------------
 
 
@@ -128,9 +159,9 @@ def element_id_holders(pages: Iterable[Any], masters: Iterable[Any]) -> dict[Any
     holders: dict[Any, list[str | None]] = {}
     for page in pages:
         for element in _listed(page, "elements"):
-            holders.setdefault(_read(element, "id"), []).append(_read(page, "id"))
+            holders.setdefault(_id(element), []).append(_id(page))
     for master in masters:
-        holders.setdefault(_read(master, "id"), []).append(None)
+        holders.setdefault(_id(master), []).append(None)
     return holders
 
 
@@ -158,8 +189,8 @@ def _element_id_issues(pages: Sequence[Any], masters: Sequence[Any]) -> list[Iss
     places = [(page, element) for page in pages for element in _listed(page, "elements")]
     places += [(None, master) for master in masters]
     for page, element in places:
-        element_id = _read(element, "id")
-        page_id = None if page is None else _read(page, "id")
+        element_id = _id(element)
+        page_id = None if page is None else _id(page)
         issue = id_taken(element_id, seen.get(element_id, ()), master=page is None)
         if issue is not None:
             issues.append(replace(issue, page=page_id))
@@ -191,7 +222,7 @@ def _page_id_issues(pages: Sequence[Any]) -> list[Issue]:
     issues: list[Issue] = []
     seen: list[Any] = []
     for page in pages:
-        page_id = _read(page, "id")
+        page_id = _id(page)
         issue = page_id_issue(page_id, seen)
         if issue is not None:
             issues.append(issue)
@@ -215,11 +246,11 @@ def inherits_issue(layout_id: Any, target: Any, layout_ids: Iterable[Any]) -> Is
     others = [other for other in dict.fromkeys(layout_ids) if other != layout_id]
     if target in others:
         return None
-    available = f" Available: {', '.join(others)}" if others else ""
+    available = f" Available: {', '.join(map(str, others))}" if others else ""
     return Issue(
         INHERITS_MISSING,
         f"Layout '{layout_id}': inherits '{target}', which is not an arrangement on this "
-        f"page.{available}",
+        f"page, so each control it does not place itself takes its default box.{available}",
         layout=layout_id,
     )
 
@@ -228,8 +259,8 @@ def orientation_issue(layout_id: Any, orientation: Any, others: Iterable[Any]) -
     """Why arrangement ``layout_id`` cannot be the ``orientation`` one beside
     the arrangements ``others``, or None when it can: another of them is."""
     taken = next(
-        (_read(other, "id") for other in others
-         if _orientation(other) == orientation and _read(other, "id") != layout_id),
+        (_id(other) for other in others
+         if _orientation(other) == orientation and _id(other) != layout_id),
         None,
     )
     if taken is None:
@@ -250,12 +281,12 @@ def inherits_loops(layouts: Sequence[Any]) -> list[Issue]:
     member in page order. The renderers cycle-guard, so nothing crashes, but
     the arrangements on a loop stop inheriting. One that inherits itself is
     :func:`inherits_issue`'s."""
-    by_id = {_read(layout, "id"): layout for layout in layouts}
+    by_id = {_id(layout): layout for layout in layouts}
     order = {layout_id: position for position, layout_id in enumerate(by_id)}
     found: set[frozenset] = set()
     issues: list[Issue] = []
     for layout in layouts:
-        loop = _loop_from(_read(layout, "id"), lambda node: _read(by_id.get(node), "inherits"))
+        loop = _loop_from(_id(layout), lambda node: _id(by_id.get(node), "inherits"))
         if len(loop) < 2 or frozenset(loop) in found:
             continue
         found.add(frozenset(loop))
@@ -282,7 +313,7 @@ def _loop_from(start: Any, next_of: Any) -> list:
 def _repeated_layout_ids(page_id: Any, layouts: Sequence[Any]) -> list[Issue]:
     counts: dict[Any, int] = {}
     for layout in layouts:
-        layout_id = _read(layout, "id")
+        layout_id = _id(layout)
         counts[layout_id] = counts.get(layout_id, 0) + 1
     return [
         Issue(LAYOUT_ID_REPEATED, f"Layout '{layout_id}' appears more than once on page '{page_id}'",
@@ -296,14 +327,14 @@ def layout_issues(page: Any) -> list[Issue]:
     used twice; then each arrangement's ``inherits`` and orientation, in page
     order, the orientation against the arrangements before it; then each
     loop."""
-    page_id = _read(page, "id")
+    page_id = _id(page)
     layouts = _listed(page, "layouts")
-    ids = [_read(layout, "id") for layout in layouts]
+    ids = [_id(layout) for layout in layouts]
     issues = _repeated_layout_ids(page_id, layouts)
     for position, layout in enumerate(layouts):
-        layout_id = _read(layout, "id")
+        layout_id = _id(layout)
         found = (
-            inherits_issue(layout_id, _read(layout, "inherits"), ids),
+            inherits_issue(layout_id, _id(layout, "inherits"), ids),
             orientation_issue(layout_id, _orientation(layout), layouts[:position]),
         )
         issues.extend(issue for issue in found if issue is not None)
@@ -351,9 +382,9 @@ def _inside(holders: Mapping[Any, Any], candidate: Any, ancestor: Any) -> bool:
     """Whether ``candidate`` sits somewhere inside ``ancestor``. Cycle-safe."""
     seen: set = set()
     cursor = holders.get(candidate)
-    while cursor is not None and _read(cursor, "id") not in seen:
-        seen.add(_read(cursor, "id"))
-        parent = _read(cursor, "parent")
+    while cursor is not None and _id(cursor) not in seen:
+        seen.add(_id(cursor))
+        parent = _id(cursor, "parent")
         if parent == ancestor:
             return True
         cursor = holders.get(parent) if parent else None
@@ -362,11 +393,11 @@ def _inside(holders: Mapping[Any, Any], candidate: Any, ancestor: Any) -> bool:
 
 def parent_issues(page: Any) -> list[Issue]:
     """Every control of one page whose container is not one it may sit in."""
-    page_id = _read(page, "id")
+    page_id = _id(page)
     elements = _listed(page, "elements")
-    holders = {_read(element, "id"): element for element in elements}
+    holders = {_id(element): element for element in elements}
     found = (
-        parent_issue(_read(element, "id"), _read(element, "parent"), holders, page_id)
+        parent_issue(_id(element), _id(element, "parent"), holders, page_id)
         for element in elements
     )
     return [issue for issue in found if issue is not None]
@@ -393,29 +424,54 @@ def page_issues(pages: Iterable[Any], masters: Iterable[Any] = ()) -> list[Issue
 
     The page ids first, then the controls a press never reaches, then each
     page's arrangements, containers and bindings, page by page, then each
-    master's container and bindings.
+    master's container and bindings. A binding issue names its control.
     """
     pages = list(pages)
     masters = list(masters)
     issues = _page_id_issues(pages) + _element_id_issues(pages, masters)
     for page in pages:
-        page_id = _read(page, "id")
+        page_id = _id(page)
         issues += layout_issues(page) + parent_issues(page)
         for element in _listed(page, "elements"):
             issues += _placed_bindings(element, page_id)
     for master in masters:
-        found = master_parent_issue(_read(master, "id"), _read(master, "parent"))
+        found = master_parent_issue(_id(master), _read(master, "parent"))
         issues += [found] if found is not None else []
         issues += _placed_bindings(master, None)
     return issues
 
 
+def placed_controls(pages: Iterable[Any], masters: Iterable[Any] = ()) -> list[tuple[Any, Any, Any]]:
+    """Every control, page by page and then the masters, as ``(page, id,
+    control)`` with the page id and the control's id read as an
+    :class:`Issue` places them (the page None for a master)."""
+    placed = [(_id(page), _id(element), element) for page in pages for element in _listed(page, "elements")]
+    return placed + [(None, _id(master), master) for master in masters]
+
+
 def _placed_bindings(element: Any, page_id: Any) -> list[Issue]:
+    """One control's binding issues, placed on it (on a master when
+    ``page_id`` is None) and naming it."""
     bindings = _read(element, "bindings")
     if not isinstance(bindings, Mapping):
         return []
-    element_id = _read(element, "id")
-    return [replace(issue, page=page_id, element=element_id) for issue in binding_issues(bindings)]
+    element_id = _id(element)
+    named = f"Element '{element_id}'" if page_id is not None else f"Master element '{element_id}'"
+    return [
+        replace(issue, message=f"{named}: {issue.message}", page=page_id, element=element_id)
+        for issue in binding_issues(_as_dispatched(bindings))
+    ]
+
+
+def _as_dispatched(bindings: Mapping[str, Any]) -> Mapping[str, Any]:
+    """``bindings`` read as the runtime runs them: each ``do`` interaction
+    written as one action object is the list of one it runs
+    (``ui_events``). A copy; the bindings are not changed."""
+    do = bindings.get("do")
+    if not isinstance(do, Mapping) or not any(isinstance(actions, Mapping) for actions in do.values()):
+        return bindings
+    listed = {name: [actions] if isinstance(actions, Mapping) else actions for name, actions in do.items()}
+    return {**bindings, "do": listed}
 
 
 # --- bindings ----------------------------------------------------------------
@@ -467,8 +523,8 @@ def action_names() -> frozenset[str]:
     return DISPATCHED_ACTIONS
 
 
-def _shape(message: str) -> Issue:
-    return Issue(BINDING, message)
+def _shape(message: str, code: str = BINDING) -> Issue:
+    return Issue(code, message)
 
 
 def binding_issues(bindings: Mapping[str, Any]) -> list[Issue]:
@@ -509,17 +565,18 @@ def action_issue(action: Mapping[str, Any], path: str) -> Issue | None:
     """The first thing wrong with one action object at ``path``, or None."""
     action_type = action.get("action", "")
     if not action_type:
-        return _shape(f"{path}: missing 'action' field")
+        return _shape(f"{path}: missing 'action' field", ACTION_UNNAMED)
     if not isinstance(action_type, str):
-        return _shape(_not_an_action_name(action_type, path))
+        return _shape(_not_an_action_name(action_type, path), ACTION_UNNAMED)
     if action_type not in action_names():
         return _shape(
             f"{path}: action type '{action_type}' is not valid. "
-            f"Use: {', '.join(sorted(action_names()))}"
+            f"Use: {', '.join(sorted(action_names()))}",
+            ACTION_UNKNOWN,
         )
     for field in ACTION_REQUIRED_FIELDS.get(action_type, ()):
         if action.get(field) is None or action.get(field) == "":
-            return _shape(f"{path}: {action_type} action requires '{field}'")
+            return _shape(f"{path}: {action_type} action requires '{field}'; without it the action does nothing")
     check = _ACTION_TYPE_CHECKS.get(action_type)
     return check(action, path) if check else None
 
@@ -546,7 +603,7 @@ def _state_set_issue(action: Mapping[str, Any], path: str) -> Issue | None:
         return Issue(
             DEVICE_STATE_WRITE,
             f"{path}: state.set cannot target a device key ('{key}'). Device state is "
-            f"read-only — drive the device with a device.command action using $value instead.",
+            f"read-only: drive the device with a device.command action using $value instead.",
         )
     return None
 
@@ -630,10 +687,19 @@ def _check_press_mode(first: Mapping[str, Any], issues: list[Issue]) -> None:
         issues.append(_shape(f"do.press[0]: mode '{mode}' is not valid. Use: {PRESS_MODES_TEXT}"))
     elif mode == "toggle":
         if not first.get("toggle_key"):
-            issues.append(_shape("do.press[0]: toggle mode requires 'toggle_key'"))
+            issues.append(_shape(
+                "do.press[0]: toggle mode requires 'toggle_key' (the State key to watch); without it "
+                "the button acts as a tap"
+            ))
         _check_mode_action(first, mode, "off_action", issues)
     elif mode == "tap_hold":
         _check_mode_action(first, mode, "hold_action", issues)
+
+
+#: A mode's second action by its field: what the Builder calls it, and the
+#: press that runs it.
+_MODE_ACTIONS = {"off_action": "Off Action", "hold_action": "Long Press Action"}
+_MODE_PRESSES = {"off_action": "press while on", "hold_action": "long press"}
 
 
 def _check_mode_action(first: Mapping[str, Any], mode: str, field: str, issues: list[Issue]) -> None:
@@ -641,7 +707,10 @@ def _check_mode_action(first: Mapping[str, Any], mode: str, field: str, issues: 
     object, checked as an action unless it is empty."""
     action = first.get(field)
     if not isinstance(action, Mapping):
-        issues.append(_shape(f"do.press[0]: {mode} mode requires '{field}' (an action object)"))
+        issues.append(_shape(
+            f"do.press[0]: {mode} mode requires '{field}' (the {_MODE_ACTIONS[field]}, an action object); "
+            f"without it a {_MODE_PRESSES[field]} does nothing"
+        ))
     elif action:
         issue = action_issue(action, f"do.press[0].{field}")
         if issue is not None:
@@ -677,7 +746,7 @@ def _check_shown_value(val: Mapping[str, Any], issues: list[Issue]) -> None:
 
 def _check_state_read(val: Mapping[str, Any], issues: list[Issue]) -> None:
     if not val.get("key"):
-        issues.append(_shape("show.value: requires 'key' (the state key to read)"))
+        issues.append(_shape("show.value: requires 'key' (the state key to read)", SHOW_WITHOUT_KEY))
     if "condition" in val:
         issues.extend(
             _shape(f"show.value: conditional text requires '{field}'")
@@ -689,7 +758,7 @@ def _check_state_read(val: Mapping[str, Any], issues: list[Issue]) -> None:
             issues.append(Issue(
                 WRITE_BACK_NOT_VARIABLE,
                 "show.value: write_back (two-way) is only valid for var.* keys. "
-                f"'{key}' is read-only — to drive a device add a do.change "
+                f"'{key}' is read-only. To drive a device, add a do.change "
                 "device.command using $value.",
             ))
 
@@ -698,7 +767,7 @@ def _check_items(itm: Mapping[str, Any], issues: list[Issue]) -> None:
     """``show.items``: list row population."""
     if not (itm.get("key") or itm.get("key_pattern")):
         issues.append(_shape(
-            "show.items: requires 'key' or 'key_pattern' (the state providing items)"
+            "show.items: requires 'key' or 'key_pattern' (the state providing items)", SHOW_WITHOUT_KEY,
         ))
 
 
@@ -716,7 +785,7 @@ def _check_look(look: Mapping[str, Any], issues: list[Issue]) -> None:
     """``show.look``: state-driven appearance (feedback / LED color map /
     per-option style)."""
     if not look.get("key"):
-        issues.append(_shape("show.look: missing 'key' (state key to watch)"))
+        issues.append(_shape("show.look: missing 'key' (state key to watch)", SHOW_WITHOUT_KEY))
     form = next((name for name in _LOOK_FORMS if name in look), None)
     if form is None:
         return
@@ -759,7 +828,10 @@ def _condition_issues(cond: Mapping[str, Any], path: str, key_note: str = "") ->
         issues.append(_shape(f"{path}: missing 'key'{key_note}"))
     op = cond.get("operator")
     if op and canonical_operator(op) is None:
-        issues.append(_shape(f"{path}: operator '{op}' is not valid. Use: {VISIBLE_WHEN_OPS_TEXT}"))
+        issues.append(_shape(
+            f"{path}: operator '{op}' is not valid, so the panel reads that condition as false. "
+            f"Use: {VISIBLE_WHEN_OPS_TEXT}"
+        ))
     return issues
 
 

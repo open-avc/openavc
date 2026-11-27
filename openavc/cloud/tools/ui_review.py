@@ -7,7 +7,9 @@ driver declares one and the caller said nothing). The reference check follows
 their bindings (``ui/page_references.py``: what they point at, and whether it
 is there). A custom control's markup is read for what fails in this
 environment (``core/custom_ui_review.py``). ``review_ui`` asks the same of the
-whole project on demand, read-only.
+whole project on demand, read-only, and first what its pages hold that they
+may not (``ui/page_report.reported_issues``, the issues the Builder's
+Validate shows): a write's own door refuses those before it builds.
 
 So a page is reviewed one way for both: with the masters that draw under it,
 the theme its sliders are measured against, the driver's declared ranges and
@@ -32,6 +34,7 @@ from openavc.cloud.tools.ui_lookups import (
 )
 from openavc.ui.page_references import reference_findings
 from openavc.ui.page_review import review_master_element, review_page
+from openavc.ui.page_report import reported_issues
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -46,8 +49,8 @@ WARNING_NOTE = (
 )
 
 _CLEAN_NOTE = (
-    "Nothing to report: every control has a box it fits in, no two collide, "
-    "and every binding points at something that exists."
+    "Nothing to report: every id is used once, every control has a box it fits in, "
+    "no two collide, and every binding points at something that exists."
 )
 
 
@@ -218,6 +221,10 @@ class UIReview:
         auto-fill needs a write to belong to, and answering a question should
         not change the project -- so a range mismatch is reported and never
         repaired. One page named leaves the masters out.
+
+        What the pages hold that they may not comes first, page by page and
+        then on the masters. It is asked of the whole project, since an id
+        is used once across every page, and kept to the page named.
         """
         pages = [p for p in self.project.ui.pages if not only or p.id == only]
         if only and not pages:
@@ -225,11 +232,9 @@ class UIReview:
                 "error": f"UI page '{only}' not found. The pages are: "
                          f"{', '.join(p.id for p in self.project.ui.pages) or '(none)'}"
             }
-        by_page = self._pages(pages)
-        masters = [] if only else [
-            f.message for master in self.project.ui.master_elements
-            for f in master_findings(self.project, master)
-        ]
+        issues = reported_issues(self.project.ui.pages, self.project.ui.master_elements)
+        by_page = self._pages(pages, issues)
+        masters = [] if only else self._masters(issues)
         result: dict = {
             "pages_checked": [p.id for p in pages],
             "masters_checked": 0 if only else len(self.project.ui.master_elements),
@@ -237,15 +242,26 @@ class UIReview:
         }
         return _whole_reply(result, by_page, masters)
 
-    def _pages(self, pages: list) -> dict[str, list[str]]:
-        """Each page's findings by page id, for the pages that have any."""
+    def _masters(self, issues: list) -> list[str]:
+        """What the masters hold that they may not, then each master's review."""
+        held = [issue.message for issue in issues if issue.page is None]
+        return held + [
+            f.message for master in self.project.ui.master_elements
+            for f in master_findings(self.project, master)
+        ]
+
+    def _pages(self, pages: list, issues: list) -> dict[str, list[str]]:
+        """Each page's issues and then its findings, by page id in page order,
+        for the pages that have any. Two pages with one id share a list."""
         declared_range = range_lookup(self.devices, self.device_ids)
-        by_page: dict[str, list[str]] = {}
+        by_page: dict[str, list[str]] = {page.id: [] for page in pages}
+        for issue in issues:
+            if issue.page in by_page:
+                by_page[issue.page].append(issue.message)
         for page in pages:
             findings, _ = self._page(page, declared_range, set_field=lambda *_: None)
-            if findings:
-                by_page[page.id] = [f.message for f in findings]
-        return by_page
+            by_page[page.id].extend(f.message for f in findings)
+        return {page_id: said for page_id, said in by_page.items() if said}
 
     def _page(
         self, page: Any, declared_range: Any, *,

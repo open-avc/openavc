@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from openavc.core.project_loader import ProjectConfig
+from openavc.ui import page_report as pr
 from openavc.ui import page_structure as ps
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "openavc" / "templates"
@@ -192,7 +193,19 @@ CASES = {
     ),
     "an action the runtime does not dispatch": (
         _binding({"do": {"press": [{"action": "launch_rocket"}]}}),
-        [(ps.BINDING, "main", "power", None)],
+        [(ps.ACTION_UNKNOWN, "main", "power", None)],
+    ),
+    "an action with no name": (
+        _binding({"do": {"press": [{"macro": "m"}]}}),
+        [(ps.ACTION_UNNAMED, "main", "power", None)],
+    ),
+    "a look with no key": (
+        _binding({"show": {"look": {"states": {"true": {"label": "On"}}}}}),
+        [(ps.SHOW_WITHOUT_KEY, "main", "power", None)],
+    ),
+    "an action written as one object is still read": (
+        _binding({"do": {"press": {"action": "launch_rocket"}}}),
+        [(ps.ACTION_UNKNOWN, "main", "power", None)],
     ),
     "the retired flat model": (
         _binding({"press": [{"action": "macro", "macro": "m"}]}),
@@ -209,7 +222,7 @@ CASES = {
     "a master's bindings": (
         _add_master({"id": "go", "type": "button",
                      "bindings": {"do": {"press": [{"action": "launch_rocket"}]}}}),
-        [(ps.BINDING, None, "go", None)],
+        [(ps.ACTION_UNKNOWN, None, "go", None)],
     ),
 }
 
@@ -287,3 +300,124 @@ def test_a_new_control_is_told_which_copy_a_press_reaches():
     assert ps.id_taken("m", holders["m"]).message == "Element 'm' already exists as a master element"
     assert ps.id_taken("m", holders["m"], master=True).message == "Master element 'm' already exists"
     assert ps.id_taken("new", holders.get("new", ())) is None
+
+
+def test_an_interaction_written_as_one_action_is_no_issue_in_a_project_that_holds_it():
+    # The runtime runs one action object as a list of one (ui_events), and so
+    # does the panel; a door wraps it before it asks.
+    project = copy.deepcopy(_project())
+    _binding({"do": {"press": {"action": "state.set", "key": "var.on", "value": True}}})(project)
+    assert _issues(project, "json") == []
+
+
+def test_a_binding_issue_names_its_control():
+    project = copy.deepcopy(_project())
+    _binding({"do": {"press": [{"action": "launch_rocket"}]}})(project)
+    _add_master({"id": "go", "type": "button", "bindings": {"show": {"look": {}}}})(project)
+    messages = [issue.message for issue in _issues(project, "json")]
+    assert messages[0].startswith("Element 'power': do.press[0]: action type 'launch_rocket' is not valid.")
+    assert messages[1] == "Master element 'go': show.look: missing 'key' (state key to watch)"
+
+
+#: Shapes no model reading holds and posted JSON can: ids that are lists,
+#: objects or numbers, pages and controls that are not objects, a parent or an
+#: inherits that is a list. Read without raising, each still placed.
+JUNK_UI = {
+    "pages": [
+        {"id": ["p"], "elements": [
+            {"id": {"a": 1}, "type": "group", "parent": ["x"]},
+            {"id": {"a": 1}, "type": "button", "bindings": {"show": {"visible_when": {"operator": {"x": 1}}}}},
+            "not a control", None, 5,
+        ], "layouts": [
+            {"id": ["l"], "inherits": ["l"]}, {"id": ["l"], "inherits": {"k": 2}}, "not a layout",
+        ]},
+        {"id": ["p"], "elements": "not a list", "layouts": None},
+        "not a page", None,
+    ],
+    "master_elements": [{"id": ["m"], "parent": ["g"], "bindings": []}, 7, None],
+}
+
+
+def test_any_json_is_read_without_raising_and_still_placed():
+    issues = ps.page_issues(JUNK_UI["pages"], JUNK_UI["master_elements"])
+    assert pr.reported_issues(JUNK_UI["pages"], JUNK_UI["master_elements"]) is not None
+    codes = {issue.code for issue in issues}
+    assert {ps.PAGE_ID_TAKEN, ps.ELEMENT_ID_TAKEN, ps.LAYOUT_ID_REPEATED, ps.PARENT_MISSING,
+            ps.MASTER_PARENT, ps.BINDING} <= codes
+    assert all(isinstance(issue.message, str) and issue.message for issue in issues)
+    json.dumps([vars(issue) for issue in issues])
+
+
+def _reported_codes(bindings: dict, element_type: str = "button") -> tuple[set, set]:
+    project = copy.deepcopy(_project())
+    _binding(bindings)(project)
+    _element(project, "power")["type"] = element_type
+    pages, masters = project["ui"]["pages"], project["ui"]["master_elements"]
+    every = {issue.code for issue in ps.page_issues(pages, masters)}
+    return every, {issue.code for issue in pr.reported_issues(pages, masters)}
+
+
+#: For each code a report leaves to the page review: bindings both say it of.
+SAID_BY_BOTH = {
+    ps.ACTION_UNNAMED: {"do": {"press": [{"macro": "m"}]}},
+    ps.ACTION_UNKNOWN: {"do": {"press": [{"action": "launch_rocket"}]}},
+    ps.SHOW_WITHOUT_KEY: {"show": {"value": {"source": "state"}}},
+}
+
+
+@pytest.mark.parametrize("code", sorted(pr.SAID_BY_THE_REVIEW))
+def test_a_report_leaves_to_the_review_what_it_says_of_the_same_control(code):
+    from openavc.ui.page_review import binding_findings, do_action_findings
+
+    bindings = SAID_BY_BOTH[code]
+    element = {"id": "power", "type": "button", "bindings": bindings}
+    said = {f.kind for f in do_action_findings(element) + binding_findings(element)}
+    assert said & pr.SAID_BY_THE_REVIEW[code]
+    every, reported = _reported_codes(bindings)
+    assert code in every and code not in reported
+
+
+def test_every_code_left_to_the_review_has_a_case():
+    assert set(SAID_BY_BOTH) == set(pr.SAID_BY_THE_REVIEW)
+
+
+def test_a_report_keeps_what_the_review_does_not_say():
+    # The review reads one action per value_map option, as the runtime runs
+    # it, so an option written as a list is not read there; and it says
+    # nothing of the bindings of a type it does not know.
+    listed_option = {"do": {"change": [{"action": "value_map", "map": {"1": [{"action": "launch_rocket"}]}}]}}
+    assert ps.ACTION_UNKNOWN in _reported_codes(listed_option)[1]
+    assert ps.SHOW_WITHOUT_KEY in _reported_codes({"show": {"look": {}}}, "acme_widget")[1]
+
+
+def test_a_report_leaves_nothing_else_to_the_review():
+    project = copy.deepcopy(_project())
+    _add_element(0, {"id": "power", "type": "label"})(project)
+    _binding({"show": {"look": {"key": "var.on", "states": [{"label": "On"}]}}})(project)
+    pages, masters = project["ui"]["pages"], project["ui"]["master_elements"]
+    assert pr.reported_issues(pages, masters) == ps.page_issues(pages, masters)
+
+
+_ROCKET = {"action": "launch_rocket"}
+
+#: Controls the report asks the page review about (each runs an action nothing
+#: dispatches), each holding something else no model reading holds.
+JUNK_ASKED = [
+    {"id": "m", "type": "matrix", "bindings": {"do": {"route": [_ROCKET]}},
+     "matrix_config": {"sources": {"from": {"count": 2}, "exclude": 5}, "destinations": "x"}},
+    {"id": "t", "type": ["button"], "bindings": {"do": {"press": [_ROCKET]}}},
+    {"id": "l", "type": "button", "bindings": {"do": {"press": [_ROCKET]}, "show": {"look": ["x"], "value": "x"}}},
+    {"id": "s", "type": "button", "bindings": {"do": {"press": [_ROCKET]}, "show": {"look": {"key": "k", "states": "x"}}}},
+    {"id": "d", "type": "matrix", "bindings": {"do": {"route": [_ROCKET]}},
+     "matrix_config": {"destinations": [1, "x", None, {"route": "x"}]}},
+    {"id": "n", "type": 5, "bindings": {"do": {"press": [{}]}, "show": {"value": {}}}},
+    {"id": "v", "type": "select", "bindings": {
+        "do": {"change": [{"action": "value_map", "map": {"a": "x", "b": [1], "c": {"action": ["x"]}}}]}}},
+]
+
+
+@pytest.mark.parametrize("element", JUNK_ASKED, ids=lambda element: str(element["id"]))
+def test_a_report_asks_the_review_of_any_json_without_raising(element):
+    master = {**element, "id": f"master_{element['id']}"}
+    issues = pr.reported_issues([{"id": "p", "elements": [element]}], [master])
+    assert all(issue.message for issue in issues)

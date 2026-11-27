@@ -8,6 +8,7 @@ import { act, screen, fireEvent, waitFor, within } from "@testing-library/react"
 vi.mock("../api/restClient", async (orig) => (await import("../test/uiBuilderMocks")).restModule(orig));
 vi.mock("../api/wsClient", async () => (await import("../test/uiBuilderMocks")).wsModule);
 vi.mock("../api/commandIssues", async () => (await import("../test/uiBuilderMocks")).commands);
+vi.mock("../api/pageIssues", async () => (await import("../test/uiBuilderMocks")).pageChecks);
 vi.mock("../store/toastStore", async (orig) => (await import("../test/uiBuilderMocks")).toastModule(orig));
 vi.mock("@dnd-kit/core", async (orig) => (await import("../test/uiBuilderMocks")).dndKit(orig));
 vi.mock("react-resizable-panels", async () => (await import("../test/uiBuilderMocks")).stubs.panels);
@@ -29,6 +30,7 @@ import {
   installFetch,
   makeProject,
   page,
+  pageChecks,
   press,
   project,
   renderPage,
@@ -341,6 +343,20 @@ describe("Validate's report, row by row", () => {
     await act(async () => { await seen.CanvasToolbar.onValidate(); });
     const row = screen.getByText("Set Fader: Channel is required.").parentElement!.parentElement!;
     expect(row.textContent).toBe(`ERRSet Fader: Channel is required.Macro "Startup" > device.command`);
+  });
+
+  it("lists what the platform says a page holds that it may not, under the control, from the pages it holds", async () => {
+    const p = makeProject();
+    seed(p);
+    pageChecks.pageIssues.mockResolvedValueOnce([{
+      code: "element_id_taken", message: "Element 'lbl' already exists on page 'main'",
+      page: "main", element: "lbl", layout: null,
+    }]);
+    await renderPage(UIBuilderView);
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    const row = screen.getByText("Element 'lbl' already exists on page 'main'").parentElement!.parentElement!;
+    expect(row.textContent).toBe("ERRElement 'lbl' already exists on page 'main'Main > lbl");
+    expect(pageChecks.pageIssues).toHaveBeenCalledWith(useProjectStore.getState().project!.ui);
   });
 
   it("counts one issue in the singular, marks an error, and goes to a page-wide issue's page", async () => {

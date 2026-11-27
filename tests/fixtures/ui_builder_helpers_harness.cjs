@@ -2492,7 +2492,8 @@ const variantPage = () => ({
 // --- A-003: validateProject checks every arrangement, in the right space ---
 {
   // An element pushed out of bounds ONLY in the portrait variant must still be
-  // flagged, and a dangling inherits is an error, not a silent collapse.
+  // flagged, and a dangling inherits, which the platform finds, is an error on
+  // that arrangement, not a silent collapse.
   const proj = makeValidationProject([
     { id: "b1", type: "button", style: {}, bindings: { do: { press: [{ action: "macro", macro: "real_macro" }] } } },
   ]);
@@ -2505,9 +2506,14 @@ const variantPage = () => ({
   page.layouts.push({
     id: "broken", orientation: "portrait", inherits: "gone", placements: {}, hidden: [],
   });
-  const issues = H.validateProject(proj);
+  const held = [{
+    code: "inherits_missing", page: page.id, element: null, layout: "broken",
+    message: "Layout 'broken': inherits 'gone', which is not an arrangement on this page",
+  }];
+  const issues = H.validateProject(proj, undefined, held);
   const oob = issues.filter((i) => /extends beyond/.test(i.message));
-  const dangling = issues.filter((i) => /inherits from "gone"/.test(i.message) && i.severity === "error");
+  const dangling = issues.filter((i) => /inherits 'gone'/.test(i.message) && i.severity === "error" &&
+    i.location.endsWith("> broken"));
   results.a003_validate_sees_variant_geometry = {
     pass: oob.length === 1 && /portrait/.test(oob[0].message) && dangling.length === 1,
     detail: { oob, dangling },

@@ -96,7 +96,7 @@ class TestValidateAction:
     ])
     def test_the_first_blank_required_field_is_named(self, action, field):
         err = _validate_action(action, "p")
-        assert err == f"p: {action['action']} action requires '{field}'"
+        assert err == f"p: {action['action']} action requires '{field}'; without it the action does nothing"
 
     @pytest.mark.parametrize("value", [0, False, [], "x"])
     def test_a_falsy_value_that_is_not_blank_is_present(self, value):
@@ -106,7 +106,7 @@ class TestValidateAction:
         err = _validate_action({"action": "state.set", "key": "device.amp.mute"}, "p")
         assert err == (
             "p: state.set cannot target a device key ('device.amp.mute'). Device "
-            "state is read-only — drive the device with a device.command action "
+            "state is read-only: drive the device with a device.command action "
             "using $value instead."
         )
 
@@ -125,11 +125,11 @@ class TestValidateAction:
             "b": [{"action": "macro", "macro": "go"}, {"action": "state.set"}],
             "c": {"action": "bogus"},
         }}
-        assert _validate_action(action, "p") == "p.map[b][1]: state.set action requires 'key'"
+        assert _validate_action(action, "p") == "p.map[b][1]: state.set action requires 'key'; without it the action does nothing"
 
     def test_value_map_a_single_mapped_action_has_no_index(self):
         action = {"action": "value_map", "map": {"a": {"action": "state.set"}}}
-        assert _validate_action(action, "p") == "p.map[a]: state.set action requires 'key'"
+        assert _validate_action(action, "p") == "p.map[a]: state.set action requires 'key'; without it the action does nothing"
 
     def test_value_map_skips_what_is_not_an_action_object(self):
         action = {"action": "value_map", "map": {"a": "macro", "b": ["x", 3, None], "c": None}}
@@ -184,7 +184,7 @@ class TestDoBindings:
     def test_an_unknown_interaction_is_not_checked_further(self):
         assert validate_bindings({"do": {"tap": "x", "hold": [{"action": "macro"}]}}) == _refusal(
             f"do.tap: not a valid interaction. Use: {INTERACTIONS}",
-            "do.hold[0]: macro action requires 'macro'",
+            "do.hold[0]: macro action requires 'macro'; without it the action does nothing",
         )
 
     @pytest.mark.parametrize("val, kind", [({"action": "macro"}, "dict"), ("x", "str"), (None, "NoneType")])
@@ -196,7 +196,7 @@ class TestDoBindings:
     def test_each_item_must_be_an_action_object(self):
         assert validate_bindings({"do": {"submit": ["x", {"action": "macro"}]}}) == _refusal(
             "do.submit[0]: expected an action object, got str",
-            "do.submit[1]: macro action requires 'macro'",
+            "do.submit[1]: macro action requires 'macro'; without it the action does nothing",
         )
 
     def test_every_interaction_is_checked_in_order(self):
@@ -207,10 +207,10 @@ class TestDoBindings:
             "hold": [{"action": "state.set"}],
         }
         assert validate_bindings({"do": do}) == _refusal(
-            "do.press[0]: macro action requires 'macro'",
+            "do.press[0]: macro action requires 'macro'; without it the action does nothing",
             f"do.bogus: not a valid interaction. Use: {INTERACTIONS}",
             "do.release must be an array of action objects, got str",
-            "do.hold[0]: state.set action requires 'key'",
+            "do.hold[0]: state.set action requires 'key'; without it the action does nothing",
         )
 
     def test_an_unknown_mode(self):
@@ -239,8 +239,8 @@ class TestDoBindings:
     def test_toggle_needs_a_key_and_an_off_action(self):
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": "toggle"}]}}
         assert validate_bindings(b) == _refusal(
-            "do.press[0]: toggle mode requires 'toggle_key'",
-            "do.press[0]: toggle mode requires 'off_action' (an action object)",
+            "do.press[0]: toggle mode requires 'toggle_key' (the State key to watch); without it the button acts as a tap",
+            "do.press[0]: toggle mode requires 'off_action' (the Off Action, an action object); without it a press while on does nothing",
         )
 
     @pytest.mark.parametrize("toggle_key", ["", None, 0])
@@ -249,7 +249,7 @@ class TestDoBindings:
             "action": "macro", "macro": "go", "mode": "toggle",
             "toggle_key": toggle_key, "off_action": {},
         }]}}
-        assert validate_bindings(b) == _refusal("do.press[0]: toggle mode requires 'toggle_key'")
+        assert validate_bindings(b) == _refusal("do.press[0]: toggle mode requires 'toggle_key' (the State key to watch); without it the button acts as a tap")
 
     @pytest.mark.parametrize("off_action", [None, [], "macro"])
     def test_toggle_off_action_must_be_an_object(self, off_action):
@@ -258,7 +258,7 @@ class TestDoBindings:
             "toggle_key": "var.x", "off_action": off_action,
         }]}}
         assert validate_bindings(b) == _refusal(
-            "do.press[0]: toggle mode requires 'off_action' (an action object)"
+            "do.press[0]: toggle mode requires 'off_action' (the Off Action, an action object); without it a press while on does nothing"
         )
 
     def test_an_empty_off_action_is_not_checked(self):
@@ -282,7 +282,7 @@ class TestDoBindings:
             "toggle_key": "var.x", "off_action": {"action": "state.set"},
         }]}}
         assert validate_bindings(b) == _refusal(
-            "do.press[0].off_action: state.set action requires 'key'"
+            "do.press[0].off_action: state.set action requires 'key'; without it the action does nothing"
         )
 
     @pytest.mark.parametrize("hold_action", [None, ["x"], 1])
@@ -291,7 +291,7 @@ class TestDoBindings:
         if hold_action is not None:
             first["hold_action"] = hold_action
         assert validate_bindings({"do": {"press": [first]}}) == _refusal(
-            "do.press[0]: tap_hold mode requires 'hold_action' (an action object)"
+            "do.press[0]: tap_hold mode requires 'hold_action' (the Long Press Action, an action object); without it a long press does nothing"
         )
 
     def test_the_hold_action_is_checked_as_an_action(self):
@@ -327,10 +327,10 @@ class TestDoBindings:
             "change": [{"action": "state.set"}],
         }}
         assert validate_bindings(b) == _refusal(
-            "do.press[0]: macro action requires 'macro'",
-            "do.change[0]: state.set action requires 'key'",
-            "do.press[0]: toggle mode requires 'toggle_key'",
-            "do.press[0]: toggle mode requires 'off_action' (an action object)",
+            "do.press[0]: macro action requires 'macro'; without it the action does nothing",
+            "do.change[0]: state.set action requires 'key'; without it the action does nothing",
+            "do.press[0]: toggle mode requires 'toggle_key' (the State key to watch); without it the button acts as a tap",
+            "do.press[0]: toggle mode requires 'off_action' (the Off Action, an action object); without it a press while on does nothing",
         )
 
 
@@ -382,7 +382,7 @@ class TestShowBindings:
         err = _show(value=val)
         expected = (
             "show.value: write_back (two-way) is only valid for var.* keys. "
-            f"'{'' if key is None else key}' is read-only — to drive a device add a do.change "
+            f"'{'' if key is None else key}' is read-only. To drive a device, add a do.change "
             "device.command using $value."
         )
         assert err.endswith(expected)
@@ -397,7 +397,7 @@ class TestShowBindings:
             "show.value: conditional text requires 'text_true'",
             "show.value: conditional text requires 'text_false'",
             "show.value: write_back (two-way) is only valid for var.* keys. '' is "
-            "read-only — to drive a device add a do.change device.command using $value.",
+            "read-only. To drive a device, add a do.change device.command using $value.",
         )
 
     @pytest.mark.parametrize("source", ["macro", "states", 0])
@@ -470,7 +470,7 @@ class TestShowBindings:
     @pytest.mark.parametrize("op", ["is", "contains", "EQ", "Equals"])
     def test_a_single_visible_when_refuses_an_operator_nobody_knows(self, op):
         assert _show(visible_when={"key": "k", "operator": op}) == _refusal(
-            f"show.visible_when: operator '{op}' is not valid. Use: {OPS}"
+            f"show.visible_when: operator '{op}' is not valid, so the panel reads that condition as false. Use: {OPS}"
         )
 
     @pytest.mark.parametrize("op", [
@@ -487,7 +487,7 @@ class TestShowBindings:
     ])
     def test_a_list_or_object_operator_is_refused(self, vw, where, op):
         assert _show(visible_when=vw) == _refusal(
-            f"{where}: operator '{op}' is not valid. Use: {OPS}"
+            f"{where}: operator '{op}' is not valid, so the panel reads that condition as false. Use: {OPS}"
         )
 
     def test_the_sentences_list_exactly_what_is_accepted(self):
@@ -497,7 +497,7 @@ class TestShowBindings:
     def test_a_single_visible_when_key_and_operator_problems(self):
         assert _show(visible_when={"operator": "~"}) == _refusal(
             "show.visible_when: missing 'key' (state key to evaluate)",
-            f"show.visible_when: operator '~' is not valid. Use: {OPS}",
+            f"show.visible_when: operator '~' is not valid, so the panel reads that condition as false. Use: {OPS}",
         )
 
     @pytest.mark.parametrize("group", ["any", "all"])
@@ -505,8 +505,8 @@ class TestShowBindings:
         conditions = [{"key": "a"}, "x", {"operator": "~"}, {"key": "b", "operator": "between"}]
         assert _show(visible_when={group: conditions}) == _refusal(
             f"show.visible_when.{group}[2]: missing 'key'",
-            f"show.visible_when.{group}[2]: operator '~' is not valid. Use: {OPS}",
-            f"show.visible_when.{group}[3]: operator 'between' is not valid. Use: {OPS}",
+            f"show.visible_when.{group}[2]: operator '~' is not valid, so the panel reads that condition as false. Use: {OPS}",
+            f"show.visible_when.{group}[3]: operator 'between' is not valid, so the panel reads that condition as false. Use: {OPS}",
         )
 
     def test_any_is_read_before_all(self):
@@ -548,12 +548,12 @@ class TestWholeBindings:
             "do": {"press": [{"action": "macro", "mode": "tap_hold"}], "x": []},
         }
         assert validate_bindings(b) == _refusal(
-            "do.press[0]: macro action requires 'macro'",
+            "do.press[0]: macro action requires 'macro'; without it the action does nothing",
             f"do.x: not a valid interaction. Use: {INTERACTIONS}",
-            "do.press[0]: tap_hold mode requires 'hold_action' (an action object)",
+            "do.press[0]: tap_hold mode requires 'hold_action' (the Long Press Action, an action object); without it a long press does nothing",
             "show.value: requires 'key' (the state key to read)",
             "show.visible_when: missing 'key' (state key to evaluate)",
-            f"show.visible_when: operator '~' is not valid. Use: {OPS}",
+            f"show.visible_when: operator '~' is not valid, so the panel reads that condition as false. Use: {OPS}",
         )
 
     def test_a_bad_do_and_a_bad_show_both_report(self):
@@ -605,7 +605,7 @@ class TestWholeBindings:
         }}
         with caplog.at_level(logging.WARNING, logger="openavc"):
             assert validate_bindings(b, _project()) == _refusal(
-                "do.change[0]: state.set action requires 'key'"
+                "do.change[0]: state.set action requires 'key'; without it the action does nothing"
             )
         assert caplog.records == []
 
@@ -627,7 +627,7 @@ class TestWholeBindings:
             "change": [{"action": "state.set"}],
         }}
         assert validate_bindings(b, _project()) == _refusal(
-            "do.change[0]: state.set action requires 'key'"
+            "do.change[0]: state.set action requires 'key'; without it the action does nothing"
         )
 
     def test_a_project_without_macros_or_devices_finds_nothing(self, caplog):

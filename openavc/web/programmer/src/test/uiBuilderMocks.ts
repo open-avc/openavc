@@ -115,3 +115,5 @@ export async function restModule(importOriginal: () => Promise<any>) {
 
 export const commands = { commandIssues: vi.fn() };
 
+export const pageChecks = { pageIssues: vi.fn() };
+

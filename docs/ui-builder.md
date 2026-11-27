@@ -105,6 +105,16 @@ Sizes are worked out against a 1280x800 reference panel, which is what the perce
 
 Validate also asks the device's driver whether each command you have chosen has everything it needs. Some commands take a parameter they cannot run without, marked **required** in red beside the field. Leave one empty and the control still draws, still takes a press, and the device refuses it every time with a message like **Set Fader: Channel is required.** Validate now reports that in the same words before the room is handed over, and the card in the Bindings panel keeps its **Incomplete** badge until the required fields are filled. A device whose driver is not installed yet is left alone, so a panel built ahead of the equipment stays quiet.
 
+Validate also lists what a page holds that it should not, the same things the AI assistant is refused when it tries to write them. A binding left half set up in the Bindings panel shows here; the rest mostly come from a hand-edited or imported file:
+
+- **Two controls with the same id**, on one page, on two pages, or as a master element. A press on the second one runs the first one's actions.
+- **Two pages with the same id**, or a page id starting with `$`, which the panel reads as one of its own moves.
+- **Arrangements that clash**: two with the same id or the same orientation, or one that inherits from itself, from an arrangement that is not on the page, or round in a loop.
+- **A control in the wrong container**: one that is not on the page, is not a group, or is the control itself or inside it. A master element is never inside a container.
+- **A binding that is not finished, or that the panel cannot read**, such as a toggle with no state key to watch or no Off Action, a Tap / Long Press button with no Long Press Action, an action with a field it needs left empty, or an appearance whose states are a list rather than one entry per value.
+
+The project still saves and opens with any of these in it, and every other edit still goes through.
+
 ## Element Types
 
 | Type | Purpose | Typical Use |

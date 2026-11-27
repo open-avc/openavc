@@ -25,6 +25,7 @@ from openavc.api.routes import host as _host_routes
 from openavc.api.routes import ir_db as _ir_db_routes
 from openavc.api.routes import isc as _isc_routes
 from openavc.api.routes import macros as _macros_routes
+from openavc.api.routes import page_issues as _page_issues_routes
 from openavc.api.routes import problem_reports as _problem_reports_routes
 from openavc.api.routes import project as _project_routes
 from openavc.api.routes import python_drivers as _python_drivers_routes
@@ -73,6 +74,7 @@ router.include_router(_driver_test_routes.router)
 router.include_router(_python_drivers_routes.router)
 router.include_router(_ir_db_routes.router)
 router.include_router(_project_routes.router)
+router.include_router(_page_issues_routes.router)
 router.include_router(_isc_routes.router)
 router.include_router(_cloud_routes.router)
 router.include_router(_system_routes.router)
