@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addLayout, addPage } from "./uiBuilderHelpers";
+import { addLayout, addPage, removeLayout } from "./uiBuilderHelpers";
 import type { UIPage } from "../../api/types";
 
 // What a new page and a new arrangement are called, and what they start as.
@@ -81,5 +81,27 @@ describe("addLayout", () => {
     expect(addLayout(bare, "portrait").layouts).toEqual([
       { id: "portrait", orientation: "portrait", primary: false, inherits: null, placements: {}, hidden: [] },
     ]);
+  });
+});
+
+describe("removeLayout", () => {
+  const layout = (id: string, inherits: string | null, primary = false) =>
+    ({ id, orientation: "portrait", primary, inherits, placements: {}, hidden: [] });
+  const withLayouts = (...layouts: object[]) =>
+    ({ id: "pg", name: "Page", elements: [], layouts }) as unknown as UIPage;
+
+  it("has what inherited the removed arrangement inherit what it inherited", () => {
+    const out = removeLayout(withLayouts(layout("main", null, true), layout("a", "b"), layout("b", "main")), "b");
+    expect(out.layouts.map((l) => [l.id, l.inherits])).toEqual([["main", null], ["a", "main"]]);
+  });
+
+  it("has one of two arrangements inheriting each other inherit the primary, not itself", () => {
+    const out = removeLayout(withLayouts(layout("main", null, true), layout("a", "b"), layout("b", "a")), "b");
+    expect(out.layouts.map((l) => [l.id, l.inherits])).toEqual([["main", null], ["a", "main"]]);
+  });
+
+  it("has a primary that inherited the removed arrangement, which inherited it, inherit nothing", () => {
+    const out = removeLayout(withLayouts(layout("main", "b", true), layout("b", "main")), "b");
+    expect(out.layouts.map((l) => [l.id, l.inherits])).toEqual([["main", null]]);
   });
 });

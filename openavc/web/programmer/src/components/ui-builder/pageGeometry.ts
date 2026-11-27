@@ -270,17 +270,22 @@ export function addLayout(page: UIPage, orientation: Orientation): UIPage {
  * screen falls back to, so a page without one has no answer at all.
  *
  * Anything that inherited FROM the removed layout inherits what *it* inherited,
- * so a chain can never be left pointing at a layout that is gone.
+ * so a chain can never be left pointing at a layout that is gone. When that is
+ * the layout itself (two that inherited each other), it inherits the primary,
+ * or nothing when it is the primary.
  */
 export function removeLayout(page: UIPage, layoutId: string): UIPage {
   const layouts = page.layouts ?? [];
   const target = layouts.find((l) => l.id === layoutId);
   if (!target || target.primary) return page;
+  const primaryId = primaryLayout(page)?.id ?? null;
+  const back = (l: Layout) => (l.id === primaryId ? null : primaryId);
+  const inheritsNext = (l: Layout) => (target.inherits === l.id ? back(l) : target.inherits ?? null);
   return {
     ...page,
     layouts: layouts
       .filter((l) => l.id !== layoutId)
-      .map((l) => (l.inherits === layoutId ? { ...l, inherits: target.inherits ?? null } : l)),
+      .map((l) => (l.inherits === layoutId ? { ...l, inherits: inheritsNext(l) } : l)),
   };
 }
 
