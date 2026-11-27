@@ -43,6 +43,7 @@ REF_W, REF_H = 1280, 800
 FRAME_MS = 16
 LEVEL_KEY = "device.acme_amp.level"
 CONNECTED_KEY = "device.acme_amp.connected"
+PRESENCE_KEY = "device.acme_amp.presence"
 
 
 def _page_html() -> str:
@@ -177,7 +178,7 @@ def _mount(page, element: dict, level=50) -> dict:
     w, h = (120, 340) if element["type"] == "fader" else (420, 80)
     page.evaluate(
         "([el, w, h, state]) => window.__mount(el, w, h, state)",
-        [element, w, h, {CONNECTED_KEY: True, LEVEL_KEY: level}],
+        [element, w, h, {CONNECTED_KEY: True, PRESENCE_KEY: "online", LEVEL_KEY: level}],
     )
     sel = ".fader-track-wrap" if element["type"] == "fader" else "input[type=range]"
     box = page.locator(f"#box {sel}").bounding_box()

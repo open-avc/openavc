@@ -38,6 +38,9 @@ REF_W, REF_H = 1280, 800
 DEVICE = "acme_amp"
 LEVEL_KEY = f"device.{DEVICE}.level_db"
 CONNECTED_KEY = f"device.{DEVICE}.connected"
+# The word the server writes with every `connected` (core/device_presence.py),
+# which is what the panel reads for whether the device is there.
+PRESENCE_KEY = f"device.{DEVICE}.presence"
 
 # Render one element, feed the panel a state snapshot, evaluate, and report what
 # Chromium actually shows. Returned rather than asserted in JS so a failure can
@@ -166,7 +169,7 @@ SLIDER = {
 
 def _probe(page, spec: dict, level, connected=True) -> dict:
     extra = {k: v for k, v in spec.items() if k != "type"}
-    state = {CONNECTED_KEY: connected, LEVEL_KEY: level}
+    state = {CONNECTED_KEY: connected, PRESENCE_KEY: "online" if connected else "offline", LEVEL_KEY: level}
     result = page.evaluate(PROBE_JS, [spec["type"], extra, state])
     assert "error" not in result, f"{spec['type']}: {result['error']}"
     return result
@@ -224,7 +227,7 @@ def test_unreported_is_not_the_unavailable_mark(panel_page) -> None:
 
 @pytest.mark.parametrize("spec", [FADER, SLIDER], ids=["fader", "slider"])
 @pytest.mark.parametrize("orientation", ["horizontal", "vertical"])
-@pytest.mark.parametrize("state", [{}, {LEVEL_KEY: None, CONNECTED_KEY: False}])
+@pytest.mark.parametrize("state", [{}, {LEVEL_KEY: None, CONNECTED_KEY: False, PRESENCE_KEY: "offline"}])
 def test_design_controls_keep_their_handles_without_readings(panel_page, spec, orientation, state):
     extra = {**spec, "orientation": orientation}
     extra.pop("type")
@@ -257,7 +260,7 @@ def test_design_samples_work_before_binding_and_respect_output_range(panel_page,
 def test_design_readings_override_samples_and_keep_output_scaling(panel_page, spec):
     extra = {**spec, "output_min": 0, "output_max": 100}
     extra.pop("type")
-    state = {LEVEL_KEY: 75, CONNECTED_KEY: True}
+    state = {LEVEL_KEY: 75, CONNECTED_KEY: True, PRESENCE_KEY: "online"}
     shown = panel_page.evaluate(PROBE_JS, [spec["type"], extra, state, True])
     assert "error" not in shown, shown
     assert "-20" in shown["text"], shown

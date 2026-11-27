@@ -319,9 +319,9 @@ def test_an_image_claims_no_state_while_its_device_is_unreachable(panel_page) ->
     """Offline shows the image's own picture, as a button shows its own face."""
     key = "device.acme_widget.mode"
     seen = _image_steps(panel_page, {"src": EVERYDAY, **_seasons(key)}, [
-        {key: "christmas", "device.acme_widget.connected": True},
-        {key: "christmas", "device.acme_widget.connected": False},
-        {key: "christmas", "device.acme_widget.connected": True},
+        {key: "christmas", "device.acme_widget.connected": True, "device.acme_widget.presence": "online"},
+        {key: "christmas", "device.acme_widget.connected": False, "device.acme_widget.presence": "offline"},
+        {key: "christmas", "device.acme_widget.connected": True, "device.acme_widget.presence": "online"},
     ])
     assert [s["src"] for s in seen] == [CHRISTMAS, EVERYDAY, CHRISTMAS]
     assert seen[1]["bg"] == ""
@@ -566,8 +566,8 @@ def test_a_container_claims_no_state_and_drains_nothing_while_away(panel_page) -
     mark: on a container that mark would grey every control inside it."""
     key = "device.acme_widget.mode"
     seen = _group_steps(panel_page, {"label": "Room", **_modes(key)}, [
-        {key: "alarm", "device.acme_widget.connected": True},
-        {key: "alarm", "device.acme_widget.connected": False},
+        {key: "alarm", "device.acme_widget.connected": True, "device.acme_widget.presence": "online"},
+        {key: "alarm", "device.acme_widget.connected": False, "device.acme_widget.presence": "offline"},
     ])
     assert seen[0]["bg"] == "rgb(200, 0, 0)"
     assert seen[1]["bg"] == ""

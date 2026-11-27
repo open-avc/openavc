@@ -1861,7 +1861,7 @@ def test_an_audio_route_on_an_unreachable_device_is_not_named(panel_page) -> Non
     routes = {"device.mx.output.1.input": 1, "device.aud.output.1.audio_input": 2}
     panel_page.evaluate("(s) => window.__setState(s)", routes)
     assert audio.is_visible() and audio.text_content() == "Audio: Room PC"
-    panel_page.evaluate("(s) => window.__setState(s)", {**routes, "device.aud.connected": False})
+    panel_page.evaluate("(s) => window.__setState(s)", {**routes, "device.aud.connected": False, "device.aud.presence": "offline"})
     assert audio.is_hidden()
 
 
