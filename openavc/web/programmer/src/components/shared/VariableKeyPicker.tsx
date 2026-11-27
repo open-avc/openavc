@@ -88,6 +88,11 @@ interface VariableKeyPickerProps {
    *  the macro handed over. Only meaningful in macro step/condition editors,
    *  where the runtime reads the run's firing context. */
   showTriggerContext?: boolean;
+  /** The type of the trigger whose guard this picker edits: offer the
+   *  `trigger.<field>` keys that type hands over, which the trigger engine
+   *  reads from what fired the trigger, and a typed one for a type that hands
+   *  over its event's fields. */
+  guardOf?: string;
   /** UI-event tokens this binding can deliver ($value/$input/$output/$mute),
    *  scoped to the binding slot. When non-empty, they appear as a top "This
    *  control" group. Only meaningful on UI Builder bindings, where a UI press
@@ -112,6 +117,9 @@ const TRIGGER_FIELD_ROWS = triggerFieldRows();
 const TRIGGER_GROUP_DESC =
   "Empty when the macro is run with Test or from a script. Type trigger.<name> for a field of the event.";
 
+/** What a guard's "What fired this trigger" group says of its fields. */
+const FIRED_GROUP_DESC = "Known when the trigger fires.";
+
 interface KeyEntry {
   key: string;
   label: string;
@@ -120,6 +128,21 @@ interface KeyEntry {
   groupDesc: string;
   deviceName?: string;
   description?: string;
+}
+
+/** The row for a field of an event's own payload, which is named by typing it:
+ *  in a macro's picker (`showTriggerContext`), or a trigger's guard
+ *  (`guardOf`, a type that hands over its event's fields). None for a key
+ *  already listed. */
+function typedFieldEntries(
+  search: string, listed: KeyEntry[], showTriggerContext: boolean, guardOf: string | undefined,
+): KeyEntry[] {
+  const row = showTriggerContext ? typedTriggerFieldRow(search)
+    : guardOf !== undefined ? typedTriggerFieldRow(search, guardOf) : null;
+  if (!row || listed.some((e) => e.key === row.key)) return [];
+  return showTriggerContext
+    ? [{ ...row, group: "trigger", groupDesc: TRIGGER_GROUP_DESC }]
+    : [{ ...row, group: "fired", groupDesc: FIRED_GROUP_DESC }];
 }
 
 /** Match on the raw key, the friendly label, or the owning device's name. */
@@ -155,6 +178,7 @@ export function VariableKeyPicker({
   showDeviceState = true,
   showUiOverrides = false,
   showTriggerContext = false,
+  guardOf,
   eventContext = NO_EVENT_CONTEXT,
   placeholder = "Select state key...",
   style,
@@ -335,11 +359,17 @@ export function VariableKeyPicker({
         entries.push({ ...row, group: "trigger", groupDesc: TRIGGER_GROUP_DESC });
       }
     }
+    // The fields a trigger's guard reads from what fired the trigger.
+    if (guardOf !== undefined) {
+      for (const row of triggerFieldRows(guardOf)) {
+        entries.push({ ...row, group: "fired", groupDesc: FIRED_GROUP_DESC });
+      }
+    }
 
     return entries;
     // labelsVersion re-runs this once lazily-fetched device labels land.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectVariables, projectDevices, projectPages, projectMasters, liveState, showDeviceState, showUiOverrides, showTriggerContext, eventContext, labelsVersion]);
+  }, [projectVariables, projectDevices, projectPages, projectMasters, liveState, showDeviceState, showUiOverrides, showTriggerContext, guardOf, eventContext, labelsVersion]);
 
   // Display text for collapsed state
   const selectedEntry = allEntries.find((e) => e.key === value);
@@ -463,12 +493,7 @@ export function VariableKeyPicker({
       }
     >
       {({ search, close }) => {
-        // A field of an event's own payload is named by typing it.
-        const typedRow = showTriggerContext ? typedTriggerFieldRow(search) : null;
-        const typedEntries: KeyEntry[] =
-          typedRow && !allEntries.some((e) => e.key === typedRow.key)
-            ? [{ ...typedRow, group: "trigger", groupDesc: TRIGGER_GROUP_DESC }]
-            : [];
+        const typedEntries = typedFieldEntries(search, allEntries, showTriggerContext, guardOf);
         const filteredEntries = [...filterEntries(allEntries, search), ...typedEntries];
         const groups = groupEntries(filteredEntries);
         return (

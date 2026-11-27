@@ -28,6 +28,7 @@ import {
 } from "./triggerHelpers";
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { ComparedWith } from "../shared/ComparedWith";
+import { guardVerdict, isFiredField, readsWhatFired, type GuardVerdict } from "./guardReading";
 import { quotedValueText } from "../shared/booleanWords";
 import { NumericInput } from "../shared/NumericInput";
 import { operatorPicker } from "./operatorChoices";
@@ -63,6 +64,7 @@ export function TriggerEditor({ trigger, onChange }: TriggerEditorProps) {
 
       {/* Conditions (shared) */}
       <ConditionsEditor
+        triggerType={trigger.type}
         conditions={trigger.conditions ?? []}
         onChange={(conditions) => update({ conditions })}
       />
@@ -689,9 +691,11 @@ function SecondsBox({
 // --- Conditions Editor ---
 
 function ConditionsEditor({
+  triggerType,
   conditions,
   onChange,
 }: {
+  triggerType: string;
   conditions: TriggerCondition[];
   onChange: (conditions: TriggerCondition[]) => void;
 }) {
@@ -732,6 +736,7 @@ function ConditionsEditor({
       {conditions.map((cond, i) => (
         <GuardRow
           key={i}
+          triggerType={triggerType}
           cond={cond}
           variables={variables}
           onUpdate={(patch) => updateCondition(i, patch)}
@@ -763,14 +768,17 @@ function ConditionsEditor({
   );
 }
 
-/** One guard: its key, its operator (the runtime's, operatorChoices.ts), its
+/** One guard: its key (a state key, or a field of what fired the trigger, which
+ *  its type hands over), its operator (the runtime's, operatorChoices.ts), its
  *  value and its remove button. */
 function GuardRow({
+  triggerType,
   cond,
   variables,
   onUpdate,
   onDelete,
 }: {
+  triggerType: string;
   cond: TriggerCondition;
   variables: VariableConfig[];
   onUpdate: (patch: Partial<TriggerCondition>) => void;
@@ -797,6 +805,7 @@ function GuardRow({
         value={cond.key}
         onChange={(key) => onUpdate({ key })}
         showDeviceState
+        guardOf={triggerType}
         placeholder="Key..."
         style={{ flex: 1 }}
       />
@@ -885,7 +894,8 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
   // The runtime's own rule (conditionEval.ts mirrors condition_eval.py); an
   // operator it does not know does not pass, as the trigger engine treats it.
   // A value that names a key ($var.wanted) is read from the state, as a guard
-  // reads it.
+  // reads it. A guard that reads what fired the trigger is judged when it
+  // fires (guardReading.ts).
   const read = (key: string) => currentState[key];
   const evaluateCondition = (cond: TriggerCondition): boolean => {
     try {
@@ -895,7 +905,8 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
     }
   };
 
-  const allPass = conditions.every(evaluateCondition);
+  const verdict = guardVerdict(conditions, evaluateCondition);
+  const look = VERDICT_LOOK[verdict];
 
   return (
     <div
@@ -903,17 +914,17 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
         marginTop: "var(--space-sm)",
         padding: "var(--space-xs) var(--space-sm)",
         borderRadius: "var(--border-radius)",
-        border: `1px solid ${allPass ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-        background: allPass ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+        border: `1px solid ${look.border}`,
+        background: look.background,
         fontSize: 11,
       }}
     >
       <div style={{
         fontWeight: 600,
-        color: allPass ? "#10b981" : "#ef4444",
+        color: look.color,
         marginBottom: conditions.length > 1 ? 4 : 0,
       }}>
-        Evaluated now: {allPass ? "ALL TRUE, trigger would fire" : "FALSE, trigger would not fire"}
+        Evaluated now: {look.words}
       </div>
       {conditions.map((cond, i) => (
         <PreviewRow key={i} cond={cond} passes={evaluateCondition(cond)} read={read} />
@@ -921,6 +932,28 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
     </div>
   );
 }
+
+/** How the preview says each verdict: its words and its colours. */
+const VERDICT_LOOK: Readonly<Record<GuardVerdict, {
+  words: string; color: string; border: string; background: string;
+}>> = {
+  fires: {
+    words: "ALL TRUE, trigger would fire",
+    color: "#10b981", border: "rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.06)",
+  },
+  fails: {
+    words: "FALSE, trigger would not fire",
+    color: "#ef4444", border: "rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.06)",
+  },
+  so_far: {
+    words: "TRUE so far, the rest is known when the trigger fires",
+    color: "var(--text-secondary)", border: "var(--border-color)", background: "transparent",
+  },
+  when_it_fires: {
+    words: "known when the trigger fires",
+    color: "var(--text-secondary)", border: "var(--border-color)", background: "transparent",
+  },
+};
 
 /** A State Change trigger's value: true or false for a boolean variable, else
  *  a text box; a value that names a key ($var.wanted) keeps the text box
@@ -964,14 +997,16 @@ function StateValueBox({ trigger, variableType, onChange }: {
   );
 }
 
-/** One guard in the preview: whether it passes, its key and what it holds,
- *  and the key its value names with what that holds. */
+/** One guard in the preview: whether it passes (? for one that reads what
+ *  fired the trigger), its key and what it holds, and the key its value names
+ *  with what that holds. */
 function PreviewRow({ cond, passes, read }: {
   cond: TriggerCondition;
   passes: boolean;
   read: (key: string) => unknown;
 }) {
   const named = referencedKey(cond.value);
+  const pending = readsWhatFired(cond);
   return (
     <div style={{
       display: "flex",
@@ -980,17 +1015,29 @@ function PreviewRow({ cond, passes, read }: {
       color: "var(--text-secondary)",
       padding: "1px 0",
     }}>
-      <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: 600 }}>
-        {passes ? "T" : "F"}
+      <span style={{ color: pending ? "var(--text-muted)" : passes ? "#10b981" : "#ef4444", fontWeight: 600 }}>
+        {pending ? "?" : passes ? "T" : "F"}
       </span>
-      <StateReading stateKey={cond.key} value={read(cond.key)} />
+      <KeyReading stateKey={cond.key} read={read} />
       {named && (
         <>
           <span style={{ color: "var(--text-muted)" }}>vs</span>
-          <StateReading stateKey={named} value={read(named)} />
+          <KeyReading stateKey={named} read={read} />
         </>
       )}
     </div>
+  );
+}
+
+/** A key and what it holds now, or for a field of what fired the trigger,
+ *  that it is known when it fires. */
+function KeyReading({ stateKey, read }: { stateKey: string; read: (key: string) => unknown }) {
+  if (!isFiredField(stateKey)) return <StateReading stateKey={stateKey} value={read(stateKey)} />;
+  return (
+    <>
+      <code style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{stateKey}</code>
+      <span style={{ color: "var(--text-muted)" }}>known when it fires</span>
+    </>
   );
 }
 

@@ -39,7 +39,8 @@ interface ConditionEditorProps {
   onChange: (updated: StepCondition) => void;
   /** Offer $trigger.<field> refs as condition keys. Set only where the
    *  condition is evaluated with a firing trigger's context (a macro's
-   *  conditional / skip_if), not for wait_until or trigger guard conditions. */
+   *  conditional / skip_if), not for wait_until. A trigger's guard has its own
+   *  row, which offers the fields its trigger's type hands over. */
   showTriggerContext?: boolean;
 }
 
