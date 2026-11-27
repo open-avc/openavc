@@ -375,16 +375,15 @@ function _stateChangeHandler(body: string[], trigger: TriggerConfig, writeSteps:
   });
 }
 
-/** What a state change handler checks before its steps: its operator
- * (compare() mirrors the trigger engine's coercion), its guards, its delay
- * and re-check. */
+/** What a state change handler checks before its steps, in the trigger
+ * engine's order: its operator (compare() mirrors the trigger engine's
+ * coercion), its delay and re-check, then its guards. */
 function _pushStateChecks(body: string[], trigger: TriggerConfig): void {
   const checksValue = writtenOperator(trigger.state_operator, "state_trigger") !== ANY_CHANGE;
   if (checksValue) {
     body.push(_newValueGuard(trigger));
     body.push("        return");
   }
-  _pushGuards(body, trigger);
   if ((trigger.delay_seconds ?? 0) > 0) {
     body.push(`    await asyncio.sleep(${trigger.delay_seconds})  # delay re-check`);
     if (checksValue) {
@@ -394,6 +393,7 @@ function _pushStateChecks(body: string[], trigger: TriggerConfig): void {
       body.push("        return");
     }
   }
+  _pushGuards(body, trigger);
 }
 
 /** The line that ends a state change handler whose new value fails the
@@ -405,25 +405,32 @@ function _newValueGuard(trigger: TriggerConfig): string {
   return `    if not compare(new_value, "${_pyEscape(op)}", ${_conditionValue(trigger.state_value ?? "", "step")}):`;
 }
 
-/** An event trigger's handler: its guards, then the steps. */
+/** An event trigger's handler: its delay, its guards, then the steps. */
 function _eventHandler(body: string[], trigger: TriggerConfig, writeSteps: StepWriter): void {
   body.push(`@on_event("${_pyEscape(trigger.event_pattern ?? "")}")`);
   body.push("async def on_trigger(event):");
   _functionBody(body, trigger, (into) => {
-    _pushGuards(into, trigger);
+    _pushDelayThenGuards(into, trigger);
     writeSteps(into);
   });
 }
 
 /** A startup trigger's handler, on the event each start emits: its delay,
- * then the steps. */
+ * its guards, then the steps. */
 function _startupHandler(body: string[], trigger: TriggerConfig, writeSteps: StepWriter): void {
   body.push("@on_event(\"system.started\")");
   body.push("async def on_startup(event):");
   _functionBody(body, trigger, (into) => {
-    if ((trigger.delay_seconds ?? 0) > 0) into.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
+    _pushDelayThenGuards(into, trigger);
     writeSteps(into);
   });
+}
+
+/** A trigger's delay, then its guards: the trigger engine checks the guards
+ * when the delay ends (`TriggerEngine._delayed_fire`, `_fire_startup`). */
+function _pushDelayThenGuards(body: string[], trigger: TriggerConfig): void {
+  if ((trigger.delay_seconds ?? 0) > 0) body.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
+  _pushGuards(body, trigger);
 }
 
 /** A trigger's guard conditions, each ending the handler when it fails. */

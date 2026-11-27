@@ -209,6 +209,8 @@ SCENARIOS = [
     "reference_steps",
     "reference_trigger_value",
     "recheck_trigger_value",
+    "startup_guard",
+    "delayed_guards",
 ]
 
 
@@ -510,6 +512,58 @@ class TestValuesThatNameAKey:
         r = _exec_script(generated["recheck_trigger_value"]["script"], {"var.level": now})
         asyncio.run(self._state_handler(r)("var.level", 1, 5))
         assert ("var.after" in r.state.data) is runs
+
+
+class TestGuardsWhereTheEngineChecksThem:
+    """The trigger engine checks a trigger's guards when it fires, after its
+    delay, on every type (``TriggerEngine._delayed_fire`` and
+    ``_execute_trigger``), a startup trigger's too."""
+
+    @staticmethod
+    def _handler(r, pattern):
+        return dict(r.state_handlers + r.event_handlers)[pattern]
+
+    @pytest.mark.parametrize(("ok", "runs"), [(True, True), (False, False)])
+    def test_a_startup_trigger_s_guard_is_checked(self, generated, ok, runs):
+        r = _exec_script(generated["startup_guard"]["script"], {"var.ok": ok})
+        asyncio.run(self._handler(r, "system.started")(Event("system.started", {})))
+        assert ("var.after" in r.state.data) is runs
+
+    @pytest.mark.parametrize("pattern", ["var.power", "custom.go"])
+    def test_a_guard_is_checked_after_the_delay(self, generated, pattern):
+        """The guard fails when the trigger fires and holds by the end of its
+        delay, so the steps run."""
+        r = _exec_script(generated["delayed_guards"]["script"], {"var.ok": False})
+        handler = self._handler(r, pattern)
+
+        async def fire():
+            fired = handler("var.power", None, "on") if pattern == "var.power" else handler(
+                Event("custom.go", {}),
+            )
+            task = asyncio.create_task(fired)
+            await asyncio.sleep(0)
+            r.state.data["var.ok"] = True
+            await task
+
+        asyncio.run(fire())
+        assert r.state.data.get("var.after") == "ran"
+
+    @pytest.mark.parametrize("pattern", ["var.power", "custom.go"])
+    def test_a_guard_that_fails_by_the_end_of_the_delay_stops_the_steps(self, generated, pattern):
+        r = _exec_script(generated["delayed_guards"]["script"], {"var.ok": True})
+        handler = self._handler(r, pattern)
+
+        async def fire():
+            fired = handler("var.power", None, "on") if pattern == "var.power" else handler(
+                Event("custom.go", {}),
+            )
+            task = asyncio.create_task(fired)
+            await asyncio.sleep(0)
+            r.state.data["var.ok"] = False
+            await task
+
+        asyncio.run(fire())
+        assert "var.after" not in r.state.data
 
 
 class TestOfflineGuards:

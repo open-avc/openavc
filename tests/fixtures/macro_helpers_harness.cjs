@@ -301,4 +301,28 @@ gen("recheck_trigger_value", {
   }],
 });
 
+// --- A trigger's guards are checked where the trigger engine checks them:
+// after its delay, on every type, a startup trigger's too ---
+gen("startup_guard", {
+  id: "m19",
+  name: "A Guarded Startup",
+  steps: [{ action: "state.set", key: "var.after", value: "ran" }],
+  triggers: [{
+    type: "startup", enabled: true,
+    conditions: [{ key: "var.ok", operator: "eq", value: true }],
+  }],
+});
+
+gen("delayed_guards", {
+  id: "m20",
+  name: "Guards After A Delay",
+  steps: [{ action: "state.set", key: "var.after", value: "ran" }],
+  triggers: [
+    { type: "state_change", enabled: true, state_key: "var.power", delay_seconds: 0.01,
+      conditions: [{ key: "var.ok", operator: "eq", value: true }] },
+    { type: "event", enabled: true, event_pattern: "custom.go", delay_seconds: 0.01,
+      conditions: [{ key: "var.ok", operator: "eq", value: true }] },
+  ],
+});
+
 process.stdout.write(JSON.stringify(results));
