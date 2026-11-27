@@ -104,6 +104,28 @@ describe("renameElement", () => {
     });
   });
 
+  it("rewrites a condition's value that names the control's key, in a step and in a trigger", () => {
+    const step = {
+      action: "conditional",
+      condition: { key: "var.level", operator: "eq", value: "$ui.btn.value" },
+      skip_if: { key: "var.level", operator: "ne", value: "$ui.btn.value" },
+    };
+    const trigger = {
+      id: "t", type: "state_change", enabled: true, state_key: "var.level",
+      state_operator: "gte", state_value: "$ui.btn.value",
+      conditions: [{ key: "var.mode", operator: "eq", value: "$ui.btn.mode" }],
+    };
+    const { r } = rename({ macros: [macro("m", { steps: [step], triggers: [trigger] })] });
+    expect(r.macros[0].steps[0]).toEqual({
+      action: "conditional",
+      condition: { key: "var.level", operator: "eq", value: "$ui.go.value" },
+      skip_if: { key: "var.level", operator: "ne", value: "$ui.go.value" },
+    });
+    expect(r.macros[0].triggers?.[0]).toEqual({
+      ...trigger, state_value: "$ui.go.value", conditions: [{ key: "var.mode", operator: "eq", value: "$ui.go.mode" }],
+    });
+  });
+
   it("keeps the field order of a rewritten step", () => {
     const step = { skip_if: { key: "ui.btn.a", operator: "truthy" }, action: "state.set", key: "ui.btn.b", value: 1 };
     const { r } = rename({ macros: [macro("m", { steps: [step] })] });

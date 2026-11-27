@@ -8,7 +8,8 @@
  * by a macro step's own key and conditions (its branches included), by a
  * trigger's state key and conditions, and by a variable's source key; a
  * `$ui.<id>.` value reference by any other text field in bindings and a step's
- * params, and by a step's value; and its panel events (`ui.<event>.<id>`) by a
+ * params, by a step's value, and by a condition's value in a step or a
+ * trigger and a trigger's own value; and its panel events (`ui.<event>.<id>`) by a
  * trigger's event pattern. Each holder's list is one function here
  * (`renamedElement`, `renamedStep`, `renamedTrigger`, `renamedVariable`,
  * `renamedInLayout`), so a new place a key can sit is one line in its holder's
@@ -142,11 +143,17 @@ function renamedElement(el: UIElement, rename: IdRename): UIElement {
   return withField(record, "visibility", (v) => renamedRefsDeep(v, rename)) as unknown as UIElement;
 }
 
+/** A condition with its key, and a key its value names, renamed. */
+function renamedCondition<C extends { key?: string; value?: unknown }>(c: C, rename: IdRename): C {
+  const next = withField(c, "key", (k: string) => renamedStateKey(k, rename));
+  return withField(next, "value", (v) => renamedValueRef(v, rename));
+}
+
 /** A macro step with its keys renamed: its own key, its params, its condition
  *  and skip guard, and every step in its branches. */
 function renamedStep(step: MacroStep, rename: IdRename): MacroStep {
   const key = (k: string) => renamedStateKey(k, rename);
-  const guard = (c: StepCondition) => withField(c, "key", key);
+  const guard = (c: StepCondition) => renamedCondition(c, rename);
   const branch = (steps: MacroStep[]) => mapPreserve(steps, (s) => renamedStep(s, rename));
   let next = withField(step, "key", key);
   next = withField(next, "value", (v) => renamedValueRef(v, rename));
@@ -157,13 +164,14 @@ function renamedStep(step: MacroStep, rename: IdRename): MacroStep {
   return withField(next, "else_steps", branch);
 }
 
-/** A trigger with its state key, its conditions' keys and its event pattern
- *  renamed. */
+/** A trigger with its state key and own value, its conditions' keys and
+ *  values, and its event pattern renamed. */
 function renamedTrigger(trigger: TriggerConfig, rename: IdRename): TriggerConfig {
   const key = (k: string) => renamedStateKey(k, rename);
   let next = withField(trigger, "state_key", key);
+  next = withField(next, "state_value", (v) => renamedValueRef(v, rename));
   next = withField(next, "event_pattern", (p) => renamedEventPattern(p, rename));
-  return withField(next, "conditions", (cs) => mapPreserve(cs, (c) => withField(c, "key", key)));
+  return withField(next, "conditions", (cs) => mapPreserve(cs, (c) => renamedCondition(c, rename)));
 }
 
 /** `ui.<event>.<oldId>`, the event the panel sends when that control is
