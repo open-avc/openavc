@@ -28,7 +28,7 @@ import type {
   UIElement,
   UIPage,
 } from "../../api/types";
-import { readsNoValue, referencedKey } from "../../api/conditionEval";
+import { knownOperator, readsNoValue, referencedKey } from "../../api/conditionEval";
 import {
   ACTION_SLOTS,
   REFERENCE_NOUNS,
@@ -228,15 +228,34 @@ function unknownNamed(condition: ConditionRead, refs: ProjectRefs, where?: "stat
   return deviceId !== null && !refs.deviceIds.has(deviceId) ? `unknown device "${deviceId}"` : null;
 }
 
-/** A visibility condition reads a device that is not in the project, or its
- *  value names a key the project does not define. `all` is read before
- *  `any`, and a single condition stands on its own. */
+/** A visibility condition's operator nobody knows, which the panel reads as
+ *  false, in Validate's words; null for one the panel reads. The panel reads a
+ *  blank, null or left-out operator as `eq` (`isShown` in
+ *  web/panel/modules/visibility.js), and every other spelling through the
+ *  runtime's list (`knownOperator`). */
+function unknownVisibilityOperator(condition: ConditionRead): ControlIssue | null {
+  const op = condition.operator || "eq";
+  if (knownOperator(op) !== null) return null;
+  const written = typeof op === "string" ? op : JSON.stringify(op);
+  return {
+    severity: "error",
+    message: `Visibility condition operator "${written}" is not valid, so the panel reads that condition as false`,
+    where: " > visible_when",
+  };
+}
+
+/** A visibility condition names an operator nobody knows, reads a device that
+ *  is not in the project, or its value names a key the project does not
+ *  define. `all` is read before `any`, and a single condition stands on its
+ *  own. */
 function visibilityIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   const vw = shownBinding(el, "visible_when");
   if (!vw) return [];
   const issues: ControlIssue[] = [];
   const conditions = (vw.all || vw.any || [vw]) as ConditionRead[];
   for (const c of conditions) {
+    const operator = unknownVisibilityOperator(c);
+    if (operator) issues.push(operator);
     const deviceId = stateKeyDevice(c.key);
     if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
       issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, where: " > visible_when" });

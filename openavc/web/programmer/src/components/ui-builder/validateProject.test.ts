@@ -759,3 +759,33 @@ describe("validateProject: a condition's value that names a key", () => {
     expect(checked(project({ macros, variables }))).toEqual([]);
   });
 });
+
+describe("validateProject: a visibility condition's operator", () => {
+  const shown = (id: string, visible_when: unknown) => ({ id, type: "label", text: "T", bindings: { show: { visible_when } } });
+  const cond = (operator: unknown) => ({ key: "var.mode", operator, value: "on" });
+  const said = (id: string, op: string) => ({
+    severity: "error",
+    message: `Visibility condition operator "${op}" is not valid, so the panel reads that condition as false`,
+    location: `Main > ${id} > visible_when`, pageId: "main", elementId: id,
+  });
+
+  it("names an operator nobody knows, alone and in either group, as the panel reads it", () => {
+    const elements = [
+      shown("l1", cond("contains")),
+      shown("l2", { all: [cond("eq"), cond("EQ")] }),
+      shown("l3", { any: [cond("between"), cond("ne")] }),
+      shown("l4", cond(["eq"])),
+    ];
+    expect(checked(project({ elements }))).toEqual([
+      said("l1", "contains"), said("l2", "EQ"), said("l3", "between"), said("l4", '["eq"]'),
+    ]);
+  });
+
+  it("takes every spelling the panel reads, and a blank, null or left-out one, which it reads as eq", () => {
+    const elements = [
+      shown("l1", { all: ["eq", "==", "equals", "greater_than", "<=", "truthy"].map(cond) }),
+      shown("l2", { any: [cond(""), cond(null), { key: "var.mode", value: "on" }] }),
+    ];
+    expect(checked(project({ elements }))).toEqual([]);
+  });
+});
