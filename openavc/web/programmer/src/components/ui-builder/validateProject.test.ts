@@ -26,12 +26,14 @@ interface Fixture {
   macros?: Record<string, unknown>[];
   groups?: Record<string, unknown>[];
   idle?: string;
+  variables?: Record<string, unknown>[];
 }
 
-function project({ elements = [], pages, masters = [], macros = [], groups, idle }: Fixture): ProjectConfig {
+function project({ elements = [], pages, masters = [], macros = [], groups, idle, variables }: Fixture): ProjectConfig {
   return {
     project: { id: "p", name: "P" },
     devices: [{ id: "amp", name: "Amp", driver: "acme_amp" }],
+    ...(variables ? { variables } : {}),
     ...(groups ? { device_groups: groups } : {}),
     macros: [{ id: "all_on", name: "All On", steps: [] }, ...macros],
     ui: {
@@ -689,5 +691,71 @@ describe("validateProject: the idle page, and the order of the whole list", () =
   it("takes an idle page that exists, and none", () => {
     expect(checked(project({ idle: "other" }))).toEqual([]);
     expect(checked(project({ idle: "" }))).toEqual([]);
+  });
+});
+
+describe("validateProject: a condition's value that names a key", () => {
+  const variables = [{ id: "wanted", type: "string" }];
+  const cond = (value: unknown, key = "device.amp.power") => ({ key, operator: "eq", value });
+
+  it("names a variable the project does not define and a device it does not have, in a visibility condition", () => {
+    const shown = (id: string, visible_when: unknown) => ({ id, type: "label", text: "T", bindings: { show: { visible_when } } });
+    const elements = [
+      shown("l1", cond("$var.ghost")),
+      shown("l2", { all: [cond("$device.gone.power"), cond("$var.wanted")] }),
+      shown("l3", { any: [cond("$device.amp.power"), cond("$system.time"), cond("on")] }),
+    ];
+    expect(checked(project({ elements, variables }))).toEqual([
+      {
+        severity: "warning", message: 'Visibility condition compares with unknown variable "ghost"',
+        location: "Main > l1 > visible_when", pageId: "main", elementId: "l1",
+      },
+      {
+        severity: "warning", message: 'Visibility condition compares with unknown device "gone"',
+        location: "Main > l2 > visible_when", pageId: "main", elementId: "l2",
+      },
+    ]);
+  });
+
+  it("names one at a step's Skip If, a Conditional and a Wait Until, nested branches included", () => {
+    const macros = [{
+      id: "m", name: "M",
+      steps: [
+        { action: "delay", seconds: 1, description: "Settle", skip_if: cond("$var.ghost") },
+        {
+          action: "conditional", condition: cond("$var.wanted"),
+          then_steps: [{ action: "wait_until", condition: cond("$device.gone.input"), timeout: 5 }],
+        },
+        { action: "conditional", condition: cond("$var.missing") },
+      ],
+    }];
+    expect(checked(project({ macros, variables }))).toEqual([
+      { severity: "warning", message: 'Condition compares with unknown variable "ghost"', location: 'Macro "M" > Settle' },
+      { severity: "warning", message: 'Condition compares with unknown device "gone"', location: 'Macro "M" > wait_until' },
+      { severity: "warning", message: 'Condition compares with unknown variable "missing"', location: 'Macro "M" > conditional' },
+    ]);
+  });
+
+  it("names one in a trigger's guard and in a state change trigger's own value", () => {
+    const macros = [{
+      id: "m", name: "M", steps: [],
+      triggers: [
+        { id: "t1", type: "event", event_pattern: "go", conditions: [cond("$var.ghost"), cond("$var.wanted")] },
+        { id: "t2", type: "state_change", state_key: "var.level", state_operator: "gte", state_value: "$var.limit" },
+      ],
+    }];
+    expect(checked(project({ macros, variables }))).toEqual([
+      { severity: "warning", message: 'Condition compares with unknown variable "ghost"', location: 'Macro "M" > Trigger "t1"' },
+      { severity: "warning", message: 'Condition compares with unknown variable "limit"', location: 'Macro "M" > Trigger "t2"' },
+    ]);
+  });
+
+  it("says nothing of a value written as itself, or of a key it cannot know", () => {
+    const macros = [{
+      id: "m", name: "M",
+      steps: [{ action: "conditional", condition: cond("$trigger.new_value") }],
+      triggers: [{ id: "t", type: "event", event_pattern: "go", conditions: [cond("on"), cond("$plugin.x.y")] }],
+    }];
+    expect(checked(project({ macros, variables }))).toEqual([]);
   });
 });

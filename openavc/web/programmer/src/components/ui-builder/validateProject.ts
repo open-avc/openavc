@@ -1,7 +1,9 @@
 /**
  * The Builder's Validate: what a project's controls, pages, master elements,
- * macro steps and idle page name that is not there, what the platform said
- * about each command, and what the page review says about each page.
+ * macro steps, triggers and idle page name that is not there (a condition's
+ * value naming a variable or device the project lacks included), what the
+ * platform said about each command, and what the page review says about each
+ * page.
  *
  * A control's checks are `CONTROL_CHECKS`, run in order for page and master
  * elements alike; a new check is one function and one entry there. What an
@@ -22,9 +24,11 @@ import type {
   MacroStep,
   MasterElement,
   ProjectConfig,
+  TriggerConfig,
   UIElement,
   UIPage,
 } from "../../api/types";
+import { readsNoValue, referencedKey } from "../../api/conditionEval";
 import {
   ACTION_SLOTS,
   REFERENCE_NOUNS,
@@ -76,6 +80,8 @@ export function stateKeyDevice(key: string | undefined): string | null {
 interface ProjectRefs extends BindingRefIds {
   /** The device groups a macro step may name; no control action names one. */
   groupIds: ReadonlySet<string>;
+  /** The project's variables, which a condition's value may name (`$var.<id>`). */
+  variableIds: ReadonlySet<string>;
   commandIssues?: Map<Record<string, unknown>, string[]>;
 }
 
@@ -200,20 +206,58 @@ function deviceValueIssues(el: UIElement): ControlIssue[] {
   }];
 }
 
-/** A visibility condition reads a device that is not in the project. `all`
- *  is read before `any`, and a single condition stands on its own. */
+/** One condition as Validate reads it: its key, operator and value. */
+type ConditionRead = { key?: string; operator?: unknown; value?: unknown };
+
+/**
+ * What a condition's value names that is not in the project, in Validate's
+ * words: a variable the project does not define or a device it does not have
+ * (`$var.wanted`, `$device.proj.power`; `referencedKey`). Null for a value
+ * written as itself, one the operator does not read, and a key of any other
+ * kind, which Validate cannot check.
+ */
+function unknownNamed(condition: ConditionRead, refs: ProjectRefs, where?: "state_trigger"): string | null {
+  if (readsNoValue(condition.operator ?? "eq", where)) return null;
+  const named = referencedKey(condition.value);
+  if (named === null) return null;
+  if (named.startsWith("var.")) {
+    const id = named.slice("var.".length);
+    return refs.variableIds.has(id) ? null : `unknown variable "${id}"`;
+  }
+  const deviceId = stateKeyDevice(named);
+  return deviceId !== null && !refs.deviceIds.has(deviceId) ? `unknown device "${deviceId}"` : null;
+}
+
+/** A visibility condition reads a device that is not in the project, or its
+ *  value names a key the project does not define. `all` is read before
+ *  `any`, and a single condition stands on its own. */
 function visibilityIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   const vw = shownBinding(el, "visible_when");
   if (!vw) return [];
   const issues: ControlIssue[] = [];
-  const conditions = (vw.all || vw.any || [vw]) as Array<{ key?: string }>;
+  const conditions = (vw.all || vw.any || [vw]) as ConditionRead[];
   for (const c of conditions) {
     const deviceId = stateKeyDevice(c.key);
     if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
       issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, where: " > visible_when" });
     }
+    const unknown = unknownNamed(c, refs);
+    if (unknown) {
+      issues.push({ severity: "warning", message: `Visibility condition compares with ${unknown}`, where: " > visible_when" });
+    }
   }
   return issues;
+}
+
+/** The conditions whose value names a key the project does not define, each
+ *  said at `location`. */
+function conditionValueIssues(
+  conditions: ConditionRead[], location: string, refs: ProjectRefs, where?: "state_trigger",
+): ValidationIssue[] {
+  return conditions.flatMap((c): ValidationIssue[] => {
+    const unknown = unknownNamed(c, refs, where);
+    return unknown ? [{ severity: "warning", message: `Condition compares with ${unknown}`, location }] : [];
+  });
 }
 
 /** The types a touch is meant to do something on. */
@@ -387,24 +431,39 @@ function stepReferenceIssues(step: MacroStep, at: (unnamed: string) => string, r
 }
 
 /** One macro step: what it names that is not there, then what the platform
- *  said about it. */
+ *  said about it, then what its Skip If, or a Conditional's or Wait Until's
+ *  condition, compares with that the project does not define. */
 function stepIssues(step: MacroStep, prefix: string, refs: ProjectRefs): ValidationIssue[] {
   const at = (unnamed: string) => `${prefix} > ${step.description || unnamed}`;
   const said = refs.commandIssues?.get(step as unknown as Record<string, unknown>) ?? [];
+  const conditions = [step.skip_if, step.condition].filter(isPlainObject) as ConditionRead[];
   return [
     ...stepReferenceIssues(step, at, refs),
     ...said.map((message): ValidationIssue => ({ severity: "error", message, location: at(step.action) })),
+    ...conditionValueIssues(conditions, at(step.action), refs),
   ];
 }
 
+/** A trigger's guards, then a State Change trigger's own value, that compare
+ *  with a key the project does not define. */
+function triggerIssues(trigger: TriggerConfig, prefix: string, refs: ProjectRefs): ValidationIssue[] {
+  const location = `${prefix} > Trigger "${trigger.id}"`;
+  const own = trigger.type === "state_change"
+    ? conditionValueIssues([{ operator: trigger.state_operator, value: trigger.state_value }], location, refs, "state_trigger")
+    : [];
+  return [...conditionValueIssues((trigger.conditions ?? []) as ConditionRead[], location, refs), ...own];
+}
+
 /** Every step of every macro, nested branches included, in the order the
- *  macro holds them. */
+ *  macro holds them, then its triggers. */
 function macroIssues(macros: MacroConfig[], refs: ProjectRefs): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const macro of macros) {
+    const prefix = `Macro "${macro.name}"`;
     for (const step of macro.steps) {
-      for (const each of stepAndBranches(step)) issues.push(...stepIssues(each, `Macro "${macro.name}"`, refs));
+      for (const each of stepAndBranches(step)) issues.push(...stepIssues(each, prefix, refs));
     }
+    for (const trigger of macro.triggers ?? []) issues.push(...triggerIssues(trigger, prefix, refs));
   }
   return issues;
 }
@@ -431,6 +490,7 @@ export function validateProject(
     deviceIds: new Set(project.devices.map((d) => d.id)),
     macroIds: new Set(project.macros.map((m) => m.id)),
     groupIds: new Set((project.device_groups ?? []).map((g) => g.id)),
+    variableIds: new Set((project.variables ?? []).map((v) => v.id)),
     commandIssues,
   };
   const theme = sliderThemeDefaults(project);
