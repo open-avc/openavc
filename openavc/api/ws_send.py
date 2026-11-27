@@ -4,7 +4,8 @@ shares (``ws.py``'s message handler and the macro doors in ``ws_macros.py``).
 THE producer of the ``error`` frame is here (``error_frame``): one shape,
 whatever refused what, so a field cannot be gained at one site and lost at
 another. ``press_failure`` is the sentence a failure is told in, for the
-client that sent it.
+client that sent it. Every frame ``send_ws`` sends leaves as that client may
+carry it (``core/ws_hub.frame_as``), the same rule as every push.
 """
 
 from __future__ import annotations
@@ -13,7 +14,9 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from openavc.api._engine import get_engine_optional
 from openavc.api.error_messages import describe_press_failure
+from openavc.core.ws_hub import frame_as
 from openavc.utils.logger import get_logger
 
 # The socket's own logger name, so these lines file where they always did.
@@ -23,10 +26,18 @@ log = get_logger("openavc.api.ws")
 DISCONNECTS = (WebSocketDisconnect, ConnectionError, OSError)
 
 
+def _client_type(ws: WebSocket) -> str | None:
+    """The type the hub knows this client as, or None for one it does not
+    hold, which ``frame_as`` answers as a client that may not carry a secret."""
+    hub = getattr(get_engine_optional(), "ws", None)
+    return hub.client_type_of(ws) if hub is not None else None
+
+
 async def send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
-    """Send a JSON message to the client, silently ignoring disconnects."""
+    """Send a JSON message to the client as it may carry it, silently
+    ignoring disconnects."""
     try:
-        await ws.send_json(msg)
+        await ws.send_json(frame_as(msg, _client_type(ws)))
     except DISCONNECTS:
         pass  # Client disconnected mid-send
     except Exception:

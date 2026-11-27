@@ -21,6 +21,17 @@ namespace's row in ``EVENT_AUDIENCE``, so a client hears a thing on both
 paths or on neither. ``PANEL_COPIES`` names what a panel gets instead of a
 payload written for the Programmer, on both paths.
 
+THE WebSocket exit's secret rule is ``frame_as``, which every frame a client
+is sent passes through, on the broadcast, the event stream and a reply to the
+client's own message: the frame leaves as its exit may carry a secret
+(``utils/secret_audience``), and its exit is its type's row in
+``SECRET_EXITS`` (live state, the pages), else the client's own type, the
+row the audience table names. Neither a panel nor the Programmer may carry
+one, so a plugin's start failure, a macro step's exception and a script's
+traceback reach the Programmer with every registered secret and an address's
+password masked, as the log writes them; the names a client routes a frame by
+(``ROUTING_NAMES``) stay as they are.
+
 Owned by the engine (``engine.ws``). ``Engine.broadcast_ws`` forwards here
 and stays the platform-wide entry point for sending a message to panels.
 """
@@ -38,6 +49,8 @@ from typing import Any, Callable
 from openavc.core.macro_text import MACRO_STOPPED
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
+from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_exits import message_as
 
 log = get_logger(__name__)
 
@@ -207,6 +220,51 @@ def event_reach(event: str) -> frozenset[str]:
     return _PROGRAMMER_ONLY if reach is None else reach
 
 
+# --- What a client may carry of a secret ---------------------------------------
+#
+# A frame leaves as its exit may carry a secret (``utils/secret_audience``):
+# its type's row here, else its client's own type, which is the exit's row
+# for a panel and for the Programmer, neither of which may carry one. These
+# are what this system's panels draw, which may: the live state (a driver's
+# stream address holds its login so a panel can play it) and the pages the
+# project defines (an element's address as its author typed it), with the
+# page a panel is sent to.
+
+SECRET_EXITS: dict[str, Exit] = {
+    "state.snapshot": Exit.DRIVER_STATE,
+    "state.update": Exit.DRIVER_STATE,
+    "state.delete": Exit.DRIVER_STATE,
+    "ui.definition": Exit.PANEL_PAGES,
+    "ui.navigate": Exit.PANEL_PAGES,
+}
+
+# The fields a client routes a frame by, at any depth: its type, an event's
+# name, what failed and who asked (``source_type``, ``request_id``), and the
+# names the project gives the things it is about. A name is no secret even
+# when a password is spelled the same, and masking one would lose the frame:
+# a panel finds the run it started by ``macro_id`` and ``call_chain``, and the
+# Node-RED package settles a request by its ids and command.
+ROUTING_NAMES = frozenset({
+    "type", "event", "source_type", "request_id",
+    "macro_id", "call_chain", "page_id", "element_id",
+    "device_id", "command", "plugin_id", "script_id",
+})
+
+
+def frame_as(message: dict[str, Any], client_type: Any) -> Any:
+    """``message`` as a client of ``client_type`` may carry it: its type's
+    row in ``SECRET_EXITS``, else the client's own row, every other text in
+    it masked where that exit may not carry a secret. A copy; never changes
+    ``message``."""
+    where = SECRET_EXITS.get(message.get("type"), client_type)
+    return message_as(where, message, names=ROUTING_NAMES)
+
+
+def frame_text(message: dict[str, Any], client_type: Any) -> str:
+    """``frame_as`` encoded as it goes on the wire."""
+    return json.dumps(frame_as(message, client_type), default=str)
+
+
 # --- What a panel receives of it ----------------------------------------------
 #
 # A row here means a panel gets a copy made for the room instead of the
@@ -261,20 +319,23 @@ def _panel_copy_of(name: str) -> Callable[[str, Any, WSHub], dict[str, Any]] | N
     return _exact_or_namespace(PANEL_COPIES, bus_push_type(name) or name)
 
 
-def _filtered_state_text(message: dict[str, Any], ns: tuple[str, ...]) -> str | None:
+def _filtered_state_text(message: dict[str, Any], ns: tuple[str, ...],
+                         client_type: str | None) -> str | None:
     """A ``state.update`` or ``state.delete`` cut to the keys under ``ns`` (a
     client's namespace filter), or None when none of its keys are."""
     if message.get("type") == "state.update":
         changes = {k: v for k, v in message.get("changes", {}).items() if k.startswith(ns)}
-        return json.dumps({"type": "state.update", "changes": changes}) if changes else None
+        cut: dict[str, Any] = {"type": "state.update", "changes": changes}
+        return frame_text(cut, client_type) if changes else None
     keys = [k for k in message.get("keys", []) if k.startswith(ns)]
-    return json.dumps({"type": "state.delete", "keys": keys}) if keys else None
+    return frame_text({"type": "state.delete", "keys": keys}, client_type) if keys else None
 
 
 class _Outgoing:
     """One broadcast's message, encoded once for each form a client gets: the
     message, a panel's copy (its type's row in ``PANEL_COPIES``), or a state
-    batch cut to a client's namespace filter."""
+    batch cut to a client's namespace filter, each as its client may carry
+    it (``frame_as``)."""
 
     def __init__(self, message: dict[str, Any], hub: WSHub) -> None:
         self._message = message
@@ -285,23 +346,27 @@ class _Outgoing:
         self._filterable = msg_type in ("state.update", "state.delete")
         self._room_copy = (_exact_or_namespace(PANEL_COPIES, msg_type)
                            if isinstance(msg_type, str) else None)
+        # Each form's text, by the client type it was encoded for.
+        self._texts: dict[tuple[bool, str | None], str] = {}
 
     @functools.cached_property
-    def _full(self) -> str:
-        return json.dumps(self._message)
+    def _panel_copy(self) -> dict[str, Any]:
+        return self._room_copy(self._message["type"], self._message, self._hub)
 
-    @functools.cached_property
-    def _panel(self) -> str:
-        copy = self._room_copy(self._message["type"], self._message, self._hub)
-        return json.dumps(copy, default=str)
+    def _text(self, copied: bool, client_type: str | None) -> str:
+        text = self._texts.get((copied, client_type))
+        if text is None:
+            message = self._panel_copy if copied else self._message
+            text = self._texts[(copied, client_type)] = frame_text(message, client_type)
+        return text
 
     def text_for(self, client_type: str | None, ns: tuple[str, ...] | None) -> str | None:
         """What this client is sent, or None when nothing of it is its."""
         if self._room_copy is not None and client_type == PANEL:
-            return self._panel
+            return self._text(True, client_type)
         if ns and self._filterable:
-            return _filtered_state_text(self._message, ns)
-        return self._full
+            return _filtered_state_text(self._message, ns, client_type)
+        return self._text(False, client_type)
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -599,6 +664,11 @@ class WSHub:
 
         return device_error_label(device_id, self._state, self._project())
 
+    def client_type_of(self, ws) -> str | None:
+        """The type this client connected as, or None for one the hub does
+        not hold."""
+        return self._client_types.get(id(ws))
+
     def send(self, ws, message: dict[str, Any]) -> None:
         """Queue a JSON message for ONE client, on the same terms as broadcast.
 
@@ -607,9 +677,10 @@ class WSHub:
         hub no longer holds (already dropped) is skipped; one whose queue
         overflows is dropped exactly as it would be under ``broadcast``.
         ``default=str`` because the payload is somebody else's dict -- a value
-        that is not JSON must not take the whole stream down.
+        that is not JSON must not take the whole stream down. It leaves as
+        this client may carry it (``frame_as``).
         """
-        self._enqueue(ws, json.dumps(message, default=str))
+        self._enqueue(ws, frame_text(message, self._client_types.get(id(ws))))
 
     def _enqueue(self, ws, text: str) -> None:
         queue = self._send_queues.get(id(ws))

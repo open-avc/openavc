@@ -4,7 +4,7 @@ A secret is a device's login, a parameter or setting its driver marks secret,
 or the project's own (the mesh key): what ``utils/log_redaction`` registers.
 An exit is a place one could leave by. :data:`MAY_CARRY_SECRET` answers, once
 for each exit, whether it may carry one; an exit with no row may not. Only
-three may:
+four may:
 
   - **the device itself**, over its own connection: what the secret is for;
   - **the login file and the backups the platform writes**, owner-only on
@@ -12,7 +12,10 @@ three may:
   - **a value a driver published into state**, as the panels, the
     Programmer and the scripts on this system read it: a camera's stream
     address carries its login so a panel can play the stream. Leaving this
-    system, the same value is the cloud's row.
+    system, the same value is the cloud's row;
+  - **the pages the project defines**, as the panels on this system draw
+    them: an element's address carries a login as its author typed it, for
+    the same reason.
 
 Every other exit may not carry one. An exit asks for what it may carry,
 naming itself: ``SecretRegistry.masked`` or ``SecretRegistry.to_mask`` for
@@ -32,8 +35,11 @@ masked, and the device's masking learns the value before the checks run.
 
 The WebSocket rows are the client types ``core/ws_hub.MESSAGE_AUDIENCE``
 names (:attr:`Exit.PANEL`, :attr:`Exit.PROGRAMMER`): that table says who a
-push reaches, this one whether it may carry a secret. A push of driver state
-is :attr:`Exit.DRIVER_STATE`.
+push reaches, this one whether it may carry a secret, and the hub asks both
+for every client it sends to (``ws_hub.frame_as``). A push of live state is
+:attr:`Exit.DRIVER_STATE` and one of the pages :attr:`Exit.PANEL_PAGES`
+(``ws_hub.SECRET_EXITS``); every other push, and every reply to a client's
+own message, leaves by its client's row.
 
 Stdlib only, so the redaction module can ask it.
 """
@@ -53,6 +59,8 @@ class Exit(str, Enum):
     LOGIN_FILE = "login_file"
     # A value a driver published into state, read on this system.
     DRIVER_STATE = "driver_state"
+    # The pages the project defines, as this system's panels draw them.
+    PANEL_PAGES = "panel_pages"
     # Any other push to a panel (ws_hub.PANEL).
     PANEL = "panel"
     # Any other push or reply to the Programmer (ws_hub.PROGRAMMER): a setup
@@ -77,6 +85,7 @@ MAY_CARRY_SECRET: dict[Exit, bool] = {
     Exit.DEVICE: True,
     Exit.LOGIN_FILE: True,
     Exit.DRIVER_STATE: True,
+    Exit.PANEL_PAGES: True,
     Exit.PANEL: False,
     Exit.PROGRAMMER: False,
     Exit.LOG: False,

@@ -2,16 +2,16 @@
 
 ``utils/secret_audience.MAY_CARRY_SECRET`` has a row for each place a
 device's secret (a login, a parameter or setting marked secret, the mesh key)
-could leave by. Three may carry one: the device's own connection, the login
-file and the backups the platform writes (owner-only on this system), and a
+could leave by. Four may carry one: the device's own connection, the login
+file and the backups the platform writes (owner-only on this system), a
 value a driver published into state as the panels and the Programmer on this
 system read it (a camera's stream address with its login, which a panel
-plays). Every other exit masks it, and an exit with no row is answered as one
-that may not.
+plays), and the pages the project defines as those panels draw them. Every
+other exit masks it, and an exit with no row is answered as one that may not.
 
 The WebSocket rows are the client types ``core/ws_hub.MESSAGE_AUDIENCE``
 names, so who a push reaches comes from that table and whether it may carry
-a secret from this one.
+a secret from this one (``tests/test_ws_secret_exit.py`` holds the hub to it).
 
 Two sweeps keep every exit on the table: no module reads the secret
 registry's values except through ``SecretRegistry.masked`` and
@@ -56,9 +56,9 @@ def test_every_exit_has_a_row():
     assert set(MAY_CARRY_SECRET) == set(Exit)
 
 
-def test_only_the_device_the_login_file_and_driver_state_may_carry_a_secret():
+def test_only_the_device_the_login_file_and_what_the_panels_draw_may_carry_a_secret():
     assert {where for where in Exit if may_carry_secret(where)} == {
-        Exit.DEVICE, Exit.LOGIN_FILE, Exit.DRIVER_STATE,
+        Exit.DEVICE, Exit.LOGIN_FILE, Exit.DRIVER_STATE, Exit.PANEL_PAGES,
     }
 
 
