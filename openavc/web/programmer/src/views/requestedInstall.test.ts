@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { UpdateCheckResult, UpdateStatus } from "../api/restClient";
-import { requestedInstallTarget } from "./requestedInstall";
+import { requestedInstall } from "./requestedInstall";
 
 // Another screen (the assistant, on a system behind the release it needs)
 // asks the Updates page for a release. The page installs only what the button
@@ -26,21 +26,21 @@ function status(extra: Partial<UpdateStatus>): UpdateStatus {
   };
 }
 
-describe("requestedInstallTarget", () => {
+describe("requestedInstall", () => {
   it("installs the release asked for when the updater would install it", () => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status({}))).toBe("0.42.0");
+    expect(requestedInstall("0.42.0", CHECKED, status({}))).toEqual({ install: "0.42.0" });
   });
 
   it("installs a newer release than the one asked for", () => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status({ install_version: "0.43.0" }))).toBe("0.43.0");
+    expect(requestedInstall("0.42.0", CHECKED, status({ install_version: "0.43.0" }))).toEqual({ install: "0.43.0" });
   });
 
   it("reads a tag spelling as the release", () => {
-    expect(requestedInstallTarget("v0.42.0", CHECKED, status({}))).toBe("0.42.0");
+    expect(requestedInstall("v0.42.0", CHECKED, status({}))).toEqual({ install: "0.42.0" });
   });
 
   it("installs again after a failed attempt", () => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status({ update_status: "error" }))).toBe("0.42.0");
+    expect(requestedInstall("0.42.0", CHECKED, status({ update_status: "error" }))).toEqual({ install: "0.42.0" });
   });
 
   it.each([
@@ -48,24 +48,24 @@ describe("requestedInstallTarget", () => {
     ["a release candidate of it", { install_version: "0.42.0-rc1" }],
     ["nothing", { install_version: "" }],
     ["nothing it can read", { install_version: undefined }],
-  ])("installs nothing when the updater would install %s", (_what, extra) => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status(extra))).toBeNull();
+  ])("says the release was not found when the updater would install %s", (_what, extra) => {
+    expect(requestedInstall("0.42.0", CHECKED, status(extra))).toBe("not_found");
   });
 
   it("installs nothing on a system that does not update itself", () => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status({ can_self_update: false }))).toBeNull();
+    expect(requestedInstall("0.42.0", CHECKED, status({ can_self_update: false }))).toBe("show");
   });
 
   it("installs nothing where the product firmware carries updates", () => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status({ update_owner: "firmware" }))).toBeNull();
+    expect(requestedInstall("0.42.0", CHECKED, status({ update_owner: "firmware" }))).toBe("show");
   });
 
   it("installs nothing while an update is already under way", () => {
-    expect(requestedInstallTarget("0.42.0", CHECKED, status({ update_status: "downloading" }))).toBeNull();
+    expect(requestedInstall("0.42.0", CHECKED, status({ update_status: "downloading" }))).toBe("show");
   });
 
   it("installs nothing when the check could not be made", () => {
     const failed = { update_available: false, error: "GitHub could not be reached." } as UpdateCheckResult;
-    expect(requestedInstallTarget("0.42.0", failed, status({}))).toBeNull();
+    expect(requestedInstall("0.42.0", failed, status({}))).toBe("show");
   });
 });

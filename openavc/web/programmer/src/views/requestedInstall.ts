@@ -20,46 +20,52 @@ export function requestInstall(release: string): void {
   useNavigationStore.getState().navigateTo("updates", { type: INSTALL_REQUEST, id: release });
 }
 
-/** What the page installs for a request for `needed`, after its check: the
- *  release an Install installs when that is `needed` or newer, on a system
- *  that updates itself with no update under way; else null, and the page is
- *  left showing what the check found (how to update this deployment, a
- *  failed check, the firmware's guidance). */
-export function requestedInstallTarget(
+/** What the page does for a request for `needed`, after its check: install
+ *  the release an Install installs when that is `needed` or newer, on a system
+ *  that updates itself with no update under way; say the release was
+ *  `not_found` when such a system's check found nothing that new; else `show`
+ *  the page as the check left it (how to update this deployment, a failed
+ *  check, the firmware's guidance, the update already under way). */
+export function requestedInstall(
   needed: string,
   check: UpdateCheckResult,
   status: UpdateStatus,
-): string | null {
-  if (check.error) return null;
-  if (status.update_owner === "firmware" || !status.can_self_update) return null;
-  if (status.update_status !== "idle" && status.update_status !== "error") return null;
+): { install: string } | "not_found" | "show" {
+  if (check.error) return "show";
+  if (status.update_owner === "firmware" || !status.can_self_update) return "show";
+  if (status.update_status !== "idle" && status.update_status !== "error") return "show";
   const target = status.install_version ?? "";
   const meets = compareVersions(target, needed);
-  return meets === 0 || meets === 1 ? target : null;
+  return meets === 0 || meets === 1 ? { install: target } : "not_found";
+}
+
+/** What the page lends a request: its Checking state, what it shows of a
+ *  check, and its Install. */
+export interface RequestedInstallPage {
+  setChecking: (checking: boolean) => void;
+  onChecked: (check: UpdateCheckResult, status: UpdateStatus) => void;
+  install: (version: string) => void;
 }
 
 /** Carry out a request another screen made when it opened this page: check
- *  for updates (`onChecked` gets what the page shows), then `install` the
- *  release `requestedInstallTarget` names, if any. Read once, at mount; a
+ *  for updates, then do what `requestedInstall` says. Read once, at mount; a
  *  later visit is an ordinary one. */
-export function useRequestedInstall(
-  onChecked: (check: UpdateCheckResult, status: UpdateStatus) => void,
-  install: (version: string) => void,
-): void {
+export function useRequestedInstall(page: RequestedInstallPage): void {
   const [needed] = useState(() => {
     const focus = useNavigationStore.getState().consumeFocus();
     return focus?.type === INSTALL_REQUEST ? focus.id : "";
   });
   // The page's handlers as they are when the check answers, not at mount.
-  const handlers = useRef({ onChecked, install });
+  const handlers = useRef(page);
   useEffect(() => {
-    handlers.current = { onChecked, install };
+    handlers.current = page;
   });
 
   useEffect(() => {
     if (!needed) return;
     let left = false;
     (async () => {
+      handlers.current.setChecking(true);
       try {
         const check = await api.checkForUpdates();
         const status = await api.getUpdateStatus();
@@ -69,10 +75,17 @@ export function useRequestedInstall(
           showError("Could not check for updates: " + check.error);
           return;
         }
-        const target = requestedInstallTarget(needed, check, status);
-        if (target) handlers.current.install(target);
+        const next = requestedInstall(needed, check, status);
+        if (next === "not_found") {
+          showError("This system's update check did not find v" + needed.replace(/^v/i, "")
+            + ". Check for Updates again later.");
+        } else if (next !== "show") {
+          handlers.current.install(next.install);
+        }
       } catch (e) {
         if (!left) showError("Update check failed: " + parseApiError(e));
+      } finally {
+        if (!left) handlers.current.setChecking(false);
       }
     })();
     return () => {

@@ -230,10 +230,14 @@ export function UpdatesView() {
   const handleApply = () => startInstall(installTarget);
 
   // An install another screen asked for when it opened this page.
-  useRequestedInstall((check, checkedStatus) => {
-    setCheckResult(check);
-    setStatus(checkedStatus);
-  }, startInstall);
+  useRequestedInstall({
+    setChecking,
+    onChecked: (check, checkedStatus) => {
+      setCheckResult(check);
+      setStatus(checkedStatus);
+    },
+    install: startInstall,
+  });
 
   const handleRollback = useCallback(async () => {
     setShowRollbackConfirm(false);

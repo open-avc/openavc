@@ -474,6 +474,28 @@ describe("UpdatesView install asked for from another screen", () => {
     expect(useNavigationStore.getState().pendingFocus).toBeNull();
   });
 
+  it("says Checking while the check runs", async () => {
+    statusWith({ update_available: "0.42.0", install_version: "0.42.0" });
+    let answer: (v: unknown) => void = () => {};
+    vi.mocked(api.checkForUpdates).mockReturnValue(new Promise((r) => { answer = r; }) as never);
+    useNavigationStore.getState().navigateTo("updates", { type: "install", id: "0.42.0" });
+    render(<UpdatesView />);
+    expect(await screen.findByText("Checking...")).toBeInTheDocument();
+    await act(async () => { answer({ update_available: true }); });
+    await waitFor(() => expect(api.applyUpdate).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Checking...")).not.toBeInTheDocument();
+  });
+
+  it("says so when the check does not find the release asked for", async () => {
+    statusWith({ update_available: "", install_version: "" });
+    useNavigationStore.getState().navigateTo("updates", { type: "install", id: "0.42.0" });
+    render(<UpdatesView />);
+    await waitFor(() => expect(showError).toHaveBeenCalledWith(
+      "This system's update check did not find v0.42.0. Check for Updates again later.",
+    ));
+    expect(api.applyUpdate).not.toHaveBeenCalled();
+  });
+
   it("only shows the page on a system that does not update itself", async () => {
     statusWith({ can_self_update: false, update_available: "0.42.0", install_version: "0.42.0" });
     useNavigationStore.getState().navigateTo("updates", { type: "install", id: "0.42.0" });

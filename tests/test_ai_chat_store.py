@@ -124,7 +124,7 @@ def test_undo_saves_with_current_etag_and_resyncs_project_store() -> None:
 
 def test_failed_send_cleans_up_its_undo_entry() -> None:
     src = STORE_TS.read_text(encoding="utf-8")
-    on_error = src[src.index("onError: (message)"):]
+    on_error = src[src.index("onError: (message"):]
     on_error = on_error[: on_error.index("},")]
     assert "undoStack" in on_error, (
         "onError must drop the undo entry pushed for the failed send — "
@@ -138,7 +138,7 @@ def test_a_failed_send_keeps_the_prompt() -> None:
     limit or a version mismatch destroyed the prompt outright, with nothing
     left to copy and nothing to retry from."""
     src = STORE_TS.read_text(encoding="utf-8")
-    on_error = src[src.index("onError: (message)"):]
+    on_error = src[src.index("onError: (message"):]
     on_error = on_error[: on_error.index("undoStack:")]
     assert "failed: message" in on_error, (
         "onError must mark the user's message with why it didn't send"
