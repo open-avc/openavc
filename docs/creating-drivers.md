@@ -3508,7 +3508,11 @@ and `file.chunks()`; it never receives a browser path. The upload is tied to
 that device, action and parameter and is deleted when the run finishes,
 fails or is cancelled. Copy only the information the device needs into its
 configuration. A password used only to decode an import should be a secret
-action parameter, not a saved device setting. Setup files require
+action parameter, not a saved device setting. In releases after OpenAVC 0.41.0,
+the value of a parameter your action marks `secret` (or names `password`) is
+masked from the moment the run starts: a step, a message or a result that
+quotes it shows `***` in the wizard and in the log, whether or not the run
+saves it. Values shorter than four characters are not masked. Setup files require
 `min_platform_version: "0.41.0"`; ordinary file commands retain their 0.37.2 floor.
 
 **Write the message for the person who pressed the button.** It is the whole
