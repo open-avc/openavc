@@ -3,37 +3,30 @@ import type {
   ActionVisibleWhen,
   DeviceAction,
 } from "../../api/types";
+import { knownOperator } from "../../api/conditionEval";
 
 /**
- * Evaluate a single condition operator. Mirrors the panel runtime's
- * `OPERATORS` (openavc/web/panel/modules/visibility.js) and the shared backend evaluator
- * (openavc/core/condition_eval.py) so an action's `visible_when` behaves the
- * same wherever it's evaluated.
+ * Evaluate a single condition operator. Every spelling the runtime takes reads
+ * as the operator it names (`knownOperator`, the list core/condition_eval.py
+ * serves), so an alias works here as on the panel; an operator nobody knows
+ * never holds, so an action shown only by it stays hidden.
  */
-function evalOp(op: string, actual: unknown, target: unknown): boolean {
-  switch (op) {
+function evalOp(op: unknown, actual: unknown, target: unknown): boolean {
+  switch (knownOperator(op)) {
     case "eq":
-    case "equals":
-    case "==":
       // Loose compare so a numeric 1 / boolean true matches a string "1"/"true".
       // eslint-disable-next-line eqeqeq
       return actual == target;
     case "ne":
-    case "not_equals":
-    case "!=":
       // eslint-disable-next-line eqeqeq
       return actual != target;
     case "gt":
-    case ">":
       return actual != null && target != null && (actual as number) > (target as number);
     case "lt":
-    case "<":
       return actual != null && target != null && (actual as number) < (target as number);
     case "gte":
-    case ">=":
       return actual != null && target != null && (actual as number) >= (target as number);
     case "lte":
-    case "<=":
       return actual != null && target != null && (actual as number) <= (target as number);
     case "truthy":
       return !!actual;
