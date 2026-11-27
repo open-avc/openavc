@@ -93,7 +93,7 @@ from openavc.audit.report_text import (
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.core.device_traffic import RING_ENTRIES, get_traffic_recorder, serialize_entry
 from openavc.drivers.registry import get_driver_class
-from openavc.drivers.secret_params import device_commands, is_secret_param
+from openavc.drivers.secret_params import device_commands, is_secret_param, reported_secret_values
 from openavc.support.report_contract import report_version
 from openavc.utils.log_buffer import get_log_buffer
 from openavc.utils.log_redaction import (
@@ -182,6 +182,7 @@ class Snapshot:
         self.driver_loaded = cls is not None
         info = dict(getattr(cls, "DRIVER_INFO", None) or {})
         self.schema = info.get("config_schema") or {}
+        self.device_settings = info.get("device_settings")
         # The device's own declaration, its own protocol merged: which of a
         # command's parameters the save and the send treat as secret.
         self.commands = device_commands(cls, self.config)
@@ -230,11 +231,16 @@ class Snapshot:
         """Values the driver wrote under a credential's name (``auth_token``,
         ``password``, and, the report being about this one device, a
         username), now or in the history: what every exit that may not carry
-        a secret masks of state (``secret_exits.named_secret_state``)."""
+        a secret masks of state (``secret_exits.named_secret_state``); and
+        what the device reported for a setting its driver marks secret
+        (``secret_params.reported_secret_values``), whatever its name."""
+        prefix = f"device.{self.device_id}."
         pairs = [(k, v) for k, v in self.state.items()]
         for row in self.history:
-            pairs += [(row.get("key"), row.get("old_value")), (row.get("key"), row.get("new_value"))]
-        return {value for key, value in pairs if named_secret_state(key, value, usernames=True)}
+            short = str(row.get("key", ""))[len(prefix):]
+            pairs += [(short, row.get("old_value")), (short, row.get("new_value"))]
+        named = {value for key, value in pairs if named_secret_state(key, value, usernames=True)}
+        return named | reported_secret_values(self.device_settings, pairs, floor=1)
 
     def window_start(self) -> float | None:
         return self.traffic[0].t if self.traffic else None

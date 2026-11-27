@@ -46,6 +46,9 @@ class _AcmeWidget(BaseDriver):
             "login": {"label": "Log in", "params": {"pin": {"type": "password"}}},
         },
         "state_variables": {},
+        "device_settings": {
+            "door_code": {"type": "string", "label": "Door code", "secret": True},
+        },
     }
 
 
@@ -200,6 +203,21 @@ def test_a_secret_setting_held_as_a_number_is_masked_in_every_file(engine):
     for name, text in files.items():
         if not name.startswith("driver/"):
             assert "48213977" not in text, f"the numeric secret survived in {name}"
+
+
+def test_a_secret_setting_s_reported_value_is_masked_in_every_file(engine):
+    """A device setting the driver marks secret, as the device reports it now
+    and before, under a name no credential has and with nothing registered:
+    masked, a short one too."""
+    engine.state.set("device.hall_widget.door_code", "Door-1177-old")
+    engine.state.set("device.hall_widget.door_code", "D7q")
+    report, files = _build(engine)
+    assert report["state"]["device"]["door_code"] == "[redacted]"
+    for name, text in files.items():
+        if name.startswith("driver/"):
+            continue
+        for value in ("Door-1177-old", "D7q"):
+            assert value not in text, f"{value!r} survived in {name}"
 
 
 def test_a_command_password_is_masked_in_the_context_and_the_log(engine):
