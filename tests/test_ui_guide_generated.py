@@ -93,17 +93,19 @@ def test_committed_guide_matches_a_fresh_render():
 
 
 #: Every file the cloud's ``get_authoring_guide`` fetches out of THIS repo,
-#: keyed by the target it is fetched under (``GUIDE_SOURCES`` in
-#: openavc-cloud ``api/services/ai_tool_router.py``).
+#: keyed by the target it is fetched under (``GUIDES`` in openavc-cloud
+#: ``api/services/ai_tool_router.py``).
 #:
-#: They are raw.githubusercontent URLs into this repo's default branch, so a
-#: rename on this side is a silent 404 on that one -- and nothing here fails
-#: when it happens. The remote caller simply authors without the guide, which is
-#: the exact failure each guide exists to prevent. So the paths are pinned, and
-#: moving one means coming through this test and updating the URL that reads it.
+#: They are raw.githubusercontent URLs into this repo at the newest release's
+#: tag, so a rename on this side is a silent 404 on that one from the release
+#: that ships it -- and nothing here fails when it happens. The remote caller
+#: simply authors without the guide, which is the exact failure each guide
+#: exists to prevent. So the paths are pinned, and moving one means coming
+#: through this test and updating the URL that reads it.
 CROSS_REPO_GUIDE_PATHS = {
     "ui": "openavc/ui/panel_authoring_guide.md",
     "custom": "docs/custom-controls.md",
+    "driver": "openavc/drivers/avcdriver.schema.json",
 }
 
 
@@ -112,11 +114,12 @@ def test_the_artifact_path_is_part_of_a_cross_repo_contract():
 
 
 def test_every_guide_the_cloud_fetches_from_here_is_where_it_says_it_is():
-    """The custom-control guide is the second one, and it is a hand-written user
-    doc rather than a generated artifact -- so nothing regenerates it into
-    existence if it moves. It carries the whole bridge (``openavc:init``,
-    ``openavc:action``), the theme variables and the ship-it-locally rules, and
-    without it the assistant cannot write a control that works at all.
+    """The custom-control guide is a hand-written user doc rather than a
+    generated artifact -- so nothing regenerates it into existence if it moves.
+    It carries the whole bridge (``openavc:init``, ``openavc:action``), the
+    theme variables and the ship-it-locally rules, and without it the assistant
+    cannot write a control that works at all. The driver schema goes beside the
+    driver library's contributor guide, which leaves the file format to it.
     """
     for target, path in CROSS_REPO_GUIDE_PATHS.items():
         assert (REPO_ROOT / path).is_file(), (
