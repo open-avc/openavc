@@ -61,6 +61,16 @@ exit "${FAKE_KICKSTART_EXIT:-0}"
 """
 
 
+def _once_the_restart_says(out: Path) -> str:
+    """What the wrapper printed to `out`, once the restart it left running says how it went."""
+    deadline = time.monotonic() + RESTART_WAIT_S
+    while True:
+        text = out.read_text()
+        if any(said in text for said in RESTART_OUTCOMES) or time.monotonic() > deadline:
+            return text
+        time.sleep(0.05)
+
+
 def _bash_path(path: Path) -> str:
     return _to_msys2_path(str(path)) if sys.platform == "win32" else str(path)
 
@@ -128,13 +138,7 @@ def mac(tmp_path):
             return text
 
         def restart_said(self) -> str:
-            """What the wrapper printed, once the restart it left running says how it went."""
-            deadline = time.monotonic() + RESTART_WAIT_S
-            while True:
-                text = self.out.read_text()
-                if any(said in text for said in RESTART_OUTCOMES) or time.monotonic() > deadline:
-                    return text
-                time.sleep(0.05)
+            return _once_the_restart_says(self.out)
 
         def asked(self) -> list[str]:
             if not log.exists():
