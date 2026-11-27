@@ -6,6 +6,7 @@ import pytest
 
 from openavc.transport.osc import OSCTransport, _OSCListenProtocol
 from openavc.transport.osc_codec import osc_encode_message
+from tests.helpers import wait_for_condition
 
 
 class _StubParent:
@@ -211,8 +212,9 @@ async def test_verify_dual_socket_ignores_baseline_traffic(silent_remote):
         await _send_one_datagram(
             "127.0.0.1", listen_port, osc_encode_message("/heartbeat")
         )
-        # Give a moment for the listen socket to record it.
-        await asyncio.sleep(0.1)
+        # Until the listen socket has recorded it: a fixed sleep let a loaded
+        # run deliver it during verify(), which then (rightly) saw new traffic.
+        await wait_for_condition(lambda: osc._listen_last_data > 0.0, timeout=5, interval=0.01)
         # Now verify with a short timeout and no new traffic — must time out.
         assert await osc.verify(timeout=0.3) is False
     finally:
