@@ -786,16 +786,17 @@ CHILD_DRIVER_FAULT_CODES: frozenset[str] = frozenset({
 
 # The ``device.<id>.<key>`` keys the device manager writes for every device:
 # its name and switches, whether it is connected, why it is away, its pause,
-# sleep and restart, its reconnect count, its web page. No driver declares
-# them, and a reply rule's ``only_when:`` may gate on one by its bare name.
-# The AI's property check and the device audit read this too
+# sleep and restart, what all of that adds up to (``presence``, one word:
+# ``core/device_presence.py``), its reconnect count, its web page. No driver
+# declares them, and a reply rule's ``only_when:`` may gate on one by its bare
+# name. The AI's property check and the device audit read this too
 # (``core/device_info.py`` re-exports it); a new key the manager writes is
 # added here, and tests/test_platform_device_keys.py fails until it is.
 PLATFORM_DEVICE_KEYS: frozenset[str] = frozenset({
     "name", "enabled", "connected", "offline_reason", "offline_detail",
     "paused", "paused_for", "restarting", "asleep", "wake_command",
-    "orphaned", "orphan_reason", "reconnect_attempt", "reconnect_failed",
-    "web_ui_url",
+    "orphaned", "orphan_reason", "presence", "reconnect_attempt",
+    "reconnect_failed", "web_ui_url",
 })
 
 # The flat keys a driver writes without declaring them: ``connected`` is

@@ -43,8 +43,8 @@ class DeviceOrphansMixin:
     Holds no state of its own: an orphan is a record in the ``orphaned``
     state (core/device_records.py). From its host (DeviceManager) it reads
     ``state``, ``events`` and ``request_bringup``, and asks
-    ``_replace_device``, ``device_record``, ``status_of``, ``_records_in``
-    and ``_keep_record``.
+    ``_replace_device``, ``device_record``, ``status_of``, ``_records_in``,
+    ``_keep_record`` and ``_set_device_state`` (core/device_away.py).
     """
 
     state: StateStore
@@ -60,8 +60,8 @@ class DeviceOrphansMixin:
         log.warning(f"Device '{device_id}' is orphaned: {missing_driver_reason(driver_id)}")
         self._keep_record(device_id, ORPHANED, device_config)
         self.state.set(f"device.{device_id}.name", name, source="config")
-        self.state.set(f"device.{device_id}.connected", False, source="config")
-        self.state.set(f"device.{device_id}.orphaned", True, source="config")
+        self._set_device_state(device_id, "connected", False, source="config")
+        self._set_device_state(device_id, "orphaned", True, source="config")
         self.state.set(
             f"device.{device_id}.orphan_reason",
             missing_driver_reason(driver_id),

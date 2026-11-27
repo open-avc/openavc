@@ -332,7 +332,6 @@ class RuntimeServicesMixin:
             alert_monitor = AlertMonitor(
                 self.cloud_agent, self.state, self.events,
                 monitors_provider=self.monitors,
-                away_on_purpose=self.devices.away_on_purpose,
             )
             self.cloud_agent.set_alert_monitor(alert_monitor)
 

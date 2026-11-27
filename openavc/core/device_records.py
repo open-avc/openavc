@@ -124,7 +124,8 @@ class DeviceRecordsMixin:
     Its state is set up by ``_init_records``. From its host (DeviceManager)
     it reads ``state``, ``installed_equipment``, ``request_bringup``,
     ``_devices`` and ``_device_configs``, and asks ``_replace_device``,
-    ``_take_down`` and ``_publish_offline`` (core/device_away.py).
+    ``_take_down``, ``_set_device_state`` and ``_publish_offline``
+    (core/device_away.py).
     """
 
     state: StateStore
@@ -228,8 +229,8 @@ class DeviceRecordsMixin:
         self._keep_record(device_id, SETTINGS_FAILED, entry, fault)
         prefix = f"device.{device_id}."
         self.state.set(f"{prefix}name", entry.get("name") or device_id, source="config")
-        self.state.set(f"{prefix}enabled", entry.get("enabled", True) is not False, source="config")
-        self.state.set(f"{prefix}connected", False, source="device_manager")
+        self._set_device_state(device_id, "enabled", entry.get("enabled", True) is not False, source="config")
+        self._set_device_state(device_id, "connected", False)
         self.state.set(f"{prefix}reconnect_failed", True, source="device_manager")
         self._publish_offline(device_id, None, fault)
         return True

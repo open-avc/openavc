@@ -703,7 +703,7 @@ every other control bound to the device is marked as it is for any device that
 cannot be reached, and a press on one says "<device> is asleep. Power On wakes
 it." A control whose press sends only a command that works while the device is
 offline (a Power On by Wake-on-LAN) is never marked as one that will be refused.
-Bind a label to `device.<id>.asleep` or `offline_detail` to show it.
+Bind a label to `device.<id>.presence`, `asleep` or `offline_detail` to show it.
 
 This matters most on the controls that carry a number somebody acts on. A fader
 sitting at the top of its travel over `0.0 dB`, for an amplifier nobody can
@@ -713,7 +713,7 @@ The control still works. Pressing it sends the command and shows the failure
 band above, which is usually how somebody finds out. Nothing is disabled.
 
 Two things deliberately keep working: anything bound to a device's connection
-state (`connected`, `offline_reason`, `offline_detail`, the device's name) and
+state (`connected`, `presence`, `offline_reason`, `offline_detail`, the device's name) and
 anything bound to a variable. Those are the parts of the page that are still
 telling the truth, so put an indicator and a reason label on any page where
 knowing which device is out matters.

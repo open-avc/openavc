@@ -51,7 +51,8 @@ class DeviceManualReconnectMixin:
     ``_live_driver`` and ``_connect_driver``; ``is_paused`` and ``_end_pause``
     (core/device_pause.py); ``_cancel_reconnect``, ``_start_reconnect`` and
     ``_paused_for_refused_login`` (core/device_reconnect.py); ``_set_offline_reason``,
-    ``_clear_offline_reason`` and ``_failure_text`` (core/device_away.py);
+    ``_clear_offline_reason``, ``_set_device_state`` and ``_failure_text``
+    (core/device_away.py);
     ``_note_bridge_offline_if_down`` (core/device_bridges.py);
     ``_apply_pending_settings`` (core/pending_settings.py),
     ``_schedule_web_ui_probe`` (core/device_web_ui.py), ``status_of`` and
@@ -128,7 +129,7 @@ class DeviceManualReconnectMixin:
         except ConnectEndedError:
             pass  # ended by a newer press, a pause or a removal
         except Exception as e:
-            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+            self._set_device_state(device_id, "connected", False)
             code = self._set_offline_reason(device_id, driver, exc=e)
             log.warning(f"Reconnect failed for {device_id}: {self._failure_text(device_id, e)}")
             # The manual attempt was this action's one try.

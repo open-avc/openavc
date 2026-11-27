@@ -22,6 +22,7 @@ from openavc.cloud.protocol import (
     build_alert_resolved_payload, build_monitors_payload,
 )
 from openavc.cloud.state_relay import cloud_state_value
+from openavc.core.device_presence import AWAY_ON_PURPOSE
 from openavc.core.monitors import as_number, compile_alert_rules, monitor_reading
 from openavc.utils.logger import get_logger
 from openavc.utils.regex_safety import regex_safety_error
@@ -49,16 +50,10 @@ class AlertMonitor:
         state: StateStore,
         events: EventBus,
         monitors_provider: Callable[[], list[dict[str, Any]]] | None = None,
-        away_on_purpose: Callable[[str], bool] | None = None,
     ):
         self._agent = agent
         self._state = state
         self._events = events
-        # Asks the device manager whether a device is away because we asked
-        # (a restart window open, a sleeping command sent). The state flags say
-        # the same once they are published, but the drop writes `connected`
-        # first, and an immediate rule would fire in between.
-        self._away_on_purpose = away_on_purpose
         # Reads the project's monitor list. A callable rather than the project
         # itself because the project is replaced wholesale on every save, and
         # this must always see the one that is running.
@@ -249,11 +244,11 @@ class AlertMonitor:
             parts = key.split(".")
             if len(parts) >= 2:
                 self._last_state_times[parts[1]] = time.time()
-            # The device's quiet just changed (it fell asleep, woke, or a
-            # restart window ended): its presence keys are judged again with
-            # the values they hold now, so a wake that fails alerts on the real
-            # fault even though `connected` itself did not change.
-            if len(parts) == 3 and parts[2] in QUIET_FLAGS and not new_value:
+            # The device's quiet just ended (it woke, or a restart window
+            # ended): its presence keys are judged again with the values they
+            # hold now, so a wake that fails alerts on the real fault even
+            # though `connected` itself did not change.
+            if _quiet_ended(parts, old_value, new_value):
                 self._evaluate_presence(parts[1])
 
         self._evaluate(key, new_value)
@@ -278,17 +273,13 @@ class AlertMonitor:
     # --- Quiet devices ---
 
     def _quiet_device(self, device_id: str) -> bool:
-        """True while the device is away on purpose: asleep after a command
-        declaring sleeps_device, or inside a commanded restart (or the wake
-        that follows a sleep). Nothing is wrong, so nobody is told."""
-        if any(self._state.get(f"device.{device_id}.{flag}") for flag in QUIET_FLAGS):
-            return True
-        if self._away_on_purpose is None:
-            return False
-        try:
-            return bool(self._away_on_purpose(device_id))
-        except Exception:  # noqa: BLE001 - a monitor must never break a state write
-            return False
+        """True while the device is away on purpose, as its presence word
+        says (core/device_presence.py): asleep after a command declaring
+        sleeps_device, or inside a commanded restart (or the wake that
+        follows a sleep). Nothing is wrong, so nobody is told. The word is
+        written in the same batch as ``connected``, so a drop is judged with
+        the word that goes with it."""
+        return self._state.get(f"device.{device_id}.presence") in AWAY_ON_PURPOSE
 
     def _quiet_presence_key(self, key: str) -> bool:
         """True for a presence key (the device's or a child's) of a quiet device."""
@@ -902,11 +893,21 @@ def _check_resolved(value: Any, fire_operator: str, resolve_value: Any) -> bool:
     return not _compare(value, fire_operator, resolve_value)
 
 
-# The keys a device's (or a child's) reachability is published under, and the
-# flags that say its absence was asked for. A rule on one of these keys of a
-# device that is asleep or restarting neither arms nor fires.
-PRESENCE_PROPS = frozenset({"connected", "online", "offline_reason", "offline_detail", "reconnect_attempt"})
-QUIET_FLAGS = ("asleep", "restarting")
+# The keys a device's (or a child's) reachability is published under. A rule
+# on one of these keys of a device that is asleep or restarting neither arms
+# nor fires.
+PRESENCE_PROPS = frozenset({
+    "connected", "online", "presence", "offline_reason", "offline_detail", "reconnect_attempt",
+})
+
+
+def _quiet_ended(parts: list[str], old_value: Any, new_value: Any) -> bool:
+    """True for a change to ``device.<id>.presence`` that takes the device
+    out of an absence on purpose."""
+    return (
+        len(parts) == 3 and parts[2] == "presence"
+        and old_value in AWAY_ON_PURPOSE and new_value not in AWAY_ON_PURPOSE
+    )
 
 
 def _extract_device_id(key: str) -> str | None:

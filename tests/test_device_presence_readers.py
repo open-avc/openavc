@@ -5,7 +5,9 @@ The alert monitor asks whether the device's absence is on purpose (asleep or
 restarting because we asked: nothing is wrong, so no alert fires), the cloud
 heartbeat counts the devices in trouble, and the command gate decides whether
 a press goes out. Each is read at the moment ``connected`` is written, which
-is when the monitor judges a drop, and again once the publishing has settled.
+is when the monitor judges a drop, and again once the publishing has settled,
+beside the presence word the state publishes (``device.<id>.presence``,
+core/device_presence.py), which is what each of them reads.
 
 The devices are invented (``acme``), driven through a real DeviceManager: the
 staged states by a Python driver the manager adopts, the held connections over
@@ -74,7 +76,7 @@ class _Agent:
 
 
 def _monitor(dm: DeviceManager) -> AlertMonitor:
-    return AlertMonitor(_Agent(), dm.state, EventBus(), away_on_purpose=dm.away_on_purpose)
+    return AlertMonitor(_Agent(), dm.state, EventBus())
 
 
 class _Readers:
@@ -86,11 +88,19 @@ class _Readers:
         self.monitor = _monitor(dm)
         self.heartbeat = HeartbeatCollector(dm.state, dm)
         self.at_drop: dict[str, Any] | None = None
+        self.word_at_drop: str | None = None
         dm.state.subscribe(f"device.{device_id}.connected", self._on_connected)
 
     def _on_connected(self, key: str, old: Any, new: Any, source: str) -> None:
-        if new is False:
+        if old is True and new is False:
             self.at_drop = self.now()
+            self.word_at_drop = self.word()
+
+    def word(self) -> str | None:
+        """The published word, held to the one the manager works out now."""
+        published = self.dm.state.get(f"device.{self.device_id}.presence")
+        assert published == self.dm.presence_of(self.device_id)
+        return published
 
     def now(self, command: str = "set_level") -> dict[str, Any]:
         return {
@@ -154,19 +164,23 @@ async def test_online(book_path, widget_class):
     dm, readers = await _manager(book_path)
     _connect(dm)
     assert readers.now() == {"quiet": False, "trouble": 0, "goes_out": True}
+    assert readers.word() == "online"
 
 
 async def test_registered_and_not_yet_dialed(book_path, widget_class):
     dm, readers = await _manager(book_path)
     assert readers.now() == NOT_QUIET_FINE_REFUSED
     assert readers.now("power_on")["goes_out"] is True
+    assert readers.word() == "connecting"
 
 
 async def test_an_ordinary_drop(book_path, widget_class):
     dm, readers = await _manager(book_path)
     _drop(dm, _connect(dm))
     assert readers.at_drop == NOT_QUIET_FINE_REFUSED
+    assert readers.word_at_drop == "connecting"
     assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": False}
+    assert readers.word() == "offline"
 
 
 async def test_a_drop_inside_a_commanded_restart(book_path, widget_class):
@@ -175,8 +189,10 @@ async def test_a_drop_inside_a_commanded_restart(book_path, widget_class):
     await dm.send_command("widget", "reboot", {})
     _drop(dm, driver)
     assert readers.at_drop == {"quiet": True, "trouble": 0, "goes_out": False}
+    assert readers.word_at_drop == "restarting"
     assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": False}
     assert readers.now("power_on")["goes_out"] is True
+    assert readers.word() == "restarting"
 
 
 async def test_a_drop_after_a_sleeping_command(book_path, widget_class):
@@ -185,15 +201,20 @@ async def test_a_drop_after_a_sleeping_command(book_path, widget_class):
     await dm.send_command("widget", "power_off", {})
     _drop(dm, driver)
     assert readers.at_drop == {"quiet": True, "trouble": 0, "goes_out": False}
+    assert readers.word_at_drop == "asleep"
     assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": False}
     assert readers.now("power_on")["goes_out"] is True
+    assert readers.word() == "asleep"
 
 
 async def test_a_restart_sent_and_not_yet_gone(book_path, widget_class):
+    # Arming a window writes nothing: the device is online, and judged as
+    # online until it drops, which the word then says is on purpose.
     dm, readers = await _manager(book_path)
     _connect(dm)
     await dm.send_command("widget", "reboot", {})
-    assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": True}
+    assert readers.now() == {"quiet": False, "trouble": 0, "goes_out": True}
+    assert readers.word() == "online"
 
 
 async def test_paused_from_online(book_path, widget_class):
@@ -203,13 +224,17 @@ async def test_paused_from_online(book_path, widget_class):
     assert readers.at_drop == NOT_QUIET_FINE_REFUSED
     assert readers.now() == NOT_QUIET_FINE_REFUSED
     assert readers.now("power_on")["goes_out"] is True
+    assert readers.word() == "paused"
 
 
 async def test_paused_on_top_of_a_fault(book_path, widget_class):
+    # Paused, whatever kept it away before: counted like a device paused while
+    # it was online.
     dm, readers = await _manager(book_path)
     _drop(dm, _connect(dm))
     await dm.pause_device("widget")
-    assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": False}
+    assert readers.now() == {"quiet": False, "trouble": 0, "goes_out": False}
+    assert readers.word() == "paused"
 
 
 async def test_paused_while_asleep(book_path, widget_class):
@@ -219,21 +244,25 @@ async def test_paused_while_asleep(book_path, widget_class):
     _drop(dm, driver)
     await dm.pause_device("widget")
     assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": False}
+    assert readers.word() == "asleep"
 
 
 async def test_disabled(book_path, widget_class):
     dm, readers = await _manager(book_path, enabled=False)
     assert readers.now() == NOT_QUIET_FINE_REFUSED
+    assert readers.word() == "disabled"
 
 
 async def test_waiting_for_its_driver(book_path, widget_class):
     dm, readers = await _manager(book_path, driver="acme_widget_not_installed")
     assert readers.now() == NOT_QUIET_FINE_REFUSED
+    assert readers.word() == "waiting_for_driver"
 
 
 async def test_a_driver_that_could_not_set_it_up(book_path, widget_class):
     dm, readers = await _manager(book_path, driver="acme_widget_broken")
     assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": False}
+    assert readers.word() == "offline"
 
 
 # --- held connections, over a real socket -------------------------------------
@@ -245,9 +274,10 @@ _POLL = 0.1
 async def switchable_server():
     """A TCP server that answers ``PWR?`` with ``PWR=ON`` while ``mode`` is
     "answer" and says nothing while it is "silent"."""
-    server_state: dict[str, Any] = {"mode": "silent", "lines": []}
+    server_state: dict[str, Any] = {"mode": "silent", "lines": [], "connections": 0}
 
     async def handle(reader, writer):
+        server_state["connections"] += 1
         buf = b""
         try:
             while chunk := await reader.read(4096):
@@ -336,6 +366,7 @@ async def test_held_after_it_stopped_answering(held_widget):
     await _add(dm, port, definition)
     assert await _until(lambda: _held(dm) and dm.state.get("device.widget.offline_reason"), 5.0)
     assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": True}
+    assert readers.word() == "offline"
 
 
 async def test_held_while_asleep(held_widget):
@@ -348,3 +379,15 @@ async def test_held_while_asleep(held_widget):
     assert await _until(lambda: _held(dm) and dm.state.get("device.widget.asleep"), 5.0)
     assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": True}
     assert readers.now("power_on")["goes_out"] is True
+    assert readers.word() == "asleep"
+
+
+async def test_the_word_stays_put_while_a_silent_device_is_held_and_dropped(held_widget):
+    """A device whose port opens and that never answers is reconnected, held
+    and dropped on a cycle; its word says offline once, not once a cycle."""
+    dm, readers, server_state, port, definition = held_widget
+    words: list[str] = []
+    dm.state.subscribe("device.widget.presence", lambda key, old, new, source: words.append(new))
+    await _add(dm, port, definition)
+    assert await _until(lambda: server_state["connections"] >= 5, 6.0)
+    assert words == ["connecting", "online", "connecting", "offline"]

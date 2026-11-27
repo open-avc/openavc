@@ -69,6 +69,28 @@ A property that stays blank on a *connected* device means the driver has not
 reported it yet — some values only arrive when they change. A Startup trigger
 that runs a poll or a read command is the usual fix.
 
+### Is the device there?
+
+Every device has `device.<id>.presence`, one word for its connection state.
+Bind a status label, a trigger or a condition to it rather than combining
+`connected`, `paused` and the other keys yourself.
+
+| Word | The device is |
+|------|---------------|
+| `online` | connected |
+| `restarting` | coming back from a restart or a wake that one of its commands started |
+| `asleep` | put to sleep by one of its commands (a display's standby, a computer shut down). Its wake command still goes out |
+| `paused` | paused by Live Test or a Device Audit |
+| `waiting_for_driver` | waiting for its driver to be installed |
+| `disabled` | turned off in the project |
+| `offline` | out of reach. `offline_reason` and `offline_detail` say why |
+| `connecting` | not connected yet, and no reason is published: just added, its first connect in progress, or the moment between a drop and its reason |
+
+A device that is `restarting` or `asleep` is away on purpose, so OpenAVC Cloud
+raises no offline alert for it. A display that went quiet in standby reads
+`offline` with the reason `no_response`, and a Power On still reaches it while
+OpenAVC holds a connection open to it.
+
 ## Monitor a reading
 
 Some readings tell you whether the room is all right: projector lamp hours, a DSP's temperature, whether the amp is faulted, whether the room is occupied. Tag one with **Monitor** and it appears on the Dashboard with its live value, and on the system's health card in OpenAVC Cloud if this system is paired.

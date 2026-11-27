@@ -85,7 +85,8 @@ class DeviceBuildFailuresMixin:
     ``driver_failed`` state (core/device_records.py). From its host
     (DeviceManager) it reads ``state``, ``events`` and
     ``installed_equipment``, and asks ``status_of``, ``_keep_record``,
-    ``_set_up_again`` and ``_publish_offline`` (core/device_away.py).
+    ``_set_up_again``, ``_set_device_state`` and ``_publish_offline``
+    (core/device_away.py).
     """
 
     state: StateStore
@@ -138,8 +139,8 @@ class DeviceBuildFailuresMixin:
             self.state.delete(f"{prefix}{key}")
         name = device_config.get("name", device_id)
         self.state.set(f"{prefix}name", name, source="config")
-        self.state.set(f"{prefix}enabled", True, source="config")
-        self.state.set(f"{prefix}connected", False, source="device_manager")
+        self._set_device_state(device_id, "enabled", True, source="config")
+        self._set_device_state(device_id, "connected", False)
         self.state.set(f"{prefix}reconnect_failed", True, source="device_manager")
         self._publish_offline(device_id, None, fault)
 

@@ -57,7 +57,8 @@ class DevicePauseMixin:
     reads ``state`` and ``_intentional_disconnect``, and asks ``_live_driver``,
     ``_connect_driver``, ``_cancel_reconnect``, ``_start_reconnect``,
     ``_paused_for_refused_login``, ``_set_offline_reason``,
-    ``_clear_offline_reason``, ``_failure_text`` and ``_apply_pending_settings``.
+    ``_clear_offline_reason``, ``_set_device_state``, ``_failure_text`` and
+    ``_apply_pending_settings``.
     """
 
     state: StateStore
@@ -97,8 +98,8 @@ class DevicePauseMixin:
             log.warning(f"pause_device: disconnect raised for {device_id}: {e}")
         if not self.state.get(f"device.{device_id}.paused_for"):
             self.state.set(f"device.{device_id}.paused_for", purpose, source="device_manager")
-        self.state.set(f"device.{device_id}.paused", True, source="device_manager")
-        self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+        self._set_device_state(device_id, "paused", True)
+        self._set_device_state(device_id, "connected", False)
         self._schedule_pause_expiry(device_id, PAUSE_TTL if ttl is None else ttl)
         log.info(f"Paused device: {device_id}")
 
@@ -109,9 +110,9 @@ class DevicePauseMixin:
         stays off the wire, whoever held the pause still holds the session it
         was taken to protect, and the backstop gets the time it had left."""
         self._intentional_disconnect.add(device_id)
-        self.state.set(f"device.{device_id}.paused", True, source="device_manager")
+        self._set_device_state(device_id, "paused", True)
         self.state.set(f"device.{device_id}.paused_for", held_for, source="device_manager")
-        self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+        self._set_device_state(device_id, "connected", False)
         self._schedule_pause_expiry(device_id, seconds_left)
         log.info(
             f"Device '{device_id}' was re-added while paused — staying "
@@ -162,7 +163,7 @@ class DevicePauseMixin:
     def _end_pause(self, device_id: str) -> None:
         """The pause is over: its backstop cancelled and both flags cleared."""
         self._cancel_pause_expiry(device_id)
-        self.state.set(f"device.{device_id}.paused", False, source="device_manager")
+        self._set_device_state(device_id, "paused", False)
         self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
 
     def _pause_remaining(self, device_id: str) -> float | None:
@@ -225,7 +226,7 @@ class DevicePauseMixin:
         except ConnectEndedError:
             pass  # ended by a Reconnect, a pause or a removal meanwhile
         except Exception as e:
-            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+            self._set_device_state(device_id, "connected", False)
             code = self._set_offline_reason(device_id, driver, exc=e)
             log.warning(
                 f"resume_device: connect failed for {device_id}: {self._failure_text(device_id, e)}"

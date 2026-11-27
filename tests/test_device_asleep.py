@@ -83,8 +83,10 @@ def _manager() -> tuple[DeviceManager, _AcmeDriver, StateStore]:
 
 
 def _drop(dm: DeviceManager, driver: _AcmeDriver, state: StateStore, code: str = UNREACHABLE) -> str:
+    # A driver's own write of `connected` carries the presence word; this
+    # one has no door of its own, so it goes through the manager's.
     driver._state["connected"] = False
-    state.set("device.widget.connected", False)
+    dm._set_device_state("widget", "connected", False)
     return dm._set_offline_reason("widget", driver, exc=ConnectionFaultError("", code=code))
 
 
@@ -289,8 +291,8 @@ class _Agent:
         self.sent.append((msg_type, payload))
 
 
-def _monitor(state: StateStore, away=None) -> AlertMonitor:
-    mon = AlertMonitor(_Agent(), state, EventBus(), away_on_purpose=away)
+def _monitor(state: StateStore) -> AlertMonitor:
+    mon = AlertMonitor(_Agent(), state, EventBus())
     mon._rules = [{
         "id": "offline", "name": "Offline", "enabled": True, "rule_type": "threshold",
         "condition": {"key": "device.*.connected", "operator": "==", "value": False},
@@ -302,7 +304,7 @@ def _monitor(state: StateStore, away=None) -> AlertMonitor:
 
 def test_an_asleep_device_raises_no_offline_alert_and_a_failed_wake_does(book_path):
     dm, driver, state = _manager()
-    mon = _monitor(state, away=dm.away_on_purpose)
+    mon = _monitor(state)
     state.subscribe("*", mon._on_state_change)
     asyncio.run(dm.send_command("widget", "power_off", {}))
     _drop(dm, driver, state)
@@ -316,7 +318,7 @@ def test_an_asleep_device_raises_no_offline_alert_and_a_failed_wake_does(book_pa
 
 def test_an_ordinary_drop_still_alerts(book_path):
     dm, driver, state = _manager()
-    mon = _monitor(state, away=dm.away_on_purpose)
+    mon = _monitor(state)
     state.subscribe("*", mon._on_state_change)
     _drop(dm, driver, state)
     assert [t for t, _ in mon._queued] == ["alert"]

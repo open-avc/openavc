@@ -62,6 +62,7 @@ from openavc.core.device_errors import (
     mark_failed_command,
     not_connected,
 )
+from openavc.core.device_presence import TAKES_COMMANDS
 from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.secret_audience import Exit
 
@@ -118,8 +119,8 @@ class DeviceCommandsMixin:
     Holds no state of its own. From its host (DeviceManager) it reads
     ``state``, ``events``, ``_devices`` and ``_sleep`` (core/device_away.py),
     and asks ``_live_driver``, ``_require_control_target``,
-    ``restart_seconds_left`` and ``_note_command_sent`` (core/device_away.py)
-    and ``kick_reconnect`` (core/device_reconnect.py).
+    ``restart_seconds_left``, ``presence_of`` and ``_note_command_sent``
+    (core/device_away.py) and ``kick_reconnect`` (core/device_reconnect.py).
     """
 
     state: StateStore
@@ -242,23 +243,20 @@ class DeviceCommandsMixin:
     def accepts_commands(self, device_id: str) -> bool:
         """Whether a command sent to this device now would go out.
 
-        True while it is connected, and also while its connection is open but
-        held offline until it answers a poll or a liveness probe
+        True while its presence word takes commands (core/device_presence.py
+        ``TAKES_COMMANDS``: connected), and also while its connection is open
+        but held offline until it answers a poll or a liveness probe
         (BaseDriver._held, after the poll loop's silence check or the probe
-        dropped it). A device that goes quiet in standby is held
-        like that, and the Power On that wakes it has to reach it: refusing
-        it there would leave the device off for good. The one rule for the
-        setting gate; a command asks command_goes_out, which adds the
-        commands that need no connection.
+        dropped it). A device that goes quiet in standby is held like that,
+        and the Power On that wakes it has to reach it: refusing it there
+        would leave the device off for good. The word stays ``offline`` while
+        such a connection opens and closes, so the hold is asked of the
+        driver. The one rule for the setting gate; a command asks
+        command_goes_out, which adds the commands that need no connection.
         """
-        driver = self._devices.get(device_id)
-        if driver is None:
-            # A device with no live driver (disabled, orphaned) has nothing to
-            # send through; its published state is the whole answer.
-            return bool(self.state.get(f"device.{device_id}.connected"))
-        if driver.get_state("connected"):
+        if self.presence_of(device_id) in TAKES_COMMANDS:
             return True
-        return getattr(driver, "_held", False) is True
+        return getattr(self._devices.get(device_id), "_held", False) is True
 
     def command_goes_out(self, device_id: str, command: str) -> bool:
         """Whether this command sent to this device now would go out.

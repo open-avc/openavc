@@ -5,6 +5,13 @@ matches on), ``offline_detail`` (the device card's sentence), ``restarting``,
 ``asleep`` and ``wake_command``. Every status is written as all five in one batch
 (``_AwayStatus``), so none is left over from the status before it.
 
+What the device's state adds up to is published here too, as ``presence``, one
+word (core/device_presence.py holds the words and their order). It goes out in
+the same batch as every change to a part of it: the manager's own writes pass
+``_set_device_state``, the away statuses carry it, and the driver asks
+``presence_of`` whenever it writes ``connected`` (drivers/state_writes.py). The alert monitor judges a drop the moment
+``connected`` is written, so the word that goes with it has to be there by then.
+
 The rule worth knowing before changing it: absence we asked for is not a fault.
 A command declaring ``restarts_device_for`` opens a commanded-restart window, and
 one declaring ``sleeps_device`` puts the device to sleep (core/device_sleep.py).
@@ -30,6 +37,7 @@ from __future__ import annotations
 
 import functools
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, TYPE_CHECKING
 
@@ -46,6 +54,8 @@ from openavc.core.connection_fault import (
     typed_fault_from_exc,
 )
 from openavc.core.device_config import driver_connection
+from openavc.core.device_presence import PresenceParts, presence_word
+from openavc.core.device_records import DISABLED, DRIVER_FAILED, ORPHANED, SETTINGS_FAILED
 from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
 from openavc.drivers.restart_window import restart_seconds
 from openavc.utils.log_redaction import get_secret_registry
@@ -137,7 +147,7 @@ class DeviceAwayMixin:
     """Publishing why a device is away, and the windows and sleeps that change it.
 
     Its state is set up by ``_init_away``. From its host (DeviceManager) it reads
-    ``state`` and ``_devices`` and asks ``_simulation_gap``,
+    ``state`` and ``_devices`` and asks ``status_of``, ``_simulation_gap``,
     ``_no_simulator_fault`` and ``_carrier_bridge_if_offline``.
     """
 
@@ -218,12 +228,66 @@ class DeviceAwayMixin:
     def away_on_purpose(self, device_id: str) -> bool:
         """True while the device is, or is about to be, away because we asked:
         a commanded-restart window is open, or a sleeping command was sent and
-        the device has not stayed awake past it. Asked by the alert monitor at
-        the moment a drop writes ``connected``, before the restarting or asleep
-        flag is published."""
-        if self.restart_seconds_left(device_id) is not None:
-            return True
+        the device has not stayed awake past it. Arming writes nothing, so a
+        drop's ``connected`` write, before any flag is published, reads its
+        word from here (``presence_of``)."""
+        return self.restart_seconds_left(device_id) is not None or self._sent_to_sleep(device_id)
+
+    def _sent_to_sleep(self, device_id: str) -> bool:
+        """A sleeping command was sent and the device has not stayed awake past it."""
         return self._sleep.get(device_id) is not None and not self._sleep.stayed_awake(device_id)
+
+    def presence_of(self, device_id: str, pending: Mapping[str, Any] | None = None) -> str:
+        """The device's presence word (core/device_presence.py), from its
+        record, what the manager holds in memory (a restart window or a sleep
+        armed before the drop publishes either flag) and its published keys,
+        with ``pending`` (each
+        property about to be written in the same batch, and its value) read
+        over the store. THE answer every reader asks: the published
+        ``presence`` key is this, written with each change to a part of it."""
+        pending = pending or {}
+        driver = self._devices.get(device_id)
+
+        def part(prop: str) -> Any:
+            if prop in pending:
+                return pending[prop]
+            return self.state.get(f"device.{device_id}.{prop}")
+
+        # Whether it is connected, as its driver reads it while one runs it.
+        connected = pending["connected"] if "connected" in pending else (
+            driver.get_state("connected") if driver is not None else part("connected")
+        )
+        status = self.status_of(device_id)
+        return presence_word(PresenceParts(
+            disabled=status == DISABLED,
+            waiting_for_driver=status == ORPHANED,
+            online=bool(connected),
+            restarting=bool(part("restarting")) or self.restart_seconds_left(device_id) is not None,
+            asleep=bool(part("asleep")) or self._sent_to_sleep(device_id),
+            paused=bool(part("paused")),
+            offline=bool(part("offline_reason")) or status in (DRIVER_FAILED, SETTINGS_FAILED),
+        ))
+
+    def _set_device_state(
+        self, device_id: str, prop: str, value: Any, source: str = "device_manager",
+    ) -> None:
+        """Write one of the keys the manager owns for a device (``connected``,
+        ``paused``, ``enabled``, ``orphaned``) with the presence word it
+        makes in the same batch: the manager's one door for a part of it."""
+        self.state.set_batch({
+            f"device.{device_id}.{prop}": value,
+            f"device.{device_id}.presence": self.presence_of(device_id, {prop: value}),
+        }, source=source)
+
+    def _attach_presence(self, device_id: str, driver: BaseDriver) -> None:
+        """Let the driver ask this device's presence word, which it writes
+        with every ``connected`` (drivers/state_writes.py), then publish it:
+        the driver wrote its first ``connected`` while it was built, before
+        it could ask."""
+        driver._presence = functools.partial(self.presence_of, device_id)
+        self.state.set(
+            f"device.{device_id}.presence", self.presence_of(device_id), source="device_manager",
+        )
 
     def _arm_restart_window(
         self, device_id: str, driver: BaseDriver, command: str
@@ -469,13 +533,21 @@ class DeviceAwayMixin:
             self._publish_status(device_id, back)
 
     def _publish_status(self, device_id: str, status: _AwayStatus) -> None:
-        """Write why a device is away, all five keys in one batch, the
-        sentence masked with this device's secrets first."""
+        """Write why a device is away, all five keys in one batch with the
+        presence word they make, the sentence masked with this device's
+        secrets first."""
         if status.offline_detail:
             status = replace(status, offline_detail=get_secret_registry().masked(
                 Exit.SENTENCE, status.offline_detail, device_id,
             ))
-        self.state.set_batch(status.state_keys(device_id), source="device_manager")
+        word = self.presence_of(device_id, {
+            "restarting": status.restarting, "asleep": status.asleep,
+            "offline_reason": status.offline_reason,
+        })
+        self.state.set_batch(
+            {**status.state_keys(device_id), f"device.{device_id}.presence": word},
+            source="device_manager",
+        )
 
     def _set_bridge_offline_reason(self, device_id: str, bridge_id: str) -> None:
         """Publish the offline-reason keys for a bridge-routed device whose

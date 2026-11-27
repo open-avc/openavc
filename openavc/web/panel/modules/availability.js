@@ -53,8 +53,8 @@
 // which names the one key this list does not keep.
 const DEVICE_PLATFORM_PROPS = new Set([
     'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
-    'orphan_reason', 'orphaned', 'paused', 'paused_for', 'reconnect_attempt',
-    'reconnect_failed', 'restarting', 'asleep', 'wake_command',
+    'orphan_reason', 'orphaned', 'paused', 'paused_for', 'presence',
+    'reconnect_attempt', 'reconnect_failed', 'restarting', 'asleep', 'wake_command',
 ]);
 
 // The same set, for a child entity's reserved props. A child carries the

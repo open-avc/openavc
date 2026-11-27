@@ -15,6 +15,7 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import build_heartbeat_payload
+from openavc.core.device_presence import IN_TROUBLE
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -194,17 +195,16 @@ class HeartbeatCollector:
             return 0  # DeviceManager or StateStore may not be fully initialized
 
     def _get_devices_error(self) -> int:
-        """Number of devices offline with a classified connection fault.
-
-        A faulted device carries ``device.<id>.offline_reason`` (set by the
-        connection-fault classifier when a connect attempt fails, cleared on
-        successful reconnect) — command errors are transient events, not state.
+        """Number of devices in trouble, as their presence word says
+        (core/device_presence.py ``IN_TROUBLE``): kept away by a fault the
+        connection-fault classifier published. Command errors are transient
+        events, not state.
         """
         try:
             count = 0
             for device in self._devices.list_devices():
                 device_id = device.get("id", "")
-                if self._state.get(f"device.{device_id}.offline_reason"):
+                if self._state.get(f"device.{device_id}.presence") in IN_TROUBLE:
                     count += 1
             return count
         except (AttributeError, TypeError):

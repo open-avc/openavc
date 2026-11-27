@@ -25,6 +25,9 @@ The rules worth knowing before changing anything here:
   (drivers/child_entities.py), whichever of the two doors wrote it.
 * A value reported for a setting the driver marks secret is learned by the
   device's masking before it is stored (:meth:`_learn_reported_secrets`).
+* A write of ``connected`` carries the device's presence word in the same
+  batch, asked of the device manager (core/device_presence.py), so a reader
+  judging the drop reads the word that goes with it.
 
 ``StateWrites`` is a mixin ``BaseDriver`` inherits, so every name stays on
 the driver object. From its host this needs ``device_id``, ``state``,
@@ -36,7 +39,7 @@ entities. ``UndeclaredStateError``, ``strict_driver_state`` and
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from openavc.core.state_store import StateStore, is_flat_primitive
@@ -151,6 +154,10 @@ class StateWrites:
         # var"; True/False override it for this driver alone. See
         # `strict_state` below for why one driver has to be able to differ.
         self._strict_state_override: bool | None = None
+        # Asks the device manager for this device's presence word
+        # (core/device_away.py ``presence_of``), handed the values about to be
+        # written; None without a manager, and then no word is written.
+        self._presence: Callable[[Mapping[str, Any]], str] | None = None
 
         # Initialize state variables from DRIVER_INFO
         self._init_state_variables()
@@ -354,11 +361,25 @@ class StateWrites:
             for name, value in values.items():
                 self._warn_on_type_mismatch(name, value, declared.get(name))
         self._learn_reported_secrets(values)
+        values = self._with_presence(values)
         prefix = f"device.{self.device_id}."
         self.state.set_batch(
             {prefix + name: value for name, value in values.items()},
             source=f"device.{self.device_id}",
         )
+
+    def _with_presence(self, values: dict[str, Any]) -> dict[str, Any]:
+        """``values`` with the device's presence word added when they write
+        ``connected`` and a device manager is attached. A word that cannot be
+        worked out is left out and logged: ``connected`` is written whatever
+        happens to the word."""
+        if "connected" not in values or self._presence is None:
+            return values
+        try:
+            return {**values, "presence": self._presence(values)}
+        except Exception:
+            log.exception(f"[{self.device_id}] Could not work out the device's presence")
+            return values
 
     def _learn_reported_secrets(self, values: dict[str, Any]) -> None:
         """Have the device's masking learn what it reports for a setting its

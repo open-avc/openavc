@@ -15,16 +15,19 @@ from openavc.cloud.tools.ui_lookups import undeclared_state_property
 from openavc.core.device_info import PLATFORM_DEVICE_KEYS
 from openavc.core.device_manager import DeviceManager
 
-# A state key the manager names: f"device.{device_id}.connected" and the like.
+# A state key the manager names: f"device.{device_id}.connected" and the like,
+# or one it writes through its door for a part of the presence word
+# (self._set_device_state(device_id, "paused", True)).
 _KEY = re.compile(r'f"device\.\{\w+\}\.(\w+)"')
+_DOOR_KEY = re.compile(r'_set_device_state\(\s*\w+,\s*"(\w+)"')
 
 
 def _keys_the_manager_names() -> set[str]:
     """Every device.<id>.<key> literal in DeviceManager's module and the
-    mixins it is built from."""
+    mixins it is built from, and every key it writes through its door."""
     modules = {inspect.getmodule(cls) for cls in DeviceManager.__mro__}
     sources = [inspect.getsource(m) for m in modules if m and m.__name__.startswith("openavc.")]
-    return {key for source in sources for key in _KEY.findall(source)}
+    return {key for source in sources for pattern in (_KEY, _DOOR_KEY) for key in pattern.findall(source)}
 
 
 def test_the_list_is_every_key_the_device_manager_names():

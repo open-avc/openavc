@@ -253,13 +253,14 @@ class DeviceManager(
 
         self._attach_bridge_router(driver, config)
         self._attach_restart_window(device_id, driver)
+        self._attach_presence(device_id, driver)
 
         # Set device name in state
         self.state.set(
             f"device.{device_id}.name", name, source=f"device.{device_id}"
         )
 
-        self.state.set(f"device.{device_id}.enabled", True, source="config")
+        self._set_device_state(device_id, "enabled", True, source="config")
         log.info(f"Added device '{device_id}' ({name}) using {driver_label(driver_id)}")
 
         if carry_pause is not None:
@@ -278,9 +279,7 @@ class DeviceManager(
             # save answer before the fleet is on the wire, and what lets the
             # simulation redirect land before the first connect instead of
             # after a failed one.
-            self.state.set(
-                f"device.{device_id}.connected", False, source="device_manager"
-            )
+            self._set_device_state(device_id, "connected", False)
             self._deferred_connects.add(device_id)
             return
 
@@ -292,8 +291,8 @@ class DeviceManager(
         """Keep a disabled device's record and publish it, connecting nothing."""
         self._keep_record(device_id, DISABLED, device_config)
         self.state.set(f"device.{device_id}.name", name, source="config")
-        self.state.set(f"device.{device_id}.connected", False, source="config")
-        self.state.set(f"device.{device_id}.enabled", False, source="config")
+        self._set_device_state(device_id, "connected", False, source="config")
+        self._set_device_state(device_id, "enabled", False, source="config")
         log.info(f"Device {device_id} is disabled, skipping connection")
 
 
@@ -375,10 +374,8 @@ class DeviceManager(
             for key in self.state.get_namespace(prefix):
                 self.state.delete(f"{prefix}{key}")
         elif current is not None:
-            self.state.set(
-                f"{prefix}connected",
-                bool(getattr(current, "_connected", False)),
-                source="device_manager",
+            self._set_device_state(
+                device_id, "connected", bool(getattr(current, "_connected", False)),
             )
         return False
 
