@@ -66,16 +66,16 @@ describe("createDefaultElement", () => {
     );
   });
 
-  it("a plugin element is typed plugin, its id built from the whole spelling", () => {
+  it("a plugin element is typed plugin, its id built from the whole spelling made to fit the id rule", () => {
     expect(JSON.stringify(createDefaultElement("plugin:acme_tiles:status_tile", new Set()))).toBe(
-      `{"id":"plugin:acme_tiles:status_tile_1","type":"plugin","parent":null,"aspect_lock":null,"style":{},` +
+      `{"id":"plugin_acme_tiles_status_tile_1","type":"plugin","parent":null,"aspect_lock":null,"style":{},` +
         `"bindings":{},"plugin_type":"status_tile","plugin_id":"acme_tiles","plugin_config":{}}`,
     );
   });
 
   it("a plugin type may itself hold a colon", () => {
     const el = createDefaultElement("plugin:acme:a:b", new Set());
-    expect([el.plugin_id, el.plugin_type, el.id]).toEqual(["acme", "a:b", "plugin:acme:a:b_1"]);
+    expect([el.plugin_id, el.plugin_type, el.id]).toEqual(["acme", "a:b", "plugin_acme_a_b_1"]);
   });
 
   it("a plugin spelling with no type part gives an empty type", () => {
@@ -100,7 +100,7 @@ describe("createDefaultElement", () => {
   it("takes the first free id for its type", () => {
     expect(createDefaultElement("button", new Set(["button_1", "button_2", "button_4"])).id).toBe("button_3");
     expect(createDefaultElement("button", new Set(["label_1"])).id).toBe("button_1");
-    expect(createDefaultElement("plugin:a:b", new Set(["plugin:a:b_1"])).id).toBe("plugin:a:b_2");
+    expect(createDefaultElement("plugin:a:b", new Set(["plugin_a_b_1"])).id).toBe("plugin_a_b_2");
   });
 
   it("each call builds its own objects, nothing shared between two controls", () => {

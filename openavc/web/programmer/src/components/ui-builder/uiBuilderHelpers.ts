@@ -6,6 +6,7 @@ import type {
   MasterElement,
   PageGroup,
 } from "../../api/types";
+import { elementIdStem } from "./elementId";
 import { firstFree, generateId } from "./newElement";
 import { takenElementIds } from "./takenElementIds";
 import {
@@ -718,7 +719,8 @@ export function duplicatePage(
   const taken = takenElementIds(pages, reservedIds);
   const idMap = new Map<string, string>();
   for (const el of page.elements) {
-    const [elId] = firstFree(taken, (n) => `${el.type}_${newId}_${n}`);
+    const stem = elementIdStem(`${el.type}_${newId}`);
+    const [elId] = firstFree(taken, (n) => `${stem}_${n}`);
     taken.add(elId);
     idMap.set(el.id, elId);
   }

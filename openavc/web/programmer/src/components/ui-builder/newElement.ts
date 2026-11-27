@@ -20,6 +20,7 @@
 import type { UIElement } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
 import { own } from "./authoredValues";
+import { elementIdStem } from "./elementId";
 
 /**
  * The first spelling nobody has taken, counting up from `from`, and the count
@@ -37,9 +38,11 @@ export function firstFree(
   return [spell(n), n];
 }
 
-/** The first `<type>_<n>` nothing holds yet, counting from 1. */
+/** The first `<type>_<n>` nothing holds yet, counting from 1, the type made
+ *  to fit the element id rule (`elementIdStem`). */
 export function generateId(type: string, existingIds: Set<string>): string {
-  return firstFree(existingIds, (n) => `${type}_${n}`)[0];
+  const stem = elementIdStem(type);
+  return firstFree(existingIds, (n) => `${stem}_${n}`)[0];
 }
 
 /**
