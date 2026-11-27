@@ -1046,8 +1046,9 @@ class TestHeartbeat:
         assert "start_time=self._start_time" in construction
 
     @pytest.mark.asyncio
-    async def test_devices_error_counts_offline_reason(self):
-        """devices_error counts devices carrying an offline_reason fault code.
+    async def test_devices_error_counts_devices_kept_away_by_a_fault(self):
+        """devices_error counts the devices whose presence word is offline:
+        a fault is published (the device manager writes the word with it).
 
         The metric used to read ``device.<id>.error``, a state key nothing
         writes (device errors are events), so it always reported 0 to the
@@ -1056,19 +1057,26 @@ class TestHeartbeat:
         from openavc.core.state_store import StateStore
         from openavc.cloud.heartbeat import HeartbeatCollector
 
+        ids = ["proj", "amp", "cam", "screen", "dsp"]
+
         class FakeDevices:
             def list_devices(self):
-                return [{"id": "proj"}, {"id": "amp"}, {"id": "cam"}]
+                return [{"id": device_id} for device_id in ids]
 
         state = StateStore()
-        # proj is faulted, amp reconnected (reason cleared to None), cam clean.
-        state.set("device.proj.offline_reason", "connection_refused")
-        state.set("device.amp.offline_reason", None)
+        # proj is faulted; amp reconnected; cam is asleep on purpose; screen is
+        # paused for Live Test; dsp has published nothing yet.
+        state.set_batch({
+            "device.proj.offline_reason": "connection_refused", "device.proj.presence": "offline",
+            "device.amp.offline_reason": None, "device.amp.presence": "online",
+            "device.cam.presence": "asleep",
+            "device.screen.presence": "paused",
+        })
 
         collector = HeartbeatCollector(state, FakeDevices())
         metrics = await collector.collect()
         assert metrics["devices_error"] == 1
-        assert metrics["device_count"] == 3
+        assert metrics["device_count"] == 5
 
     @pytest.mark.asyncio
     async def test_the_heartbeat_says_whether_this_system_is_notify_only(self):
