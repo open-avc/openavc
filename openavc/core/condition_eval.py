@@ -47,9 +47,9 @@ what an operator left out reads as, and what a condition lacks. ``judge`` is
 asked by every place that acts on one (``core/macro_steps.py``,
 ``core/trigger_engine.py``) and ``condition_issues`` by the validator
 (``core/macro_validation.py``) for every one it checks. A condition ``judge``
-cannot read raises ``UnknownOperator``, and each place still says what that
-does there (``UnknownOperator``'s docstring); ``tests/test_condition_sites_pinned.py``
-holds each place's answer. The Programmer's operator pickers, its trigger
+cannot read raises ``UnknownOperator``, and no place acts on one: THE rule for
+a condition that cannot be read (``UnknownOperator``'s docstring), which
+``tests/test_condition_sites_pinned.py`` holds at each place. The Programmer's operator pickers, its trigger
 summaries and ``conditionEval.ts`` read the operator lists and the places from
 ``conditionOperators.gen.ts``, rendered from here by ``core/condition_gen``
 (run it after changing them), and read an operator where it sits as
@@ -156,9 +156,14 @@ class UnknownOperator(ValueError):
     ``eval_operator`` and ``judge`` raise for a condition they cannot judge,
     with the operator as written in ``operator``.
 
-    The place that asked decides what it does: a macro step fails before it
-    acts, a trigger's guard reads as not met, and a State Change trigger is
-    skipped as ``invalid_condition``.
+    No place acts on a condition it cannot read. A macro's Skip If,
+    Conditional or Wait Until fails its step before the step acts, with
+    ``macro.step_error``. A trigger whose guard or own operator cannot be
+    read does not fire, on any of its paths (at the fire, after its delay,
+    after a queue wait): it is skipped as ``invalid_condition``, which its
+    last-run record keeps (``core/trigger_engine.py``). A control whose
+    visibility names an operator nobody knows stays hidden on the panel
+    (``web/panel/modules/visibility.js``), and the Builder's Validate names it.
     """
 
     def __init__(self, op: Any) -> None:

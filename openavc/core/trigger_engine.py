@@ -537,8 +537,7 @@ class TriggerEngine:
         try:
             matched = judge(own, self._reads(context), STATE_TRIGGER)
         except UnknownOperator as bad:
-            log.error(f"Trigger {t['id']} has invalid operator '{bad.operator}'")
-            self._spawn(self._skipped(t["id"], "invalid_condition", operator=bad.operator))
+            self._spawn(self._cannot_judge(ts, bad))
             return
         if not matched:
             # Not a fire, so not a skipped one: the trigger fires when its
@@ -770,8 +769,7 @@ class TriggerEngine:
                 try:
                     matched = judge(own, self._rechecks(changed_key, context), STATE_TRIGGER)
                 except UnknownOperator as bad:
-                    log.error(f"Trigger {t['id']} has invalid operator '{bad.operator}'")
-                    await self._skipped(t["id"], "invalid_condition", operator=bad.operator)
+                    await self._cannot_judge(ts, bad)
                     return
                 if not matched:
                     log.info(
@@ -781,10 +779,7 @@ class TriggerEngine:
                     return
 
             # Re-check guard conditions for all trigger types with delays
-            conditions = t.get("conditions", [])
-            if conditions and not self._check_conditions(conditions, context):
-                log.info(f"Trigger {t['id']} skipped — guard conditions no longer met after delay")
-                await self._skipped(t["id"], "guard_not_met")
+            if not await self._guards_hold(ts, context, "guard_not_met"):
                 return
 
             await self._execute_trigger(ts, context)
@@ -800,10 +795,7 @@ class TriggerEngine:
         macro_id = ts.macro_id
 
         # 5. Guard conditions
-        conditions = t.get("conditions", [])
-        if not self._check_conditions(conditions, context):
-            log.debug(f"Trigger {trigger_id} skipped — conditions not met")
-            await self._skipped(trigger_id, "conditions_not_met")
+        if not await self._guards_hold(ts, context, "conditions_not_met"):
             return
 
         # 6. Overlap policy
@@ -897,10 +889,7 @@ class TriggerEngine:
             return
 
         # Re-check conditions
-        conditions = ts.trigger.get("conditions", [])
-        if not self._check_conditions(conditions, context):
-            log.debug(f"Trigger {trigger_id} skipped — conditions not met after queue wait")
-            await self._skipped(trigger_id, "guard_not_met")
+        if not await self._guards_hold(ts, context, "guard_not_met"):
             return
 
         await self._fire_macro(ts, context)
@@ -1070,19 +1059,43 @@ class TriggerEngine:
         value, is that context's field, so a guard checked again after a
         delay or a queue wait reads the values from the moment it fired. Any
         other key, and a value that names one (``$var.wanted``), reads the
-        state as it is now. One it cannot judge reads as not met.
+        state as it is now. One it cannot judge raises ``UnknownOperator``
+        whatever its place among them: every guard is judged, so one that
+        can never be read is said even while an earlier one does not hold.
         """
         reads = self._reads(context)
-        for cond in conditions:
-            try:
-                if not judge(cond, reads, GUARD):
-                    return False
-            except UnknownOperator as bad:
-                log.error(
-                    f"Invalid condition operator '{bad.operator}' for key '{cond.get('key', '')}'"
-                )
-                return False
-        return True
+        held = [judge(cond, reads, GUARD) for cond in conditions]
+        return all(held)
+
+    async def _guards_hold(
+        self, ts: _TriggerState, context: dict[str, Any], not_met: str,
+    ) -> bool:
+        """Whether every guard on the trigger holds for a fire made with
+        ``context``, on any of its paths. A fire whose guards do not hold is
+        skipped as ``not_met`` (``conditions_not_met`` at the fire,
+        ``guard_not_met`` when its wait ends); one with a guard it cannot
+        judge as ``invalid_condition`` (``_cannot_judge``)."""
+        try:
+            if self._check_conditions(ts.trigger.get("conditions", []), context):
+                return True
+        except UnknownOperator as bad:
+            await self._cannot_judge(ts, bad)
+            return False
+        log.debug(f"Trigger {ts.trigger['id']} skipped — {not_met}")
+        await self._skipped(ts.trigger["id"], not_met)
+        return False
+
+    async def _cannot_judge(self, ts: _TriggerState, bad: UnknownOperator) -> None:
+        """A fire stopped by a condition the trigger cannot judge, a guard or
+        its own operator, on whichever path it met it: never acted on. Said
+        as ``trigger.skipped`` ``invalid_condition`` and, since the trigger
+        cannot fire until the condition is fixed, written to its last-run
+        record and announced, so the trigger card says why."""
+        trigger_id = ts.trigger["id"]
+        log.error(f"Trigger {trigger_id} has invalid operator '{bad.operator}'")
+        await self._skipped(trigger_id, "invalid_condition", operator=bad.operator)
+        reason = skip_reason("invalid_condition", operator=bad.operator)
+        await self._announce_run(ts, self._record_run(ts, "skipped", reason=reason))
 
     # --- Status / API ---
 

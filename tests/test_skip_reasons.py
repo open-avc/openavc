@@ -334,9 +334,11 @@ async def test_a_macro_started_while_the_system_stops_says_so(macro_engine, core
 
 _FUNCTION_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
-# Where the code sits in a call that names one: `skip_reason(code, ...)` and
-# `self._skipped(trigger_id, code, ...)`.
-_CODE_POSITION = {"skip_reason": 0, "_skipped": 1}
+# Where the code sits in a call that names one: `skip_reason(code, ...)`,
+# `self._skipped(trigger_id, code, ...)`, and the trigger's guard check,
+# `self._guards_hold(ts, context, code)`, which skips a fire whose guards do
+# not hold with the code it is given.
+_CODE_POSITION = {"skip_reason": 0, "_skipped": 1, "_guards_hold": 2}
 
 _SKIP_EVENTS = ("trigger.skipped", "macro.skipped")
 
@@ -368,12 +370,13 @@ def _is_text(node: ast.AST | None) -> bool:
     return isinstance(node, ast.Constant) and isinstance(node.value, str)
 
 
-def _codes_named(module, helper: str) -> set[str]:
-    """Every code the module names, each a literal; only ``helper`` itself may
-    pass one through."""
+def _codes_named(module, *helpers: str) -> set[str]:
+    """Every code the module names, each a literal; only ``helpers``
+    themselves may pass one through."""
     tree = _module_tree(module)
-    helper_node = next(fn for fn in _functions(tree) if fn.name == helper)
-    inside_helper = {id(n) for n in ast.walk(helper_node)}
+    inside_helper = {
+        id(n) for fn in _functions(tree) if fn.name in helpers for n in ast.walk(fn)
+    }
     codes: set[str] = set()
     for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
         arg = _code_argument(call)
@@ -390,7 +393,7 @@ def test_every_code_an_engine_names_is_in_the_table_and_every_row_is_used() -> N
     """The two engines' codes, and a step's: the help cooldown is the help
     service's rule, so the code is named there and the step announces it."""
     named = (
-        _codes_named(te, "_skipped") | _codes_named(me, "_report_skipped")
+        _codes_named(te, "_skipped", "_guards_hold") | _codes_named(me, "_report_skipped")
         | _codes_named(hr, "raise_request")
     )
     assert named - set(SKIP_REASONS) == set()
@@ -440,8 +443,13 @@ _NO_FIRE = {
     ("_on_state_change", "matched"),
 }
 
-# What a statement before a `return` says when the fire went on or was refused.
-_SAYS_WHY = ("self._skipped(", '"trigger.pending"', '"trigger.queued"')
+# What a statement before a `return` says when the fire went on or was refused:
+# `_cannot_judge` is the skip for a condition the trigger cannot read.
+_SAYS_WHY = ("self._skipped(", "self._cannot_judge(", '"trigger.pending"', '"trigger.queued"')
+
+# A call in the `if` guarding a `return` that has said why by the time it
+# answers false: the guard check skips a fire whose guards do not hold.
+_SAID_WHEN_FALSE = ("self._guards_hold(",)
 
 
 def _blocks_inside(stmt: ast.stmt, guard: ast.AST | None):
@@ -470,8 +478,11 @@ def _text(source: str, node: ast.AST | None) -> str:
     return (ast.get_source_segment(source, node) if node is not None else None) or ""
 
 
-def _says_why(stmts: list[ast.stmt], source: str) -> bool:
-    return any(mark in _text(source, stmt) for stmt in stmts for mark in _SAYS_WHY)
+def _says_why(stmts: list[ast.stmt], guard: ast.AST | None, source: str) -> bool:
+    if any(mark in _text(source, stmt) for stmt in stmts for mark in _SAYS_WHY):
+        return True
+    test = _text(source, guard.test) if isinstance(guard, ast.If) else ""
+    return any(mark in test for mark in _SAID_WHEN_FALSE)
 
 
 def _is_no_fire(name: str, guard: ast.AST | None, source: str) -> bool:
@@ -497,6 +508,6 @@ def test_every_exit_on_a_triggers_fire_path_says_why_it_stopped() -> None:
         f"{name}: {_text(source, ret)} (line {ret.lineno})"
         for name, fn in functions.items()
         for ret, before, guard in _returns_with_their_block(fn.body)
-        if not (_says_why(before, source) or _is_no_fire(name, guard, source))
+        if not (_says_why(before, guard, source) or _is_no_fire(name, guard, source))
     ]
     assert silent == []

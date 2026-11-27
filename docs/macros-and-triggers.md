@@ -388,7 +388,7 @@ Trigger safety features prevent runaway automation:
 - **Debounce.** Prevent rapid re-firing (configurable seconds).
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
 - **Cooldown.** Minimum interval between executions. Debounce, Delay and Cooldown each take 0 or more seconds; 0 turns that one off.
-- **Guard conditions.** Additional conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases, and a value starting with `$` compares with that key's current value. A guard on `trigger.<field>` reads what fired the trigger (see [Reading what ran the macro](#reading-what-ran-the-macro)), so an event trigger can check a field of its event, such as `trigger.source` equals `hdmi1`. After a delay or a queue wait, it still reads the values from the moment the trigger fired.
+- **Guard conditions.** Additional conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases, and a value starting with `$` compares with that key's current value. A guard on `trigger.<field>` reads what fired the trigger (see [Reading what ran the macro](#reading-what-ran-the-macro)), so an event trigger can check a field of its event, such as `trigger.source` equals `hdmi1`. After a delay or a queue wait, it still reads the values from the moment the trigger fired. A condition whose operator the system does not know, which only a hand-edited or imported project can hold, never lets the trigger fire, and the trigger card says which operator it is.
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes, or drop the fire if that takes more than five minutes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 
@@ -406,8 +406,9 @@ nothing, because that is not the same as one that fired and worked.
 When a fire does not go ahead, the card says **Skipped:** with the reason, for
 example that its Cooldown had not passed, its conditions were not met, or its
 macro was still running. The line stays until the trigger next fires. A fire
-its macro turned away, and a waiting fire dropped because its trigger was
-changed or deleted, are kept as the trigger's last run, so the card still
+its macro turned away, a waiting fire dropped because its trigger was
+changed or deleted, and a fire stopped by a condition whose operator the
+system does not know are kept as the trigger's last run, so the card still
 says why after the Programmer is reopened; any other reason is shown only
 while the Programmer is open and connected.
 

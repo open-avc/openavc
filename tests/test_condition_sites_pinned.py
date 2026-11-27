@@ -8,10 +8,10 @@ operator on both of its paths (the change, the re-check after a delay). Then
 every sentence the validator writes about a condition, place by place, and the
 spellings it takes at each.
 
-An operator a place cannot read is answered differently by each place: a
-macro step fails before it acts, a guard reads as not met, and a State Change
-trigger is skipped as ``invalid_condition``. These tests hold each answer as it
-stands.
+A condition a place cannot read is never acted on: a macro step fails before
+it acts, and a trigger whose guard or own operator cannot be read does not
+fire, on every path, and is skipped as ``invalid_condition``, which its
+last-run record keeps for the trigger card. These tests hold each answer.
 """
 
 from __future__ import annotations
@@ -263,9 +263,30 @@ async def test_a_guard_holds_on_every_spelling_of_equal(op, trigger_engine, macr
 
 
 @pytest.mark.parametrize("op", UNREADABLE, ids=_id)
-async def test_a_guard_it_cannot_read_is_not_met(op, trigger_engine, macro_engine, core):
+async def test_a_guard_it_cannot_read_is_skipped_as_invalid(
+    op, trigger_engine, macro_engine, core,
+):
     skipped, fired = await _fire_guarded(trigger_engine, macro_engine, core, _condition(op))
-    assert (skipped, fired) == ([_skip("conditions_not_met")], [])
+    assert (skipped, fired) == ([_skip("invalid_condition", operator=op)], [])
+
+
+async def test_a_guard_it_cannot_read_is_named_behind_one_that_is_not_met(
+    trigger_engine, macro_engine, core,
+):
+    """Whatever its place among the guards: the trigger cannot fire until it
+    is fixed, so it is said even while an earlier guard does not hold."""
+    _, events = core
+    skipped = _record(events, "trigger.skipped")
+    macro_engine.load_macros([{"id": "m", "name": "M", "steps": []}])
+    trigger_engine.load_triggers(_one_macro({
+        "id": "t", "type": "event", "event_pattern": "go",
+        "conditions": [_condition("eq", value=6), _condition("contains")],
+    }))
+    await trigger_engine.start()
+    await events.emit("go", {})
+    await wait_for_condition(lambda: bool(skipped), timeout=2, interval=0.01)
+    await trigger_engine.stop()
+    assert skipped == [_skip("invalid_condition", operator="contains")]
 
 
 @pytest.mark.parametrize("group", ["any", "all"])
@@ -286,7 +307,7 @@ async def test_a_guard_with_a_key_beside_a_group_follows_the_key(
 
 
 @pytest.mark.parametrize("op", UNREADABLE, ids=_id)
-async def test_a_guard_it_cannot_read_after_a_delay_is_no_longer_met(
+async def test_a_guard_it_cannot_read_after_a_delay_is_skipped_as_invalid(
     op, trigger_engine, macro_engine, core,
 ):
     _, events = core
@@ -295,11 +316,11 @@ async def test_a_guard_it_cannot_read_after_a_delay_is_no_longer_met(
     trigger_engine.load_triggers(_guarded(_condition(op), delay_seconds=1))
     trigger_engine._running = True
     await trigger_engine._delayed_fire(trigger_engine._triggers["t"], 0, {"event": "go"})
-    assert skipped == [_skip("guard_not_met")]
+    assert skipped == [_skip("invalid_condition", operator=op)]
 
 
 @pytest.mark.parametrize("op", UNREADABLE, ids=_id)
-async def test_a_guard_it_cannot_read_after_a_queue_wait_is_no_longer_met(
+async def test_a_guard_it_cannot_read_after_a_queue_wait_is_skipped_as_invalid(
     op, trigger_engine, macro_engine, core, monkeypatch,
 ):
     monkeypatch.setattr(te, "_QUEUE_POLL_INTERVAL", 0.02)
@@ -316,7 +337,7 @@ async def test_a_guard_it_cannot_read_after_a_queue_wait_is_no_longer_met(
     await asyncio.sleep(0.03)
     running["v"] = False
     await asyncio.wait_for(task, 1)
-    assert skipped == [_skip("guard_not_met")]
+    assert skipped == [_skip("invalid_condition", operator=op)]
 
 
 # --- a State Change trigger's own operator --------------------------------------
@@ -517,3 +538,73 @@ def test_the_validator_names_a_state_trigger_with_no_key_before_its_operator():
         ("triggers[0]", "state_operator 'contains' is not valid. "
          "Use: any, eq, ne, gt, lt, gte, lte, truthy, falsy", None),
     ]
+
+
+# --- what the trigger card reads ------------------------------------------------
+
+
+#: Each path a fire can meet a condition it cannot read on.
+UNREADABLE_PATHS = [
+    "a guard at the fire",
+    "a guard after its delay",
+    "a guard after a queue wait",
+    "a state trigger's own operator at its change",
+    "a state trigger's own operator after its delay",
+]
+
+
+async def _unreadable_on(path: str, trigger_engine, macro_engine, monkeypatch) -> None:
+    """A fire on ``path`` whose condition names ``contains``, run to its end."""
+    monkeypatch.setattr(te, "_QUEUE_POLL_INTERVAL", 0.01)
+    macro_engine.load_macros([{"id": "m", "name": "M", "steps": []}])
+    macro_engine.is_macro_running = lambda _mid: False
+    guarded = _guarded(_condition("contains"), delay_seconds=1, overlap="queue")
+    state_trigger = _state_trigger("contains", delay_seconds=1)
+    trigger_engine.load_triggers(state_trigger if "state trigger" in path else guarded)
+    trigger_engine._running = True
+    ts = trigger_engine._triggers["t"]
+    if path == "a guard at the fire":
+        await trigger_engine._execute_trigger(ts, {"event": "go"})
+    elif path == "a guard after a queue wait":
+        await asyncio.wait_for(trigger_engine._queued_fire(ts, {"event": "go"}), 1)
+    elif path.endswith("at its change"):
+        trigger_engine._on_state_change(ts, "var.level", 4, 5, "test")
+    else:
+        await trigger_engine._delayed_fire(ts, 0, {"event": "go", "key": "var.level"})
+
+
+@pytest.mark.parametrize("path", UNREADABLE_PATHS)
+async def test_a_condition_it_cannot_read_is_the_trigger_s_last_run(
+    path, trigger_engine, macro_engine, core, monkeypatch,
+):
+    """Written to the record the trigger card reads, and announced as
+    ``trigger.completed``, so the card says why while the trigger cannot
+    fire. It never started its macro, so its last fire does not move."""
+    _, events = core
+    completed = _record(events, "trigger.completed")
+    await _unreadable_on(path, trigger_engine, macro_engine, monkeypatch)
+    await wait_for_condition(lambda: bool(completed), timeout=2, interval=0.01)
+    said = skip_reason("invalid_condition", operator="contains")
+    (listed,) = trigger_engine.list_triggers()
+    assert (listed["last_outcome"], listed["last_reason"], listed["last_fired"]) == (
+        "skipped", said, None,
+    )
+    assert [(c["trigger_id"], c["outcome"], c["code"], c["message"]) for c in completed] == [
+        ("t", "skipped", said["code"], said["message"]),
+    ]
+
+
+async def test_a_guard_not_met_leaves_the_last_run_as_it_was(
+    trigger_engine, macro_engine, core,
+):
+    """A guard that does not hold is the trigger working: its last run stays
+    the last time its macro ran."""
+    _, events = core
+    completed = _record(events, "trigger.completed")
+    macro_engine.load_macros([{"id": "m", "name": "M", "steps": []}])
+    trigger_engine.load_triggers(_guarded(_condition("eq", value=6)))
+    trigger_engine._running = True
+    await trigger_engine._execute_trigger(trigger_engine._triggers["t"], {"event": "go"})
+    await asyncio.sleep(0.02)
+    (listed,) = trigger_engine.list_triggers()
+    assert (listed["last_outcome"], completed) == (None, [])
