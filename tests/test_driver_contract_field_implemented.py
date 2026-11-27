@@ -233,8 +233,8 @@ RUNTIME_BLIND_SPOTS = {
     "deviceSettingEntry.regex":
         "Read by base.py's _coerce_device_setting_value "
         "(`sdef.get(\"regex\") or sdef.get(\"pattern\")`). deviceSettingEntry "
-        "declares only three distinctive fields (state_key, unique, write) "
-        "and that function names none of them.",
+        "declares only three distinctive fields (state_key, unique, write; "
+        "write is never an anchor) and that function names none of them.",
     "configSchemaEntry.secret":
         "Read by drivers/spec.py is_secret_setting, the one rule every "
         "runtime reader asks (utils/log_redaction, core/device_logins, "
@@ -507,6 +507,13 @@ def _mentions(source: str, name: str) -> bool:
 # the code changes.
 _ANCHOR_MAX_FILE_SHARE = 0.10
 
+# Names that sit at that share, so the measurement flips as files come and go,
+# and are never evidence of the block they anchor. `write` is a stream method
+# all over the runtime (a transport's or a probe's `writer.write`), in about
+# one file in ten: on one side of the line deviceSettingEntry.regex reads as
+# implemented in the discovery probe, which never reads a setting.
+_NEVER_AN_ANCHOR = frozenset({"write"})
+
 
 @lru_cache(maxsize=1)
 def _too_common_to_anchor() -> frozenset[str]:
@@ -519,7 +526,7 @@ def _too_common_to_anchor() -> frozenset[str]:
     weak evidence wherever it appears.
     """
     names = {name for _block, name in _contract_fields()}
-    common: set[str] = set()
+    common: set[str] = set(_NEVER_AN_ANCHOR)
     for corpus in (_runtime_source(), _frontend_source()):
         limit = len(corpus) * _ANCHOR_MAX_FILE_SHARE
         common |= {
