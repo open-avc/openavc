@@ -8,7 +8,10 @@ start failure, a macro step's exception and a script's traceback reach the
 Programmer with every registered secret and an address's password masked, as
 the log already writes them. What this system's panels draw leaves as it is:
 the live state (a driver's stream address with its login) and the pages the
-project defines (an element's address as its author typed it).
+project defines (an element's address as its author typed it). So does an
+event someone published (a project's, a panel's entry, a driver's or a
+plugin's own); the platform's own failure events are masked as their pushes
+are.
 """
 
 from __future__ import annotations
@@ -23,7 +26,14 @@ import pytest
 from openavc.api.ws import _cleanup_event_subscription, _subscribe_events
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.core.ws_hub import MESSAGE_AUDIENCE, PANEL, PROGRAMMER, SECRET_EXITS, WSHub
+from openavc.core.ws_hub import (
+    MESSAGE_AUDIENCE,
+    PANEL,
+    PROGRAMMER,
+    SECRET_EXITS,
+    WSHub,
+    secret_exit,
+)
 from openavc.utils.log_redaction import REDACTED, get_secret_registry
 from openavc.utils.secret_audience import MAY_CARRY_SECRET, Exit, may_carry_secret
 
@@ -200,46 +210,113 @@ def _subscriber(bus: EventBus, hub: WSHub, client_type: str, *patterns: str) -> 
     return sock
 
 
-@pytest.mark.asyncio
-async def test_the_event_stream_masks_what_each_subscriber_may_not_carry(registry):
+async def _heard(*subscriptions: tuple[str, tuple[str, ...]],
+                 emits: list[tuple[str, Any]]) -> list[_Socket]:
+    """What each ``(client type, patterns)`` subscriber hears of ``emits``."""
     bus, hub = EventBus(), WSHub(StateStore())
     engine = types.SimpleNamespace(events=bus, ws=hub)
-    programmer = _subscriber(bus, hub, PROGRAMMER, "plugin.*")
-    panel = _subscriber(bus, hub, PANEL, "custom.*")
-    failure = {"plugin_id": "acme_sync", "error": f"login {PASSWORD} refused by {ADDRESS}"}
-    shown = {"zone": "lobby", "note": f"sent {PASSWORD}", "seen": [f"{PASSWORD}", 3]}
+    sockets = [_subscriber(bus, hub, client_type, *patterns)
+               for client_type, patterns in subscriptions]
     try:
-        await bus.emit("plugin.error", failure)
-        await bus.emit("custom.acme_note", shown)
+        for event, payload in emits:
+            await bus.emit(event, payload)
         await hub.flush_sends()
     finally:
-        for sock in (programmer, panel):
+        for sock in sockets:
             _cleanup_event_subscription(id(sock), engine)
             hub.remove_client(sock)
-    [heard] = programmer.received
-    assert heard["event"] == "plugin.error"
-    assert heard["payload"] == {
-        "plugin_id": "acme_sync", "error": f"login {REDACTED} refused by {ADDRESS_SHOWN}"}
-    [seen] = panel.received
-    assert seen["payload"] == {"zone": "lobby", "note": f"sent {REDACTED}", "seen": [REDACTED, 3]}
+    return sockets
+
+
+@pytest.mark.asyncio
+async def test_the_platform_s_failure_events_reach_the_event_stream_masked(registry):
+    failure = {"plugin_id": "acme_sync", "error": f"login {PASSWORD} refused by {ADDRESS}"}
+    step = {"macro_id": "lobby_on", "call_chain": ["lobby_on"], "error": f"push failed: {PASSWORD}",
+            "message": "Try again."}
+    device = {"device_id": "acme_widget", "error": f"auth {PASSWORD} rejected"}
+    [programmer] = await _heard(
+        (PROGRAMMER, ("plugin.*", "macro.*", "device.*")),
+        emits=[("plugin.error", failure), ("macro.step_error.lobby_on", step),
+               ("device.error.acme_widget", device)])
+    assert [frame["payload"] for frame in programmer.received] == [
+        {"plugin_id": "acme_sync", "error": f"login {REDACTED} refused by {ADDRESS_SHOWN}"},
+        {**step, "error": f"push failed: {REDACTED}"},
+        {"device_id": "acme_widget", "error": f"auth {REDACTED} rejected"},
+    ]
     # The bus hands every subscriber the same payload: a trigger reading
     # ``$trigger.error`` still has the text.
     assert failure["error"] == f"login {PASSWORD} refused by {ADDRESS}"
-    assert shown["seen"] == [PASSWORD, 3]
 
 
 @pytest.mark.asyncio
-async def test_a_payload_value_that_is_not_json_is_masked_as_its_text(registry):
-    bus, hub = EventBus(), WSHub(StateStore())
-    engine = types.SimpleNamespace(events=bus, ws=hub)
-    programmer = _subscriber(bus, hub, PROGRAMMER, "acme.*")
-    try:
-        await bus.emit("acme.failed", {"exc": RuntimeError(f"bad login {PASSWORD}")})
-        await hub.flush_sends()
-    finally:
-        _cleanup_event_subscription(id(programmer), engine)
-        hub.remove_client(programmer)
+async def test_an_event_someone_published_reaches_its_subscribers_as_published(registry):
+    # A keypad's code is the lock's saved PIN, and a script hands a custom
+    # control a camera's address with its login: the flow and the control
+    # get each as it was published, as they would from a variable.
+    entry = {"element_id": "keypad", "value": PASSWORD}
+    note = {"stream": f"rtsp://{USERNAME}:{PASSWORD}@10.0.0.5/stream", "seen": [PASSWORD, 3]}
+    driver = {"device_id": "acme_widget", "token": PASSWORD}
+    panel, programmer = await _heard(
+        (PANEL, ("ui.*", "custom.*", "device.*")),
+        (PROGRAMMER, ("ui.*", "custom.*", "device.*", "plugin.*")),
+        emits=[("ui.submit.keypad", entry), ("custom.acme_note", note),
+               ("device.acme_widget.paired", driver),
+               ("plugin.acme_sync.synced", {"note": f"sent {PASSWORD}"})])
+    published = [entry, note, driver]
+    assert [frame["payload"] for frame in panel.received] == published
+    assert [frame["payload"] for frame in programmer.received] == [
+        *published, {"note": f"sent {PASSWORD}"}]
+
+
+@pytest.mark.asyncio
+async def test_a_failure_value_that_is_not_json_is_masked_as_its_text(registry):
+    [programmer] = await _heard(
+        (PROGRAMMER, ("device.*",)),
+        emits=[("device.error.acme_widget", {"exc": RuntimeError(f"bad login {PASSWORD}")})])
     assert programmer.received[0]["payload"] == {"exc": f"bad login {REDACTED}"}
+
+
+@pytest.mark.asyncio
+async def test_a_routing_name_is_kept_only_as_a_frame_s_own_text(registry):
+    # Deeper in a frame, or holding anything but text, a field spelled like a
+    # routing name is masked like any other.
+    _panel, programmer = await _broadcast({
+        "type": "plugin.error", "plugin_id": "acme_sync",
+        "error": {"command": f"login {PASSWORD}"}, "command": {"text": PASSWORD},
+    })
+    assert programmer.received == [{
+        "type": "plugin.error", "plugin_id": "acme_sync",
+        "error": {"command": f"login {REDACTED}"}, "command": {"text": REDACTED},
+    }]
+
+
+@pytest.mark.asyncio
+async def test_the_log_view_s_stream_is_masked_as_its_history_is(registry):
+    from unittest.mock import patch
+
+    from openavc.api.ws import _log_stream_task
+
+    class _Entry:
+        def to_dict(self) -> dict[str, Any]:
+            return {"level": "ERROR", "message": f"sync failed at {ADDRESS}"}
+
+    hub = WSHub(StateStore())
+    sock = _AskingSocket()
+    hub.add_client(sock, client_type=PROGRAMMER)
+    queue: asyncio.Queue = asyncio.Queue()
+    queue.put_nowait(_Entry())
+    try:
+        with patch("openavc.api._engine._engine", types.SimpleNamespace(ws=hub)):
+            task = asyncio.create_task(_log_stream_task(sock, queue))
+            for _ in range(100):
+                if sock.sent:
+                    break
+                await asyncio.sleep(0.01)
+            task.cancel()
+    finally:
+        hub.remove_client(sock)
+    assert sock.sent == [
+        {"type": "log.entry", "level": "ERROR", "message": f"sync failed at {ADDRESS_SHOWN}"}]
 
 
 # --- The table ----------------------------------------------------------------------
@@ -248,8 +325,8 @@ async def test_a_payload_value_that_is_not_json_is_masked_as_its_text(registry):
 def test_every_push_leaves_by_an_exit_the_secret_table_has_a_row_for():
     for msg_type, reach in MESSAGE_AUDIENCE.items():
         for client_type in reach:
-            where = SECRET_EXITS.get(msg_type, Exit(client_type))
-            assert where in MAY_CARRY_SECRET, msg_type
+            where = secret_exit({"type": msg_type}, client_type)
+            assert Exit(where) in MAY_CARRY_SECRET, msg_type
 
 
 def test_only_what_the_panels_draw_leaves_carrying_a_secret():

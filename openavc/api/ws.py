@@ -32,6 +32,7 @@ from openavc.api.ws_macros import cancel_macro, execute_macro
 from openavc.api.ws_send import (
     DISCONNECTS,
     error_frame,
+    frame_for,
     press_failure as _press_failure,
     send_ws as _send_ws,
 )
@@ -454,10 +455,9 @@ async def _log_stream_task(ws: WebSocket, queue: asyncio.Queue) -> None:
     try:
         while True:
             entry: LogEntry = await queue.get()
-            await ws.send_json({
-                "type": "log.entry",
-                **entry.to_dict(),
-            })
+            # As its history went (log.subscribe's reply), so the Log view
+            # shows one entry the same way live and on reconnect.
+            await ws.send_json(frame_for(ws, {"type": "log.entry", **entry.to_dict()}))
     except asyncio.CancelledError:
         return
     except _WS_DISCONNECT_EXCEPTIONS:

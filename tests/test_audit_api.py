@@ -512,6 +512,9 @@ class _Hub:
     def send(self, ws, message):
         self.sent.append((ws, message))
 
+    def client_type_of(self, ws):
+        return "programmer"
+
 
 async def test_a_programmer_subscribes_and_only_it_hears(wired):
     from openavc.api import ws as wsmod

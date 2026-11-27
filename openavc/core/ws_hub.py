@@ -21,16 +21,19 @@ namespace's row in ``EVENT_AUDIENCE``, so a client hears a thing on both
 paths or on neither. ``PANEL_COPIES`` names what a panel gets instead of a
 payload written for the Programmer, on both paths.
 
-THE WebSocket exit's secret rule is ``frame_as``, which every frame a client
-is sent passes through, on the broadcast, the event stream and a reply to the
-client's own message: the frame leaves as its exit may carry a secret
-(``utils/secret_audience``), and its exit is its type's row in
-``SECRET_EXITS`` (live state, the pages), else the client's own type, the
-row the audience table names. Neither a panel nor the Programmer may carry
-one, so a plugin's start failure, a macro step's exception and a script's
-traceback reach the Programmer with every registered secret and an address's
-password masked, as the log writes them; the names a client routes a frame by
-(``ROUTING_NAMES``) stay as they are.
+THE WebSocket exit's secret rule is ``frame_as``, which a frame passes
+through on the broadcast, the event stream, a reply to the client's own
+message (``api/ws_send``) and the Log view's stream: the frame leaves as its
+exit may carry a secret (``utils/secret_audience``), and its exit is its
+type's row in ``SECRET_EXITS`` (live state, the pages), else the client's own
+type, the row the audience table names; an event on the event stream is what
+someone published and leaves as published, but for the platform's own words
+about a failure. Neither a panel nor the Programmer may carry a secret, so a
+plugin's start failure, a macro step's exception and a script's traceback
+reach the Programmer with every registered secret and an address's password
+masked; a frame's own routing names (``ROUTING_NAMES``) stay as they are. The
+handshake's snapshot and pages go straight to the socket, as their rows let
+them.
 
 Owned by the engine (``engine.ws``). ``Engine.broadcast_ws`` forwards here
 and stays the platform-wide entry point for sending a message to panels.
@@ -49,7 +52,7 @@ from typing import Any, Callable
 from openavc.core.macro_text import MACRO_STOPPED
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
-from openavc.utils.secret_audience import Exit
+from openavc.utils.secret_audience import Exit, may_carry_secret
 from openavc.utils.secret_exits import message_as
 
 log = get_logger(__name__)
@@ -238,26 +241,82 @@ SECRET_EXITS: dict[str, Exit] = {
     "ui.navigate": Exit.PANEL_PAGES,
 }
 
-# The fields a client routes a frame by, at any depth: its type, an event's
-# name, what failed and who asked (``source_type``, ``request_id``), and the
-# names the project gives the things it is about. A name is no secret even
-# when a password is spelled the same, and masking one would lose the frame:
-# a panel finds the run it started by ``macro_id`` and ``call_chain``, and the
-# Node-RED package settles a request by its ids and command.
+# An event on the event stream is what someone published on this system (a
+# project's own event, a panel's press or entry, a driver's or a plugin's
+# event) and leaves as published, ``Exit.PUBLISHED_EVENT``, except the
+# platform's own words about a failure: an event it also pushes, which answers
+# by its pushed type's row as on the broadcast, and these namespaces.
+PLATFORM_EVENT_NAMESPACES = ("device.error.",)
+
+# The fields a client routes a frame by: its type, an event's name, what
+# failed and who asked, and the names the platform gives the things it is
+# about. A frame's own field, as text (or a list of texts), is never masked:
+# a name is no secret even when a password is spelled the same, and masking
+# one would lose the frame (a panel finds the run it started by ``macro_id``
+# and ``call_chain``; the Node-RED package settles a request by its ids and
+# command). Deeper in a frame, a field of that name is masked like any other.
 ROUTING_NAMES = frozenset({
-    "type", "event", "source_type", "request_id",
-    "macro_id", "call_chain", "page_id", "element_id",
-    "device_id", "command", "plugin_id", "script_id",
+    "type", "event", "source_type", "request_id", "client_id", "key",
+    "status", "code", "error_code",
+    "macro_id", "call_chain", "page_id", "element_id", "device_id", "command",
+    "plugin_id", "script_id", "run_id", "action_id", "session_id",
 })
 
 
+def _event_exit(event: Any, client_type: Any) -> Any:
+    """The exit an event on the event stream leaves by (see above)."""
+    if not isinstance(event, str):
+        return client_type
+    msg_type = bus_push_type(event)
+    if msg_type is not None:
+        return SECRET_EXITS.get(msg_type, client_type)
+    if event.startswith(PLATFORM_EVENT_NAMESPACES):
+        return client_type
+    return Exit.PUBLISHED_EVENT
+
+
+def secret_exit(message: dict[str, Any], client_type: Any) -> Any:
+    """The exit ``message`` leaves by for a client of ``client_type``: an
+    event by its own rule, any other frame by its type's row in
+    ``SECRET_EXITS``, else the client's own row."""
+    msg_type = message.get("type")
+    if msg_type == "event":
+        return _event_exit(message.get("event"), client_type)
+    return SECRET_EXITS.get(msg_type, client_type)
+
+
+def _routes(key: Any, value: Any) -> bool:
+    """Whether a frame's own field is a name it is routed by, kept as it is."""
+    if key not in ROUTING_NAMES:
+        return False
+    return isinstance(value, str) or (
+        isinstance(value, list) and all(isinstance(item, str) for item in value))
+
+
+def _fields_as(where: Any, fields: dict[str, Any]) -> dict[str, Any]:
+    return {key: value if _routes(key, value) else message_as(where, value)
+            for key, value in fields.items()}
+
+
+def frame_as_exit(message: dict[str, Any], where: Any) -> Any:
+    """``message`` as the exit ``where`` may carry it: as it is where it may
+    carry a secret; else a copy with every text masked but the frame's own
+    routing names, and an event's payload read as the fields of the frame it
+    is pushed as."""
+    if may_carry_secret(where):
+        return message
+    shown = _fields_as(where, message)
+    payload = message.get("payload")
+    if message.get("type") == "event" and isinstance(payload, dict):
+        shown["payload"] = _fields_as(where, payload)
+    return shown
+
+
 def frame_as(message: dict[str, Any], client_type: Any) -> Any:
-    """``message`` as a client of ``client_type`` may carry it: its type's
-    row in ``SECRET_EXITS``, else the client's own row, every other text in
-    it masked where that exit may not carry a secret. A copy; never changes
+    """THE rule: ``message`` as a client of ``client_type`` may carry it (its
+    exit, ``secret_exit``). A copy where anything is masked; never changes
     ``message``."""
-    where = SECRET_EXITS.get(message.get("type"), client_type)
-    return message_as(where, message, names=ROUTING_NAMES)
+    return frame_as_exit(message, secret_exit(message, client_type))
 
 
 def frame_text(message: dict[str, Any], client_type: Any) -> str:
@@ -346,18 +405,21 @@ class _Outgoing:
         self._filterable = msg_type in ("state.update", "state.delete")
         self._room_copy = (_exact_or_namespace(PANEL_COPIES, msg_type)
                            if isinstance(msg_type, str) else None)
-        # Each form's text, by the client type it was encoded for.
-        self._texts: dict[tuple[bool, str | None], str] = {}
+        # Each form's text, by the exit it leaves by: a state batch is encoded
+        # once whoever it reaches.
+        self._texts: dict[tuple[bool, Any], str] = {}
 
     @functools.cached_property
     def _panel_copy(self) -> dict[str, Any]:
         return self._room_copy(self._message["type"], self._message, self._hub)
 
     def _text(self, copied: bool, client_type: str | None) -> str:
-        text = self._texts.get((copied, client_type))
+        where = secret_exit(self._message, client_type)
+        text = self._texts.get((copied, where))
         if text is None:
             message = self._panel_copy if copied else self._message
-            text = self._texts[(copied, client_type)] = frame_text(message, client_type)
+            text = json.dumps(frame_as_exit(message, where), default=str)
+            self._texts[(copied, where)] = text
         return text
 
     def text_for(self, client_type: str | None, ns: tuple[str, ...] | None) -> str | None:

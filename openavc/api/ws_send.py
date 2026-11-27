@@ -26,18 +26,19 @@ log = get_logger("openavc.api.ws")
 DISCONNECTS = (WebSocketDisconnect, ConnectionError, OSError)
 
 
-def _client_type(ws: WebSocket) -> str | None:
-    """The type the hub knows this client as, or None for one it does not
-    hold, which ``frame_as`` answers as a client that may not carry a secret."""
+def frame_for(ws: WebSocket, msg: dict[str, Any]) -> Any:
+    """``msg`` as this socket's client may carry it (``ws_hub.frame_as``), by
+    the type the hub knows it as; a socket the hub does not hold is answered
+    as a client that may not carry a secret."""
     hub = getattr(get_engine_optional(), "ws", None)
-    return hub.client_type_of(ws) if hub is not None else None
+    return frame_as(msg, hub.client_type_of(ws) if hub is not None else None)
 
 
 async def send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
     """Send a JSON message to the client as it may carry it, silently
     ignoring disconnects."""
     try:
-        await ws.send_json(frame_as(msg, _client_type(ws)))
+        await ws.send_json(frame_for(ws, msg))
     except DISCONNECTS:
         pass  # Client disconnected mid-send
     except Exception:

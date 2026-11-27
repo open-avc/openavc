@@ -20,14 +20,15 @@ asked by every exit of that shape, naming the exit:
     ``log_redaction.keep_masked_secrets`` with ``shown`` set to the same
     exit's :func:`text_as` puts the saved text back when the config is sent
     back as it was read.
-  - **a message** (:func:`message_as`): a frame a WebSocket client is sent
-    and the payload it carries, each text at any depth as :func:`text_as`
-    gives it, except the names the client routes it by.
+  - **a message** (:func:`message_as`): what a frame a WebSocket client is
+    sent carries, each text at any depth as :func:`text_as` gives it
+    (``core/ws_hub.frame_as`` asks it for each field but the frame's own
+    routing names).
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable, Collection
+from typing import Any, Callable
 
 from openavc.utils.log_redaction import (
     IDENTITY_KEYS,
@@ -101,30 +102,25 @@ def config_as(where: Any, config: Any) -> Any:
 _JSON_SCALARS = (int, float, bool, type(None))
 
 
-def message_as(where: Any, message: Any, *, names: Collection[str] = ()) -> Any:
+def message_as(where: Any, message: Any) -> Any:
     """A message on its way to a client as the exit ``where`` may carry it:
     as it is where it may carry a secret; else a copy with each text inside
     it, at any depth, as :func:`text_as` gives it, and a value JSON cannot
     write as its text so given, so an encoder's ``default=str`` writes
-    nothing unmasked. A field in ``names`` is a name the client routes the
-    message by (its type, an id): the name a project gives a thing is no
-    secret, even one spelled like one, and is kept as it is. Never changes
-    ``message``: the bus hands every subscriber the same payload."""
+    nothing unmasked. Never changes ``message``: the bus hands every
+    subscriber the same payload."""
     if may_carry_secret(where):
         return message
-    return _message_leaves(where, message, frozenset(names))
+    return _message_leaves(where, message)
 
 
-def _message_leaves(where: Any, value: Any, names: frozenset[str]) -> Any:
+def _message_leaves(where: Any, value: Any) -> Any:
     if isinstance(value, str):
         return text_as(where, value)
     if isinstance(value, dict):
-        return {
-            key: item if key in names else _message_leaves(where, item, names)
-            for key, item in value.items()
-        }
+        return {key: _message_leaves(where, item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_message_leaves(where, item, names) for item in value]
+        return [_message_leaves(where, item) for item in value]
     if isinstance(value, _JSON_SCALARS):
         return value
     return text_as(where, str(value))
