@@ -2,8 +2,8 @@
  * What the top of a device's page says about its condition, under the header:
  * the one away banner `awayBanner` (deviceAway.ts) chooses, product hardware's
  * own panel, the line for children in trouble and a product's notes on its
- * own description, in this order: the missing driver, paused, restarting or
- * asleep; children in trouble; the product's notes; product hardware's panel;
+ * own description, in this order: the missing driver, restarting, asleep or
+ * paused; children in trouble; the product's notes; product hardware's panel;
  * the login box or the Offline banner.
  *
  * `AWAY_BANNERS` holds every banner `awayBanner` can choose, with which side of
@@ -84,8 +84,8 @@ const AWAY_BANNERS: Record<AwayBanner, PlacedBanner> = {
 
 /** The banner that explains the device, drawn on its side of product
  *  hardware's panel; nothing on either side when none does. */
-function placedBanner(context: BannerContext, isEnabled: boolean): { above: ReactNode; below: ReactNode } {
-  const chosen = awayBanner(context.away, isEnabled, context.info?.needs_login?.length ?? 0);
+function placedBanner(context: BannerContext): { above: ReactNode; below: ReactNode } {
+  const chosen = awayBanner(context.away, context.info?.needs_login?.length ?? 0);
   if (!chosen) return { above: null, below: null };
   const { below, draw } = AWAY_BANNERS[chosen];
   const drawn = draw(context);
@@ -93,19 +93,16 @@ function placedBanner(context: BannerContext, isEnabled: boolean): { above: Reac
 }
 
 export function DeviceBanners({
-  isEnabled,
   deviceName,
   liveState,
   ...context
 }: BannerContext & {
-  /** The project has the device turned on. */
-  isEnabled: boolean;
   /** The name product hardware's panel opens with. */
   deviceName: string;
   liveState: Record<string, unknown>;
 }) {
   const { deviceId, away, info, installed } = context;
-  const banner = placedBanner(context, isEnabled);
+  const banner = placedBanner(context);
   return (
     <>
       {banner.above}

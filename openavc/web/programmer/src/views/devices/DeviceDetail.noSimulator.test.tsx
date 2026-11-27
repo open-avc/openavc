@@ -52,6 +52,7 @@ function offlineForSimulation(failed: boolean) {
     "device.amp.offline_reason": "no_simulator",
     "device.amp.offline_detail": "This device has no simulator. Stop simulation to control it.",
     "device.amp.reconnect_failed": failed,
+    "device.amp.presence": "offline",
   });
 }
 

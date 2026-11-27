@@ -19,6 +19,7 @@ import { useMonitorEdits } from "../../components/shared/useMonitorEdits";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
 import { valueText } from "../../components/shared/booleanWords";
 import { driverLabel } from "../../components/shared/driverLabel";
+import { PRESENCE_LABEL, presenceIn, presenceNote } from "../../components/shared/devicePresence";
 
 /** What the driver says about one reading — the shape both the row badge and
  *  the Monitor form read. Device-level and child readings share it. */
@@ -248,10 +249,11 @@ export function DeviceStatesSubTab() {
                   </div>
                 )}
                 {groupDevices.map((d) => {
-                  const isConnected = liveState[`device.${d.id}.connected`] === true;
-                  // Put to sleep by one of its own commands. The dot is the
+                  const presence = presenceIn(liveState, d.id);
+                  const isConnected = presence === "online";
+                  // Away for a reason (asleep, paused, ...). The dot is the
                   // same grey as offline, so the word goes on the line below.
-                  const isAsleep = !isConnected && liveState[`device.${d.id}.asleep`] === true;
+                  const note = presenceNote(presence);
                   return (
                     <div
                       key={d.id}
@@ -269,7 +271,7 @@ export function DeviceStatesSubTab() {
                       onMouseLeave={(e) => { if (selectedDeviceId !== d.id) e.currentTarget.style.background = "transparent"; }}
                     >
                       <div
-                        title={isConnected ? "Connected" : isAsleep ? "Asleep" : "Offline"}
+                        title={PRESENCE_LABEL[presence]}
                         style={{
                           width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
                           background: isConnected ? "var(--color-success)" : "var(--text-muted)",
@@ -278,7 +280,7 @@ export function DeviceStatesSubTab() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500, color: "var(--text-primary)" }}>{d.name}</div>
                         <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {driverLabel(d.driver)}{isAsleep ? " · Asleep" : ""}
+                          {driverLabel(d.driver)}{note ? ` · ${note}` : ""}
                         </div>
                       </div>
                       <Cpu size={14} style={{ color: "var(--text-muted)", flexShrink: 0, opacity: 0.5 }} />

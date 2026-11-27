@@ -178,7 +178,7 @@ describe("Device Command action", () => {
       id: "disp_1",
       driver: "acme_display",
       connected: false,
-      state: { connected: false, asleep: true, wake_command: "power_on" },
+      state: { connected: false, asleep: true, wake_command: "power_on", presence: "asleep" },
       commands: { power_on: { label: "Power On" } },
     } as never);
     const withDisplay = {

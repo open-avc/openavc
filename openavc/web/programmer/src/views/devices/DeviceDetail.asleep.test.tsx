@@ -41,6 +41,7 @@ vi.mock("../../components/plugins/PluginExtensions", () => ({
 
 import { useProjectStore } from "../../store/projectStore";
 import { DeviceDetail } from "./DeviceDetail";
+import { withPresence } from "../../test/withPresence";
 
 const SENTENCE = "Asleep. Power On wakes it.";
 
@@ -57,7 +58,7 @@ function showPage() {
 
 function setLive(next: Record<string, unknown>) {
   for (const k of Object.keys(liveState)) delete liveState[k];
-  Object.assign(liveState, next);
+  Object.assign(liveState, withPresence(next));
 }
 
 describe("a device that is asleep", () => {

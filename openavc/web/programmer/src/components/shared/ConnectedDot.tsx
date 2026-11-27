@@ -9,20 +9,20 @@
  */
 import type { ReactNode } from "react";
 import { useConnectionStore } from "../../store/connectionStore";
+import { PRESENCE_LABEL, presenceIn, type PresenceWord } from "./devicePresence";
 
 export function ConnectedDot({
-  connected,
-  asleep = false,
+  presence,
 }: {
-  connected: boolean;
-  /** Put to sleep by one of its own commands (device.<id>.asleep). Drawn
-   *  hollow like any device that is not connected; the tooltip says which. */
-  asleep?: boolean;
+  /** The device's presence word. Filled while connected, hollow for every
+   *  other word; the tooltip says which. */
+  presence: PresenceWord;
 }) {
+  const connected = presence === "online";
   return (
     <span
       aria-hidden
-      title={connected ? "Connected" : asleep ? "Asleep" : "Offline"}
+      title={PRESENCE_LABEL[presence]}
       style={{
         width: 7,
         height: 7,
@@ -45,8 +45,5 @@ export function ConnectedDot({
  * Pre-existing behaviour, kept deliberately rather than fixed in passing.
  */
 export function connectedDot(deviceId: string): ReactNode {
-  const liveState = useConnectionStore.getState().liveState;
-  const connected = liveState[`device.${deviceId}.connected`] === true;
-  const asleep = liveState[`device.${deviceId}.asleep`] === true;
-  return <ConnectedDot connected={connected} asleep={asleep} />;
+  return <ConnectedDot presence={presenceIn(useConnectionStore.getState().liveState, deviceId)} />;
 }

@@ -57,12 +57,13 @@ vi.mock("../../components/plugins/PluginExtensions", () => ({
 import { useProjectStore } from "../../store/projectStore";
 import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
+import { withPresence } from "../../test/withPresence";
 
 const itach = { id: "itach", driver: "acme_bridge", name: "Rack iTach", config: {}, enabled: true };
 
 function setLive(next: Record<string, unknown>) {
   for (const k of Object.keys(liveState)) delete liveState[k];
-  Object.assign(liveState, { "device.itach.enabled": true, ...next });
+  Object.assign(liveState, withPresence({ "device.itach.enabled": true, ...next }));
 }
 
 function setProject(devices: Record<string, unknown>[], connections: Record<string, unknown>) {

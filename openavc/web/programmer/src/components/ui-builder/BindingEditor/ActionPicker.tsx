@@ -18,6 +18,8 @@ import { valueText } from "../../shared/booleanWords";
 import { BooleanOptions } from "../../shared/BooleanOptions";
 import { uiOverrideType } from "../../shared/uiOverrideProperties";
 import { driverLabel } from "../../shared/driverLabel";
+import { DeviceStatusDot } from "../../shared/DeviceStatusDot";
+import { PRESENCE_LABEL, presenceWord } from "../../shared/devicePresence";
 
 interface ActionPickerProps {
   value: Record<string, unknown> | null;
@@ -188,9 +190,9 @@ function DeviceCommandConfig({
   }, [selectedDevice]);
 
   const commands = deviceInfo?.commands ?? {};
-  // Put to sleep by one of its own commands (device.<id>.asleep), read from
-  // the same fetch as `connected` beside it.
-  const deviceAsleep = deviceInfo?.state?.asleep === true;
+  // What the device's state adds up to (device.<id>.presence), read from the
+  // same fetch as the rest of the line.
+  const presence = presenceWord(deviceInfo?.state?.presence);
   const commandDef = commands[selectedCommand] as
     | Record<string, unknown>
     | undefined;
@@ -220,15 +222,8 @@ function DeviceCommandConfig({
             display: "flex", alignItems: "center", gap: 6,
             fontSize: 11, color: "var(--text-muted)", marginTop: 3, paddingLeft: 2,
           }}>
-            <span style={{
-              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-              background: deviceInfo.connected
-                ? "#10b981"
-                : deviceAsleep
-                  ? "var(--text-muted)"
-                  : "#ef4444",
-            }} />
-            <span>{deviceInfo.connected ? "Connected" : deviceAsleep ? "Asleep" : "Offline"}</span>
+            <DeviceStatusDot presence={presence} pausedFor={deviceInfo.state?.paused_for} size={7} />
+            <span>{PRESENCE_LABEL[presence]}</span>
             <span style={{ color: "var(--border-color)" }}>|</span>
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driverLabel(deviceInfo.driver)}</span>
             {deviceInfo.state && String(deviceInfo.state.host || "") && (

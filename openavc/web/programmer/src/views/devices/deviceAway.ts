@@ -4,41 +4,32 @@
  * the server's sentence (the driver's hint, its last line, whether it offers
  * Report a problem).
  *
- * Exactly one banner explains an away device, in this order: its driver is not
- * installed; Live Test or a Device Audit holds it; a command is restarting it;
- * a command put it to sleep; it waits for a login this system does not have;
- * it is offline for a reason. The first four are said whether or not the
- * device still reads connected; the last two only for a disconnected device
- * that is enabled. A new way of being away is one more step in `awayBanner`,
- * its banner, and its entry in DeviceBanners.tsx, which the compiler asks for.
+ * Which banner is the device's presence word (components/shared/
+ * devicePresence.ts), the one the status dot, the device list and the
+ * Dashboard read: its driver is not installed; a command is restarting it; a
+ * command put it to sleep; Live Test or a Device Audit holds it; it is
+ * offline, and then it waits for a login this system does not have, or the
+ * server says why. A device online, connecting, or turned off in the project
+ * has none. A new way of being away is one more entry in `BANNER_FOR`, its
+ * banner, and its entry in DeviceBanners.tsx, which the compiler asks for.
  *
- * The first four, in that order, are `AWAY_FIRST`
- * (components/shared/deviceAwayOrder.ts), which the status dot reads too; the
- * device list's Needs login chip asks `awayState`. So the page, the dot and the
- * list name the same state for a device in two at once.
+ * The rest is what the chosen banner says: who holds the pause, the fault's
+ * code and sentence, whether the server stopped retrying.
  */
 import { isSecretConfigField } from "./deviceConfigCoerce";
-import { AWAY_FIRST, firstAway } from "../../components/shared/deviceAwayOrder";
+import { presenceWord, type PresenceWord } from "../../components/shared/devicePresence";
 
 /** What the live state says about a device being away (device.<id>.*). */
 export interface DeviceAway {
+  /** What its state adds up to, the word that chooses the banner. */
+  presence: PresenceWord;
   connected: boolean;
-  /** Its driver is not installed (or product hardware is unavailable). */
-  orphaned: boolean;
-  /** Live Test or a Device Audit holds it; automatic reconnect waits for a
-   *  resume, a manual reconnect, or the server's pause time limit. */
-  paused: boolean;
-  /** Who holds the pause (`paused_for`), named in the banner. */
+  /** Who holds a pause (`paused_for`), named in the banner. */
   pausedFor: unknown;
-  /** A command restarted it and it is expected back. `offline_reason` stays
-   *  empty for the whole window, and `offline_detail` carries the sentence. */
-  restarting: boolean;
-  /** A command put it to sleep (sleeps_device). `offline_reason` stays empty,
-   *  and `offline_detail` names the command that wakes it. */
-  asleep: boolean;
   /** The stable code from the server's classifier (core/connection_fault.py). */
   offlineReason: string;
-  /** The server's sentence for the fault; this page only shows it. */
+  /** The server's sentence: the fault's, or a restart's or a sleep's, which
+   *  leave `offlineReason` empty. This page only shows it. */
   offlineDetail: string;
   /** The server stopped retrying. */
   reconnectFailed: boolean;
@@ -47,12 +38,9 @@ export interface DeviceAway {
 export function readDeviceAway(liveState: Record<string, unknown>, deviceId: string): DeviceAway {
   const read = (prop: string) => liveState[`device.${deviceId}.${prop}`];
   return {
+    presence: presenceWord(read("presence")),
     connected: Boolean(read("connected")),
-    orphaned: Boolean(read("orphaned")),
-    paused: Boolean(read("paused")),
     pausedFor: read("paused_for"),
-    restarting: Boolean(read("restarting")),
-    asleep: Boolean(read("asleep")),
     offlineReason: String(read("offline_reason") ?? ""),
     offlineDetail: String(read("offline_detail") ?? ""),
     reconnectFailed: Boolean(read("reconnect_failed")),
@@ -64,24 +52,29 @@ export function waitsForLogin(away: Pick<DeviceAway, "offlineReason">): boolean 
   return away.offlineReason === "login_missing";
 }
 
-/** Each way of being away is also the name of its banner. */
-export type AwayBanner = (typeof AWAY_FIRST)[number] | "needs_login" | "offline";
+/** The banners that explain an away device. */
+export type AwayBanner = "orphaned" | "paused" | "restarting" | "asleep" | "needs_login" | "offline";
+
+/** The words that are a banner of their own, whatever else the state says. */
+const BANNER_FOR: Partial<Record<PresenceWord, AwayBanner>> = {
+  waiting_for_driver: "orphaned",
+  restarting: "restarting",
+  asleep: "asleep",
+  paused: "paused",
+};
 
 /** What deciding which way a device is away reads. */
-export type AwayFacts = Pick<
-  DeviceAway,
-  "connected" | "orphaned" | "paused" | "restarting" | "asleep" | "offlineReason" | "offlineDetail"
->;
+export type AwayFacts = Pick<DeviceAway, "presence" | "offlineReason" | "offlineDetail">;
 
 /**
  * Which way the device is away, before asking which settings wait for a
- * login: the order the page's banner follows, and what the device list's
- * Needs login chip asks (the list does not read which settings wait).
+ * login: the banner the page shows, and what the device list's Needs login
+ * chip asks (the list does not read which settings wait).
  */
-export function awayState(away: AwayFacts, enabled: boolean): AwayBanner | null {
-  const first = firstAway(away);
-  if (first) return first;
-  if (away.connected || !enabled) return null;
+export function awayState(away: AwayFacts): AwayBanner | null {
+  const banner = BANNER_FOR[away.presence];
+  if (banner) return banner;
+  if (away.presence !== "offline") return null;
   if (waitsForLogin(away)) return "needs_login";
   return away.offlineDetail ? "offline" : null;
 }
@@ -91,8 +84,8 @@ export function awayState(away: AwayFacts, enabled: boolean): AwayBanner | null 
  * `loginFields` counts the settings that wait for a login: with none named
  * there is nothing to ask for, and the Offline banner does not stand in.
  */
-export function awayBanner(away: AwayFacts, enabled: boolean, loginFields: number): AwayBanner | null {
-  const state = awayState(away, enabled);
+export function awayBanner(away: AwayFacts, loginFields: number): AwayBanner | null {
+  const state = awayState(away);
   return state === "needs_login" && loginFields === 0 ? null : state;
 }
 

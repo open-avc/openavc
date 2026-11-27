@@ -30,7 +30,8 @@ import {
 import { parseApiError } from "../api/errors";
 import { writtenOperator } from "../api/conditionEval";
 import { driverLabel } from "../components/shared/driverLabel";
-import { asleepHeadline, summarizeDashboardDevices } from "./dashboardDevices";
+import { asleepHeadline, summarizeDashboardDevices, tileBorder } from "./dashboardDevices";
+import { presenceIn } from "../components/shared/devicePresence";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -1145,9 +1146,7 @@ export function DashboardView() {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "var(--space-sm)" }}>
                 {devices.map(dev => {
-                  const isEnabled = dev.enabled !== false;
-                  const isConnected = liveState[`device.${dev.id}.connected`] === true;
-                  const isAsleep = !isConnected && liveState[`device.${dev.id}.asleep`] === true;
+                  const presence = presenceIn(liveState, dev.id);
                   // Each tile opens its own device, not just the Devices screen.
                   const openDevice = () => useNavigationStore.getState().navigateTo("devices", { type: "device", id: dev.id });
                   return (
@@ -1167,19 +1166,19 @@ export function DashboardView() {
                       style={{
                         ...cardStyle,
                         padding: "var(--space-sm) var(--space-md)",
-                        opacity: isEnabled ? 1 : 0.5,
-                        borderColor: !isEnabled || isAsleep ? "var(--border-color)" : isConnected ? "rgba(76,175,80,0.3)" : "rgba(239,68,68,0.3)",
+                        opacity: presence === "disabled" ? 0.5 : 1,
+                        borderColor: tileBorder(presence),
                         cursor: "pointer",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                        <DeviceStatusDot connected={isConnected} asleep={isAsleep} />
+                        <DeviceStatusDot presence={presence} pausedFor={liveState[`device.${dev.id}.paused_for`]} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {String(dev.name)}
                           </div>
                           <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {driverLabel(String(dev.driver))}{!isEnabled ? " (disabled)" : ""}
+                            {driverLabel(String(dev.driver))}{presence === "disabled" ? " (disabled)" : ""}
                           </div>
                         </div>
                       </div>
@@ -1283,7 +1282,7 @@ export function DashboardView() {
               <h3 style={sectionTitle}>Inter-System</h3>
               <div style={{ ...cardStyle, fontSize: "var(--font-size-sm)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                  <DeviceStatusDot connected={true} size={8} />
+                  <DeviceStatusDot presence="online" size={8} />
                   <span>ISC Enabled</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>

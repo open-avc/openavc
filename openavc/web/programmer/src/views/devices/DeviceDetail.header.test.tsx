@@ -63,12 +63,13 @@ import { useProjectStore } from "../../store/projectStore";
 import { useAuditStore } from "../../store/auditStore";
 import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
+import { withPresence } from "../../test/withPresence";
 
 const amp = { id: "amp", driver: "acme_amp", name: "Rack Amp", config: {}, enabled: true };
 
 function setLive(next: Record<string, unknown>) {
   for (const k of Object.keys(liveState)) delete liveState[k];
-  Object.assign(liveState, { "device.amp.enabled": true, ...next });
+  Object.assign(liveState, withPresence({ "device.amp.enabled": true, ...next }));
 }
 
 function setProject(devices: Record<string, unknown>[] = [amp], extra: Record<string, unknown> = {}) {

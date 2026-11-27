@@ -222,7 +222,7 @@ describe("the device page's Live State", () => {
   });
 
   it("tells the Child Entities panel when the device is held", async () => {
-    setLive({ "device.amp.paused": true });
+    setLive({ "device.amp.paused": true, "device.amp.presence": "paused" });
     await showPage();
     expect(screen.getByTestId("child-entities").textContent).toBe("|0|true");
   });

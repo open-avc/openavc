@@ -78,10 +78,11 @@ vi.mock("./ConfigTableEditor", async (importOriginal) => ({
 import { useProjectStore } from "../../store/projectStore";
 import type { DriverInfo } from "../../api/types";
 import { DeviceDetail } from "./DeviceDetail";
+import { withPresence } from "../../test/withPresence";
 
 function setLive(next: Record<string, unknown>) {
   for (const k of Object.keys(liveState)) delete liveState[k];
-  Object.assign(liveState, { "device.amp.enabled": true, ...next });
+  Object.assign(liveState, withPresence({ "device.amp.enabled": true, ...next }));
 }
 
 function setProject(config: Record<string, unknown> = {}, connection?: Record<string, unknown>) {
@@ -243,17 +244,16 @@ describe("product hardware's own panel", () => {
 });
 
 describe("the line for children in trouble", () => {
-  it("sits below a pause, which can hold a device that still reads connected", async () => {
+  it("is not drawn while a pause holds the device, which is never connected then", async () => {
     setInfo({ driver_info: { child_entity_types: { port: { label: "Port", label_plural: "Ports" } } } });
     setLive({
-      "device.amp.connected": true,
+      "device.amp.connected": false,
       "device.amp.paused": true,
       "device.amp.port.01.online": false,
     });
     await showPage();
-    const line = await screen.findByTestId("child-trouble-banner");
-    expect(line.textContent).toContain("1 of 1 port");
-    expect(before(screen.getByText(/^Paused/), line)).toBe(true);
+    expect(screen.getByText(/^Paused/)).toBeTruthy();
+    expect(screen.queryByTestId("child-trouble-banner")).toBeNull();
   });
 });
 

@@ -16,7 +16,7 @@ import { useDropRemovedSelection } from "./devices/useDropRemovedSelection";
 import { AddDeviceDialog, EditDeviceDialog } from "./devices/DeviceDialogs";
 import { findDeviceReferences } from "./devices/deviceUtils";
 import { devicesOnBridgePort } from "./devices/bridgePorts";
-import { computeStatusCounts, deviceStatusOf, type DeviceListStatus } from "./deviceViewHelpers";
+import { STATUS_CHIPS, computeStatusCounts, deviceStatusOf, type DeviceListStatus } from "./deviceViewHelpers";
 
 type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
 
@@ -457,13 +457,10 @@ export function DeviceView() {
               marginBottom: "var(--space-sm)", fontSize: 11, color: "var(--text-muted)",
             }}>
               <span>{statusCounts.total} device{statusCounts.total !== 1 ? "s" : ""}:</span>
-              {([
+              {[
                 { key: "all" as const, label: "All", count: statusCounts.total },
-                { key: "online" as const, label: "Online", count: statusCounts.online },
-                { key: "offline" as const, label: "Offline", count: statusCounts.offline },
-                { key: "asleep" as const, label: "Asleep", count: statusCounts.asleep },
-                { key: "orphaned" as const, label: "Orphaned", count: statusCounts.orphaned },
-              ] as const).filter((f) => f.key === "all" || f.count > 0).map((f) => (
+                ...STATUS_CHIPS.map((chip) => ({ ...chip, count: statusCounts[chip.key] })),
+              ].filter((f) => f.key === "all" || f.count > 0).map((f) => (
                 <button
                   key={f.key}
                   onClick={() => setStatusFilter(f.key)}
@@ -514,7 +511,7 @@ export function DeviceView() {
               <button
                 onClick={() => {
                   const ls = useConnectionStore.getState().liveState;
-                  setSelectedIds(new Set(filteredDevices.filter((d) => ls[`device.${d.id}.connected`]).map((d) => d.id)));
+                  setSelectedIds(new Set(filteredDevices.filter((d) => deviceStatusOf(d.id, ls) === "online").map((d) => d.id)));
                 }}
                 style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "rgba(76,175,80,0.15)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
               >
@@ -643,7 +640,6 @@ export function DeviceView() {
                       name={dev.name}
                       driver={dev.driver}
                       selected={selectedId === dev.id}
-                      enabled={dev.enabled !== false}
                       groupNames={deviceGroupNames.get(dev.id)}
                       onClick={() => {
                         if (bulkMode) {

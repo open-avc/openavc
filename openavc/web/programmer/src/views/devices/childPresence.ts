@@ -28,6 +28,8 @@
  * badge, the trouble filter and the device banner read `trouble`.
  */
 
+import { AWAY_ASKED_FOR, presenceIn } from "../../components/shared/devicePresence";
+
 /** Codes this module knows by name. The vocabulary itself lives server-side in
  *  core/connection_fault.py; these are the ones the UI has to branch on. */
 const NOT_FITTED = "not_fitted";
@@ -57,7 +59,7 @@ export interface ChildPresence {
 
 /** What the parent device is doing, as far as its children are concerned. */
 export interface ChildContext {
-  /** The parent is away on purpose: asleep, restarting or paused. Every child
+  /** The parent is away on purpose: restarting, asleep or paused. Every child
    *  carries `parent_offline` then (the platform writes it whenever the
    *  parent's `connected` goes false), and that is expected rather than
    *  something to go and fix, so it is not trouble. A code the driver set
@@ -87,18 +89,15 @@ export function childPresence(
 
 /**
  * Whether a device is away on purpose, the case `ChildContext.parentAway`
- * describes: a command put it to sleep (`asleep`), a command is restarting it
- * (`restarting`), or Live Test / a Device Audit holds it (`paused`).
+ * describes: its presence word is one someone asked for (`AWAY_ASKED_FOR`:
+ * a command restarting it or putting it to sleep, or Live Test or a Device
+ * Audit holding it).
  */
 export function parentAwayFrom(
   liveState: Record<string, unknown>,
   deviceId: string,
 ): boolean {
-  return Boolean(
-    liveState[`device.${deviceId}.asleep`] ||
-      liveState[`device.${deviceId}.restarting`] ||
-      liveState[`device.${deviceId}.paused`],
-  );
+  return AWAY_ASKED_FOR.has(presenceIn(liveState, deviceId));
 }
 
 /**

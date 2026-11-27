@@ -51,6 +51,7 @@ import { useProjectStore } from "../../store/projectStore";
 import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
 import { DeviceListItem } from "./DeviceListItem";
+import { withPresence } from "../../test/withPresence";
 
 const SENTENCE =
   "No login for this device is saved on this system. Enter it on the device's page in the Programmer.";
@@ -74,7 +75,7 @@ function driverInfo(defaultPassword?: string) {
 
 function setLive(next: Record<string, unknown>) {
   for (const k of Object.keys(liveState)) delete liveState[k];
-  Object.assign(liveState, next);
+  Object.assign(liveState, withPresence(next));
 }
 
 function showPage() {
@@ -181,7 +182,7 @@ describe("a device that needs its login", () => {
   it("says Needs login in the device list too", () => {
     setLive(WAITING);
     render(
-      <DeviceListItem deviceId="wb1" name="Rack Power" driver="acme_power" selected={false} enabled onClick={() => {}} />,
+      <DeviceListItem deviceId="wb1" name="Rack Power" driver="acme_power" selected={false} onClick={() => {}} />,
     );
     expect(screen.getByText("Needs login")).toBeTruthy();
   });
@@ -189,7 +190,7 @@ describe("a device that needs its login", () => {
   it("says nothing of a login in the device list for a device that is simply offline", () => {
     setLive({ ...WAITING, "device.wb1.offline_reason": "unreachable" });
     render(
-      <DeviceListItem deviceId="wb1" name="Rack Power" driver="acme_power" selected={false} enabled onClick={() => {}} />,
+      <DeviceListItem deviceId="wb1" name="Rack Power" driver="acme_power" selected={false} onClick={() => {}} />,
     );
     expect(screen.queryByText("Needs login")).toBeNull();
   });

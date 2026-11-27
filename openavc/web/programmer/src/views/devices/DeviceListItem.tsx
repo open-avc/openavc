@@ -1,6 +1,7 @@
 import { useConnectionStore } from "../../store/connectionStore";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { driverLabel } from "../../components/shared/driverLabel";
+import { presenceKey, presenceWord } from "../../components/shared/devicePresence";
 import { awayState } from "./deviceAway";
 
 export function DeviceListItem({
@@ -8,7 +9,6 @@ export function DeviceListItem({
   name,
   driver,
   selected,
-  enabled,
   groupNames,
   onClick,
 }: {
@@ -16,27 +16,12 @@ export function DeviceListItem({
   name: string;
   driver: string;
   selected: boolean;
-  enabled: boolean;
   groupNames?: string[];
   onClick: () => void;
 }) {
-  const connected = useConnectionStore(
-    (s) => s.liveState[`device.${deviceId}.connected`] as boolean | undefined
-  );
-  const orphaned = useConnectionStore(
-    (s) => s.liveState[`device.${deviceId}.orphaned`] as boolean | undefined
-  );
-  const paused = useConnectionStore(
-    (s) => s.liveState[`device.${deviceId}.paused`] as boolean | undefined
-  );
+  const presence = presenceWord(useConnectionStore((s) => s.liveState[presenceKey(deviceId)]));
   const pausedFor = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.paused_for`]
-  );
-  const restarting = useConnectionStore(
-    (s) => s.liveState[`device.${deviceId}.restarting`] as boolean | undefined
-  );
-  const asleep = useConnectionStore(
-    (s) => s.liveState[`device.${deviceId}.asleep`] === true
   );
   const offlineReason = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.offline_reason`]
@@ -46,17 +31,11 @@ export function DeviceListItem({
   // the device's page would ask for it, so a pause, a restart or a sleep wins
   // here as it does there.
   const needsLogin = awayState(
-    {
-      connected: connected ?? false,
-      orphaned: orphaned ?? false,
-      paused: paused ?? false,
-      restarting: restarting ?? false,
-      asleep,
-      offlineReason: String(offlineReason ?? ""),
-      offlineDetail: "",
-    },
-    enabled,
+    { presence, offlineReason: String(offlineReason ?? ""), offlineDetail: "" },
   ) === "needs_login";
+  const waitingForDriver = presence === "waiting_for_driver";
+  // Not running: turned off in the project, or its driver is not installed.
+  const dimmed = presence === "disabled" || waitingForDriver;
 
   return (
     <button
@@ -72,17 +51,10 @@ export function DeviceListItem({
         textAlign: "left",
         marginBottom: "var(--space-xs)",
         transition: "background var(--transition-fast)",
-        opacity: enabled && !orphaned ? 1 : 0.6,
+        opacity: dimmed ? 0.6 : 1,
       }}
     >
-      <DeviceStatusDot
-        connected={connected ?? false}
-        orphaned={orphaned ?? false}
-        paused={paused ?? false}
-        pausedFor={pausedFor}
-        restarting={restarting ?? false}
-        asleep={asleep}
-      />
+      <DeviceStatusDot presence={presence} pausedFor={pausedFor} />
       <div style={{ minWidth: 0 }}>
         <div
           style={{
@@ -96,11 +68,11 @@ export function DeviceListItem({
         </div>
         <div style={{
           fontSize: "var(--font-size-sm)",
-          color: orphaned ? "var(--color-warning, #f59e0b)" : "var(--text-muted)",
+          color: waitingForDriver ? "var(--color-warning, #f59e0b)" : "var(--text-muted)",
           display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap",
         }}>
           <span style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {driverLabel(driver)}{orphaned ? " (not installed)" : ""}
+            {driverLabel(driver)}{waitingForDriver ? " (not installed)" : ""}
           </span>
           {needsLogin && (
             <span style={{ color: "var(--color-warning, #f59e0b)", whiteSpace: "nowrap" }}>

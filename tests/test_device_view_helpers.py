@@ -1,14 +1,15 @@
 """Regression tests for DeviceView's status-count helper (deviceViewHelpers).
 
-The status-filter chips (All / Online / Offline / Orphaned) showed counts
+The status-filter chips (All / Online / Offline / Orphaned and the rest) showed counts
 computed from ALL devices, even when a search query was active, so the chip
 numbers disagreed with the search-narrowed visible list. The counts are now
 computed by computeStatusCounts over the search-filtered list, which the helper
 supports by counting exactly the list it's handed (and reporting that list's
 length as `total`).
 
-Exercised via the esbuild-on-the-fly harness (deviceViewHelpers.ts is zero-import
-pure logic). Skips when the Node toolchain or esbuild is absent.
+Exercised via the esbuild-on-the-fly harness (deviceViewHelpers.ts is pure logic,
+bundled with the presence reader it imports). Skips when the Node toolchain or
+esbuild is absent.
 """
 from __future__ import annotations
 

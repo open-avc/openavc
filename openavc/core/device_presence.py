@@ -35,7 +35,10 @@ change every cycle. The command gate asks the driver for it besides the word
 device gone quiet in standby still reaches it.
 
 Pure, with no imports from the platform, so a copy elsewhere can be held to
-it.
+it. The Programmer's copy is web/programmer/src/components/shared/
+devicePresence.ts, which its status dot, device list, device page, Dashboard
+and pickers read the word through; tests/test_ide_presence_mirror.py holds
+it to these words.
 """
 
 from __future__ import annotations

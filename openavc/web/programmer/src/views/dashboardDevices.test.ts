@@ -1,52 +1,68 @@
 import { describe, it, expect } from "vitest";
-import { asleepHeadline, summarizeDashboardDevices } from "./dashboardDevices";
+import { PRESENCE_WORDS, presenceKey, type PresenceWord } from "../components/shared/devicePresence";
+import { asleepHeadline, dashboardDisconnected, summarizeDashboardDevices, tileBorder } from "./dashboardDevices";
 
-const DEVICES = [
-  { id: "proj", name: "Projector" },
-  { id: "disp", name: "Lobby Display" },
-  { id: "pc", name: "vMix PC" },
-  { id: "amp", name: "Amplifier", enabled: false },
-];
+/** Where each word lands on the Dashboard: its figure, and its tile's border. */
+const LANDS: Record<PresenceWord, { figure: "none" | "connected" | "asleep" | "disconnected" | "enabled only"; border: string }> = {
+  disabled: { figure: "none", border: "var(--border-color)" },
+  waiting_for_driver: { figure: "disconnected", border: "rgba(239,68,68,0.3)" },
+  online: { figure: "connected", border: "rgba(76,175,80,0.3)" },
+  restarting: { figure: "enabled only", border: "var(--border-color)" },
+  asleep: { figure: "asleep", border: "var(--border-color)" },
+  paused: { figure: "enabled only", border: "var(--border-color)" },
+  offline: { figure: "disconnected", border: "rgba(239,68,68,0.3)" },
+  connecting: { figure: "disconnected", border: "rgba(239,68,68,0.3)" },
+};
+
+function figureOf(word: PresenceWord): string {
+  const s = summarizeDashboardDevices([{ id: "d", name: "Dev" }], { [presenceKey("d")]: word });
+  if (s.enabled === 0) return "none";
+  if (s.connected === 1) return "connected";
+  if (s.asleep.length === 1) return "asleep";
+  if (s.disconnected.length === 1) return "disconnected";
+  return "enabled only";
+}
 
 describe("summarizeDashboardDevices", () => {
-  it("lists an asleep device on its own line, not among the disconnected", () => {
-    const s = summarizeDashboardDevices(DEVICES, {
-      "device.proj.connected": true,
-      "device.disp.connected": false,
-      "device.pc.connected": false,
-      "device.pc.asleep": true,
-    });
-    expect(s.connected).toBe(1);
-    expect(s.enabled).toBe(3);
-    expect(s.disconnected).toEqual(["Lobby Display"]);
-    expect(s.asleep).toEqual(["vMix PC"]);
+  it.each(PRESENCE_WORDS)("counts a device that reads %s where the word says", (word) => {
+    expect(figureOf(word)).toBe(LANDS[word].figure);
   });
 
-  it("reports nothing disconnected when the only device away is asleep", () => {
-    const s = summarizeDashboardDevices(DEVICES.slice(0, 1).concat(DEVICES[2]), {
-      "device.proj.connected": true,
-      "device.pc.connected": false,
-      "device.pc.asleep": true,
-    });
-    expect(s.disconnected).toEqual([]);
-    expect(s.asleep).toEqual(["vMix PC"]);
+  it("lists names in the project's order", () => {
+    const s = summarizeDashboardDevices(
+      [
+        { id: "proj", name: "Projector" },
+        { id: "disp", name: "Lobby Display" },
+        { id: "pc", name: "vMix PC" },
+        { id: "cam", name: "Stage Camera" },
+        { id: "amp", name: "Amplifier" },
+      ],
+      {
+        [presenceKey("proj")]: "online",
+        [presenceKey("disp")]: "offline",
+        [presenceKey("pc")]: "asleep",
+        [presenceKey("cam")]: "paused",
+        [presenceKey("amp")]: "disabled",
+      },
+    );
+    expect(s).toEqual({ connected: 1, enabled: 4, disconnected: ["Lobby Display"], asleep: ["vMix PC"] });
   });
 
-  it("counts a device whose asleep is the server's null as disconnected", () => {
-    const s = summarizeDashboardDevices([DEVICES[2]], {
+  it("reads the word, not the parts it is made of", () => {
+    const s = summarizeDashboardDevices([{ id: "pc", name: "vMix PC" }], {
       "device.pc.connected": false,
-      "device.pc.asleep": null,
+      "device.pc.asleep": true,
+      [presenceKey("pc")]: "offline",
     });
     expect(s.disconnected).toEqual(["vMix PC"]);
     expect(s.asleep).toEqual([]);
   });
+});
 
-  it("leaves disabled devices out of every figure", () => {
-    const s = summarizeDashboardDevices([DEVICES[3]], {
-      "device.amp.connected": false,
-      "device.amp.asleep": true,
-    });
-    expect(s).toEqual({ connected: 0, enabled: 0, disconnected: [], asleep: [] });
+describe("tileBorder", () => {
+  it.each(PRESENCE_WORDS)("borders a tile that reads %s as its figure does", (word) => {
+    expect(tileBorder(word)).toBe(LANDS[word].border);
+    expect(dashboardDisconnected(word)).toBe(LANDS[word].figure === "disconnected");
   });
 });
 

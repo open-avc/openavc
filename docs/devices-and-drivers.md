@@ -53,7 +53,7 @@ Some older devices offer only encryption settings that current SSH clients no lo
 
 After adding a device, click it in the device list to open the detail panel:
 
-- **Connection status**: green dot = connected, red dot = disconnected, amber dot = paused or restarting (hover for which), grey dot = asleep (put to sleep on purpose; its wake command brings it back). A device paused for a Device Audit or for Live Test in the Driver Builder says so on its page, with **Resume** to reconnect it.
+- **Connection status**: green dot = connected, red dot = disconnected, amber dot = paused or restarting (hover for which), grey dot = asleep (put to sleep on purpose; its wake command brings it back) or turned off in the project. A device paused for a Device Audit or for Live Test in the Driver Builder says so on its page, with **Resume** to reconnect it. The dot, the device list's filters (Online, Offline, Restarting, Paused, Asleep, Disabled, Orphaned) and the Dashboard all show the device's [`presence` word](variables-and-state.md#is-the-device-there).
 - **Live state**: real-time values for all state variables (power, input, etc.). A fractional reading is rounded to the precision its driver declares; hover it for the full value.
 - **Command testing**: select a command from the dropdown, fill any parameters, click **Send**. The line below says it was sent, and shows the device's answer when the driver returns one.
 - **Raw log**: see the bytes sent and received for debugging

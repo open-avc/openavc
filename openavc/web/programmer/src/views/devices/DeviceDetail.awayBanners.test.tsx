@@ -65,12 +65,13 @@ vi.mock("../../components/plugins/PluginExtensions", () => ({
 import { useProjectStore } from "../../store/projectStore";
 import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
+import { withPresence } from "../../test/withPresence";
 
 const DETAIL = "Nothing answered at 10.0.0.9.";
 
 function setLive(next: Record<string, unknown>) {
   for (const k of Object.keys(liveState)) delete liveState[k];
-  Object.assign(liveState, { "device.amp.enabled": true, ...next });
+  Object.assign(liveState, withPresence({ "device.amp.enabled": true, ...next }));
 }
 
 function setProject(enabled = true, driver = "acme_amp") {
@@ -151,17 +152,22 @@ describe("which away banner explains the device", () => {
     expect(outsideTable(DETAIL)).toEqual([]);
   });
 
-  it("a held device reads as held, not restarting, asleep or offline", async () => {
-    setLive({
-      ...away,
-      "device.amp.paused": true,
-      "device.amp.restarting": true,
-      "device.amp.asleep": true,
-      "device.amp.offline_detail": DETAIL,
-    });
+  it("a paused device reads as paused, not offline", async () => {
+    setLive({ ...away, "device.amp.paused": true, "device.amp.offline_detail": DETAIL });
     await showPage();
     expect(bannersShown()).toEqual(["paused"]);
     expect(outsideTable(DETAIL)).toEqual([]);
+  });
+
+  it("a pause gives way to a restart and to a sleep, as the device's presence word does", async () => {
+    setLive({ ...away, "device.amp.paused": true, "device.amp.restarting": true, "device.amp.asleep": true });
+    const restarting = await showPage();
+    expect(bannersShown()).toEqual(["restarting"]);
+    restarting.unmount();
+
+    setLive({ ...away, "device.amp.paused": true, "device.amp.asleep": true });
+    await showPage();
+    expect(bannersShown()).toEqual(["asleep"]);
   });
 
   it("restarting wins over asleep, and over offline", async () => {
@@ -177,23 +183,26 @@ describe("which away banner explains the device", () => {
     expect(screen.queryByText("Offline")).toBeNull();
   });
 
-  it("restarting and asleep show even while the device still reads connected", async () => {
-    setLive({ "device.amp.connected": true, "device.amp.restarting": true });
-    await showPage();
-    expect(bannersShown()).toEqual(["restarting"]);
-  });
-
-  it("asleep shows while connected too, and wins over offline", async () => {
-    setLive({ ...away, "device.amp.connected": true, "device.amp.asleep": true });
+  it("asleep wins over offline", async () => {
+    setLive({ ...away, "device.amp.asleep": true });
     await showPage();
     expect(bannersShown()).toEqual(["asleep"]);
   });
 
-  it("a paused device that still reads connected shows the pause", async () => {
-    setLive({ "device.amp.connected": true, "device.amp.paused": true, "device.amp.paused_for": "audit" });
+  it("a pause names its holder", async () => {
+    setLive({ ...away, "device.amp.paused": true, "device.amp.paused_for": "audit" });
     await showPage();
     expect(screen.getByText("Paused for a Device Audit. It reconnects when the audit finishes.")).toBeTruthy();
   });
+
+  it.each(["restarting", "asleep", "paused"])(
+    "a device that reads online has no banner, whatever %s says",
+    async (flag) => {
+      setLive({ "device.amp.connected": true, [`device.amp.${flag}`]: true, "device.amp.presence": "online" });
+      await showPage();
+      expect(bannersShown()).toEqual([]);
+    },
+  );
 
   it("offline needs a sentence, a disconnected device and an enabled one", async () => {
     setLive({ ...away, "device.amp.offline_detail": DETAIL });
@@ -213,7 +222,7 @@ describe("which away banner explains the device", () => {
     connected.unmount();
 
     setProject(false);
-    setLive({ ...away, "device.amp.offline_detail": DETAIL });
+    setLive({ ...away, "device.amp.enabled": false, "device.amp.offline_detail": DETAIL });
     await showPage();
     expect(bannersShown()).toEqual([]);
   });
@@ -247,7 +256,7 @@ describe("which away banner explains the device", () => {
     connected.unmount();
 
     setProject(false);
-    setLive({ ...away, "device.amp.offline_reason": "login_missing" });
+    setLive({ ...away, "device.amp.enabled": false, "device.amp.offline_reason": "login_missing" });
     await showPage();
     expect(bannersShown()).toEqual([]);
   });

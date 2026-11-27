@@ -129,7 +129,6 @@ export function DeviceDetail({
         deviceId={deviceId}
         deviceName={deviceName}
         away={away}
-        isEnabled={isEnabled}
         info={deviceInfo}
         config={deviceConfig}
         installed={installed}

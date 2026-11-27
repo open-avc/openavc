@@ -62,22 +62,14 @@ export function DeviceHeader(props: DeviceHeaderProps) {
           flexWrap: "wrap",
         }}
       >
-        <DeviceStatusDot
-          connected={away.connected}
-          orphaned={away.orphaned}
-          paused={away.paused}
-          pausedFor={away.pausedFor}
-          restarting={away.restarting}
-          asleep={away.asleep}
-          size={12}
-        />
+        <DeviceStatusDot presence={away.presence} pausedFor={away.pausedFor} size={12} />
         <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{props.deviceName}</h2>
         <HeaderActions {...props} reconnect={reconnect} question={question} />
       </div>
       <DriverLine driver={info?.driver} deviceId={deviceId} onReport={props.onReport} />
       {/* Product hardware's driver is part of OpenAVC, and a device whose
           driver is not installed has the orphan banner instead. */}
-      {manageable && !away.orphaned && info?.driver && (
+      {manageable && away.presence !== "waiting_for_driver" && info?.driver && (
         <DriverUpdateLine driverId={info.driver} onUpdated={props.onDriverUpdated} />
       )}
     </div>

@@ -9,6 +9,7 @@ import {
   scanChildTrouble,
   troubleSummary,
 } from "./childPresence";
+import { PRESENCE_WORDS, presenceKey, type PresenceWord } from "../../components/shared/devicePresence";
 
 describe("childPresence", () => {
   it("reads a child with no fault as in service", () => {
@@ -163,28 +164,27 @@ describe("a parent that is away on purpose", () => {
 });
 
 describe("parentAwayFrom", () => {
-  it("reads asleep, restarting and paused as away", () => {
-    expect(parentAwayFrom({ "device.mx.asleep": true }, "mx")).toBe(true);
-    expect(parentAwayFrom({ "device.mx.restarting": true }, "mx")).toBe(true);
-    expect(parentAwayFrom({ "device.mx.paused": true }, "mx")).toBe(true);
+  const AWAY: Record<PresenceWord, boolean> = {
+    disabled: false,
+    waiting_for_driver: false,
+    online: false,
+    restarting: true,
+    asleep: true,
+    paused: true,
+    offline: false,
+    connecting: false,
+  };
+
+  it.each(PRESENCE_WORDS)("reads a parent that reads %s as away or not, as the word says", (word) => {
+    expect(parentAwayFrom({ [presenceKey("mx")]: word }, "mx")).toBe(AWAY[word]);
   });
 
-  it("reads a device that is merely offline as not away", () => {
-    expect(
-      parentAwayFrom(
-        {
-          "device.mx.connected": false,
-          "device.mx.asleep": null,
-          "device.mx.restarting": null,
-          "device.mx.paused": false,
-        },
-        "mx",
-      ),
-    ).toBe(false);
+  it("reads the word, not the parts it is made of", () => {
+    expect(parentAwayFrom({ "device.mx.asleep": true, [presenceKey("mx")]: "offline" }, "mx")).toBe(false);
   });
 
-  it("reads another device's state as nothing to do with this one", () => {
-    expect(parentAwayFrom({ "device.other.asleep": true }, "mx")).toBe(false);
+  it("reads another device's word as nothing to do with this one", () => {
+    expect(parentAwayFrom({ [presenceKey("other")]: "asleep" }, "mx")).toBe(false);
   });
 });
 

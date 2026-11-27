@@ -32,6 +32,7 @@ import {
 } from "../../shared/SearchableDropdown";
 import { valueText } from "../../shared/booleanWords";
 import { driverLabel } from "../../shared/driverLabel";
+import { presenceIn, presenceNote } from "../../shared/devicePresence";
 
 /** Shape of one entry in DRIVER_INFO.state_variables (per-device, from
  *  getDevice — instance-building drivers only populate it there). Child
@@ -341,14 +342,13 @@ export function DeviceValuePicker({
         >
           <option value="">Select device...</option>
           {project.devices.map((d) => {
-            const liveState = useConnectionStore.getState().liveState;
-            const connected = liveState[`device.${d.id}.connected`];
-            // Put to sleep by one of its own commands: said in words, because
+            const presence = presenceIn(useConnectionStore.getState().liveState, d.id);
+            // Away for a reason (asleep, paused, ...): said in words, because
             // an <option> can carry no other mark than the hollow dot.
-            const asleep = !connected && liveState[`device.${d.id}.asleep`] === true;
+            const note = presenceNote(presence);
             return (
               <option key={d.id} value={d.id}>
-                {connected ? "● " : "○ "}{d.name} ({driverLabel(d.driver)}){asleep ? ", asleep" : ""}
+                {presence === "online" ? "● " : "○ "}{d.name} ({driverLabel(d.driver)}){note ? `, ${note.toLowerCase()}` : ""}
               </option>
             );
           })}
