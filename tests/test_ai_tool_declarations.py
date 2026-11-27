@@ -4,7 +4,8 @@
 tells the model exactly that. Each handler is read from its source here: the
 fields it reads from its input (``input.get("x")``, ``input["x"]``,
 ``"x" in input``, and those reads inside every helper it hands the input to),
-the defaults it takes for one left out, whether it reaches the project's edit
+the defaults it takes for one left out (its own ``get``'s, or the one a number's
+clamp supplies, held both ways), whether it reaches the project's edit
 door, and how long it may wait. A field read and not declared is one the
 cloud would tell the model it ignored; a field declared and never read is one
 the model would send for nothing.
@@ -115,6 +116,8 @@ class _Reads:
         self.tool = tool
         self.fields: set[str] = set()
         self.defaults: dict[str, list[Any]] = {}
+        #: The defaults a clamp gives a left-out input (also in ``defaults``).
+        self.clamped: dict[str, list[Any]] = {}
         self.whole = False
         self.unknown: list[str] = []
         self._seen: set[tuple] = set()
@@ -148,6 +151,20 @@ class _Reads:
             self.whole = True
         elif isinstance(node, ast.Call):
             self._handed_on(node, fn, param, scope, where)
+            self._clamped(node, fn, param, scope)
+
+    def _clamped(self, node: ast.Call, fn: Callable, param: str, scope: dict) -> None:
+        """The default a number's clamp gives an input the door reads with no
+        default of its own: ``_coerce_number(input.get("x"), default=N)``, or
+        that read handed to a helper that clamps it so."""
+        for position, arg in enumerate(node.args):
+            if not (isinstance(arg, ast.Call) and _is_name(getattr(arg.func, "value", None), param)
+                    and arg.func.attr == "get" and len(arg.args) == 1):
+                continue
+            for value in _clamp_defaults(node, position, fn, self._tables):
+                for name in _key_values(arg.args[0], scope) or ():
+                    self.clamped.setdefault(name, []).append(value)
+                    self.defaults.setdefault(name, []).append(value)
 
     def _method(self, node: ast.Call, param: str, scope: dict, where: str) -> None:
         method = node.func.attr
@@ -197,6 +214,36 @@ class _Reads:
 
 def _is_name(node: Any, name: str) -> bool:
     return isinstance(node, ast.Name) and node.id == name
+
+
+#: The helper that clamps a tool-supplied number, taking ``default=`` for one
+#: left out.
+CLAMP = "_coerce_number"
+
+
+def _clamp_default(call: ast.Call) -> list[Any]:
+    """The ``default=`` a clamp call gives the value it clamps."""
+    if getattr(call.func, "id", getattr(call.func, "attr", None)) != CLAMP:
+        return []
+    return [kw.value.value for kw in call.keywords
+            if kw.arg == "default" and isinstance(kw.value, ast.Constant)]
+
+
+def _clamp_defaults(call: ast.Call, position: int, fn: Callable,
+                    tables: dict[str, list[Callable]]) -> list[Any]:
+    """The default ``call`` gives its argument at ``position``: a clamp's own,
+    or the one a helper's clamp gives the parameter that argument binds."""
+    if position == 0 and _clamp_default(call):
+        return _clamp_default(call)
+    found: list[Any] = []
+    for callee in _callees(call.func, fn, tables):
+        params = _params(callee)
+        if position >= len(params):
+            continue
+        for inner in ast.walk(_tree(callee)):
+            if isinstance(inner, ast.Call) and inner.args and _is_name(inner.args[0], params[position]):
+                found += _clamp_default(inner)
+    return found
 
 
 def _key_values(arg: ast.AST, scope: dict) -> frozenset | None:
@@ -333,6 +380,18 @@ def test_a_declared_default_is_what_the_handler_takes(tool):
         elsewhere = DEFAULTS_ELSEWHERE.get((tool, name))
         taken = [elsewhere()] if elsewhere else _reads(tool).defaults.get(name, [])
         assert taken, f"{tool}.{name} declares a default the handler never takes"
+        assert all(value == shape["default"] for value in taken), (tool, name, taken)
+
+
+@pytest.mark.parametrize("tool", TOOL_NAMES)
+def test_a_default_a_clamp_gives_a_left_out_input_is_declared(tool):
+    """The other way, for a number's clamp: an input the door reads with no
+    default of its own and clamps with one takes that default when it is left
+    out, so its declaration states it (a ``get`` placeholder such as ``""``
+    for a required input is not a default, so only the clamp's are held)."""
+    for name, taken in _reads(tool).clamped.items():
+        shape = decl.TOOLS[tool].inputs[name]
+        assert "default" in shape, f"{tool}.{name} is clamped to {taken} when left out, and declares no default"
         assert all(value == shape["default"] for value in taken), (tool, name, taken)
 
 

@@ -323,7 +323,8 @@ TOOLS: dict[str, Tool] = {
         "timeout": default(NUMBER, 120),
     }),
     "get_discovery_results": Tool(READ, {
-        "wait": default(BOOLEAN, False), "category": STRING, "timeout": NUMBER,
+        "wait": default(BOOLEAN, False), "category": STRING,
+        "timeout": default(NUMBER, 120),
     }, answer_within_seconds=180),
     # Themes
     "list_themes": Tool(READ),

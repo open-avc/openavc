@@ -2371,6 +2371,7 @@
             "type": "string"
           },
           "timeout": {
+            "default": 120,
             "type": "number"
           },
           "wait": {
