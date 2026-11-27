@@ -77,34 +77,53 @@ export function AssistantUnavailable({ state, reason, neededRelease }: Props) {
   );
 }
 
+/** Whether a click installs the update or only opens the Updates page, which
+ *  then says how to update this deployment: null until the update settings
+ *  are read, false when they cannot be. */
+function useInstallsItself(): boolean | null {
+  const [installs, setInstalls] = useState<boolean | null>(null);
+  useEffect(() => {
+    let left = false;
+    const settle = (value: boolean) => { if (!left) setInstalls(value); };
+    getUpdateStatus()
+      .then((s) => settle(s.can_self_update && s.update_owner !== "firmware"))
+      .catch(() => settle(false));
+    return () => { left = true; };
+  }, []);
+  return installs;
+}
+
+/** The version this system runs, as the live state has it, or "". */
+function useRunningVersion(): string {
+  const running = useConnectionStore((s) => s.liveState["system.version"]);
+  return typeof running === "string" ? running : "";
+}
+
 /** The system is behind the release the assistant needs: that release, and
  *  its install one click away through the Updates page. */
 function UpdateForAssistant({ neededRelease }: { neededRelease: string }) {
-  const running = useConnectionStore((s) => s.liveState["system.version"]);
-  // Whether a click installs or only opens the page, which then says how to
-  // update this deployment. Unknown until the update settings are read.
-  const [installs, setInstalls] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    let left = false;
-    getUpdateStatus()
-      .then((s) => { if (!left) setInstalls(s.can_self_update && s.update_owner !== "firmware"); })
-      .catch(() => { if (!left) setInstalls(false); });
-    return () => { left = true; };
-  }, []);
-
+  const running = useRunningVersion();
+  const installs = useInstallsItself();
   return (
     <>
       <p style={textStyle}>{"Update to v" + neededRelease + " to use the assistant."}</p>
-      {typeof running === "string" && running && (
+      {running && (
         <p style={{ ...noteStyle, marginTop: "calc(-1 * var(--space-sm))" }}>{"This system runs v" + running + "."}</p>
       )}
-      {installs !== null && (
-        <button style={installs ? primaryStyle : secondaryStyle} onClick={() => requestInstall(neededRelease)}>
-          {installs ? "Install v" + neededRelease : "Open System Updates"}
-        </button>
-      )}
-      {installs && <p style={noteStyle}>Installing restarts the server.</p>}
+      {installs !== null && <UpdateButton neededRelease={neededRelease} installs={installs} />}
+    </>
+  );
+}
+
+function UpdateButton({ neededRelease, installs }: { neededRelease: string; installs: boolean }) {
+  const open = () => requestInstall(neededRelease);
+  if (!installs) {
+    return <button style={secondaryStyle} onClick={open}>Open System Updates</button>;
+  }
+  return (
+    <>
+      <button style={primaryStyle} onClick={open}>{"Install v" + neededRelease}</button>
+      <p style={noteStyle}>Installing restarts the server.</p>
     </>
   );
 }
@@ -115,26 +134,7 @@ function CloudBlock({ state, reason }: { state: AssistantBlock; reason: string }
   const paired = state !== "unpaired";
   return (
     <>
-      {refused ? (
-        <p style={textStyle}>{reason || "The assistant is not available on this account."}</p>
-      ) : paired ? (
-        <p style={textStyle}>
-          This system is paired but not connected to OpenAVC Cloud right
-          now. Cloud Connection shows what the connection is doing.
-        </p>
-      ) : (
-        <>
-          <p style={textStyle}>
-            AI features require a cloud connection. Pair this system with
-            your OpenAVC Cloud account to get started.
-          </p>
-          <p style={{ ...noteStyle, maxWidth: 400, marginTop: "calc(-1 * var(--space-sm))" }}>
-            A free account includes one paired system, so you can try the
-            assistant and the other cloud features at no cost. On a free
-            account the assistant comes with a usage allowance.
-          </p>
-        </>
-      )}
+      <CloudBlockText refused={refused} paired={paired} reason={reason} />
       <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "center" }}>
         {!paired && (
           <a href="https://cloud.openavc.com" target="_blank" rel="noopener noreferrer" style={primaryStyle}>
@@ -154,6 +154,34 @@ function CloudBlock({ state, reason }: { state: AssistantBlock; reason: string }
         </button>
       </div>
       {!refused && reason && reason !== "Checking..." && <p style={noteStyle}>{reason}</p>}
+    </>
+  );
+}
+
+/** What is in the way, in words: the cloud's sentence for a refusal. */
+function CloudBlockText({ refused, paired, reason }: { refused: boolean; paired: boolean; reason: string }) {
+  if (refused) {
+    return <p style={textStyle}>{reason || "The assistant is not available on this account."}</p>;
+  }
+  if (paired) {
+    return (
+      <p style={textStyle}>
+        This system is paired but not connected to OpenAVC Cloud right
+        now. Cloud Connection shows what the connection is doing.
+      </p>
+    );
+  }
+  return (
+    <>
+      <p style={textStyle}>
+        AI features require a cloud connection. Pair this system with
+        your OpenAVC Cloud account to get started.
+      </p>
+      <p style={{ ...noteStyle, maxWidth: 400, marginTop: "calc(-1 * var(--space-sm))" }}>
+        A free account includes one paired system, so you can try the
+        assistant and the other cloud features at no cost. On a free
+        account the assistant comes with a usage allowance.
+      </p>
     </>
   );
 }

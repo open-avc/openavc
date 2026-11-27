@@ -64,32 +64,37 @@ export function useRequestedInstall(page: RequestedInstallPage): void {
   useEffect(() => {
     if (!needed) return;
     let left = false;
-    (async () => {
-      handlers.current.setChecking(true);
-      try {
-        const check = await api.checkForUpdates();
-        const status = await api.getUpdateStatus();
-        if (left) return;
-        handlers.current.onChecked(check, status);
-        if (check.error) {
-          showError("Could not check for updates: " + check.error);
-          return;
-        }
-        const next = requestedInstall(needed, check, status);
-        if (next === "not_found") {
-          showError("This system's update check did not find v" + needed.replace(/^v/i, "")
-            + ". Check for Updates again later.");
-        } else if (next !== "show") {
-          handlers.current.install(next.install);
-        }
-      } catch (e) {
-        if (!left) showError("Update check failed: " + parseApiError(e));
-      } finally {
-        if (!left) handlers.current.setChecking(false);
-      }
-    })();
+    void carryOut(needed, () => (left ? null : handlers.current));
     return () => {
       left = true;
     };
   }, [needed]);
+}
+
+/** Check for updates, then do what `requestedInstall` says, through the
+ *  page's handlers; `page()` is null once the page is left. */
+async function carryOut(needed: string, page: () => RequestedInstallPage | null): Promise<void> {
+  page()?.setChecking(true);
+  try {
+    const check = await api.checkForUpdates();
+    const status = await api.getUpdateStatus();
+    const handlers = page();
+    if (!handlers) return;
+    handlers.onChecked(check, status);
+    if (check.error) {
+      showError("Could not check for updates: " + check.error);
+      return;
+    }
+    const next = requestedInstall(needed, check, status);
+    if (next === "not_found") {
+      showError("This system's update check did not find v" + needed.replace(/^v/i, "")
+        + ". Check for Updates again later.");
+    } else if (next !== "show") {
+      handlers.install(next.install);
+    }
+  } catch (e) {
+    if (page()) showError("Update check failed: " + parseApiError(e));
+  } finally {
+    page()?.setChecking(false);
+  }
 }

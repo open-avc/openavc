@@ -140,6 +140,53 @@ export interface StreamCallbacks {
   onError?: (message: string, needsRelease?: string) => void;
 }
 
+/** One SSE message's event name and data line, or null when it lacks either. */
+function readSseEvent(part: string): { type: string; data: string } | null {
+  let type = "";
+  let data = "";
+  for (const line of part.split("\n")) {
+    if (line.startsWith("event: ")) {
+      type = line.slice(7);
+    } else if (line.startsWith("data: ")) {
+      data = line.slice(6);
+    }
+  }
+  return type && data ? { type, data } : null;
+}
+
+/** The events that end the stream. */
+const ENDING_EVENTS = new Set(["done", "error"]);
+
+/** Hand one parsed event to its callback. */
+function deliverEvent(type: string, data: any, callbacks: StreamCallbacks): void {
+  switch (type) {
+    case "status":
+      callbacks.onStatus?.(data.phase);
+      break;
+    case "text_delta":
+      callbacks.onTextDelta?.(data.text);
+      break;
+    case "tool_use_start":
+      callbacks.onToolUseStart?.(data.id, data.name);
+      break;
+    case "tool_result":
+      callbacks.onToolResult?.(data);
+      break;
+    case "round":
+      callbacks.onRound?.(data.current, data.max);
+      break;
+    case "done":
+      callbacks.onDone?.(data);
+      break;
+    case "error":
+      callbacks.onError?.(
+        data.message || "Unknown error",
+        typeof data.needs_release === "string" ? data.needs_release : undefined,
+      );
+      break;
+  }
+}
+
 /**
  * Stream a chat message via SSE. Returns an AbortController to cancel.
  */
@@ -221,51 +268,12 @@ export function streamChatMessage(
         buffer = parts.pop() || "";
 
         for (const part of parts) {
-          if (!part.trim()) continue;
-
-          let eventType = "";
-          let eventData = "";
-
-          for (const line of part.split("\n")) {
-            if (line.startsWith("event: ")) {
-              eventType = line.slice(7);
-            } else if (line.startsWith("data: ")) {
-              eventData = line.slice(6);
-            }
-          }
-
-          if (!eventType || !eventData) continue;
-
+          const event = readSseEvent(part);
+          if (!event) continue;
           try {
-            const data = JSON.parse(eventData);
-            switch (eventType) {
-              case "status":
-                callbacks.onStatus?.(data.phase);
-                break;
-              case "text_delta":
-                callbacks.onTextDelta?.(data.text);
-                break;
-              case "tool_use_start":
-                callbacks.onToolUseStart?.(data.id, data.name);
-                break;
-              case "tool_result":
-                callbacks.onToolResult?.(data);
-                break;
-              case "round":
-                callbacks.onRound?.(data.current, data.max);
-                break;
-              case "done":
-                receivedDoneOrError = true;
-                callbacks.onDone?.(data);
-                break;
-              case "error":
-                receivedDoneOrError = true;
-                callbacks.onError?.(
-                  data.message || "Unknown error",
-                  typeof data.needs_release === "string" ? data.needs_release : undefined,
-                );
-                break;
-            }
+            const data = JSON.parse(event.data);
+            if (ENDING_EVENTS.has(event.type)) receivedDoneOrError = true;
+            deliverEvent(event.type, data, callbacks);
           } catch {
             // Skip malformed JSON
           }
