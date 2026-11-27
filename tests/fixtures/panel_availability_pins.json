@@ -716,34 +716,17 @@
     ]
    },
    {
+    "e": [
+     "r_progress:macro_progress"
+    ]
+   },
+   {
     "c": {
      "r_list": {
       "r.0.0@class": "list-item",
       "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
      }
     },
-    "e": [
-     "r_feedback:feedback",
-     "r_toggle:toggle_look",
-     "r_text:text",
-     "r_label_look:label_look",
-     "r_led:color",
-     "r_slider:slider_value",
-     "r_fader:fader_value",
-     "r_gauge:gauge_value",
-     "r_meter:level_meter_value",
-     "r_select:select_value",
-     "r_textin:text_input_value",
-     "r_list:list_items",
-     "r_list:list_selected",
-     "r_image:image_look",
-     "r_nav:nav_look",
-     "r_group:group_look",
-     "r_visible:visible_when",
-     "r_progress:macro_progress"
-    ]
-   },
-   {
     "e": [
      "r_feedback:feedback",
      "r_toggle:toggle_look",
@@ -1381,6 +1364,8 @@
      "w_two:text"
     ]
    },
+   {},
+   {},
    {
     "c": {
      "w_power": {
@@ -1389,14 +1374,6 @@
       "r#": "Power"
      }
     },
-    "e": [
-     "w_power:feedback",
-     "w_other:feedback",
-     "w_bad:text"
-    ]
-   },
-   {},
-   {
     "e": [
      "w_power:feedback",
      "w_other:feedback",
@@ -3173,8 +3150,6 @@
    },
    {
     "e": [
-     "v_all:visible_when",
-     "l_items:list_items",
      "t_none:macro_progress"
     ]
    },

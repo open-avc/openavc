@@ -2896,6 +2896,110 @@ const tests = {
         assert(vol.classList.contains('device-offline'), 'unreachable: the volume control too');
     },
 
+    // What a device's state adds up to is the one word the server publishes,
+    // device.<id>.presence. Each word alone draws what its parts drew: online
+    // is up, asleep keeps the wake control's reading, every other word is
+    // away. No word yet (a panel before its first snapshot) draws normally,
+    // and so does a device's `connected` or `asleep` with no word beside it.
+    availability_reads_the_presence_word() {
+        const app = mkApp();
+        const proj = project({
+            elements: [
+                { id: 'on', type: 'button', label: 'Power On', wake_devices: ['tv'],
+                  bindings: { show: { look: { key: 'device.tv.power', default_state: 'off',
+                      states: { on: { label: 'ON' }, off: { label: 'OFF' } } } } } },
+                { id: 'vol', type: 'fader', label: 'Volume', min: 0, max: 100,
+                  bindings: { show: { value: { key: 'device.tv.volume' } } } },
+                { id: 'go', type: 'button', label: 'Go', action_devices: ['tv'] },
+            ],
+            placements: { on: { x: 5, y: 5, w: 20, h: 10 }, vol: { x: 30, y: 5, w: 20, h: 60 }, go: { x: 55, y: 5, w: 20, h: 10 } },
+        });
+        const base = { 'device.tv.power': 'off', 'device.tv.volume': 20 };
+        app.state = { ...base };
+        renderProject(app, proj);
+        const node = (id) => app.root.querySelector(`[data-element-id="${id}"]`);
+        const draw = (extra) => {
+            app.state = { ...base, ...extra };
+            app.evaluateAllBindings();
+            return {
+                offline: app.availability.deviceOffline('tv'),
+                asleep: app.availability.deviceAsleep('tv'),
+                wake: node('on').classList.contains('device-offline'),
+                reading: node('vol').classList.contains('device-offline'),
+                press: node('go').classList.contains('action-offline'),
+            };
+        };
+        const up = { offline: false, asleep: false, wake: false, reading: false, press: false };
+        const away = { offline: true, asleep: false, wake: true, reading: true, press: true };
+        const expected = {
+            online: up,
+            disabled: away, waiting_for_driver: away, restarting: away, paused: away,
+            offline: away, connecting: away,
+            asleep: { offline: true, asleep: true, wake: false, reading: true, press: true },
+        };
+        for (const [word, want] of Object.entries(expected)) {
+            const got = draw({ 'device.tv.presence': word });
+            assert(JSON.stringify(got) === JSON.stringify(want),
+                `${word}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+        }
+        const same = (label, extra, want) => {
+            const got = draw(extra);
+            assert(JSON.stringify(got) === JSON.stringify(want),
+                `${label}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+        };
+        same('no word yet', {}, up);
+        same('a word that is not a string', { 'device.tv.presence': null }, up);
+        same('connected false with no word beside it', { 'device.tv.connected': false }, up);
+        same('asleep flagged under the word offline',
+            { 'device.tv.presence': 'offline', 'device.tv.asleep': true }, away);
+        same('connected false under the word online',
+            { 'device.tv.presence': 'online', 'device.tv.connected': false }, up);
+        app.editMode = true;
+        same('the design canvas, whatever the word', { 'device.tv.presence': 'offline' }, up);
+    },
+
+    // A change of the word alone redraws what reads the device: the server
+    // writes it with every part it is made of, `connected` among them, and a
+    // pause or a sleep moves the word without moving `connected`.
+    a_change_of_presence_alone_redraws_the_device() {
+        const flipped = (keys) => {
+            const ids = availability().devicesFlipped(keys);
+            return ids ? [...ids].sort() : null;
+        };
+        const cases = [
+            [['device.d.presence'], ['d']],
+            [['device.d.presence', 'device.e.presence', 'var.x'], ['d', 'e']],
+            [['device.d.connected'], null],
+            [['device.d.asleep'], null],
+            [['device.d.input.1.presence'], null],
+            [['device.d.input.1.connected'], null],
+            [['var.d.presence', 'plugin.d.presence'], null],
+            [['device..presence'], null],
+            [[], null],
+        ];
+        for (const [keys, want] of cases) {
+            const got = flipped(keys);
+            assert(JSON.stringify(got) === JSON.stringify(want),
+                `${JSON.stringify(keys)}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+        }
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [{ id: 'vol', type: 'fader', label: 'Volume', min: 0, max: 100,
+                bindings: { show: { value: { key: 'device.tv.volume' } } } }],
+            placements: { vol: { x: 5, y: 5, w: 20, h: 60 } },
+        }));
+        app.state = { 'device.tv.presence': 'online', 'device.tv.volume': 20 };
+        app.evaluateAllBindings();
+        const vol = app.root.querySelector('[data-element-id="vol"]');
+        assert(!vol.classList.contains('device-offline'), 'online: the reading is drawn');
+        app.state['device.tv.presence'] = 'paused';
+        app.evaluateAllBindings(['device.tv.presence']);
+        assert(vol.classList.contains('device-offline'), 'paused: the word alone marks the reading');
+        app.state['device.tv.presence'] = 'online';
+        app.evaluateAllBindings(['device.tv.presence']);
+        assert(!vol.classList.contains('device-offline'), 'online again: the word alone clears it');
+    },
+
     // A fader that names no unit prints none. It used to print "%", so a dB
     // gain whose driver declared no unit read "-41.0 %"; the slider and the
     // gauge never did. A fader that names one still prints it.
@@ -10368,6 +10472,7 @@ Object.assign(tests, {
             m.set({ 'device.d.connected': false, 'device.d.presence': 'asleep' });
             m.set({ 'device.e.connected': true, 'device.e.presence': 'online' });
             m.set({ 'device.d.src.3.name': 'Doc cam', 'device.d.mute': 'off' });
+            // A part of the word on its own, a child's here, redraws nothing of the device.
             m.set({ 'device.d.input.1.connected': false });
             m.set({ 'device.d.asleep': false, 'device.d.presence': 'offline', 'device.x.connected': false, 'device.x.presence': 'offline' });
             m.snapshot({ ...READING_STATE, 'device.d.connected': false, 'device.d.presence': 'offline' });
@@ -10416,6 +10521,7 @@ Object.assign(tests, {
             m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
             m.set({ 'device.d.asleep': true, 'device.d.presence': 'asleep' });
             m.set({ 'device.e.connected': false, 'device.e.presence': 'asleep', 'device.e.asleep': true });
+            // The asleep flag alone moves nothing; the word beside it does.
             m.set({ 'device.d.asleep': 'true' });
             m.set({ 'device.d.input.1.asleep': true });
             m.set({ 'device.d.asleep': false, 'device.d.presence': 'offline' });
@@ -10536,6 +10642,7 @@ Object.assign(tests, {
             m.set({ 'device.e.v': 9, 'var.v': 8 });
             m.set({ 'device.d.asleep': true, 'device.d.presence': 'asleep' });
             m.set({ 'device.d.src.1.asleep': true });
+            // A key that only ends in a part of the word reaches what reads it, no more.
             m.set({ 'device.d.power.connected': true });
             m.set({ 'var.d.connected': false, 'plugin.e.asleep': true, 'system.d.connected': false });
             m.set({ 7: 'numeric key' });

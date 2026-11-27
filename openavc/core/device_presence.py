@@ -38,7 +38,10 @@ Pure, with no imports from the platform, so a copy elsewhere can be held to
 it. The Programmer's copy is web/programmer/src/components/shared/
 devicePresence.ts, which its status dot, device list, device page, Dashboard
 and pickers read the word through; tests/test_ide_presence_mirror.py holds
-it to these words.
+it to these words. The panel reads the word in web/panel/modules/
+availability.js: every word but ``online`` greys a control's reading and
+marks a press that reaches nothing up, and ``asleep`` keeps a wake control's
+reading; tests/test_panel_presence_mirror.py holds its two words to these.
 """
 
 from __future__ import annotations

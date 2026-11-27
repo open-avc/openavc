@@ -42,7 +42,7 @@ A ``device.command`` (or a group command) whose command the driver declares
 device is connected, so it does not make the press one that will be refused:
 that device is left out of ``action_devices`` and listed in ``wake_devices``
 instead. The panel keeps a control live for a device that is ASLEEP (put to
-sleep on purpose, ``device.<id>.asleep``) when its press reaches that device in
+sleep on purpose, its presence word ``asleep``) when its press reaches that device in
 ``wake_devices``: the Power On button stays usable and its feedback is the true
 "off" while every other control bound to the device greys out. Which commands
 work offline is the drivers' answer, so the caller passes ``works_offline``;

@@ -675,9 +675,9 @@ reports its own.
 
 ### While a device is unreachable
 
-A control bound to a device the system cannot reach stops showing a value. It
-draws dimmed with a dashed edge, and where it would print a number it prints
-`--` instead: a fader or slider loses its handle, a gauge empties its arc, a
+A control bound to a device the system cannot reach (its `device.<id>.presence`
+is anything but `online`) stops showing a value. It draws dimmed with a dashed
+edge, and where it would print a number it prints `--` instead: a fader or slider loses its handle, a gauge empties its arc, a
 meter goes dark, a dropdown or text box shows nothing, a status LED shows its
 default color, a button bound to a device state goes back to its own label
 and color rather than claiming the device is on or muted, and an image goes

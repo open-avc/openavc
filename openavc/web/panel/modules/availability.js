@@ -4,9 +4,21 @@
  * unreachable and asleep rule, the two marks that say so on a control, and
  * which bindings a change of state reaches.
  *
- * The facts are `device.<id>.connected` (strictly `false` is down) and
- * `device.<id>.asleep` (strictly `true`); `devicesFlipped` watches the same
- * two keys, so a new reachability fact is added here, in all three places.
+ * The fact is `device.<id>.presence`, the one word the server publishes for
+ * what a device's state adds up to (core/device_presence.py holds the words
+ * and their order; the device manager writes it in the same batch as every
+ * part it is made of, `connected` and `asleep` among them). `online` is up,
+ * `asleep` keeps a wake control's reading, and every other word is away.
+ * `deviceOffline`, `deviceAsleep` and `devicesFlipped` read that one key and
+ * no part of it: what each word means is decided on the server, and the
+ * panel only draws it. tests/test_panel_presence_mirror.py holds the two
+ * words to the server's and fails a panel module that reads a part again.
+ *
+ * A press to a device whose connection is held open until it answers (one
+ * gone quiet in standby whose port still opens) goes out while the hold
+ * lasts, and the word stays `offline` for the whole spell: the hold opens
+ * and closes on a cycle, and a mark following it would flicker. So such a
+ * press is marked like any other press to an offline device.
  *
  * The two marks, and why they are not the same mark:
  *
@@ -41,6 +53,13 @@
  * The panel lends what it holds (`host`), each read at call time: its state
  * object is replaced wholesale by a snapshot, and its element map by a redraw.
  */
+
+// The word for a device that is up: its readings count and its press
+// lands, the server's one word that takes commands (TAKES_COMMANDS).
+const ONLINE = 'online';
+// The word for a device put to sleep on purpose, whose wake control keeps
+// its reading.
+const ASLEEP = 'asleep';
 
 // The `device.<id>.*` properties the PLATFORM maintains rather than the device
 // reports. They describe the device -- whether it is reachable, what it is
@@ -120,10 +139,10 @@ export function bindingDeviceIds(b) {
 }
 
 /**
- * The devices whose reachability a change of state moved, or null for none:
- * a device's `connected`, and its own `asleep` (three segments, not a
- * child's), which lands just after `connected` drops and decides whether a
- * wake control's reading still counts.
+ * The devices whose presence word a change of state moved, or null for none:
+ * a device's own `presence` (three segments, not a child's). The server
+ * writes it with every part it is made of, so a drop, a sleep, a pause or a
+ * wake all reach here through it.
  */
 export function devicesFlipped(changedKeys) {
     let flipped = null;
@@ -134,12 +153,12 @@ export function devicesFlipped(changedKeys) {
     return flipped;
 }
 
-/** The device whose reachability a changed key reports, or null when it reports none. */
+/** The device whose presence word a changed key holds (`device.<id>.presence`), or null. */
 function reachabilityOf(key) {
-    if (typeof key !== 'string' || !key.startsWith('device.')) return null;
+    if (typeof key !== 'string') return null;
     const parts = key.split('.');
-    if (key.endsWith('.connected')) return parts[1];
-    return key.endsWith('.asleep') && parts.length === 3 ? parts[1] : null;
+    if (parts.length !== 3 || parts[0] !== 'device' || parts[2] !== 'presence') return null;
+    return parts[1] || null;
 }
 
 /**
@@ -219,21 +238,26 @@ export class Availability {
     }
 
     /**
-     * Whether a device is known to be unreachable right now.
-     *
-     * Strictly `=== false`: an absent `connected` key means nobody has said
-     * either way -- a panel drawn before its first snapshot -- and that must
+     * The device's presence word, or null while nobody has said: no word
+     * published yet (a panel drawn before its first snapshot), which must
      * render normally rather than as a page full of dead controls.
      */
+    _presence(deviceId) {
+        const word = this._host.state()[`device.${deviceId}.presence`];
+        return typeof word === 'string' ? word : null;
+    }
+
+    /** Whether a device is known to be away right now: any word but `online`. */
     deviceOffline(deviceId) {
         if (this._host.editMode()) return false;
-        return this._host.state()[`device.${deviceId}.connected`] === false;
+        const word = this._presence(deviceId);
+        return word !== null && word !== ONLINE;
     }
 
     /** True while the device is asleep on purpose (never in the design canvas). */
     deviceAsleep(deviceId) {
         if (this._host.editMode()) return false;
-        return this._host.state()[`device.${deviceId}.asleep`] === true;
+        return this._presence(deviceId) === ASLEEP;
     }
 
     /** True when a key's device is known to be unreachable right now. */
@@ -253,7 +277,7 @@ export class Availability {
     /**
      * Whether this binding's reading can be believed.
      *
-     * One exception: a device put to sleep on purpose (`device.<id>.asleep`)
+     * One exception: a device put to sleep on purpose (its word `asleep`)
      * keeps the readings of a control whose press wakes it. That press goes
      * out with the device off the network (`wake_devices`, resolved on the
      * server from the drivers' `available_offline`), and its feedback is the
