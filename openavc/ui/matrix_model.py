@@ -318,7 +318,9 @@ def _generate(spec: Mapping[str, Any], axis: str) -> list[dict[str, Any]]:
     labels = source.get("labels")
     labels = labels if isinstance(labels, Sequence) and not isinstance(labels, str) else ()
 
-    excluded = {_entry_key(v) for v in spec.get("exclude") or ()}
+    exclude = spec.get("exclude")
+    listed = isinstance(exclude, Sequence) and not isinstance(exclude, str | bytes)
+    excluded = {_entry_key(v) for v in exclude} if listed else set()
     overrides = spec.get("overrides")
     overrides = overrides if isinstance(overrides, Mapping) else {}
 

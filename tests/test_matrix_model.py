@@ -140,6 +140,16 @@ def test_exclude_drops_the_ports_nobody_patched():
     assert [e["value"] for e in entries] == [1, 2, 3, 4, 5, 6]
 
 
+def test_an_exclude_that_is_no_list_leaves_nothing_out():
+    """As the Builder reads it (``generateMatrixAxis``): a number, text or an
+    object there excludes nothing, rather than each character or key, or a
+    crash. The loader refuses one in a saved project; an editor's unsaved
+    config can still hold one."""
+    for exclude in (5, "12", {"1": True}, None, True):
+        config = {"destinations": {"from": {"count": 3}, "exclude": exclude}}
+        assert [e["value"] for e in resolve_axis(config, "destinations")] == [1, 2, 3], exclude
+
+
 def test_overrides_edit_one_entry_by_value():
     config = {"destinations": {
         "from": {"count": 3, "route_key": "device.mx.output.*.input"},
