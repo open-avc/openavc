@@ -263,12 +263,19 @@ def _first_press_action(press: Any) -> dict | None:
     return first if isinstance(first, dict) else None
 
 
+def _not_a_mode(mode: Any) -> bool:
+    """A mode given that is not one: a name the panel does not know, or a list
+    or object, which is refused rather than hashed. None or empty is ``tap``."""
+    if not mode:
+        return False
+    return not isinstance(mode, str) or mode not in _VALID_MODES
+
+
 def _check_press_mode(first: dict, errors: list[str]) -> None:
     """What the button's mode needs: a toggle its key and off action, a
     tap-and-hold its hold action."""
     mode = first.get("mode", "tap")
-    # A list or object is no mode, and is refused rather than hashed.
-    if mode and (not isinstance(mode, str) or mode not in _VALID_MODES):
+    if _not_a_mode(mode):
         errors.append(
             f"do.press[0]: mode '{mode}' is not valid. Use: {_MODES_TEXT}"
         )

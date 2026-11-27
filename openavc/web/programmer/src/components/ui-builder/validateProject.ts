@@ -244,6 +244,21 @@ function unknownVisibilityOperator(condition: ConditionRead): ControlIssue | nul
   };
 }
 
+/** What one visibility condition reads that is not there: a device the
+ *  project does not have, or a key its value names that it does not define. */
+function visibilityReferenceIssues(c: ConditionRead, refs: ProjectRefs): ControlIssue[] {
+  const issues: ControlIssue[] = [];
+  const deviceId = stateKeyDevice(c.key);
+  if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
+    issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, where: " > visible_when" });
+  }
+  const unknown = unknownNamed(c, refs);
+  if (unknown) {
+    issues.push({ severity: "warning", message: `Visibility condition compares with ${unknown}`, where: " > visible_when" });
+  }
+  return issues;
+}
+
 /** A visibility condition names an operator nobody knows, reads a device that
  *  is not in the project, or its value names a key the project does not
  *  define. `all` is read before `any`, and a single condition stands on its
@@ -256,14 +271,7 @@ function visibilityIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   for (const c of conditions) {
     const operator = unknownVisibilityOperator(c);
     if (operator) issues.push(operator);
-    const deviceId = stateKeyDevice(c.key);
-    if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
-      issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, where: " > visible_when" });
-    }
-    const unknown = unknownNamed(c, refs);
-    if (unknown) {
-      issues.push({ severity: "warning", message: `Visibility condition compares with ${unknown}`, where: " > visible_when" });
-    }
+    issues.push(...visibilityReferenceIssues(c, refs));
   }
   return issues;
 }
