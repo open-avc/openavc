@@ -188,7 +188,7 @@ async def test_ui_edit_does_not_disturb_runtime(tmp_path):
     counters: dict = {}
     real_triggers_stop = eng.triggers.stop
     eng.macros.cancel_all = _spy(counters, "cancel_all")
-    eng.triggers.stop = _spy(counters, "triggers_stop")
+    eng.triggers.pause = _spy(counters, "triggers_pause")
     eng._sync_devices = _spy(counters, "sync_devices")
     eng._load_project_drivers = lambda: counters.update(
         drivers=counters.get("drivers", 0) + 1

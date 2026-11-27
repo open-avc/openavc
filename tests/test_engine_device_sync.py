@@ -313,16 +313,16 @@ async def test_only_the_changed_definitions_are_handed_to_the_macro_engine(
 async def test_a_rollback_restarts_triggers_without_startup_triggers(tmp_path):
     eng = _engine(tmp_path, [])
     order = []
-    eng.triggers.stop = AsyncMock(side_effect=lambda: order.append("stop"))
+    eng.triggers.pause = AsyncMock(side_effect=lambda: order.append("pause"))
     eng.triggers.load_triggers = MagicMock(side_effect=lambda macros: order.append("load"))
     eng.triggers.start = AsyncMock(side_effect=lambda **k: order.append(f"start {k}"))
     run = ReconcileRun(ProjectDiff(macros=True), ProjectOrigin.EDIT)
     await eng._reconcile(run)
     order.clear()
     await eng._rollback_reconcile(run)
-    # The restart's undo stops them; the pause's undo stops them again (its
-    # own stop may have raised half-way) and starts the previous ones.
-    assert order == ["stop", "stop", "load", "start {'fire_startup': False}"]
+    # The restart's undo pauses them; the pause's undo pauses them again (its
+    # own pause may have raised half-way) and starts the previous ones.
+    assert order == ["pause", "pause", "load", "start {'fire_startup': False}"]
 
 
 @pytest.mark.parametrize("rollback", [False, True])

@@ -68,27 +68,27 @@ _MESH = {
 
 
 @pytest.mark.asyncio
-async def test_a_trigger_rebuild_stops_the_triggers_before_any_section_changes(tmp_path):
+async def test_a_trigger_rebuild_pauses_the_triggers_before_any_section_changes(tmp_path):
     eng = _engine(tmp_path, variables=[{"id": "v1", "type": "number", "default": 1}])
     order: list[str] = []
-    stop, reconcile_variables = eng.triggers.stop, eng._reconcile_variables
+    pause, reconcile_variables = eng.triggers.pause, eng._reconcile_variables
 
-    async def recorded_stop():
-        order.append("triggers stopped")
-        await stop()
+    async def recorded_pause():
+        order.append("triggers paused")
+        await pause()
 
     def recorded_variables():
         order.append("variables reconciled")
         reconcile_variables()
 
-    eng.triggers.stop = recorded_stop
+    eng.triggers.pause = recorded_pause
     eng._reconcile_variables = recorded_variables
     edited = eng.project.model_copy(deep=True)
     edited.variables[0].default = 2
 
     await eng.apply_project(edited)
 
-    assert order == ["triggers stopped", "variables reconciled"]
+    assert order == ["triggers paused", "variables reconciled"]
 
 
 def _fake_simulation(*, resume_pending: bool, active: bool):

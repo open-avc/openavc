@@ -93,6 +93,25 @@ describe("useWebSocket: a fire or a run that did not go ahead", () => {
     expect(useLogStore.getState().triggerPending.trg_dusk).toBeUndefined();
   });
 
+  it("ends a delay a project change dropped, and keeps the reason as the trigger's last run", () => {
+    const projectChanged = {
+      code: "project_changed",
+      message: "The trigger was changed or deleted while its fire waited, so the fire was dropped.",
+    };
+    renderHook(() => useWebSocket());
+    receive({ type: "trigger.pending", trigger_id: "trg_dusk", reason: "delay", wait_seconds: 300 });
+    expect(useLogStore.getState().triggerPending.trg_dusk).toBeTruthy();
+    receive({ type: "trigger.skipped", trigger_id: "trg_dusk", reason: "project_changed", ...projectChanged });
+    receive({
+      type: "trigger.completed", trigger_id: "trg_dusk", macro_id: "lights_on",
+      macro_name: "Lights On", trigger_type: "event", outcome: "skipped", ...projectChanged,
+    });
+    const store = useLogStore.getState();
+    expect(store.triggerPending.trg_dusk).toBeUndefined();
+    expect(store.triggerSkips.trg_dusk).toMatchObject(projectChanged);
+    expect(store.triggerRuns.trg_dusk).toMatchObject({ outcome: "skipped", reason: projectChanged });
+  });
+
   it("drops the trigger's reason when it next fires", () => {
     renderHook(() => useWebSocket());
     receive(TRIGGER_SKIPPED);

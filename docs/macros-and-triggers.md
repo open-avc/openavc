@@ -391,6 +391,8 @@ Trigger safety features prevent runaway automation:
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes, or drop the fire if that takes more than five minutes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 
+A fire waiting in a trigger's delay, debounce or queue keeps waiting when you save the project, and runs the macro as it is saved when the wait ends. If you change or delete that trigger while a fire waits, the fire is dropped, and the card of a trigger you changed says why.
+
 Example: A "projector auto-off" trigger watches `device.projector_main.power` for `"on"`, with a guard condition that `var.room_active` equals No. This shuts down a projector that someone turned on manually without using the panel, but only if the room is not in active use.
 
 ### How a trigger reports itself
@@ -403,7 +405,8 @@ nothing, because that is not the same as one that fired and worked.
 When a fire does not go ahead, the card says **Skipped:** with the reason, for
 example that its Cooldown had not passed, its conditions were not met, or its
 macro was still running. The line stays until the trigger next fires. A fire
-its macro turned away is kept as the trigger's last run, so the card still
+its macro turned away, and a waiting fire dropped because its trigger was
+changed or deleted, are kept as the trigger's last run, so the card still
 says why after the Programmer is reopened; any other reason is shown only
 while the Programmer is open and connected.
 

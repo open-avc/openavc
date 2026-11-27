@@ -18,8 +18,8 @@ export function isFailedRun(outcome: TriggerRun["outcome"] | undefined): boolean
 }
 
 /** The line a trigger's last-run record says when its last fire did not go
- *  ahead and the server said why (its macro refused it), dated by the
- *  record. None for any other run, or a skip from a server that gave no
+ *  ahead and the server said why (its macro refused it, or a project change
+ *  dropped it while it waited), dated by the record. None for any other run, or a skip from a server that gave no
  *  reason: the run marker says that one. */
 export function runSkip(run: TriggerRun | undefined): SkipNote | null {
   if (run?.outcome !== "skipped" || !run.reason) return null;
@@ -27,7 +27,8 @@ export function runSkip(run: TriggerRun | undefined): SkipNote | null {
 }
 
 /** A trigger's last run from its `trigger.completed` message: how the fire
- *  ended, and for one its macro refused, the server's reason. */
+ *  ended, and for one its macro refused or a project change dropped, the
+ *  server's reason. */
 export function completedRun(msg: Record<string, unknown>): TriggerRun {
   return {
     outcome: msg.outcome as TriggerRun["outcome"],

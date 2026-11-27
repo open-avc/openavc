@@ -122,6 +122,9 @@ SKIP_REASONS: dict[str, str] = {
         "dropped."
     ),
     "trigger_disabled": "The trigger was turned off while its fire waited in the queue.",
+    "project_changed": (
+        "The trigger was changed or deleted while its fire waited, so the fire was dropped."
+    ),
     "circular": "The trigger set itself off again while it was still firing.",
     "max_depth": (
         "The trigger was already running {limit} times at once. Its macro may be setting "

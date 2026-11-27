@@ -7,7 +7,12 @@ circular trigger chains.
 
 What of a trigger outlives a rebuild of the triggers (``load_triggers``, on a
 project change) is ``core/trigger_records``'s rule, and a change that is
-undone puts back what its rebuild dropped (``records`` and ``put_back``).
+undone puts back what its rebuild dropped (``records`` and ``put_back``). A
+rebuild pauses the triggers (``pause``) rather than stopping them: a fire
+waiting in a trigger's startup delay, debounce, delay or queue is held, and
+``load_triggers`` keeps it for a trigger defined as it was, to run the macro
+as now saved, or ends it with ``trigger.skipped`` ``project_changed``. Only
+``stop``, the shutdown's, cancels every waiting fire.
 """
 
 from __future__ import annotations
@@ -120,6 +125,7 @@ class _TriggerState:
         "debounce_task",
         "delay_task",
         "pending_queue",
+        "startup_task",
     )
 
     def __init__(self, trigger: dict[str, Any], macro_id: str, macro_name: str):
@@ -136,12 +142,31 @@ class _TriggerState:
         self.debounce_task: asyncio.Task | None = None
         self.delay_task: asyncio.Task | None = None
         self.pending_queue: list[asyncio.Task] = []
+        self.startup_task: asyncio.Task | None = None
+
+    def fire_tasks(self) -> list[asyncio.Task]:
+        """The tasks of this trigger's waiting fires: its startup delay,
+        debounce, delay and queue. One that has ended, or got past its wait
+        to run its macro, is still here (``TriggerEngine._in_wait``)."""
+        tasks = (self.startup_task, self.debounce_task, self.delay_task, *self.pending_queue)
+        return [task for task in tasks if task is not None]
+
+
+def _definitions(macros_data: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str, str]]:
+    """Each trigger that has an id, with its macro's id and name, in the
+    order the macros hold them."""
+    return [
+        (trigger, macro.get("id", ""), macro.get("name", macro.get("id", "")))
+        for macro in macros_data
+        for trigger in macro.get("triggers", [])
+        if trigger.get("id", "")
+    ]
 
 
 def _completed_fields(run: LastRun) -> dict[str, Any]:
     """What ``trigger.completed`` says of a fire's end: its outcome, the
-    error a missing macro gave, and a refused start's ``code`` and
-    ``message``."""
+    error a missing macro gave, and the ``code`` and ``message`` of a start
+    the macro refused or a waiting fire a project change ended."""
     fields: dict[str, Any] = {"outcome": run.outcome}
     if run.error is not None:
         fields["error"] = run.error
@@ -175,7 +200,6 @@ class TriggerEngine:
         self._event_handler_ids: list[str] = []
         self._state_sub_ids: list[str] = []
         self._cron_task: asyncio.Task | None = None
-        self._startup_tasks: list[asyncio.Task] = []
         # trigger_id -> count of fires currently active for it. A counter (not
         # a membership set) so overlap="allow" can permit bounded concurrent
         # runs while a true self-trigger loop is still capped.
@@ -207,13 +231,17 @@ class TriggerEngine:
         # wall-clock timestamp is the fallback.
         self._last_fired_monotonic: dict[str, float] = {}
         # trigger_id -> the LastRun of its last automatic fire, held here
-        # rather than only on the _TriggerState because load_triggers rebuilds
-        # those from scratch and the reconcile calls it on any device,
-        # connection, variable, plugin or macro edit. That rebuild advertises
-        # itself as loss-free; a record wiped by saving anything is a record
-        # nobody debugging a nightly failure can rely on.
+        # rather than only on the _TriggerState because load_triggers builds
+        # a new one for a trigger the change altered, and the reconcile calls
+        # it on any device, connection, variable, plugin or macro edit. A
+        # record wiped by saving anything is a record nobody debugging a
+        # nightly failure can rely on.
         self._last_run: dict[str, LastRun] = {}
         self._running = False
+        # Clear while a rebuild has the triggers paused (pause() to start()):
+        # a fire whose wait ends then waits for it (_wait_out_a_pause).
+        self._unpaused = asyncio.Event()
+        self._unpaused.set()
 
     def _spawn(self, coro: Any) -> asyncio.Task:
         """Launch a fire-and-forget coroutine with a strong ref + error log.
@@ -238,24 +266,58 @@ class TriggerEngine:
         )
 
     def load_triggers(self, macros_data: list[dict[str, Any]]) -> None:
-        """Load trigger definitions from all macros."""
-        self._triggers.clear()
-        count = 0
-        for macro in macros_data:
-            macro_id = macro.get("id", "")
-            macro_name = macro.get("name", macro_id)
-            for trigger in macro.get("triggers", []):
-                trigger_id = trigger.get("id", "")
-                if trigger_id:
-                    ts = _TriggerState(trigger, macro_id, macro_name)
-                    # Its cooldown, through a hot reload (core/trigger_records).
-                    ts.last_fired = stamp_of(self.state, trigger_id)
-                    ts.last_run = self._last_run.get(trigger_id)
-                    self._triggers[trigger_id] = ts
-                    count += 1
+        """Load trigger definitions from all macros.
+
+        A trigger defined as it was (``trigger_records.unchanged``) keeps its
+        record, and with it any fire waiting in its startup delay, debounce,
+        delay or queue, which runs the macro as now saved. A fire waiting on
+        a trigger the change altered or deleted is ended (``_end_waits``)."""
+        before, self._triggers = self._triggers, {}
+        for trigger, macro_id, macro_name in _definitions(macros_data):
+            self._triggers[trigger["id"]] = self._record_for(
+                before.get(trigger["id"]), trigger, macro_id, macro_name,
+            )
+        for ts in [ts for ts in before.values() if self._triggers.get(ts.trigger["id"]) is not ts]:
+            self._end_waits(ts)
         trigger_records.drop_gone(self.state, self._own_records(), set(self._triggers))
-        if count:
-            log.info(f"Loaded {count} trigger(s)")
+        if self._triggers:
+            log.info(f"Loaded {len(self._triggers)} trigger(s)")
+
+    def _record_for(
+        self, before: _TriggerState | None, trigger: dict[str, Any],
+        macro_id: str, macro_name: str,
+    ) -> _TriggerState:
+        """The record for one trigger: the one it had, waiting fires and all,
+        when it is defined as it was, else a new one starting from what
+        core/trigger_records keeps of its id (its cooldown, its last run)."""
+        if trigger_records.unchanged(before, trigger, macro_id):
+            before.trigger, before.macro_name = trigger, macro_name
+            return before
+        ts = _TriggerState(trigger, macro_id, macro_name)
+        ts.last_fired = stamp_of(self.state, trigger["id"])
+        ts.last_run = self._last_run.get(trigger["id"])
+        return ts
+
+    def _end_waits(self, ts: _TriggerState) -> None:
+        """End each fire waiting on a trigger the rebuild did not keep, with
+        ``trigger.skipped`` ``project_changed``, and write the reason to the
+        trigger's last-run record, which a trigger now holding the id carries
+        and ``trigger.completed`` announces. A fire past its wait, running its
+        macro, is the macro engine's and goes on."""
+        ended = [task for task in ts.fire_tasks() if self._in_wait(task)]
+        if not ended:
+            return
+        trigger_id = ts.trigger["id"]
+        for task in ended:
+            task.cancel()
+            self._spawn(self._skipped(trigger_id, "project_changed"))
+        holder = self._triggers.get(trigger_id, ts)
+        run = self._record_run(holder, "skipped", reason=skip_reason("project_changed"))
+        self._spawn(self._announce_run(ts, run))
+
+    def _in_wait(self, task: asyncio.Task | None) -> bool:
+        """A fire still in its wait: not ended, and not yet running its macro."""
+        return task is not None and not task.done() and task not in self._macro_exec_tasks
 
     def _own_records(self) -> TriggerRecords:
         """The engine's own records of each trigger (core/trigger_records)."""
@@ -319,10 +381,7 @@ class TriggerEngine:
 
             elif ttype == "startup":
                 if fire_startup:
-                    delay = t.get("delay_seconds", 0)
-                    startup_task = asyncio.create_task(self._fire_startup(ts, delay))
-                    startup_task.add_done_callback(_log_task_exception)
-                    self._startup_tasks.append(startup_task)
+                    self._begin_startup_fire(ts)
 
         # Start cron loop if any schedule triggers exist
         if has_cron and HAS_CRONITER:
@@ -332,10 +391,33 @@ class TriggerEngine:
         elif has_cron and not HAS_CRONITER:
             log.warning("Schedule triggers defined but croniter not installed")
 
+        # A fire whose wait ended during a pause goes on now (_wait_out_a_pause).
+        self._unpaused.set()
         log.info("TriggerEngine started")
 
+    def _begin_startup_fire(self, ts: _TriggerState) -> None:
+        """Start a startup trigger's fire, after its delay. One still waiting
+        from before a rebuild is this start's, so a whole new project's start
+        does not add a second."""
+        if self._in_wait(ts.startup_task):
+            return
+        ts.startup_task = asyncio.create_task(
+            self._fire_startup(ts, ts.trigger.get("delay_seconds", 0))
+        )
+        ts.startup_task.add_done_callback(_log_task_exception)
+
+    async def pause(self) -> None:
+        """Stop the triggers for a rebuild (a project change): what ``stop``
+        does, except that a fire waiting in a trigger's startup delay,
+        debounce, delay or queue is held rather than cancelled, and so is the
+        work already under way (a fire on its way to its macro, an
+        announcement). ``load_triggers`` then keeps or ends each waiting
+        fire; one whose wait ends first waits for ``start``."""
+        await self._halt(cancel_waits=False)
+
     async def stop(self) -> None:
-        """Unregister all listeners, cancel pending (pre-fire) tasks.
+        """Unregister all listeners, cancel every fire still waiting and the
+        work still on its way to a macro: the shutdown's stop.
 
         A fire that has said it fired (its log line, ``last_fired``) is
         handed to the macro engine, never dropped: one still inside its
@@ -348,51 +430,20 @@ class TriggerEngine:
         Everything this method does cancel is awaited with a short drain so
         teardown never proceeds while cancelled fires are still unwinding.
         """
+        await self._halt(cancel_waits=True)
+
+    async def _halt(self, *, cancel_waits: bool) -> None:
+        """``stop`` with ``cancel_waits``, ``pause`` without."""
         self._running = False
-        cancelled: list[asyncio.Task] = []
-
-        def _cancel(task: asyncio.Task | None) -> None:
-            if task is None or task.done() or task in self._macro_exec_tasks:
-                return
-            task.cancel()
-            cancelled.append(task)
-
-        # Cancel cron loop
-        if self._cron_task and not self._cron_task.done():
-            self._cron_task.cancel()
-            try:
-                await self._cron_task
-            except asyncio.CancelledError:
-                pass
-            self._cron_task = None
-
-        # Cancel startup tasks
-        for task in self._startup_tasks:
-            _cancel(task)
-        self._startup_tasks.clear()
-
-        # Cancel all pending debounce/delay/queued tasks
-        for ts in self._triggers.values():
-            _cancel(ts.debounce_task)
-            _cancel(ts.delay_task)
-            for task in ts.pending_queue:
-                _cancel(task)
-            ts.pending_queue.clear()
-
-        # Cancel pre-fire / status-emit tasks (snapshot first: the
-        # done-callback mutates the set as each task settles).
-        for task in list(self._bg_tasks):
-            _cancel(task)
-
-        # Unsubscribe state listeners
-        for sub_id in self._state_sub_ids:
-            self.state.unsubscribe(sub_id)
-        self._state_sub_ids.clear()
-
-        # Unregister event handlers
-        for handler_id in self._event_handler_ids:
-            self.events.off(handler_id)
-        self._event_handler_ids.clear()
+        # A pause holds a fire whose wait ends; after a stop nothing is held,
+        # since every waiting fire is cancelled.
+        if cancel_waits:
+            self._unpaused.set()
+        else:
+            self._unpaused.clear()
+        await self._end_cron_loop()
+        cancelled = self._cancel_everything_waiting() if cancel_waits else []
+        self._stop_listening()
 
         # A fire that said it fired and is still in its trigger.fired
         # listeners is not cancelled above: give it the moment it needs to
@@ -411,6 +462,41 @@ class TriggerEngine:
 
         self._active_trigger_depth.clear()
         log.info("TriggerEngine stopped")
+
+    async def _end_cron_loop(self) -> None:
+        if self._cron_task and not self._cron_task.done():
+            self._cron_task.cancel()
+            try:
+                await self._cron_task
+            except asyncio.CancelledError:
+                pass
+        self._cron_task = None
+
+    def _cancel_everything_waiting(self) -> list[asyncio.Task]:
+        """Cancel every fire still waiting (startup delay, debounce, delay,
+        queue) and the pre-fire / status-emit tasks, never one already in
+        ``MacroEngine.execute()``; the tasks cancelled, to drain. The
+        background set is read first: its done-callback mutates it as each
+        task settles."""
+        tasks = [task for ts in self._triggers.values() for task in ts.fire_tasks()]
+        tasks += list(self._bg_tasks)
+        for ts in self._triggers.values():
+            ts.pending_queue.clear()
+        cancelled = [
+            task for task in tasks if not task.done() and task not in self._macro_exec_tasks
+        ]
+        for task in cancelled:
+            task.cancel()
+        return cancelled
+
+    def _stop_listening(self) -> None:
+        """Every state subscription and event handler the triggers hold."""
+        for sub_id in self._state_sub_ids:
+            self.state.unsubscribe(sub_id)
+        self._state_sub_ids.clear()
+        for handler_id in self._event_handler_ids:
+            self.events.off(handler_id)
+        self._event_handler_ids.clear()
 
     # --- Trigger type handlers ---
 
@@ -461,6 +547,7 @@ class TriggerEngine:
         """Fire a startup trigger after optional delay."""
         if delay > 0:
             await asyncio.sleep(delay)
+        await self._wait_out_a_pause()
         if not self._running:
             return
         await self._execute_trigger(ts, {"trigger_type": "startup"})
@@ -615,6 +702,7 @@ class TriggerEngine:
         """Wait for debounce period, then proceed if no new triggers."""
         try:
             await asyncio.sleep(debounce)
+            await self._wait_out_a_pause()
             if self._running:
                 self._schedule_fire(ts, context)
         except asyncio.CancelledError:
@@ -650,6 +738,7 @@ class TriggerEngine:
         """Wait, then re-check conditions before firing."""
         try:
             await asyncio.sleep(delay)
+            await self._wait_out_a_pause()
             if not self._running:
                 return
 
@@ -777,6 +866,7 @@ class TriggerEngine:
         max_polls = max(1, round(_QUEUE_MAX_WAIT_SECONDS / _QUEUE_POLL_INTERVAL))
         for _ in range(max_polls):
             await asyncio.sleep(_QUEUE_POLL_INTERVAL)
+            await self._wait_out_a_pause()
             if not self._running:
                 return
             if not ts.trigger.get("enabled", True):
@@ -798,6 +888,13 @@ class TriggerEngine:
             return
 
         await self._fire_macro(ts, context)
+
+    async def _wait_out_a_pause(self) -> None:
+        """Hold a fire whose wait has ended while a rebuild has the triggers
+        paused, until ``start``: its re-checks then read the state the change
+        left, and it runs the macro as now saved. A fire on a trigger the
+        change altered or deleted is cancelled here by ``load_triggers``."""
+        await self._unpaused.wait()
 
     def _handed_over(self, task: asyncio.Task | None, handed: asyncio.Future | None) -> None:
         """A fire left its trigger.fired listeners: stop() need not wait for it."""
@@ -881,12 +978,15 @@ class TriggerEngine:
 
         # The LAST run, not a sticky fault: a trigger somebody has fixed has to
         # be able to come back to healthy on its own.
-        run = self._record_run(ts, outcome, error=error, reason=reason)
+        await self._announce_run(ts, self._record_run(ts, outcome, error=error, reason=reason))
+
+    async def _announce_run(self, ts: _TriggerState, run: LastRun) -> None:
+        """``trigger.completed`` for a last-run record just written."""
         await self.events.emit("trigger.completed", {
-            "trigger_id": trigger_id,
-            "macro_id": macro_id,
+            "trigger_id": ts.trigger["id"],
+            "macro_id": ts.macro_id,
             "macro_name": ts.macro_name,
-            "trigger_type": trigger_type,
+            "trigger_type": ts.trigger.get("type", "unknown"),
             **_completed_fields(run),
         })
 

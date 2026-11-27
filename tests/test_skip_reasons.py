@@ -430,7 +430,8 @@ _FIRE_PATH = (
 
 # (function, a word in the `if` that guards the return): why it is no fire.
 _NO_FIRE = {
-    # The engine is stopping or stopped; stop() ends what is pending.
+    # The engine is stopped: the shutdown's stop() cancels every waiting fire,
+    # and one a rebuild's pause() held waits for start() before this check.
     ("*", "self._running"),
     # A trigger turned off has no listener; nothing reaches here for it.
     ("_initiate_fire", "enabled"),

@@ -88,7 +88,8 @@ export interface TriggerPending {
  *  Server-side truth, not a session flash: seeded from `GET /api/triggers` so
  *  a trigger that failed overnight still says so when the IDE is opened in the
  *  morning, then kept current by the `trigger.completed` message. `reason` is
- *  why a skipped run did not go ahead (its macro refused it), the code and
+ *  why a skipped run did not go ahead (its macro refused it, or a project
+ *  change dropped it while it waited), the code and
  *  sentence from the server's reason table. `endedAt` is when the record was
  *  written (epoch seconds), not `last_fired`, which a refused fire does not
  *  move. */

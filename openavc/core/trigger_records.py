@@ -2,16 +2,20 @@
 rebuild of the triggers (``TriggerEngine.load_triggers``, on any project
 change): the cooldown stamp it publishes in the state,
 ``system.trigger.<id>.last_fired``, its in-process cooldown baseline, its last
-run (``LastRun``) and its last scheduled fire.
+run (``LastRun``), its last scheduled fire, and a fire waiting in its startup
+delay, debounce, delay or queue.
 
 ``drop_gone`` is THE rule for what of a trigger outlives it: every record is
 kept for an id a trigger still has, so a hot reload keeps both the cooldown
 and the no-double-fire guarantees, and dropped for one nobody has any more. A
 record for a gone id is a leak, and an id that comes back must not inherit a
-stranger's cooldown or run. A change that is undone hands back what its
-rebuild dropped: ``copy_of`` takes the records before the change, and
-``put_back`` restores each one that is gone, keeping one written since as the
-newer.
+stranger's cooldown or run. A waiting fire is kept only for a trigger defined
+as it was (``unchanged``): it runs the macro as now saved, as a later fire
+would, and the engine ends one on a trigger the change altered or deleted,
+saying so. A change that is undone hands back what its rebuild dropped:
+``copy_of`` takes the records before the change, and ``put_back`` restores
+each one that is gone, keeping one written since as the newer; a waiting
+fire the change ended stays ended.
 
 The stamp lives in the state store, which is in memory: it keeps a cooldown
 across a hot reload but not across a restart, since the state persister
@@ -25,7 +29,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     from openavc.core.state_store import StateStore
-    from openavc.core.trigger_engine import LastRun
+    from openavc.core.trigger_engine import LastRun, _TriggerState
 
 _STAMP_PREFIX = "system.trigger."
 _STAMP_SUFFIX = ".last_fired"
@@ -66,6 +70,13 @@ class TriggerRecords(NamedTuple):
     def by_id(self) -> tuple[dict[str, Any], ...]:
         """The records keyed by trigger id, which is all but the stamps."""
         return (self.cooldowns, self.last_runs, self.schedules)
+
+
+def unchanged(before: _TriggerState | None, trigger: dict[str, Any], macro_id: str) -> bool:
+    """Whether a trigger is defined as it was before the rebuild: the same
+    definition, field for field, on the same macro. Its record, and a fire
+    waiting in it, go on; a rename of the macro changes neither."""
+    return before is not None and before.macro_id == macro_id and before.trigger == trigger
 
 
 def drop_gone(state: StateStore, kept: TriggerRecords, live_ids: set[str]) -> None:

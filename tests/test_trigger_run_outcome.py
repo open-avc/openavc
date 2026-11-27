@@ -19,9 +19,9 @@ These pin that it does, at the three doors a person can reach it through:
   the answer in the response instead.
 * `list_triggers` — what `/api/triggers` and the AI's `list_triggers` show.
 
-The rebuild in `load_triggers` calls itself loss-free and the reconcile runs
-it on any device, connection, variable, plugin or macro edit, so the record
-has to survive one — otherwise saving anything erases the evidence.
+The reconcile runs the rebuild in `load_triggers` on any device, connection,
+variable, plugin or macro edit, so the record has to survive one — otherwise
+saving anything erases the evidence.
 """
 
 from __future__ import annotations
@@ -233,8 +233,8 @@ async def test_a_clean_fire_announces_too(triggers, macros, core):
 
 async def test_the_record_survives_a_project_edit(triggers, macros):
     """`load_triggers` runs on any device, connection, variable, plugin or
-    macro edit and calls itself loss-free. A record wiped by saving is a
-    record nobody debugging can rely on."""
+    macro edit. A record wiped by saving is a record nobody debugging can
+    rely on."""
     macros.load_macros([_macro("m", BAD_STEP)])
     triggers.load_triggers([_with_trigger(_macro("m", BAD_STEP))])
     await _fire(triggers)

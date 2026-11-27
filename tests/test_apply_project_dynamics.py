@@ -264,25 +264,25 @@ async def test_get_put_round_trip_is_all_clean(tmp_path, acme_dynamics_drivers):
 
     eng.broadcast_ws = record
 
-    cancel_calls, trigger_stops, device_syncs = [], [], []
+    cancel_calls, trigger_pauses, device_syncs = [], [], []
     orig_cancel = eng.macros.cancel_all
-    orig_stop = eng.triggers.stop
+    orig_pause = eng.triggers.pause
     orig_sync = eng._sync_devices
 
     async def spy_cancel():
         cancel_calls.append(1)
         await orig_cancel()
 
-    async def spy_stop():
-        trigger_stops.append(1)
-        await orig_stop()
+    async def spy_pause():
+        trigger_pauses.append(1)
+        await orig_pause()
 
     async def spy_sync():
         device_syncs.append(1)
         await orig_sync()
 
     eng.macros.cancel_all = spy_cancel
-    eng.triggers.stop = spy_stop
+    eng.triggers.pause = spy_pause
     eng._sync_devices = spy_sync
 
     raw = json.loads(json.dumps(eng.project.model_dump(mode="json")))
@@ -300,7 +300,7 @@ async def test_get_put_round_trip_is_all_clean(tmp_path, acme_dynamics_drivers):
     assert eng._revision_counter == 1
     assert eng.project is round_tripped
     assert cancel_calls == [], "clean apply cancelled running macros"
-    assert trigger_stops == [], "clean apply rebuilt triggers"
+    assert trigger_pauses == [], "clean apply rebuilt triggers"
     assert device_syncs == [], "clean apply bounced devices"
     assert [m["type"] for m in sent] == ["project.reloaded"], (
         "clean apply must broadcast project.reloaded only (no ui.definition)"

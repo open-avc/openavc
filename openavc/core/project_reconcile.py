@@ -28,7 +28,8 @@ one place a running plugin is handed a new config, which the outcome carries
 to the doors that save one.
 
 What an undo cannot give back: a macro run the change cancelled stays
-cancelled, and drivers a load found on disk stay registered. The advertised
+cancelled, a fire waiting on a trigger the change altered or deleted stays
+ended, and drivers a load found on disk stay registered. The advertised
 name and ``system.project_name`` move only once a change is running (its
 announcement, in ``core/project_changes.py``), so a failed one never moved
 them. Nothing here saves the project, mints a revision or announces.
@@ -211,16 +212,18 @@ class ProjectReconcileMixin:
         # mid-cleanup. Macro changes land here too: the trigger definitions
         # live in the macros. What each trigger has kept is taken first: the
         # rebuild drops a deleted trigger's cooldown and last run, and the
-        # undo that brings the trigger back puts them back.
+        # undo that brings the trigger back puts them back. A pause, not a
+        # stop: a fire waiting in a trigger's delay, debounce or queue is
+        # held for the rebuild to keep or end (TriggerEngine.load_triggers).
         run.triggers_before = self.triggers.records()
-        await self.triggers.stop()
+        await self.triggers.pause()
 
     async def _restart_previous_triggers(self, run: ReconcileRun) -> None:
-        # stop() first: the stop this undoes may have raised half-way, and
+        # pause() first: the pause this undoes may have raised half-way, and
         # start() on triggers already started would stack a second set of
         # subscriptions, so every trigger fired twice per change. Never
         # re-fire startup triggers: the previous project was already running.
-        await self.triggers.stop()
+        await self.triggers.pause()
         if run.triggers_before is not None:
             self.triggers.put_back(run.triggers_before)
         await self._restart_triggers(fire_startup=False)
@@ -228,7 +231,7 @@ class ProjectReconcileMixin:
     async def _stop_triggers(self, run: ReconcileRun) -> None:
         """The undo of the trigger restart; the pause's undo then starts the
         previous project's triggers."""
-        await self.triggers.stop()
+        await self.triggers.pause()
 
     async def _cancel_running_macros(self, run: ReconcileRun) -> None:
         # Swapping macro/group definitions under a running macro would
@@ -338,8 +341,11 @@ class ProjectReconcileMixin:
         )
 
     async def _start_changed_triggers(self, run: ReconcileRun) -> None:
-        # The rebuild is loss-free: cooldown and cron-dedup baselines are
-        # restored from the state store for surviving trigger ids. Startup
+        # What of each trigger outlives the rebuild is core/trigger_records'
+        # rule: a trigger still in the project keeps its cooldown, last run
+        # and last scheduled fire, and one defined as it was keeps a fire
+        # waiting in it; a fire waiting on a trigger the change altered or
+        # deleted is ended, with trigger.skipped project_changed. Startup
         # triggers re-fire only when a whole new project arrives; an
         # edit-save must not re-run power-on automation.
         await self._restart_triggers(fire_startup=run.origin is ProjectOrigin.LOAD)
