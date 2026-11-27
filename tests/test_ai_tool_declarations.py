@@ -157,14 +157,11 @@ class _Reads:
         """The default a number's clamp gives an input the door reads with no
         default of its own: ``_coerce_number(input.get("x"), default=N)``, or
         that read handed to a helper that clamps it so."""
-        for position, arg in enumerate(node.args):
-            if not (isinstance(arg, ast.Call) and _is_name(getattr(arg.func, "value", None), param)
-                    and arg.func.attr == "get" and len(arg.args) == 1):
-                continue
-            for value in _clamp_defaults(node, position, fn, self._tables):
-                for name in _key_values(arg.args[0], scope) or ():
-                    self.clamped.setdefault(name, []).append(value)
-                    self.defaults.setdefault(name, []).append(value)
+        for position, key in _bare_gets(node, param):
+            values = _clamp_defaults(node, position, fn, self._tables)
+            for name in (_key_values(key, scope) or ()) if values else ():
+                self.clamped.setdefault(name, []).extend(values)
+                self.defaults.setdefault(name, []).extend(values)
 
     def _method(self, node: ast.Call, param: str, scope: dict, where: str) -> None:
         method = node.func.attr
@@ -229,21 +226,36 @@ def _clamp_default(call: ast.Call) -> list[Any]:
             if kw.arg == "default" and isinstance(kw.value, ast.Constant)]
 
 
+def _bare_gets(call: ast.Call, param: str) -> list[tuple[int, ast.AST]]:
+    """Each argument of ``call`` that is ``<param>.get(key)`` with no default,
+    by position, and its key."""
+    return [
+        (position, arg.args[0]) for position, arg in enumerate(call.args)
+        if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute)
+        and _is_name(arg.func.value, param) and arg.func.attr == "get" and len(arg.args) == 1
+    ]
+
+
+def _clamps_of(fn: Callable, name: str) -> list[Any]:
+    """The defaults ``fn``'s clamps give its parameter ``name``."""
+    return [
+        value for inner in ast.walk(_tree(fn))
+        if isinstance(inner, ast.Call) and inner.args and _is_name(inner.args[0], name)
+        for value in _clamp_default(inner)
+    ]
+
+
 def _clamp_defaults(call: ast.Call, position: int, fn: Callable,
                     tables: dict[str, list[Callable]]) -> list[Any]:
     """The default ``call`` gives its argument at ``position``: a clamp's own,
     or the one a helper's clamp gives the parameter that argument binds."""
     if position == 0 and _clamp_default(call):
         return _clamp_default(call)
-    found: list[Any] = []
-    for callee in _callees(call.func, fn, tables):
-        params = _params(callee)
-        if position >= len(params):
-            continue
-        for inner in ast.walk(_tree(callee)):
-            if isinstance(inner, ast.Call) and inner.args and _is_name(inner.args[0], params[position]):
-                found += _clamp_default(inner)
-    return found
+    return [
+        value for callee in _callees(call.func, fn, tables)
+        if position < len(_params(callee))
+        for value in _clamps_of(callee, _params(callee)[position])
+    ]
 
 
 def _key_values(arg: ast.AST, scope: dict) -> frozenset | None:
