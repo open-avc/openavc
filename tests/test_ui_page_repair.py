@@ -340,9 +340,19 @@ def test_every_shipped_starter_is_left_alone(template):
     {"master_elements": [{"id": "m", "parent": "p"}, "junk"]},
     {"pages": [{"id": "p", "elements": [{"id": "b", "type": "button"}, {"id": "c", "parent": "b"}],
                 "layouts": [{"id": ["l"], "placements": {"c": {}}}, {"id": {"o": 1}}, {"id": "l", "hidden": [["b"]]}]}]},
+    {"pages": [{"id": "p", "elements": [{"id": "x", "type": "button"}, {"id": "x", "type": "label", "parent": "x"}]}]},
+    {"pages": [{"id": "p", "elements": [{"id": "x", "type": "group"}, {"id": "x", "type": "button", "parent": "x"},
+                                        {"id": "k", "parent": "x"}]}]},
 ])
-def test_any_json_is_repaired_without_raising(ui):
+def test_any_json_is_repaired_without_raising_and_keeps_every_control_once(ui):
+    def held() -> list[list[int]]:
+        pages = ui.get("pages") if isinstance(ui.get("pages"), list) else []
+        return [sorted(map(id, page["elements"])) for page in pages
+                if isinstance(page, dict) and isinstance(page.get("elements"), list)]
+
+    before = held()
     repair_page_structure(ui, MigrationNotes())
+    assert held() == before
 
 
 # --- through the load -----------------------------------------------------------

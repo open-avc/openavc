@@ -180,7 +180,7 @@ class _Page:
 
     def _move_out_of_controls(self) -> bool:
         by_id = self._by_id()
-        moving = [self._moving(el, by_id) for el in self._in_draw_order(by_id)]
+        moving = [self._moving(el, by_id) for el in self._in_draw_order()]
         moving = [move for move in moving if move is not None]
         if not moving:
             return False
@@ -202,17 +202,21 @@ class _Page:
             if _text(layout.get("id")) and layout["id"] in drawn:
                 _rewrite_layout(layout, drawn[layout["id"]], moving)
 
-    def _in_draw_order(self, by_id: dict[str, dict]) -> list[dict]:
-        """Every control, each straight after the one it is drawn inside."""
+    def _in_draw_order(self) -> list[dict]:
+        """Every control, each straight after the one it is drawn inside, and
+        once: a control inside one that shares its id is reached through it."""
         inside: dict[Any, list[dict]] = {}
         for el in self.elements:
             inside.setdefault(el.get("parent"), []).append(el)
         order: list[dict] = []
+        reached: set[int] = set()
         waiting = list(reversed(inside.get(None, [])))
         while waiting:
             el = waiting.pop()
-            order.append(el)
-            waiting.extend(reversed(inside.get(el["id"], [])))
+            if id(el) not in reached:
+                reached.add(id(el))
+                order.append(el)
+                waiting.extend(reversed(inside.get(el["id"], [])))
         return order
 
     def _moving(self, el: dict, by_id: dict[str, dict]) -> _Moved | None:
