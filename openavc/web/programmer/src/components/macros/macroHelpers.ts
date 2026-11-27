@@ -390,7 +390,7 @@ function _pushStateChecks(body: string[], trigger: TriggerConfig): void {
     if (checksValue) {
       // Re-check using same operator (inverted for guard return)
       const recheck = { key: trigger.state_key ?? "", operator: trigger.state_operator, value: trigger.state_value };
-      body.push(_conditionToGuard(recheck, "    "));
+      body.push(_conditionToGuard(recheck, "    ", "recheck"));
       body.push("        return");
     }
   }
@@ -429,7 +429,7 @@ function _startupHandler(body: string[], trigger: TriggerConfig, writeSteps: Ste
 /** A trigger's guard conditions, each ending the handler when it fails. */
 function _pushGuards(body: string[], trigger: TriggerConfig): void {
   for (const cond of trigger.conditions ?? []) {
-    body.push(_conditionToGuard(cond, "    "));
+    body.push(_conditionToGuard(cond, "    ", "guard"));
     body.push("        return");
   }
 }
@@ -518,12 +518,13 @@ function _pyParamsDict(params: Record<string, unknown>): string {
  * names a key (`$var.wanted`, `referencedKey`) a read of that key, where the
  * macro engine reads it at `site` (`_read`, as `condition_eval.read_value` reads it
  * through the place's reader). A key with no value reads None, which compare()
- * never finds equal or ordered, as the engine makes no decision on it. A guard
- * reads the state only (`"guard"`), `trigger.` keys included. */
-function _conditionValue(value: unknown, site: "step" | "wait_until" | "guard"): string {
+ * never finds equal or ordered, as the engine makes no decision on it. A
+ * State Change trigger's re-check after its delay reads the state only
+ * (`"state"`), `trigger.` keys included. */
+function _conditionValue(value: unknown, site: "step" | "wait_until" | "state"): string {
   const named = referencedKey(value);
   if (named === null) return _pyValue(value, false);
-  return site === "guard" ? `state.get("${_pyEscape(named)}")` : _read(named, site);
+  return site === "state" ? `state.get("${_pyEscape(named)}")` : _read(named, site);
 }
 
 /** Positive-sense condition expression (true when the condition matches), its
@@ -541,18 +542,24 @@ function _conditionExpr(
   return `compare(${actual}, "${_pyEscape(op)}", ${_conditionValue(cond.value ?? "", site)})`;
 }
 
-/** Generate a guard condition (if ... return) line for a trigger condition/operator.
- * A guard reads the state only, `trigger.` keys and `$trigger.` values
- * included, as the trigger engine's guard does (`TriggerEngine._check_conditions`). */
+/** Generate the line (if ... return) that ends a trigger's handler when a
+ * condition fails, read as the trigger engine reads it at `site`: a guard
+ * (`TriggerEngine._check_conditions`) reads a `trigger.<field>` key and a
+ * `$trigger.` value from the change or event the handler was fired with, as a
+ * step does (`_read`); a State Change trigger's own test, checked again after
+ * its delay, reads the state only (`TriggerEngine._delayed_fire`). */
 function _conditionToGuard(
   cond: { key?: string; operator?: string; value?: unknown },
-  indent: string
+  indent: string,
+  site: "guard" | "recheck",
 ): string {
-  const key = _pyEscape(cond.key ?? "");
+  const key = cond.key ?? "";
+  const actual = site === "guard" ? _read(key) : `state.get("${_pyEscape(key)}")`;
   const op = cond.operator ?? "eq";
-  if (op === "truthy") return `${indent}if not state.get("${key}"):`;
-  if (op === "falsy") return `${indent}if state.get("${key}"):`;
-  return `${indent}if not compare(state.get("${key}"), "${_pyEscape(op)}", ${_conditionValue(cond.value ?? "", "guard")}):`;
+  if (op === "truthy") return `${indent}if not ${actual}:`;
+  if (op === "falsy") return `${indent}if ${actual}:`;
+  const compared = _conditionValue(cond.value ?? "", site === "guard" ? "step" : "state");
+  return `${indent}if not compare(${actual}, "${_pyEscape(op)}", ${compared}):`;
 }
 
 function _generateStepLines(

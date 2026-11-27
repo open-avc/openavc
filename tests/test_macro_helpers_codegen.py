@@ -205,6 +205,7 @@ SCENARIOS = [
     "trigger_context",
     "trigger_context_wait_until",
     "trigger_context_guard",
+    "trigger_context_guard_event",
     "reference_steps",
     "reference_trigger_value",
 ]
@@ -422,22 +423,30 @@ class TestTriggerContext:
         asyncio.run(handler("var.power", None, "on"))
         assert r.state.data["var.after"] == "ran"
 
-    def test_a_trigger_guard_reads_the_state(self, generated):
-        """The trigger engine's guard reads the state only
+    def test_a_trigger_guard_reads_the_change_that_fired(self, generated):
+        """The trigger engine's guard reads the firing context
         (``TriggerEngine._check_conditions``), so the script's does too: a
-        guard on ``trigger.new_value`` holds only when the state key does."""
+        guard on ``trigger.new_value`` holds on the change, whatever a state
+        key of that name holds."""
         source = generated["trigger_context_guard"]["script"]
-        r = _exec_script(source)
-        handler = self._handlers(r, "state")["var.power"]
-        asyncio.run(handler("var.power", None, "on"))
-        assert "var.after" not in r.state.data
+        assert 'state.get("trigger.' not in source
+        r = _exec_script(source, {"trigger.new_value": "off"})
+        asyncio.run(self._handlers(r, "state")["var.power"]("var.power", None, "on"))
+        assert r.state.data["var.after"] == "ran"
         r2 = _exec_script(source, {"trigger.new_value": "on"})
         asyncio.run(self._handlers(r2, "state")["var.power"]("var.power", None, "off"))
-        assert r2.state.data["var.after"] == "ran"
+        assert "var.after" not in r2.state.data
+
+    def test_an_event_trigger_s_guard_reads_the_event_s_payload(self, generated):
+        source = generated["trigger_context_guard_event"]["script"]
+        for sent, runs in (("hdmi1", True), ("hdmi2", False)):
+            r = _exec_script(source, self.DECOY)
+            asyncio.run(self._handlers(r, "event")["custom.go"](Event("custom.go", {"source": sent})))
+            assert ("var.after" in r.state.data) is runs, sent
 
     def test_a_macro_reading_no_field_gets_no_context(self, generated):
-        """Only a script whose steps read the context builds it."""
-        for scenario in ("legacy_plain", "trigger_gte", "dollar_params", "trigger_context_guard"):
+        """Only a script whose steps or guards read the context builds it."""
+        for scenario in ("legacy_plain", "trigger_gte", "dollar_params"):
             assert "trigger = " not in generated[scenario]["script"], scenario
 
 
@@ -479,17 +488,18 @@ class TestValuesThatNameAKey:
             asyncio.run(self._state_handler(r2)("var.level", 0, 50))
             assert "var.then" not in r2.state.data and "var.else" not in r2.state.data, changed
 
-    def test_a_trigger_value_reads_the_run_s_context_in_a_step_and_the_state_in_a_guard(self, generated):
-        """The engine's guard reads the state only, so ``$trigger.new_value``
-        there reads a state key that has no value and the guard makes no
-        decision; the macro's step reads the change it was fired with."""
+    def test_a_trigger_value_reads_the_run_s_context_in_a_step_and_in_a_guard(self, generated):
+        """The engine's guard and the macro's step both read
+        ``$trigger.new_value`` from the change the trigger fired with, never a
+        state key of that name."""
         source = generated["reference_trigger_value"]["script"]
-        r = _exec_script(source, {"var.power": "on"})
-        asyncio.run(self._state_handler(r)("var.wanted", None, "on"))
+        decoy = {"var.power": "on", "trigger.new_value": "off"}
+        r = _exec_script(source, decoy)
+        asyncio.run(self._state_handler(r)("var.wanted", None, "ON"))
         assert r.state.data.get("var.then") is None and r.state.data.get("var.else") is None
-        r2 = _exec_script(source, {"var.power": "on", "trigger.new_value": "off"})
-        asyncio.run(self._state_handler(r2)("var.wanted", None, "ON"))
-        assert (r2.state.data.get("var.then"), "var.else" in r2.state.data) == (True, False)
+        r2 = _exec_script(source, {**decoy, "trigger.new_value": "on"})
+        asyncio.run(self._state_handler(r2)("var.wanted", None, "off"))
+        assert ("var.then" in r2.state.data, r2.state.data.get("var.else")) == (False, True)
 
 
 class TestOfflineGuards:

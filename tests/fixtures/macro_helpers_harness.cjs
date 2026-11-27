@@ -241,10 +241,20 @@ gen("trigger_context_guard", {
   }],
 });
 
+gen("trigger_context_guard_event", {
+  id: "m17",
+  name: "Guard On An Event Field",
+  steps: [{ action: "state.set", key: "var.after", value: "ran" }],
+  triggers: [{
+    type: "event", enabled: true, event_pattern: "custom.go",
+    conditions: [{ key: "trigger.source", operator: "eq", value: "hdmi1" }],
+  }],
+});
+
 // --- A condition's value that names a key reads that key where the engine
 // reads it: a step from the state or the run's firing context, a Wait Until
 // with no context, a trigger's own test from the change, a guard from the
-// state only ---
+// state or the change, as a step does ---
 gen("reference_steps", {
   id: "m15",
   name: "Values That Name A Key",
