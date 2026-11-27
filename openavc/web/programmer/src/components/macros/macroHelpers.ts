@@ -388,8 +388,9 @@ function _pushStateChecks(body: string[], trigger: TriggerConfig): void {
   if ((trigger.delay_seconds ?? 0) > 0) {
     body.push(`    await asyncio.sleep(${trigger.delay_seconds})  # delay re-check`);
     if (checksValue) {
-      // Re-check using same operator (inverted for guard return)
-      const recheck = { key: trigger.state_key ?? "", operator: trigger.state_operator, value: trigger.state_value };
+      // Re-check using same operator (inverted for guard return), on the key
+      // that changed: for a pattern, one key under it.
+      const recheck = { operator: trigger.state_operator, value: trigger.state_value };
       body.push(_conditionToGuard(recheck, "    ", "recheck"));
       body.push("        return");
     }
@@ -553,15 +554,14 @@ function _conditionExpr(
  * (`TriggerEngine._check_conditions`) reads a `trigger.<field>` key and a
  * `$trigger.` value from the change or event the handler was fired with, as a
  * step does (`_read`); a State Change trigger's own test, checked again after
- * its delay, reads the watched key in the state, and its value as a guard
- * does (`TriggerEngine._rechecks`). */
+ * its delay, reads the key that changed (the handler's `key`) in the state,
+ * and its value as a guard does (`TriggerEngine._rechecks`). */
 function _conditionToGuard(
   cond: { key?: string; operator?: string; value?: unknown },
   indent: string,
   site: "guard" | "recheck",
 ): string {
-  const key = cond.key ?? "";
-  const actual = site === "guard" ? _read(key) : `state.get("${_pyEscape(key)}")`;
+  const actual = site === "guard" ? _read(cond.key ?? "") : "state.get(key)";
   const op = cond.operator ?? "eq";
   if (op === "truthy") return `${indent}if not ${actual}:`;
   if (op === "falsy") return `${indent}if ${actual}:`;

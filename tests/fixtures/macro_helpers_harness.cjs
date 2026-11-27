@@ -325,4 +325,15 @@ gen("delayed_guards", {
   ],
 });
 
+// --- A delayed trigger on a pattern checks again the key that changed ---
+gen("recheck_pattern", {
+  id: "m21",
+  name: "A Pattern Held Through A Delay",
+  steps: [{ action: "state.set", key: "var.after", value: "ran" }],
+  triggers: [{
+    type: "state_change", enabled: true, state_key: "device.*.power",
+    state_operator: "eq", state_value: "on", delay_seconds: 0.01,
+  }],
+});
+
 process.stdout.write(JSON.stringify(results));

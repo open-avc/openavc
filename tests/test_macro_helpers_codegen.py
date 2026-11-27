@@ -211,6 +211,7 @@ SCENARIOS = [
     "recheck_trigger_value",
     "startup_guard",
     "delayed_guards",
+    "recheck_pattern",
 ]
 
 
@@ -564,6 +565,15 @@ class TestGuardsWhereTheEngineChecksThem:
 
         asyncio.run(fire())
         assert "var.after" not in r.state.data
+
+
+    @pytest.mark.parametrize(("now", "runs"), [("on", True), ("off", False)])
+    def test_a_delayed_trigger_on_a_pattern_checks_again_the_key_that_changed(self, generated, now, runs):
+        """The engine checks again the key that changed, one under the
+        pattern, which is itself no key."""
+        r = _exec_script(generated["recheck_pattern"]["script"], {"device.proj.power": now})
+        asyncio.run(self._handler(r, "device.*.power")("device.proj.power", "off", "on"))
+        assert ("var.after" in r.state.data) is runs
 
 
 class TestOfflineGuards:
