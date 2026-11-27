@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core.project_loader import ProjectConfig
 from openavc.ui.page_review import do_action_dicts
+from openavc.ui.page_rules import fallback_page
 
 from tests.test_ui_tools_lookups_pinned import _Devices, _Plugins
 
@@ -1016,7 +1017,8 @@ async def test_delete_page_leaves_an_unrelated_binding_shape_alone():
 async def test_delete_page_leaves_what_the_builder_delete_leaves():
     """Every place a page can be named, cleaned the way the UI Builder's page
     delete cleans it (projectRewrites.test.ts reads the same fixture), so no
-    action the page review walks still moves to the page."""
+    action the page review walks still moves to the page, and the idle page it
+    was falls to the first regular page left, not the dialog listed first."""
     case = json.loads(
         (Path(__file__).parent / "fixtures" / "page_delete_cases.json").read_text(encoding="utf-8")
     )
@@ -1024,7 +1026,7 @@ async def test_delete_page_leaves_what_the_builder_delete_leaves():
     engine = _engine({
         "project": {"id": "acme_room", "name": "Acme Room"},
         "macros": before["macros"],
-        "ui": {"settings": {}, "page_groups": before["page_groups"],
+        "ui": {"settings": before["settings"], "page_groups": before["page_groups"],
                "master_elements": before["master_elements"], "pages": before["pages"]},
     })
     result = await _call(engine, "delete_ui_page", {"page_id": gone})
@@ -1046,6 +1048,8 @@ async def test_delete_page_leaves_what_the_builder_delete_leaves():
     assert [c.model_dump(exclude_unset=True) for c in macro.triggers[0].conditions] \
         == expected_macro["triggers"][0]["conditions"]
     assert [{"name": g.name, "pages": g.pages} for g in ui.page_groups] == after["page_groups"]
+    assert ui.settings.idle_page == after["settings"]["idle_page"]
+    assert after["settings"]["idle_page"] == fallback_page(after["pages"])["id"] != after["pages"][0]["id"]
 
     controls = [el for page in ui.pages for el in page.elements] + list(ui.master_elements)
     left = [

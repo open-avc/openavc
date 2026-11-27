@@ -27,6 +27,7 @@
  */
 
 import { basePath } from './base_path.js';
+import { standIn } from './pages.js';
 import { longestText, panelSetting, typedText } from './project_values.js';
 
 // The timeout is what turns a hung request into "could not ask" instead of a
@@ -250,19 +251,20 @@ export class PanelLock {
 
     /**
      * Nobody has touched the panel: back to the idle page, and locked again
-     * when a PIN is set. The idle page is checked against the pages there are,
-     * so a deleted or renamed one resolves to the first page rather than to
-     * whatever a redraw would fall back to.
+     * when a PIN is set. An idle page that is not there (deleted, renamed, or
+     * left unset with no page of the default's id) resolves to the page that
+     * stands in for it (`standIn` in pages.js): the first regular page, never
+     * a dialog listed before it.
      */
     _goIdle() {
         this._host.goIdle(this._idlePage());
         if (this.configured()) this.show();
     }
 
+    /** The idle page's id, or its stand-in's; the setting itself when there are no pages. */
     _idlePage() {
         const idlePage = panelSetting(this._host.uiSettings(), 'idle_page');
-        const pages = this._host.pages() || [];
-        if (pages.length && !pages.some(p => p.id === idlePage)) return pages[0].id;
-        return idlePage;
+        const page = standIn(this._host.pages() || [], idlePage);
+        return page ? page.id : idlePage;
     }
 }

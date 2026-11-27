@@ -10,7 +10,7 @@ holder is one function here, so a new place a page id can sit is one line in
 :func:`scrub_page_references`.
 
 The Builder's twin is ``removePageAndScrubRefs`` in ``projectRewrites.ts`` (the
-idle page is reset beside it, in ``CanvasToolbar.tsx``): a page the AI deletes
+idle page is reset beside it, by ``settingsWithoutPage``): a page the AI deletes
 must not leave masters pinned to a ghost or nav buttons that go nowhere, and an
 AI delete and a Builder delete leave the same project
 (``tests/fixtures/page_delete_cases.json`` holds both to it).
@@ -19,6 +19,7 @@ AI delete and a Builder delete leave the same project
 from typing import Any
 
 from openavc.ui.page_review import _NESTED_ACTION_FIELDS
+from openavc.ui.page_rules import fallback_page
 
 #: A slot whose every action moved to the deleted page: it is removed.
 _DROP = object()
@@ -201,7 +202,9 @@ def _group_without_page(group: Any, page_id: str) -> None:
 
 
 def _idle_page_without(ui: Any, page_id: str) -> None:
-    """An idle page that was the deleted one falls to the first page left, or
-    to none when no page is."""
+    """An idle page that was the deleted one falls to the page that stands in
+    for it (``fallback_page``: the first regular page left, else the first
+    page), or to none when no page is."""
     if ui.settings.idle_page == page_id:
-        ui.settings.idle_page = ui.pages[0].id if ui.pages else ""
+        stand_in = fallback_page(ui.pages)
+        ui.settings.idle_page = stand_in.id if stand_in else ""

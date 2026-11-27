@@ -22,7 +22,8 @@
  * each master's page list, drops the macro steps that move to it, and drops
  * the trigger conditions that matched on it being the current page
  * (`removePageAndScrubRefs`); `removePageFromGroups` takes it out of each page
- * group. The AI's page delete is
+ * group, and `settingsWithoutPage` gives the idle page it was to the page that
+ * stands in for it, the first regular page left. The AI's page delete is
  * `scrub_page_references` in openavc/cloud/tools/ui_rewrites.py, and leaves
  * the same project.
  *
@@ -43,8 +44,10 @@ import type {
   TriggerConfig,
   UIElement,
   UIPage,
+  UISettings,
   VariableConfig,
 } from "../../api/types";
+import { PAGE_RULES } from "../../api/projectValues.gen";
 import { isPlainObject, own } from "./authoredValues";
 import { NESTED_ACTION_FIELDS } from "./bindingActions";
 
@@ -446,6 +449,23 @@ function macroWithoutPage(macro: MacroConfig, pageId: string): MacroConfig {
  *  group held it. */
 export function removePageFromGroups(groups: PageGroup[], pageId: string): PageGroup[] {
   return mapPreserve(groups, (group) => withField(group, "pages", (pages) => filterPreserve(pages, (pid) => pid !== pageId)));
+}
+
+/** The page types that open over the page on screen; every other page is a regular page. */
+const OPENS_OVER: readonly string[] = PAGE_RULES.opens_over;
+
+/** The page that stands in for one that is missing: the first regular page,
+ *  else the first page (the page rules' `fallback_page`, openavc/ui/page_rules.py). */
+export function fallbackPage(pages: UIPage[]): UIPage | undefined {
+  return pages.find((p) => !OPENS_OVER.includes(p.page_type ?? "")) ?? pages[0];
+}
+
+/** The panel settings once the page is gone: an idle page that was the deleted
+ *  one falls to the page that stands in for it (`fallbackPage`), or to none
+ *  when no page is left. The same settings otherwise. */
+export function settingsWithoutPage(settings: UISettings, pageId: string, pagesLeft: UIPage[]): UISettings {
+  if (settings?.idle_page !== pageId) return settings;
+  return { ...settings, idle_page: fallbackPage(pagesLeft)?.id ?? "" };
 }
 
 export function removePageAndScrubRefs(

@@ -845,6 +845,28 @@ const tests = {
         }
     },
 
+    // The idle page is gone, or left unset and no page has the default's id:
+    // the first regular page stands in, not a dialog listed before it.
+    idle_stands_in_the_first_regular_page_for_a_missing_idle_page() {
+        const dialog = { ...startupPage('help'), page_type: 'overlay' };
+        const app = openingPanel([dialog, startupPage('camera'), startupPage('details')]);
+        const { idle_page: _unset, ...settings } = app.uiSettings || {};
+        try {
+            for (const idlePage of ['gone', undefined]) {
+                const named = idlePage === undefined ? 'the default idle page' : `idle page "${idlePage}"`;
+                app.uiSettings = idlePage === undefined ? settings : { ...settings, idle_page: idlePage };
+                app.navigateToPage('details');
+                app.lock._goIdle();
+                assert(app.currentPage === 'camera', `${named}: the first regular page stands in, got ${app.currentPage}`);
+                assert(app.overlayStack.length === 0, `${named}: no dialog opens, got [${app.overlayStack}]`);
+                assert(!document.querySelector('.panel-overlay:not(.dismissing)[data-page-id="help"]'), `${named}: no dialog is drawn`);
+                assert(app.root.textContent.includes('camera heading'), `${named}: the stand-in is drawn`);
+            }
+        } finally {
+            app.dismissAllOverlays();
+        }
+    },
+
     // matrix routes re-evaluate on incremental state.update for any of
     // their key patterns (route / audio route / labels), not just on full render.
     h001_matrix_reeval() {

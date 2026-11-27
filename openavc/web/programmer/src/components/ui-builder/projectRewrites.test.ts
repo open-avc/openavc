@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { removePage, removePageAndScrubRefs, renameElement, validateElementId } from "./uiBuilderHelpers";
-import { removePageFromGroups } from "./projectRewrites";
+import { removePageFromGroups, settingsWithoutPage } from "./projectRewrites";
 import { elementActions } from "./reviewActions";
-import type { MacroConfig, MasterElement, PageGroup, ScriptConfig, UIElement, UIPage, VariableConfig } from "../../api/types";
+import type {
+  MacroConfig, MasterElement, PageGroup, ScriptConfig, UIElement, UIPage, UISettings, VariableConfig,
+} from "../../api/types";
 
 // Renaming a control and deleting a page each rewrite what the rest of the
 // project says about them. What they rewrite, what they leave, and which
@@ -526,7 +528,9 @@ describe("removePageAndScrubRefs", () => {
 
   it("leaves what the AI's page delete leaves", () => {
     // tests/test_ui_tools_doors_pinned.py runs the AI's delete_ui_page on the same project.
-    type Side = { pages: UIPage[]; master_elements: MasterElement[]; macros: MacroConfig[]; page_groups: PageGroup[] };
+    type Side = {
+      settings: UISettings; pages: UIPage[]; master_elements: MasterElement[]; macros: MacroConfig[]; page_groups: PageGroup[];
+    };
     const fixture = JSON.parse(
       readFileSync(resolve(process.cwd(), "../../../tests/fixtures/page_delete_cases.json"), "utf-8"),
     ) as { page_id: string; before: Side; after: Side };
@@ -536,6 +540,18 @@ describe("removePageAndScrubRefs", () => {
     expect(r.masterElements).toEqual(after.master_elements);
     expect(r.macros).toEqual(after.macros);
     expect(removePageFromGroups(before.page_groups, page_id)).toEqual(after.page_groups);
+    expect(settingsWithoutPage(before.settings, page_id, r.pages)).toEqual(after.settings);
+  });
+
+  it("gives the idle page the deleted page was to the first regular page left, else the first page, else none", () => {
+    const dialog = page("dlg", [], { page_type: "overlay" });
+    const drawer = page("side", [], { page_type: "sidebar" });
+    const idle = (idle_page: string) => ({ idle_page }) as UISettings;
+    expect(settingsWithoutPage(idle("gone"), "gone", [dialog, drawer, page("p1", []), page("p2", [])])).toEqual(idle("p1"));
+    expect(settingsWithoutPage(idle("gone"), "gone", [dialog, drawer])).toEqual(idle("dlg"));
+    expect(settingsWithoutPage(idle("gone"), "gone", [])).toEqual(idle(""));
+    const other = idle("p1");
+    expect(settingsWithoutPage(other, "gone", [dialog, page("p1", [])])).toBe(other);
   });
 
   it("leaves no move to the page in any place the page review walks, on a page or a master", () => {

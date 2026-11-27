@@ -17,7 +17,7 @@ Toggle the palette with **Ctrl+E**.
 **Center panel: Canvas.** Visual representation of the panel page:
 - Drag elements anywhere, drag the handles to resize
 - Grid overlay shows the snap increment. The grid button only shows or hides this ruler; whether dragging actually snaps is the checkbox in the Snap popover next to it, where the column and row counts also live
-- Page tabs across the top row (with page type icons). Hovering a tab shows rename, duplicate and delete buttons; right-click any tab for the full page menu (rename, duplicate, set as home, move, group, delete). Deleting a page also clears what pointed at it: a page nav button aimed at it is left with no target, and every action that opens it is removed, including Off Actions, Long Press Actions, the action a dropdown choice runs, a matrix destination's own route and the actions on master elements, along with the macro steps that open it and its place in page groups
+- Page tabs across the top row (with page type icons). Hovering a tab shows rename, duplicate and delete buttons; right-click any tab for the full page menu (rename, duplicate, set as home, move, group, delete). Deleting a page also clears what pointed at it: a page nav button aimed at it is left with no target, and every action that opens it is removed, including Off Actions, Long Press Actions, the action a dropdown choice runs, a matrix destination's own route and the actions on master elements, along with the macro steps that open it and its place in page groups. If it was the Idle Page, the first regular page left becomes the Idle Page, never a dialog or a sidebar
 - The tools row below them: arrangement switcher (Landscape / Portrait), screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p), grid and snap controls, the alignment tools, undo/redo, save, and preview
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
 
@@ -598,7 +598,7 @@ Click the gear icon in the UI Builder toolbar to open Panel Settings:
 - **Font Family**: the panel's font. **Theme font** uses the theme's, named beside it.
 - **Lock Code**: optional PIN of up to 6 digits, required when the panel opens and after its idle timeout
 - **Idle Timeout**: seconds of inactivity before the panel returns to the idle page, up to 86400 (one day); 0 turns it off
-- **Idle Page**: which page to display when the idle timeout triggers
+- **Idle Page**: which page to display when the idle timeout triggers. If no page has that name, the panel goes to the first regular page
 - **Show a message when a control fails**: on unless you turn it off
 
 ## When a control fails

@@ -1,8 +1,10 @@
 {
-  "_about": "Deleting page 'gone' from this project, and what is left. Every place a control, a master or a macro can name the page holds a move to it: each do slot, a toggle's off action, a long press action, a value_map option, a matrix row's own route, a page nav's target, a master's page list, a macro step and its branches, a trigger condition on the current page, a page group. The AI's page delete (scrub_page_references in openavc/cloud/tools/ui_rewrites.py, tests/test_ui_tools_doors_pinned.py) and the UI Builder's (removePageAndScrubRefs in projectRewrites.ts, projectRewrites.test.ts) each leave 'after'. The idle page is reset by each door's own caller and is not here.",
+  "_about": "Deleting page 'gone' from this project, and what is left. Every place a control, a master or a macro can name the page holds a move to it: each do slot, a toggle's off action, a long press action, a value_map option, a matrix row's own route, a page nav's target, a master's page list, a macro step and its branches, a trigger condition on the current page, a page group. The AI's page delete (scrub_page_references in openavc/cloud/tools/ui_rewrites.py, tests/test_ui_tools_doors_pinned.py) and the UI Builder's (removePageAndScrubRefs in projectRewrites.ts, projectRewrites.test.ts) each leave 'after'. The idle page was the page deleted, and the dialog listed first is not what takes its place: the first regular page left does, as fallback_page in openavc/ui/page_rules.py says (the AI's _idle_page_without, the Builder's settingsWithoutPage).",
   "page_id": "gone",
   "before": {
+    "settings": {"idle_page": "gone"},
     "pages": [
+      {"id": "help", "name": "Help", "page_type": "overlay", "elements": []},
       {
         "id": "p1", "name": "P1",
         "elements": [
@@ -74,7 +76,9 @@
     "page_groups": [{"name": "A", "pages": ["p1", "gone"]}, {"name": "B", "pages": ["p1"]}]
   },
   "after": {
+    "settings": {"idle_page": "p1"},
     "pages": [
+      {"id": "help", "name": "Help", "page_type": "overlay", "elements": []},
       {
         "id": "p1", "name": "P1",
         "elements": [

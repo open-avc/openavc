@@ -41,7 +41,7 @@ import { useProjectStore } from "../../store/projectStore";
 import { saveNow } from "../../store/saveState";
 import { SaveStatusWord } from "./SaveStatusWord";
 import { isCustomPage } from "./customPage";
-import { removePageFromGroups } from "./projectRewrites";
+import { removePageFromGroups, settingsWithoutPage } from "./projectRewrites";
 import { canvasScreen, useChosenScreen } from "./canvasScreen";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
@@ -131,7 +131,7 @@ function pageDeleteEdit(ui: UIConfig, macros: MacroConfig[], pageId: string) {
     macros: result.macros,
     page_groups: removePageFromGroups(before.page_groups, pageId),
   };
-  const settings = settingsWithoutPage(ui, pageId, result.pages);
+  const settings = settingsWithoutPage(ui.settings, pageId, result.pages);
   const snapshot: Record<string, unknown> = { pages: ui.pages };
   if (settings !== ui.settings) snapshot.settings = ui.settings;
   for (const part of ["master_elements", "macros", "page_groups"] as const) {
@@ -145,13 +145,6 @@ function pageDeleteEdit(ui: UIConfig, macros: MacroConfig[], pageId: string) {
       macros: after.macros,
     },
   };
-}
-
-/** The panel settings once the page is gone: an idle page that was the deleted
- *  one falls to the first page left, or to none. The same settings otherwise. */
-function settingsWithoutPage(ui: UIConfig, pageId: string, pagesLeft: UIPage[]): UIConfig["settings"] {
-  if (ui.settings?.idle_page !== pageId) return ui.settings;
-  return { ...ui.settings, idle_page: pagesLeft[0]?.id || "" };
 }
 
 export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = null, trailing }: CanvasToolbarProps) {

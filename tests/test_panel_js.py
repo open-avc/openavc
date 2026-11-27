@@ -78,6 +78,7 @@ SCENARIOS = [
     "startup_opens_a_linked_sidebar_over_the_home_page",
     "startup_draws_a_linked_dialog_as_the_page_when_there_is_no_page_to_put_it_over",
     "idle_opens_a_dialog_idle_page_over_the_home_page",
+    "idle_stands_in_the_first_regular_page_for_a_missing_idle_page",
     "h001_matrix_reeval",
     "h002_gauge_reset",
     "h002_meter_reset",
