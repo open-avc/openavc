@@ -6,6 +6,7 @@ import copy
 import pytest
 
 from openavc.core import project_changes
+from openavc.core.learned_config import LearnedConfig
 from openavc.core.project_diff import ProjectOrigin
 from tests.helpers import wait_for_condition
 from tests.test_learned_config import (
@@ -17,10 +18,38 @@ from tests.test_learned_config import (
 
 
 async def ready(tmp_path, acme_widget):
+    """The engine and the widget's driver, once its reports are watched: the
+    watch starts in the connected event's handler, after `connected` reads
+    true, and a report made before it is queued only when the watch starts."""
     acme_widget.REPORT = {}
     engine, _ = _engine(tmp_path)
     await _add(engine)
+    await wait_for_condition(
+        lambda: 'device.w1.model' in engine.learned_config._watched,
+        message="the widget's model is never watched",
+    )
     return engine, engine.devices.get_driver('w1')
+
+
+@pytest.mark.asyncio
+async def test_ready_waits_until_the_reports_are_watched(tmp_path, acme_widget, monkeypatch):
+    # The watch starts in the connected event's handler, after `connected` is
+    # written; a busy machine runs it late. Held back here on purpose, a
+    # report made once ready() returns is still queued at once.
+    on_connected = LearnedConfig._on_connected
+
+    async def late(self, event, payload=None):
+        await asyncio.sleep(0.3)
+        await on_connected(self, event, payload)
+
+    monkeypatch.setattr(LearnedConfig, '_on_connected', late)
+    engine, driver = await ready(tmp_path, acme_widget)
+    try:
+        driver.set_state('model', 'W100')
+        assert engine._bookkeeping_task is not None
+        await engine._bookkeeping_task
+    finally:
+        await engine.stop()
 
 
 async def disk_full(path, project):
