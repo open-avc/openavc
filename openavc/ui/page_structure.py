@@ -13,9 +13,9 @@ Structure:
   control owns, and the event bus matches every handler's pattern with
   ``fnmatch`` (``EventBus._find_handlers``), which folds case where the file
   system does (Windows), so on Windows a press on ``Btn`` also reaches what
-  listens for ``btn``, and nowhere else does. The Builder reads the pattern and its sentence from the
-  table this module serves (``element_id_rule``, rendered by
-  ``core/project_values_gen``) for its rename; the AI's create doors refuse
+  listens for ``btn``, and nowhere else does. The Builder reads the pattern
+  and its sentence from the table ``core/project_values_gen`` renders
+  (``ELEMENT_ID_RULE``) for its rename; the AI's create doors refuse
   a new control's id that breaks it, and a report says it of an id a saved
   project already holds.
 - **A page id is used once, and names a page.** One starting with ``$`` is
@@ -221,12 +221,6 @@ def element_id_issue(element_id: Any, *, master: bool = False) -> Issue | None:
         return None
     named = f"Master element '{element_id}'" if master else f"Element '{element_id}'"
     return Issue(ELEMENT_ID_SPELLED, f"{named}: {ELEMENT_ID_SENTENCE}", element=element_id)
-
-
-def element_id_rule() -> dict[str, str]:
-    """The rule as data for the Builder: the pattern as a JavaScript test
-    writes it, and the sentence."""
-    return {"pattern": f"^{ELEMENT_ID_SPELLING}$", "sentence": ELEMENT_ID_SENTENCE}
 
 
 def _element_id_issues(pages: Sequence[Any], masters: Sequence[Any]) -> list[Issue]:

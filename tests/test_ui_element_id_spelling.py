@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from openavc.core.project_values_gen import TS_ARTIFACT, render
+from openavc.core.project_values_gen import TS_ARTIFACT, element_id_rule, render
 from openavc.ui import page_report as pr
 from openavc.ui import page_structure as ps
 
@@ -51,7 +51,7 @@ def test_the_sentence_names_the_control_and_the_kind():
 
 
 def test_the_builder_is_served_the_rule_whole():
-    rule = ps.element_id_rule()
+    rule = element_id_rule()
     assert rule == {"pattern": "^[a-z][a-z0-9_]*$", "sentence": SENTENCE}
     assert f"export const ELEMENT_ID_RULE = {json.dumps(rule, indent=2)} as const;" in render(TS_ARTIFACT)
 
