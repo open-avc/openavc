@@ -187,7 +187,8 @@ class AlertMonitor:
 
         Absence rules are deliberately not swept: "nothing has been heard from
         this device" is measured from when this process started hearing things,
-        and the periodic loop already owns that clock.
+        and the periodic loop already owns that clock. A presence key of a
+        device away on purpose is not judged here either, as when it changes.
         """
         for rule in rules:
             if not rule.get("enabled", True):
@@ -199,6 +200,8 @@ class AlertMonitor:
             if not isinstance(pattern, str) or not pattern:
                 continue
             for key, value in self._state.get_matching(pattern).items():
+                if self._quiet_presence_key(key):
+                    continue
                 if rule_type == "threshold":
                     self._evaluate_threshold(rule, key, value)
                 else:

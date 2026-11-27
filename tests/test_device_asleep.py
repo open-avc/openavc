@@ -324,6 +324,25 @@ def test_an_ordinary_drop_still_alerts(book_path):
     assert [t for t, _ in mon._queued] == ["alert"]
 
 
+def test_a_device_asleep_when_the_monitor_starts_raises_no_alert(book_path):
+    # Every connect to the cloud, and every rules push, judges the state as it
+    # stands: a device still asleep then is still away on purpose.
+    dm, driver, state = _manager()
+    asyncio.run(dm.send_command("widget", "power_off", {}))
+    _drop(dm, driver, state)
+    mon = _monitor(state)
+    mon._raise_what_is_already_wrong(mon._rules)
+    assert mon._queued == []
+
+
+def test_a_device_down_when_the_monitor_starts_alerts(book_path):
+    dm, driver, state = _manager()
+    _drop(dm, driver, state)
+    mon = _monitor(state)
+    mon._raise_what_is_already_wrong(mon._rules)
+    assert [t for t, _ in mon._queued] == ["alert"]
+
+
 # --- the contract -----------------------------------------------------------
 
 
