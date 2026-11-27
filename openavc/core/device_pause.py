@@ -14,7 +14,12 @@ runs out (``PAUSE_TTL``, renewed while the holder stays open, so a closed tab
 cannot leave a production device offline for good). Replacing the device's
 instance (an edit, a driver reload: core/device_manager.py ``_replace_device``)
 is none of those, so the pause is carried across with the time its backstop
-had left (``_pause_to_carry``, then ``_hold_carried_pause``).
+had left and when it began (``_pause_to_carry``, then ``_hold_carried_pause``).
+
+A paused device is away on purpose, so no offline alert fires for it for an
+hour (core/device_presence.py ``on_purpose``, asked by the alert monitor with
+``pause_held``). Its flags therefore go up before the disconnect, whose
+``connected`` false is the first write the monitor judges.
 
 Mixed into DeviceManager (core/device_manager.py), which re-exports the
 constants. Logs under the device manager's name, which is how the log view
@@ -25,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from openavc.drivers.base import ConnectEndedError
@@ -47,6 +53,39 @@ PAUSE_TTL = 600.0
 # or a device audit. Set by the first pause and kept until the device resumes.
 PAUSED_FOR_LIVE_TEST = "live_test"
 PAUSED_FOR_AUDIT = "audit"
+
+# Who holds a pause, in the words the IDE's device page uses (pausedText.ts).
+PAUSE_HOLDERS = {PAUSED_FOR_LIVE_TEST: "Live Test", PAUSED_FOR_AUDIT: "a Device Audit"}
+
+
+@dataclass(frozen=True)
+class HeldPause:
+    """A pause as the alert monitor reads it: when it began (wall clock,
+    ``time.time()``) and who holds it (``paused_for``)."""
+
+    since: float
+    held_for: str | None
+
+    def seconds(self, now: float) -> float:
+        """How long the device has been paused at ``now``."""
+        return max(0.0, now - self.since)
+
+    def sentence(self) -> str:
+        """What an alert says about it: "paused for Live Test since 14:02",
+        in this server's local time."""
+        at = time.strftime("%H:%M", time.localtime(self.since))
+        holder = PAUSE_HOLDERS.get(self.held_for or "")
+        return f"paused for {holder} since {at}" if holder else f"paused since {at}"
+
+
+@dataclass(frozen=True)
+class CarriedPause:
+    """The pause a device keeps across a replacement (``_pause_to_carry``):
+    the seconds its backstop had left, who held it and when it began."""
+
+    seconds_left: float
+    held_for: str | None
+    since: float | None
 
 
 class DevicePauseMixin:
@@ -71,6 +110,10 @@ class DevicePauseMixin:
         # pause carried across an instance replacement has to carry the time
         # it had remaining rather than restart its term.
         self._pause_deadlines: dict[str, float] = {}
+        # When each pause began (wall clock), kept across renewals and a
+        # replacement: how long it has been away on purpose, and the time an
+        # alert past the hour names.
+        self._pause_since: dict[str, float] = {}
 
     async def pause_device(
         self, device_id: str, ttl: float | None = None, purpose: str = PAUSED_FOR_LIVE_TEST,
@@ -92,31 +135,36 @@ class DevicePauseMixin:
         # Add to intentional_disconnect BEFORE disconnect so the disconnected
         # event handler doesn't kick off a reconnect_loop.
         self._intentional_disconnect.add(device_id)
+        # Paused BEFORE the disconnect too: the driver writes ``connected``
+        # false (and its children's ``online``) as it closes, and the alert
+        # monitor judges that write as it is made.
+        if not self.state.get(f"device.{device_id}.paused_for"):
+            self.state.set(f"device.{device_id}.paused_for", purpose, source="device_manager")
+        self._pause_since.setdefault(device_id, time.time())
+        self._set_device_state(device_id, "paused", True)
         try:
             await driver.disconnect()
         except Exception as e:
             log.warning(f"pause_device: disconnect raised for {device_id}: {e}")
-        if not self.state.get(f"device.{device_id}.paused_for"):
-            self.state.set(f"device.{device_id}.paused_for", purpose, source="device_manager")
-        self._set_device_state(device_id, "paused", True)
         self._set_device_state(device_id, "connected", False)
         self._schedule_pause_expiry(device_id, PAUSE_TTL if ttl is None else ttl)
         log.info(f"Paused device: {device_id}")
 
-    def _hold_carried_pause(
-        self, device_id: str, seconds_left: float, held_for: str | None,
-    ) -> None:
+    def _hold_carried_pause(self, device_id: str, carried: CarriedPause) -> None:
         """Re-arm the pause a re-added device carried (``_pause_to_carry``): it
         stays off the wire, whoever held the pause still holds the session it
-        was taken to protect, and the backstop gets the time it had left."""
+        was taken to protect, it began when it began, and the backstop gets
+        the time it had left."""
         self._intentional_disconnect.add(device_id)
+        if carried.since is not None:
+            self._pause_since[device_id] = carried.since
         self._set_device_state(device_id, "paused", True)
-        self.state.set(f"device.{device_id}.paused_for", held_for, source="device_manager")
+        self.state.set(f"device.{device_id}.paused_for", carried.held_for, source="device_manager")
         self._set_device_state(device_id, "connected", False)
-        self._schedule_pause_expiry(device_id, seconds_left)
+        self._schedule_pause_expiry(device_id, carried.seconds_left)
         log.info(
             f"Device '{device_id}' was re-added while paused — staying "
-            f"paused ({seconds_left:.0f}s left on the backstop)"
+            f"paused ({carried.seconds_left:.0f}s left on the backstop)"
         )
 
     def _schedule_pause_expiry(self, device_id: str, ttl: float) -> None:
@@ -132,6 +180,12 @@ class DevicePauseMixin:
         if task is not None:
             task.cancel()
 
+    def _forget_pause(self, device_id: str) -> None:
+        """Drop a pause's bookkeeping as its device is taken down: the
+        backstop and when it began. A replacement read both first."""
+        self._cancel_pause_expiry(device_id)
+        self._pause_since.pop(device_id, None)
+
     def _cancel_all_pause_expiries(self) -> None:
         """Cancel every backstop, so none fires a resume mid-shutdown."""
         for device_id in list(self._pause_expiry_tasks.keys()):
@@ -145,10 +199,20 @@ class DevicePauseMixin:
         """
         return bool(self.state.get(f"device.{device_id}.paused"))
 
-    def _pause_to_carry(self, device_id: str) -> tuple[float | None, str | None]:
+    def pause_held(self, device_id: str) -> HeldPause | None:
+        """The device's pause, when it began and who holds it, or None when
+        it is not paused: what the alert monitor asks how long the absence
+        has been on purpose (core/device_presence.py ``on_purpose``)."""
+        since = self._pause_since.get(device_id)
+        if since is None:
+            return None
+        return HeldPause(since, self.state.get(f"device.{device_id}.paused_for"))
+
+    def _pause_to_carry(self, device_id: str) -> CarriedPause | None:
         """The pause a device keeps across a replacement (an edit, a driver
-        reload: ``_replace_device``): the seconds its backstop has left, and
-        who holds it. Read before the take-down, which deletes both.
+        reload: ``_replace_device``): the seconds its backstop has left, who
+        holds it and when it began, or None when it is not paused. Read
+        before the take-down, which deletes them.
 
         The pause belongs to whoever took it, still holding the competing
         session (the Driver Builder's Live Test, an audit), and ends when they
@@ -158,13 +222,21 @@ class DevicePauseMixin:
         of the two: saving the driver from the Builder is what the Live Test's
         own user does next.
         """
-        return self._pause_remaining(device_id), self.state.get(f"device.{device_id}.paused_for")
+        seconds_left = self._pause_remaining(device_id)
+        if seconds_left is None:
+            return None
+        return CarriedPause(
+            seconds_left, self.state.get(f"device.{device_id}.paused_for"),
+            self._pause_since.get(device_id),
+        )
 
     def _end_pause(self, device_id: str) -> None:
         """The pause is over: its backstop cancelled and both flags cleared."""
         self._cancel_pause_expiry(device_id)
+        self._pause_since.pop(device_id, None)
         self._set_device_state(device_id, "paused", False)
         self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
+
 
     def _pause_remaining(self, device_id: str) -> float | None:
         """Seconds left on this device's pause backstop, or None if unpaused.

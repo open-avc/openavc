@@ -111,7 +111,8 @@ async def test_a_backstop_already_due_has_no_time_left_rather_than_less_than_non
     dm._pause_deadlines["dev"] = time.monotonic() - 5.0
 
     assert dm._pause_remaining("dev") == 0.0
-    assert dm._pause_to_carry("dev") == (0.0, "live_test")
+    carried = dm._pause_to_carry("dev")
+    assert (carried.seconds_left, carried.held_for) == (0.0, "live_test")
 
 
 async def test_a_pause_asked_for_no_time_at_all_gets_none(dm):

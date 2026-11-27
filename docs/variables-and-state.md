@@ -86,10 +86,12 @@ Bind a status label, a trigger or a condition to it rather than combining
 | `offline` | out of reach. `offline_reason` and `offline_detail` say why |
 | `connecting` | not connected yet, and no reason is published: just added, its first connect in progress, or the moment between a drop and its reason |
 
-A device that is `restarting` or `asleep` is away on purpose, so OpenAVC Cloud
-raises no offline alert for it. A display that went quiet in standby reads
-`offline` with the reason `no_response`, and a Power On still reaches it while
-OpenAVC holds a connection open to it.
+A device that is `restarting`, `asleep` or `paused` is away on purpose, so
+OpenAVC Cloud raises no offline alert for it. A pause counts for its first
+hour: a device still paused after that is alerted on again, and the alert says
+who paused it and since when ("paused for Live Test since 14:02"). A display
+that went quiet in standby reads `offline` with the reason `no_response`, and a
+Power On still reaches it while OpenAVC holds a connection open to it.
 
 ## Monitor a reading
 

@@ -1,8 +1,9 @@
 """What three readers make of a device's state, pinned for every state it can
 be in.
 
-The alert monitor asks whether the device's absence is on purpose (asleep or
-restarting because we asked: nothing is wrong, so no alert fires), the cloud
+The alert monitor asks whether the device's absence is on purpose (asleep,
+restarting or paused because we asked: nothing is wrong, so no alert fires;
+tests/test_pause_alerts.py has a pause's hour), the cloud
 heartbeat counts the devices in trouble, and the command gate decides whether
 a press goes out. Each is read at the moment ``connected`` is written, which
 is when the monitor judges a drop, and again once the publishing has settled,
@@ -76,7 +77,9 @@ class _Agent:
 
 
 def _monitor(dm: DeviceManager) -> AlertMonitor:
-    return AlertMonitor(_Agent(), dm.state, EventBus())
+    monitor = AlertMonitor(_Agent(), dm.state, EventBus())
+    monitor.read_pauses_from(dm.pause_held)
+    return monitor
 
 
 class _Readers:
@@ -217,12 +220,17 @@ async def test_a_restart_sent_and_not_yet_gone(book_path, widget_class):
     assert readers.word() == "online"
 
 
+QUIET_FINE_REFUSED = {"quiet": True, "trouble": 0, "goes_out": False}
+
+
 async def test_paused_from_online(book_path, widget_class):
+    # Paused before the disconnect, so the drop it writes is already quiet.
     dm, readers = await _manager(book_path)
     _connect(dm)
     await dm.pause_device("widget")
-    assert readers.at_drop == NOT_QUIET_FINE_REFUSED
-    assert readers.now() == NOT_QUIET_FINE_REFUSED
+    assert readers.at_drop == QUIET_FINE_REFUSED
+    assert readers.word_at_drop == "paused"
+    assert readers.now() == QUIET_FINE_REFUSED
     assert readers.now("power_on")["goes_out"] is True
     assert readers.word() == "paused"
 
@@ -233,7 +241,7 @@ async def test_paused_on_top_of_a_fault(book_path, widget_class):
     dm, readers = await _manager(book_path)
     _drop(dm, _connect(dm))
     await dm.pause_device("widget")
-    assert readers.now() == {"quiet": False, "trouble": 0, "goes_out": False}
+    assert readers.now() == QUIET_FINE_REFUSED
     assert readers.word() == "paused"
 
 

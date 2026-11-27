@@ -26,6 +26,13 @@ The words, first match wins:
 Restarting and asleep come before paused, so a device asleep or restarting
 on purpose stays quiet while Live Test or an audit pauses it.
 
+A pause is away on purpose for an hour (``PAUSE_ON_PURPOSE_SECONDS``), not
+for as long as it lasts: Live Test renews its pause while its panel is open,
+so a laptop left open in the rack would keep the device's offline alerts
+quiet for good. ``on_purpose`` is the whole question, asked with how long
+the device has been paused; past the hour the alert monitor judges it as it
+judges a fault, and says who holds the pause.
+
 A device that went silent and whose port still opens is reconnected, held
 offline until it answers, and dropped again on a cycle. The word stays
 ``offline`` for the whole spell: whether a connection is open at this moment
@@ -49,6 +56,7 @@ stands, and holds what its assistant is taught about the word to these words.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from typing import Any
 
 DISABLED = "disabled"
 WAITING_FOR_DRIVER = "waiting_for_driver"
@@ -63,8 +71,13 @@ PRESENCE_WORDS: tuple[str, ...] = (
     DISABLED, WAITING_FOR_DRIVER, ONLINE, RESTARTING, ASLEEP, PAUSED, OFFLINE, CONNECTING,
 )
 
-# Absence we asked for: no offline alert fires for it.
-AWAY_ON_PURPOSE: frozenset[str] = frozenset({RESTARTING, ASLEEP})
+# Absence we asked for: no offline alert fires for it (a pause for an hour,
+# ``on_purpose``).
+AWAY_ON_PURPOSE: frozenset[str] = frozenset({RESTARTING, ASLEEP, PAUSED})
+# How long a pause stays away on purpose. A Device Audit ends after 30 idle
+# minutes and its longest step (the outage watch) runs 15; Live Test holds
+# its pause for as long as its panel is open.
+PAUSE_ON_PURPOSE_SECONDS = 3600.0
 # A command sent now goes out. So does one declaring available_offline, and
 # any command while a held connection is open (see above).
 TAKES_COMMANDS: frozenset[str] = frozenset({ONLINE})
@@ -90,3 +103,19 @@ def presence_word(parts: PresenceParts) -> str:
     """The word for these parts: the first of them that holds, else
     ``connecting``."""
     return next((f.name for f in fields(parts) if getattr(parts, f.name)), CONNECTING)
+
+
+def on_purpose(word: Any, paused_seconds: float | None = None) -> bool:
+    """Whether the absence ``word`` names is on purpose, so no offline alert
+    fires for it. ``paused_seconds`` is how long the device has been paused,
+    None when it is not.
+
+    Past ``PAUSE_ON_PURPOSE_SECONDS`` only a sleep keeps a paused device
+    quiet. A commanded restart lasts minutes at most (the contract holds it to
+    600 s), and its flag outlives it only because the pause stops the
+    reconnect that would clear it."""
+    if word not in AWAY_ON_PURPOSE:
+        return False
+    if paused_seconds is None or paused_seconds < PAUSE_ON_PURPOSE_SECONDS:
+        return True
+    return word == ASLEEP

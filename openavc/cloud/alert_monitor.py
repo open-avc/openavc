@@ -16,19 +16,20 @@ from collections.abc import Callable
 from fnmatch import fnmatch
 from typing import Any, TYPE_CHECKING
 
+from openavc.cloud.alert_quiet import QuietDevices
 from openavc.cloud.protocol import (
     ACTIVE_ALERTS, ALERT, ALERT_RESOLVED, MONITORS, RESOLVED_RULE_REMOVED,
     build_active_alerts_payload, build_alert_payload,
     build_alert_resolved_payload, build_monitors_payload,
 )
 from openavc.cloud.state_relay import cloud_state_value
-from openavc.core.device_presence import AWAY_ON_PURPOSE
 from openavc.core.monitors import as_number, compile_alert_rules, monitor_reading
 from openavc.utils.logger import get_logger
 from openavc.utils.regex_safety import regex_safety_error
 
 if TYPE_CHECKING:
     from openavc.cloud.agent import CloudAgent
+    from openavc.core.device_pause import HeldPause
     from openavc.core.state_store import StateStore
     from openavc.core.event_bus import EventBus
 
@@ -54,6 +55,8 @@ class AlertMonitor:
         self._agent = agent
         self._state = state
         self._events = events
+        # The devices left alone: away on purpose (cloud/alert_quiet.py).
+        self._quiet = QuietDevices(state)
         # Reads the project's monitor list. A callable rather than the project
         # itself because the project is replaced wholesale on every save, and
         # this must always see the one that is running.
@@ -191,21 +194,12 @@ class AlertMonitor:
         device away on purpose is not judged here either, as when it changes.
         """
         for rule in rules:
-            if not rule.get("enabled", True):
-                continue
-            rule_type = rule.get("rule_type", "")
-            if rule_type not in ("threshold", "pattern"):
-                continue
-            pattern = rule.get("condition", {}).get("key", "")
-            if not isinstance(pattern, str) or not pattern:
+            pattern = _swept_key(rule)
+            if pattern is None:
                 continue
             for key, value in self._state.get_matching(pattern).items():
-                if self._quiet_presence_key(key):
-                    continue
-                if rule_type == "threshold":
-                    self._evaluate_threshold(rule, key, value)
-                else:
-                    self._evaluate_pattern(rule, key, value)
+                if not self._quiet_presence_key(key):
+                    self._evaluate_rule(rule, key, value)
 
     def _send_active_alert_set(self) -> None:
         """Tell the cloud everything this instance has firing, right now.
@@ -247,11 +241,11 @@ class AlertMonitor:
             parts = key.split(".")
             if len(parts) >= 2:
                 self._last_state_times[parts[1]] = time.time()
-            # The device's quiet just ended (it woke, or a restart window
-            # ended): its presence keys are judged again with the values they
-            # hold, so a wake that fails alerts on the real fault even though
-            # `connected` itself did not change.
-            if _quiet_ended(parts, old_value, new_value):
+            # The device's quiet just ended (it woke, a restart window ended,
+            # a pause was lifted and the dial has its answer): its presence
+            # keys are judged again with the values they hold, so a wake that
+            # fails alerts on the real fault though `connected` did not change.
+            if self._quiet.quiet_ended(parts, old_value, new_value):
                 self._judge_when_settled(parts[1])
 
         self._evaluate(key, new_value)
@@ -267,22 +261,34 @@ class AlertMonitor:
             if quiet:
                 self._pattern_timers.pop(f"rule:{rule.get('id')}:{key}", None)
                 continue
-            rule_type = rule.get("rule_type", "")
-            if rule_type == "threshold":
-                self._evaluate_threshold(rule, key, value)
-            elif rule_type == "pattern":
-                self._evaluate_pattern(rule, key, value)
+            self._evaluate_rule(rule, key, value)
+
+    def _evaluate_rule(self, rule: dict[str, Any], key: str, value: Any) -> None:
+        """One threshold or pattern rule against one key."""
+        rule_type = rule.get("rule_type", "")
+        if rule_type == "threshold":
+            self._evaluate_threshold(rule, key, value)
+        elif rule_type == "pattern":
+            self._evaluate_pattern(rule, key, value)
 
     # --- Quiet devices ---
 
+    def read_pauses_from(self, pauses: Callable[[str], HeldPause | None]) -> None:
+        """Ask ``pauses`` (the device manager's ``pause_held``) how long a
+        device has been paused: a pause is away on purpose for an hour, and
+        an alert past it names it."""
+        self._quiet.read_pauses_from(pauses)
+
     def _quiet_device(self, device_id: str) -> bool:
         """True while the device is away on purpose, as its presence word
-        says (core/device_presence.py): asleep after a command declaring
-        sleeps_device, or inside a commanded restart (or the wake that
-        follows a sleep). Nothing is wrong, so nobody is told. The word is
-        written in the same batch as ``connected``, so a drop is judged with
-        the word that goes with it."""
-        return self._state.get(f"device.{device_id}.presence") in AWAY_ON_PURPOSE
+        says (core/device_presence.py ``on_purpose``): asleep after a command
+        declaring sleeps_device, inside a commanded restart (or the wake that
+        follows a sleep), or paused by Live Test or a device audit, for an
+        hour; and while the dial that ends one has no answer yet
+        (cloud/alert_quiet.py). Nothing is wrong, so nobody is told. The word
+        is written in the same batch as ``connected``, so a drop is judged
+        with the word that goes with it."""
+        return self._quiet.quiet(device_id)
 
     def _quiet_presence_key(self, key: str) -> bool:
         """True for a presence key (the device's or a child's) of a quiet device."""
@@ -295,7 +301,7 @@ class AlertMonitor:
         """Judge the device's presence keys again once the write that ended
         its quiet has settled: a driver writes its children's ``online``
         right after its own ``connected`` (drivers/child_entities.py
-        ``_children_follow_parent``), so a device back from a sleep is judged
+        ``_children_follow_parent``), so a device back from a pause is judged
         with its children back too. Outside a running loop, at once."""
         try:
             loop = asyncio.get_running_loop()
@@ -303,6 +309,12 @@ class AlertMonitor:
             self._evaluate_presence(device_id)
             return
         loop.call_soon(self._evaluate_presence, device_id)
+
+    def _judge_what_is_due(self, now: float) -> None:
+        """Judge again the devices whose quiet ended with no write to say so
+        (cloud/alert_quiet.py ``due``)."""
+        for device_id in self._quiet.due(now):
+            self._evaluate_presence(device_id)
 
     def _evaluate_presence(self, device_id: str) -> None:
         """Judge every presence key of one device again, with its current value."""
@@ -375,18 +387,20 @@ class AlertMonitor:
         alert_id = str(uuid.uuid4())
         self._active_alerts[alert_key] = alert_id
         value = cloud_state_value(key, value)
+        device_id = _extract_device_id(key)
+        message, detail = self._quiet.naming_the_pause(
+            device_id,
+            f"{rule['name']}: {key} {operator} {threshold} (current: {_reads_as(rule, value)})",
+            {"rule_id": rule["id"], "key": key, "value": value, "threshold": threshold},
+        )
         return build_alert_payload(
             alert_id=alert_id,
             rule_id=rule["id"],
             severity=rule.get("severity", "warning"),
             category=rule.get("category", "device"),
-            device_id=_extract_device_id(key),
-            message=_clip_message(
-                f"{rule['name']}: {key} {operator} {threshold} "
-                f"(current: {_reads_as(rule, value)})"
-            ),
-            detail={"rule_id": rule["id"], "key": key, "value": value,
-                    "threshold": threshold},
+            device_id=device_id,
+            message=_clip_message(message),
+            detail=detail,
         )
 
     def _evaluate_pattern(self, rule: dict, key: str, value: Any) -> None:
@@ -436,17 +450,20 @@ class AlertMonitor:
         self._active_alerts[alert_key] = alert_id
         value = cloud_state_value(key, value)
         held = f" for {duration:g}s" if duration else ""
+        device_id = _extract_device_id(key)
+        message, detail = self._quiet.naming_the_pause(
+            device_id,
+            f"{rule['name']}: {key} is {_reads_as(rule, value)}{held}",
+            {"rule_id": rule["id"], "key": key, "value": value, "duration_seconds": duration},
+        )
         return build_alert_payload(
             alert_id=alert_id,
             rule_id=rule["id"],
             severity=rule.get("severity", "warning"),
             category=rule.get("category", "device"),
-            device_id=_extract_device_id(key),
-            message=_clip_message(
-                f"{rule['name']}: {key} is {_reads_as(rule, value)}{held}"
-            ),
-            detail={"rule_id": rule["id"], "key": key, "value": value,
-                    "duration_seconds": duration},
+            device_id=device_id,
+            message=_clip_message(message),
+            detail=detail,
         )
 
     # --- Periodic Check Loop ---
@@ -472,6 +489,7 @@ class AlertMonitor:
         Split out from `_periodic_check_loop` so tests can drive a single
         evaluation without waiting on the 30-second sleep.
         """
+        self._judge_what_is_due(now)
         # Check armed timers — a threshold or a pattern that has been wrong
         # since it armed and now has to have held long enough.
         for alert_key, start_time in list(self._pattern_timers.items()):
@@ -538,30 +556,41 @@ class AlertMonitor:
                 full_key = f"device.{device_id}"
                 if not _matches_key_prefix(full_key, key_prefix):
                     continue
-                # Asleep or restarting on purpose: silent, and not wrong.
+                # Away on purpose (asleep, restarting, paused): silent, and
+                # not wrong.
                 if self._quiet_device(device_id):
                     continue
 
                 alert_key = f"rule:{rule['id']}:{device_id}"
 
                 if now - last_time > threshold_secs and alert_key not in self._active_alerts:
-                    alert_id = str(uuid.uuid4())
-                    self._active_alerts[alert_key] = alert_id
-                    elapsed = int(now - last_time)
-                    await self._agent.send_message(ALERT, build_alert_payload(
-                        alert_id=alert_id,
-                        rule_id=rule["id"],
-                        severity=rule.get("severity", "warning"),
-                        category="device",
-                        device_id=device_id,
-                        message=_clip_message(
-                            f"{rule['name']}: {device_id} not reporting for {elapsed}s"
-                        ),
-                        detail={"rule_id": rule["id"], "threshold_seconds": threshold_secs},
+                    await self._agent.send_message(ALERT, self._absence_alert(
+                        rule, device_id, int(now - last_time), threshold_secs,
                     ))
                 elif now - last_time <= threshold_secs and alert_key in self._active_alerts:
                     resolved_id = self._active_alerts.pop(alert_key)
                     await self._agent.send_message(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
+
+    def _absence_alert(
+        self, rule: dict, device_id: str, elapsed: int, threshold_secs: Any,
+    ) -> dict[str, Any]:
+        """Register an absence alert as active and build its payload."""
+        alert_id = str(uuid.uuid4())
+        self._active_alerts[f"rule:{rule['id']}:{device_id}"] = alert_id
+        message, detail = self._quiet.naming_the_pause(
+            device_id,
+            f"{rule['name']}: {device_id} not reporting for {elapsed}s",
+            {"rule_id": rule["id"], "threshold_seconds": threshold_secs},
+        )
+        return build_alert_payload(
+            alert_id=alert_id,
+            rule_id=rule["id"],
+            severity=rule.get("severity", "warning"),
+            category="device",
+            device_id=device_id,
+            message=_clip_message(message),
+            detail=detail,
+        )
 
     # --- Send Loop (processes queued sends from sync callback) ---
 
@@ -910,21 +939,19 @@ def _check_resolved(value: Any, fire_operator: str, resolve_value: Any) -> bool:
 
 
 # The keys a device's (or a child's) reachability is published under. A rule
-# on one of these keys of a device that is asleep or restarting neither arms
-# nor fires.
+# on one of these keys of a device away on purpose neither arms nor fires.
 PRESENCE_PROPS = frozenset({
     "connected", "online", "presence", "offline_reason", "offline_detail", "reconnect_attempt",
 })
 
 
-def _quiet_ended(parts: list[str], old_value: Any, new_value: Any) -> bool:
-    """True for a change to ``device.<id>.presence`` that takes the device
-    out of an absence on purpose. Not its deletion: the device is being
-    removed, or taken down to be built again."""
-    return (
-        len(parts) == 3 and parts[2] == "presence" and new_value is not None
-        and old_value in AWAY_ON_PURPOSE and new_value not in AWAY_ON_PURPOSE
-    )
+def _swept_key(rule: dict[str, Any]) -> str | None:
+    """The key pattern an enabled threshold or pattern rule watches, swept
+    against the state as it stands; None for any other rule."""
+    if not rule.get("enabled", True) or rule.get("rule_type", "") not in ("threshold", "pattern"):
+        return None
+    pattern = rule.get("condition", {}).get("key", "")
+    return pattern if isinstance(pattern, str) and pattern else None
 
 
 def _extract_device_id(key: str) -> str | None:

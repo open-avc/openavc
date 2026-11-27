@@ -75,6 +75,7 @@ from openavc.core.device_pause import (  # noqa: F401  (the constants re-exporte
     PAUSE_TTL,
     PAUSED_FOR_AUDIT,
     PAUSED_FOR_LIVE_TEST,
+    CarriedPause,
     DevicePauseMixin,
 )
 from openavc.core.device_reconnect import DeviceReconnectMixin
@@ -188,9 +189,8 @@ class DeviceManager(
     async def add_device(
         self,
         device_config: dict[str, Any],
-        carry_pause: float | None = None,
+        carry_pause: CarriedPause | None = None,
         *,
-        carry_pause_for: str | None = None,
         defer_connect: bool = False,
     ) -> None:
         """
@@ -198,11 +198,10 @@ class DeviceManager(
 
         Args:
             device_config: Dict with id, driver, name, config keys.
-            carry_pause: Seconds left on a pause this device is being re-added
-                under. The driver is registered but not connected, and the
-                pause is re-armed for that long. Only :meth:`_replace_device`
+            carry_pause: The pause this device is being re-added under. The
+                driver is registered but not connected, and the pause is
+                re-armed with what it had. Only :meth:`_replace_device`
                 passes it; a genuine add is never paused.
-            carry_pause_for: Who held that pause (``paused_for``), carried with it.
             defer_connect: Register the device but leave it on the deferred
                 list for :meth:`bring_up` to dial. The project reconcile uses
                 this so a save answers before the fleet is on the wire.
@@ -245,7 +244,7 @@ class DeviceManager(
         # with a fixed __init__ signature don't need to change. A driver that
         # raises doing either leaves the device kept with why
         # (core/device_build_failures.py) and raises DriverBuildError.
-        self._publish_word_before_build(device_id)
+        self._publish_word_before_build(device_id, paused=carry_pause is not None)
         driver = self._build_driver(device_config, driver_class, config)
         # A device a driver runs has no record of another state.
         self._not_running.pop(device_id, None)
@@ -269,7 +268,7 @@ class DeviceManager(
             # bridge port prepared and its web page probed, but not connected,
             # which is the whole harm. remove_device dropped the detected page
             # on the way through.
-            self._hold_carried_pause(device_id, carry_pause, carry_pause_for)
+            self._hold_carried_pause(device_id, carry_pause)
             await self._prepare_bridge_for(device_id, config)
             self._schedule_web_ui_probe(device_id)
             return
@@ -437,7 +436,7 @@ class DeviceManager(
         # a device that no longer exists, and a stale intentional-disconnect
         # entry would suppress auto-reconnect for a future device re-added
         # under the same id.
-        self._cancel_pause_expiry(device_id)
+        self._forget_pause(device_id)
         self._intentional_disconnect.discard(device_id)
         # A device removed before the deferred bring-up reached it must not be
         # dialed afterwards — bring_up re-checks the registry, but dropping the
@@ -518,7 +517,7 @@ class DeviceManager(
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
         if self._hold_rebuild(device_id, config):
             return
-        seconds_left, held_for = self._pause_to_carry(device_id)
+        carried = self._pause_to_carry(device_id)
         if before.status == DISABLED:
             self._forget_record(device_id)
         else:
@@ -528,11 +527,8 @@ class DeviceManager(
         if not config.get("enabled", True):
             # The disabled path builds nothing to hold paused; the backstop
             # stays cancelled.
-            seconds_left = None
-        await self.add_device(
-            config, carry_pause=seconds_left, carry_pause_for=held_for,
-            defer_connect=defer_connect,
-        )
+            carried = None
+        await self.add_device(config, carry_pause=carried, defer_connect=defer_connect)
 
     def get_device_configs(self) -> dict[str, dict[str, Any]]:
         """Return a shallow copy of the device config dict (device_id → config)."""

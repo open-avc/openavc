@@ -55,9 +55,10 @@ export function presenceIn(liveState: Record<string, unknown>, deviceId: string)
  * these apart from a fault: not red, not among the Dashboard's disconnected
  * devices, and a child's `parent_offline` under one is expected.
  *
- * Wider than the server's AWAY_ON_PURPOSE, which decides whether an offline
- * alert fires and leaves a pause out of it. Here the question is only how to
- * draw the device, and a pause is something the integrator started.
+ * The server's AWAY_ON_PURPOSE, which decides whether an offline alert fires,
+ * holds the same words; there a pause stays quiet for its first hour only.
+ * Here the question is only how to draw the device, and the hour does not
+ * change that.
  */
 export const AWAY_ASKED_FOR: ReadonlySet<PresenceWord> = new Set<PresenceWord>([
   "restarting",

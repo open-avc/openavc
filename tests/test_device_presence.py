@@ -51,9 +51,36 @@ def test_what_each_reader_asks_is_a_set_of_words():
     words = set(presence.PRESENCE_WORDS)
     for readers_set in (presence.AWAY_ON_PURPOSE, presence.TAKES_COMMANDS, presence.IN_TROUBLE):
         assert readers_set <= words
-    assert presence.AWAY_ON_PURPOSE == {presence.RESTARTING, presence.ASLEEP}
+    assert presence.AWAY_ON_PURPOSE == {presence.RESTARTING, presence.ASLEEP, presence.PAUSED}
     assert presence.TAKES_COMMANDS == {presence.ONLINE}
     assert presence.IN_TROUBLE == {presence.OFFLINE}
+
+
+HOUR = presence.PAUSE_ON_PURPOSE_SECONDS
+
+
+@pytest.mark.parametrize(("word", "paused_seconds", "quiet"), [
+    (presence.ASLEEP, None, True),
+    (presence.RESTARTING, None, True),
+    (presence.PAUSED, 0.0, True),
+    (presence.PAUSED, HOUR - 1, True),
+    # Past the hour a pause is judged as a fault is, and only a sleep stays
+    # quiet: a restart window is over long before.
+    (presence.PAUSED, HOUR, False),
+    (presence.RESTARTING, HOUR, False),
+    (presence.ASLEEP, HOUR, True),
+    (presence.OFFLINE, None, False),
+    (presence.CONNECTING, 10.0, False),
+    (None, None, False),
+])
+def test_on_purpose(word, paused_seconds, quiet):
+    assert presence.on_purpose(word, paused_seconds) is quiet
+
+
+def test_the_hour_outlasts_a_restart_window():
+    from openavc.drivers.restart_window import RESTART_SECONDS_MAX
+
+    assert RESTART_SECONDS_MAX < HOUR
 
 
 # A write of a part of the word straight to the store, past the door that

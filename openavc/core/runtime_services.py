@@ -333,6 +333,7 @@ class RuntimeServicesMixin:
                 self.cloud_agent, self.state, self.events,
                 monitors_provider=self.monitors,
             )
+            alert_monitor.read_pauses_from(self.devices.pause_held)
             self.cloud_agent.set_alert_monitor(alert_monitor)
 
             tunnel_handler = TunnelHandler(self.cloud_agent)
