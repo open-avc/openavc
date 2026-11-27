@@ -249,10 +249,10 @@ class AlertMonitor:
                 self._last_state_times[parts[1]] = time.time()
             # The device's quiet just ended (it woke, or a restart window
             # ended): its presence keys are judged again with the values they
-            # hold now, so a wake that fails alerts on the real fault even
-            # though `connected` itself did not change.
+            # hold, so a wake that fails alerts on the real fault even though
+            # `connected` itself did not change.
             if _quiet_ended(parts, old_value, new_value):
-                self._evaluate_presence(parts[1])
+                self._judge_when_settled(parts[1])
 
         self._evaluate(key, new_value)
 
@@ -290,6 +290,19 @@ class AlertMonitor:
         if len(parts) < 3 or parts[0] != "device" or parts[-1] not in PRESENCE_PROPS:
             return False
         return self._quiet_device(parts[1])
+
+    def _judge_when_settled(self, device_id: str) -> None:
+        """Judge the device's presence keys again once the write that ended
+        its quiet has settled: a driver writes its children's ``online``
+        right after its own ``connected`` (drivers/child_entities.py
+        ``_children_follow_parent``), so a device back from a sleep is judged
+        with its children back too. Outside a running loop, at once."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._evaluate_presence(device_id)
+            return
+        loop.call_soon(self._evaluate_presence, device_id)
 
     def _evaluate_presence(self, device_id: str) -> None:
         """Judge every presence key of one device again, with its current value."""
@@ -906,9 +919,10 @@ PRESENCE_PROPS = frozenset({
 
 def _quiet_ended(parts: list[str], old_value: Any, new_value: Any) -> bool:
     """True for a change to ``device.<id>.presence`` that takes the device
-    out of an absence on purpose."""
+    out of an absence on purpose. Not its deletion: the device is being
+    removed, or taken down to be built again."""
     return (
-        len(parts) == 3 and parts[2] == "presence"
+        len(parts) == 3 and parts[2] == "presence" and new_value is not None
         and old_value in AWAY_ON_PURPOSE and new_value not in AWAY_ON_PURPOSE
     )
 

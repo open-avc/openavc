@@ -245,6 +245,7 @@ class DeviceManager(
         # with a fixed __init__ signature don't need to change. A driver that
         # raises doing either leaves the device kept with why
         # (core/device_build_failures.py) and raises DriverBuildError.
+        self._publish_word_before_build(device_id)
         driver = self._build_driver(device_config, driver_class, config)
         # A device a driver runs has no record of another state.
         self._not_running.pop(device_id, None)

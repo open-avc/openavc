@@ -281,6 +281,18 @@ class DeviceAwayMixin:
             f"device.{device_id}.presence": self.presence_of(device_id, {prop: value}),
         }, source=source)
 
+    def _publish_word_before_build(self, device_id: str) -> None:
+        """Publish the word of a device about to be built. Its driver writes
+        its first ``connected`` as it is built, before it can ask
+        (``_attach_presence``), and the alert monitor judges that write as it
+        is made: a sleep or a restart window kept across a replacement is
+        already the word then."""
+        self.state.set(
+            f"device.{device_id}.presence",
+            self.presence_of(device_id, {"connected": False}),
+            source="device_manager",
+        )
+
     def _attach_presence(self, device_id: str, driver: BaseDriver) -> None:
         """Let the driver ask this device's presence word, which it writes
         with every ``connected`` (drivers/state_writes.py), then publish it:
