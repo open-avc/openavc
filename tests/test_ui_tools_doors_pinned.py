@@ -665,6 +665,29 @@ async def test_layouts_a_loop_made_by_two_edits_is_refused():
     assert result == {"error": "Layout inheritance loops: 'portrait' eventually inherits from itself"}
 
 
+@pytest.mark.asyncio
+async def test_layouts_a_loop_the_page_already_holds_does_not_refuse_another_write():
+    """A page whose arrangements already loop still takes a write that makes
+    no new loop; one that makes another is refused, naming it."""
+    project = _project()
+    project["ui"]["pages"][1]["layouts"] = [
+        {"id": "landscape", "primary": True, "inherits": "tall"},
+        {"id": "tall", "orientation": "portrait", "inherits": "landscape"},
+    ]
+    engine = _engine(project)
+    moved = await _call(engine, "update_ui_page", {"page_id": "other", "layouts": [
+        {"id": "tall", "placements": {"back": BOX}},
+    ]})
+    assert moved["changed"] == ["layouts"]
+    assert _boxes(engine, "other", "tall")["back"] == BOX
+    before = _dump(engine)
+    looped = await _call(engine, "update_ui_page", {"page_id": "main", "layouts": [
+        {"id": "landscape", "inherits": "portrait"},
+    ]})
+    assert looped == {"error": "Layout inheritance loops: 'landscape' eventually inherits from itself"}
+    assert _dump(engine) == before
+
+
 # --- update_ui_element: boxes, hides and containers ------------------------------
 
 

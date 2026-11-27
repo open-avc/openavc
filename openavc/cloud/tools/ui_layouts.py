@@ -98,13 +98,16 @@ def apply_layouts(page: Any, layouts_input: Any) -> None:
 
     if not isinstance(layouts_input, list):
         raise ToolEditError({"error": "'layouts' must be an array of layout objects"})
+    held = {issue.message for issue in inherits_loops(page.layouts)}
     edit = _LayoutEdit(page)
     for entry in layouts_input:
         edit.apply(entry)
     # Two edits in one call can each be legal and still tie the chains in a
     # loop (A inherits B, then B inherits A), so every chain is walked once
-    # the call's edits are in.
-    _refuse(next(iter(inherits_loops(page.layouts)), None))
+    # the call's edits are in. A loop the page already held is not this
+    # write's to answer for.
+    made = (issue for issue in inherits_loops(page.layouts) if issue.message not in held)
+    _refuse(next(made, None))
     page.layouts = normalize_primary_layout(page.layouts)
 
 
