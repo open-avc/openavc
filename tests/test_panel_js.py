@@ -286,6 +286,8 @@ SCENARIOS = [
     "q160_a_page_with_a_control_says_nothing",
     "q160_a_master_element_on_the_page_is_content",
     "q160_a_master_element_on_another_page_is_not_content",
+    "q160_a_master_element_with_its_pages_left_out_is_content",
+    "q160_a_master_element_the_panel_cannot_draw_is_not_content",
     "q160_a_hidden_master_element_is_not_content",
     "q160_a_custom_page_says_nothing",
     "q160_the_designer_shows_no_notice",

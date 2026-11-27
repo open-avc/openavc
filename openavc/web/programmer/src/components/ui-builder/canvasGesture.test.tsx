@@ -721,6 +721,24 @@ describe("moving and resizing a master element", () => {
     });
   }
 
+  it("has a box on the canvas only where the panel draws it", () => {
+    const noPages = master("draft", { landscape: M });
+    delete (noPages as Partial<MasterElement>).pages;
+    load(makePage([], {}), {
+      masters: [
+        master("shown", { landscape: M }),
+        master("listed", { landscape: M }, { pages: ["p1"] }),
+        noPages,
+        master("hidden", { landscape: M }, { hidden: true }),
+        master("elsewhere", { landscape: M }, { pages: ["p2"] }),
+        master("nowhere", { landscape: M }, { pages: [] }),
+        master("undrawn", { landscape: M }, { type: "hologram" }),
+      ],
+    });
+    const boxes = [...view.container.querySelectorAll("[data-canvas-master]")].map((n) => n.getAttribute("data-canvas-master"));
+    expect(boxes).toEqual(["shown", "listed", "draft"]);
+  });
+
   it("travels by the pointer's distance as a share of the screen", () => {
     loadMaster(master("m", { landscape: M }));
     press(masterNode("m"));

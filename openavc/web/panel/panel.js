@@ -52,7 +52,7 @@ import {
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
 import {
-    closeOverlayFrame, drawOverlayFrame, isCustomPage, namesPage, opensOver, pageBehind,
+    closeOverlayFrame, drawOverlayFrame, isCustomPage, masterDrawsOn, opensOver, pageBehind,
     pageDrawsNothing, pageOpening, pageRunsAuthorMarkup, rememberPage, showsOpening, standIn,
 } from './modules/pages.js';
 import {
@@ -1360,7 +1360,7 @@ class PanelApp {
      */
     _drawMasters(page, surface) {
         for (const mEl of (this.uiDef.master_elements || [])) {
-            if (!namesPage(mEl, page) || mEl.hidden) continue;
+            if (!masterDrawsOn(mEl, page)) continue;
             this._drawnOrientation = masterOrientation(mEl, viewportOrientation());
             const el = this.renderElement(mEl);
             if (!el) continue;

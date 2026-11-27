@@ -1212,6 +1212,12 @@ CASES["master_buried"] = _project(
             "custom_file": "room/index.html",
         },
         _page("quiet_page", [], [_landscape({})]),
+        # Under a master of a type the panel draws nothing for: nothing is buried.
+        _page(
+            "under_undrawn",
+            [{"id": "over_undrawn", "type": "button", "label": "U"}],
+            [_landscape({"over_undrawn": _pct_box(40, 40, 20, 20)})],
+        ),
     ],
     masters=[
         {"id": "nav_bar", "type": "button", "label": "Home", "pages": "*",
@@ -1223,6 +1229,9 @@ CASES["master_buried"] = _project(
          "placements": {"landscape": _pct_box(0, 0, 100, 100)}},
         # Drawn nowhere at all, over everything if it were.
         {"id": "ghost", "type": "status_led", "label": "G", "pages": "*", "hidden": True,
+         "placements": {"landscape": _pct_box(0, 0, 100, 100)}},
+        # A type the panel has no renderer for, over the whole of one page.
+        {"id": "undrawn", "type": "hologram", "pages": ["under_undrawn"],
          "placements": {"landscape": _pct_box(0, 0, 100, 100)}},
         # Only ever on screen in one mode, and `mode_b_lbl` is the other one.
         {"id": "mode_a_bar", "type": "label", "text": "A", "pages": "*",
@@ -1938,6 +1947,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "nav_kid", "off_kid",                  # inside a container that answers for them
         "mode_b_lbl",                          # never on screen with the master it covers
         "hidden_ctl",                          # a custom page paints its masters on top
+        "over_undrawn",                        # over a master the panel draws nothing for
         "p_btn_ok", "p_wall_ok",               # sized for the shape they are drawn in
         "p_led",                               # 44px of height a portrait screen has
         "icon_sprite", "icon_old_name",        # icons the panel draws, by new and old name

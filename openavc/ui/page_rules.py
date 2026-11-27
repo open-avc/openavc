@@ -121,12 +121,21 @@ def names_page(pages: Any, page_id: str) -> bool:
 def master_draws_on(master: Any, page_id: str, drawn_types: Collection[str]) -> bool:
     """Whether ``master`` draws on the page ``page_id``: its ``pages`` names
     the page (left out, ``*``, the schema's default), it is not hidden, and
-    its type is one of ``drawn_types``, the types the panel draws."""
+    its type is one of ``drawn_types``, the types the panel draws. The panel's
+    ``masterDrawsOn`` (``web/panel/modules/pages.js``) asks the same, for its
+    page draw, its empty-page notice and its redraw on a ui/ file change."""
+    written_type = _read(master, "type")
     return (
         not _read(master, "hidden")
-        and _read(master, "type") in drawn_types
+        and isinstance(written_type, str)
+        and written_type in drawn_types
         and names_page(_read(master, "pages", EVERY_PAGE), page_id)
     )
+
+
+def any_master_draws(masters: Sequence[Any], pages: Sequence[Any], drawn_types: Collection[str]) -> bool:
+    """Whether one of ``masters`` draws on one of ``pages`` (``master_draws_on``)."""
+    return any(master_draws_on(master, _read(page, "id"), drawn_types) for master in masters for page in pages)
 
 
 def is_navigation_word(target: Any) -> bool:

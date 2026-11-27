@@ -1587,7 +1587,7 @@ const tests = {
     // reads `pages` exactly this way; the check must not be looser.
     q160_a_master_element_on_another_page_is_not_content() {
         const app = mkApp();
-        for (const pages of [['other'], undefined]) {
+        for (const pages of [['other'], [], null]) {
             const proj = project({});
             proj.ui.master_elements = [{
                 id: 'home', type: 'button', label: 'Home', pages,
@@ -1597,6 +1597,32 @@ const tests = {
             assert(app.root.querySelector('.panel-page-empty'),
                 `a master element scoped to ${JSON.stringify(pages)} leaves this page blank`);
         }
+    },
+
+    // A master element with its `pages` left out draws on every page, as the
+    // project schema reads it, so the page is not empty.
+    q160_a_master_element_with_its_pages_left_out_is_content() {
+        const app = mkApp();
+        const proj = project({});
+        proj.ui.master_elements = [{
+            id: 'home', type: 'button', label: 'Home',
+            placements: { landscape: { x: 0, y: 0, w: 12, h: 8 } },
+        }];
+        renderProject(app, proj);
+        assert(!app.root.querySelector('.panel-page-empty'), 'a master with no pages leaves the page blank');
+        assert(app.root.querySelector('[data-element-id="home"]'), 'a master with no pages is not drawn');
+    },
+
+    // A master element of a type the panel has no renderer for draws nothing.
+    q160_a_master_element_the_panel_cannot_draw_is_not_content() {
+        const app = mkApp();
+        const proj = project({});
+        proj.ui.master_elements = [{
+            id: 'home', type: 'hologram', pages: '*',
+            placements: { landscape: { x: 0, y: 0, w: 12, h: 8 } },
+        }];
+        renderProject(app, proj);
+        assert(app.root.querySelector('.panel-page-empty'), 'a master the panel cannot draw leaves the page blank');
     },
 
     // A hidden master element draws nothing, same as one scoped elsewhere.
@@ -11509,14 +11535,15 @@ const PAGE_CASES = {
             ['nav', '$back'],
         ],
     },
-    // Back to a page that has since gone, and a page change that throws: the
-    // next change still goes into the history.
+    // Back to a page that has since gone, and a page change that throws (the
+    // master elements written as a mapping, not a list): the next change still
+    // goes into the history.
     back_to_a_page_that_went: {
         ui: NAV_UI,
         steps: [
             ['nav', 'p2'], ['nav', 'p3'], ['edit', 'pages', NAV_PAGES().filter((p) => p.id !== 'p2')],
             ['nav', '$back'], ['nav', 'main'],
-            ['edit', 'master_elements', [null]], ['nav', '$back'],
+            ['edit', 'master_elements', {}], ['nav', '$back'],
             ['edit', 'master_elements', []], ['nav', 'p4'],
         ],
     },
@@ -11603,7 +11630,8 @@ const PAGE_CASES = {
     },
 
     // Master elements: on every page, on the pages named, not on others,
-    // never when hidden, nowhere without `pages`, and a bare page id is not a list.
+    // never when hidden, on every page when `pages` is left out (the project
+    // schema's default), and a bare page id is not a list.
     masters_on_a_page: mastersOn('home', [
         anyMaster('all', '*'), anyMaster('named', ['home', 'main']), anyMaster('other', ['main']),
         anyMaster('hidden', '*', { hidden: true }), anyMaster('nowhere'), anyMaster('bare', 'home'),
@@ -11618,6 +11646,7 @@ const PAGE_CASES = {
     empty_page_with_a_master_naming_it: mastersOn('home', [anyMaster('named', ['home'])]),
     empty_page_with_a_master_elsewhere: mastersOn('home', [anyMaster('other', ['main'])]),
     empty_page_with_a_hidden_master: mastersOn('home', [anyMaster('hidden', '*', { hidden: true })]),
+    empty_page_with_a_master_it_cannot_draw: mastersOn('home', [{ id: 'mystery', type: 'nope', pages: '*' }]),
     empty_page_custom: mastersOn('home', [], { render_mode: 'custom', custom_file: 'page.html' }),
     empty_page_custom_without_a_file: mastersOn('home', [], { render_mode: 'custom' }),
     empty_page_on_the_design_canvas: { ...mastersOn('home', []), edit: true },
@@ -11725,7 +11754,7 @@ const PAGE_CASES = {
         ui: { tag: 'bare', pages: [pinPage('home'), pinPage('other', { elements: [pinLabel('o1')] })] },
         steps: [['msg', { type: 'ui.files', version: 1 }], ['nav', 'other'], ['nav', '$back']],
     },
-    // A master element that draws nothing still counts as something on the page.
+    // A master of a type the panel cannot draw is left out, and the one after it still draws.
     master_that_draws_nothing: mastersOn('home', [{ id: 'mystery', type: 'nope', pages: '*' }, anyMaster('after', '*')]),
     // A ui/ file changing before any definition has arrived.
     files_with_no_definition: { draw: false, steps: [['msg', { type: 'state.snapshot', state: {} }], ['msg', { type: 'ui.files', version: 2 }]] },

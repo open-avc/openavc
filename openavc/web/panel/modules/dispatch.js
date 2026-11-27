@@ -5,9 +5,11 @@
  * RENDERERS is asked once for every control a page draws, by the control's
  * `type`; EVALUATORS once for every binding the binding pass draws, by the
  * binding's `type`, which the renderer that registered the binding gave it. A
- * type with no row draws nothing: the panel logs an unknown control and leaves
- * it out, and a binding drawn some other way has no row on purpose (a macro's
- * progress line, `macro_progress`, is drawn by modules/macro_runs.js).
+ * type with no row draws nothing: the panel logs an unknown control on a page
+ * and leaves it out, a master element of that type draws on no page
+ * (`masterDrawsOn`, modules/pages.js), and a binding drawn some other way has
+ * no row on purpose (a macro's progress line, `macro_progress`, is drawn by
+ * modules/macro_runs.js).
  *
  * A new control type is a row in RENDERERS naming its `render<Type>` method on
  * the panel. A new kind of binding is three things: the renderer that

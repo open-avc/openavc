@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 import openavc.api.auth as auth_mod
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
+from openavc.core.project_migration import CURRENT_VERSION
 from openavc.main import app
 from openavc.api import rest
 from tests.listen_helpers import use_bind
@@ -314,6 +315,55 @@ async def test_master_element_counts_as_panel_content(claimed, remote_client):
     project["ui"] = {
         "pages": [{"id": "main", "name": "Main", "elements": []}],
         "master_elements": [{"id": "m1", "type": "clock"}],
+    }
+    engine, tmp_path = _make_engine(project)
+    rest.set_engine(engine)
+    try:
+        body = remote_client.get("/api/setup/status").json()
+        assert body["panel_has_content"] is True
+    finally:
+        rest.set_engine(claimed)
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    "master",
+    [
+        {"id": "m1", "type": "clock", "pages": "*", "hidden": True},
+        {"id": "m1", "type": "clock", "pages": []},
+        {"id": "m1", "type": "clock", "pages": ["gone"]},
+        {"id": "m1", "type": "hologram", "pages": "*"},
+    ],
+    ids=["hidden", "shown on no page", "shown only on a page that is gone", "a type the panel does not draw"],
+)
+async def test_a_master_that_draws_nowhere_is_not_panel_content(claimed, remote_client, master):
+    """The panel draws a master on a page it names, unless it is hidden, and
+    only when it is a type the panel draws. One that draws on no page leaves
+    the display on the setup screen, which shows the address to program it at,
+    rather than a panel showing only the empty-page notice."""
+    # Written at today's format, so the load keeps the master as written.
+    project = {**EMPTY_PROJECT, "openavc_version": CURRENT_VERSION}
+    project["ui"] = {
+        "pages": [{"id": "main", "name": "Main", "elements": []}],
+        "master_elements": [master],
+    }
+    engine, tmp_path = _make_engine(project)
+    rest.set_engine(engine)
+    try:
+        loaded = engine.project.ui.master_elements[0].model_dump()
+        assert {key: loaded[key] for key in master} == master
+        body = remote_client.get("/api/setup/status").json()
+        assert body["panel_has_content"] is False
+    finally:
+        rest.set_engine(claimed)
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def test_a_master_listed_on_a_page_that_exists_is_panel_content(claimed, remote_client):
+    project = dict(EMPTY_PROJECT)
+    project["ui"] = {
+        "pages": [{"id": "main", "name": "Main", "elements": []}],
+        "master_elements": [{"id": "m1", "type": "clock", "pages": ["gone", "main"]}],
     }
     engine, tmp_path = _make_engine(project)
     rest.set_engine(engine)

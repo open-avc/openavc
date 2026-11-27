@@ -83,7 +83,7 @@ from openavc.ui.page_geometry import (
     primary_layout,
     resolved_placements,
 )
-from openavc.ui.page_rules import names_page
+from openavc.ui.page_rules import master_draws_on
 from openavc.ui.review_finding import Finding
 from openavc.ui.review_icons import unknown_icon_findings
 
@@ -1426,11 +1426,12 @@ class _MasterHere:
 def _master_here(master: Any, drawn: DrawnPage) -> _MasterHere | None:
     """A master as it draws on this page, or None when it draws nothing here.
 
-    Hidden, listed for other pages only, with no box, or with no size: each is
-    a master the page's controls cannot be drawn over.
+    Not drawing on this page (``master_draws_on``: hidden, listed for other
+    pages only, or a type the panel does not draw), with no box, or with no
+    size: each is a master the page's controls cannot be drawn over.
     """
     m = _mapping(master)
-    if m.get("hidden") or not names_page(m.get("pages", "*"), drawn.page_id):
+    if not master_draws_on(m, drawn.page_id, RENDERED_TYPES):
         return None
     box = master_box(m, drawn.orientation)
     if box is None:

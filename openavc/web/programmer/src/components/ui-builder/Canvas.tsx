@@ -33,6 +33,7 @@ import {
 } from "./uiBuilderHelpers";
 import { patchForTextPath } from "./textPathPatch";
 import { reviewWarningsByElement, sliderThemeDefaults } from "./pageReview";
+import { masterDrawsOn } from "./reviewMasters";
 import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
 import { PAGE_RULES } from "../../api/projectValues.gen";
@@ -351,7 +352,7 @@ export function Canvas({
   const visibleMasters = useMemo(
     () =>
       (masterElements ?? [])
-        .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
+        .filter((m) => masterDrawsOn(m, page.id))
         .map((m) => ({ master: m, box: masterPlacement(m, canvasOrientation) }))
         .filter((entry): entry is { master: MasterElement; box: Placement } => !!entry.box),
     [masterElements, page.id, canvasOrientation],

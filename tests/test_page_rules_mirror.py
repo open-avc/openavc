@@ -1,11 +1,14 @@
 """The panel's page rules, held to the project schema's.
 
 What a page is, how a way onto it opens it, which page stands in for one that
-is missing, and the box an overlay draws in are the page rules
+is missing, whether a master element draws on a page, and the box an overlay
+draws in are the page rules
 (``openavc/ui/page_rules.py``), rendered into the panel's generated module as
 ``PAGE_RULES``. The panel asks them through ``web/panel/modules/pages.js``,
 whose functions also decide what to do with what the table says: a type it
-reads, a list it falls back through, a box side it reads as a number. Node runs
+reads, a list it falls back through, a box side it reads as a number, the types
+it draws (its renderer table, ``web/panel/modules/dispatch.js``, which
+``RENDERED_TYPES`` is held to). Node runs
 those functions over one corpus and the answers are compared with the Python
 functions over the same corpus, so a change to either lands in both.
 
@@ -15,7 +18,9 @@ Left out of the corpus, because the two sides answer differently today:
   draws it, and ``fallbackPage`` passes over it;
 - a box side written as text that starts with a number and goes on
   (``"40px"``), or as a list holding one: the panel reads that number, the
-  rules the default (the project schema takes neither).
+  rules the default (the project schema takes neither);
+- a master's ``hidden`` written as an empty list or mapping: the panel reads it
+  as hidden, the rules as shown (the project schema takes a true or false).
 """
 
 from __future__ import annotations
@@ -73,6 +78,15 @@ OVERLAY_SETTINGS = [
 #: The types a box is asked of: the two that open over, and two that do not.
 BOX_TYPES = ["overlay", "sidebar", "page", "modal"]
 
+#: What a master element's type, pages and hidden can say. Types the panel
+#: draws, one it does not, names every object has, and values that are no name.
+MASTER_TYPES = [ABSENT, None, "", "button", "custom", "hologram", "constructor", "__proto__", 5, ["button"]]
+MASTER_PAGES = [ABSENT, None, "*", "", "home", ["home"], ["other"], [], ["other", "home"], ["*"], 5]
+MASTER_HIDDEN = [ABSENT, None, False, True, 0, 1, "", "yes"]
+
+#: The pages a master is asked about.
+MASTER_PAGE_IDS = ["home", "other"]
+
 
 def _page(page_id: str, written: object, **more: object) -> dict:
     page = {"id": page_id, **more}
@@ -89,10 +103,18 @@ def _boxed(written: str, settings: object) -> dict:
     return _page("p", written) if settings == ABSENT else _page("p", written, overlay=settings)
 
 
+def _master(written_type: object, pages: object, hidden: object) -> dict:
+    master: dict = {"id": "m"}
+    for key, value in (("type", written_type), ("pages", pages), ("hidden", hidden)):
+        if value != ABSENT:
+            master[key] = value
+    return master
+
+
 _SCRIPT = """
 const pages = await import(process.argv[1]);
 const corpus = JSON.parse(process.argv[2]);
-const out = { opens_over: [], fallback: [], stand_in: [], boxes: [] };
+const out = { opens_over: [], fallback: [], stand_in: [], boxes: [], draws_on: [], draws_nothing: [], runs_markup: [] };
 const id = (page) => (page ? page.id : null);
 for (const page of corpus.typed) out.opens_over.push(pages.opensOver(page));
 for (const list of corpus.lists) {
@@ -100,6 +122,15 @@ for (const list of corpus.lists) {
     for (const wanted of corpus.wanted) out.stand_in.push(id(pages.standIn(list, wanted)));
 }
 for (const page of corpus.boxed) out.boxes.push(pages.overlayBox(page));
+for (const master of corpus.masters) {
+    for (const pageId of corpus.master_page_ids) {
+        const empty = { id: pageId, elements: [] };
+        out.draws_on.push(pages.masterDrawsOn(master, empty));
+        out.draws_nothing.push(pages.pageDrawsNothing(empty, [master]));
+        const plain = { id: pageId, elements: [{ id: 'l', type: 'label' }] };
+        out.runs_markup.push(pages.pageRunsAuthorMarkup({ pages: [plain], master_elements: [master] }, pageId));
+    }
+}
 console.log(JSON.stringify(out));
 """
 
@@ -110,6 +141,10 @@ def _corpus() -> dict:
         "lists": [[_known(page_id) for page_id in ids] for ids in PAGE_LISTS],
         "wanted": WANTED,
         "boxed": [_boxed(t, settings) for t in BOX_TYPES for settings in OVERLAY_SETTINGS],
+        "masters": [
+            _master(t, pages, hidden) for t in MASTER_TYPES for pages in MASTER_PAGES for hidden in MASTER_HIDDEN
+        ],
+        "master_page_ids": MASTER_PAGE_IDS,
     }
 
 
@@ -151,6 +186,30 @@ def test_an_overlay_draws_in_the_box_the_rules_give_it(panel_answers: dict) -> N
         assert got == overlay_box(page), page
 
 
+def _masters_asked() -> list[tuple[dict, str]]:
+    return [(master, page_id) for master in _corpus()["masters"] for page_id in MASTER_PAGE_IDS]
+
+
+def test_a_master_draws_on_the_pages_the_rules_say(panel_answers: dict) -> None:
+    for (master, page_id), got in zip(_masters_asked(), panel_answers["draws_on"], strict=True):
+        assert got is master_draws_on(master, page_id, RENDERED_TYPES), (master, page_id)
+
+
+def test_a_page_with_nothing_of_its_own_draws_nothing_unless_a_master_draws_on_it(panel_answers: dict) -> None:
+    """The empty-page notice: a page with no elements of its own says it has no
+    controls yet unless a master draws on it."""
+    for (master, page_id), got in zip(_masters_asked(), panel_answers["draws_nothing"], strict=True):
+        assert got is not master_draws_on(master, page_id, RENDERED_TYPES), (master, page_id)
+
+
+def test_a_plain_page_runs_author_markup_only_under_a_custom_master_that_draws_on_it(panel_answers: dict) -> None:
+    """A ui/ file changing redraws a plain page only when a custom-control
+    master draws on it."""
+    for (master, page_id), got in zip(_masters_asked(), panel_answers["runs_markup"], strict=True):
+        expected = master.get("type") == "custom" and master_draws_on(master, page_id, RENDERED_TYPES)
+        assert got is expected, (master, page_id)
+
+
 def test_the_corpus_reaches_every_answer(panel_answers: dict) -> None:
     """Each answer the rules can give is in the corpus, so none goes unheld."""
     assert set(panel_answers["opens_over"]) == {True, False}
@@ -158,16 +217,7 @@ def test_the_corpus_reaches_every_answer(panel_answers: dict) -> None:
     boxes = {json.dumps(box, sort_keys=True) for box in panel_answers["boxes"]}
     defaults = {json.dumps(overlay_box(_page("p", t)), sort_keys=True) for t in ("overlay", "sidebar")}
     assert defaults < boxes
-
-
-# What the panel does not ask through pages.js yet: the rules alone.
-
-
-def test_a_type_this_release_does_not_know_reads_as_a_regular_page() -> None:
-    for written in WRITTEN_TYPES:
-        page = _page("p", written)
-        known = written if written in page_rules.PAGE_TYPES else "page"
-        assert page_type_of(page) == known, written
+    assert set(panel_answers["draws_on"]) == set(panel_answers["runs_markup"]) == {True, False}
 
 
 @pytest.mark.parametrize(
@@ -191,6 +241,16 @@ def test_a_type_this_release_does_not_know_reads_as_a_regular_page() -> None:
 )
 def test_a_master_draws_on_a_page_it_names_unhidden_and_of_a_drawn_type(master, page_id, draws) -> None:
     assert master_draws_on(master, page_id, RENDERED_TYPES) is draws
+
+
+# What the panel does not ask through pages.js yet: the rules alone.
+
+
+def test_a_type_this_release_does_not_know_reads_as_a_regular_page() -> None:
+    for written in WRITTEN_TYPES:
+        page = _page("p", written)
+        known = written if written in page_rules.PAGE_TYPES else "page"
+        assert page_type_of(page) == known, written
 
 
 def test_the_navigation_words_are_moves_and_the_prefix_names_no_page() -> None:

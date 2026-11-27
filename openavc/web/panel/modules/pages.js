@@ -19,9 +19,13 @@
  * and an empty overlay stack, so its Cancel did nothing: the type had been
  * read in one of the two paths and not the other.
  *
- * A master element draws on every page its `pages` names, '*' or a list of
- * ids (`namesPage`, held to the page rules' `names_page` by
- * `tests/test_panel_layout_mirror.py`), unless it is hidden.
+ * A master element draws on a page when its `pages` names the page, '*' or
+ * a list of ids (left out, '*', the project schema's default), it is not
+ * hidden, and its type is one the panel draws (a row in `RENDERERS`,
+ * `dispatch.js`). Every reader asks `masterDrawsOn`: the page draw, the
+ * empty-page notice and the ui/ file redraw, so none of them counts a master
+ * nothing draws. The setup screen, the page reviews and the Builder's canvas
+ * ask the page rules' `master_draws_on` and its Builder twin.
  *
  * Functions of the definition, except `rememberPage`, which adds to the
  * history it is handed, and `drawOverlayFrame` and `closeOverlayFrame`, which
@@ -29,6 +33,7 @@
  * read nothing of the panel.
  */
 
+import { RENDERERS } from './dispatch.js';
 import { pct } from './layout.js';
 import { PAGE_RULES } from './project_values.gen.js';
 
@@ -111,6 +116,17 @@ export function namesPage(master, page) {
     return on === PAGE_RULES.every_page || (Array.isArray(on) && !!page && on.includes(page.id));
 }
 
+/**
+ * Does this master element draw on this page: its `pages` names the page
+ * (left out, '*'), it is not hidden, and the panel has a renderer for its
+ * type? A type with no renderer is left out, so it is not drawn and no
+ * warning is logged for it.
+ */
+export function masterDrawsOn(master, page) {
+    return !!master && !master.hidden && RENDERERS.has(master.type)
+        && (master.pages === undefined || namesPage(master, page));
+}
+
 /** A page that is the author's own markup filling the screen. */
 export function isCustomPage(page) {
     return !!page && page.render_mode === 'custom' && !!page.custom_file;
@@ -125,14 +141,14 @@ export function isCustomPage(page) {
  * which is what the seed project's single empty page looked like to anyone
  * opening /panel to see what their client sees. The setup screen asks this
  * of the whole project, this asks it of one page, so they are not
- * interchangeable, but they must agree on what draws. A master element with
- * no `pages` draws nowhere, so it does not count here either.
+ * interchangeable, but they agree on what draws: both ask the one rule
+ * whether a master draws on a page (`masterDrawsOn`).
  */
 export function pageDrawsNothing(page, masters) {
     if (!page || isCustomPage(page)) return false;
     const elements = Array.isArray(page.elements) ? page.elements : [];
     if (elements.length) return false;
-    return !(masters || []).some(mEl => !!mEl && !mEl.hidden && namesPage(mEl, page));
+    return !(masters || []).some(mEl => masterDrawsOn(mEl, page));
 }
 
 /**
@@ -158,7 +174,7 @@ function holdsCustomControl(page) {
 
 /** Is one of these master elements a custom control that draws on the page? */
 function customMasterOn(masters, page) {
-    return (masters || []).some(mEl => mEl?.type === 'custom' && namesPage(mEl, page));
+    return (masters || []).some(mEl => mEl?.type === 'custom' && masterDrawsOn(mEl, page));
 }
 
 /**

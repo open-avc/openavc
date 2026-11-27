@@ -6,7 +6,9 @@
  * openavc/ui/page_review.py.
  */
 
+import { PAGE_RULES } from "../../api/projectValues.gen";
 import type { MasterElement, Placement, UIElement } from "../../api/types";
+import { RENDERED_TYPES } from "./reviewBindings";
 import type { ReviewFinding } from "./reviewFinding";
 import { overlapExtent } from "./reviewGeometry";
 import { mutuallyExclusive } from "./reviewStacking";
@@ -78,9 +80,15 @@ export function masterBox(
   return raw ? drawnBox(raw) : null;
 }
 
-/** Whether a master appears on this page. The panel's own test, exactly. */
-export function masterDrawsOn(pages: string | string[], pageId: string): boolean {
-  return pages === "*" || (Array.isArray(pages) && pages.includes(pageId));
+/** Whether a master draws on this page: its `pages` names the page (left out,
+ *  "*", the project schema's default), it is not hidden, and the panel has a
+ *  renderer for its type. The page rules' `master_draws_on` (ui/page_rules.py),
+ *  which the panel's own `masterDrawsOn` is held to; the review and the
+ *  canvas's master hit boxes ask it. */
+export function masterDrawsOn(master: MasterElement, pageId: string): boolean {
+  if (master.hidden || !RENDERED_TYPES.has(master.type)) return false;
+  const pages: unknown = master.pages;
+  return pages === undefined || pages === PAGE_RULES.every_page || (Array.isArray(pages) && pages.includes(pageId));
 }
 
 /** How widely a master draws, said the way it matters to the reader.
@@ -122,10 +130,11 @@ interface MasterHere {
 }
 
 /** A master as it draws on this page, or null when it draws nothing here:
- *  hidden, listed for other pages only, with no box, or with no size. */
+ *  not drawing on it (`masterDrawsOn`: hidden, listed for other pages only,
+ *  or a type the panel does not draw), with no box, or with no size. */
 function masterHere(master: MasterElement, drawn: DrawnPage): MasterHere | null {
   const { pageId, orientation } = drawn;
-  if (master.hidden || !masterDrawsOn(master.pages ?? "*", pageId)) return null;
+  if (!masterDrawsOn(master, pageId)) return null;
   const box = masterBox(master, orientation);
   if (!box) return null;
   const reference = referenceBox(orientation);

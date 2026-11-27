@@ -40,6 +40,8 @@ from openavc.api.auth import (
 )
 from openavc.api.routes.system import cloud_remote_access_set_up, own_screen_opens_programmer
 from openavc.system_config import get_system_config
+from openavc.ui.page_review import RENDERED_TYPES
+from openavc.ui.page_rules import any_master_draws
 from openavc.updater.panel_software import panel_software_summary
 from openavc.utils.hostnames import resolvable_hostname
 from openavc.api.auth import local_console_auth_satisfied
@@ -96,10 +98,16 @@ def _panel_has_content(engine) -> bool:
 
     This is the signal an appliance display uses to decide between the setup
     screen and the panel. Three things count, because three things draw: an
-    element on a page, a master element, and a custom page, which fills the
-    screen from the author's own file and carries no elements at all. The
-    shipped seed project has a single empty page, so a fresh appliance stays
-    on the setup screen until the integrator builds UI.
+    element on a page, a master element that draws on one of the pages, and a
+    custom page, which fills the screen from the author's own file and carries
+    no elements at all. The shipped seed project has a single empty page, so a
+    fresh appliance stays on the setup screen until the integrator builds UI.
+
+    Whether a master draws on a page is the page rules' ``master_draws_on``,
+    which the panel's ``masterDrawsOn`` is held to: a hidden master, one whose
+    ``pages`` names no page there is, and one of a type the panel does not draw
+    leave the display on the setup screen, rather than switching it to a panel
+    that says only that the page has no controls yet.
 
     The custom-page arm is what keeps a finished project off the setup
     screen: without it an integrator who builds the room entirely out of
@@ -118,7 +126,7 @@ def _panel_has_content(engine) -> bool:
             return True
         if getattr(page, "render_mode", "") == "custom" and getattr(page, "custom_file", None):
             return True
-    return bool(ui.master_elements)
+    return any_master_draws(ui.master_elements, ui.pages, RENDERED_TYPES)
 
 
 @open_router.get("/setup/status")
