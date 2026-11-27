@@ -30,7 +30,13 @@ from typing import Any
 
 from openavc.audit.driver_reading import model_for
 from openavc.audit.observe import is_platform_key, recorded
-from openavc.audit.setting_reading import Setting, setting_reads_alike, settings_by_variable
+from openavc.audit.setting_reading import (
+    Setting,
+    secret_status_values,
+    setting_reads_alike,
+    settings_by_variable,
+    shown_status_value,
+)
 
 
 def state_label(info: Mapping[str, Any], key: str) -> str:
@@ -113,7 +119,8 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     command, or any other, was sent, or that changed while nothing was being
     watched after it (a meter, a clock), or only then: the audit did not leave
     it that way. A value the device has stopped reporting is left out: there
-    is nothing to compare.
+    is nothing to compare. A value a secret setting reads through reads
+    ``***`` (``setting_reading.shown_status_value``).
     """
     commands = getattr(run, "commands", None)
     trials = commands.trials if commands is not None else []
@@ -126,6 +133,7 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     movers = _Movers.of(trials)
     unwatched = getattr(run, "unwatched", None) or {}
     settings = settings_by_variable(info)
+    secret = secret_status_values(info)
     out = []
     for key in sorted(now):
         value = now[key]
@@ -137,8 +145,8 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
         out.append({
             "key": key,
             "label": state_label(info, key),
-            "before": recorded(before),
-            "now": recorded(value),
+            "before": shown_status_value(secret, key, recorded(before)),
+            "now": shown_status_value(secret, key, recorded(value)),
             "by": movers.by.get(key),
             "on_its_own": movers.on_its_own(key, unwatched),
         })

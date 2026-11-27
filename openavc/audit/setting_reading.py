@@ -22,6 +22,11 @@ no one declaration to read it by (:func:`settings_by_variable` leaves it
 out), and a value the setting refuses (a ``sets:`` value outside its list)
 is not one the setting can say anything about (:func:`setting_says` answers
 None): each caller reads those by its own rule.
+
+A variable a setting the driver marks secret reads through
+(:func:`secret_status_values`) is shown as ``***`` wherever the audit shows
+it as a status value (:func:`shown_status_value`: the connect step's status
+table, what changed), as the settings step shows the setting itself.
 """
 
 from __future__ import annotations
@@ -31,6 +36,8 @@ from typing import Any, NamedTuple
 
 from openavc.core.pending_settings import readback_confirms, readback_state_key
 from openavc.drivers.base import validate_device_setting_value
+from openavc.drivers.secret_params import secret_setting_state_keys
+from openavc.utils.log_redaction import REDACTED
 
 # What the value gate raises for a value a declaration refuses, and for a
 # declaration it cannot read.
@@ -54,6 +61,18 @@ def settings_by_variable(info: Mapping[str, Any]) -> dict[str, Setting]:
         if state_key is not None:
             found.setdefault(state_key, []).append(Setting(key, sdef))
     return {state_key: only for state_key, (only, *more) in found.items() if not more}
+
+
+def secret_status_values(info: Mapping[str, Any]) -> frozenset[str]:
+    """The status values a device setting the driver marks secret reads
+    through (``drivers/secret_params.secret_setting_state_keys``)."""
+    return secret_setting_state_keys(info.get("device_settings"))
+
+
+def shown_status_value(secret: frozenset[str], key: str, value: Any) -> Any:
+    """The status value ``key`` as the audit shows it: ``***`` when it is one
+    of ``secret`` (:func:`secret_status_values`) and holds anything."""
+    return REDACTED if key in secret and value not in (None, "") else value
 
 
 def _written(setting: Setting, value: Any) -> tuple[bool, Any]:

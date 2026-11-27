@@ -178,6 +178,8 @@ class AuditObserver:
         self._on_event = on_event
         self._subscription: TrafficSubscription | None = None
         self._secrets: set[str] = set()
+        # The redactor for the secrets as they stood when it was built.
+        self._redactor: tuple[frozenset[str], TrafficRedactor] | None = None
 
     # -- wiring ---------------------------------------------------------------
 
@@ -238,8 +240,17 @@ class AuditObserver:
         return set(self._secrets)
 
     def redactor(self) -> TrafficRedactor:
+        """The masking for every secret known now, the registry's included:
+        one learned since the driver connected (a typed parameter, a value
+        the device reported for a secret setting) is masked from then on, in
+        the live traffic as in the report. Built again only when the secrets
+        changed."""
         self.snapshot_secrets()
-        return audit_traffic_redactor(self._secrets)
+        kept = self._redactor
+        if kept is None or kept[0] != self._secrets:
+            kept = (frozenset(self._secrets), audit_traffic_redactor(self._secrets))
+            self._redactor = kept
+        return kept[1]
 
     # -- reading ----------------------------------------------------------------
 

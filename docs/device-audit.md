@@ -78,6 +78,7 @@ the one before.
    queries** sends every query that needs no value or file and has no warning to read first (a
    confirmation, or a restart); the rest are listed to send one at a time. Under **Device settings**, **Write and put
    back** writes a new value, checks that the device reports it, then writes the old value back.
+   A setting the driver marks secret is tested the same way and its value shows as `***`.
    A command that takes a file has a **Choose file** button; send it again by choosing the file
    again. A file a command brings back has a **Download** button on the command's row.
 7. **Power and cable.** The **power cycle** and **cable pull** tests show whether OpenAVC
@@ -130,9 +131,11 @@ OpenAVC keeps the ten newest reports, listed under **Recent reports** on the fir
 - The report stays on the OpenAVC system until you download it or press **Send to OpenAVC**.
   Nothing is sent on its own.
 - Every password and credential you type, and any SNMP community other than `public`, is
-  replaced with `[redacted]` everywhere in the report (`***` in the traffic). A driver file
-  that matches the catalog is included as the catalog publishes it. If a password you typed
-  is the driver's published default, the Report step says so before you download.
+  replaced with `[redacted]` everywhere in the report (`***` in the traffic). So is the value of
+  a device setting the driver marks secret, such as an access code, whether the audit wrote it
+  or the device only reported it. A driver file that matches the catalog is included as the
+  catalog publishes it. If a password you typed is the driver's published default, the Report step says
+  so before you download.
 - **Leave the serial number out of the report** removes every serial number the audit heard,
   from the network check and from the driver, the same way. It applies as soon as you tick it,
   including to the report saved if you cancel.

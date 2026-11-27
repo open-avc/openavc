@@ -35,6 +35,13 @@ one restored.
 
 One setting at a time, and never while a command is being watched, so a
 read-back belongs to the write that asked for it.
+
+**A setting the driver marks secret** (``drivers/secret_params.is_secret_device_setting``,
+an access code) is tested the same way, and its value never leaves as
+itself: it reads ``***`` in the list, the trial, every sentence and every
+refusal, and each value the audit handles (typed, read, written back) is
+kept with the run's secrets before anything is sent, so the traffic, an
+error the driver raised and the report mask it wherever else it turns up.
 """
 
 from __future__ import annotations
@@ -52,8 +59,10 @@ from openavc.audit.observe import command_sent_nothing, recorded
 from openavc.audit.session import AuditError, error_sentence
 from openavc.core.pending_settings import readback_confirms
 from openavc.drivers.base import validate_device_setting_value
+from openavc.drivers.secret_params import is_secret_device_setting
 from openavc.drivers.setting_model import read_setting
 from openavc.utils.boolean_words import value_text
+from openavc.utils.log_redaction import REDACTED, secret_text
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -94,6 +103,11 @@ def _value_text(value: Any) -> str:
     return value_text(value, "nothing")
 
 
+def _shown(secret: bool, value: Any) -> Any:
+    """A setting's value as the audit shows it: ``***`` for a secret one."""
+    return REDACTED if secret and value not in (None, "") else recorded(value)
+
+
 @dataclass
 class SettingTrial:
     """One setting written and put back."""
@@ -117,6 +131,16 @@ class SettingTrial:
     restore: dict[str, Any] | None = None
     # The device's state before the write (for "what changed").
     before: dict[str, Any] = field(default_factory=dict)
+    # The driver marks the setting secret: its values read as ``***``.
+    secret: bool = False
+
+    def shown(self, value: Any) -> Any:
+        """A value of this setting as the trial shows it."""
+        return _shown(self.secret, value)
+
+    def shown_half(self, half: dict[str, Any]) -> dict[str, Any]:
+        """One half (the write or the put-back) as the trial shows it."""
+        return {**half, "value": self.shown(half["value"])} if "value" in half else dict(half)
 
     def put_back(self) -> bool:
         """The original value is back, as far as the device says."""
@@ -132,12 +156,12 @@ class SettingTrial:
             "number": self.number,
             "key": self.key,
             "label": self.label,
-            "original": recorded(self.original),
-            "value": recorded(self.value),
+            "original": self.shown(self.original),
+            "value": self.shown(self.value),
             "started_at": self.started_at,
             "status": self.status,
-            "write": dict(self.write),
-            "restore": dict(self.restore) if self.restore else None,
+            "write": self.shown_half(self.write),
+            "restore": self.shown_half(self.restore) if self.restore else None,
             "summary": setting_sentence(self) if self.status == DONE else "",
         }
 
@@ -176,13 +200,35 @@ class SettingsPass:
     def _definitions(self) -> Mapping[str, Any]:
         return model_for(self.run).info
 
+    def _secret(self, key: str) -> bool:
+        return is_secret_device_setting(model_for(self.run).driver, key)
+
+    def _keep(self, trial: SettingTrial, *values: Any) -> None:
+        """A secret setting's values, kept with the run's secrets and the
+        device's masking before anything is sent, as a secret parameter's are
+        (``commands._keep_secrets``)."""
+        if not trial.secret:
+            return
+        texts = {text for v in values if (text := secret_text(v))}
+        if texts:
+            self.run.secrets |= texts
+            if self.run.listen is not None:
+                self.run.listen.sandbox.observer.add_secrets(texts)
+
+    def _masked(self, text: str) -> str:
+        """An error's words with every secret known masked (a driver's
+        exception may repeat the value it was given)."""
+        listen = self.run.listen
+        return listen.sandbox.observer.redactor().value(text) if listen is not None else text
+
     def catalog(self) -> list[dict[str, Any]]:
         """Every device setting the driver declares, with the value it has
         now and whether the audit can test it (and why not)."""
         listen = self.run.listen
         if self._final is not None and (listen is None or not listen.sandbox.started):
             return self._final
-        info = self._definitions()
+        reading = model_for(self.run)
+        info = reading.info
         variables = info.get("state_variables") or {}
         state = listen.sandbox.device_state() if listen is not None and listen.sandbox.started else {}
         out = []
@@ -207,7 +253,7 @@ class SettingsPass:
                     k: v for k, v in sdef.items() if k not in _NOT_FOR_THE_FIELD
                 },
                 "state_key": state_key,
-                "value": recorded(current),
+                "value": _shown(is_secret_device_setting(reading.driver, key), current),
                 "can_write": not reason,
                 "reason": reason,
             })
@@ -238,13 +284,17 @@ class SettingsPass:
         except ValueError as exc:
             raise AuditError(str(exc)) from exc
         original = listen.sandbox.device_state().get(entry["state_key"])
+        # Shown as the trial shows it before there is one.
+        shown = SettingTrial(0, key, entry["label"], original, typed, 0.0, secret=self._secret(key))
         if readback_confirms(key, sdef, typed, original):
-            raise AuditError(SAME_VALUE.format(label=entry["label"], value=_value_text(original)))
+            raise AuditError(SAME_VALUE.format(
+                label=entry["label"], value=_value_text(shown.shown(original)),
+            ))
         try:
             restore_value = validate_device_setting_value(key, sdef, original)
         except ValueError as exc:
             raise AuditError(CANNOT_PUT_BACK.format(
-                label=entry["label"], value=_value_text(original), why=exc,
+                label=entry["label"], value=_value_text(shown.shown(original)), why=exc,
             )) from exc
         trial = SettingTrial(
             number=len(self.trials) + 1,
@@ -255,12 +305,15 @@ class SettingsPass:
             restore_value=restore_value,
             started_at=time.time(),
             before=dict(listen.sandbox.device_state()),
+            secret=shown.secret,
         )
+        self._keep(trial, value, typed, original, restore_value)
         self.trials.append(trial)
         self.session.enter_step("commands")
         self.session.add_timeline(
             "setting.writing",
-            f"Writing {trial.label}: {_value_text(typed)} (it was {_value_text(original)}).",
+            f"Writing {trial.label}: {_value_text(trial.shown(typed))} "
+            f"(it was {_value_text(trial.shown(original))}).",
             run=self.run.index, setting=key,
         )
         self._publish(trial)
@@ -301,11 +354,14 @@ class SettingsPass:
         return {"at": time.time(), "error": "", "confirmed": False, "value": None}
 
     async def _one(
-        self, value: Any, *, key: str, half: dict[str, Any], timeout: float | None = None,
+        self, trial: SettingTrial, value: Any, *, half: dict[str, Any],
+        timeout: float | None = None,
     ) -> dict[str, Any]:
-        """One write of ``value`` and its read-back, recorded in ``half`` as
-        it goes (the caller holds it before anything is sent)."""
+        """One write of ``value`` to ``trial``'s setting and its read-back,
+        recorded in ``half`` as it goes (the caller holds it before anything
+        is sent)."""
         sandbox = self.run.listen.sandbox
+        key = trial.key
         started = half["at"]
         sdef = self._declaration(key) or {}
         state_key = read_setting(key, sdef).state_key
@@ -320,7 +376,7 @@ class SettingsPass:
             half["interrupted"] = True
             raise
         except Exception as exc:
-            half["error"] = error_sentence(exc)
+            half["error"] = self._masked(error_sentence(exc))
             # A call that failed after bytes went out may still have changed it.
             half["sent"] = not command_sent_nothing(
                 sandbox.observer.traffic, started, time.time(), grace=0.0,
@@ -333,6 +389,7 @@ class SettingsPass:
         except asyncio.CancelledError:
             half["interrupted"] = True
             raise
+        self._keep(trial, actual)
         half.update({
             "confirmed": confirmed,
             "value": recorded(actual),
@@ -368,11 +425,13 @@ class SettingsPass:
             await asyncio.sleep(0.05)
         fresh = sandbox.device_state().get(state_key)
         heard = state_key in sandbox.written_after(asked)
+        self._keep(trial, fresh)
         self.session.add_timeline(
             "setting.read",
             f"Asked the device for {trial.label} before writing it ({query['label']}): "
-            + (f"it reports {_value_text(fresh)}." if heard else "no reply, so the audit puts "
-               f"back {_value_text(trial.original)}, the value it last reported."),
+            + (f"it reports {_value_text(trial.shown(fresh))}." if heard
+               else "no reply, so the audit puts "
+               f"back {_value_text(trial.shown(trial.original))}, the value it last reported."),
             run=self.run.index, setting=trial.key,
         )
         # The value it would put back, said another way (a label for its
@@ -381,6 +440,7 @@ class SettingsPass:
             return
         trial.original = fresh
         trial.restore_value = validate_device_setting_value(trial.key, sdef, fresh)
+        self._keep(trial, trial.restore_value)
         trial.before = dict(sandbox.device_state())
 
     async def _round_trip(self, trial: SettingTrial) -> None:
@@ -389,7 +449,7 @@ class SettingsPass:
                 await self._refresh_original(trial)
             except ValueError as exc:
                 trial.write = {"at": time.time(), "error": CANNOT_PUT_BACK.format(
-                    label=trial.label, value=_value_text(trial.original), why=exc,
+                    label=trial.label, value=_value_text(trial.shown(trial.original)), why=exc,
                 ), "confirmed": False, "value": None, "sent": False}
                 self.session.add_timeline(
                     "setting.written", trial.write["error"], run=self.run.index, setting=trial.key,
@@ -400,7 +460,7 @@ class SettingsPass:
             ):
                 # Changed at the device to the value asked for: nothing to write.
                 trial.write = {"at": time.time(), "error": SAME_VALUE.format(
-                    label=trial.label, value=_value_text(trial.original),
+                    label=trial.label, value=_value_text(trial.shown(trial.original)),
                 ), "confirmed": False, "value": None, "sent": False}
                 self.session.add_timeline(
                     "setting.written", trial.write["error"], run=self.run.index, setting=trial.key,
@@ -408,10 +468,10 @@ class SettingsPass:
                 return
             trial.write = self._half()
             try:
-                await self._one(trial.value, key=trial.key, half=trial.write)
+                await self._one(trial, trial.value, half=trial.write)
             finally:
                 self.session.add_timeline(
-                    "setting.written", _write_sentence(trial.label, trial.write, trial.value),
+                    "setting.written", _write_sentence(trial),
                     run=self.run.index, setting=trial.key,
                 )
             if not trial.needs_putting_back():
@@ -428,7 +488,7 @@ class SettingsPass:
         failure, and the setting is still put back when the driver stops
         (or by Put it back) if the write may have landed. Called by the
         session with the tracked task's exception."""
-        why = error_sentence(exc)
+        why = self._masked(error_sentence(exc))
         half = trial.restore if trial.restore is not None else trial.write
         if "at" not in half:
             # Nothing was written yet.
@@ -455,10 +515,10 @@ class SettingsPass:
         half["automatic"] = automatic
         trial.restore = half
         try:
-            await self._one(trial.restore_value, key=trial.key, half=half, timeout=timeout)
+            await self._one(trial, trial.restore_value, half=half, timeout=timeout)
         finally:
             self.session.add_timeline(
-                "setting.restored", _restore_sentence(trial.label, half, trial.original),
+                "setting.restored", _restore_sentence(trial, half),
                 run=self.run.index, setting=trial.key,
             )
 
@@ -556,14 +616,16 @@ def _read_back(half: dict[str, Any]) -> str:
     return f"the device still reports {_value_text(half['value'])}."
 
 
-def _write_sentence(label: str, half: dict[str, Any], value: Any) -> str:
+def _write_sentence(trial: SettingTrial) -> str:
+    half, value, label = trial.shown_half(trial.write), trial.shown(trial.value), trial.label
     if half.get("error"):
         sent = " Bytes had already gone to the device." if half.get("sent") else ""
         return f"Could not write {_value_text(value)} to {label}: {half['error']}{sent}"
     return f"Wrote {_value_text(value)} to {label}: {_read_back(half)}"
 
 
-def _restore_sentence(label: str, half: dict[str, Any], value: Any) -> str:
+def _restore_sentence(trial: SettingTrial, half: dict[str, Any]) -> str:
+    half, value, label = trial.shown_half(half), trial.shown(trial.original), trial.label
     stopped = " as the driver stopped" if half.get("automatic") else ""
     if half.get("error"):
         return f"Could not put {label} back to {_value_text(value)}{stopped}: {half['error']}"
@@ -573,9 +635,9 @@ def _restore_sentence(label: str, half: dict[str, Any], value: Any) -> str:
 def setting_sentence(trial: SettingTrial) -> str:
     """What happened to a setting, as the timeline, the wizard and the
     summary say it."""
-    text = _write_sentence(trial.label, trial.write, trial.value)
+    text = _write_sentence(trial)
     if trial.restore is not None:
-        text += " " + _restore_sentence(trial.label, trial.restore, trial.original)
+        text += " " + _restore_sentence(trial, trial.restore)
     elif trial.write and _may_have_landed(trial.write):
         text += " It was not put back."
     return text

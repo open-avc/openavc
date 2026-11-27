@@ -61,6 +61,9 @@ from openavc.core.connection_fault import is_permanent_fault
 from openavc.core.device_traffic import RX, TX, TrafficEntry, serialize_entry
 from openavc.drivers.setting_model import read_setting
 from openavc.utils.boolean_words import value_text
+from openavc.audit.setting_reading import secret_status_values, shown_status_value
+from openavc.drivers.secret_params import reported_secret_values
+from openavc.utils.log_redaction import REDACTED
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -259,7 +262,6 @@ class ListenPass:
         self._events_seen: set[str] = set()
         self._pending: list[TrafficEntry] = []
         self._dirty = True
-        self._redactor = None
         # Set while the audit itself takes the driver down: its disconnect
         # is not a drop, and its state being removed is not a change.
         self._stopping = False
@@ -286,7 +288,6 @@ class ListenPass:
         device_id = sb.device_id
         sb.prepare()
         await sb.start()
-        self._redactor = sb.observer.redactor()
         self.sources = response_sources(sb.driver)
         # The driver's liveness check, if it has one: how often it asks the
         # device whether it is still there, apart from the polls.
@@ -599,24 +600,39 @@ class ListenPass:
             self.run.note_unwatched(prop, now)
         if prop == "offline_reason" and new:
             self._note_offline()
+        secret = self._learn_secret(prop, new)
         if (
             new is not None and "." not in prop and not is_platform_key(prop)
             and prop not in self.first_reported
         ):
             self.first_reported[prop] = now
             if prop in self._declared():
-                shown = value_text(new)[:80]
-                shown = shown or "an empty value"
-                if self.first_rx_at is not None:
-                    text = f"{self._label(prop)} reported: {shown}"
-                elif self.first_tx_at is not None:
-                    text = f"{self._label(prop)} set by the driver before the device answered: {shown}"
-                else:
-                    text = f"{self._label(prop)}: {shown}"
-                self._timeline(
-                    "listen.reported", f"{text}, {self._since(now)} after starting.", state=prop,
-                )
+                self._note_reported(prop, REDACTED if secret else value_text(new)[:80], now)
         self._dirty = True
+
+    def _learn_secret(self, prop: str, new: Any) -> bool:
+        """Whether ``prop`` holds a setting the driver marks secret; if so,
+        its value is masked from now on, in the live traffic as in the
+        report."""
+        if prop not in self._secret_state_keys():
+            return False
+        self.sandbox.observer.add_secrets(reported_secret_values(
+            self._driver_info().get("device_settings"), [(prop, new)], floor=1,
+        ))
+        return True
+
+    def _note_reported(self, prop: str, shown: str, now: float) -> None:
+        """The timeline's line for a declared value's first report."""
+        shown = shown or "an empty value"
+        if self.first_rx_at is not None:
+            text = f"{self._label(prop)} reported: {shown}"
+        elif self.first_tx_at is not None:
+            text = f"{self._label(prop)} set by the driver before the device answered: {shown}"
+        else:
+            text = f"{self._label(prop)}: {shown}"
+        self._timeline(
+            "listen.reported", f"{text}, {self._since(now)} after starting.", state=prop,
+        )
 
     def _note_offline(self) -> None:
         state = self.sandbox.device_state()
@@ -642,7 +658,7 @@ class ListenPass:
     def _flush_now(self) -> None:
         if self._pending:
             batch, self._pending = self._pending, []
-            redactor = self._redactor or self.sandbox.observer.redactor()
+            redactor = self.sandbox.observer.redactor()
             shown = batch[-LIVE_BATCH:]
             self.session.publish({
                 "type": "audit.traffic",
@@ -668,6 +684,10 @@ class ListenPass:
 
     def _declared(self) -> list[str]:
         return list((self._driver_info().get("state_variables") or {}).keys())
+
+    def _secret_state_keys(self) -> frozenset[str]:
+        """The status values that hold a setting the driver marks secret."""
+        return secret_status_values(self._driver_info())
 
     def push_status(self) -> dict[str, Any]:
         """The callbacks the driver asked the device to send its events to,
@@ -708,6 +728,25 @@ class ListenPass:
     def _label(self, prop: str) -> str:
         spec = (self._driver_info().get("state_variables") or {}).get(prop)
         return str(spec.get("label") or prop) if isinstance(spec, dict) else prop
+
+    def shown_status_table(self) -> dict[str, Any]:
+        """The status table as the wizard and the report show it: a setting
+        the driver marks secret reads ``***``, as its row and as the status
+        value it reports through. :meth:`status_table` keeps the values, for
+        what changed."""
+        table = self.status_table()
+        secret = self._secret_state_keys()
+        if not secret:
+            return table
+
+        def shown(row: dict[str, Any], key: str) -> dict[str, Any]:
+            return {**row, "value": shown_status_value(secret, row[key], row["value"])}
+
+        return {
+            **table,
+            "variables": [shown(v, "name") for v in table["variables"]],
+            "settings": [shown(s, "state_key") for s in table["settings"]],
+        }
 
     def status_table(self) -> dict[str, Any]:
         if self._final_table is not None and not self.sandbox.started:
@@ -810,7 +849,7 @@ class ListenPass:
                 "labels": contract_labels(observer.event_counts),
                 "recent": [e.to_dict() for e in observer.events[-10:]],
             },
-            "status_table": self.status_table(),
+            "status_table": self.shown_status_table(),
             "front_panel": self.front_panel,
             "push": self.push_status(),
         }
