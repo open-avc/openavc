@@ -260,6 +260,63 @@ async def test_a_plain_setting_teaches_the_masking_nothing(manager):
     assert get_secret_registry().masked(Exit.LOG, f"room {PIN}", "lock1") == f"room {PIN}"
 
 
+# --- A value the device reports ------------------------------------------------------
+
+
+class _AcmeReportingLock(_AcmeLock):
+    """The lock, reporting its settings' values as status values."""
+
+    DRIVER_INFO = {
+        **_AcmeLock.DRIVER_INFO,
+        "id": "acme_reporting_lock",
+        "state_variables": {
+            "admin_pin": {"type": "string", "label": "Admin PIN"},
+            "room_name": {"type": "string", "label": "Room Name"},
+        },
+    }
+
+
+async def test_a_reported_secret_is_learned_before_any_reader_hears_it(manager):
+    """A device that reports a secret setting's value, which nobody wrote
+    here, has its masking learn it before the state store tells its readers,
+    so the log and the cloud mask it as they mask one written."""
+    from openavc.utils.secret_exits import state_value_as
+
+    driver = _AcmeReportingLock("lock1", {}, manager.state, manager.events)
+    heard: list[str] = []
+    manager.state.subscribe(
+        "device.lock1.admin_pin",
+        lambda _key, _old, new, _source="": heard.append(
+            get_secret_registry().masked(Exit.LOG, f"pin {new}", "lock1"),
+        ),
+    )
+
+    driver.set_state("admin_pin", "48213")
+
+    assert heard == [f"pin {REDACTED}"]
+    assert state_value_as(Exit.CLOUD, "device.lock1.admin_pin", "48213") == REDACTED
+    # Driver state on this system still carries it, for the panels.
+    assert state_value_as(Exit.DRIVER_STATE, "device.lock1.admin_pin", "48213") == "48213"
+
+
+async def test_a_batch_of_reports_teaches_it_too(manager):
+    driver = _AcmeReportingLock("lock1", {}, manager.state, manager.events)
+
+    driver.set_states({"room_name": "Lobby", "admin_pin": "77314"})
+
+    registry = get_secret_registry()
+    assert registry.masked(Exit.LOG, "pin 77314", "lock1") == f"pin {REDACTED}"
+    assert registry.masked(Exit.LOG, "room Lobby", "lock1") == "room Lobby"
+
+
+async def test_a_reported_plain_setting_teaches_the_masking_nothing(manager):
+    driver = _AcmeReportingLock("lock1", {}, manager.state, manager.events)
+
+    driver.set_state("room_name", "48213")
+
+    assert get_secret_registry().masked(Exit.LOG, "room 48213", "lock1") == "room 48213"
+
+
 # --- The REST doors ---------------------------------------------------------------
 
 

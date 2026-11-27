@@ -69,7 +69,10 @@ trimming, learned settings, the driver validator):
 **One collector of a device's secret values** (:func:`secret_values`), which
 the registry, the Device Audit and a problem report all read: a secret is
 read as its text whatever type it holds (:func:`secret_text`), so a PIN a
-driver typed as a number is masked as its digits.
+driver typed as a number is masked as its digits. Its other source is what
+the device reports for a setting its driver marks secret
+(``drivers/secret_params.reported_secret_values``), which the driver's state
+writes teach the registry and both reports read.
 
 **The name rule** (:func:`is_secret_key`) is the outbound redactors' net and
 nothing more: the logs, the traffic recorder's state lines, the Device Audit,

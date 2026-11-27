@@ -32,7 +32,11 @@ A device setting is secret by the same rule, on the ``device_settings`` its
 driver declares (``is_secret_device_setting``). Every setting door asks it: the
 cloud AI's write refuses one, the queue of settings waiting for a device never
 takes one, and a live write has the device's masking learn its value
-(``core/pending_settings``).
+(``core/pending_settings``). What the device reports for one is read by the
+same rule (``reported_secret_values``, under ``secret_setting_state_keys``):
+the driver's state writes have the device's masking learn it
+(``drivers/state_writes``), and the Device Audit and a problem report read it
+themselves.
 """
 
 from __future__ import annotations
@@ -41,7 +45,9 @@ from collections.abc import Iterable
 from typing import Any
 
 from openavc.drivers.inline_merge import declared_commands
+from openavc.drivers.setting_model import read_setting
 from openavc.drivers.spec import is_secret_setting
+from openavc.utils.log_redaction import MIN_SECRET_LEN, secret_text
 
 
 def _params(definition: Any) -> dict[str, Any]:
@@ -87,3 +93,46 @@ def is_secret_device_setting(driver: Any, key: Any) -> bool:
     info = getattr(driver, "DRIVER_INFO", None)
     declared = info.get("device_settings") if isinstance(info, dict) else None
     return is_secret_setting(key, declared.get(key) if isinstance(declared, dict) else None)
+
+
+def secret_setting_state_keys(device_settings: Any) -> frozenset[str]:
+    """The status values a device reports a secret setting's value under:
+    the ``state_key`` (``drivers/setting_model.read_setting``) of each device
+    setting its driver declares (``DRIVER_INFO["device_settings"]``) that is
+    secret by :func:`~openavc.drivers.spec.is_secret_setting`."""
+    if not isinstance(device_settings, dict):
+        return frozenset()
+    return frozenset(
+        read_setting(str(key), sdef).state_key
+        for key, sdef in device_settings.items() if is_secret_setting(key, sdef)
+    )
+
+
+def reported_secret_values(
+    device_settings: Any,
+    reported: Iterable[tuple[Any, Any]],
+    *,
+    floor: int = MIN_SECRET_LEN,
+) -> set[str]:
+    """THE collector's other source: what a device reports for the settings
+    its driver marks secret.
+
+    ``device_settings`` is the driver's declaration; ``reported`` the
+    device's status values as ``(name, value)`` pairs, each named under the
+    device (``door_code``), a value and the one before it alike. A value under
+    a secret setting's status value (:func:`secret_setting_state_keys`) is
+    read as its text (``log_redaction.secret_text``), whatever its name says: a setting
+    is secret by its mark, so a ``door_code`` the driver marks is one. The
+    driver's state writes have the device's masking learn each one before
+    anyone reads it (``drivers/state_writes``); a report, which reads the
+    values itself, passes a lower ``floor``.
+    """
+    keys = secret_setting_state_keys(device_settings)
+    if not keys:
+        return set()
+    values: set[str] = set()
+    for name, value in reported:
+        text = secret_text(value) if name in keys else None
+        if text is not None and len(text) >= max(floor, 1):
+            values.add(text)
+    return values

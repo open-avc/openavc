@@ -23,6 +23,8 @@ The rules worth knowing before changing anything here:
   does. The platform's own statements pass no declaration and are not judged.
 * Writing ``connected`` carries every registered child entity with it
   (drivers/child_entities.py), whichever of the two doors wrote it.
+* A value reported for a setting the driver marks secret is learned by the
+  device's masking before it is stored (:meth:`_learn_reported_secrets`).
 
 ``StateWrites`` is a mixin ``BaseDriver`` inherits, so every name stays on
 the driver object. From its host this needs ``device_id``, ``state``,
@@ -40,7 +42,9 @@ from typing import Any
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.drivers.contract_events import TYPE_MISMATCH, UNDECLARED_STATE
 from openavc.drivers.declared_names import declared_enum_values
+from openavc.drivers.secret_params import reported_secret_values
 from openavc.drivers.spec import PLATFORM_STATE_PROPS
+from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the driver runtime's name, which the
@@ -349,11 +353,24 @@ class StateWrites:
         if declared:
             for name, value in values.items():
                 self._warn_on_type_mismatch(name, value, declared.get(name))
+        self._learn_reported_secrets(values)
         prefix = f"device.{self.device_id}."
         self.state.set_batch(
             {prefix + name: value for name, value in values.items()},
             source=f"device.{self.device_id}",
         )
+
+    def _learn_reported_secrets(self, values: dict[str, Any]) -> None:
+        """Have the device's masking learn what it reports for a setting its
+        driver marks secret (``secret_params.reported_secret_values``) before
+        the store tells anyone, as a live write has it learn the value
+        written: the log, the cloud and both reports then mask it, while a
+        panel on this system still reads it as driver state."""
+        settings = self.DRIVER_INFO.get("device_settings")
+        if not settings:
+            return
+        for text in reported_secret_values(settings, values.items()):
+            get_secret_registry().add_runtime_secret(self.device_id, text)
 
     def _warn_on_type_mismatch(
         self, prop_label: str, value: Any, var_def: dict | None
