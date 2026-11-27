@@ -25,7 +25,8 @@ The rule, in the order it is applied:
   one apart from case, then one the reading equals as a boolean or number;
 - a condition's value that names a key (``$var.wanted``) is compared with
   what that key holds, one with no value being a reading that has not
-  arrived (``holds``; ``condition_keys`` are the keys a condition reads),
+  arrived (``read_value``, ``NOT_ARRIVED``; ``condition_keys`` are the keys a
+  condition reads),
   over ``tests/fixtures/condition_reference_cases.json`` in every copy.
 
 Copied twice, and nowhere else: ``conditionEval.ts`` in the Programmer (the
@@ -171,11 +172,15 @@ def eval_operator(op: str, actual: Any, target: Any, mode: str = DECIDE) -> bool
     """Whether ``actual op target`` holds, for a reader in ``mode`` (``MODES``).
 
     An alias reads as its own name (``canonical_operator``); any other
-    operator raises ``UnknownOperator``.
+    operator raises ``UnknownOperator``. A ``target`` of ``NOT_ARRIVED`` (a
+    value naming a key that holds nothing, ``read_value``) is a reading that
+    has not arrived.
     """
     canonical = canonical_operator(op)
     if canonical is None:
         raise UnknownOperator(op)
+    if target is NOT_ARRIVED:
+        return _against_not_arrived(canonical, actual, mode)
     if canonical in ("eq", "ne"):
         return _equality(canonical, actual, target, mode)
     if canonical in _ORDERINGS:
@@ -250,32 +255,44 @@ def same_value(actual: Any, target: Any) -> bool:
     return eval_operator("eq", actual, target)
 
 
-def holds(
-    op: str, actual: Any, value: Any, read: Callable[[str], Any], mode: str = DECIDE,
-) -> bool:
-    """Whether ``actual op value`` holds for a reader in ``mode``, a value
-    that names a key (``value_resolver.referenced_key``: ``$var.wanted``)
-    compared with what ``read`` reads for that key.
+class _NotArrived:
+    """The type of ``NOT_ARRIVED``: one value, which prints as its name."""
 
-    A key with no value is a reading that has not arrived, on the authored
-    side: never equal, never ordered, and not-equal only in the surface mode
-    (``MODES``), so ``power != $var.wanted`` makes no decision while
-    ``var.wanted`` is unset. A value is read once: text the key holds that
-    starts with ``$`` is compared as that text. The panel's
-    ``modules/compare.js`` and ``conditionEval.ts`` hold ``holds`` too, over
-    ``tests/fixtures/condition_reference_cases.json``.
-    """
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "NOT_ARRIVED"
+
+
+#: What a condition's value reads as when the key it names holds nothing
+#: (``read_value``): a reading that has not arrived, on the authored side.
+#: Never equal, never ordered, and not-equal only in the surface mode
+#: (``MODES``), so ``power != $var.wanted`` makes no decision while
+#: ``var.wanted`` is unset. An authored None is not this: it compares with
+#: nothing in either mode.
+NOT_ARRIVED: Any = _NotArrived()
+
+
+def read_value(value: Any, read: Callable[[str], Any]) -> Any:
+    """A condition's value as ``eval_operator`` compares it: as written, or
+    for one that names a key (``value_resolver.referenced_key``:
+    ``$var.wanted``) what ``read`` reads for that key, ``NOT_ARRIVED`` when
+    that is nothing. A value is read once: text the key holds that starts with
+    ``$`` is compared as that text. The panel's ``modules/compare.js`` and
+    ``conditionEval.ts`` read one the same way (``readValue``), over
+    ``tests/fixtures/condition_reference_cases.json``."""
     named = referenced_key(value)
     if named is None:
-        return eval_operator(op, actual, value, mode)
+        return value
     target = read(named)
-    if target is not None:
-        return eval_operator(op, actual, target, mode)
-    canonical = canonical_operator(op)
-    if canonical is None:
-        raise UnknownOperator(op)
+    return NOT_ARRIVED if target is None else target
+
+
+def _against_not_arrived(canonical: str, actual: Any, mode: str) -> bool:
+    """``actual canonical NOT_ARRIVED``: an operator that reads no value reads
+    ``actual`` alone; otherwise only not-equal, and only in the surface mode."""
     if canonical in VALUELESS_OPERATORS:
-        return eval_operator(canonical, actual, None, mode)
+        return bool(actual) == (canonical == "truthy")
     return canonical == "ne" and MODES[mode]
 
 
@@ -418,7 +435,7 @@ def judge(condition: Mapping[str, Any], read: Callable[[str], Any], where: str) 
     ``read`` is what the condition's key reads there: a state key, or a field
     of the firing context (``value_resolver.read_operand``). A value that
     names a key (``$var.wanted``) is read through it too, so both sides follow
-    the place's rule for the firing context (``holds``). ``ANY_CHANGE``, at a
+    the place's rule for the firing context (``read_value``). ``ANY_CHANGE``, at a
     place that takes it, holds without a read. An operator the place does not
     take raises ``UnknownOperator``, the one answer for a condition that
     cannot be judged.
@@ -427,7 +444,7 @@ def judge(condition: Mapping[str, Any], read: Callable[[str], Any], where: str) 
     op = written_operator(condition, where)
     if place.takes_any_change and op == ANY_CHANGE:
         return True
-    return holds(op, read(condition.get("key", "")), condition.get("value"), read)
+    return eval_operator(op, read(condition.get("key", "")), read_value(condition.get("value"), read))
 
 
 class ConditionIssue(NamedTuple):

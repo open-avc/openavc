@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Activity, ChevronRight, ExternalLink, X, Zap, Layout, FileCode } from "lucide-react";
 import { useNavigationStore, type FocusTarget } from "../../store/navigationStore";
-import type { MacroStep, ProjectConfig, ScriptReference, TriggerConfig } from "../../api/types";
-import { readsNoValue, referencedKey } from "../../api/conditionEval";
+import type { ProjectConfig, ScriptReference } from "../../api/types";
+import { comparedWith, masterLabel, masterNav, triggerKeys } from "./keysRead";
 import type { ViewId } from "../../components/layout/Sidebar";
 import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasGlobChars, stepParamsResolveVars } from "./variablesShared.helpers";
 import { quotedValueText } from "../../components/shared/booleanWords";
@@ -82,41 +82,20 @@ export function UsageRow({ usage }: { usage: VariableUsage }) {
 // variablesShared.helpers.ts so they can be unit-tested without React.
 // ==========================================================================
 
-/** The keys a step's conditions compare with (a value that names a key,
- *  `$var.wanted`; `referencedKey`), each with where it is said: its Skip If,
- *  then a Conditional's or a Wait Until's own condition. */
-function comparedWith(step: MacroStep): [string, string][] {
-  const own = step.action === "conditional" ? "Conditional condition" : "Wait Until condition";
-  const found: [string, string][] = [];
-  for (const [cond, where] of [[step.skip_if, "Skip-if guard"], [step.condition, own]] as const) {
-    const named = cond && !readsNoValue(cond.operator ?? "eq") ? referencedKey(cond.value) : null;
-    if (named) found.push([named, `${where}: compared with`]);
+/** What each master element's bindings read, through `scan` (the variables'
+ *  scanner or every key's), added as uses. */
+function masterUsages(
+  project: ProjectConfig,
+  scan: (bindings: Record<string, unknown>, onFound: (key: string, detail: string) => void) => void,
+  addUsage: (key: string, usage: VariableUsage) => void,
+): void {
+  for (const mel of project.ui.master_elements ?? []) {
+    scan(mel.bindings, (key, detail) => {
+      addUsage(key, { type: "ui", icon: Layout, label: masterLabel(mel), detail, nav: masterNav(mel) });
+    });
   }
-  return found;
 }
 
-/** The keys a trigger's guards, and a State Change trigger's own value,
- *  compare with, each with where it is said. */
-function triggerComparedWith(trigger: TriggerConfig): [string, string][] {
-  const found: [string, string][] = [];
-  for (const cond of trigger.conditions ?? []) {
-    const named = readsNoValue(cond.operator ?? "eq") ? null : referencedKey(cond.value);
-    if (named) found.push([named, `Trigger "${trigger.id}": guard condition: compared with`]);
-  }
-  const reads = trigger.type === "state_change" && !readsNoValue(trigger.state_operator, "state_trigger");
-  const own = reads ? referencedKey(trigger.state_value) : null;
-  if (own) found.push([own, `Trigger "${trigger.id}": compared with on a state change`]);
-  return found;
-}
-
-/** A master element as the Used By list names it, and where a click on it goes. */
-function masterLabel(mel: { id: string; label?: string; type: string }): string {
-  return `Master Elements → ${mel.label || mel.type} (${mel.id})`;
-}
-
-function masterNav(mel: { id: string }): { view: ViewId; focus: FocusTarget } {
-  return { view: "ui-builder", focus: { type: "element", id: mel.id, detail: "master" } };
-}
 
 /** Recursively scan macro steps for var.* references */
 function scanStepsForVarUsages(
@@ -203,23 +182,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
     const macroNav = { view: "macros" as ViewId, focus: { type: "macro", id: macro.id } };
     scanStepsForVarUsages(macro.steps, macro.name, macroNav, addUsage);
     for (const trigger of macro.triggers ?? []) {
-      if (trigger.state_key?.startsWith("var.")) {
-        addUsage(trigger.state_key.slice(4), {
-          type: "macro", icon: Zap, label: macro.name,
-          detail: `Trigger "${trigger.id}": state change on this variable`,
-          nav: macroNav,
-        });
-      }
-      for (const cond of trigger.conditions ?? []) {
-        if (cond.key?.startsWith("var.")) {
-          addUsage(cond.key.slice(4), {
-            type: "macro", icon: Zap, label: macro.name,
-            detail: `Trigger "${trigger.id}": guard condition`,
-            nav: macroNav,
-          });
-        }
-      }
-      for (const [key, detail] of triggerComparedWith(trigger)) {
+      for (const [key, detail] of triggerKeys(trigger, "state change on this variable")) {
         if (key.startsWith("var.")) {
           addUsage(key.slice(4), { type: "macro", icon: Zap, label: macro.name, detail, nav: macroNav });
         }
@@ -240,11 +203,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
       });
     }
   }
-  for (const mel of project.ui.master_elements ?? []) {
-    scanBindingForVars(mel.bindings, (varId, detail) => {
-      addUsage(varId, { type: "ui", icon: Layout, label: masterLabel(mel), detail, nav: masterNav(mel) });
-    });
-  }
+  masterUsages(project, scanBindingForVars, addUsage);
 
   // Script references — var.* keys. A wildcard reference (e.g. var.*) matches
   // against the project's variables, mirroring how the runtime subscribes.
@@ -341,23 +300,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
     const macroNav = { view: "macros" as ViewId, focus: { type: "macro", id: macro.id } };
     scanStepsForAllKeyUsages(macro.steps, macro.name, macroNav, addUsage);
     for (const trigger of macro.triggers ?? []) {
-      if (trigger.state_key) {
-        addUsage(trigger.state_key, {
-          type: "macro", icon: Zap, label: macro.name,
-          detail: `Trigger "${trigger.id}": state change`,
-          nav: macroNav,
-        });
-      }
-      for (const cond of trigger.conditions ?? []) {
-        if (cond.key) {
-          addUsage(cond.key, {
-            type: "macro", icon: Zap, label: macro.name,
-            detail: `Trigger "${trigger.id}": guard condition`,
-            nav: macroNav,
-          });
-        }
-      }
-      for (const [key, detail] of triggerComparedWith(trigger)) {
+      for (const [key, detail] of triggerKeys(trigger, "state change")) {
         addUsage(key, { type: "macro", icon: Zap, label: macro.name, detail, nav: macroNav });
       }
     }
@@ -376,11 +319,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
       });
     }
   }
-  for (const mel of project.ui.master_elements ?? []) {
-    scanBindingForAllKeys(mel.bindings, (key, detail) => {
-      addUsage(key, { type: "ui", icon: Layout, label: masterLabel(mel), detail, nav: masterNav(mel) });
-    });
-  }
+  masterUsages(project, scanBindingForAllKeys, addUsage);
 
   // Script references — match against all keys, supporting wildcards
   for (const ref of scriptRefs) {

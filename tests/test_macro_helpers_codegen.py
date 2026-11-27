@@ -443,7 +443,7 @@ class TestTriggerContext:
 
 class TestValuesThatNameAKey:
     """A condition's value that names a key (``$var.wanted``) compares with what
-    that key holds, read where the engine reads it (``condition_eval.holds``
+    that key holds, read where the engine reads it (``condition_eval.read_value``
     through each place's reader)."""
 
     @staticmethod

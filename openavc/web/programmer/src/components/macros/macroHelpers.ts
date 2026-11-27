@@ -516,7 +516,7 @@ function _pyParamsDict(params: Record<string, unknown>): string {
 
 /** What a condition compares with: its value as written, or for one that
  * names a key (`$var.wanted`, `referencedKey`) a read of that key, where the
- * macro engine reads it at `site` (`_read`, as `condition_eval.holds` reads it
+ * macro engine reads it at `site` (`_read`, as `condition_eval.read_value` reads it
  * through the place's reader). A key with no value reads None, which compare()
  * never finds equal or ordered, as the engine makes no decision on it. A guard
  * reads the state only (`"guard"`), `trigger.` keys included. */

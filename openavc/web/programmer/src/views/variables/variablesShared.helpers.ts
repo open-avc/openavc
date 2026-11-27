@@ -2,7 +2,7 @@
 // Extracted from variablesShared.tsx so the binding-scan + glob logic can be
 // unit-tested without React/lucide. See tests/test_variables_shared_helpers.py.
 
-import { conditionKeys } from "../../api/conditionEval";
+import { shownKeys } from "./keysRead";
 
 // Characters that make a pattern a glob, mirroring the runtime state store's
 // _GLOB_CHARS (openavc/core/state_store.py). A pattern without any of these is an
@@ -76,17 +76,6 @@ function asActionList(binding: unknown): Record<string, any>[] {
   return [];
 }
 
-/** The keys a control's `visible_when` reads: each condition's own key and
- *  the key its value names (`conditionKeys`), under `all`, under `any` and
- *  beside them, each once. */
-function visibilityKeys(show: Record<string, any>): string[] {
-  const vw = show.visible_when;
-  if (!vw || typeof vw !== "object") return [];
-  const conditions = [...(Array.isArray(vw.all) ? vw.all : []), ...(Array.isArray(vw.any) ? vw.any : []), vw];
-  const keys = conditions.flatMap((c: unknown) => (c && typeof c === "object" ? conditionKeys(c) : []));
-  return [...new Set(keys)];
-}
-
 // Every do.<interaction> that holds an action list (matches the runtime).
 const DO_INTERACTIONS = [
   "press", "release", "hold", "change", "submit", "select",
@@ -102,19 +91,9 @@ export function scanBindingForVars(
   const show = (bindings.show || {}) as Record<string, any>;
   const doMap = (bindings.do || {}) as Record<string, any>;
 
-  const checkKey = (obj: any, context: string) => {
-    if (!obj || typeof obj !== "object") return;
-    const key = obj.key as string | undefined;
-    if (key?.startsWith("var.")) {
-      onFound(key.slice(4), context);
-    }
-  };
-
-  checkKey(show.value, "Value source");
-  checkKey(show.look, "Appearance binding");
-  for (const key of visibilityKeys(show)) {
-    if (key.startsWith("var.")) onFound(key.slice(4), "Visibility condition");
-  }
+  shownKeys(show)
+    .filter(([key]) => key.startsWith("var."))
+    .forEach(([key, detail]) => onFound(key.slice(4), detail));
 
   for (const eventType of DO_INTERACTIONS) {
     for (const action of asActionList(doMap[eventType])) {
@@ -142,15 +121,7 @@ export function scanBindingForAllKeys(
   const show = (bindings.show || {}) as Record<string, any>;
   const doMap = (bindings.do || {}) as Record<string, any>;
 
-  const checkKey = (obj: any, context: string) => {
-    if (!obj || typeof obj !== "object") return;
-    const key = obj.key as string | undefined;
-    if (key) onFound(key, context);
-  };
-
-  checkKey(show.value, "Value source");
-  checkKey(show.look, "Appearance binding");
-  for (const key of visibilityKeys(show)) onFound(key, "Visibility condition");
+  shownKeys(show).forEach(([key, detail]) => onFound(key, detail));
 
   for (const eventType of DO_INTERACTIONS) {
     for (const action of asActionList(doMap[eventType])) {

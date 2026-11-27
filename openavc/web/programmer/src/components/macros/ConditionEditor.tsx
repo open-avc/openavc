@@ -9,6 +9,7 @@ import { valueText } from "../shared/booleanWords";
 import { OPERATORS, type Operator } from "../../api/conditionOperators.gen";
 import { knownOperator, readsNoValue, referencedKey } from "../../api/conditionEval";
 import { operatorPicker } from "./operatorChoices";
+import { ComparedWith } from "../shared/ComparedWith";
 
 /** Each operator's words here; the operators and their order are the
  *  runtime's (operatorChoices.ts). */
@@ -49,16 +50,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
   const liveValue = useConnectionStore((s) => s.liveState[condition.key]);
   // A value that names a key ($var.wanted) is compared with that key's value.
   const named = needsValue ? referencedKey(condition.value) : null;
-  const namedValue = useConnectionStore((s) => (named ? s.liveState[named] : undefined));
   const selectedOp = operatorInfo(picker.value);
-  // When the key is a boolean variable, offer a true/false picker for the
-  // comparison value instead of a free-text box (matches the trigger editors
-  // and the Set Variable step).
-  const variables = useProjectStore((s) => s.project?.variables) ?? [];
-  const boundVar = condition.key?.startsWith("var.")
-    ? variables.find((v) => `var.${v.id}` === condition.key)
-    : undefined;
-  const isBoolKey = boundVar?.type === "boolean" && named === null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
@@ -81,29 +73,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
           ))}
         </select>
         {needsValue && (
-          isBoolKey ? (
-            <select
-              value={condition.value === true ? "true" : condition.value === false ? "false" : ""}
-              onChange={(e) => onChange({ ...condition, value: e.target.value === "true" })}
-              style={{ ...selectStyle, flex: 1, minWidth: 80 }}
-            >
-              <option value="">Select...</option>
-              <BooleanOptions />
-            </select>
-          ) : (
-            <input
-              value={condition.value != null ? String(condition.value) : ""}
-              onChange={(e) => {
-                let v: unknown = e.target.value;
-                if (v === "true") v = true;
-                else if (v === "false") v = false;
-                else if (v !== "" && !isNaN(Number(v))) v = Number(v);
-                onChange({ ...condition, value: v });
-              }}
-              placeholder="Value"
-              style={{ ...inputStyle, flex: 1, minWidth: 80 }}
-            />
-          )
+          <ConditionValue condition={condition} onChange={onChange} keepsText={named !== null} />
         )}
         <span
           onClick={() => setShowHelp(!showHelp)}
@@ -122,12 +92,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
               Current value: <strong>{valueText(liveValue)}</strong>
             </span>
           )}
-          {named && (
-            <span style={{ marginLeft: 8, color: "var(--text-secondary)" }}>
-              Compared with {named}
-              {namedValue !== undefined && <>: <strong>{valueText(namedValue)}</strong></>}
-            </span>
-          )}
+          {named && <ComparedWith stateKey={named} style={{ marginLeft: 8 }} />}
         </div>
       )}
       {/* Expanded help */}
@@ -149,6 +114,58 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
       )}
     </div>
   );
+}
+
+/** What a condition compares with. When the key is a boolean variable, a
+ *  true/false picker instead of a free-text box (matches the trigger editors
+ *  and the Set Variable step), unless the value names a key (`keepsText`). */
+function ConditionValue({ condition, onChange, keepsText }: {
+  condition: StepCondition;
+  onChange: (updated: StepCondition) => void;
+  keepsText: boolean;
+}) {
+  const variables = useProjectStore((s) => s.project?.variables) ?? [];
+  if (!keepsText && isBooleanVariable(condition.key, variables)) {
+    return <BooleanValue condition={condition} onChange={onChange} />;
+  }
+  return (
+    <input
+      value={condition.value != null ? String(condition.value) : ""}
+      onChange={(e) => onChange({ ...condition, value: typedText(e.target.value) })}
+      placeholder="Value"
+      style={{ ...inputStyle, flex: 1, minWidth: 80 }}
+    />
+  );
+}
+
+/** Whether `key` is a project variable of type boolean. */
+function isBooleanVariable(key: string | undefined, variables: { id: string; type?: string }[]): boolean {
+  return !!key?.startsWith("var.") && variables.some((v) => `var.${v.id}` === key && v.type === "boolean");
+}
+
+/** A true/false picker for a condition on a boolean variable. */
+function BooleanValue({ condition, onChange }: {
+  condition: StepCondition;
+  onChange: (updated: StepCondition) => void;
+}) {
+  return (
+    <select
+      value={condition.value === true ? "true" : condition.value === false ? "false" : ""}
+      onChange={(e) => onChange({ ...condition, value: e.target.value === "true" })}
+      style={{ ...selectStyle, flex: 1, minWidth: 80 }}
+    >
+      <option value="">Select...</option>
+      <BooleanOptions />
+    </select>
+  );
+}
+
+/** A value box's text as the condition holds it: true or false for those
+ *  words, a number for a number, else the text. */
+function typedText(text: string): unknown {
+  if (text === "true") return true;
+  if (text === "false") return false;
+  return text !== "" && !isNaN(Number(text)) ? Number(text) : text;
 }
 
 const selectStyle: React.CSSProperties = {

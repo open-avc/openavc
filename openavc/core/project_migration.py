@@ -27,7 +27,9 @@ written with: two walks, one per rule, so editing either changes old steps.
 The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``,
 the 0.17.0 step's repair of saved boxes ``core/box_migration.py``, and its
 repair of the other numbers it bounds ``core/bound_migration.py``, and the
-0.18.0 step's rename of a project's own events ``core/event_migration.py``.
+0.18.0 step's rename of a project's own events ``core/event_migration.py``,
+and the 0.19.0 stamp for a condition's value naming a key
+``core/reference_migration.py``.
 """
 
 from typing import NamedTuple
@@ -36,6 +38,7 @@ from openavc.core.bound_migration import repair_bounds_0_17
 from openavc.core.box_migration import repair_boxes_0_17
 from openavc.core.event_migration import migrate_0_17_to_0_18
 from openavc.core.layout_migration import convert_grid_layout
+from openavc.core.reference_migration import migrate_0_18_to_0_19
 from openavc.core.project_update import MigrationNotes
 
 # Connection-related config fields that belong in the connections table. The
@@ -828,27 +831,6 @@ def migrate_0_16_to_0_17(data: dict, notes: MigrationNotes | None = None) -> dic
         repair_boxes_0_17(ui, notes)
 
     data["openavc_version"] = "0.17.0"
-    return data
-
-
-def migrate_0_18_to_0_19(data: dict, notes: MigrationNotes | None = None) -> dict:
-    """
-    Migrate from 0.18.0 to 0.19.0 -- a condition's value can name a key.
-
-    A version stamp: nothing in an existing project moves. What the stamp
-    records is that a condition's value starting with `$` (`$var.wanted`) now
-    compares with what that key holds, at a macro's Skip If, Conditional and
-    Wait Until, a trigger's guards and a State Change trigger's own value, and
-    a control's `visible_when` (`condition_eval.holds`). Before 0.19.0 it was
-    compared as the text, so `power == $var.wanted` never held and `!=` always
-    did.
-
-    The same shape as 0.14.0's press context: open a 0.19.0 project on a
-    platform that reads the value as text and every such condition silently
-    takes the other branch. The version is what says which meaning the project
-    was written against. No saved project held one, so none changes meaning.
-    """
-    data["openavc_version"] = "0.19.0"
     return data
 
 

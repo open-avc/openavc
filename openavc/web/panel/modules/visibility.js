@@ -24,7 +24,7 @@
  */
 
 import {
-    OPERATOR_SPELLINGS, SURFACE, conditionKeys, evalOperator, holds,
+    OPERATOR_SPELLINGS, SURFACE, conditionKeys, evalOperator, readValue,
 } from './compare.js';
 
 /** Each operator spelling a condition may use, and the operator it names. */
@@ -53,7 +53,7 @@ export function visibilityOf(element) {
 export function isShown(visibility, state) {
     const conditions = visibility.conditions || [];
     const read = (key) => state[key];
-    const check = (cond) => holds(cond.operator || 'eq', read(cond.key), cond.value, read, SURFACE);
+    const check = (cond) => evalOperator(cond.operator || 'eq', read(cond.key), readValue(cond.value, read), SURFACE);
     return visibility.mode === 'any'
         ? conditions.some(check)
         : conditions.every(check);

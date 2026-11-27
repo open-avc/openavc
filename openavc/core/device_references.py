@@ -190,6 +190,53 @@ def _count_step_references(steps: Any, device_id: str, project: Any) -> int:
     return count
 
 
+def _trigger_fields(trigger: Any, device_id: str) -> list[tuple[str, Any, str]]:
+    """One trigger's fields that name the device, each as (field, what it
+    holds, the word the sentence names it by): its state key, its event
+    pattern, a State Change trigger's own value naming one of its keys, then
+    its guards (``_guard_fields``)."""
+    found: list[tuple[str, Any, str]] = []
+    state_key = getattr(trigger, "state_key", None)
+    if _key_targets_device(state_key, device_id):
+        found.append(("state_key", state_key, "trigger"))
+    pattern = getattr(trigger, "event_pattern", None)
+    if _event_pattern_targets_device(pattern, device_id):
+        found.append(("event_pattern", pattern, "trigger"))
+    state_value = getattr(trigger, "state_value", None)
+    if getattr(trigger, "type", None) == "state_change" and _value_names_device(state_value, device_id):
+        found.append(("state_value", state_value, "trigger"))
+    return found + _guard_fields(trigger, device_id)
+
+
+def _guard_fields(trigger: Any, device_id: str) -> list[tuple[str, Any, str]]:
+    """Each guard of one trigger that names the device: its key, or failing
+    that a key its value names."""
+    found: list[tuple[str, Any, str]] = []
+    for condition in getattr(trigger, "conditions", None) or []:
+        if _key_targets_device(getattr(condition, "key", None), device_id):
+            found.append(("condition", condition.key, "trigger condition"))
+        elif _value_names_device(getattr(condition, "value", None), device_id):
+            found.append(("condition_value", condition.value, "trigger condition"))
+    return found
+
+
+def _trigger_references(macro: Any, trigger: Any, device_id: str) -> list[DeviceReference]:
+    """What one trigger of ``macro`` says about the device, field by field."""
+    where = {
+        "macro_id": macro.id,
+        "macro_name": macro.name,
+        "trigger_id": getattr(trigger, "id", "") or "",
+    }
+    return [
+        DeviceReference(
+            kind="trigger",
+            message=f'Macro "{macro.name}" {said}: {value}',
+            where={**where, "field": field, "value": value},
+        )
+        for field, value, said in _trigger_fields(trigger, device_id)
+    ]
+
+
 def _event_pattern_targets_device(pattern: Any, device_id: str) -> bool:
     """True when an event trigger pattern targets the device.
 
@@ -251,45 +298,7 @@ def find_device_references(project: Any, device_id: str) -> list[DeviceReference
                 where={"macro_id": macro.id, "macro_name": macro.name, "steps": step_hits},
             ))
         for trigger in getattr(macro, "triggers", None) or []:
-            where = {
-                "macro_id": macro.id,
-                "macro_name": macro.name,
-                "trigger_id": getattr(trigger, "id", "") or "",
-            }
-            state_key = getattr(trigger, "state_key", None)
-            if _key_targets_device(state_key, device_id):
-                refs.append(DeviceReference(
-                    kind="trigger",
-                    message=f'Macro "{macro.name}" trigger: {state_key}',
-                    where={**where, "field": "state_key", "value": state_key},
-                ))
-            pattern = getattr(trigger, "event_pattern", None)
-            if _event_pattern_targets_device(pattern, device_id):
-                refs.append(DeviceReference(
-                    kind="trigger",
-                    message=f'Macro "{macro.name}" trigger: {pattern}',
-                    where={**where, "field": "event_pattern", "value": pattern},
-                ))
-            state_value = getattr(trigger, "state_value", None)
-            if getattr(trigger, "type", None) == "state_change" and _value_names_device(state_value, device_id):
-                refs.append(DeviceReference(
-                    kind="trigger",
-                    message=f'Macro "{macro.name}" trigger: {state_value}',
-                    where={**where, "field": "state_value", "value": state_value},
-                ))
-            for condition in getattr(trigger, "conditions", None) or []:
-                if _key_targets_device(getattr(condition, "key", None), device_id):
-                    refs.append(DeviceReference(
-                        kind="trigger",
-                        message=f'Macro "{macro.name}" trigger condition: {condition.key}',
-                        where={**where, "field": "condition", "value": condition.key},
-                    ))
-                elif _value_names_device(getattr(condition, "value", None), device_id):
-                    refs.append(DeviceReference(
-                        kind="trigger",
-                        message=f'Macro "{macro.name}" trigger condition: {condition.value}',
-                        where={**where, "field": "condition_value", "value": condition.value},
-                    ))
+            refs.extend(_trigger_references(macro, trigger, device_id))
 
     ui = getattr(project, "ui", None)
     for page in getattr(ui, "pages", None) or []:

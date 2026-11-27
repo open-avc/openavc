@@ -5,7 +5,7 @@ Three rules that share one question, what a name means at run time:
 
 - ``referenced_key``: whether a whole value is a ``$`` reference, and the key
   it names, asked by ``resolve_ref`` and by a condition's value
-  (``condition_eval.holds``); ``resolve_ref`` / ``resolve_in_text``: what a
+  (``condition_eval.read_value``); ``resolve_ref`` / ``resolve_in_text``: what a
   ``$`` reference in a value stands for (below).
 - ``read_operand``: what a condition's key reads, for every site that judges
   one -- a step's Skip If, a Conditional, a Wait Until, a trigger's guard and a

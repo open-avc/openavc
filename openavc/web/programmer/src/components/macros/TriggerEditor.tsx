@@ -12,7 +12,7 @@ import { FIRING_CONTEXTS, type FiringContext } from "../../api/firingContext.gen
 import type { TriggerConfig, TriggerCondition, VariableConfig } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
-import { holds, readsNoValue, referencedKey } from "../../api/conditionEval";
+import { evalOperator, readValue, readsNoValue, referencedKey } from "../../api/conditionEval";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import {
   STATE_OPERATOR_WORDS,
@@ -27,6 +27,7 @@ import {
   detectEventCategory,
 } from "./triggerHelpers";
 import { BooleanOptions } from "../shared/BooleanOptions";
+import { ComparedWith } from "../shared/ComparedWith";
 import { quotedValueText } from "../shared/booleanWords";
 import { NumericInput } from "../shared/NumericInput";
 import { operatorPicker } from "./operatorChoices";
@@ -409,10 +410,8 @@ function StateChangeEditor({
   const picker = operatorPicker(trigger.state_operator, STATE_OPERATOR_WORDS, "state_trigger");
   const needsValue = !readsNoValue(picker.value, "state_trigger");
 
-  // Determine variable type for value input; a value that names a key
-  // ($var.wanted) keeps a text box whatever the key's type.
+  // Determine variable type for value input
   const selectedVar = variableFor(trigger.state_key, variables);
-  const named = referencedKey(trigger.state_value);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -438,31 +437,7 @@ function StateChangeEditor({
           ))}
         </select>
       </div>
-      {needsValue && (
-        <div style={rowStyle}>
-          <label style={labelStyle}>Value</label>
-          {selectedVar?.type === "boolean" && named === null ? (
-            <select
-              value={valueBoxText(trigger.state_value)}
-              onChange={(e) => onChange({ state_value: e.target.value === "true" })}
-              style={inputStyle}
-            >
-              <option value="">Select...</option>
-              <BooleanOptions />
-            </select>
-          ) : (
-            <input
-              type="text"
-              inputMode={selectedVar?.type === "number" && named === null ? "decimal" : undefined}
-              value={valueBoxText(trigger.state_value)}
-              onChange={(e) => onChange({ state_value: typedValue(e.target.value) })}
-              placeholder="Value"
-              style={inputStyle}
-            />
-          )}
-        </div>
-      )}
-      {needsValue && named && <ComparedWith stateKey={named} />}
+      {needsValue && <StateValueBox trigger={trigger} variableType={selectedVar?.type} onChange={onChange} />}
 
       {/* Timing controls with help */}
       <TimingHelp />
@@ -914,7 +889,7 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
   const read = (key: string) => currentState[key];
   const evaluateCondition = (cond: TriggerCondition): boolean => {
     try {
-      return holds(cond.operator ?? "eq", read(cond.key), cond.value, read);
+      return evalOperator(cond.operator ?? "eq", read(cond.key), readValue(cond.value, read));
     } catch {
       return false;
     }
@@ -940,52 +915,89 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
       }}>
         Evaluated now: {allPass ? "ALL TRUE, trigger would fire" : "FALSE, trigger would not fire"}
       </div>
-      {conditions.map((cond, i) => {
-        const actual = currentState[cond.key];
-        const named = referencedKey(cond.value);
-        const passes = evaluateCondition(cond);
-        return (
-          <div key={i} style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-xs)",
-            color: "var(--text-secondary)",
-            padding: "1px 0",
-          }}>
-            <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: 600 }}>
-              {passes ? "T" : "F"}
-            </span>
-            <code style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-              {cond.key}
-            </code>
-            <span style={{ color: "var(--text-muted)" }}>
-              = {actual === undefined ? <em>undefined</em> : quotedValueText(actual)}
-            </span>
-            {named && <StateReading stateKey={named} value={read(named)} />}
-          </div>
-        );
-      })}
+      {conditions.map((cond, i) => (
+        <PreviewRow key={i} cond={cond} passes={evaluateCondition(cond)} read={read} />
+      ))}
     </div>
   );
 }
 
-/** Under a State Change trigger's value that names a key: which key, and
- *  what it holds now. */
-function ComparedWith({ stateKey }: { stateKey: string }) {
-  const value = useConnectionStore((s) => s.liveState[stateKey]);
+/** A State Change trigger's value: true or false for a boolean variable, else
+ *  a text box; a value that names a key ($var.wanted) keeps the text box
+ *  whatever the key's type, and says which key it is compared with. */
+function StateValueBox({ trigger, variableType, onChange }: {
+  trigger: TriggerConfig;
+  variableType: string | undefined;
+  onChange: (patch: Partial<TriggerConfig>) => void;
+}) {
+  const named = referencedKey(trigger.state_value);
+  const box = variableType === "boolean" && named === null ? (
+    <select
+      value={valueBoxText(trigger.state_value)}
+      onChange={(e) => onChange({ state_value: e.target.value === "true" })}
+      style={inputStyle}
+    >
+      <option value="">Select...</option>
+      <BooleanOptions />
+    </select>
+  ) : (
+    <input
+      type="text"
+      value={valueBoxText(trigger.state_value)}
+      onChange={(e) => onChange({ state_value: typedValue(e.target.value) })}
+      placeholder="Value"
+      style={inputStyle}
+    />
+  );
   return (
-    <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 2 }}>
-      Compared with {stateKey}
-      {value !== undefined && <>: <strong>{quotedValueText(value)}</strong></>}
+    <>
+      <div style={rowStyle}>
+        <label style={labelStyle}>Value</label>
+        {box}
+      </div>
+      {named && (
+        <div style={{ fontSize: 11, paddingLeft: 2 }}>
+          <ComparedWith stateKey={named} />
+        </div>
+      )}
+    </>
+  );
+}
+
+/** One guard in the preview: whether it passes, its key and what it holds,
+ *  and the key its value names with what that holds. */
+function PreviewRow({ cond, passes, read }: {
+  cond: TriggerCondition;
+  passes: boolean;
+  read: (key: string) => unknown;
+}) {
+  const named = referencedKey(cond.value);
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "var(--space-xs)",
+      color: "var(--text-secondary)",
+      padding: "1px 0",
+    }}>
+      <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: 600 }}>
+        {passes ? "T" : "F"}
+      </span>
+      <StateReading stateKey={cond.key} value={read(cond.key)} />
+      {named && (
+        <>
+          <span style={{ color: "var(--text-muted)" }}>vs</span>
+          <StateReading stateKey={named} value={read(named)} />
+        </>
+      )}
     </div>
   );
 }
 
-/** The key a condition's value names, and what it holds now. */
+/** A key and what it holds now. */
 function StateReading({ stateKey, value }: { stateKey: string; value: unknown }) {
   return (
     <>
-      <span style={{ color: "var(--text-muted)" }}>vs</span>
       <code style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{stateKey}</code>
       <span style={{ color: "var(--text-muted)" }}>
         = {value === undefined ? <em>undefined</em> : quotedValueText(value)}

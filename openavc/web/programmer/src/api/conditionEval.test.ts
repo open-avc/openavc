@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  DECIDE, SURFACE, conditionKeys, evalOperator, holds, matchKey, readTruth, takesOperator, writtenOperator,
+  DECIDE, SURFACE, conditionKeys, evalOperator, matchKey, readValue, readTruth, takesOperator, writtenOperator,
   type ConditionMode,
 } from "./conditionEval";
 import type { ConditionPlace } from "./conditionOperators.gen";
@@ -126,14 +126,14 @@ const REFERENCES = JSON.parse(readFileSync(
 ));
 const REFERENCE_CASES: ReferenceCase[] = REFERENCES.cases;
 
-describe.each([DECIDE, SURFACE] as const)("holds reads a value that names a key as the runtime does (%s)", (mode) => {
+describe.each([DECIDE, SURFACE] as const)("readValue reads a value that names a key as the runtime does (%s)", (mode) => {
   it.each(REFERENCE_CASES.map((c) => [c.name, c] as const))("%s", (_name, c) => {
     const read = (key: string) => c.state[key];
     if (c.expected === "error") {
-      expect(() => holds(c.op, c.actual, c.value, read, mode)).toThrow(/Unknown condition operator/);
+      expect(() => evalOperator(c.op, c.actual, readValue(c.value, read), mode)).toThrow(/Unknown condition operator/);
     } else {
       const want = mode === SURFACE && c.surface !== undefined ? c.surface : c.expected;
-      expect(holds(c.op, c.actual, c.value, read, mode)).toBe(want);
+      expect(evalOperator(c.op, c.actual, readValue(c.value, read), mode)).toBe(want);
     }
   });
 });

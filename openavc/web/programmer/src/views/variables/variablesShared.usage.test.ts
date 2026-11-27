@@ -44,6 +44,8 @@ describe("Used By counts what a control's visibility reads", () => {
   });
 });
 
+const macro_ = (parts: Record<string, unknown>) => ({ id: "m2", name: "M2", steps: [], ...parts });
+
 describe("Used By counts the key a macro or trigger condition's value names", () => {
   const macros = [{
     id: "m", name: "M",
@@ -65,6 +67,11 @@ describe("Used By counts the key a macro or trigger condition's value names", ()
       'Trigger "t1": guard condition: compared with',
     ]);
     expect(vars.get("limit")?.map((u) => u.detail)).toEqual(['Trigger "t2": compared with on a state change']);
+  });
+
+  it("reads no value on a State Change trigger that fires on any change", () => {
+    const any = macro_({ triggers: [{ id: "t3", type: "state_change", state_key: "var.shown", state_value: "$var.limit" }] });
+    expect(buildUsageMap(project({ macros: [any] })).get("limit")).toBeUndefined();
   });
 
   it("names each place in the state list", () => {

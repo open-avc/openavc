@@ -22,7 +22,7 @@
  *
  * A condition's value may name a key instead (`$var.wanted`): it is compared
  * with what that key holds, and a key with no value is a reading that has
- * not arrived (`holds`, run over
+ * not arrived (`readValue`, run over
  * tests/fixtures/condition_reference_cases.json with the other two copies).
  * No DOM and no panel state.
  */
@@ -125,6 +125,7 @@ function truthy(value) {
  */
 export function evalOperator(op, actual, target, mode = SURFACE) {
     const canonical = OPERATOR_SPELLINGS.get(op);
+    if (target === NOT_ARRIVED) return againstNotArrived(canonical, actual, mode);
     if (canonical === 'eq' || canonical === 'ne') return equality(canonical, actual, target, mode);
     if (ORDERINGS.has(canonical)) return ordering(ORDERINGS.get(canonical), actual, target);
     if (canonical === 'truthy') return truthy(actual);
@@ -155,20 +156,26 @@ export function conditionKeys(condition) {
     return keys;
 }
 
-/**
- * Whether `actual op value` holds for a reader in `mode`, a value that names
- * a key (`referencedKey`) compared with what `read(key)` holds there. A key
- * with no value is a reading that has not arrived: never equal, and
- * not-equal only in the surface mode, as a reading that has not arrived is.
- * `holds` in core/condition_eval.py.
- */
-export function holds(op, actual, value, read, mode = SURFACE) {
+/** What a condition's value reads as when the key it names holds nothing: a
+ *  reading that has not arrived, on the authored side. `NOT_ARRIVED` in
+ *  core/condition_eval.py. */
+export const NOT_ARRIVED = Symbol('not arrived');
+
+/** A condition's value as `evalOperator` compares it: as written, or for one
+ *  that names a key what `read(key)` holds, NOT_ARRIVED when that is
+ *  nothing. `read_value` in core/condition_eval.py. */
+export function readValue(value, read) {
     const named = referencedKey(value);
-    if (named === null) return evalOperator(op, actual, value, mode);
+    if (named === null) return value;
     const target = read(named);
-    if (!notArrived(target)) return evalOperator(op, actual, target, mode);
-    const canonical = OPERATOR_SPELLINGS.get(op);
-    if (canonical === 'truthy' || canonical === 'falsy') return evalOperator(canonical, actual, null, mode);
+    return notArrived(target) ? NOT_ARRIVED : target;
+}
+
+/** `actual canonical NOT_ARRIVED`: an operator that reads no value reads
+ *  `actual` alone; otherwise only not-equal, and only in the surface mode. */
+function againstNotArrived(canonical, actual, mode) {
+    if (canonical === 'truthy') return truthy(actual);
+    if (canonical === 'falsy') return !truthy(actual);
     return canonical === 'ne' && MODES.get(mode) === true;
 }
 

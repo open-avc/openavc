@@ -13,7 +13,7 @@
  * compares with the words and numbers that mean it, a number written as text
  * equals the number, and a value that has not been reported never matches.
  *
- * A condition's value may name a key (`$var.wanted`): `holds` compares with
+ * A condition's value may name a key (`$var.wanted`): `readValue` reads
  * what that key holds, over tests/fixtures/condition_reference_cases.json,
  * which the other two copies run too.
  *
@@ -169,11 +169,19 @@ export function evalOperator(
   op: string, actual: unknown, target: unknown, mode: ConditionMode = DECIDE,
 ): boolean {
   const canonical = knownOperator(op);
+  if (canonical === null) {
+    throw new Error(`Unknown condition operator: '${op}'. Valid operators: ${OPERATORS.join(", ")}`);
+  }
+  if (target === NOT_ARRIVED) return againstNotArrived(canonical, actual, mode);
+  return byOperator(canonical, actual, target, mode);
+}
+
+/** `actual canonical target`, for an operator the runtime knows. */
+function byOperator(canonical: Operator, actual: unknown, target: unknown, mode: ConditionMode): boolean {
   if (canonical === "eq" || canonical === "ne") return equality(canonical, actual, target, mode);
   if (canonical === "truthy") return pythonTruthy(actual);
   if (canonical === "falsy") return !pythonTruthy(actual);
-  if (canonical !== null) return ordering(ORDERINGS[canonical], actual, target);
-  throw new Error(`Unknown condition operator: '${op}'. Valid operators: ${OPERATORS.join(", ")}`);
+  return ordering(ORDERINGS[canonical], actual, target);
 }
 
 /** Whether a reading equals an authored value: `eq`, the same in both modes. */
@@ -198,22 +206,25 @@ export function conditionKeys(condition: { key?: unknown; value?: unknown }): st
   return keys;
 }
 
-/** `holds(op, actual, value, read, mode)` in condition_eval.py: `actual op
- *  value`, a value that names a key compared with what `read` reads for it.
- *  A key with no value is a reading that has not arrived: never equal, never
- *  ordered, and not-equal only in the surface mode. Throws on an operator the
- *  runtime does not know, as `evalOperator` does. */
-export function holds(
-  op: string, actual: unknown, value: unknown, read: (key: string) => unknown,
-  mode: ConditionMode = DECIDE,
-): boolean {
+/** What a condition's value reads as when the key it names holds nothing: a
+ *  reading that has not arrived, on the authored side. `NOT_ARRIVED` in
+ *  condition_eval.py. */
+export const NOT_ARRIVED: unique symbol = Symbol("not arrived");
+
+/** A condition's value as `evalOperator` compares it: as written, or for one
+ *  that names a key what `read` reads for it, NOT_ARRIVED when that is
+ *  nothing (`read_value` in condition_eval.py). */
+export function readValue(value: unknown, read: (key: string) => unknown): unknown {
   const named = referencedKey(value);
-  if (named === null) return evalOperator(op, actual, value, mode);
+  if (named === null) return value;
   const target = read(named);
-  if (target !== null && target !== undefined) return evalOperator(op, actual, target, mode);
-  const canonical = knownOperator(op);
-  if (canonical === null) return evalOperator(op, actual, null, mode);
-  if ((VALUELESS_OPERATORS as readonly string[]).includes(canonical)) return evalOperator(canonical, actual, null, mode);
+  return target === null || target === undefined ? NOT_ARRIVED : target;
+}
+
+/** `actual canonical NOT_ARRIVED`: an operator that reads no value reads
+ *  `actual` alone; otherwise only not-equal, and only in the surface mode. */
+function againstNotArrived(canonical: Operator, actual: unknown, mode: ConditionMode): boolean {
+  if ((VALUELESS_OPERATORS as readonly string[]).includes(canonical)) return pythonTruthy(actual) === (canonical === "truthy");
   return canonical === "ne" && MODES[mode];
 }
 

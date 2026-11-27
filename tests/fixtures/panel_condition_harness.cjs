@@ -13,7 +13,7 @@
  * which key a reading picks, over the corpus's `keys`.
  *
  * A condition whose value names a key ($var.wanted) is asked too, over
- * tests/fixtures/condition_reference_cases.json: the compare module's `holds`
+ * tests/fixtures/condition_reference_cases.json: the compare module's `readValue`
  * in both modes, a visible_when holding it against that state, and the keys
  * a visible_when redraws on.
  *
@@ -197,8 +197,8 @@ const NONE = '\u0000none';
     const referenceState = (c) => ({ ...c.state, [KEY]: c.actual });
     const readIn = (state) => (key) => state[key];
     out.references = {
-        holdsDecide: references.map((c) => compare.holds(c.op, c.actual, c.value, readIn(c.state), compare.DECIDE)),
-        holdsSurface: references.map((c) => compare.holds(c.op, c.actual, c.value, readIn(c.state), compare.SURFACE)),
+        holdsDecide: references.map((c) => compare.evalOperator(c.op, c.actual, compare.readValue(c.value, readIn(c.state)), compare.DECIDE)),
+        holdsSurface: references.map((c) => compare.evalOperator(c.op, c.actual, compare.readValue(c.value, readIn(c.state)), compare.SURFACE)),
         visibleWhen: references.map((c) => visibility.isShown(
             visibility.visibilityOf({ bindings: { show: { visible_when: { key: KEY, operator: c.op, value: c.value } } } }),
             referenceState(c),

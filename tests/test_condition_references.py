@@ -8,7 +8,7 @@ to every value. The key a value names is read too: a change to it wakes a Wait
 Until and draws a ``visible_when`` again.
 
 ``fixtures/condition_reference_cases.json`` holds the answers, run here over
-the server's rule (``core/condition_eval.py`` ``holds`` and
+the server's rule (``core/condition_eval.py`` ``read_value`` and
 ``condition_keys``) and the panel's copy (``modules/compare.js``, and a
 ``visible_when`` through ``modules/visibility.js``) in Node through
 ``fixtures/panel_condition_harness.cjs``; ``conditionEval.test.ts`` runs it
@@ -25,7 +25,14 @@ from pathlib import Path
 
 import pytest
 
-from openavc.core.condition_eval import DECIDE, SURFACE, UnknownOperator, condition_keys, holds
+from openavc.core.condition_eval import (
+    DECIDE,
+    SURFACE,
+    UnknownOperator,
+    condition_keys,
+    eval_operator,
+    read_value,
+)
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -52,7 +59,7 @@ def _never_on_the_panel(case: dict, surface: bool) -> bool:
 
 def _server_answer(case: dict, mode: str) -> object:
     try:
-        return holds(case["op"], case["actual"], case["value"], case["state"].get, mode)
+        return eval_operator(case["op"], case["actual"], read_value(case["value"], case["state"].get), mode)
     except UnknownOperator:
         return "error"
 
