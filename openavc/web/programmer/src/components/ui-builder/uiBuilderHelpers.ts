@@ -1082,7 +1082,8 @@ export function promoteToMaster(
 /**
  * Put a master element back on a page as an ordinary control.
  *
- * The master-only fields go; the box it comes back with is the one a landscape
+ * The master-only fields go, and any container it names: a master is placed on
+ * the screen, so the box it comes back with is the page's, the one a landscape
  * arrangement draws it at (`masterPlacement`, its fallbacks included, else the
  * default box), written into the page's primary arrangement.
  */
@@ -1096,7 +1097,7 @@ export function demoteFromMaster(
   if (!masterEl) return { pages, masterElements };
 
   const newMasters = masterElements.filter(m => m.id !== masterElementId);
-  const { pages: _pagesField, placements: _placements, hidden: _hidden, ...elementFields } = masterEl;
+  const { pages: _pagesField, placements: _placements, hidden: _hidden, parent: _parent, ...elementFields } = masterEl;
   const box = masterPlacement(masterEl, "landscape") ?? { ...DEFAULT_PLACEMENT };
   const demoted = underFreeId(elementFields as UIElement, takenElementIds(pages, newMasters.map((m) => m.id)));
 

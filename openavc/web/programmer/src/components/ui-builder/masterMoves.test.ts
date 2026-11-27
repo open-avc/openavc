@@ -176,9 +176,20 @@ describe("demoteFromMaster: the box a control comes back with", () => {
   });
 
   it("strips the master-only fields and keeps the rest", () => {
-    const out = demoteFromMaster([target()], [master("m", { landscape: box(0, 0, 5, 5) }, { label: "Go", parent: "g" })], "m", "pg");
-    expect(out.pages[0].elements).toEqual([{ id: "m", type: "button", bindings: {}, label: "Go", parent: "g" }]);
+    const out = demoteFromMaster([target()], [master("m", { landscape: box(0, 0, 5, 5) }, { label: "Go" })], "m", "pg");
+    expect(out.pages[0].elements).toEqual([{ id: "m", type: "button", bindings: {}, label: "Go" }]);
     expect(out.masterElements).toEqual([]);
+  });
+
+  it("lands a master that names a container on the page where it was shown", () => {
+    const withGroup = page(
+      [el("g", "group")],
+      [layout("main", "landscape", { g: box(50, 50, 50, 50) }, { primary: true })],
+    );
+    const out = demoteFromMaster([withGroup], [master("m", { landscape: box(0, 0, 10, 10) }, { parent: "g" })], "m", "pg");
+    const demoted = out.pages[0].elements.find((e) => e.id === "m")!;
+    expect(demoted.parent).toBeUndefined();
+    expect(out.pages[0].layouts[0].placements.m).toEqual(box(0, 0, 10, 10));
   });
 
   it("leaves the other pages as they were", () => {
