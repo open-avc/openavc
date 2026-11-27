@@ -853,6 +853,12 @@ class SecretRedactionFilter(logging.Filter):
     (console, file, in-memory buffer) rather than to a logger, because a filter
     on a logger does not see records propagating up from its children.
 
+    The traceback and the stack a record carries are masked too: an
+    exception's own text (``log.exception``) is where a value the device
+    refused comes back. The traceback is written out here, as the formatter
+    would, and kept on the record (``exc_text``), which every formatter
+    writes as it is.
+
     Idempotent: the same record passing through three handlers is redacted once
     and the later passes are no-ops.
     """
@@ -870,4 +876,21 @@ class SecretRedactionFilter(logging.Filter):
             # Collapse to the redacted string; args are already interpolated in.
             record.msg = redacted
             record.args = ()
+        _mask_trace(record, registry)
         return True
+
+
+_TRACE_FORMATTER = logging.Formatter()
+
+
+def _mask_trace(record: logging.LogRecord, registry: SecretRegistry) -> None:
+    """``record``'s traceback and stack as the log may carry them."""
+    if record.exc_info and not record.exc_text:
+        try:
+            record.exc_text = _TRACE_FORMATTER.formatException(record.exc_info)
+        except Exception:
+            return
+    if record.exc_text:
+        record.exc_text = registry.masked(Exit.LOG, record.exc_text)
+    if record.stack_info:
+        record.stack_info = registry.masked(Exit.LOG, record.stack_info)

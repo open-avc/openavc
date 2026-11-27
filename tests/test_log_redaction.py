@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import sys
 
 import pytest
 
@@ -361,6 +362,56 @@ def test_filter_is_idempotent_across_handlers(clean_registry):
     for _ in range(3):
         filt.filter(record)
     assert record.getMessage() == "token ***"
+
+
+def _written(record: logging.LogRecord, handlers: int = 1) -> str:
+    """``record`` as a handler writes it, after the filter: the platform's
+    handlers format it with the stdlib formatter, traceback and stack
+    included. ``handlers`` filters it that many times, as the console, the
+    file and the buffer each do."""
+    filt = SecretRedactionFilter()
+    for _ in range(handlers):
+        filt.filter(record)
+    return logging.Formatter("%(message)s").format(record)
+
+
+def _failed_record(message: str) -> logging.LogRecord:
+    try:
+        raise RuntimeError("the widget refused hunter2")
+    except RuntimeError:
+        record = _record(message)
+        record.exc_info = sys.exc_info()
+    return record
+
+
+def test_filter_masks_a_credential_in_the_traceback(clean_registry):
+    # log.exception writes the exception's own text under the line.
+    clean_registry.add_runtime_secret("acme_1", "hunter2")
+    written = _written(_failed_record("Pairing failed"))
+    assert "RuntimeError: the widget refused ***" in written
+    assert "hunter2" not in written
+
+
+def test_filter_masks_the_traceback_once_across_handlers(clean_registry):
+    clean_registry.add_runtime_secret("acme_1", "hunter2")
+    written = _written(_failed_record("Pairing failed"), handlers=3)
+    assert written.count("RuntimeError: the widget refused ***") == 1
+    assert "hunter2" not in written
+
+
+def test_filter_masks_a_credential_in_a_logged_stack(clean_registry):
+    clean_registry.add_runtime_secret("acme_1", "hunter2")
+    record = _record("Where the key was sent")
+    record.stack_info = 'Stack (most recent call last):\n  send("hunter2")'
+    written = _written(record)
+    assert 'send("***")' in written
+    assert "hunter2" not in written
+
+
+def test_filter_leaves_a_traceback_with_no_credential_as_it_is(clean_registry):
+    clean_registry.add_runtime_secret("acme_1", "otherpass")
+    written = _written(_failed_record("Pairing failed"))
+    assert "RuntimeError: the widget refused hunter2" in written
 
 
 def test_filter_never_drops_a_record(clean_registry):
