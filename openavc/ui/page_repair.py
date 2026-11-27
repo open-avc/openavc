@@ -127,7 +127,7 @@ class _Page:
         dropped = False
         for el in self.elements:
             parent = el.get("parent")
-            if parent is not None and not (_text(parent) and parent in ids):
+            if parent is not None and not _names_one_of(parent, ids):
                 el["parent"] = None
                 dropped = True
         return dropped
@@ -184,18 +184,23 @@ class _Page:
         moving = [move for move in moving if move is not None]
         if not moving:
             return False
-        view = _geometry_view(self.page, self.elements)
-        drawn = {layout.id: absolute_placements(view, layout.id) for layout in view.layouts}
-        for move in moving:
-            _settle(move, drawn.values())
-        for layout in _dicts(self.page.get("layouts")):
-            if layout.get("id") in drawn:
-                _rewrite_layout(layout, drawn[layout["id"]], moving)
+        self._rewrite_boxes(moving)
         for move in moving:
             move.element["parent"] = move.into
             self._said(move.element["id"], _moved_sentence(move, by_id))
         self._list_after(moving)
         return True
+
+    def _rewrite_boxes(self, moving: list[_Moved]) -> None:
+        """Each arrangement's boxes for the controls moving, measured on the
+        page as it is before they move."""
+        view = _geometry_view(self.page, self.elements)
+        drawn = {layout.id: absolute_placements(view, layout.id) for layout in view.layouts}
+        for move in moving:
+            _settle(move, drawn.values())
+        for layout in _dicts(self.page.get("layouts")):
+            if _text(layout.get("id")) and layout["id"] in drawn:
+                _rewrite_layout(layout, drawn[layout["id"]], moving)
 
     def _in_draw_order(self, by_id: dict[str, dict]) -> list[dict]:
         """Every control, each straight after the one it is drawn inside."""
@@ -266,16 +271,26 @@ def _rewrite_layout(layout: dict, drawn: dict, moving: Iterable[_Moved]) -> None
     this arrangement places it or a control it was drawn inside (anywhere
     else it reads its box from the arrangement it inherits, which this
     rewrites the same way), and hidden where one it was drawn inside is."""
-    placements = layout.get("placements")
-    hidden = layout.get("hidden")
+    placements, hidden = layout.get("placements"), layout.get("hidden")
     for move in moving:
-        element_id = move.element["id"]
-        here = isinstance(placements, dict) and any(i in placements for i in (element_id, *move.within))
-        box = drawn.get(element_id)
-        if here and box is not None:
-            placements[element_id] = {**_dict(placements.get(element_id)), **_measured(move, box, drawn)}
-        if isinstance(hidden, list) and element_id not in hidden and any(i in hidden for i in move.within):
-            hidden.append(element_id)
+        if isinstance(placements, dict):
+            _place(placements, move, drawn)
+        if isinstance(hidden, list):
+            _hide(hidden, move)
+
+
+def _place(placements: dict, move: _Moved, drawn: dict) -> None:
+    element_id = move.element["id"]
+    box = drawn.get(element_id)
+    if box is None or not any(i in placements for i in (element_id, *move.within)):
+        return
+    placements[element_id] = {**_dict(placements.get(element_id)), **_measured(move, box, drawn)}
+
+
+def _hide(hidden: list, move: _Moved) -> None:
+    element_id = move.element["id"]
+    if element_id not in hidden and any(i in hidden for i in move.within):
+        hidden.append(element_id)
 
 
 def _settle(move: _Moved, drawn: Iterable[dict]) -> None:
@@ -346,9 +361,13 @@ def _box(box: dict) -> SimpleNamespace:
 
 
 def _side(value: Any, left_out: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         return left_out
-    return float(value)
+    return float(value) if math.isfinite(value) else left_out
+
+
+def _names_one_of(parent: Any, ids: set[str]) -> bool:
+    return _text(parent) and parent in ids
 
 
 def _text(value: Any) -> bool:

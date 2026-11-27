@@ -338,6 +338,8 @@ def test_every_shipped_starter_is_left_alone(template):
                                         {"id": "y", "parent": "x"}],
                 "layouts": [{"id": "l", "placements": {"x": {"x": 1, "y": 1, "w": 0, "h": 0}, "y": {}}}]}]},
     {"master_elements": [{"id": "m", "parent": "p"}, "junk"]},
+    {"pages": [{"id": "p", "elements": [{"id": "b", "type": "button"}, {"id": "c", "parent": "b"}],
+                "layouts": [{"id": ["l"], "placements": {"c": {}}}, {"id": {"o": 1}}, {"id": "l", "hidden": [["b"]]}]}]},
 ])
 def test_any_json_is_repaired_without_raising(ui):
     repair_page_structure(ui, MigrationNotes())
