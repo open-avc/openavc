@@ -1,7 +1,7 @@
 "use strict";
-// Loads DeviceDetail/DeviceView's device-reference helper (deviceUtils.ts —
-// findDeviceReferences; a type-only import that esbuild erases, so effectively
-// zero-import) and checks what it reports before deleting a device. The old
+// Bundles DeviceDetail/DeviceView's device-reference helper (deviceUtils.ts —
+// findDeviceReferences, with the condition rule it imports) and checks what it
+// reports before deleting a device. The old
 // version under-reported (only step.device, trigger state_key/conditions) and
 // over-reported (substring match on the stringified bindings), so the delete
 // warning both missed real dependencies and flagged sibling device ids. The
@@ -9,14 +9,20 @@
 // groups and anchors the UI-binding match on segment boundaries. Mirrors
 // device_view_helpers_harness.cjs. The Python wrapper skips when the Node
 // toolchain or esbuild is absent.
-const fs = require("fs");
 const path = require("path");
 
 const helpersPath = process.argv[2];
-const src = fs.readFileSync(helpersPath, "utf8");
 
 const esbuild = require("esbuild");
-const { code } = esbuild.transformSync(src, { loader: "ts", format: "cjs" });
+const built = esbuild.buildSync({
+  entryPoints: [helpersPath],
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  write: false,
+  logLevel: "silent",
+});
+const code = built.outputFiles[0].text;
 const moduleObj = { exports: {} };
 const fn = new Function("exports", "require", "module", "__filename", "__dirname", code);
 fn(moduleObj.exports, require, moduleObj, helpersPath, path.dirname(helpersPath));
