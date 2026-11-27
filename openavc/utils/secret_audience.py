@@ -29,9 +29,9 @@ is held (``utils/log_redaction``), or the rules built on them in
 declares the secrets of. Those are the only reads of the registry's values
 and the only masking outside those two modules
 (``tests/test_secret_audience.py`` sweeps the code for any other). A setup
-run's progress and result leave by the Programmer's row, but a secret
-parameter the run was given is not registered until the run saves it, so a
-wrong value is still sent as it was typed.
+run's progress and result leave by the Programmer's row, sent and kept
+alike, and the device's masking learns its secret parameters as it starts
+(``core/setup_actions``), so a wrong value the run never saves is masked too.
 
 A command's secret parameter is the send's to keep in
 (``core/command_gates.py``): it holds the declaration, so a refusal names the

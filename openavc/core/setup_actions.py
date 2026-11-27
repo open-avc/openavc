@@ -31,7 +31,13 @@ run generically — it never knows what an action *does*:
   - keep each device's last run result in memory, so a wizard whose
     connection dropped asks how its run ended (:meth:`SetupActionRunner.outcome`).
     A run id names the process that started it: a run of an earlier process
-    answers that it was interrupted.
+    answers that it was interrupted;
+  - keep a secret parameter out of everything the run sends and keeps: the
+    device's masking learns each one's value as the run starts, before the
+    handler has it, so a wrong key the run never saves is masked too, in the
+    device's traffic, in every log line and in each message, which is masked
+    once, as the Programmer may carry it (``ws_hub.frame_as``), and kept
+    as it was sent.
 
 All device/protocol specifics (which transport, which commands, the config
 delta) live in the driver's ``run_setup_action`` handler.
@@ -54,6 +60,9 @@ from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.device_retire import RETIRED_REMOVED, RETIRED_REPLACED, RETIRED_STOPPING
 from openavc.core.project_changes import ProjectNotAppliedError
 from openavc.core.project_loader import ProjectSaveError
+from openavc.core.ws_hub import PROGRAMMER, frame_as
+from openavc.drivers.secret_params import secret_params_of
+from openavc.utils.log_redaction import get_secret_registry, secret_text
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -96,6 +105,17 @@ def _without_unset_connections(device_id: str, delta: dict[str, Any]) -> dict[st
         device_id, unset,
     )
     return {k: v for k, v in delta.items() if k not in unset}
+
+
+def _learn_secret_params(device_id: str, action: dict[str, Any], params: dict[str, Any]) -> None:
+    """Have the device's masking learn the value of each parameter the
+    action marks secret (``drivers/secret_params``), as a sent command's is
+    (``core/command_gates.register_secret_values``), before the run starts."""
+    registry = get_secret_registry()
+    for key in secret_params_of(action, params):
+        text = secret_text(params[key])
+        if text is not None:
+            registry.add_runtime_secret(device_id, text)
 
 
 class SetupActionInProgress(Exception):
@@ -344,11 +364,13 @@ class SetupActionRunner:
             )
         if device_id in self._active:
             raise SetupActionInProgress(device_id, self._active[device_id].run_id)
+        params = params or {}
+        _learn_secret_params(device_id, action, params)
 
         from openavc.core.setup_files import take_setup_files
 
         params, uploads = take_setup_files(
-            getattr(self._engine, "file_staging", None), device_id, action, params or {}, files or {},
+            getattr(self._engine, "file_staging", None), device_id, action, params, files or {},
         )
         run = _SetupRun(
             run_id=f"{self._start_id}-{uuid4().hex}",
@@ -360,7 +382,7 @@ class SetupActionRunner:
         # The run is the asking tab's own and outlives its request: the config
         # it saves names that tab, as the request itself would, and the IDE
         # re-syncs on that (syncAfterSetupAction).
-        task = asyncio.create_task(self._run_for(request_client_id(), run, params or {}))
+        task = asyncio.create_task(self._run_for(request_client_id(), run, params))
         run.task = task
         self._tasks.add(task)
         task.add_done_callback(partial(self._completed, run, uploads))
@@ -542,7 +564,10 @@ class SetupActionRunner:
 
     async def _emit(self, run: _SetupRun, line: _Line) -> None:
         """Send one action.progress event to the Programmer's clients, and
-        keep it as the run's latest.
+        keep it as the run's latest: one copy, every registered secret
+        masked as the Programmer may carry it (``ws_hub.frame_as``), so the
+        last result of a device since removed, whose secrets are forgotten,
+        is answered masked too.
 
         Never to a panel: it carries the handler's own result message and
         nothing on a panel shows it.
@@ -555,5 +580,6 @@ class SetupActionRunner:
         except (TypeError, ValueError):
             bare = _Line(line.step, line.pct, line.status)
             msg = {"type": "action.progress", **run.message(bare)}
+        msg = frame_as(msg, PROGRAMMER)
         self._keep(run, msg)
         await self._engine.broadcast_ws(msg)
