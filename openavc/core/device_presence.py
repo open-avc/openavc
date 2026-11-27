@@ -42,6 +42,8 @@ it to these words. The panel reads the word in web/panel/modules/
 availability.js: every word but ``online`` greys a control's reading and
 marks a press that reaches nothing up, and ``asleep`` keeps a wake control's
 reading; tests/test_panel_presence_mirror.py holds its two words to these.
+The cloud service shows the word through the Programmer's copy, run as it
+stands, and holds what its assistant is taught about the word to these words.
 """
 
 from __future__ import annotations

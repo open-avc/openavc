@@ -13,7 +13,8 @@
  * page, "offline" in the list and red on the Dashboard.
  *
  * tests/test_ide_presence_mirror.py holds these words to the server's and
- * fails an IDE module that reads those parts again.
+ * fails an IDE module that reads those parts again. The cloud service's pages
+ * run this file as it stands, to show each device's word and label.
  */
 
 /** The words, in the server's order: the first that holds names the word. */
