@@ -12,6 +12,10 @@ this, and a project with nothing in it to repair or say passes untouched:
   the 0.17.0 step's own repair (``core/bound_migration.py``,
   ``core/box_migration.py``) run with today's numbers, read from the project
   models (``todays_bounds``), and each rewrite is a note, as the step's are.
+- **A container link the panel draws wrongly or not at all** (a ``parent``
+  naming nothing, a loop of containers, a control inside a button, a master's
+  ``parent``) is repaired as ``ui/page_repair.py`` says, each repair a person
+  would see a note.
 - **A word a fixed-choice field does not know** (``project_loader.OneOf``) is
   kept as written, so the project goes back to the release that saved it
   unchanged, and the load says what it does here: a note per word
@@ -52,6 +56,7 @@ from openavc.core.project_loader import (
     reads_as,
 )
 from openavc.core.project_update import CHANGED, MigrationNotes
+from openavc.ui.page_repair import repair_page_structure
 
 #: The panel settings each repaired to its range.
 _PANEL_SETTINGS = ("page_transition_duration", "element_stagger_ms", "idle_timeout_seconds")
@@ -81,11 +86,13 @@ def repair_saved_values(data: dict, elements: list[dict], notes: MigrationNotes)
     bounds = todays_bounds()
     repair_bounds_0_17(data, elements, notes, bounds)
     ui = data.get("ui")
+    contained = False
     if isinstance(ui, dict):
         repair_boxes_0_17(ui, notes, bounds.overlay_box)
+        contained = repair_page_structure(ui, notes)
     for word in unknown_words(data):
         notes.found(word.found, word.location, page_id=word.page_id)
-    return _rewrites(notes) > rewrites
+    return contained or _rewrites(notes) > rewrites
 
 
 def _rewrites(notes: MigrationNotes) -> int:
