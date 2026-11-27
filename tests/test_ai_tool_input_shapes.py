@@ -154,6 +154,15 @@ BOXES = [
      "layouts item 1: placements.b1.w must be a number, not a boolean."),
     ("update_ui_element", {"element_id": "e", "placement": {"x": "abc"}},
      "placement.x must be a number, not a string."),
+    # JSON has no infinite number, but a figure too big for a float (1e400)
+    # parses as one, and the box's model refuses it.
+    ("update_ui_element", {"element_id": "e", "placement": {"w": float("inf")}},
+     "placement.w must be a number, not Infinity."),
+    ("update_ui_page", {"page_id": "p", "layouts": [
+        {"id": "primary", "placements": {"b1": {"x": float("-inf")}}}]},
+     "layouts item 1: placements.b1.x must be a number, not -Infinity."),
+    ("update_master_element", {"element_id": "m1", "placements": {"landscape": {"h": float("nan")}}},
+     "placements.landscape.h must be a number, not NaN."),
 ]
 
 

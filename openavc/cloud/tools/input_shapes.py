@@ -22,6 +22,7 @@ here; inside an input, a null is refused unless the declared type admits it.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from typing import Any
 
@@ -34,6 +35,8 @@ def json_kind(value: Any) -> str:
         return "null"
     if isinstance(value, bool):
         return "a boolean"
+    if isinstance(value, float) and not math.isfinite(value):
+        return _not_finite_words(value)
     if isinstance(value, (int, float)):
         return "a number"
     if isinstance(value, str):
@@ -45,16 +48,32 @@ def json_kind(value: Any) -> str:
     return type(value).__name__
 
 
-def _is_integer(value: Any) -> bool:
-    if isinstance(value, bool):
+def _not_finite_words(value: float) -> str:
+    """A float JSON cannot hold, as Python's encoder writes it. JSON has no
+    such number, but a figure too big for a float (``1e400``) parses as one,
+    and nothing downstream can store it."""
+    if math.isnan(value):
+        return "NaN"
+    return "Infinity" if value > 0 else "-Infinity"
+
+
+def _is_number(value: Any) -> bool:
+    """A JSON number: never a boolean, and finite."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
-    return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
+    return not isinstance(value, float) or math.isfinite(value)
+
+
+def _is_integer(value: Any) -> bool:
+    if not _is_number(value):
+        return False
+    return isinstance(value, int) or value.is_integer()
 
 
 #: Whether a value is each JSON type.
 _IS = {
     "string": lambda v: isinstance(v, str),
-    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "number": _is_number,
     "integer": _is_integer,
     "boolean": lambda v: isinstance(v, bool),
     "object": lambda v: isinstance(v, dict),
