@@ -57,7 +57,9 @@ interface AIChatStore {
   available: boolean;
   unavailableReason: string;
   // What is in the way, so the pane can pick copy without reading the sentence.
-  unavailableState: "unpaired" | "disconnected" | "unavailable";
+  unavailableState: "unpaired" | "disconnected" | "unavailable" | "outdated";
+  // The release to install, while `outdated`; "" otherwise.
+  neededRelease: string;
 
   // Conversations
   conversations: cloud.ConversationSummary[];
@@ -99,6 +101,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
   available: false,
   unavailableReason: "Checking...",
   unavailableState: "unpaired",
+  neededRelease: "",
   conversations: [],
   activeConversationId: null,
   messages: [],
@@ -119,12 +122,14 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         available: status.available,
         unavailableReason: status.reason || "",
         unavailableState: state === "available" ? "unpaired" : state,
+        neededRelease: state === "outdated" ? status.needs_release ?? "" : "",
       });
     } catch {
       set({
         available: false,
         unavailableReason: "Could not check AI status",
         unavailableState: "disconnected",
+        neededRelease: "",
       });
     }
   },
@@ -333,7 +338,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
           get().loadConversations();
         },
 
-        onError: (message) => {
+        onError: (message, needsRelease) => {
           // The user's message stays, marked with what went wrong and
           // offering Retry and Copy. It used to be deleted along with the
           // placeholder, which meant a tunnel timeout, a rate limit or a
@@ -357,6 +362,10 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
             streamingPhase: null,
             currentRound: null,
           }));
+          // Refused for the system's release (one published while the pane
+          // was open): the status says so too, and the pane then shows the
+          // update in place of the prompt box.
+          if (needsRelease) void get().checkAvailability();
         },
       },
     );

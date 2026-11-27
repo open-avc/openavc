@@ -18,6 +18,8 @@ from fastapi.responses import StreamingResponse
 import openavc.config as cfg
 from openavc.api.auth import require_programmer_auth
 from openavc.utils.outbound import internet_client
+from openavc.utils.version_rule import compare_versions, read_version
+from openavc.version import __version__
 
 log = logging.getLogger(__name__)
 
@@ -144,7 +146,25 @@ async def _cloud_request(
 _GENERIC_REFUSAL = "The AI assistant is not available on this account."
 
 
-async def _cloud_ai_refusal() -> str | None:
+def _release_to_install(needs: object) -> str | None:
+    """The release the cloud says the assistant needs, when it is one this
+    system could install to meet it: a final release newer than this one.
+
+    It crosses the cloud's trust boundary and becomes an update the IDE offers,
+    so anything else (not a version, a release candidate, a release this
+    system already runs or has passed) is no offer at all.
+    """
+    if not isinstance(needs, str) or len(needs) > 40:
+        return None
+    version = read_version(needs)
+    if version is None or version.is_prerelease:
+        return None
+    if compare_versions(needs, __version__) != 1:
+        return None
+    return needs.strip().lstrip("vV")
+
+
+async def _cloud_ai_refusal() -> dict[str, Any] | None:
     """Why the cloud would refuse a chat turn from this system, or None.
 
     A connected agent proves the cloud is reachable, and nothing more: the
@@ -158,6 +178,9 @@ async def _cloud_ai_refusal() -> str | None:
     not know. Answering "unavailable" from ignorance would take the assistant
     away from someone whose account is fine. Only an explicit ``available:
     false`` from the cloud closes the door.
+
+    The answer is the status's own fields: ``state`` and ``reason``, and for a
+    system behind the release the assistant needs, ``needs_release``.
     """
     try:
         api_url, system_id, system_key = _check_cloud_ready()
@@ -177,9 +200,14 @@ async def _cloud_ai_refusal() -> str | None:
     if not isinstance(data, dict) or data.get("available") is not False:
         return None
     reason = data.get("reason")
-    if isinstance(reason, str) and reason.strip():
-        return reason.strip()
-    return _GENERIC_REFUSAL
+    refusal: dict[str, Any] = {
+        "state": "unavailable",
+        "reason": reason.strip() if isinstance(reason, str) and reason.strip() else _GENERIC_REFUSAL,
+    }
+    needs = _release_to_install(data.get("needs_release"))
+    if needs:
+        refusal.update(state="outdated", needs_release=needs)
+    return refusal
 
 
 @router.get("/status")
@@ -189,7 +217,9 @@ async def ai_status() -> dict[str, Any]:
     ``state`` is what the IDE branches its copy on, because "pair this system"
     is the wrong thing to tell somebody who paired it an hour ago and whose
     account simply does not have the assistant. ``reason`` is the sentence to
-    show; it comes from the cloud whenever the cloud had one.
+    show; it comes from the cloud whenever the cloud had one. ``outdated`` is
+    the cloud's refusal of a system behind the release the assistant needs,
+    and carries that release as ``needs_release``.
     """
     if not cfg.CLOUD_ENABLED or not cfg.CLOUD_SYSTEM_ID:
         return {"available": False, "state": "unpaired", "reason": "Cloud not paired"}
@@ -211,7 +241,7 @@ async def ai_status() -> dict[str, Any]:
 
     refusal = await _cloud_ai_refusal()
     if refusal:
-        return {"available": False, "state": "unavailable", "reason": refusal}
+        return {"available": False, **refusal}
 
     return {"available": True, "state": "available"}
 

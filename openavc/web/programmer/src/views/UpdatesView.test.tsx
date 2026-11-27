@@ -45,6 +45,7 @@ vi.mock("../api/restClient", () => ({
 
 import { UpdatesView } from "./UpdatesView";
 import * as api from "../api/restClient";
+import { useNavigationStore } from "../store/navigationStore";
 
 /** The server's answers: its startup status (`status`; a release too old
  *  to name its version there answers only `ready`), and /api/health's
@@ -445,6 +446,50 @@ describe("UpdatesView Install", () => {
     liveState["system.update_install_version"] = "0.26.0";
     render(<UpdatesView />);
     expect(await screen.findByText("Updating OpenAVC")).toBeInTheDocument();
+  });
+});
+
+// The assistant, on a system behind the release it needs, offers that update
+// as one button. The button opens this page with the release asked for, and
+// the page runs its own check and its own Install, so the progress dialog and
+// its completion are the ones every update gets.
+describe("UpdatesView install asked for from another screen", () => {
+  beforeEach(() => {
+    liveState["system.update_status"] = "idle";
+    vi.mocked(api.applyUpdate).mockClear();
+    vi.mocked(api.checkForUpdates).mockClear();
+    vi.mocked(api.checkForUpdates).mockResolvedValue({ update_available: true } as never);
+  });
+  afterEach(() => {
+    useNavigationStore.setState({ pendingFocus: null });
+  });
+
+  it("checks for updates, then installs the release asked for", async () => {
+    statusWith({ update_available: "0.42.0", install_version: "0.42.0" });
+    useNavigationStore.getState().navigateTo("updates", { type: "install", id: "0.42.0" });
+    render(<UpdatesView />);
+    await waitFor(() => expect(api.applyUpdate).toHaveBeenCalledTimes(1));
+    expect(api.checkForUpdates).toHaveBeenCalled();
+    // Asked once: a second visit to the page is an ordinary visit.
+    expect(useNavigationStore.getState().pendingFocus).toBeNull();
+  });
+
+  it("only shows the page on a system that does not update itself", async () => {
+    statusWith({ can_self_update: false, update_available: "0.42.0", install_version: "0.42.0" });
+    useNavigationStore.getState().navigateTo("updates", { type: "install", id: "0.42.0" });
+    render(<UpdatesView />);
+    await waitFor(() => expect(api.checkForUpdates).toHaveBeenCalled());
+    await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+    expect(api.applyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("installs nothing when the page is opened on its own", async () => {
+    liveState["system.update_available"] = "0.42.0";
+    statusWith({ update_available: "0.42.0", install_version: "0.42.0" });
+    render(<UpdatesView />);
+    expect(await screen.findByRole("button", { name: "Install v0.42.0" })).toBeInTheDocument();
+    expect(api.checkForUpdates).not.toHaveBeenCalled();
+    expect(api.applyUpdate).not.toHaveBeenCalled();
   });
 });
 

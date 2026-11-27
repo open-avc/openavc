@@ -45,6 +45,10 @@ On Windows, the OpenAVC icon by the clock closes while the installer runs and co
 
 On macOS, the OpenAVC menu bar item restarts on the new version when an update or rollback is applied. If it had been quit, it stays closed. This holds for an update from a version later than v0.40.0; after an update from v0.40.0 or earlier, the menu bar item runs the new version from the next sign-in, or after quitting it and opening OpenAVC from Applications.
 
+### From the AI Assistant
+
+The AI assistant works on the newest OpenAVC release. On a system running an earlier one, the AI Assistant view says which release to install ("Update to vX.Y.Z to use the assistant.") with an **Install vX.Y.Z** button. The button opens the Updates view, checks for updates and installs that release, or a newer one the check finds, the same way **Install** does, so the server restarts. On a deployment that does not update itself, or where the product firmware carries updates, the button reads **Open System Updates** and opens the Updates view, which says how to update the system. This holds on a system running a version later than v0.41.0. On v0.41.0 or earlier, the AI Assistant view names the release to install and has no Install button.
+
 ### If an update cannot be installed right now
 
 On Linux, the Raspberry Pi image, appliance hardware and macOS, an update is applied by a privileged step that runs just before the server starts. On Linux, the Pi and appliance hardware, part of that step downloads the new version's Python dependencies, which needs internet access at that moment. If it cannot get them, or the Python environment cannot be rebuilt, the system is put back exactly as it was and keeps running the version it was on. The same happens on all of them, macOS included, when the new version checks out but cannot be put in place, for example because the copy an earlier update kept for Rollback cannot be removed: the system keeps running the version it was on. That holds for an update from a version later than v0.41.0.

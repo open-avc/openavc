@@ -45,8 +45,11 @@ export interface AIStatus {
   available: boolean;
   // What is in the way, so the pane can say the right thing rather than
   // telling somebody who paired an hour ago to pair their system.
-  state?: "available" | "unpaired" | "disconnected" | "unavailable";
+  // `outdated`: the system is behind the release the assistant needs, which
+  // `needs_release` names.
+  state?: "available" | "unpaired" | "disconnected" | "unavailable" | "outdated";
   reason?: string;
+  needs_release?: string;
 }
 
 export async function getAIStatus(): Promise<AIStatus> {
@@ -133,7 +136,8 @@ export interface StreamCallbacks {
     suggestions?: string[];
     title?: string;
   }) => void;
-  onError?: (message: string) => void;
+  /** A refusal for the system's release also names the release to install. */
+  onError?: (message: string, needsRelease?: string) => void;
 }
 
 /**
@@ -256,7 +260,10 @@ export function streamChatMessage(
                 break;
               case "error":
                 receivedDoneOrError = true;
-                callbacks.onError?.(data.message || "Unknown error");
+                callbacks.onError?.(
+                  data.message || "Unknown error",
+                  typeof data.needs_release === "string" ? data.needs_release : undefined,
+                );
                 break;
             }
           } catch {

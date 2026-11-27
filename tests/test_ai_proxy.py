@@ -410,6 +410,54 @@ class TestAiStatusEndpoint:
         assert resp.json()["available"] is True
 
 
+async def _status_for(client, body):
+    """The IDE's status answer when the cloud's status says ``body``."""
+    set_engine(_connected_engine())
+    ctx, mock_client = _cloud_get(200, body)
+    with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+        _paired_cfg(mock_cfg)
+        with ctx as mock_client_cls:
+            mock_client_cls.return_value = mock_client
+            resp = await client.get("/api/ai/status")
+    assert resp.status_code == 200
+    return resp.json()
+
+
+_OLD = "This system runs OpenAVC v0.1.0. Update it to v99.0.0 to use the assistant."
+
+
+class TestAiStatusNamesTheReleaseToInstall:
+    """A system behind the release the assistant needs is told which one, so
+    the IDE can offer that update where the assistant opens."""
+
+    async def test_the_release_rides_beside_the_sentence(self, client):
+        data = await _status_for(
+            client, {"available": False, "reason": _OLD, "needs_release": "99.0.0"},
+        )
+        assert data == {
+            "available": False, "state": "outdated", "reason": _OLD, "needs_release": "99.0.0",
+        }
+
+    async def test_a_tag_spelling_is_read_as_the_release(self, client):
+        data = await _status_for(
+            client, {"available": False, "reason": _OLD, "needs_release": " v99.0.0 "},
+        )
+        assert data["state"] == "outdated"
+        assert data["needs_release"] == "99.0.0"
+
+    @pytest.mark.parametrize("needs", [
+        "not a version", "99.0.0-rc1", "0.0.1", 99, None, "", "9" * 200,
+    ])
+    async def test_a_release_this_system_could_not_install_to_meet_it_is_dropped(self, client, needs):
+        """Crossed the cloud's trust boundary: anything that is not a final
+        release newer than this one is no update to offer. The refusal and its
+        sentence stay."""
+        data = await _status_for(
+            client, {"available": False, "reason": _OLD, "needs_release": needs},
+        )
+        assert data == {"available": False, "state": "unavailable", "reason": _OLD}
+
+
 class TestAiChatEndpoint:
     async def test_cloud_not_ready_returns_503(self, client):
         with patch("openavc.api.ai_proxy.cfg") as mock_cfg:

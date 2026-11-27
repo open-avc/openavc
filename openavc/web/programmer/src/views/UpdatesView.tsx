@@ -15,6 +15,7 @@ import { UpdateWarnings, hasUpdateWarning } from "./UpdateWarnings";
 import { useInstallRestartWait } from "./useInstallRestartWait";
 import { InstallWaitFooter } from "./InstallWaitFooter";
 import { parseApiError } from "../api/errors";
+import { useRequestedInstall } from "./requestedInstall";
 
 type UpdateStep = "backup" | "download" | "verify" | "apply" | "restart";
 
@@ -207,11 +208,12 @@ export function UpdatesView() {
     }
   };
 
-  const handleApply = async () => {
+  /** Install `version`, the release the updater says an Install installs. */
+  const startInstall = async (version: string) => {
     actionRef.current = "update";
     startVersionRef.current = currentVersion;
     resolvedRef.current = false;
-    setInstallingVersion(installTarget);
+    setInstallingVersion(version);
     try {
       const result = await api.applyUpdate();
       if (!result.success) {
@@ -225,6 +227,13 @@ export function UpdatesView() {
       showError("Failed to start update: " + parseApiError(e));
     }
   };
+  const handleApply = () => startInstall(installTarget);
+
+  // An install another screen asked for when it opened this page.
+  useRequestedInstall((check, checkedStatus) => {
+    setCheckResult(check);
+    setStatus(checkedStatus);
+  }, startInstall);
 
   const handleRollback = useCallback(async () => {
     setShowRollbackConfirm(false);
