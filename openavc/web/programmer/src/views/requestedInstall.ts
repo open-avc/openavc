@@ -79,22 +79,31 @@ async function carryOut(needed: string, page: () => RequestedInstallPage | null)
     const check = await api.checkForUpdates();
     const status = await api.getUpdateStatus();
     const handlers = page();
-    if (!handlers) return;
-    handlers.onChecked(check, status);
-    if (check.error) {
-      showError("Could not check for updates: " + check.error);
-      return;
-    }
-    const next = requestedInstall(needed, check, status);
-    if (next === "not_found") {
-      showError("This system's update check did not find v" + needed.replace(/^v/i, "")
-        + ". Check for Updates again later.");
-    } else if (next !== "show") {
-      handlers.install(next.install);
-    }
+    if (handlers) actOnCheck(needed, check, status, handlers);
   } catch (e) {
     if (page()) showError("Update check failed: " + parseApiError(e));
   } finally {
     page()?.setChecking(false);
+  }
+}
+
+/** What the page shows and does once its check for `needed` answers. */
+function actOnCheck(
+  needed: string,
+  check: UpdateCheckResult,
+  status: UpdateStatus,
+  page: RequestedInstallPage,
+): void {
+  page.onChecked(check, status);
+  if (check.error) {
+    showError("Could not check for updates: " + check.error);
+    return;
+  }
+  const next = requestedInstall(needed, check, status);
+  if (next === "not_found") {
+    showError("This system's update check did not find v" + needed.replace(/^v/i, "")
+      + ". Check for Updates again later.");
+  } else if (next !== "show") {
+    page.install(next.install);
   }
 }

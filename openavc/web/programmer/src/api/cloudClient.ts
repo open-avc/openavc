@@ -157,34 +157,28 @@ function readSseEvent(part: string): { type: string; data: string } | null {
 /** The events that end the stream. */
 const ENDING_EVENTS = new Set(["done", "error"]);
 
-/** Hand one parsed event to its callback. */
-function deliverEvent(type: string, data: any, callbacks: StreamCallbacks): void {
-  switch (type) {
-    case "status":
-      callbacks.onStatus?.(data.phase);
-      break;
-    case "text_delta":
-      callbacks.onTextDelta?.(data.text);
-      break;
-    case "tool_use_start":
-      callbacks.onToolUseStart?.(data.id, data.name);
-      break;
-    case "tool_result":
-      callbacks.onToolResult?.(data);
-      break;
-    case "round":
-      callbacks.onRound?.(data.current, data.max);
-      break;
-    case "done":
-      callbacks.onDone?.(data);
-      break;
-    case "error":
-      callbacks.onError?.(
-        data.message || "Unknown error",
-        typeof data.needs_release === "string" ? data.needs_release : undefined,
-      );
-      break;
-  }
+/** Each event's callback, handed the event's parsed JSON. */
+// The event's JSON, read per type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Deliver = (data: any, callbacks: StreamCallbacks) => void;
+const DELIVER: Record<string, Deliver> = {
+  status: (data, c) => c.onStatus?.(data.phase),
+  text_delta: (data, c) => c.onTextDelta?.(data.text),
+  tool_use_start: (data, c) => c.onToolUseStart?.(data.id, data.name),
+  tool_result: (data, c) => c.onToolResult?.(data),
+  round: (data, c) => c.onRound?.(data.current, data.max),
+  done: (data, c) => c.onDone?.(data),
+  error: (data, c) => c.onError?.(data.message || "Unknown error", releaseNamed(data.needs_release)),
+};
+
+/** A refusal's release to install, when it sent one. */
+function releaseNamed(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+/** Hand one parsed event to its callback; an event no callback takes is skipped. */
+function deliverEvent(type: string, data: unknown, callbacks: StreamCallbacks): void {
+  if (Object.prototype.hasOwnProperty.call(DELIVER, type)) DELIVER[type](data, callbacks);
 }
 
 /**
