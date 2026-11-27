@@ -307,6 +307,7 @@ _CORPUS: list[tuple[list, list]] = [
     ([], ["not a trigger"]),
     ([{"action": "delay"}], [{"id": "t", "type": "schedule", "cron": "bad"}]),
     ([], [{"id": "t", "type": "startup", "delay_seconds": -1, "cooldown_seconds": "soon"}]),
+    ([], [{"id": "t", "type": "startup"}, {"id": "t", "type": "event", "event_pattern": "x"}]),
 ]
 
 
@@ -360,5 +361,26 @@ def test_a_macro_the_lint_flags_still_saves(client):
         "project": {"id": "room", "name": "Room"},
         "devices": [],
         "macros": [flagged],
+    })
+    assert resp.status_code == 200, resp.text
+
+
+def test_a_trigger_id_two_macros_share_still_saves(client):
+    """The lint marks the trigger that never fires; the save refuses
+    neither, so a file from somewhere else opens and can be fixed."""
+    http, _ = client
+    macros = [
+        {"id": "macro_on", "name": "On", "steps": [],
+         "triggers": [{"id": "t1", "type": "startup"}]},
+        {"id": "macro_off", "name": "Off", "steps": [],
+         "triggers": [{"id": "t1", "type": "startup"}]},
+    ]
+    assert _lint(http, *macros)["macro_on"]["issues"], "precondition: the lint flags it"
+
+    resp = http.put("/api/project", json={
+        "openavc_version": "0.11.0",
+        "project": {"id": "room", "name": "Room"},
+        "devices": [],
+        "macros": macros,
     })
     assert resp.status_code == 200, resp.text

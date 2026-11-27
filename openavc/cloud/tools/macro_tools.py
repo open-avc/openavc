@@ -404,7 +404,7 @@ class MacroToolsMixin:
                 raise ToolEditError({"error": f"Macro '{macro_id}' already exists"})
 
             err = validate_macro(
-                steps, triggers, project,
+                steps, triggers, project, macro_id=macro_id,
                 extra_actions=self._plugin_action_types(),
                 missing_params=self._missing_params_check(project),
                 required_sentence=self._required_refusal_check(project),
@@ -456,7 +456,7 @@ class MacroToolsMixin:
                 err = validate_macro(
                     input.get("steps", []) if "steps" in input else [],
                     input.get("triggers", []) if "triggers" in input else [],
-                    project,
+                    project, macro_id=macro_id,
                     extra_actions=self._plugin_action_types(),
                     missing_params=self._missing_params_check(project),
                     required_sentence=self._required_refusal_check(project),

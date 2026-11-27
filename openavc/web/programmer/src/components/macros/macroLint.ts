@@ -13,7 +13,7 @@
  * runtime. A second copy of them in TypeScript is the disease this campaign
  * already cured once.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MacroConfig } from "../../api/types";
 import type { MacroIssue } from "../../api/stateClient";
 import * as api from "../../api/restClient";
@@ -116,6 +116,7 @@ const CONDITION_PLACES: Record<string, string> = {
  */
 export function issueText(issue: MacroIssue): string {
   const { missing, action = "" } = issue;
+  if (issue.same_id_as) return sameIdText(issue.same_id_as);
   if (!missing) return issue.message;
   if (missing === "param" && issue.param) {
     return `${issue.param_label || paramLabel(issue.param, undefined)} is required.`;
@@ -127,6 +128,34 @@ export function issueText(issue: MacroIssue): string {
   if (missing === "conditions.key") return "Choose a state key.";
   const label = MISSING_FIELD_LABELS[action]?.[missing];
   return label ? `${label} is required.` : issue.message;
+}
+
+/** A trigger that never fires because a trigger loaded after it has its id.
+ *  The editor shows no trigger ids, and adding a trigger gives it a new one. */
+function sameIdText({ index, macro, macro_name }: NonNullable<MacroIssue["same_id_as"]>): string {
+  const other = macro ? `Trigger ${index + 1} of "${macro_name || macro}"` : `Trigger ${index + 1}`;
+  return `This trigger never fires because ${other} has the same id. Delete this trigger and add it again.`;
+}
+
+/**
+ * The issues, with each other macro a same-id finding points at named as the
+ * list names it. Names are never posted (a rename spends no request), so they
+ * are filled in here, from the macros on screen, and a rename shows at once.
+ * Hands back `issues` itself when no finding points at another macro.
+ */
+export function withMacroNames(issues: MacroIssuesById, macros: MacroConfig[]): MacroIssuesById {
+  const pointsAway = (i: MacroIssue) => Boolean(i.same_id_as?.macro);
+  if (!Object.values(issues).some((list) => list.some(pointsAway))) return issues;
+  const names = new Map(macros.map((m) => [m.id, m.name]));
+  const named: MacroIssuesById = {};
+  for (const [id, list] of Object.entries(issues)) {
+    named[id] = list.map((i) =>
+      i.same_id_as?.macro
+        ? { ...i, same_id_as: { ...i.same_id_as, macro_name: names.get(i.same_id_as.macro) } }
+        : i,
+    );
+  }
+  return named;
 }
 
 /**
@@ -200,5 +229,5 @@ export function useMacroLint(macros: MacroConfig[]): MacroIssuesById {
     return () => clearTimeout(handle);
   }, [signature]);
 
-  return issues;
+  return useMemo(() => withMacroNames(issues, macros), [issues, macros]);
 }

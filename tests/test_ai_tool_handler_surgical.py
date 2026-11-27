@@ -585,6 +585,44 @@ async def test_add_macro_duplicate(handler, mock_agent, mock_engine):
 
 
 @pytest.mark.asyncio
+async def test_add_macro_refuses_a_trigger_id_another_macro_has(handler, mock_agent, mock_engine):
+    """all_off's trigger is trig_1. The new macro would load after it and
+    take the id, and all_off's trigger would stop firing."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("add_macro", {
+            "id": "lights_on",
+            "name": "Lights On",
+            "triggers": [{"id": "trig_1", "type": "startup"}],
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is False
+    assert "trig_1" in payload["result"]["error"]
+    assert "all_off" in payload["result"]["error"]
+    assert not any(m.id == "lights_on" for m in mock_engine.project.macros)
+
+
+@pytest.mark.asyncio
+async def test_update_macro_keeps_its_own_trigger_ids(handler, mock_agent, mock_engine):
+    """Re-sending a macro's triggers is no clash with itself."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("openavc.core.project_loader.save_project"):
+            msg = _make_tool_call_msg("update_macro", {
+                "macro_id": "all_off",
+                "triggers": [{"id": "trig_1", "type": "startup"}],
+            })
+            await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is True, payload
+    macro = next(m for m in mock_engine.project.macros if m.id == "all_off")
+    assert [t.type for t in macro.triggers] == ["startup"]
+
+
+@pytest.mark.asyncio
 async def test_update_macro(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("openavc.core.project_loader.save_project"):

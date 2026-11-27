@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { MacroConfig } from "../../api/types";
-import { blockingIssues, lintPayload, issuesAt, issueLabel, issueSummary, issueText, useMacroLint } from "./macroLint";
+import { blockingIssues, lintPayload, issuesAt, issueLabel, issueSummary, issueText, useMacroLint, withMacroNames } from "./macroLint";
 import type { MacroIssue } from "./macroLint";
 
 vi.mock("../../api/restClient", () => ({
@@ -86,6 +86,17 @@ describe("issueText", () => {
       .toBe("Choose a state key for Skip this step if.");
     expect(issueText(issue({ scope: "trigger", action: "event", missing: "conditions.key" })))
       .toBe("Choose a state key.");
+  });
+
+  it("says a trigger never fires, and which trigger has its id", () => {
+    const shared = { scope: "trigger" as const, path: "triggers[0]", message: "trigger id 't1' is also the id of triggers[1]" };
+    expect(issueText(issue({ ...shared, same_id_as: { index: 1 } })))
+      .toBe("This trigger never fires because Trigger 2 has the same id. Delete this trigger and add it again.");
+    expect(issueText(issue({ ...shared, same_id_as: { macro: "macro_b", macro_name: "Evening", index: 0 } })))
+      .toBe('This trigger never fires because Trigger 1 of "Evening" has the same id. Delete this trigger and add it again.');
+    // A macro the editor cannot name is named by its id.
+    expect(issueText(issue({ ...shared, same_id_as: { macro: "macro_b", index: 0 } })))
+      .toBe('This trigger never fires because Trigger 1 of "macro_b" has the same id. Delete this trigger and add it again.');
   });
 
   it("keeps the platform's sentence for anything else", () => {
@@ -209,9 +220,32 @@ describe("useMacroLint", () => {
     expect(result.current.macro_a).toBeUndefined();
   });
 
+  it("names the other macro a same-id finding points at, and follows a rename", async () => {
+    const sameId = issue({ scope: "trigger", path: "triggers[0]", same_id_as: { macro: "macro_b", index: 0 } });
+    validateMacros.mockResolvedValue({ macro_a: { issues: [sameId] } });
+    let macros = [macro(), macro({ id: "macro_b", name: "Evening" })];
+    const { result, rerender } = renderHook(() => useMacroLint(macros));
+    await settle();
+    expect(result.current.macro_a[0].same_id_as?.macro_name).toBe("Evening");
+
+    macros = [macros[0], { ...macros[1], name: "Night" }];
+    rerender();
+    expect(result.current.macro_a[0].same_id_as?.macro_name).toBe("Night");
+    // A rename is no request.
+    await settle(1000);
+    expect(validateMacros).toHaveBeenCalledTimes(1);
+  });
+
   it("asks nothing at all when there are no macros", async () => {
     renderHook(() => useMacroLint([]));
     await settle(2000);
     expect(validateMacros).not.toHaveBeenCalled();
+  });
+});
+
+describe("withMacroNames", () => {
+  it("hands back the same issues when nothing points at another macro", () => {
+    const issues = { macro_a: [issue()] };
+    expect(withMacroNames(issues, [macro()])).toBe(issues);
   });
 });

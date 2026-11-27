@@ -14,7 +14,7 @@ from openavc.core.command_params import (
     required_refusal_check,
     unsaved_value_check,
 )
-from openavc.core.macro_validation import macro_issues
+from openavc.core.macro_validation import TriggerIds, macro_issues, trigger_holders
 
 router = APIRouter(route_class=ProgrammerRoute)
 
@@ -94,6 +94,8 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     editor holds unsaved edits and the mark has to describe what is on screen.
     Many at once rather than one per call: the macro LIST marks its rows too,
     and a project's worth of macros must not be a project's worth of requests.
+    It is also how a trigger's id is read: across every macro posted, in the
+    order posted, so a trigger another trigger takes the id from is marked.
 
     Plugin-registered actions and the drivers' own required parameters come
     from the running engine, which is the other reason this cannot be a copy of
@@ -137,14 +139,20 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
         raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
 
-    results: dict[str, Any] = {}
     for entry in body["macros"]:
         if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
             raise _api_error(400, "Every macro needs a non-empty 'id'")
+    # A trigger's id names one trigger across every macro posted, in the order
+    # posted, which is the project's: the one the engine keeps is the last.
+    holders = trigger_holders(body["macros"])
+
+    results: dict[str, Any] = {}
+    for entry in body["macros"]:
         results[entry["id"]] = {
             "issues": macro_issues(
                 entry.get("steps") or [],
                 entry.get("triggers") or [],
+                trigger_ids=TriggerIds(holders, entry["id"]),
                 extra_actions=extra_actions,
                 missing_params=missing_params,
                 param_label=param_label,

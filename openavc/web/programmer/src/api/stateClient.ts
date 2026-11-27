@@ -119,6 +119,10 @@ export interface MacroIssue {
   /** Why the runtime refuses the step outright: `file`, `platform_event`,
    *  `platform_key` or `value`. */
   refused?: string;
+  /** On a trigger that never fires because a trigger loaded after it has its
+   *  id: the one kept in its place, its `index` and, when it is in another
+   *  macro, that macro's id (`macro`). The editor fills in `macro_name`. */
+  same_id_as?: { index: number; macro?: string; macro_name?: string };
   /** A warning, not a step that won't run: a Set Variable step on a
    *  device's key, which runs and lasts until the device's next report. */
   warning?: boolean;

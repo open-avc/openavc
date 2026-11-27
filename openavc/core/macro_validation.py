@@ -29,12 +29,18 @@ editor can mark the step that is incomplete and the macro list can mark the
 macro without anything being blocked or rejected. That is the third option:
 a macro that saves cleanly and then does nothing is the failure this closes,
 and it is invisible precisely because nobody reopens a macro that saved.
+
+It is also THE rule for a trigger's id, which names one trigger in the whole
+project (``trigger_holders``): the lint marks each trigger the engine will
+never fire because a trigger loaded after it has its id, and the AI's doors
+refuse a trigger whose id another trigger already has. The save does not:
+a file from somewhere else still opens, and the lint says which to fix.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -444,7 +450,107 @@ def validate_trigger(trigger: dict, path: str) -> list[str]:
     return [f"{f['path']}: {f['message']}" for f in _trigger_findings(trigger, path)]
 
 
-def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, Any]]:
+# --- A trigger's id -----------------------------------------------------------
+#
+# A trigger's id names one trigger in the whole project. The trigger engine
+# keeps one trigger per id, the last it loads (TriggerEngine.load_triggers: the
+# macros in order, then each macro's triggers), so every earlier trigger with
+# that id never fires. The lint marks each of those and names the one kept in
+# its place; the AI's doors refuse an id another trigger has, whichever of the
+# two the engine would keep, since a new macro loads last and its trigger
+# would take the id from the one already there.
+
+_UNIQUE_ID = "give each trigger an id no other trigger in the project has"
+
+
+@dataclass(frozen=True)
+class TriggerPlace:
+    """Where one trigger sits: its macro's id and its index in that macro's
+    triggers."""
+
+    macro: str
+    index: int
+
+
+@dataclass(frozen=True)
+class TriggerIds:
+    """The trigger ids of the macros checked together (``trigger_holders``)
+    and which of those macros is the one being checked."""
+
+    holders: Mapping[str, Sequence[TriggerPlace]]
+    macro: str
+
+
+def trigger_holders(macros: Iterable[Any]) -> dict[str, list[TriggerPlace]]:
+    """Each trigger id in ``macros`` (in the project's order, mappings or
+    ``MacroConfig``) and every trigger that has it, in the order the trigger
+    engine loads them, so the last is the one it keeps. A trigger with no id
+    holds none: the engine loads no such trigger."""
+    holders: dict[str, list[TriggerPlace]] = {}
+    for macro in macros:
+        macro_id = str(_field(macro, "id") or "")
+        triggers = _field(macro, "triggers")
+        for index, trigger in enumerate(triggers if isinstance(triggers, list) else ()):
+            trigger_id = _field(trigger, "id")
+            if isinstance(trigger_id, str) and trigger_id:
+                holders.setdefault(trigger_id, []).append(TriggerPlace(macro_id, index))
+    return holders
+
+
+def _field(item: Any, name: str) -> Any:
+    """``name`` of a mapping or of a model, or None."""
+    if isinstance(item, Mapping):
+        return item.get(name)
+    return getattr(item, name, None)
+
+
+def _same_id_findings(trigger: dict, index: int, ids: TriggerIds) -> list[dict[str, Any]]:
+    """A trigger whose id a trigger loaded after it also has: it never fires.
+    The finding names the one kept in its place in ``same_id_as`` (its
+    ``index``, and its ``macro`` when that is another macro)."""
+    trigger_id = trigger.get("id")
+    held = ids.holders.get(trigger_id) if isinstance(trigger_id, str) else None
+    if not held or held[-1] == TriggerPlace(ids.macro, index):
+        return []
+    kept = held[-1]
+    if kept.macro == ids.macro:
+        where, place = f"triggers[{kept.index}]", {"index": kept.index}
+    else:
+        where = f"macro '{kept.macro}' triggers[{kept.index}]"
+        place = {"macro": kept.macro, "index": kept.index}
+    return [_finding(
+        f"triggers[{index}]",
+        f"trigger id '{trigger_id}' is also the id of {where}, which is kept in its place, "
+        f"so this trigger never fires; {_UNIQUE_ID}",
+        action=trigger.get("type") or None, same_id_as=place,
+    )]
+
+
+def _taken_id_lines(triggers: Any, project: Any, macro_id: str | None) -> list[str]:
+    """Each of ``triggers`` whose id a trigger of another of the project's
+    macros already has, whichever of the two the engine would keep. The
+    project's own copy of the macro being written (``macro_id``) is no other
+    macro: an update hands its triggers back."""
+    if project is None or not isinstance(triggers, list):
+        return []
+    others = trigger_holders(
+        m for m in _listed(project, "macros") if _field(m, "id") != macro_id
+    )
+    lines: list[str] = []
+    for i, trigger in enumerate(triggers):
+        trigger_id = _field(trigger, "id")
+        held = others.get(trigger_id) if isinstance(trigger_id, str) else None
+        if held:
+            lines.append(
+                f"triggers[{i}]: trigger id '{trigger_id}' is already the id of macro "
+                f"'{held[0].macro}' triggers[{held[0].index}]; {_UNIQUE_ID}"
+            )
+    return lines
+
+
+def macro_issues(
+    steps: Any, triggers: Any, *, trigger_ids: TriggerIds | None = None, **lookups: Any,
+) -> list[dict[str, Any]]:
     """Everything wrong with a macro, placed where an editor can draw it.
 
     The same rules and the same traversal ``validate_macro`` runs -- it is
@@ -471,7 +577,12 @@ def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, An
     ``refused: "file"``, an Emit Event step naming one of the platform's
     own events ``refused: "platform_event"``, and a Set Variable step whose
     write is refused ``refused: "platform_key"`` or ``refused: "value"``; each
-    message is the runtime's own refusal.
+    message is the runtime's own refusal. A trigger whose id a trigger loaded
+    after it also has never fires: its record carries ``same_id_as``, the
+    place of the one kept instead (``index``, and ``macro`` when it is in
+    another macro). ``trigger_ids`` is the ids of the macros checked together,
+    which only a caller holding all of them can say; without it, only this
+    macro's own triggers are compared.
 
     Nothing here is a refusal, and every record but one kind means the step or
     trigger as written cannot do what it says. That kind carries
@@ -502,9 +613,11 @@ def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, An
             issues.extend({"scope": "step", "index": i, **f} for f in found)
 
     if isinstance(triggers, list):
+        ids = trigger_ids or TriggerIds(trigger_holders([{"triggers": triggers}]), "")
         for i, trigger in enumerate(triggers):
             if isinstance(trigger, dict):
                 found = _trigger_findings(trigger, f"triggers[{i}]")
+                found.extend(_same_id_findings(trigger, i, ids))
             else:
                 found = [_finding(
                     f"triggers[{i}]", f"expected an object, got {type(trigger).__name__}",
@@ -515,14 +628,17 @@ def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, An
 
 
 def validate_macro(
-    steps: list, triggers: list, project: Any = None, **lookups: Any,
+    steps: list, triggers: list, project: Any = None, *, macro_id: str | None = None,
+    **lookups: Any,
 ) -> str | None:
     """Validate macro steps and triggers. Returns error string or None.
 
     ``project`` enables soft reference checks (unknown device/group/macro ids,
     and a page move's page, are logged as warnings, not errors — a macro may
     legitimately be authored before the device it drives or the page it
-    opens). ``lookups`` see validate_macro_step.
+    opens). It also refuses a trigger whose id a trigger of another of its
+    macros has; ``macro_id`` is the macro being written, whose saved copy is
+    not another macro. ``lookups`` see validate_macro_step.
     """
     # One traversal, shared with the editor's lint door: what refuses a
     # generated macro and what marks a hand-built one are the same findings,
@@ -532,6 +648,7 @@ def validate_macro(
         for issue in macro_issues(steps, triggers, **lookups)
         if not issue.get("warning")
     ]
+    errors += _taken_id_lines(triggers, project, macro_id)
     warnings: list[str] = []
     if project and not errors:
         refs = _ProjectRefs.of(project)
