@@ -25,6 +25,23 @@ describe("a page tab", () => {
     expect(screen.getByTitle("Main: shows a page you wrote. Double-click to rename, right-click for more.")).toBeTruthy();
     expect(screen.getByTitle("Other: 1 element. Double-click to rename, right-click for more.")).toBeTruthy();
   });
+
+  it("marks each page with its type, a saved page as one never saved, and a type the panel does not know as a page", () => {
+    const base = useProjectStore.getState().project!.ui.pages[0];
+    const page = (id: string, page_type?: string) =>
+      ({ ...base, id, name: id, elements: [], render_mode: "elements", page_type }) as typeof base;
+    const pages = [page("saved", "page"), page("fresh"), page("dlg", "overlay"), page("side", "sidebar"), page("confirm", "modal")];
+    render(<CanvasToolbar pages={pages} selectedPageId="saved" />);
+    const mark = (title: string) => {
+      const tab = screen.getByTitle(`${title}: 0 elements. Double-click to rename, right-click for more.`);
+      return ["square", "layers", "panel-right"].filter((icon) => tab.querySelector(`svg.lucide-${icon}`));
+    };
+    expect(mark("saved")).toEqual(["square"]);
+    expect(mark("fresh")).toEqual(["square"]);
+    expect(mark("dlg (overlay)")).toEqual(["layers"]);
+    expect(mark("side (sidebar)")).toEqual(["panel-right"]);
+    expect(mark("confirm")).toEqual(["square"]);
+  });
 });
 
 describe("the screen preset list", () => {

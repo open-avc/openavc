@@ -468,7 +468,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
             is: what it DRAWS is the thing you cannot see from the tab. */}
         {isCustomPage(page) ? (
           <Code2 size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-        ) : !page.page_type ? (
+        ) : pageTypeOf(page) === "page" ? (
           <Square size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         ) : null}
         {!isCustomPage(page) && pageTypeOf(page) === "overlay" && (
