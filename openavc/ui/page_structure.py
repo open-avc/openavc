@@ -10,10 +10,10 @@ Structure:
 - **An element id is spelled as the Builder takes one**: a lowercase letter,
   then lowercase letters, digits and underscores (``ELEMENT_ID_SPELLING``,
   ``element_id_issue``). The id is a segment of every state key and event the
-  control owns, and the event bus matches a glob subscription with
-  ``fnmatch``, which folds case where the file system does (Windows), so an
-  id that differs from another only in case is one control there and two
-  everywhere else. The Builder reads the pattern and its sentence from the
+  control owns, and the event bus matches every handler's pattern with
+  ``fnmatch`` (``EventBus._find_handlers``), which folds case where the file
+  system does (Windows), so on Windows a press on ``Btn`` also reaches what
+  listens for ``btn``, and nowhere else does. The Builder reads the pattern and its sentence from the
   table this module serves (``element_id_rule``, rendered by
   ``core/project_values_gen``) for its rename; the AI's create doors refuse
   a new control's id that breaks it, and a report says it of an id a saved

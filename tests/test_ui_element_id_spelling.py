@@ -3,7 +3,7 @@ letters, digits and underscores.
 
 The rule is ``ui/page_structure.py``'s. The Builder's rename reads the same
 pattern and sentence from the generated table, and runs the same cases
-(``tests/fixtures/element_id_cases.json``, read by ``elementIdRule.test.ts``).
+(``tests/fixtures/element_id_cases.json``, read by ``elementId.test.ts``).
 Every door that creates a control asks it: the AI's three create doors refuse a
 new control's id that breaks it, naming every offender in one reply, and check
 nothing but the id being created. An id a saved project already holds is

@@ -8,7 +8,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // swapped for one with other numbers, and each field follows it; so are the
 // page rules beside it, whose overlay box is what a blank side shows.
 
-vi.mock("./projectValues.gen", () => ({
+vi.mock("./projectValues.gen", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./projectValues.gen")>()),
   PROJECT_VALUES: {
     UIElement: { display_decimals: { default: null, min: 0, max: 7, integer: true } },
     MonitorConfig: { display_decimals: { default: null, min: 0, max: 5, integer: true } },
