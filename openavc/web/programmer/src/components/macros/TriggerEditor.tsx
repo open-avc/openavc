@@ -409,8 +409,10 @@ function StateChangeEditor({
   const picker = operatorPicker(trigger.state_operator, STATE_OPERATOR_WORDS, "state_trigger");
   const needsValue = !readsNoValue(picker.value, "state_trigger");
 
-  // Determine variable type for value input
+  // Determine variable type for value input; a value that names a key
+  // ($var.wanted) keeps a text box whatever the key's type.
   const selectedVar = variableFor(trigger.state_key, variables);
+  const named = referencedKey(trigger.state_value);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -439,7 +441,7 @@ function StateChangeEditor({
       {needsValue && (
         <div style={rowStyle}>
           <label style={labelStyle}>Value</label>
-          {selectedVar?.type === "boolean" ? (
+          {selectedVar?.type === "boolean" && named === null ? (
             <select
               value={valueBoxText(trigger.state_value)}
               onChange={(e) => onChange({ state_value: e.target.value === "true" })}
@@ -450,7 +452,8 @@ function StateChangeEditor({
             </select>
           ) : (
             <input
-              type={selectedVar?.type === "number" ? "number" : "text"}
+              type="text"
+              inputMode={selectedVar?.type === "number" && named === null ? "decimal" : undefined}
               value={valueBoxText(trigger.state_value)}
               onChange={(e) => onChange({ state_value: typedValue(e.target.value) })}
               placeholder="Value"
@@ -459,6 +462,7 @@ function StateChangeEditor({
           )}
         </div>
       )}
+      {needsValue && named && <ComparedWith stateKey={named} />}
 
       {/* Timing controls with help */}
       <TimingHelp />
@@ -856,7 +860,7 @@ function GuardValue({
   onChange: (value: unknown) => void;
 }) {
   const style = { ...inputStyle, flex: "none", width: 80 } as const;
-  if (isBoolean) {
+  if (isBoolean && referencedKey(value) === null) {
     return (
       <select value={valueBoxText(value)} onChange={(e) => onChange(e.target.value === "true")} style={style}>
         <option value="">...</option>
@@ -961,6 +965,18 @@ export function ConditionPreview({ conditions }: { conditions: TriggerCondition[
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Under a State Change trigger's value that names a key: which key, and
+ *  what it holds now. */
+function ComparedWith({ stateKey }: { stateKey: string }) {
+  const value = useConnectionStore((s) => s.liveState[stateKey]);
+  return (
+    <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 2 }}>
+      Compared with {stateKey}
+      {value !== undefined && <>: <strong>{quotedValueText(value)}</strong></>}
     </div>
   );
 }
