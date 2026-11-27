@@ -109,6 +109,12 @@ const CONDITION_PLACES: Record<string, string> = {
   wait_until: "Wait until",
 };
 
+/** A missing field said the same way whatever the step or trigger. */
+const MISSING_SENTENCES: Record<string, string> = {
+  "skip_if.key": "Choose a state key for Skip this step if.",
+  "conditions.key": "Choose a state key.",
+};
+
 /**
  * A finding as the editor says it: by the label on the form it sits under
  * ("Device is required.", "Level Value is required."), where the platform
@@ -124,8 +130,7 @@ export function issueText(issue: MacroIssue): string {
   if (missing === "condition.key" && CONDITION_PLACES[action]) {
     return `Choose a state key for ${CONDITION_PLACES[action]}.`;
   }
-  if (missing === "skip_if.key") return "Choose a state key for Skip this step if.";
-  if (missing === "conditions.key") return "Choose a state key.";
+  if (MISSING_SENTENCES[missing]) return MISSING_SENTENCES[missing];
   const label = MISSING_FIELD_LABELS[action]?.[missing];
   return label ? `${label} is required.` : issue.message;
 }
@@ -141,21 +146,19 @@ function sameIdText({ index, macro, macro_name }: NonNullable<MacroIssue["same_i
  * The issues, with each other macro a same-id finding points at named as the
  * list names it. Names are never posted (a rename spends no request), so they
  * are filled in here, from the macros on screen, and a rename shows at once.
- * Hands back `issues` itself when no finding points at another macro.
  */
 export function withMacroNames(issues: MacroIssuesById, macros: MacroConfig[]): MacroIssuesById {
-  const pointsAway = (i: MacroIssue) => Boolean(i.same_id_as?.macro);
-  if (!Object.values(issues).some((list) => list.some(pointsAway))) return issues;
   const names = new Map(macros.map((m) => [m.id, m.name]));
   const named: MacroIssuesById = {};
-  for (const [id, list] of Object.entries(issues)) {
-    named[id] = list.map((i) =>
-      i.same_id_as?.macro
-        ? { ...i, same_id_as: { ...i.same_id_as, macro_name: names.get(i.same_id_as.macro) } }
-        : i,
-    );
-  }
+  for (const [id, list] of Object.entries(issues)) named[id] = list.map((i) => withMacroName(i, names));
   return named;
+}
+
+/** One finding, with the name of the other macro it points at, if any. */
+function withMacroName(issue: MacroIssue, names: Map<string, string>): MacroIssue {
+  const place = issue.same_id_as;
+  if (!place || !place.macro) return issue;
+  return { ...issue, same_id_as: { ...place, macro_name: names.get(place.macro) } };
 }
 
 /**

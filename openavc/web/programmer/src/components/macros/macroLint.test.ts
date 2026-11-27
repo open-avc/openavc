@@ -244,8 +244,11 @@ describe("useMacroLint", () => {
 });
 
 describe("withMacroNames", () => {
-  it("hands back the same issues when nothing points at another macro", () => {
-    const issues = { macro_a: [issue()] };
-    expect(withMacroNames(issues, [macro()])).toBe(issues);
+  it("leaves a finding that points at no other macro as it was", () => {
+    const own = issue();
+    const sameMacro = issue({ scope: "trigger", path: "triggers[0]", same_id_as: { index: 1 } });
+    const named = withMacroNames({ macro_a: [own, sameMacro] }, [macro()]);
+    expect(named.macro_a[0]).toBe(own);
+    expect(named.macro_a[1]).toBe(sameMacro);
   });
 });
