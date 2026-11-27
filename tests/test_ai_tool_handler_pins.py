@@ -24,6 +24,7 @@ from openavc.cloud.ai_tool_handler import TOOL_FAILED, AIToolHandler, describe_t
 from openavc.cloud.tool_declarations import TOOLS
 from openavc.cloud.tools.macro_tools import _validate_variable
 from openavc.cloud.tools.ui_bindings import _validate_action, normalize_bindings, validate_bindings
+from openavc.core import condition_eval
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 
 FAILED = "Binding validation failed: "
@@ -458,28 +459,33 @@ class TestShowBindings:
             "show.visible_when: missing 'key' (state key to evaluate)"
         )
 
-    @pytest.mark.parametrize("op", ["==", "equals", "is", "not_equals"])
-    def test_a_single_visible_when_refuses_other_operators(self, op):
+    @pytest.mark.parametrize("op", ["is", "contains", "EQ", "Equals"])
+    def test_a_single_visible_when_refuses_an_operator_nobody_knows(self, op):
         assert _show(visible_when={"key": "k", "operator": op}) == _refusal(
             f"show.visible_when: operator '{op}' is not valid. Use: {OPS}"
         )
 
-    @pytest.mark.parametrize("op", [None, "", "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy"])
-    def test_a_single_visible_when_takes_the_canonical_operators(self, op):
+    @pytest.mark.parametrize("op", [
+        None, "", *condition_eval.OPERATORS, *condition_eval.OPERATOR_ALIASES,
+    ])
+    def test_a_single_visible_when_takes_every_spelling_the_panel_reads(self, op):
+        """The operators and their other spellings (``==``, ``equals``), which
+        the panel evaluates; a blank or null one reads as ``eq`` there."""
         assert _show(visible_when={"key": "k", "operator": op}) is None
 
-    @pytest.mark.parametrize("vw", [
-        {"key": "k", "operator": ["eq"]}, {"any": [{"key": "k", "operator": {"eq": 1}}]},
+    @pytest.mark.parametrize(("vw", "where", "op"), [
+        ({"key": "k", "operator": ["eq"]}, "show.visible_when", ["eq"]),
+        ({"any": [{"key": "k", "operator": {"eq": 1}}]}, "show.visible_when.any[0]", {"eq": 1}),
     ])
-    def test_a_list_or_object_operator_raises_today(self, vw):
-        with pytest.raises(TypeError):
-            _show(visible_when=vw)
+    def test_a_list_or_object_operator_is_refused(self, vw, where, op):
+        assert _show(visible_when=vw) == _refusal(
+            f"{where}: operator '{op}' is not valid. Use: {OPS}"
+        )
 
     def test_the_sentences_list_exactly_what_is_accepted(self):
         from openavc.cloud.tools import ui_bindings
 
-        assert OPS == ui_bindings._VISIBLE_WHEN_OPS_TEXT
-        assert set(OPS.split(", ")) == ui_bindings._VALID_VISIBLE_WHEN_OPS
+        assert OPS == ui_bindings._VISIBLE_WHEN_OPS_TEXT == ", ".join(condition_eval.OPERATORS)
         assert set(ui_bindings._MODES_TEXT.split(", ")) == ui_bindings._VALID_MODES
 
     def test_a_single_visible_when_key_and_operator_problems(self):

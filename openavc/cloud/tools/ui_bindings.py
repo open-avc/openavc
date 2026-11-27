@@ -9,21 +9,20 @@ refused, and what the bindings point at is reviewed with the write by
 
 The names it accepts come from their homes, never a copy kept here: the
 interactions are page_references' ``ACTION_SLOTS``, the actions
-``ui_events.DISPATCHED_ACTIONS``, and the visible_when operators the condition
-operators by their own names, ``condition_eval.OPERATORS`` (without the aliases
-the panel also evaluates). The panel evaluates a visible_when in
-``OPERATORS`` in the panel's ``modules/visibility.js``, and the Builder offers the operators from
-``OPERATORS`` in ``components/macros/ConditionEditor.tsx``; both mirror them by
-hand, so a new operator goes there too. The sentences listing the operators and the press
-modes are written out, and a test holds each to its set. The sentences go back
-to the cloud and into the chat.
+``ui_events.DISPATCHED_ACTIONS``, and the visible_when operators every
+spelling ``condition_eval`` takes (``canonical_operator``: the operators and
+their other spellings, ``==`` and ``equals`` among them), which the panel
+evaluates too (``modules/compare.js``); a blank or null one reads as ``eq``
+there, so it is taken here. The sentences listing the operators by their own
+names and the press modes are written out, and a test holds each to its set.
+The sentences go back to the cloud and into the chat.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from openavc.core.condition_eval import OPERATORS
+from openavc.core.condition_eval import canonical_operator
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.page_references import ACTION_SLOTS
 from openavc.utils.logger import get_logger
@@ -67,7 +66,6 @@ def normalize_bindings(bindings: dict) -> dict:
     return bindings
 
 
-_VALID_VISIBLE_WHEN_OPS = frozenset(OPERATORS)
 _VISIBLE_WHEN_OPS_TEXT = "eq, ne, gt, lt, gte, lte, truthy, falsy"
 # Panel UI element `do` bindings: the runtime's own set, never a copy, since
 # refusing an action the runtime dispatches is a write door lying about the
@@ -433,7 +431,7 @@ def _condition_problems(cond: dict, path: str, key_note: str = "") -> list[str]:
     if not cond.get("key"):
         problems.append(f"{path}: missing 'key'{key_note}")
     op = cond.get("operator")
-    if op and op not in _VALID_VISIBLE_WHEN_OPS:
+    if op and canonical_operator(op) is None:
         problems.append(
             f"{path}: operator '{op}' is not valid. Use: {_VISIBLE_WHEN_OPS_TEXT}"
         )
