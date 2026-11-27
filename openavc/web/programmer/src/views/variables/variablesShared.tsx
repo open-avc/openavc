@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Activity, ChevronRight, ExternalLink, X, Zap, Layout, FileCode } from "lucide-react";
 import { useNavigationStore, type FocusTarget } from "../../store/navigationStore";
-import type { ProjectConfig, ScriptReference } from "../../api/types";
+import type { MacroStep, ProjectConfig, ScriptReference, TriggerConfig } from "../../api/types";
+import { readsNoValue, referencedKey } from "../../api/conditionEval";
 import type { ViewId } from "../../components/layout/Sidebar";
 import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasGlobChars, stepParamsResolveVars } from "./variablesShared.helpers";
 import { quotedValueText } from "../../components/shared/booleanWords";
@@ -81,6 +82,33 @@ export function UsageRow({ usage }: { usage: VariableUsage }) {
 // variablesShared.helpers.ts so they can be unit-tested without React.
 // ==========================================================================
 
+/** The keys a step's conditions compare with (a value that names a key,
+ *  `$var.wanted`; `referencedKey`), each with where it is said: its Skip If,
+ *  then a Conditional's or a Wait Until's own condition. */
+function comparedWith(step: MacroStep): [string, string][] {
+  const own = step.action === "conditional" ? "Conditional condition" : "Wait Until condition";
+  const found: [string, string][] = [];
+  for (const [cond, where] of [[step.skip_if, "Skip-if guard"], [step.condition, own]] as const) {
+    const named = cond && !readsNoValue(cond.operator ?? "eq") ? referencedKey(cond.value) : null;
+    if (named) found.push([named, `${where}: compared with`]);
+  }
+  return found;
+}
+
+/** The keys a trigger's guards, and a State Change trigger's own value,
+ *  compare with, each with where it is said. */
+function triggerComparedWith(trigger: TriggerConfig): [string, string][] {
+  const found: [string, string][] = [];
+  for (const cond of trigger.conditions ?? []) {
+    const named = readsNoValue(cond.operator ?? "eq") ? null : referencedKey(cond.value);
+    if (named) found.push([named, `Trigger "${trigger.id}": guard condition: compared with`]);
+  }
+  const reads = trigger.type === "state_change" && !readsNoValue(trigger.state_operator, "state_trigger");
+  const own = reads ? referencedKey(trigger.state_value) : null;
+  if (own) found.push([own, `Trigger "${trigger.id}": compared with on a state change`]);
+  return found;
+}
+
 /** A master element as the Used By list names it, and where a click on it goes. */
 function masterLabel(mel: { id: string; label?: string; type: string }): string {
   return `Master Elements → ${mel.label || mel.type} (${mel.id})`;
@@ -125,6 +153,11 @@ function scanStepsForVarUsages(
         detail: "Skip-if guard",
         nav: macroNav,
       });
+    }
+    for (const [key, detail] of comparedWith(step)) {
+      if (key.startsWith("var.")) {
+        addUsage(key.slice(4), { type: "macro", icon: Zap, label: macroName, detail, nav: macroNav });
+      }
     }
     // Scan $var references in device/group command AND plugin-action params
     // (the runtime resolves $var in all of these — see stepParamsResolveVars).
@@ -184,6 +217,11 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
             detail: `Trigger "${trigger.id}": guard condition`,
             nav: macroNav,
           });
+        }
+      }
+      for (const [key, detail] of triggerComparedWith(trigger)) {
+        if (key.startsWith("var.")) {
+          addUsage(key.slice(4), { type: "macro", icon: Zap, label: macro.name, detail, nav: macroNav });
         }
       }
     }
@@ -267,6 +305,9 @@ function scanStepsForAllKeyUsages(
         nav: macroNav,
       });
     }
+    for (const [key, detail] of comparedWith(step)) {
+      addUsage(key, { type: "macro", icon: Zap, label: macroName, detail, nav: macroNav });
+    }
     if (stepParamsResolveVars(step.action) && step.params) {
       for (const val of Object.values(step.params)) {
         if (typeof val === "string" && val.startsWith("$")) {
@@ -315,6 +356,9 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
             nav: macroNav,
           });
         }
+      }
+      for (const [key, detail] of triggerComparedWith(trigger)) {
+        addUsage(key, { type: "macro", icon: Zap, label: macro.name, detail, nav: macroNav });
       }
     }
   }

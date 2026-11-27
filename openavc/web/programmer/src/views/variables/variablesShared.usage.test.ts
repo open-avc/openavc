@@ -43,3 +43,33 @@ describe("Used By counts what a control's visibility reads", () => {
     expect(buildStateUsageMap(p).get("var.wanted")?.map((u) => u.detail)).toEqual(["Visibility condition"]);
   });
 });
+
+describe("Used By counts the key a macro or trigger condition's value names", () => {
+  const macros = [{
+    id: "m", name: "M",
+    steps: [
+      { action: "delay", seconds: 1, skip_if: cond("device.proj.power", "$var.wanted") },
+      { action: "conditional", condition: cond("device.proj.input", "$var.wanted") },
+    ],
+    triggers: [
+      { id: "t1", type: "event", event_pattern: "go", conditions: [cond("device.proj.power", "$var.wanted")] },
+      { id: "t2", type: "state_change", state_key: "var.shown", state_operator: "gte", state_value: "$var.limit" },
+    ],
+  }];
+
+  it("names each place in the Variables list", () => {
+    const vars = buildUsageMap(project({ macros }));
+    expect(vars.get("wanted")?.map((u) => u.detail)).toEqual([
+      "Skip-if guard: compared with",
+      "Conditional condition: compared with",
+      'Trigger "t1": guard condition: compared with',
+    ]);
+    expect(vars.get("limit")?.map((u) => u.detail)).toEqual(['Trigger "t2": compared with on a state change']);
+  });
+
+  it("names each place in the state list", () => {
+    const keys = buildStateUsageMap(project({ macros }));
+    expect(keys.get("var.wanted")?.length).toBe(3);
+    expect(keys.get("var.limit")?.length).toBe(1);
+  });
+});
