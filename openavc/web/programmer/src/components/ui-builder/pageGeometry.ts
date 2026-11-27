@@ -432,25 +432,39 @@ export function absolutePlacements(
   page: UIPage,
   layoutId?: string | null,
 ): Record<string, Placement> {
+  return pageSpaceRead(page, layoutId).boxes;
+}
+
+/**
+ * The page-space read: every element's box, and the container each was
+ * measured against (`measuredIn`, null for the page), which is what a box
+ * written back has to be measured against to land where it was read.
+ */
+function pageSpaceRead(
+  page: UIPage,
+  layoutId?: string | null,
+): { boxes: Record<string, Placement>; measuredIn: Record<string, string | null> } {
   const placements = resolvePlacements(page, layoutId);
   const byId = new Map(page.elements.map((e) => [e.id, e]));
-  const out: Record<string, Placement> = {};
+  const boxes: Record<string, Placement> = {};
+  const measuredIn: Record<string, string | null> = {};
 
   // `seen` is the chain walked so far: a container already on it reads as no
   // container, which breaks a cycle at the element the walk started from.
   const resolve = (id: string, seen: Set<string>): Placement | null => {
-    const memo = out[id];
+    const memo = boxes[id];
     if (memo) return memo;
     const p = placements[id];
     if (!p) return null;
     const parentId = containerOf(byId.get(id), byId);
     const base = parentId && !seen.has(parentId) ? resolve(parentId, new Set(seen).add(parentId)) : null;
-    out[id] = base ? pageSpace(p, base) : { ...p };
-    return out[id];
+    boxes[id] = base ? pageSpace(p, base) : { ...p };
+    measuredIn[id] = base ? parentId : null;
+    return boxes[id];
   };
 
   for (const el of page.elements) resolve(el.id, new Set([el.id]));
-  return out;
+  return { boxes, measuredIn };
 }
 
 /** The ids an element's parent is looked up among: a page's, or a list's. */
@@ -532,33 +546,21 @@ function hasArea(box: Placement | null | undefined): box is Placement {
   return !!box && box.w > 0 && box.h > 0;
 }
 
-/** The page-space box an element's own percentages are measured against, its
- *  container read off the first control on the page with that id. A parent
- *  cycle is not broken here the way `absolutePlacements` breaks it, so for an
- *  element in one this can be a different box from the one it was read in. */
-function parentAbsoluteBox(
-  page: UIPage,
-  elementId: string,
-  absolute: Record<string, Placement>,
-  onPage: OnPage,
-): Placement {
-  const parent = containerOf(page.elements.find((e) => e.id === elementId), onPage);
-  return containerBox(parent, absolute) ?? { ...PAGE_BOX };
-}
-
-/** Write page-space boxes back as percentages of whatever each element's own
- *  parent is. The inverse of absolutePlacements, and the only way an alignment
- *  computed across containers lands where it was computed. */
+/** Write page-space boxes back as percentages of the container the read
+ *  measured each element against (the page when it measured it against none,
+ *  or against one with no room). The inverse of absolutePlacements, and the
+ *  only way an alignment computed across containers lands where it was
+ *  computed, a parent cycle and a repeated id included. */
 export function withAbsolutePlacements(
   page: UIPage,
   absoluteBoxes: Record<string, Placement>,
   absolute: Record<string, Placement>,
   layoutId?: string | null,
 ): UIPage {
-  const onPage = new Set(page.elements.map((e) => e.id));
+  const { measuredIn } = pageSpaceRead(page, layoutId);
   const relative: Record<string, Placement> = {};
   for (const [id, box] of Object.entries(absoluteBoxes)) {
-    relative[id] = parentSpace(box, parentAbsoluteBox(page, id, absolute, onPage));
+    relative[id] = parentSpace(box, containerBox(measuredIn[id] ?? null, absolute) ?? { ...PAGE_BOX });
   }
   return withPlacements(page, relative, layoutId);
 }

@@ -641,12 +641,12 @@ export function Canvas({
       const element = page.elements.find((el) => el.id === anchorId);
       const lock = aspectLockOf(element);
 
-      // Siblings under the same parent are what edges snap to — a box in
-      // another container is not a line this one should stick to.
+      // Siblings in the same container, as the canvas draws them, are what
+      // edges snap to — a box in another is not a line this one should stick to.
       const movingSet = new Set(moving);
-      const parentId = element?.parent ?? null;
+      const parentId = containerOf(element, byId);
       const siblings = page.elements
-        .filter((el) => (el.parent ?? null) === parentId && !movingSet.has(el.id))
+        .filter((el) => containerOf(el, byId) === parentId && !movingSet.has(el.id))
         .map((el) => placements[el.id])
         .filter((p): p is Placement => !!p);
 

@@ -115,25 +115,35 @@ describe("an element's container: a parent that names another element on the pag
 });
 
 describe("two controls sharing an id, written back", () => {
-  it("measures the write-back against the first one's container, where the read took the last one's", () => {
+  it("measures the write-back against the container the read measured it in", () => {
     const p = page(
       [el("g", "group"), el("a", "button", "g"), el("a")],
       [primary({ g: box(0, 0, 50, 50), a: box(10, 10, 10, 10) })],
     );
     const [out] = alignElements([p], { pageId: "pg", elementIds: ["a"], layoutId: null }, "align-left");
-    expect(out.layouts[0].placements.a).toEqual(box(20, 20, 20, 20));
+    expect(out.layouts[0].placements.a).toEqual(box(10, 10, 10, 10));
   });
 });
 
 describe("a parent cycle, read and written back", () => {
-  it("aligns a container in a cycle against a box the read never measured it against", () => {
+  it("aligns a container in a cycle against the box the read measured it in", () => {
     const p = page(
       [el("a", "group", "b"), el("b", "group", "a")],
       [primary({ a: box(10, 10, 50, 50), b: box(20, 20, 50, 50) })],
     );
     const [out] = alignElements([p], { pageId: "pg", elementIds: ["b"], layoutId: null }, "align-left");
-    expect(out.layouts[0].placements.b).toEqual(box(-100, -20, 200, 200));
+    expect(out.layouts[0].placements.b).toEqual(box(0, 20, 50, 50));
     expect(out.layouts[0].placements.a).toEqual(box(10, 10, 50, 50));
+  });
+
+  it("aligns a control the read measured inside the cycle against that container", () => {
+    const p = page(
+      [el("a", "group", "b"), el("b", "group", "a"), el("c")],
+      [primary({ a: box(10, 10, 50, 50), b: box(20, 20, 50, 50), c: box(5, 70, 10, 10) })],
+    );
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["a", "c"], layoutId: null }, "align-left");
+    expect(out.layouts[0].placements.a).toEqual(box(-30, 10, 50, 50));
+    expect(out.layouts[0].placements.c).toEqual(box(5, 70, 10, 10));
   });
 });
 

@@ -218,6 +218,17 @@ describe("moving a page control", () => {
     expect(guides()).toEqual({ x: [], y: [] });
   });
 
+  it.each([["itself", "a"], ["nothing on the page", "gone"]])(
+    "sticks to a page-level neighbour when its container names %s, where it is drawn",
+    (_named, parent) => {
+      load(makePage([el("a", { parent }), el("b")], { a: A, b: { x: 62, y: 60, w: 20, h: 20 } }));
+      press(node("a"));
+      drag(314, 0);
+      release();
+      expect(stored("a")).toEqual({ x: 42, y: 10, w: 20, h: 20 });
+    },
+  );
+
   it("is not pulled toward a control inside a container, whose box is of the container", () => {
     load(
       makePage([el("a"), el("g", { type: "group" }), el("k", { parent: "g" })], {
