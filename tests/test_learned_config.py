@@ -194,7 +194,8 @@ async def test_reported_values_are_saved_in_one_write(tmp_path, acme_widget):
 async def test_a_wrong_pick_is_corrected(tmp_path, acme_widget):
     eng, _ = _engine(tmp_path)
     after_add = await _add(eng, config={"model": "W100", "channels": "2"})
-    await wait_for_condition(lambda: eng._revision_counter > after_add)
+    await wait_for_condition(lambda: _settled_config(eng).get("model") == "W200")
+    assert eng._revision_counter > after_add
     on_disk = _disk_config(eng)
     assert on_disk["model"] == "W200"
     assert on_disk["channels"] == "4"
@@ -287,7 +288,8 @@ async def test_a_later_report_is_saved_and_a_disconnected_one_is_not(tmp_path, a
     assert eng._revision_counter == after_add
     driver = eng.devices.get_driver("w1")
     driver.set_state("model", "W100")
-    await wait_for_condition(lambda: eng._revision_counter == after_add + 1)
+    await wait_for_condition(lambda: _settled_config(eng).get("model") == "W100")
+    assert eng._revision_counter == after_add + 1
     assert _disk_config(eng)["model"] == "W100"
     # Not connected: nothing is saved.
     driver.set_state("connected", False)

@@ -71,6 +71,20 @@ def _disk_project(eng) -> dict:
     return json.loads(eng.project_path.read_text(encoding="utf-8"))
 
 
+async def _saved(eng, sent: list[dict], count: int, message: str) -> None:
+    """Wait until ``count`` saves have landed. A save's revision is minted
+    before its file is written and announced (``project.reloaded``) once the
+    write has landed, so the count alone can be reached while the file still
+    holds the project before it."""
+    await wait_for_condition(
+        lambda: eng._revision_counter == count and any(
+            m.get("type") == "project.reloaded" and m.get("revision") == eng._project_revision
+            for m in sent
+        ),
+        message=message,
+    )
+
+
 class _AcmeSettingsPanel(BaseDriver):
     """Invented device whose settings apply instantly on connect, so the
     DeviceManager's real pending-settings machinery runs — and emits
@@ -142,10 +156,7 @@ async def test_pending_settings_persist_from_inside_reconcile_no_deadlock(
     assert saves_after_apply == 1
 
     # The bookkeeping persist runs outside the lock, right after.
-    await wait_for_condition(
-        lambda: eng._revision_counter == saves_after_apply + 1,
-        message="pending-settings persist never bumped the revision",
-    )
+    await _saved(eng, sent, saves_after_apply + 1, "pending-settings persist never bumped the revision")
     on_disk = _disk_project(eng)
     dev = next(d for d in on_disk["devices"] if d["id"] == "panel1")
     assert dev.get("pending_settings") in ({}, None)
@@ -168,10 +179,7 @@ async def test_scheduled_bookkeeping_outside_lock_persists_and_bumps(tmp_path):
     sent = _capture_broadcasts(eng)
 
     await eng.devices._queue_keeper.drop(PendingClear("panel1", {"input": "hdmi1"}))
-    await wait_for_condition(
-        lambda: eng._revision_counter == 1,
-        message="bookkeeping persist never bumped the revision",
-    )
+    await _saved(eng, sent, 1, "bookkeeping persist never bumped the revision")
     dev = next(d for d in _disk_project(eng)["devices"] if d["id"] == "panel1")
     assert dev.get("pending_settings") in ({}, None)
     assert [m["revision"] for m in sent if m.get("type") == "project.reloaded"] == [
@@ -183,7 +191,7 @@ async def test_scheduled_bookkeeping_outside_lock_persists_and_bumps(tmp_path):
 async def test_bookkeeping_writes_coalesce_into_one_persist(tmp_path):
     """Two writes queued in the same tick flush as one save + one bump."""
     eng = _engine(tmp_path)
-    _capture_broadcasts(eng)
+    sent = _capture_broadcasts(eng)
 
     def rename(project):
         project.project.name = "Renamed"
@@ -193,10 +201,7 @@ async def test_bookkeeping_writes_coalesce_into_one_persist(tmp_path):
 
     eng.schedule_bookkeeping_change(rename)
     eng.schedule_bookkeeping_change(flag)
-    await wait_for_condition(
-        lambda: eng._revision_counter >= 1,
-        message="bookkeeping flush never ran",
-    )
+    await _saved(eng, sent, 1, "bookkeeping flush never ran")
     # Let any (wrong) second flush land before asserting.
     await asyncio.sleep(0.05)
     assert eng._revision_counter == 1
@@ -214,7 +219,7 @@ async def test_bookkeeping_mutation_applies_to_swapped_project(tmp_path):
         "name": "Panel 1", "config": {}, "enabled": True,
         "pending_settings": {"input": "hdmi1"},
     }])
-    _capture_broadcasts(eng)
+    sent = _capture_broadcasts(eng)
 
     async with eng._reload_lock:
         # Fires under the lock -> must defer, not deadlock.
@@ -225,10 +230,7 @@ async def test_bookkeeping_mutation_applies_to_swapped_project(tmp_path):
         # Swap the project object before the flush can run.
         eng.project = eng.project.model_copy(deep=True)
 
-    await wait_for_condition(
-        lambda: eng._revision_counter >= 1,
-        message="deferred persist never ran",
-    )
+    await _saved(eng, sent, 1, "deferred persist never ran")
     assert next(
         d for d in eng.project.devices if d.id == "panel1"
     ).pending_settings == {}
@@ -261,7 +263,7 @@ async def test_plugin_save_config_inside_a_change_defers_without_deadlock(tmp_pa
     eng = _engine(tmp_path, plugins={
         "plug1": {"enabled": False, "config": {"x": 1}},
     })
-    _capture_broadcasts(eng)
+    sent = _capture_broadcasts(eng)
 
     async with eng._reload_lock:
         with eng._running_hooks():
@@ -272,10 +274,7 @@ async def test_plugin_save_config_inside_a_change_defers_without_deadlock(tmp_pa
             # waits for the file.
             assert eng.project.plugins["plug1"].config == {"x": 1}
 
-    await wait_for_condition(
-        lambda: eng._revision_counter == 1,
-        message="deferred plugin-config persist never ran",
-    )
+    await _saved(eng, sent, 1, "deferred plugin-config persist never ran")
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
     assert eng.project.plugins["plug1"].config == {"x": 2}
 
@@ -447,16 +446,13 @@ async def test_a_plugin_save_from_a_project_reloaded_handler_lands_without_a_dea
     eng = _engine(tmp_path, plugins={
         "plug1": {"enabled": False, "config": {"x": 1}},
     })
-    _capture_broadcasts(eng)
+    sent = _capture_broadcasts(eng)
     heard = _save_on_every_reload(eng)
     renamed = eng.project.model_copy(deep=True)
     _rename(renamed)
     await asyncio.wait_for(eng.apply_project(renamed), timeout=5)
 
-    await wait_for_condition(
-        lambda: eng._revision_counter == 2,
-        message="the plugin's save from the handler never landed",
-    )
+    await _saved(eng, sent, 2, "the plugin's save from the handler never landed")
     await _settled(eng)
     assert heard == ["system.project.reloaded"]
     assert eng._revision_counter == 2
