@@ -18,6 +18,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,13 @@ from tests.test_update_system import (
 
 MAC_WRAPPER = Path(__file__).resolve().parent.parent / "installer" / "openavc-macos-run.sh"
 MENUBAR = "gui/501/com.openavc.menubar"
+
+# What the wrapper prints once a restart it asked for has finished, and how long
+# a test waits for it: the server's start waits five seconds for the restart
+# and then goes ahead, so on a busy machine the wrapper returns while the
+# restart is still asking launchctl.
+RESTART_OUTCOMES = ("restarted the menu bar", "could not restart the menu bar")
+RESTART_WAIT_S = 30
 
 # What `launchctl print` shows for a loaded agent: the job's own state one tab
 # in, and its endpoints' states deeper, which never say "running".
@@ -72,6 +80,7 @@ def mac(tmp_path):
     class Mac:
         def __init__(self):
             self.app, self.data, self.log = app, data, log
+            self.out = tmp_path / "stdout.txt"
 
         def stage_update(self):
             tarball = _build_bundle_tarball(tmp_path / "staging", "2.0.0")
@@ -107,7 +116,7 @@ def mac(tmp_path):
             # Files rather than pipes: a restart still running when the server
             # starts keeps its copy of the output open, and a pipe would make
             # this wait for it.
-            out, err = tmp_path / "stdout.txt", tmp_path / "stderr.txt"
+            out, err = self.out, tmp_path / "stderr.txt"
             with out.open("w") as stdout, err.open("w") as stderr:
                 done = subprocess.run(
                     [_BASH_PATH, _bash_path(MAC_WRAPPER)],
@@ -117,6 +126,15 @@ def mac(tmp_path):
             text = out.read_text()
             assert "openavc-server stub" in text  # the server always starts
             return text
+
+        def restart_said(self) -> str:
+            """What the wrapper printed, once the restart it left running says how it went."""
+            deadline = time.monotonic() + RESTART_WAIT_S
+            while True:
+                text = self.out.read_text()
+                if any(said in text for said in RESTART_OUTCOMES) or time.monotonic() > deadline:
+                    return text
+                time.sleep(0.05)
 
         def asked(self) -> list[str]:
             if not log.exists():
@@ -132,7 +150,8 @@ pytestmark = gates.skipif_missing(gates.BASH, _BASH_MISSING)
 def test_an_applied_update_restarts_a_running_menu_bar(mac):
     mac.stage_update()
 
-    out = mac.run()
+    mac.run()
+    out = mac.restart_said()
 
     assert _read_bundle_version(mac.app) == "2.0.0"
     assert mac.asked() == [f"print {MENUBAR}", f"kickstart -k {MENUBAR}"]
@@ -143,6 +162,7 @@ def test_a_rollback_restarts_it_too(mac):
     mac.stage_rollback()
 
     mac.run()
+    mac.restart_said()
 
     assert _read_bundle_version(mac.app) == "0.9.0"
     assert mac.asked() == [f"print {MENUBAR}", f"kickstart -k {MENUBAR}"]
@@ -194,7 +214,8 @@ def test_an_update_that_did_not_apply_restarts_nothing(mac):
 def test_a_restart_that_fails_still_starts_the_server(mac):
     mac.stage_update()
 
-    out = mac.run(FAKE_KICKSTART_EXIT="1")
+    mac.run(FAKE_KICKSTART_EXIT="1")
+    out = mac.restart_said()
 
     assert "could not restart the menu bar" in out
 
@@ -206,6 +227,19 @@ def test_a_sandbox_run_that_names_no_launchctl_restarts_nothing(mac):
 
     assert _read_bundle_version(mac.app) == "2.0.0"
     assert mac.asked() == []
+
+
+def test_a_restart_slower_than_the_server_start_is_waited_for(mac):
+    """The restart is still running when the server starts, as on a busy
+    machine: the stand-in takes six seconds to answer, past the five the
+    wrapper gives it, and the restart still lands."""
+    mac.stage_update()
+
+    mac.run(FAKE_PRINT_SLEEP="6")
+    out = mac.restart_said()
+
+    assert mac.asked() == [f"print {MENUBAR}", f"kickstart -k {MENUBAR}"]
+    assert "restarted the menu bar" in out
 
 
 def test_a_launchctl_that_hangs_does_not_hold_the_server_back(mac):
