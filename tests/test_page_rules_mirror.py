@@ -111,9 +111,12 @@ def _master(written_type: object, pages: object, hidden: object) -> dict:
     return master
 
 
+# The corpus goes in on stdin: on the command line it is past the length
+# Windows allows (WinError 206).
 _SCRIPT = """
 const pages = await import(process.argv[1]);
-const corpus = JSON.parse(process.argv[2]);
+const { readFileSync } = await import('node:fs');
+const corpus = JSON.parse(readFileSync(0, 'utf8'));
 const out = { opens_over: [], fallback: [], stand_in: [], boxes: [], draws_on: [], draws_nothing: [], runs_markup: [] };
 const id = (page) => (page ? page.id : null);
 for (const page of corpus.typed) out.opens_over.push(pages.opensOver(page));
@@ -153,8 +156,8 @@ def panel_answers() -> dict:
     if shutil.which("node") is None:
         gates.skip_or_fail(gates.NODE, "node not installed")
     proc = subprocess.run(
-        ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "pages.js").as_uri(), json.dumps(_corpus())],
-        capture_output=True, text=True, timeout=60,
+        ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "pages.js").as_uri()],
+        input=json.dumps(_corpus()), capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
