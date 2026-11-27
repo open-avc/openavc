@@ -57,6 +57,7 @@ from openavc.core.condition_eval import SURFACE, eval_operator
 from openavc.core.event_bus import check_project_emit
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 from openavc.core.ui_events import DISPATCHED_ACTIONS
+from openavc.core.value_resolver import referenced_key
 from openavc.drivers.usable_number import is_number_value
 from openavc.ui.control_minimums import (
     PIXEL_SLACK,
@@ -1128,8 +1129,9 @@ def _literal_kind(value: Any) -> str | None:
     ``null``, ``bool``, ``number`` or ``text``. A list or an object as a
     condition value is not something either surface can reason about, and
     Python and JavaScript do not even agree on whether an empty one is truthy. A
-    boolean is never a number here, though Python counts it as one. Equality,
-    truthiness and the bounds below all ask this first.
+    boolean is never a number here, though Python counts it as one. A value
+    that names a key (``$var.tab``) is none either: what it holds is only known
+    on the panel. Equality, truthiness and the bounds below all ask this first.
     """
     if value is None:
         return "null"
@@ -1138,7 +1140,7 @@ def _literal_kind(value: Any) -> str | None:
     if isinstance(value, (int, float)):
         return "number"
     if isinstance(value, str):
-        return "text"
+        return "text" if referenced_key(value) is None else None
     return None
 
 

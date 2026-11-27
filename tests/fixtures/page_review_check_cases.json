@@ -1780,6 +1780,66 @@
       "expected": true
     },
     {
+      "name": "eq against eq on a value that names a key proves nothing",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "$var.other_tab"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq on a value that names a key against eq proves nothing",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "$var.other_tab"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
       "name": "eq against eq on the same value",
       "a": {
         "id": "a",

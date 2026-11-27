@@ -6,7 +6,7 @@
  * the ones the panel evaluates.
  */
 
-import { SURFACE, evalOperator } from "../../api/conditionEval";
+import { SURFACE, evalOperator, referencedKey } from "../../api/conditionEval";
 import type { UIElement } from "../../api/types";
 import { isPlainObject } from "./authoredValues";
 import { showOf } from "./reviewFinding";
@@ -43,8 +43,9 @@ type LiteralKind = "null" | "bool" | "number" | "text";
  *
  * A list or an object as a condition value is not something either surface can
  * reason about, and Python and JavaScript do not even agree on whether an empty
- * one is truthy. Equality, truthiness and the bounds below all ask this first.
- * Mirrors `_literal_kind` in page_review.py.
+ * one is truthy. A value that names a key (`$var.tab`) is none either: what it
+ * holds is only known on the panel. Equality, truthiness and the bounds below
+ * all ask this first. Mirrors `_literal_kind` in page_review.py.
  */
 function literalKind(value: unknown): LiteralKind | null {
   if (value === null) return "null";
@@ -54,7 +55,7 @@ function literalKind(value: unknown): LiteralKind | null {
     case "number":
       return "number";
     case "string":
-      return "text";
+      return referencedKey(value) === null ? "text" : null;
     default:
       return null;
   }
