@@ -115,12 +115,16 @@ def message_as(where: Any, message: Any) -> Any:
 
 
 def _message_leaves(where: Any, value: Any) -> Any:
-    if isinstance(value, str):
-        return text_as(where, value)
     if isinstance(value, dict):
         return {key: _message_leaves(where, item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_message_leaves(where, item) for item in value]
+    return _leaf_as(where, value)
+
+
+def _leaf_as(where: Any, value: Any) -> Any:
+    """One value in a message: a number, a flag or nothing as it is, anything
+    else as its text masked."""
     if isinstance(value, _JSON_SCALARS):
         return value
     return text_as(where, str(value))
