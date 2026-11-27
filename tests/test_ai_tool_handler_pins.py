@@ -23,9 +23,10 @@ import pytest
 from openavc.cloud.ai_tool_handler import TOOL_FAILED, AIToolHandler, describe_tool_failure
 from openavc.cloud.tool_declarations import TOOLS
 from openavc.cloud.tools.macro_tools import _validate_variable
-from openavc.cloud.tools.ui_bindings import _validate_action, normalize_bindings, validate_bindings
+from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
 from openavc.core import condition_eval
 from openavc.core.ui_events import DISPATCHED_ACTIONS
+from openavc.ui import page_structure
 
 FAILED = "Binding validation failed: "
 INTERACTIONS = (
@@ -37,6 +38,12 @@ OPS = "eq, ne, gt, lt, gte, lte, truthy, falsy"
 
 def _refusal(*problems: str) -> str:
     return FAILED + "; ".join(problems)
+
+
+def _validate_action(action: dict, path: str) -> str | None:
+    """One action's first problem, as the sentence the door puts in its refusal."""
+    issue = page_structure.action_issue(action, path)
+    return None if issue is None else issue.message
 
 
 # ===== a single action =====
@@ -484,10 +491,8 @@ class TestShowBindings:
         )
 
     def test_the_sentences_list_exactly_what_is_accepted(self):
-        from openavc.cloud.tools import ui_bindings
-
-        assert OPS == ui_bindings._VISIBLE_WHEN_OPS_TEXT == ", ".join(condition_eval.OPERATORS)
-        assert set(ui_bindings._MODES_TEXT.split(", ")) == ui_bindings._VALID_MODES
+        assert OPS == page_structure.VISIBLE_WHEN_OPS_TEXT == ", ".join(condition_eval.OPERATORS)
+        assert set(page_structure.PRESS_MODES_TEXT.split(", ")) == page_structure.PRESS_MODES
 
     def test_a_single_visible_when_key_and_operator_problems(self):
         assert _show(visible_when={"operator": "~"}) == _refusal(

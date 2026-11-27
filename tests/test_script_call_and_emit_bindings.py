@@ -741,27 +741,27 @@ def test_the_write_door_offers_exactly_what_the_runtime_dispatches():
     this pins their keys instead, and a new action with no required-field entry
     fails here rather than at somebody's write.
     """
-    from openavc.cloud.tools.ui_bindings import _ACTION_REQUIRED_FIELDS, _VALID_ACTION_TYPES
     from openavc.core.ui_events import DISPATCHED_ACTIONS
+    from openavc.ui.page_structure import ACTION_REQUIRED_FIELDS, action_names
 
-    assert _VALID_ACTION_TYPES == DISPATCHED_ACTIONS
-    assert set(_ACTION_REQUIRED_FIELDS) == set(DISPATCHED_ACTIONS)
+    assert action_names() == DISPATCHED_ACTIONS
+    assert set(ACTION_REQUIRED_FIELDS) == set(DISPATCHED_ACTIONS)
 
 
 def test_the_write_door_takes_an_emit_and_still_names_its_required_field():
-    from openavc.cloud.tools.ui_bindings import _validate_action
+    from openavc.ui.page_structure import action_issue
 
-    assert _validate_action(
+    assert action_issue(
         {"action": "event.emit", "event": "custom.ping", "payload": {"a": 1}}, "p"
     ) is None
-    assert "requires 'event'" in _validate_action({"action": "event.emit"}, "p")
+    assert "requires 'event'" in action_issue({"action": "event.emit"}, "p").message
 
 
 def test_a_rejected_action_lists_every_name_that_works():
     """The sentence used to be a hand-typed list, one name short of the truth."""
-    from openavc.cloud.tools.ui_bindings import _validate_action
+    from openavc.ui.page_structure import action_issue
 
-    message = _validate_action({"action": "delay", "seconds": 2}, "p")
+    message = action_issue({"action": "delay", "seconds": 2}, "p").message
     assert "event.emit" in message and "script.call" in message
 
 

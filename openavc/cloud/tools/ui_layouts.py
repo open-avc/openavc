@@ -13,10 +13,11 @@ page's. Reading the geometry is ``ui/page_geometry.py``'s.
 
 The rules are the Builder's, so an AI edit and the same edit made on the canvas
 store the same project: the rounding is ``GEOMETRY_PRECISION`` in
-``pageGeometry.ts``; who may hold whom and the move between containers are
-``canReparent`` and ``reparentPlacements`` in ``containerTree.ts``. A project the
-Builder would refuse to create is one its editors cannot repair, so these
-refuse it at the door.
+``pageGeometry.ts``; the move between containers is ``reparentPlacements`` in
+``containerTree.ts``. What a page may hold (an arrangement's ``inherits`` and
+orientation, who may hold whom) is ``openavc.ui.page_structure``'s, which each
+write asks before it changes anything: a project the Builder would refuse to
+create is one its editors cannot repair, so these refuse it at the door.
 """
 
 from typing import Any
@@ -28,6 +29,15 @@ from openavc.ui.page_geometry import (
     layout_chain,
     primary_layout,
     resolved_placements,
+)
+from openavc.ui.page_structure import (
+    Issue,
+    inherits_issue,
+    inherits_loops,
+    layout_issues,
+    orientation_issue,
+    parent_issue,
+    refusal,
 )
 
 
@@ -91,8 +101,27 @@ def apply_layouts(page: Any, layouts_input: Any) -> None:
     edit = _LayoutEdit(page)
     for entry in layouts_input:
         edit.apply(entry)
-    _refuse_inheritance_loop(page.layouts, edit.by_id)
+    # Two edits in one call can each be legal and still tie the chains in a
+    # loop (A inherits B, then B inherits A), so every chain is walked once
+    # the call's edits are in.
+    _refuse(next(iter(inherits_loops(page.layouts)), None))
     page.layouts = normalize_primary_layout(page.layouts)
+
+
+def refuse_new_page_layouts(page: Any) -> None:
+    """A new page's arrangements, refused for what the update door refuses
+    (``layout_issues``), every problem in one reply."""
+    _refuse_all(layout_issues(page))
+
+
+def _refuse(issue: Issue | None, advice: str = "") -> None:
+    if issue is not None:
+        raise ToolEditError({"error": issue.message + advice})
+
+
+def _refuse_all(issues: list[Issue]) -> None:
+    if issues:
+        raise ToolEditError({"error": refusal(issues)})
 
 
 def _entry_boxes(entry: Any) -> tuple[str, dict]:
@@ -192,80 +221,13 @@ class _LayoutEdit:
             })
 
     def _check_inherits(self, layout_id: str, target: Any) -> None:
-        """A dangling inherits does not error anywhere downstream -- the variant
-        silently becomes its own chain root and everything without a delta
-        falls to default boxes. Refuse it at the door, by name."""
-        if target is None:
-            return
-        if target == layout_id:
-            raise ToolEditError({"error": f"Layout '{layout_id}' cannot inherit from itself"})
-        if target not in self.by_id:
-            raise ToolEditError({
-                "error": f"Layout '{layout_id}': inherits '{target}', which is not an "
-                         f"arrangement on this page. Available: {', '.join(self.by_id)}"
-            })
+        """Against the arrangements so far, a new one added earlier in the
+        same call among them."""
+        _refuse(inherits_issue(layout_id, target, self.by_id))
 
     def _check_orientation(self, layout_id: str, orientation: Any) -> None:
-        """One arrangement per orientation is the Builder's invariant -- the
-        runtime draws the first match, so a second one is unreachable and makes
-        the canvas and the panel disagree."""
-        taken = next(
-            (lay.id for lay in self.page.layouts
-             if lay.orientation == orientation and lay.id != layout_id),
-            None,
-        )
-        if taken is not None:
-            raise ToolEditError({
-                "error": f"Layout '{layout_id}': there is already a {orientation} "
-                         f"arrangement ('{taken}'). Edit that one instead."
-            })
-
-
-def _refuse_inheritance_loop(layouts: list, by_id: dict) -> None:
-    """Two edits in one call can each be legal and still tie the chains in a
-    loop (A inherits B, then B inherits A). Both renderers cycle-guard, so
-    nothing crashes -- but the layouts stop inheriting and the file is
-    permanently odd. Every chain is walked before the write is accepted."""
-    for lay in layouts:
-        seen: set[str] = set()
-        cursor = lay
-        while cursor is not None and cursor.id not in seen:
-            seen.add(cursor.id)
-            cursor = by_id.get(cursor.inherits) if cursor.inherits else None
-        if cursor is not None:
-            raise ToolEditError({
-                "error": f"Layout inheritance loops: '{lay.id}' eventually inherits from itself"
-            })
-
-
-def validate_parent(page: Any, element_id: str, new_parent_id: str) -> None:
-    """The rules for who may hold whom, shared by every door that sets `parent`.
-
-    They mirror the Builder's canReparent: the container must exist, must BE a
-    container, and must not be the element itself or anything inside it. A
-    parent the Builder refuses to create is also one its container dropdown
-    cannot express or repair, so letting it in here strands the project.
-    """
-    by_id = {el.id: el for el in page.elements}
-    problem = container_problem(by_id, new_parent_id, page.id)
-    if problem:
-        raise ToolEditError({"error": problem[:1].upper() + problem[1:]})
-    if new_parent_id == element_id or _is_descendant(by_id, new_parent_id, element_id):
-        raise ToolEditError({
-            "error": f"Element '{element_id}' cannot be placed inside itself or its own contents"
-        })
-
-
-def _is_descendant(by_id: dict, candidate_id: str, ancestor_id: str) -> bool:
-    """Is `candidate_id` somewhere inside `ancestor_id`? Cycle-safe."""
-    seen: set[str] = set()
-    cursor = by_id.get(candidate_id)
-    while cursor is not None and cursor.id not in seen:
-        seen.add(cursor.id)
-        if cursor.parent == ancestor_id:
-            return True
-        cursor = by_id.get(cursor.parent) if cursor.parent else None
-    return False
+        _refuse(orientation_issue(layout_id, orientation, self.page.layouts),
+                " Edit that one instead.")
 
 
 def reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> None:
@@ -284,8 +246,9 @@ def reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> N
         return
     if (element.parent or None) == new_parent_id:
         return
-    if new_parent_id is not None:
-        validate_parent(page, element_id, new_parent_id)
+    _refuse(parent_issue(
+        element_id, new_parent_id, {el.id: el for el in page.elements}, page.id,
+    ))
 
     rewritten = [
         (layout, box)
@@ -326,22 +289,6 @@ def _no_area(box: Any) -> bool:
     """Missing, or a side of zero or less. A side that is not a number passes,
     and the model then refuses the box built from it."""
     return not box or box["w"] <= 0 or box["h"] <= 0
-
-
-def container_problem(holders: dict, parent_id: str, page_id: str) -> str | None:
-    """Why ``parent_id`` cannot hold a control on this page, or None when it can.
-
-    The container must be an element on the page (``holders``, by id), and a
-    group: only a group holds children. Said mid-sentence, after whose parent
-    it was; :func:`validate_parent` says it as a sentence of its own.
-    """
-    holder = holders.get(parent_id)
-    if holder is None:
-        return f"container '{parent_id}' is not an element on page '{page_id}'"
-    if holder.type != "group":
-        return (f"'{parent_id}' is a {holder.type}, not a container -- only a group "
-                f"element can hold children")
-    return None
 
 
 def restate_box(page: Any, layout: Any, element_id: str, partial: dict) -> None:

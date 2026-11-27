@@ -8,10 +8,10 @@ from openavc.cloud.tools import ToolEditError, apply_tool_edit, merge_forward_co
 from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
 from openavc.cloud.tools.ui_layouts import (
     apply_layouts,
-    container_problem,
     master_boxes,
     merge_master_boxes,
     place_in_primary,
+    refuse_new_page_layouts,
     remove_elements,
     reparent_element,
     resolve_layout,
@@ -22,6 +22,14 @@ from openavc.cloud.tools.ui_rewrites import scrub_page_references
 from openavc.cloud.tools.ui_simulate import simulate_ui_action
 from openavc.cloud.tools.ui_review import UIReview, WriteNotes, master_findings
 from openavc.ui.matrix_model import matrix_config_problems
+from openavc.ui.page_structure import (
+    element_id_holders,
+    id_taken,
+    master_parent_issue,
+    page_id_issue,
+    parent_issue,
+    parent_issues,
+)
 
 
 # Geometry the model is not allowed to speak any more. 0.8.0 replaced whole-cell
@@ -472,28 +480,19 @@ class _NewElements:
     def __init__(self, project: Any) -> None:
         self.project = project
         self.problems: list[str] = []
-        self.page_of: dict = {}
-        for page in project.ui.pages:
-            for el in page.elements:
-                self.page_of.setdefault(el.id, page.id)
-        self.masters = {m.id for m in project.ui.master_elements}
+        self.id_holders = element_id_holders(project.ui.pages, project.ui.master_elements)
         self.seen: set = set()
 
     def refuse(self, problem: str) -> None:
         self.problems.append(problem)
 
     def taken(self, el_id: Any) -> str | None:
-        """Why a new control cannot have this id, or None when it can.
-
-        An id is unique across every page and master, as the Builder's own id
-        check has it: a press reaches the first element with its id, pages in
-        order and then masters (``ui_events.find_element``), so a second
-        control with it would run the first one's actions.
-        ``_master_id_taken`` refuses the same clash for a new master."""
-        if el_id in self.page_of:
-            return f"Element '{el_id}' already exists on page '{self.page_of[el_id]}'"
-        if el_id in self.masters:
-            return f"Element '{el_id}' already exists as a master element"
+        """Why a new control cannot have this id, or None when it can: a
+        control already holds it (``page_structure.id_taken``), or another in
+        this call does."""
+        issue = id_taken(el_id, self.id_holders.get(el_id, ()))
+        if issue is not None:
+            return issue.message
         if el_id in self.seen:
             # Two elements with one id: the second silently replaced the first at
             # render time, and nothing said so.
@@ -579,11 +578,9 @@ class _NewControls(_NewElements):
         from openavc.core.project_loader import UIElement
 
         element = UIElement(**el_data)
-        problem = element.parent is not None and container_problem(
-            self.holders, element.parent, self.page.id,
-        )
-        if problem:
-            raise ToolEditError({"error": f"Element '{el_data.get('id', '?')}': {problem}"})
+        issue = parent_issue(element.id, element.parent, self.holders, self.page.id)
+        if issue is not None:
+            raise ToolEditError({"error": issue.message})
         return element
 
     def land(self, notes: WriteNotes) -> None:
@@ -599,30 +596,28 @@ class _NewControls(_NewElements):
         })
 
 
-def _master_id_taken(project: Any, element_id: str) -> str | None:
-    """Why a new master cannot have this id, or None when it can.
-
-    A master draws on every page it names, so its id may be no page's element
-    (the first page holding it is named) and no other master's.
-    """
-    for page in project.ui.pages:
-        if any(el.id == element_id for el in page.elements):
-            return f"Element '{element_id}' already exists on page '{page.id}'"
-    if any(el.id == element_id for el in project.ui.master_elements):
-        return f"Master element '{element_id}' already exists"
-    return None
+def _refuse_master_parent(master_id: Any, data: dict) -> None:
+    """A master sits on the screen, so a definition giving it a container is
+    refused."""
+    issue = master_parent_issue(master_id, data.get("parent"))
+    if issue is not None:
+        raise ToolEditError({"error": issue.message})
 
 
 def _new_master(project: Any, el_data: dict) -> Any:
     """A master built from its definition, refused in this order: what its
-    definition may not say, an id already taken, its bindings."""
+    definition may not say, an id already taken (a master draws on every page
+    it names, so its id may be no page's control and no other master's), a
+    container, its bindings."""
     from openavc.core.project_loader import MasterElement
 
     what = f"Master element '{el_data['id']}'"
     _refuse_bad_master_definition(el_data, what)
-    taken = _master_id_taken(project, el_data["id"])
-    if taken:
-        raise ToolEditError({"error": taken})
+    holders = element_id_holders(project.ui.pages, project.ui.master_elements)
+    taken = id_taken(el_data["id"], holders.get(el_data["id"], ()), master=True)
+    if taken is not None:
+        raise ToolEditError({"error": taken.message})
+    _refuse_master_parent(el_data["id"], el_data)
     _check_created_bindings(el_data, project, what)
     if isinstance(el_data.get("placements"), dict):
         el_data["placements"] = master_boxes(el_data["placements"])
@@ -667,15 +662,18 @@ def _master_own_fields(project: Any, target: Any, input: dict, what: str) -> lis
 def _new_page(project: Any, page_id: str, input: dict) -> Any:
     """A new page built from the call, its controls' boxes in its primary.
 
-    Refused in this order: an id already taken, page geometry the format
-    retired, then every inline control (what ``add_ui_elements`` puts each
-    through -- otherwise a page created with its elements in one call keeps
-    bindings nothing validated, and buttons silently do nothing), then an
-    overlay box outside its range, in the words the update door uses, then the
-    page itself as the model sees it.
+    Refused in this order: an id already taken or one starting with ``$``,
+    page geometry the format retired, then every inline control (what
+    ``add_ui_elements`` puts each through -- otherwise a page created with its
+    elements in one call keeps bindings nothing validated, and buttons
+    silently do nothing), then an overlay box outside its range, in the words
+    the update door uses, then the page itself as the model sees it, then its
+    arrangements as the update door refuses them, then its controls'
+    containers as the element doors refuse them.
     """
-    if any(p.id == page_id for p in project.ui.pages):
-        raise ToolEditError({"error": f"UI page '{page_id}' already exists"})
+    taken = page_id_issue(page_id, [p.id for p in project.ui.pages])
+    if taken is not None:
+        raise ToolEditError({"error": taken.message})
     _reject_retired_geometry(input, f"Page '{page_id}'")
     elements = input.get("elements", [])
     boxes = _NewElements(project).checked_boxes(elements)
@@ -684,6 +682,10 @@ def _new_page(project: Any, page_id: str, input: dict) -> Any:
     page = _page_model(page_id, elements, {
         name: input[name] for name in _PAGE_FIELDS if name in input
     })
+    refuse_new_page_layouts(page)
+    containers = parent_issues(page)
+    if containers:
+        raise _batch_error([issue.message for issue in containers], "added")
     place_in_primary(page, boxes)
     return page
 
@@ -1105,6 +1107,7 @@ class UIToolsMixin:
             what = f"Master element '{element_id}'"
             target = _master_named(project, element_id)
             _refuse_bad_master_definition(input, what)
+            _refuse_master_parent(element_id, input)
             changed.extend(_master_own_fields(project, target, input, what))
 
             # Everything else is a plain field on the element. Anything the

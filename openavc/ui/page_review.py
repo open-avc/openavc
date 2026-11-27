@@ -29,10 +29,11 @@ Everything here is a WARNING. Nothing rejects.
 That is a deliberate constraint, not an oversight. A rejection throws away the
 batch and costs a whole round trip; a warning returned in the same tool result
 is read during a turn the caller is already having. So this module never raises
-and never refuses -- the write lands, and the findings ride back with it. The
-one class that does reject (a container inside itself, a dangling ``inherits``)
-rejects at the door in ``ui_tools`` and did so before this existed, because
-there is no valid reading of it to warn about.
+and never refuses -- the write lands, and the findings ride back with it. What
+a page may not hold at all (a container inside itself, a dangling
+``inherits``, an id used twice) is ``ui/page_structure.py``'s, which the AI's
+page doors ask before they build, because there is no valid reading of it to
+warn about.
 
 Every finding carries the arithmetic
 ------------------------------------

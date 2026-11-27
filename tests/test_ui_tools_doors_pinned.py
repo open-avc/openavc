@@ -408,6 +408,118 @@ async def test_add_page_refuses_retired_page_geometry_and_a_taken_id():
     assert await _call(engine, "add_ui_page", {"id": ""}) == {"error": "Page ID is required"}
 
 
+@pytest.mark.parametrize("page_id", ["$tab", "$back", "$dismiss", "$"])
+@pytest.mark.asyncio
+async def test_add_page_refuses_an_id_starting_with_the_moves_prefix(page_id):
+    """The panel reads a target starting with $ as one of its own moves, so a
+    Page Nav to such a page would never light."""
+    engine = _engine()
+    before = _dump(engine)
+    assert await _call(engine, "add_ui_page", {"id": page_id}) == {
+        "error": f"UI page '{page_id}': a page id cannot start with '$', which marks the "
+                 f"panel's own moves ($back, $dismiss). Use lowercase letters, digits and "
+                 f"underscores."}
+    assert _dump(engine) == before
+
+
+_PRIMARY = {"id": "landscape", "primary": True}
+
+
+@pytest.mark.parametrize("layouts, error", [
+    ([_PRIMARY, {"id": "landscape", "orientation": "portrait"}],
+     "Layout 'landscape' appears more than once on page 'p6'"),
+    ([_PRIMARY, {"id": "tall", "orientation": "landscape"}],
+     "Layout 'tall': there is already a landscape arrangement ('landscape')."),
+    ([_PRIMARY, {"id": "tall", "orientation": "portrait", "inherits": "ghost"}],
+     "Layout 'tall': inherits 'ghost', which is not an arrangement on this page. "
+     "Available: landscape"),
+    ([{**_PRIMARY, "inherits": "landscape"}], "Layout 'landscape' cannot inherit from itself"),
+    ([{**_PRIMARY, "inherits": "tall"},
+      {"id": "tall", "orientation": "portrait", "inherits": "landscape"}],
+     "Layout inheritance loops: 'landscape' eventually inherits from itself"),
+    ([_PRIMARY, {"id": "landscape", "orientation": "portrait", "inherits": "ghost"}],
+     "Layout 'landscape' appears more than once on page 'p6'; Layout 'landscape': inherits "
+     "'ghost', which is not an arrangement on this page."),
+])
+@pytest.mark.asyncio
+async def test_add_page_refuses_the_layouts_the_update_door_refuses(layouts, error):
+    """The create door's arrangements answer to the same rules as the update
+    door's, every problem in one reply; nothing is stored."""
+    engine = _engine()
+    before = _dump(engine)
+    assert await _call(engine, "add_ui_page", {"id": "p6", "layouts": layouts}) == {"error": error}
+    assert _dump(engine) == before
+
+
+@pytest.mark.asyncio
+async def test_add_page_refuses_a_container_the_element_doors_refuse():
+    """A new page's own controls are held to the containers the element doors
+    allow: a group on the page, never the control itself or its contents."""
+    engine = _engine()
+    before = _dump(engine)
+    result = await _call(engine, "add_ui_page", {"id": "p7", "elements": [
+        {"id": "a", "type": "button", "parent": "ghost"},
+        {"id": "b", "type": "button", "parent": "a"},
+        {"id": "g", "type": "group", "parent": "h"},
+        {"id": "h", "type": "group", "parent": "g"},
+        {"id": "s", "type": "group", "parent": "s"},
+        {"id": "box", "type": "group"},
+        {"id": "ok", "type": "button", "parent": "box"},
+    ]})
+    assert result["errors"] == [
+        "Element 'a': container 'ghost' is not an element on page 'p7'",
+        "Element 'b': 'a' is a button, not a container -- only a group element can hold children",
+        "Element 'g' cannot be placed inside itself or its own contents",
+        "Element 'h' cannot be placed inside itself or its own contents",
+        "Element 's' cannot be placed inside itself or its own contents",
+    ]
+    assert result["error"].startswith("5 elements could not be added: Element 'a'")
+    assert _dump(engine) == before
+    made = await _call(engine, "add_ui_page", {"id": "p7", "elements": [
+        {"id": "box", "type": "group"}, {"id": "ok", "type": "button", "parent": "box"},
+    ]})
+    assert made["status"] == "created"
+
+
+@pytest.mark.asyncio
+async def test_a_page_already_holding_a_repeated_id_still_takes_other_writes():
+    """'dup' is on two pages already. Writes that make no new problem land;
+    a third copy is refused, naming the page that holds the one a press
+    reaches."""
+    engine = _engine()
+    assert (await _call(engine, "update_ui_element", {
+        "element_id": "dup", "label": "Still editable"}))["status"] == "updated"
+    assert (await _call(engine, "add_ui_elements", {"page_id": "third", "elements": [
+        {"id": "fresh", "type": "button"}]}))["status"] == "created"
+    assert (await _call(engine, "update_ui_page", {
+        "page_id": "third", "name": "Renamed"}))["status"] == "updated"
+    third_copy = await _call(engine, "add_ui_elements", {"page_id": "main", "elements": [
+        {"id": "dup", "type": "button"}]})
+    assert third_copy["errors"] == ["Element 'dup' already exists on page 'other'"]
+
+
+@pytest.mark.parametrize("tool, payload", [
+    ("add_master_element", {"id": "m_new", "type": "button", "parent": "outer"}),
+    ("update_master_element", {"element_id": "m_main", "parent": "outer"}),
+    ("update_master_element", {"element_id": "m_main", "parent": ""}),
+])
+@pytest.mark.asyncio
+async def test_master_doors_refuse_a_parent(tool, payload):
+    """A master is placed on the screen by orientation, never inside a page's
+    container; a null parent changes nothing and is taken."""
+    engine = _engine()
+    before = _dump(engine)
+    master_id = payload.get("id") or payload["element_id"]
+    assert await _call(engine, tool, payload) == {
+        "error": f"Master element '{master_id}': a master element is placed on the screen, "
+                 f"not inside a container, so it cannot have a 'parent'."}
+    assert _dump(engine) == before
+    taken = await _call(engine, "update_master_element", {"element_id": "m_main", "parent": None})
+    assert taken["status"] == "updated"
+    made = await _call(engine, "add_master_element", {"id": "m_new", "type": "button", "parent": None})
+    assert made["status"] == "created"
+
+
 # --- layouts, through update_ui_page --------------------------------------------
 
 
@@ -441,7 +553,7 @@ async def test_add_page_refuses_retired_page_geometry_and_a_taken_id():
      "Available: landscape, portrait"),
     ([{"id": "landscape", "inherits": "ghost", "orientation": "portrait"}],
      "Layout 'landscape': inherits 'ghost', which is not an arrangement on this page. "
-     "Available: landscape, portrait"),
+     "Available: portrait"),
     ([{"id": "landscape", "hidden": []}, "x"], "Each layout needs an 'id'"),
     ([{"id": "portrait", "orientation": "landscape", "inherits": None},
       {"id": "landscape", "orientation": "portrait"}],
@@ -691,8 +803,9 @@ async def test_element_moved_into_a_container_whose_box_is_not_a_number_raises()
 
 
 @pytest.mark.parametrize("parent, error", [
-    ("ghost", "Container 'ghost' is not an element on page 'main'"),
-    ("btn", "'btn' is a button, not a container -- only a group element can hold children"),
+    ("ghost", "Element 'outer': container 'ghost' is not an element on page 'main'"),
+    ("btn", "Element 'outer': 'btn' is a button, not a container -- only a group element "
+            "can hold children"),
     ("inner", "Element 'outer' cannot be placed inside itself or its own contents"),
     ("outer", "Element 'outer' cannot be placed inside itself or its own contents"),
 ])
@@ -781,7 +894,7 @@ async def test_element_refusal_order_bindings_then_lock_then_parent():
     assert r["error"].startswith("Element 'pin' is locked")
     r = await _call(engine, "update_ui_element", {"element_id": "btn", "parent": "ghost",
                                                   "hidden": True, "colour": 1})
-    assert r == {"error": "Container 'ghost' is not an element on page 'main'"}
+    assert r == {"error": "Element 'btn': container 'ghost' is not an element on page 'main'"}
     r = await _call(engine, "update_ui_element", {"element_id": "btn", "hidden": True,
                                                   "colour": 1})
     assert r == {"error": "Element 'btn': 'colour' is not a field on a UI element."}
