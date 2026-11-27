@@ -196,6 +196,37 @@ _case("trigger_conditions", _project(macros=[
     ]),
 ]))
 
+# A condition's value that names a key ($device.probe.input) reads the
+# device as its key does; one written as text names nothing.
+_case("condition_value_references", _project(macros=[
+    _macro("follow", "Follow", steps=[
+        {"action": "conditional",
+         "condition": {"key": "var.mode", "operator": "eq", "value": "$device.probe.input"},
+         "then_steps": [{"action": "delay", "seconds": 1}]},
+        {"action": "delay", "seconds": 1,
+         "skip_if": {"key": "var.mode", "operator": "ne", "value": "$device.probe.input"}},
+    ], triggers=[
+        {"id": "t1", "type": "event", "event_pattern": "go", "conditions": [
+            {"key": "var.mode", "operator": "eq", "value": "$device.probe.input"},
+        ]},
+        {"id": "t2", "type": "state_change", "state_key": "var.level",
+         "state_operator": "gte", "state_value": "$device.probe.level"},
+    ]),
+]))
+
+_case("condition_value_written_as_text", _project(macros=[
+    _macro("follow", "Follow", steps=[
+        {"action": "conditional",
+         "condition": {"key": "var.mode", "operator": "eq", "value": "device.probe.input"}},
+    ], triggers=[
+        {"id": "t1", "type": "event", "event_pattern": "go", "conditions": [
+            {"key": "var.mode", "operator": "eq", "value": "device.probe.input"},
+        ]},
+        {"id": "t2", "type": "state_change", "state_key": "var.level",
+         "state_operator": "eq", "state_value": "device.probe.level"},
+    ]),
+]))
+
 _case("binding_show_key", _project(ui={"pages": [_page("home", "Home", [
     {"id": "vol", "type": "slider", "label": "Volume",
      "bindings": {"show.value": {"key": "device.probe.volume"}}},
@@ -364,6 +395,9 @@ def test_the_corpus_actually_exercises_every_branch(verdicts) -> None:
         'Macro "Watch" trigger: device.probe.connected',
         'Macro "Watch" trigger: device.disconnected.probe',
         'Macro "Watch" trigger condition: device.probe.connected',
+        'Macro "Follow": 2 step(s)',              # a condition's value names it
+        'Macro "Follow" trigger condition: $device.probe.input',
+        'Macro "Follow" trigger: $device.probe.level',
         'UI page "Home" element "Volume"',
         'UI page "Home" element "led7"',          # unlabelled falls back to id
         'UI master element "Room Status"',
@@ -383,6 +417,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "sibling_id_never_matched",
         "trigger_event_wildcard",
         "master_element_without_the_device",
+        "condition_value_written_as_text",
     }
     for case in silent:
         server, builder = verdicts[case]

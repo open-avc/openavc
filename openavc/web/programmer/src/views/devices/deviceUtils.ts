@@ -1,4 +1,5 @@
 import type { MacroStep, ProjectConfig } from "../../api/types";
+import { referencedKey } from "../../api/conditionEval";
 
 /**
  * True when `value` is a state key that targets device `deviceId` — i.e. it is
@@ -12,6 +13,19 @@ function keyTargetsDevice(value: unknown, deviceId: string): boolean {
   const s = value.startsWith("$") ? value.slice(1) : value;
   const prefix = `device.${deviceId}`;
   return s === prefix || s.startsWith(`${prefix}.`);
+}
+
+/** True when a condition's value names a key of this device
+ *  (`$device.<id>.input`, `referencedKey`): the condition compares with that
+ *  key's value. A value written as text names nothing. */
+function valueNamesDevice(value: unknown, deviceId: string): boolean {
+  return keyTargetsDevice(referencedKey(value), deviceId);
+}
+
+/** True when a step's condition reads this device: its key, or a key its value names. */
+function conditionReadsDevice(condition: { key?: unknown; value?: unknown } | undefined, deviceId: string): boolean {
+  if (!condition) return false;
+  return keyTargetsDevice(condition.key, deviceId) || valueNamesDevice(condition.value, deviceId);
 }
 
 /**
@@ -55,8 +69,8 @@ function stepTargetsDevice(step: MacroStep, deviceId: string, project: ProjectCo
   if (step.device === deviceId) return true;
   if (groupContainsDevice(project, step.group, deviceId)) return true;
   if (keyTargetsDevice(step.key, deviceId)) return true;
-  if (keyTargetsDevice(step.condition?.key, deviceId)) return true;
-  if (keyTargetsDevice(step.skip_if?.key, deviceId)) return true;
+  if (conditionReadsDevice(step.condition, deviceId)) return true;
+  if (conditionReadsDevice(step.skip_if, deviceId)) return true;
   if (treeReferencesDevice(step.params, deviceId, project)) return true;
   if (treeReferencesDevice(step.value, deviceId, project)) return true;
   return false;
@@ -108,9 +122,14 @@ export function findDeviceReferences(project: ProjectConfig, deviceId: string): 
       if (eventPatternTargetsDevice(t.event_pattern, deviceId)) {
         refs.push(`Macro "${macro.name}" trigger: ${t.event_pattern}`);
       }
+      if (t.type === "state_change" && valueNamesDevice(t.state_value, deviceId)) {
+        refs.push(`Macro "${macro.name}" trigger: ${t.state_value}`);
+      }
       for (const c of t.conditions ?? []) {
         if (keyTargetsDevice(c.key, deviceId)) {
           refs.push(`Macro "${macro.name}" trigger condition: ${c.key}`);
+        } else if (valueNamesDevice(c.value, deviceId)) {
+          refs.push(`Macro "${macro.name}" trigger condition: ${c.value}`);
         }
       }
     }

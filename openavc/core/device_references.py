@@ -63,6 +63,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from openavc.core.value_resolver import referenced_key
+
 log = logging.getLogger(__name__)
 
 
@@ -97,6 +99,22 @@ def _key_targets_device(value: Any, device_id: str) -> bool:
     s = value[1:] if value.startswith("$") else value
     prefix = f"device.{device_id}"
     return s == prefix or s.startswith(f"{prefix}.")
+
+
+def _value_names_device(value: Any, device_id: str) -> bool:
+    """True when a condition's value names a key of this device
+    (``$device.<id>.input``, ``value_resolver.referenced_key``): the condition
+    compares with that key's value. A value written as text names nothing."""
+    return _key_targets_device(referenced_key(value), device_id)
+
+
+def _condition_reads_device(condition: Any, device_id: str) -> bool:
+    """True when a step's condition reads this device: its key, or a key its value names."""
+    if condition is None:
+        return False
+    return _key_targets_device(getattr(condition, "key", None), device_id) or _value_names_device(
+        getattr(condition, "value", None), device_id,
+    )
 
 
 def _group_contains_device(project: Any, group_id: Any, device_id: str) -> bool:
@@ -150,11 +168,9 @@ def _step_targets_device(step: Any, device_id: str, project: Any) -> bool:
         return True
     if _key_targets_device(getattr(step, "key", None), device_id):
         return True
-    condition = getattr(step, "condition", None)
-    if condition is not None and _key_targets_device(getattr(condition, "key", None), device_id):
+    if _condition_reads_device(getattr(step, "condition", None), device_id):
         return True
-    skip_if = getattr(step, "skip_if", None)
-    if skip_if is not None and _key_targets_device(getattr(skip_if, "key", None), device_id):
+    if _condition_reads_device(getattr(step, "skip_if", None), device_id):
         return True
     if _tree_references_device(getattr(step, "params", None), device_id, project):
         return True
@@ -254,12 +270,25 @@ def find_device_references(project: Any, device_id: str) -> list[DeviceReference
                     message=f'Macro "{macro.name}" trigger: {pattern}',
                     where={**where, "field": "event_pattern", "value": pattern},
                 ))
+            state_value = getattr(trigger, "state_value", None)
+            if getattr(trigger, "type", None) == "state_change" and _value_names_device(state_value, device_id):
+                refs.append(DeviceReference(
+                    kind="trigger",
+                    message=f'Macro "{macro.name}" trigger: {state_value}',
+                    where={**where, "field": "state_value", "value": state_value},
+                ))
             for condition in getattr(trigger, "conditions", None) or []:
                 if _key_targets_device(getattr(condition, "key", None), device_id):
                     refs.append(DeviceReference(
                         kind="trigger",
                         message=f'Macro "{macro.name}" trigger condition: {condition.key}',
                         where={**where, "field": "condition", "value": condition.key},
+                    ))
+                elif _value_names_device(getattr(condition, "value", None), device_id):
+                    refs.append(DeviceReference(
+                        kind="trigger",
+                        message=f'Macro "{macro.name}" trigger condition: {condition.value}',
+                        where={**where, "field": "condition_value", "value": condition.value},
                     ))
 
     ui = getattr(project, "ui", None)
