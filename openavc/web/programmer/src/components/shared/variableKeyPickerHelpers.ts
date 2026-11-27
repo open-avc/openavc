@@ -17,16 +17,28 @@ import { FIRING_CONTEXTS, type FiringContext } from "../../api/firingContext.gen
  * category header.
  */
 export function groupLabel(group: string, name?: string): string {
-  if (group === "control") return "This control";
-  if (group.startsWith("device:")) return `Device: ${name ?? ""}`;
-  if (group === "system") return "System";
-  if (group.startsWith("plugin:")) return `Plugin: ${name ?? ""}`;
-  if (group.startsWith("ui:")) return `UI: ${name ?? ""}`;
-  if (group === "ui") return "UI";
-  if (group === "trigger") return "What ran this macro";
-  if (group === "fired") return "What fired this trigger";
-  return "Project Variables";
+  const label = GROUP_LABELS.get(group);
+  if (label !== undefined) return label;
+  const named = NAMED_GROUPS.find(([prefix]) => group.startsWith(prefix));
+  return named ? `${named[1]}: ${name ?? ""}` : "Project Variables";
 }
+
+/** The headers of the groups with one fixed name. */
+const GROUP_LABELS: ReadonlyMap<string, string> = new Map([
+  ["control", "This control"],
+  ["system", "System"],
+  ["ui", "UI"],
+  ["trigger", "What ran this macro"],
+  ["fired", "What fired this trigger"],
+]);
+
+/** The groups named after their device, plugin or page: the id's prefix and
+ *  the header's first word. */
+const NAMED_GROUPS: readonly (readonly [string, string])[] = [
+  ["device:", "Device"],
+  ["plugin:", "Plugin"],
+  ["ui:", "UI"],
+];
 
 /** One `trigger.<field>` row of the picker's "What ran this macro" group. */
 export interface TriggerFieldRow {
