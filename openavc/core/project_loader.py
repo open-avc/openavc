@@ -354,6 +354,11 @@ class MacroStep(_ForwardCompatModel):
     event: str | None = None
     payload: dict[str, Any] | None = None
     page: str | None = None  # ui.navigate: target page id, or "$back" / "$dismiss" to pop overlay
+    # ui.subpage: the container field names the subpage_container element to
+    # switch; page here names the SUB-PAGE to show in it (page_type "subpage").
+    # ui.subpage 步骤：container 指向要切换的 subpage_container 元素；这里的
+    # page 指容器内要显示的子页面（page_type 为 "subpage" 的页面）。
+    container: str | None = None
     description: str | None = None  # human-readable step description (for progress display)
 
     # Conditional step fields (action == "conditional")
@@ -544,6 +549,24 @@ class UIElement(_ForwardCompatModel):
     # page_nav: lit (accent fill) while its target page or overlay is on this
     # panel's screen. Absent is off, so a nav saved before it existed is unchanged.
     highlight_current: bool | None = None
+    # Sub-page container fields (subpage_container element only).
+    # 子页面容器字段（仅 subpage_container 元素读取）。
+    #
+    # default_page: the sub-page the container shows when its host page is
+    # drawn (before any ui.subpage switches it). A sub-page is a page of type
+    # "subpage" and is not directly navigable -- it only draws inside a
+    # container, so it names no history, no $back walk and no idle page.
+    # default_page：容器随宿主页绘制时显示的子页面（在任何 ui.subpage 切换之前）。
+    # 子页面是 page_type 为 "subpage" 的页面，不可直接导航——只绘制在容器内，
+    # 不进入历史、$back 栈与空闲页。
+    default_page: str | None = None
+    # subpage_fit: how the shown sub-page fills the container box. "fill"
+    # (default) stretches the sub-page's percentage coordinates onto the box;
+    # "contain" scales uniformly and letterboxes the leftover space with the
+    # container's background, so a differently-shaped design is never warped.
+    # subpage_fit：子页面如何填满容器框。"fill"（默认）把子页面的百分比坐标
+    # 直接拉伸到容器框；"contain" 等比缩放，余下空间用容器背景补齐，避免变形。
+    subpage_fit: str | None = None
     options: list[dict[str, Any]] | None = None
     placeholder: str | None = None
     src: str | None = None

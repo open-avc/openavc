@@ -54,6 +54,13 @@ def _master_without_page(master: Any, page_id: str) -> None:
 def _control_without_page(el: Any, page_id: str) -> None:
     if el.type == "page_nav" and el.target_page == page_id:
         el.target_page = ""
+    # A container whose default was the deleted sub-page starts empty, like
+    # one never given a default -- the same repair the Builder's page delete
+    # makes, since the two scrubbers must leave the same project.
+    # 初始子页面恰是被删除子页面的容器从空白开始，如同从未设置过默认页——
+    # 与 Builder 删除页面的修复一致，两个清理器必须产出相同的项目。
+    if el.type == "subpage_container" and getattr(el, "default_page", None) == page_id:
+        el.default_page = ""
     _without_moves_to(el, page_id)
     _rows_without_moves(el, page_id)
 
@@ -149,9 +156,13 @@ def _routed_rows(el: Any) -> list:
 
 
 def _moves_to(action: Any, page_id: str) -> bool:
+    # A ui.subpage that would show the deleted page is a move to it too: the
+    # switch loses its sub-page whole, like a nav to a deleted page.
+    # 会显示被删除页面的 ui.subpage 同样算指向它：切换动作整个删除，与导航
+    # 到被删页面一致。
     return (
         isinstance(action, dict)
-        and action.get("action") == "ui.navigate"
+        and action.get("action") in ("ui.navigate", "ui.subpage")
         and action.get("page") == page_id
     )
 
@@ -179,7 +190,10 @@ def _steps_without_page(steps: list, page_id: str) -> list:
 
 
 def _step_moves_to(step: Any, page_id: str) -> bool:
-    return getattr(step, "action", None) == "ui.navigate" and getattr(step, "page", None) == page_id
+    return (
+        getattr(step, "action", None) in ("ui.navigate", "ui.subpage")
+        and getattr(step, "page", None) == page_id
+    )
 
 
 def _branches_without_page(step: Any, page_id: str) -> None:
@@ -202,6 +216,14 @@ def _group_without_page(group: Any, page_id: str) -> None:
 
 def _idle_page_without(ui: Any, page_id: str) -> None:
     """An idle page that was the deleted one falls to the first page left, or
-    to none when no page is."""
+    to none when no page is. The idle return is a page move, so the fallback
+    skips sub-pages -- the same repair the Builder's page delete makes, since
+    the two scrubbers must leave the same project.
+    空闲返回是页面切换，回落跳过子页面——与 Builder 删除页面的修复一致，
+    两个清理器必须产出相同的项目。"""
     if ui.settings.idle_page == page_id:
-        ui.settings.idle_page = ui.pages[0].id if ui.pages else ""
+        regular = next(
+            (p for p in ui.pages if getattr(p, "page_type", "page") != "subpage"),
+            None,
+        )
+        ui.settings.idle_page = regular.id if regular is not None else ""

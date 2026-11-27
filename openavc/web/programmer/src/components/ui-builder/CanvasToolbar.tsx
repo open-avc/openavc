@@ -34,6 +34,7 @@ import {
   RectangleHorizontal,
   RectangleVertical,
   Code2,
+  PictureInPicture2,
 } from "lucide-react";
 import type { MacroConfig, UIConfig, UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -151,7 +152,11 @@ function pageDeleteEdit(ui: UIConfig, macros: MacroConfig[], pageId: string) {
  *  one falls to the first page left, or to none. The same settings otherwise. */
 function settingsWithoutPage(ui: UIConfig, pageId: string, pagesLeft: UIPage[]): UIConfig["settings"] {
   if (ui.settings?.idle_page !== pageId) return ui.settings;
-  return { ...ui.settings, idle_page: pagesLeft[0]?.id || "" };
+  // The idle return is a page move, so the fallback skips sub-pages: the first
+  // regular page left, or none (回落跳过子页面：空闲返回是页面切换，取剩下的
+  // 第一个普通页面，没有则留空).
+  const regular = pagesLeft.find((p) => (p.page_type ?? "page") !== "subpage");
+  return { ...ui.settings, idle_page: regular?.id || "" };
 }
 
 export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = null, trailing }: CanvasToolbarProps) {
@@ -280,7 +285,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
     setRenamingGroupName(null);
   };
 
-  const handleAddPage = (pageType: "page" | "overlay" | "sidebar" = "page") => {
+  const handleAddPage = (pageType: "page" | "overlay" | "sidebar" | "subpage" = "page") => {
     if (!ui) return;
     const newPages = addPage(ui.pages, pageType);
     const newPageId = newPages[newPages.length - 1].id;
@@ -488,6 +493,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
         )}
         {!isCustomPage(page) && page.page_type === "sidebar" && (
           <PanelRight size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        )}
+        {!isCustomPage(page) && page.page_type === "subpage" && (
+          <PictureInPicture2 size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         )}
         {renamingPageId === page.id ? (
           <input
@@ -736,6 +744,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = 
                     { type: "page" as const, label: "Page", icon: null },
                     { type: "overlay" as const, label: "Overlay", icon: <Layers size={12} /> },
                     { type: "sidebar" as const, label: "Sidebar", icon: <PanelRight size={12} /> },
+                    { type: "subpage" as const, label: "Sub-page", icon: <PictureInPicture2 size={12} /> },
                   ] as const
                 ).map((item) => (
                   <button

@@ -354,8 +354,28 @@ def reference_lookups(
     ``device_ids`` is :func:`longest_first` of the project, which
     :func:`range_lookup` reads too.
     """
+    # Sub-pages and sub-page containers, for the sub-page rules in
+    # reference_findings: sub-pages are not navigable, and a container's
+    # default page must be one of these.
+    # 子页面与子页面容器集合，供 reference_findings 的子页面规则使用：
+    # 子页面不可直接导航，容器的默认页必须是其中之一。
+    subpage_ids = {
+        p.id for p in project.ui.pages
+        if getattr(p, "page_type", "page") == "subpage"
+    }
+    container_ids = {
+        e.id
+        for page in project.ui.pages
+        for e in (page.elements or [])
+        if getattr(e, "type", "") == "subpage_container"
+    } | {
+        m.id for m in (project.ui.master_elements or [])
+        if getattr(m, "type", "") == "subpage_container"
+    }
     return {
         "page_ids": {p.id for p in project.ui.pages},
+        "subpage_ids": subpage_ids,
+        "container_ids": container_ids,
         "device_ids": set(device_ids),
         "macro_ids": {m.id for m in project.macros},
         "device_commands": lambda device_id: declared_commands(devices, device_id),

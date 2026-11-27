@@ -52,7 +52,7 @@ import {
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
 import {
-    closeOverlayFrame, drawOverlayFrame, fallbackPage, isCustomPage, namesPage, opensOver, pageBehind,
+    closeOverlayFrame, drawOverlayFrame, fallbackPage, isCustomPage, isSubPage, namesPage, opensOver, pageBehind,
     pageDrawsNothing, pageRunsAuthorMarkup, rememberPage,
 } from './modules/pages.js';
 import {
@@ -84,6 +84,14 @@ const FRAMES = new Map([
     ['ui.files', (app, msg) => app._takeFilesVersion(msg)],
     ['themes.changed', (app, msg) => { if (!app.embedded) app.theme.takeChange(msg.theme_id); }],
     ['ui.navigate', (app, msg) => { if (msg.page_id) app.navigateToPage(msg.page_id); }],
+    // A sub-page container shows a different sub-page. Broadcast to every
+    // panel, like ui.navigate: a room's panels switch together, and a panel
+    // not showing the container ignores it.
+    // 子页面容器切换到另一个子页面。像 ui.navigate 一样广播到所有面板：房间
+    // 里的面板一起切换，未显示该容器的面板忽略即可。
+    ['ui.subpage', (app, msg) => {
+        if (msg.container_id && msg.page_id) app.showSubpage(msg.container_id, msg.page_id);
+    }],
     ['macro.started', (app, msg) => app.macroRuns.started(msg)],
     ['macro.progress', (app, msg) => app.macroRuns.progress(msg)],
     ['macro.step_error', (app, msg) => app.macroRuns.stepFailed(msg)],
@@ -189,6 +197,20 @@ class PanelApp {
         this._bindingRafId = null;       // requestAnimationFrame ID
         this.pageHistory = [];       // Stack of previously-visited regular pages (newest on top) for $back
         this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
+        // The sub-page each container last showed, by container element id.
+        // Client memory, like currentPage: a fresh panel starts each container
+        // on its default_page, and a switching frame only moves containers
+        // that are on screen.
+        // 每个容器最近显示的子页面，按容器元素 id 记忆。与 currentPage 一样是
+        // 客户端记忆：新打开的面板让每个容器从 default_page 开始，切换帧只
+        // 移动屏幕上存在的容器。
+        this._subpageShown = new Map();
+        // The sub-pages this panel is drawing right now, outermost first: a
+        // container whose target is already on the chain draws empty rather
+        // than recursing into itself forever.
+        // 当前正在绘制的子页面，由外到内：目标已在链上的容器绘制为空，而不是
+        // 无限递归。
+        this._subpageChain = [];
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
         // The macro runs in flight and which of them this panel started
         // (modules/macro_runs.js).
@@ -917,6 +939,12 @@ class PanelApp {
         const pages = this.uiDef?.pages || [];
         const targetPage = pages.find(p => p.id === pageId);
         if (!targetPage) return;
+        // A sub-page is content for a sub-page container, not a destination:
+        // navigating to one does nothing, here and for every path that lands
+        // on navigateToPage (a button, a macro, `?page=`, the idle return).
+        // 子页面是子页面容器的内容，不是导航目的地：导航到它不产生任何效果。
+        // 按钮、宏、?page= 链接与空闲返回最终都走到这里，一处拦截即全部覆盖。
+        if (isSubPage(targetPage)) return;
 
         // The message names a press on the page being left, and the control it
         // was avoiding is about to be gone.
@@ -1263,10 +1291,30 @@ class PanelApp {
         this._surfaces.page = new Surface(nextPageId);
     }
 
-    /** The page to draw: the current one, else the one standing in for it (made current); null when there are no pages. */
+    /**
+     * The page to draw: the current one, else the one standing in for it (made
+     * current); null when there are no pages. A sub-page is never a
+     * destination on the glass: `?page=`, the idle return and a stale
+     * currentPage all resolve here, so a sub-page named by any of them falls
+     * back to a regular page. Edit mode keeps flat rendering -- the Builder's
+     * canvas previews the sub-page being authored.
+     * 要绘制的页面：当前页，否则顶替它的页面（并设为当前）；没有页面时为
+     * null。子页面在玻璃上永远不是目的地：`?page=` 链接、空闲返回与残留的
+     * currentPage 都在此解析，指名子页面时回落到普通页面。编辑模式保持平铺
+     * 渲染——Builder 画布要预览正在编写的子页面。
+     */
     _pageToDraw() {
         const pages = this.uiDef.pages || [];
-        const page = pages.find(p => p.id === this.currentPage) || (pages.length ? fallbackPage(pages) : null);
+        const page = pages.find(p => p.id === this.currentPage && (this.editMode || !isSubPage(p)))
+            || (pages.length ? fallbackPage(pages) : null);
+        // The fallback can still answer a sub-page -- a project holding only
+        // sub-pages hands `pages[0]` to it -- and the glass must not show a
+        // page that was never a destination. Edit mode keeps it, for
+        // authoring a panel that has no regular page yet.
+        // 兜底仍可能拿到子页面——只有子页面的项目会把 pages[0] 递给它——玻璃
+        // 上不能画一个从不是目的地的页面。编辑模式保留它，供创作尚无普通页面
+        // 的面板。
+        if (page && !this.editMode && isSubPage(page)) return null;
         if (page) this.currentPage = page.id;
         return page;
     }
@@ -2142,6 +2190,254 @@ class PanelApp {
             this._preloadStatePictures(element.bindings.show.look);
         }
         return el;
+    }
+
+    // --- Sub-page container ---
+    // --- 子页面容器 ---
+
+    /**
+     * A window onto a sub-page: a box on the host page whose content is one
+     * sub-page's elements, drawn by the very same code that draws a page, into
+     * a surface of the container's own. The surface ends with the surface it
+     * was opened on (a page, an overlay, or an outer container), so every
+     * timer and binding a sub-page's controls started goes with what holds it.
+     *
+     * 子页面容器：宿主页上的一个窗口，内容是某个子页面的元素——用与绘制页面
+     * 完全相同的代码，绘制进容器自己的 Surface。该 Surface 随打开它的宿主
+     * （页面、弹窗或外层容器）一起结束，因此子页面控件启动的定时器与绑定都
+     * 随宿主一起清理。
+     */
+    renderSubpageContainer(element) {
+        const el = document.createElement('div');
+        el.className = 'panel-element panel-subpage';
+        el.dataset.elementId = element.id;
+
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
+
+        // The container's two knobs, read here where the renderer lives: which
+        // sub-page it opens with, and how that sub-page fills the box. The
+        // helpers below take the resolved values, so a switch that re-opens
+        // the container passes what the element says the same way.
+        // 容器的两个开关，在渲染器自身读取：初始子页面，以及子页面如何填满
+        // 容器。下方的辅助方法拿解析后的值，切换路径重新打开容器时以同样方式
+        // 传入元素所言。
+        const defaultPage = element.default_page || '';
+        const fit = element.subpage_fit === 'contain' ? 'contain' : 'fill';
+
+        // Appearance: the frame's colour or background picture per state, the
+        // same look binding a group draws (外观：外框颜色/背景随状态，与 group
+        // 同一种 look 绑定).
+        if (element.bindings?.show?.look) {
+            this.bindings.push({
+                type: 'group_look',
+                element: el,
+                elementDef: element,
+                binding: element.bindings.show.look,
+            });
+            this._preloadStatePictures(element.bindings.show.look);
+        }
+
+        const host = document.createElement('div');
+        host.className = 'subpage-host';
+        el.appendChild(host);
+
+        this._startSubpage(element, host, undefined, defaultPage, fit);
+        return el;
+    }
+
+    /**
+     * Open a sub-page in a container: the one last shown, else the container's
+     * default, else the box stays empty until a `ui.subpage` names it. The
+     * panel remembers the last one per container (`_subpageShown`), so a page
+     * redraw -- an orientation flip, a state-driven visible_when -- restores
+     * what was showing, exactly as a page redraw keeps its page.
+     *
+     * The container registers whatever it shows, empty included: a container
+     * with no default must still be a switch target, and `showSubpage` finds
+     * its entries here. A sub-page that is already on the draw chain (a
+     * container naming its own page, or two containers cycling through each
+     * other) draws nothing rather than recursing forever.
+     *
+     * 在容器中打开子页面：优先显示面板记忆的上一个（已失效则清除记忆），否则
+     * 用 default_page，两者都没有则留空，直到某个 `ui.subpage` 指名。面板按
+     * 容器记忆（_subpageShown），因此页面重绘——横竖屏翻转、状态驱动的
+     * visible_when——会恢复正在显示的子页面，正如页面重绘保持当前页面一样。
+     *
+     * 无论是否为空，容器一律注册：没有默认页的容器仍须是切换目标，showSubpage
+     * 要能在此找到它。目标子页面已在绘制链上（容器指名自己所在页，或两个容器
+     * 互指成环）时绘制为空，而不是无限递归。
+     */
+    _startSubpage(containerDef, host, hostSurface = this._surfaces.drawing, defaultPage = '', fit = 'fill') {
+        const pages = this.uiDef?.pages || [];
+        let wanted = this._subpageShown.get(containerDef.id) || '';
+        if (wanted && !pages.some((p) => p.id === wanted && isSubPage(p))) {
+            // The remembered page went away (deleted elsewhere): drop the stale
+            // memory so the default gets its turn.
+            // 记忆的页面已不存在（在别处被删除）：清除失效记忆，让默认页顶上。
+            this._subpageShown.delete(containerDef.id);
+            wanted = '';
+        }
+        if (!wanted) wanted = defaultPage;
+        const target = pages.find((p) => p.id === wanted && isSubPage(p));
+
+        const child = new Surface(target ? target.id : null);
+        child.host = host;
+        child.containerDef = containerDef;
+        child.hostSurface = hostSurface;
+        child.fit = fit;
+        // End with the surface this container was drawn on -- passed in when
+        // switching (showSubpage runs outside any draw, when `drawing` would
+        // answer the page even for a container living on an overlay). An
+        // identity check on the way out: a switch has already replaced the
+        // entry, and the host ending then must not drop the new one. The
+        // unregisterer comes back so a replaced child stops listening to its
+        // old host -- without it a long-lived page keeps every switched-out
+        // child's cleanup forever.
+        // 随容器绘制所在的宿主 Surface 一起结束——切换时（showSubpage 运行在
+        // 任何绘制之外，此时 drawing 对弹窗中的容器也会答成页面）由调用方显式
+        // 传入。清理时做同一性检查：容器若已切换，宿主结束不能误删新条目。
+        // 登记时留下注销函数，被替换的子项凭它解除对旧宿主的监听——否则长寿
+        // 页面会永久积累每个被切走的子项的清理回调。
+        child._hostUnregister = hostSurface.onEnd(() => {
+            child.end();
+            if (this._surfaces.containers.get(containerDef.id) === child) {
+                this._surfaces.containers.delete(containerDef.id);
+            }
+        });
+
+        this._surfaces.drawInContainer(containerDef.id, child, () => {
+            // A page already on the chain is one this draw is inside: drawing
+            // it again here would recurse without an exit (a container naming
+            // its own page, or two containers cycling), ending in a stack
+            // overflow. An empty box and a warning say so instead.
+            // 链上已有的页面即本次绘制所处的页面：在此重画会无出口地递归（容器
+            // 指名自己所在页，或两个容器互指成环），以栈溢出告终。改为空框加
+            // 一条警告说明原因。
+            if (target && !this._subpageChain.includes(target.id)) {
+                this._subpageChain.push(target.id);
+                try {
+                    this._drawSubpageContent(target, child, host, child.fit);
+                } finally {
+                    this._subpageChain.pop();
+                }
+            } else if (target) {
+                console.warn('Sub-page cycle:', containerDef.id, '->', target.id);
+            }
+        });
+        if (target) this._subpageShown.set(containerDef.id, target.id);
+        return child;
+    }
+
+    /**
+     * Draw one sub-page's elements into its host. The sub-page is designed
+     * like any page, so its elements place by percentage onto whatever holds
+     * them -- the container box here, the screen for a page. `fill` stretches
+     * them onto the box; `contain` sizes an inner box to the glass's aspect,
+     * centred, so a differently-shaped container letterboxes rather than
+     * warps. Masters never draw here: a sub-page is content, the frame around
+     * it belongs to the host page.
+     *
+     * 把一个子页面的元素绘制进容器。子页面与普通页面同样设计，其元素按百分比
+     * 定位到承载物上——这里是容器框，页面上则是整屏。fill 直接拉伸到容器框；
+     * contain 以玻璃纵横比取内框并居中，形状不同的容器留边而不变形。master
+     * 元素绝不在此绘制：子页面是内容，周围的框架属于宿主页面。
+     */
+    _drawSubpageContent(subPage, surface, host, fit) {
+        const wrap = document.createElement('div');
+        wrap.className = `subpage-content subpage-content-${fit}`;
+        host.appendChild(wrap);
+        if (fit === 'contain') this._fitSubpage(wrap, surface);
+
+        const layout = selectLayout(subPage, viewportOrientation());
+        // A tile wall's grid follows the arrangement it is drawn in: the
+        // sub-page's own orientation here, then the host's back for whatever
+        // draws after this container.
+        // 磁贴墙的网格跟随其绘制所在的排布：这里取子页面自己的方向，容器画完
+        // 后恢复宿主的，供后续元素使用。
+        const hostOrientation = this._drawnOrientation;
+        this._drawnOrientation = layout.orientation || 'landscape';
+        drawElementTree(subPage, layout, wrap, {
+            entryAnimation: 'none',
+            keep: (timer) => surface.keep(timer),
+            element: (def) => this.renderElement(def),
+            visibleWhen: (node, def) => this.registerVisibleWhen(node, def),
+        });
+        this._drawnOrientation = hostOrientation;
+        return layout;
+    }
+
+    /**
+     * Size a `contain` box to the glass's aspect, within its container. The
+     * observer answers placement, an orientation flip and a resize alike; it
+     * ends with the surface, as everything the container started does.
+     *
+     * 以玻璃纵横比在容器内给 contain 盒定尺寸。观察器同时应对落位、横竖屏
+     * 翻转与窗口变化；它随 Surface 结束，与容器启动的一切一致。
+     */
+    _fitSubpage(wrap, surface) {
+        const fit = () => {
+            const box = wrap.parentNode.getBoundingClientRect();
+            if (!box.width || !box.height) return;
+            const aspect = window.innerWidth / window.innerHeight;
+            let w = box.width;
+            let h = w / aspect;
+            if (h > box.height) {
+                h = box.height;
+                w = h * aspect;
+            }
+            wrap.style.width = `${w}px`;
+            wrap.style.height = `${h}px`;
+        };
+        const observer = new ResizeObserver(fit);
+        observer.observe(wrap.parentNode);
+        surface.onEnd(() => observer.disconnect());
+        fit();
+    }
+
+    /**
+     * A `ui.subpage` frame or the Builder's preview names a container to
+     * switch. Panels not showing that container do nothing -- a broadcast
+     * reaches every panel, and only the ones whose host page is up have
+     * anything to move.
+     *
+     * `ui.subpage` 帧或 Builder 预览指名切换某个容器。未显示该容器的面板不做
+     * 任何事——广播会到达每个面板，只有宿主页正在显示的面板才有东西可切。
+     */
+    showSubpage(containerId, pageId) {
+        const current = this._surfaces.containers.get(containerId);
+        if (!current) return;
+        const pages = this.uiDef?.pages || [];
+        const target = pages.find((p) => p.id === pageId);
+        if (!target || !isSubPage(target)) {
+            console.warn('ui.subpage: target is not a sub-page:', pageId);
+            return;
+        }
+        if (current.pageId === pageId) return;
+        // The memory goes down first: the new surface's draw reads it, and a
+        // redraw racing the switch restores the page asked for. The replaced
+        // child then stops listening to its old host, or the page accumulates
+        // one cleanup per switch forever.
+        // 先写记忆：新 Surface 的绘制会读它，与切换赛跑的重绘也能恢复到目标页。
+        // 被替换的子项随即解除对旧宿主的监听，否则页面会随切换次数永久积累
+        // 清理回调。
+        this._subpageShown.set(containerId, pageId);
+        current.end();
+        if (current._hostUnregister) current._hostUnregister();
+        if (this._surfaces.containers.get(containerId) === current) {
+            this._surfaces.containers.delete(containerId);
+        }
+        const host = current.host;
+        if (host) host.textContent = '';
+        // Re-open with what the container's element says -- the same defaults a
+        // fresh draw would take (以元素所言重新打开——与全新绘制同样的默认).
+        this._startSubpage(
+            current.containerDef,
+            host,
+            current.hostSurface,
+            current.containerDef.default_page || '',
+            current.containerDef.subpage_fit === 'contain' ? 'contain' : 'fill',
+        );
+        this.evaluateAllBindings();
     }
 
     // --- Clock ---

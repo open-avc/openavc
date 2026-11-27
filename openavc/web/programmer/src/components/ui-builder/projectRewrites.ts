@@ -281,11 +281,17 @@ export function renameElement(
 
 // --- Deleting a page ---
 
-/** Whether an action is a move to the page being deleted. */
+/** Whether an action is a move to the page being deleted: a `ui.navigate` to
+ *  it, or a `ui.subpage` that would show it (a sub-page deleted with its
+ *  page). A sub-page switch that loses its sub-page is dropped whole, like a
+ *  nav to a deleted page -- what would be left names nothing the panel draws.
+ *  动作是否指向被删除的页面：导航到它，或会显示它的 ui.subpage（子页面随页
+ *  面一起删除）。失去子页面的切换动作整个删除，与删除页面的导航一致——留下
+ *  的部分指向面板不会绘制的东西。 */
 function isMoveTo(action: unknown, pageId: string): boolean {
   if (!action || typeof action !== "object") return false;
   const a = action as Record<string, unknown>;
-  return a.action === "ui.navigate" && a.page === pageId;
+  return (a.action === "ui.navigate" || a.action === "ui.subpage") && a.page === pageId;
 }
 
 /** A list of actions without its moves to the deleted page, and what each one
@@ -381,11 +387,19 @@ function rowsWithoutMoves<T extends UIElement | MasterElement>(el: T, pageId: st
   }) as unknown as T;
 }
 
-/** A control with what pointed at the deleted page cleared. */
+/** A control with what pointed at the deleted page cleared: a nav's target,
+ *  and a container's default when the page deleted was the sub-page it opened
+ *  with (the container then starts empty, like one never given a default).
+ *  清除控件上指向被删除页面的东西：导航的目标页，以及容器在删除页恰是其
+ *  初始子页面时的 default_page（容器随后从空白开始，如同从未设置过默认页）。 */
 function controlWithoutPage<T extends UIElement | MasterElement>(el: T, pageId: string): T {
-  const untargeted = el.type === "page_nav" && el.target_page === pageId
-    ? { ...el, target_page: "" }
-    : el;
+  let untargeted = el;
+  if (el.type === "page_nav" && el.target_page === pageId) {
+    untargeted = { ...el, target_page: "" };
+  }
+  if (el.type === "subpage_container" && (el as UIElement).default_page === pageId) {
+    untargeted = { ...untargeted, default_page: "" };
+  }
   return rowsWithoutMoves(withoutMovesTo(untargeted, pageId), pageId);
 }
 

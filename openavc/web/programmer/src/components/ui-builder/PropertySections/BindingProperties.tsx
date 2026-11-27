@@ -72,6 +72,15 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
   const deviceIds = new Set(project.devices.map((d) => d.id));
   const macroIds = new Set(project.macros.map((m) => m.id));
   const pageIds = new Set(project.ui.pages.map((p) => p.id));
+  const subpageIds = new Set(project.ui.pages.filter((p) => (p.page_type ?? "page") === "subpage").map((p) => p.id));
+  const containerIds = new Set(
+    [
+      ...project.ui.pages.flatMap((p) => p.elements ?? []),
+      ...project.ui.master_elements ?? [],
+    ]
+      .filter((el) => el.type === "subpage_container")
+      .map((el) => el.id),
+  );
 
   const commit = (nextShow: Record<string, unknown>, nextDo: Record<string, unknown>) => {
     const next: Record<string, unknown> = { ...bindings };
@@ -128,7 +137,7 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
   }, [commandSignature]);
 
   // --- status helpers (inline broken/incomplete badges, matching the old panel) ---
-  const refIds = { deviceIds, macroIds, pageIds };
+  const refIds = { deviceIds, macroIds, pageIds, subpageIds, containerIds };
   const actionsStatus = (raw: unknown): CardStatus | null => {
     const actions = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
     for (const a of actions as Record<string, unknown>[]) {

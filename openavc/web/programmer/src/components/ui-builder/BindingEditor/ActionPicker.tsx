@@ -52,6 +52,10 @@ const ACTION_TYPES = (navigateAction: string, variablesOnly?: boolean) => [
   { value: "device.command", label: "Device Command" },
   { value: "state.set", label: variablesOnly ? "Set Variable" : "Set Variable or Control" },
   { value: navigateAction, label: "Navigate Page" },
+  // Panel-only: a sub-page switch names a container element, which a control
+  // surface's deck-page move knows nothing about.
+  // 仅面板绑定可用：子页面切换要指名容器元素，控制表面的 deck 页切换与此无关。
+  ...(navigateAction === "ui.navigate" ? [{ value: "ui.subpage", label: "Show Sub-page" }] : []),
   { value: "script.call", label: "Script Function" },
   { value: "event.emit", label: "Emit Event" },
 ];
@@ -122,6 +126,9 @@ export function ActionPicker({ value, project, onChange, forChangeBinding, allow
           navigateOptions={navigateOptions}
           navigateAction={navigateAction}
         />
+      )}
+      {actionType === "ui.subpage" && (
+        <SubpageConfig value={value} project={project} onChange={onChange} />
       )}
       {actionType === "script.call" && (
         <ScriptCallConfig value={value} onChange={onChange} eventTokens={eventTokens} />
@@ -571,6 +578,71 @@ function NavigateConfig({
         searchPlaceholder="Search pages..."
       />
     </div>
+  );
+}
+
+/**
+ * Which container to switch and which sub-page to show in it. The container
+ * picker lists every subpage_container element in the project, grouped by the
+ * page it sits on (a container on a page that is not showing does nothing at
+ * runtime, so knowing where it lives is part of choosing it). The page picker
+ * offers sub-pages only: a regular page named here is the wrong action, and
+ * the panel refuses it.
+ * 切换哪个容器、在其中显示哪个子页面。容器选择器列出项目中全部
+ * subpage_container 元素，按所在页面分组（宿主页未显示时运行时不会有任何
+ * 效果，所以"容器在哪一页"本身就是选择信息）。页面选择器只提供子页面：
+ * 在这里填普通页面是选错了动作，面板会拒绝。
+ */
+function SubpageConfig({
+  value,
+  project,
+  onChange,
+}: {
+  value: Record<string, unknown> | null;
+  project: ProjectConfig;
+  onChange: (v: Record<string, unknown>) => void;
+}) {
+  const containersByPage: { label: string; options: { value: string; label: string; hint?: string }[] }[] = [];
+  for (const page of project.ui.pages) {
+    const containers = (page.elements ?? []).filter((el) => el.type === "subpage_container");
+    if (containers.length > 0) {
+      containersByPage.push({
+        label: page.name || page.id,
+        options: containers.map((el) => ({ value: el.id, label: el.label || el.id, hint: el.id })),
+      });
+    }
+  }
+  const masters = (project.ui.master_elements ?? []).filter((el) => el.type === "subpage_container");
+  if (masters.length > 0) {
+    containersByPage.push({
+      label: "Master Elements",
+      options: masters.map((el) => ({ value: el.id, label: el.label || el.id, hint: el.id })),
+    });
+  }
+  const subpages = project.ui.pages.filter((p) => (p.page_type ?? "page") === "subpage");
+  return (
+    <>
+      <div>
+        <label style={labelStyle}>Container</label>
+        <SearchableSelect
+          value={String(value?.container || "")}
+          onChange={(container) => onChange({ action: "ui.subpage", container })}
+          groups={containersByPage}
+          placeholder="Select container..."
+          searchPlaceholder="Search containers..."
+        />
+      </div>
+      <div>
+        <label style={labelStyle}>Sub-page</label>
+        <SearchableSelect
+          value={String(value?.page || "")}
+          onChange={(page) => onChange({ action: "ui.subpage", container: value?.container, page })}
+          groups={[{ options: subpages.map((p) => ({ value: p.id, label: p.name || p.id, hint: p.id })) }]}
+          placeholder="Select sub-page..."
+          searchPlaceholder="Search sub-pages..."
+        />
+      </div>
+    </>
   );
 }
 

@@ -150,6 +150,9 @@ export function StepEditor({ step, macros, currentMacroId, onChange, activeStepP
     case "ui.navigate":
       editor = <UINavigateEditor step={step} onChange={update} />;
       break;
+    case "ui.subpage":
+      editor = <UISubpageEditor step={step} onChange={update} />;
+      break;
     case "help.request":
       editor = <AskForHelpEditor step={step} onChange={update} />;
       break;
@@ -1041,6 +1044,83 @@ function UINavigateEditor({
       </div>
       {pages.length === 0 && (
         <div style={hintStyle}>This project has no pages yet. Add pages in the UI Builder first.</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Which container switches and which sub-page it shows. The container picker
+ * lists every subpage_container element in the project by its host page; the
+ * page picker offers sub-pages only -- a regular page cannot be shown in a
+ * container, and the runtime refuses one named here.
+ * 选择要切换的容器与要显示的子页面。容器选择器按宿主页列出项目内全部
+ * subpage_container 元素；页面选择器只提供子页面——普通页面无法在容器中
+ * 显示，运行时会拒绝。
+ */
+function UISubpageEditor({
+  step,
+  onChange,
+}: {
+  step: MacroStep;
+  onChange: (patch: Partial<MacroStep>) => void;
+}) {
+  const project = useProjectStore((s) => s.project);
+  const pages = project?.ui?.pages ?? [];
+  const masterElements = project?.ui?.master_elements ?? [];
+
+  const containerGroups: { label: string; options: { value: string; label: string; hint?: string }[] }[] = [];
+  for (const page of pages) {
+    const containers = (page.elements ?? []).filter((el) => el.type === "subpage_container");
+    if (containers.length > 0) {
+      containerGroups.push({
+        label: page.name || page.id,
+        options: containers.map((el) => ({ value: el.id, label: el.label || el.id, hint: el.id })),
+      });
+    }
+  }
+  if (masterElements.length > 0) {
+    const masters = masterElements.filter((el) => el.type === "subpage_container");
+    if (masters.length > 0) {
+      containerGroups.push({
+        label: "Master Elements",
+        options: masters.map((el) => ({ value: el.id, label: el.label || el.id, hint: el.id })),
+      });
+    }
+  }
+  const subpages = pages.filter((p) => (p.page_type ?? "page") === "subpage");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <HelpText>
+        Switch which sub-page a <strong>sub-page container</strong> shows, without moving any panel to another
+        page. Both ids have to exist: the container must be a sub-page container element, and the page a
+        sub-page (page_type <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>subpage</code>).
+      </HelpText>
+      <div style={rowStyle}>
+        <label style={labelStyle}>Container</label>
+        <SearchableSelect
+          value={step.container ?? ""}
+          onChange={(container) => onChange({ container })}
+          groups={containerGroups}
+          placeholder="Select container..."
+          searchPlaceholder="Search containers..."
+          style={pickerStyle}
+        />
+      </div>
+      <div style={rowStyle}>
+        <label style={labelStyle}>Sub-page</label>
+        <SearchableSelect
+          value={step.page ?? ""}
+          onChange={(page) => onChange({ page })}
+          groups={[{ options: subpages.map((p) => ({ value: p.id, label: p.name || p.id, hint: p.id })) }]}
+          placeholder="Select sub-page..."
+          searchPlaceholder="Search sub-pages..."
+          style={pickerStyle}
+        />
+      </div>
+      {subpages.length === 0 && (
+        <div style={hintStyle}>This project has no sub-pages yet. Add one in the UI Builder (Page Type: Sub-page).</div>
       )}
     </div>
   );

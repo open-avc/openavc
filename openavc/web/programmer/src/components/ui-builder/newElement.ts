@@ -73,6 +73,9 @@ export const DEFAULT_ELEMENT_SIZES: Record<string, { w: number; h: number }> = {
   // other two styles (a crosspoint 4x4 needs 275x266, a list 148x168).
   matrix: { w: 33.3333, h: 37.5 },
   custom: { w: 33.3333, h: 37.5 },
+  // A window onto a sub-page: wide enough to read as a content area, not a
+  // tile (够宽，读作内容区而非小卡片).
+  subpage_container: { w: 50, h: 50 },
 };
 
 /** Fallback size for an element type with no entry above (incl. plugins). */
@@ -199,6 +202,10 @@ const NEW_ELEMENT_FIELDS = new Map<string, () => Partial<UIElement>>([
     style: { show_value: true, show_scale: true },
   })],
   ["group", () => ({ label: "Container", label_position: "top-left" })],
+  // No label: a sub-page container is a window, not a captioned region -- the
+  // host page's own labels sit around it (不带 label：子页面容器是窗口而非带
+  // 标题的区域，标题由宿主页面的元素承担).
+  ["subpage_container", () => ({ default_page: "" })],
   ["clock", () => ({ clock_mode: "time" })],
   ["keypad", () => ({
     label: "Keypad",

@@ -44,6 +44,7 @@ export const RENDERERS = new Map([
     ['level_meter', (app, element) => app.renderLevelMeter(element)],
     ['fader', (app, element) => app.renderFader(element)],
     ['group', (app, element) => app.renderGroup(element)],
+    ['subpage_container', (app, element) => app.renderSubpageContainer(element)],
     ['clock', (app, element) => app.renderClock(element)],
     ['keypad', (app, element) => app.renderKeypad(element)],
     ['plugin', (app, element) => app.renderPluginElement(element)],

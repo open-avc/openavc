@@ -157,6 +157,14 @@ export const STEP_TYPES: StepTypeInfo[] = [
     defaults: () => ({ action: "ui.navigate", page: "" }),
   },
   {
+    action: "ui.subpage",
+    label: "Show Sub-page",
+    description: "Switch which sub-page a sub-page container on a page shows",
+    color: "#0ea5e9",
+    summary: (step) => `Show ${step.page ?? "?"} in ${step.container ?? "?"}`,
+    defaults: () => ({ action: "ui.subpage", container: "", page: "" }),
+  },
+  {
     action: "help.request",
     label: "Ask for Help",
     description: "Raise a help request to whoever supports this space",
@@ -631,6 +639,14 @@ function _generateStepLines(
         );
         lines.push(
           `${indent}# (no script API for ui.navigate yet, call from a macro step instead)`
+        );
+        break;
+      case "ui.subpage":
+        lines.push(
+          `${indent}# Show '${_pyComment(step.page ?? "")}' in container '${_pyComment(step.container ?? "")}'`
+        );
+        lines.push(
+          `${indent}# (no script API for ui.subpage yet, call from a macro step instead)`
         );
         break;
       case "help.request":

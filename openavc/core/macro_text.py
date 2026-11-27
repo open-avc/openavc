@@ -56,6 +56,12 @@ def _navigate_text(step: dict[str, Any]) -> str:
     return f"Navigating panel to {page}"
 
 
+def _subpage_text(step: dict[str, Any]) -> str:
+    page = step.get("page", "?")
+    container = step.get("container", "?")
+    return f"Showing {page} in container {container}"
+
+
 # The announcement for each built-in step. A step that never filled a field in
 # still carries the key, holding null, so a nested field reads through `or {}`:
 # a `{}` default would not apply, and this runs while ANNOUNCING the step, so
@@ -72,6 +78,7 @@ _ANNOUNCED: dict[str, Callable[[dict[str, Any]], str]] = {
     "help.request": lambda _s: "Asking for help",
     "help.clear": lambda _s: "Clearing the help request",
     "ui.navigate": _navigate_text,
+    "ui.subpage": _subpage_text,
 }
 
 

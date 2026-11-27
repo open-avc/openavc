@@ -137,7 +137,15 @@ Every panel showing this project follows. Common uses:
 - A recovery macro triggered by a fault that opens an `error_overlay`
 - A schedule-driven macro that opens a `welcome` page in the morning
 
-For switching **modes** within a single page (lecture vs. presentation, video conferencing vs. local source), this is usually the wrong tool. Prefer setting a variable with **Set Variable** and binding element visibility to that variable with the **Shows > Visible when…** card in the UI Builder. That pattern doesn't push every panel to a new page, survives panel reconnects, and keeps the mode state in one place that scripts and other macros can read.
+For switching **modes** within a single page (lecture vs. presentation, video conferencing vs. local source), this is usually the wrong tool. Prefer a **Show Sub-page** step, which swaps what a sub-page container shows without moving any panel off its page, or set a variable with **Set Variable** and bind element visibility to that variable with the **Shows > Visible when…** card in the UI Builder. Only the variable pattern leaves the mode state readable to scripts and other macros; a switch emits `ui.subpage.<container_id>`, which names the container but not the sub-page it now shows. Neither pushes every panel to a new page. See [Sub-pages & the Sub-page Container](ui-builder.md#sub-pages--the-sub-page-container).
+
+### Show Sub-page
+
+A **Show Sub-page** step switches which sub-page a sub-page container shows. It names two ids, and both have to be the right kind: the **container** is a sub-page container element, and the **page** is a sub-page (`page_type: "subpage"`) -- a regular page cannot be shown in a container, and a step naming one is flagged when the macro is saved.
+
+The switch is broadcast the same way Navigate Panel is: every panel showing a page that holds that container switches together, and panels that are elsewhere in the project simply have nothing to move. The container's own per-panel memory (its default sub-page, then whatever was last shown) decides what it opens with.
+
+A trigger can follow the switch: each switch emits `ui.subpage.<container_id>`, so a trigger on event `ui.subpage.*` -- or on one container's id -- fires whenever that container's content changes.
 
 ## Ask for Help
 
