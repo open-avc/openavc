@@ -31,27 +31,39 @@ XDIST_SPREAD = True
 
 
 class _Listener:
-    """A TCP port that takes connections and holds them until it is closed."""
+    """A TCP port that takes connections and holds them until it is closed.
+
+    Closing it frees the port at once, so the test can open it again. On
+    Linux, closing a socket another thread is waiting in ``accept()`` on
+    leaves it listening until that wait ends, so the wait is short and
+    ``close()`` ends it before closing the socket.
+    """
 
     def __init__(self, port: int = 0):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(("127.0.0.1", port))
         self.sock.listen(4)
+        self.sock.settimeout(0.2)
         self.port = self.sock.getsockname()[1]
         self.held: list[socket.socket] = []
+        self._stop = threading.Event()
         self._thread = threading.Thread(target=self._accept, daemon=True)
         self._thread.start()
 
     def _accept(self) -> None:
-        while True:
+        while not self._stop.is_set():
             try:
                 conn, _ = self.sock.accept()
+            except TimeoutError:
+                continue
             except OSError:
                 return
             self.held.append(conn)
 
     def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=2)
         for conn in self.held:
             try:
                 conn.shutdown(socket.SHUT_RDWR)
@@ -129,6 +141,15 @@ def _expect_marks(page: Page, *, away: bool) -> None:
     else:
         expect(reading).not_to_have_class(mark, timeout=EXPECT_TIMEOUT)
         expect(press).not_to_have_class(edge, timeout=EXPECT_TIMEOUT)
+
+
+def test_a_closed_listener_gives_its_port_back_at_once() -> None:
+    """The drop-and-return test below opens the same port again right after
+    closing it, before the server has tried to reach it."""
+    first = _Listener()
+    first.close()
+    again = _Listener(first.port)
+    again.close()
 
 
 def test_the_marks_follow_the_word_as_a_device_drops_and_comes_back(server_factory, page: Page) -> None:
