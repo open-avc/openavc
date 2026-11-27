@@ -134,3 +134,8 @@ def test_the_panel_reads_the_keys_a_condition_names(panel: dict) -> None:
 
 def test_a_visible_when_is_drawn_again_when_the_key_its_value_names_changes(panel: dict) -> None:
     assert panel["redrawKeys"] == [r["expected"] for r in READS]
+    named = [
+        reaches for r, reaches in zip(READS, panel["namedKeyRedraws"], strict=True)
+        if len(r["expected"]) > 1
+    ]
+    assert named and all(reaches is True for reaches in named)

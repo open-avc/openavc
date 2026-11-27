@@ -73,6 +73,7 @@ const NONE = '\u0000none';
     const visibility = await panelModule('visibility.js');
     const fields = await panelModule('fields.js');
     const list = await panelModule('list.js');
+    const availability = await panelModule('availability.js');
 
     const host = { send() {}, keepTimer() {}, remBasePx: 14, state: {} };
     const listOf = (values, state) => {
@@ -206,6 +207,13 @@ const NONE = '\u0000none';
         redrawKeys: reads.map((condition) => visibility.visibilityOf(
             { bindings: { show: { visible_when: condition } } },
         )._keys),
+        // Whether a change to the named key alone reaches the control, as the
+        // panel's redraw filter decides it.
+        namedKeyRedraws: reads.map((condition) => {
+            const named = compare.referencedKey(condition.value);
+            const binding = visibility.visibilityOf({ bindings: { show: { visible_when: condition } } });
+            return named ? availability.changeReaches({ binding }, [named], null) : null;
+        }),
     };
     process.stdout.write(JSON.stringify(out), () => process.exit(0));
 })().catch((e) => {
