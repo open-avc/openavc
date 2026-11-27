@@ -70,7 +70,8 @@ async def apply_tool_change(engine, mutate, *, files=None) -> tuple[dict | None,
     except ValueError as e:
         from openavc.core.installed_equipment import InstalledEquipmentError
         from openavc.core.saved_values import UnknownWordError
-        if isinstance(e, InstalledEquipmentError | UnknownWordError):
+        from openavc.ui.page_edits import PageIssueError
+        if isinstance(e, InstalledEquipmentError | UnknownWordError | PageIssueError):
             return {"error": str(e)}, None
         raise
     note_applied(outcome)

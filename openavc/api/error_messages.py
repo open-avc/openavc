@@ -669,12 +669,13 @@ def describe_change_failure(exc: BaseException) -> ChangeFailure | None:
     )
     from openavc.core.project_loader import ProjectSaveError
     from openavc.core.saved_values import UnknownWordError
+    from openavc.ui.page_edits import PageIssueError
 
     if isinstance(exc, ProjectRevisionConflictError):
         return ChangeFailure(409, "conflict", str(exc))
     if isinstance(exc, InstalledEquipmentError):
         return ChangeFailure(409, "refused", str(exc))
-    if isinstance(exc, UnknownWordError):
+    if isinstance(exc, UnknownWordError | PageIssueError):
         return ChangeFailure(422, "refused", str(exc))
     if isinstance(exc, ProjectInvalidError):
         return ChangeFailure(422, "refused", invalid_project(exc.cause))

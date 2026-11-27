@@ -55,10 +55,13 @@ report cannot come to different conclusions. It reads a project as the panel
 and the runtime do: an interaction written as one action object rather than a
 list runs as a list of one, so it is no issue in a project that holds it
 (a door wraps it before it asks). ``refusal`` joins issues into the sentence a
-door refuses with. Nothing here refuses, and the project model does not ask
-it: a whole-project save or load never refuses a project for an issue it
-already holds, and a door asks only about what it is writing, so a project
-that already holds one still takes every other edit.
+door refuses with. The project model does not ask it: a whole-project save or
+load never refuses a project for an issue it already holds, and a door asks
+only about what it is writing, so a project that already holds one still
+takes every other edit.
+
+What an edit to the running project adds of these, and so is refused for, is
+``ui/page_edits.py``'s; what a load repairs is ``ui/page_repair.py``'s.
 
 What a report says (the Builder's Validate, through
 ``POST /api/ui/page-issues``, and the AI's ``review_ui``) is

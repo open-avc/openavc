@@ -111,10 +111,18 @@ Validate also lists what a page holds that it should not, the same things the AI
 - **A control id that breaks the ID rule**: anything but a lowercase letter followed by lowercase letters, digits and underscores, such as `Power-On`. Rename it in the control's Basic properties.
 - **Two pages with the same id**, or a page id starting with `$`, which the panel reads as one of its own moves.
 - **Arrangements that clash**: two with the same id or the same orientation, or one that inherits from itself, from an arrangement that is not on the page, or round in a loop.
-- **A control in the wrong container**: one that is not on the page, is not a group, or is the control itself or inside it. A master element is never inside a container.
 - **A binding that is not finished, or that the panel cannot read**, such as a toggle with no state key to watch or no Off Action, a Tap / Long Press button with no Long Press Action, an action with a field it needs left empty, or an appearance whose states are a list rather than one entry per value.
 
-The project still saves and opens with any of these in it, and every other edit still goes through.
+The project still opens with any of these in it, and every edit around them still saves. A save that adds one more of the first four kinds is refused with the sentence Validate would show. A binding you are still setting up always saves.
+
+A control in the wrong container is put right when the project opens, and the Dashboard's update notice names each one that moved:
+
+- A container that names no control on the page is dropped. The control already showed on the page, so nothing moves.
+- Controls in a loop, each inside the next, showed nothing on the panel. They move onto the page, where they now show.
+- A control inside a button, or any other control that is not a group, moves into the nearest group above it, or onto the page, and stays where it showed and above what it showed over. If the control it sat inside hides by its own visibility rule, the moved control no longer hides with it, and the notice says so.
+- A master element's container is dropped, since a master is placed on the screen.
+
+A save that puts a control in the wrong container, or gives a master element one, is refused.
 
 ## Element Types
 

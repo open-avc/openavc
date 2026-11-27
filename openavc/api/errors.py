@@ -112,8 +112,12 @@ def project_change_failures() -> tuple[type[Exception], ...]:
     from openavc.core.installed_equipment import InstalledEquipmentError
     from openavc.core.project_changes import ProjectInvalidError, ProjectNotAppliedError
     from openavc.core.saved_values import UnknownWordError
+    from openavc.ui.page_edits import PageIssueError
 
-    return (InstalledEquipmentError, UnknownWordError, ProjectInvalidError, ProjectNotAppliedError, BackupFailed)
+    return (
+        InstalledEquipmentError, UnknownWordError, PageIssueError, ProjectInvalidError,
+        ProjectNotAppliedError, BackupFailed,
+    )
 
 
 def add_project_change_handler(app: Any) -> None:

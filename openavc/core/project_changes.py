@@ -7,6 +7,8 @@ is checked as a valid project (``ProjectInvalidError`` when the file it
 would write would not load or holds a value past a bound), an edit is held
 to the installed equipment and to the words this version knows, the
 installed equipment is composed in, and its logins move into the login file.
+An edit is also refused for what it adds to the pages that they may not hold
+(``ui/page_edits.issues_an_edit_makes``).
 Every refusal comes before that move, so a refused change has filed nothing.
 
 THE change door is ``_change_locked``: a change given as ``mutate(project)``
@@ -103,6 +105,7 @@ from openavc.core.project_revision import (  # noqa: F401 -- ProjectRevisionConf
 from openavc.core.project_update import MigrationNotes
 from openavc.core.saved_values import refuse_new_words
 from openavc.core.typed_fields import trim_device_settings
+from openavc.ui.page_edits import refuse_issues_an_edit_makes
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.engine")
@@ -598,6 +601,7 @@ class ProjectChangesMixin(ProjectRevisionMixin, ProjectReplaceMixin):
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
             # A word a later release saved stays; one this edit adds is refused.
             refuse_new_words(self.project, new_project)
+            refuse_issues_an_edit_makes(self.project, new_project)
             # An edit is still the project it edits, whatever stamp it names.
             project_identity.keep_running(self.project, new_project)
         as_given = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
