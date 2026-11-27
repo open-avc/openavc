@@ -357,3 +357,18 @@ let _nextTrigId = 1;
 export function generateTriggerId(): string {
   return `trg_${Date.now()}_${_nextTrigId++}`;
 }
+
+/**
+ * A key for each trigger's card: its id, or, for a later trigger with an id
+ * an earlier one in the list already has (the lint marks it), its id and its
+ * place, so every card still draws. A trigger id has no dot, so neither form
+ * can be another trigger's id.
+ */
+export function triggerCardKeys(triggers: TriggerConfig[]): string[] {
+  const seen = new Set<string>();
+  return triggers.map((t, i) => {
+    const key = seen.has(t.id) ? `${t.id}.${i}` : t.id;
+    seen.add(t.id);
+    return key;
+  });
+}

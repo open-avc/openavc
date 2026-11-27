@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play, AlertTriangle, XCircle } from "lucide-react";
 import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
-import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
+import { TRIGGER_TYPES, getTriggerType, generateTriggerId, triggerCardKeys } from "./triggerHelpers";
 import { issuesAt, issueLabel, issueText, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
 import { cardRun, isFailedRun } from "./triggerRuns";
@@ -165,6 +165,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
     setShowAddMenu(false);
   };
 
+  const cardKeys = triggerCardKeys(triggers);
+
   return (
     <div style={{ marginBottom: "var(--space-md)" }}>
       {/* Header */}
@@ -302,7 +304,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
 
             return (
               <div
-                key={trigger.id}
+                key={cardKeys[i]}
                 style={{
                   // A failing trigger keeps a red border once the fire flash
                   // has passed. The flash is what a fire looks like; this is
