@@ -15120,6 +15120,9 @@ const results = {};
     patchedFetch = window.fetch;
     PanelApp = window.__openavcPanel.constructor;
     for (const [name, fn] of Object.entries(tests)) {
+        // Named as it starts, so a run stopped for taking too long says which
+        // scenario it was in (tests/test_panel_js.py reads the last one).
+        process.stderr.write(`[scenario] ${name}\n`);
         try { await fn(); results[name] = { pass: true }; }
         catch (e) { results[name] = { pass: false, error: String(e && e.message), stack: (e && e.stack || '').split('\n').slice(0, 4).join(' | ') }; }
     }

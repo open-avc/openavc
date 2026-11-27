@@ -28,6 +28,10 @@ PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 JSDOM_DIR = NODE_MODULES / "jsdom"
 
+# Under the suite's own per-test limit (pyproject's --timeout=120), so a run
+# that stops answering is ended here, where what it printed can still be read.
+HARNESS_SECONDS = 100
+
 
 def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
@@ -46,14 +50,17 @@ def harness_results() -> dict:
         gates.skip_or_fail(gates.NODE, reason)
     # panel.js is an ES module; the harness links it inside jsdom's window
     # with vm.SourceTextModule, which Node keeps behind this flag.
-    proc = subprocess.run(
-        ["node", "--experimental-vm-modules", str(HARNESS), str(PANEL_JS)],
-        capture_output=True,
-        text=True,
-        cwd=str(OPENAVC_ROOT),
-        env={**os.environ, "NODE_PATH": str(NODE_MODULES)},
-        timeout=120,
-    )
+    try:
+        proc = subprocess.run(
+            ["node", "--experimental-vm-modules", str(HARNESS), str(PANEL_JS)],
+            capture_output=True,
+            text=True,
+            cwd=str(OPENAVC_ROOT),
+            env={**os.environ, "NODE_PATH": str(NODE_MODULES)},
+            timeout=HARNESS_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(stalled_message(exc.stderr)) from None
     if proc.returncode != 0:
         raise AssertionError(f"panel harness crashed (rc={proc.returncode}):\n{proc.stderr}")
     # The harness prints diagnostic [panel] warnings to stderr; results are on stdout.
@@ -61,6 +68,24 @@ def harness_results() -> dict:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as exc:  # pragma: no cover - defensive
         raise AssertionError(f"could not parse harness output:\n{proc.stdout}\n---\n{proc.stderr}") from exc
+
+
+def stalled_message(stderr: str | bytes | None) -> str:
+    """What a harness run that gave no answer in time says: the scenario it
+    started last (it names each as it starts), and the end of what it printed."""
+    text = stderr.decode(errors="replace") if isinstance(stderr, bytes) else (stderr or "")
+    lines = text.splitlines()
+    started = [line.removeprefix("[scenario] ") for line in lines if line.startswith("[scenario] ")]
+    last = started[-1] if started else "none (the panel did not finish loading)"
+    tail = "\n".join(lines[-20:])
+    return f"panel harness gave no answer in {HARNESS_SECONDS} s, in scenario: {last}\n{tail}"
+
+
+def test_a_harness_that_stops_answering_names_the_scenario_it_was_in() -> None:
+    printed = "[scenario] first\n[panel] a warning\n[scenario] second\n"
+    assert stalled_message(printed).startswith("panel harness gave no answer in 100 s, in scenario: second\n")
+    assert stalled_message(printed.encode()).endswith("[scenario] second")
+    assert "in scenario: none (the panel did not finish loading)" in stalled_message(None)
 
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
