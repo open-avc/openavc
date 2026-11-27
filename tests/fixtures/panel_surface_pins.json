@@ -20,6 +20,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -84,6 +85,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -145,6 +147,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -206,6 +209,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -266,6 +270,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -324,6 +329,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -382,6 +388,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -475,6 +482,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -565,6 +573,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -655,6 +664,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -694,6 +704,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 1
      },
@@ -724,6 +735,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 2
      },
@@ -749,6 +761,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 3
      },
@@ -780,6 +793,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 4
      },
@@ -811,6 +825,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 0
      },
@@ -867,6 +882,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 1
      },
@@ -898,6 +914,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 2
      },
@@ -929,6 +946,7 @@
      "ui": "surface",
      "state": {
       "device.d.connected": true,
+      "device.d.presence": "online",
       "device.d.v": 40,
       "var.x": 3
      },

@@ -905,7 +905,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": "on",
-      "device.d1.connected": false
+      "device.d1.connected": false,
+      "device.d1.presence": "offline"
      },
      "ready": true,
      "grid": null,
@@ -930,7 +931,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": 7,
-      "device.d1.connected": false
+      "device.d1.connected": false,
+      "device.d1.presence": "offline"
      },
      "ready": true,
      "grid": null,
@@ -954,7 +956,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": 7,
-      "device.d1.connected": true
+      "device.d1.connected": true,
+      "device.d1.presence": "online"
      },
      "ready": true,
      "grid": null,
@@ -979,7 +982,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": 7,
-      "device.d1.connected": false
+      "device.d1.connected": false,
+      "device.d1.presence": "offline"
      },
      "ready": true,
      "grid": null,
@@ -1004,7 +1008,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": 7,
-      "device.d1.connected": true
+      "device.d1.connected": true,
+      "device.d1.presence": "online"
      },
      "ready": true,
      "grid": null,
@@ -1526,7 +1531,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": 0.5,
-      "device.d1.connected": false
+      "device.d1.connected": false,
+      "device.d1.presence": "offline"
      },
      "ready": true,
      "grid": null,
@@ -1550,7 +1556,8 @@
      "ui": "labels",
      "state": {
       "device.d1.level": 0.5,
-      "device.d1.connected": true
+      "device.d1.connected": true,
+      "device.d1.presence": "online"
      },
      "ready": true,
      "grid": null,
@@ -1585,6 +1592,7 @@
      "ui": "labels",
      "state": {
       "device.d1.connected": false,
+      "device.d1.presence": "offline",
       "device.d1.level": 1
      },
      "ready": true,

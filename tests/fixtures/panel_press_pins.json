@@ -2981,7 +2981,8 @@
      "state": {
       "var.t": "on",
       "device.amp.mute": true,
-      "device.amp.connected": true
+      "device.amp.connected": true,
+      "device.amp.presence": "online"
      },
      "ready": true,
      "grid": null,
@@ -3110,7 +3111,8 @@
      "state": {
       "var.t": "off",
       "device.amp.mute": false,
-      "device.amp.connected": true
+      "device.amp.connected": true,
+      "device.amp.presence": "online"
      },
      "ready": true,
      "grid": null,
@@ -3136,7 +3138,8 @@
      "state": {
       "var.t": "off",
       "device.amp.mute": true,
-      "device.amp.connected": false
+      "device.amp.connected": false,
+      "device.amp.presence": "offline"
      },
      "ready": true,
      "grid": null,

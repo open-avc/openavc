@@ -250,10 +250,15 @@ function levelMount(def, { state, edit, before } = {}) {
     app.evaluateAllBindings(Object.keys(app.state));
     const m = { app, sent, seen: {}, steps: [] };
     m.node = () => app.root.querySelector(`[data-element-id="${def.id}"]`);
+    // One key and its value, or several keys at once (one batch, as the
+    // server writes a device's `connected` with its `presence`).
     m.set = (key, value) => {
-        if (value === undefined) delete app.state[key];
-        else app.state[key] = value;
-        app.evaluateAllBindings([key]);
+        const changes = typeof key === 'object' ? key : { [key]: value };
+        for (const [k, v] of Object.entries(changes)) {
+            if (v === undefined) delete app.state[k];
+            else app.state[k] = v;
+        }
+        app.evaluateAllBindings(Object.keys(changes));
     };
     m.look = () => {
         const now = nodeSnapshot(m.node());
@@ -276,9 +281,9 @@ function levelMount(def, { state, edit, before } = {}) {
 function levelReadings(m, key) {
     m.look();
     for (const value of [60, 250, -5, null]) { m.set(key, value); m.look(); }
-    m.set('device.d.connected', false); m.look();
+    m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' }); m.look();
     m.set(key, 30); m.look();
-    m.set('device.d.connected', true); m.look();
+    m.set({ 'device.d.connected': true, 'device.d.presence': 'online' }); m.look();
     m.set(key, undefined); m.look();
     m.set(key, '55'); m.look();
     for (const value of [true, false, '', 'abc', 42]) { m.set(key, value); m.look(); }
@@ -299,8 +304,8 @@ function levelCase(got, def, opts, gestures) {
 
 const LEVEL_KEY = 'device.d.v';
 const levelDef = (type) => (id, extra) => ({ id, type, bindings: { show: { value: { key: LEVEL_KEY } } }, ...extra });
-const LIVE_WITH_READING = { state: { 'device.d.connected': true, [LEVEL_KEY]: 40 } };
-const LIVE_NO_READING = { state: { 'device.d.connected': true } };
+const LIVE_WITH_READING = { state: { 'device.d.connected': true, 'device.d.presence': 'online', [LEVEL_KEY]: 40 } };
+const LIVE_NO_READING = { state: { 'device.d.connected': true, 'device.d.presence': 'online' } };
 
 /**
  * The paint pins: what each case drew when it was pinned, in
@@ -1953,7 +1958,7 @@ const tests = {
         for (const [type, readout] of [['slider', '.slider-value'], ['fader', '.fader-value']]) {
             for (const [asked, places] of [[101, 20], [25, 20], [-3, 0], [3, 3]]) {
                 const app = mkApp();
-                app.state = { 'device.d.connected': true, [LEVEL_KEY]: 40 };
+                app.state = { 'device.d.connected': true, 'device.d.presence': 'online', [LEVEL_KEY]: 40 };
                 const def = levelDef(type)(`${type}_${asked}`, { display_decimals: asked, style: { show_value: true } });
                 const { node } = drawnLevel(app, def);
                 const shown = node.querySelector(readout).textContent;
@@ -2817,7 +2822,7 @@ const tests = {
         });
         // 0.0 is the value the platform invented on disconnect. It is a real
         // number in state, so nothing about a null branch reaches this.
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': 0.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': 0.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const handle = el.querySelector('.fader-handle');
@@ -2827,8 +2832,8 @@ const tests = {
         assert(readout.textContent === '0.0 dB',
             `connected: and prints it, got ${readout.textContent}`);
 
-        app.state['device.amp.connected'] = false;
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.state['device.amp.connected'] = false; app.state['device.amp.presence'] = 'offline';
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(readout.textContent === '-- dB',
             `offline: no number, got ${readout.textContent}`);
         assert(el.classList.contains('device-offline'),
@@ -2838,8 +2843,8 @@ const tests = {
         assert(handle.getAttribute('aria-valuenow') === null,
             'offline: and nothing is announced to a screen reader either');
 
-        app.state['device.amp.connected'] = true;
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.state['device.amp.connected'] = true; app.state['device.amp.presence'] = 'online';
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(readout.textContent === '0.0 dB' && handle.style.bottom === '100%',
             'reconnect: the reading comes straight back');
         assert(!el.classList.contains('device-offline'),
@@ -2871,7 +2876,7 @@ const tests = {
             ],
             placements: { on: { x: 5, y: 5, w: 20, h: 10 }, vol: { x: 30, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.tv.connected': true, 'device.tv.power': 'off', 'device.tv.volume': 20 };
+        app.state = { 'device.tv.connected': true, 'device.tv.presence': 'online', 'device.tv.power': 'off', 'device.tv.volume': 20 };
         renderProject(app, proj);
         const on = app.root.querySelector('[data-element-id="on"]');
         const vol = app.root.querySelector('[data-element-id="vol"]');
@@ -2879,13 +2884,13 @@ const tests = {
             'the wake button reads a device key, so it has a binding to mark');
 
         app.state['device.tv.connected'] = false;
-        app.state['device.tv.asleep'] = true;
-        app.evaluateAllBindings(['device.tv.connected', 'device.tv.asleep']);
+        app.state['device.tv.asleep'] = true; app.state['device.tv.presence'] = 'asleep';
+        app.evaluateAllBindings(['device.tv.connected', 'device.tv.presence', 'device.tv.asleep']);
         assert(!on.classList.contains('device-offline'), 'asleep: the wake button stays live');
         assert(vol.classList.contains('device-offline'), 'asleep: the volume control is marked');
 
-        app.state['device.tv.asleep'] = null;
-        app.evaluateAllBindings(['device.tv.asleep']);
+        app.state['device.tv.asleep'] = null; app.state['device.tv.presence'] = 'offline';
+        app.evaluateAllBindings(['device.tv.asleep', 'device.tv.presence']);
         assert(on.classList.contains('device-offline'),
             'unreachable, not asleep: the wake button is marked like the rest');
         assert(vol.classList.contains('device-offline'), 'unreachable: the volume control too');
@@ -2911,15 +2916,15 @@ const tests = {
                 percent: { x: 55, y: 5, w: 20, h: 60 },
             },
         });
-        app.state = { 'device.dsp.connected': true, 'device.dsp.gain': -41, 'var.volume': 50 };
+        app.state = { 'device.dsp.connected': true, 'device.dsp.presence': 'online', 'device.dsp.gain': -41, 'var.volume': 50 };
         renderProject(app, proj);
         const readout = (id) => app.root.querySelector(`[data-element-id="${id}"] .fader-value`).textContent;
         assert(readout('absent') === '-41.0', `no unit field: no unit, got ${readout('absent')}`);
         assert(readout('cleared') === '-41.0', `cleared unit: no unit, got ${readout('cleared')}`);
         assert(readout('percent') === '50.0 %', `a named unit still prints, got ${readout('percent')}`);
 
-        app.state['device.dsp.connected'] = false;
-        app.evaluateAllBindings(['device.dsp.connected']);
+        app.state['device.dsp.connected'] = false; app.state['device.dsp.presence'] = 'offline';
+        app.evaluateAllBindings(['device.dsp.connected', 'device.dsp.presence']);
         assert(readout('absent') === '--', `offline with no unit: just the dashes, got ${readout('absent')}`);
     },
 
@@ -2934,9 +2939,9 @@ const tests = {
             type: 'fader_value', element: document.createElement('div'),
             binding: { key: 'device.amp.gain' }, _fader: {},
         }];
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(ran === 1, 'the fader re-evaluates when its device changes reachability');
-        app.evaluateAllBindings(['device.other.connected']);
+        app.evaluateAllBindings(['device.other.connected', 'device.other.presence']);
         assert(ran === 1, "but not for a device it does not read");
         app.evaluateAllBindings(['var.unrelated']);
         assert(ran === 1, 'and not for an unrelated key');
@@ -2976,7 +2981,7 @@ const tests = {
             placements: { why: { x: 5, y: 5, w: 30, h: 8 }, dot: { x: 40, y: 5, w: 6, h: 6 } },
         });
         app.state = {
-            'device.amp.connected': false,
+            'device.amp.connected': false, 'device.amp.presence': 'offline',
             'device.amp.offline_detail': 'Connection refused by 192.168.4.75:4321',
         };
         renderProject(app, proj);
@@ -3011,7 +3016,7 @@ const tests = {
         });
         // Connected, with the child key cleared: the default state is drawn,
         // which is the documented behaviour and stays.
-        app.state = { 'device.amp.connected': true };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online' };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         assert(el.textContent.includes('MUTE') && !el.textContent.includes('MUTED'),
@@ -3019,8 +3024,8 @@ const tests = {
         assert(el.style.backgroundColor === 'rgb(17, 17, 17)',
             `connected: with its colour, got ${el.style.backgroundColor}`);
 
-        app.state['device.amp.connected'] = false;
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.state['device.amp.connected'] = false; app.state['device.amp.presence'] = 'offline';
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(el.textContent.includes('Amp mute'),
             `offline: the button falls back to its own label, got "${el.textContent}"`);
         assert(el.style.backgroundColor === 'rgb(34, 34, 34)',
@@ -3041,14 +3046,14 @@ const tests = {
             ],
             placements: { nameless: { x: 5, y: 20, w: 20, h: 10 }, lbl: { x: 30, y: 20, w: 20, h: 10 } },
         });
-        app2.state = { 'device.amp.connected': true, 'device.amp.mute_state': 'on' };
+        app2.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.mute_state': 'on' };
         renderProject(app2, proj2);
         const nameless = app2.root.querySelector('[data-element-id="nameless"]');
         const lbl = app2.root.querySelector('[data-element-id="lbl"]');
         assert(nameless.textContent === 'MUTED', `connected, got "${nameless.textContent}"`);
         assert(lbl.textContent === 'MUTED', `connected label, got "${lbl.textContent}"`);
-        app2.state['device.amp.connected'] = false;
-        app2.evaluateAllBindings(['device.amp.connected']);
+        app2.state['device.amp.connected'] = false; app2.state['device.amp.presence'] = 'offline';
+        app2.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(nameless.textContent === '',
             `offline: a nameless button says nothing, got "${nameless.textContent}"`);
         assert(lbl.textContent === 'Amplifier',
@@ -3069,12 +3074,12 @@ const tests = {
             }],
             placements: { draw: { x: 5, y: 5, w: 30, h: 8 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.ac_line_current': 0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.ac_line_current': 0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="draw"]');
         assert(el.textContent === 'Amp draw: 0 A', `connected, got "${el.textContent}"`);
-        app.state['device.amp.connected'] = false;
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.state['device.amp.connected'] = false; app.state['device.amp.presence'] = 'offline';
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(el.textContent === 'Amp draw: -- A', `offline, got "${el.textContent}"`);
     },
 
@@ -3083,8 +3088,8 @@ const tests = {
     // lit row, the meter and gauge their frozen readings.
     q213_every_value_renderer_has_an_unknown_form() {
         const app = mkApp();
-        app.state = { 'device.d.v': 42, 'device.d.connected': true };
-        const offline = () => { app.state['device.d.connected'] = false; };
+        app.state = { 'device.d.v': 42, 'device.d.connected': true, 'device.d.presence': 'online' };
+        const offline = () => { app.state['device.d.connected'] = false; app.state['device.d.presence'] = 'offline'; };
 
         // Slider
         const { node: sliderNode, b: sb } = drawnLevel(app, {
@@ -3102,7 +3107,7 @@ const tests = {
         assert(fill.style.width === '0%', `slider fill emptied, got ${fill.style.width}`);
 
         // Select — no selection at all, not the first option
-        app.state['device.d.connected'] = true;
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
         const sel = document.createElement('select');
         for (const v of ['a', 'b']) { const o = document.createElement('option'); o.value = v; sel.appendChild(o); }
         app.state['device.d.input'] = 'b';
@@ -3114,7 +3119,7 @@ const tests = {
         assert(sel.selectedIndex === -1, `select offline shows nothing, got index ${sel.selectedIndex}`);
 
         // Gauge
-        app.state['device.d.connected'] = true;
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
         const { node: gaugeNode, b: gb } = drawnLevel(app, {
             id: 'g', type: 'gauge', min: 0, max: 100, unit: '%', zones: [],
             bindings: { show: { value: { key: 'device.d.v' } } },
@@ -3129,7 +3134,7 @@ const tests = {
         assert(fgPath.getAttribute('d') === '', 'gauge arc cleared');
 
         // Level meter
-        app.state['device.d.connected'] = true;
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
         const { node: meterNode, b: mb } = drawnLevel(app, {
             id: 'm', type: 'level_meter', min: 0, max: 100, style: { meter_segments: 4, show_peak: false },
             bindings: { show: { value: { key: 'device.d.v' } } },
@@ -3142,7 +3147,7 @@ const tests = {
         assert(bar.querySelectorAll('.lit').length === 0, 'meter offline lights nothing');
 
         // Text input
-        app.state['device.d.connected'] = true;
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
         const ti = document.createElement('input'); ti.type = 'text';
         const tb = { type: 'text_input_value', element: ti, elementDef: { id: 't' }, binding: { key: 'device.d.name_field' } };
         app.state['device.d.name_field'] = 'Podium';
@@ -3153,7 +3158,7 @@ const tests = {
         assert(ti.value === '', 'text input offline is empty');
 
         // List selection
-        app.state['device.d.connected'] = true;
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
         const scrollArea = document.createElement('div');
         const row = document.createElement('div');
         row.className = 'list-item'; row.dataset.value = 'x';
@@ -3194,8 +3199,8 @@ const tests = {
             placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
         });
         const state = () => ({
-            'device.sw_a.connected': true, 'device.sw_a.route_1': 1,
-            'device.sw_b.connected': false, 'device.sw_b.route_1': 2,
+            'device.sw_a.connected': true, 'device.sw_a.presence': 'online', 'device.sw_a.route_1': 1,
+            'device.sw_b.connected': false, 'device.sw_b.presence': 'offline', 'device.sw_b.route_1': 2,
         });
 
         // Tiles — one card per destination.
@@ -3261,9 +3266,9 @@ const tests = {
         };
         app.state = {};
         assert(app.availability.readingOffline(b) === false, 'no key at all');
-        app.state = { 'device.amp.connected': true };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online' };
         assert(app.availability.readingOffline(b) === false, 'connected');
-        app.state = { 'device.amp.connected': false };
+        app.state = { 'device.amp.connected': false, 'device.amp.presence': 'offline' };
         assert(app.availability.readingOffline(b) === true, 'and only an explicit false counts');
     },
 
@@ -3282,7 +3287,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        const state = { 'device.amp.connected': false, 'device.amp.gain': -6.0 };
+        const state = { 'device.amp.connected': false, 'device.amp.presence': 'offline', 'device.amp.gain': -6.0 };
 
         const designer = mkApp();
         designer.editMode = true;
@@ -3342,7 +3347,7 @@ const tests = {
     // wrong answer with nothing to mark it.
     q172_a_live_device_that_has_not_reported_draws_no_value() {
         const app = mkApp();
-        app.state = { 'device.d.connected': true, 'device.d.v': null };
+        app.state = { 'device.d.connected': true, 'device.d.presence': 'online', 'device.d.v': null };
 
         // Fader: no handle, no aria value, "-- dB".
         const { node: faderNode, b: fb } = drawnLevel(app, {
@@ -3406,7 +3411,7 @@ const tests = {
             }],
             placements: { draw: { x: 5, y: 5, w: 30, h: 8 } },
         });
-        app2.state = { 'device.amp.connected': true, 'device.amp.ac_line_current': null };
+        app2.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.ac_line_current': null };
         renderProject(app2, proj);
         const labelEl = app2.root.querySelector('[data-element-id="draw"]');
         assert(labelEl.textContent === 'Amp draw: -- A',
@@ -3428,20 +3433,20 @@ const tests = {
         const out = el.querySelector('.fader-value');
 
         // Live device, nothing reported: no value, no mark.
-        app.state = { 'device.d.connected': true, 'device.d.v': null };
+        app.state = { 'device.d.connected': true, 'device.d.presence': 'online', 'device.d.v': null };
         app.evaluateFaderValue(b);
         assert(out.textContent === '-- dB', 'unreported reads --');
         assert(!el.classList.contains('device-offline'),
             'a live device is not marked unavailable');
 
         // Same absent value, device now gone: the mark appears.
-        app.state['device.d.connected'] = false;
+        app.state['device.d.connected'] = false; app.state['device.d.presence'] = 'offline';
         app.evaluateFaderValue(b);
         assert(el.classList.contains('device-offline'),
             'an unreachable device is marked unavailable');
 
         // And a real reading clears both.
-        app.state['device.d.connected'] = true;
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
         app.state['device.d.v'] = -6;
         app.evaluateFaderValue(b);
         assert(out.textContent === '-6.0 dB', `reported reads the value, got ${out.textContent}`);
@@ -3463,7 +3468,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const handle = el.querySelector('.fader-handle');
@@ -3493,7 +3498,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const handle = el.querySelector('.fader-handle');
@@ -3533,7 +3538,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const readout = el.querySelector('.fader-value');
@@ -3564,7 +3569,7 @@ const tests = {
             placements: { a: { x: 5, y: 5, w: 20, h: 60 }, b: { x: 30, y: 5, w: 20, h: 60 } },
         });
         app.state = {
-            'device.amp.connected': true, 'device.amp.gain': -6.0, 'device.amp.aux': -20.0,
+            'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0, 'device.amp.aux': -20.0,
         };
         renderProject(app, proj);
         const readout = (id) => app.root
@@ -3599,7 +3604,7 @@ const tests = {
             }],
             placements: { level: { x: 5, y: 5, w: 40, h: 15 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.level': 35 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.level': 35 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="level"]');
         const input = el.querySelector('input[type=range]');
@@ -3616,7 +3621,7 @@ const tests = {
         assert(document.activeElement === input, 'release retains keyboard focus');
         assert(readout.textContent === '27 %', `released control follows the device, got ${readout.textContent}`);
         assert(input.value === '27', 'the thumb follows the external change too');
-        app.handleMessage({ type: 'state.update', changes: { 'device.amp.connected': false } });
+        app.handleMessage({ type: 'state.update', changes: { 'device.amp.connected': false, 'device.amp.presence': 'offline' } });
         assert(readout.textContent === '-- %', 'focus cannot preserve a reading after disconnection');
         assert(input.classList.contains('no-reading'), 'the unavailable thumb is hidden');
     },
@@ -3631,7 +3636,7 @@ const tests = {
             }],
             placements: { level: { x: 5, y: 5, w: 40, h: 15 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.level': 35 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.level': 35 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="level"]');
         const input = el.querySelector('input[type=range]');
@@ -3661,7 +3666,7 @@ const tests = {
             }],
             placements: { vol: { x: 5, y: 5, w: 40, h: 10 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.vol': 30 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.vol': 30 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="vol"]');
         const input = el.querySelector('input[type=range]');
@@ -3697,7 +3702,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const handle = el.querySelector('.fader-handle');
@@ -3725,7 +3730,7 @@ const tests = {
             }],
             placements: { src: { x: 5, y: 5, w: 30, h: 10 } },
         });
-        app.state = { 'device.sw.connected': true, 'device.sw.route_1': '1' };
+        app.state = { 'device.sw.connected': true, 'device.sw.presence': 'online', 'device.sw.route_1': '1' };
         renderProject(app, proj);
         const select = app.root.querySelector('[data-element-id="src"] select');
         assert(select.value === '1', `starts on the routed source, got ${select.value}`);
@@ -3746,7 +3751,7 @@ const tests = {
             }],
             placements: { name: { x: 5, y: 5, w: 30, h: 8 } },
         });
-        app.state = { 'device.dsp.connected': true, 'device.dsp.preset_name': 'Meeting' };
+        app.state = { 'device.dsp.connected': true, 'device.dsp.presence': 'online', 'device.dsp.preset_name': 'Meeting' };
         renderProject(app, proj);
         const input = app.root.querySelector('[data-element-id="name"] input');
         input.focus();
@@ -3771,7 +3776,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const readout = el.querySelector('.fader-value');
@@ -3801,7 +3806,7 @@ const tests = {
             }],
             placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.gain': -6.0 };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="gain"]');
         const readout = el.querySelector('.fader-value');
@@ -3837,7 +3842,7 @@ const tests = {
             elements: [toggleButton('mute', 'device.amp.channel.01.mute', true)],
             placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.channel.01.mute': false };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.channel.01.mute': false };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         const off = el.style.backgroundColor;
@@ -3887,7 +3892,7 @@ const tests = {
             elements: [toggleButton('mute', 'device.amp.mute', true)],
             placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
         });
-        app.state = { 'device.amp.connected': true, 'device.amp.mute': false };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.mute': false };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         el.dispatchEvent(new window.MouseEvent('mousedown', { cancelable: true }));
@@ -3949,7 +3954,7 @@ const tests = {
         btn.bindings.do.press[0].on_label = 'MUTED';
         btn.bindings.do.press[0].off_label = 'MUTE';
         const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
-        app.state = { 'device.amp.connected': true, 'device.amp.mute': false };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.mute': false };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         assert(el.textContent === 'MUTE', `off word, got "${el.textContent}"`);
@@ -4018,7 +4023,7 @@ const tests = {
                       false: { label: 'MUTE', bg_color: '#c62828' } },
         } };
         const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
-        app.state = { 'device.amp.connected': true, 'device.amp.mute': true };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.mute': true };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         assert(app.bindings.every(b => b.type !== 'toggle_look'),
@@ -4040,21 +4045,21 @@ const tests = {
         btn.bindings.do.press[0].on_label = 'MUTED';
         btn.bindings.do.press[0].off_label = 'MUTE';
         const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
-        app.state = { 'device.amp.connected': true, 'device.amp.mute': true };
+        app.state = { 'device.amp.connected': true, 'device.amp.presence': 'online', 'device.amp.mute': true };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         assert(el.classList.contains('toggle-on') && el.textContent === 'MUTED', 'lit while connected');
 
-        app.state['device.amp.connected'] = false;
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.state['device.amp.connected'] = false; app.state['device.amp.presence'] = 'offline';
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(!el.classList.contains('toggle-on'), 'offline: not lit');
         assert(el.textContent === 'Mute Ch 1',
             `offline: its own name, not "MUTE" -- which would claim it is unmuted, got "${el.textContent}"`);
         assert(el.classList.contains('device-offline'), 'offline: and reads as unavailable');
         assert(el.getAttribute('aria-label') === 'Mute Ch 1', 'offline restores the configured accessible name');
 
-        app.state['device.amp.connected'] = true;
-        app.evaluateAllBindings(['device.amp.connected']);
+        app.state['device.amp.connected'] = true; app.state['device.amp.presence'] = 'online';
+        app.evaluateAllBindings(['device.amp.connected', 'device.amp.presence']);
         assert(el.classList.contains('toggle-on') && el.textContent === 'MUTED',
             'back when the device is back');
     },
@@ -4430,7 +4435,7 @@ const tests = {
             }],
             placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
         });
-        app.state = { 'device.sw.connected': true, 'device.sw.route_1': 1 };
+        app.state = { 'device.sw.connected': true, 'device.sw.presence': 'online', 'device.sw.route_1': 1 };
         renderProject(app, proj);
 
         app._lastTouchedElementId = 'btn_somewhere_else';
@@ -6261,7 +6266,7 @@ const tests = {
             }],
             placements: { pwr: { x: 5, y: 5, w: 20, h: 10 } },
         });
-        app.state = { 'device.proj.connected': true, 'device.proj.power': 'off' };
+        app.state = { 'device.proj.connected': true, 'device.proj.presence': 'online', 'device.proj.power': 'off' };
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="pwr"]');
         const go = (v) => {
@@ -6343,12 +6348,12 @@ const tests = {
     // state to show and keeps the words it already had.
     a_look_shows_nothing_for_an_unreachable_device_or_a_missing_key() {
         const away = { key: 'device.amp.mute', default_state: 'off', states: { on: LOOK_ENTRIES.A, off: LOOK_ENTRIES.B } };
-        const gone = { 'device.amp.connected': false };
+        const gone = { 'device.amp.connected': false, 'device.amp.presence': 'offline' };
         for (const [method, type] of [['evaluateLabelLook', 'label'], ['evaluateImageLook', 'image'],
             ['evaluateNavLook', 'page_nav'], ['evaluateGroupLook', 'group'], ['evaluateFeedback', 'button']]) {
             const r = runLook(method, type, away, 'on', { state: gone, live: true });
             assert(r.bg === LOOK_OWN_BG, `${type}, device away: its own colour, got ${r.bg}`);
-            const live = runLook(method, type, away, 'on', { state: { 'device.amp.connected': true }, live: true });
+            const live = runLook(method, type, away, 'on', { state: { 'device.amp.connected': true, 'device.amp.presence': 'online' }, live: true });
             assert(live.bg === LOOK_BG.A, `${type}, device back: the state's colour, got ${live.bg}`);
         }
         const keyless = { default_state: 'off', states: { on: LOOK_ENTRIES.A, off: LOOK_ENTRIES.B } };
@@ -6674,7 +6679,7 @@ const tests = {
                 cam: { x: 40, y: 30, w: 20, h: 10 },
             },
         }));
-        app.state = { 'device.d.connected': false, 'device.d.volume': 40, 'device.d.input': 'a',
+        app.state = { 'device.d.connected': false, 'device.d.presence': 'offline', 'device.d.volume': 40, 'device.d.input': 'a',
             'device.d.title': 'Lecture' };
         app.evaluateAllBindings();
         const box = (id) => app.root.querySelector(`[data-element-id="${id}"]`);
@@ -6684,8 +6689,8 @@ const tests = {
         }
         assert(box('cam').classList.contains('action-offline'),
             `cam: a preset whose camera is away is marked, got "${box('cam').className}"`);
-        app.state['device.d.connected'] = true;
-        app.evaluateAllBindings(['device.d.connected']);
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
+        app.evaluateAllBindings(['device.d.connected', 'device.d.presence']);
         for (const id of ['led', 'sld', 'sel', 'txt', 'cam']) {
             assert(!box(id).classList.contains('device-offline') && !box(id).classList.contains('action-offline'),
                 `${id}: back, and unmarked, got "${box(id).className}"`);
@@ -6713,7 +6718,7 @@ const tests = {
             },
         });
         renderProject(app, builderCopy);
-        app.state = { 'device.d.connected': false };
+        app.state = { 'device.d.connected': false, 'device.d.presence': 'offline' };
         app.evaluateAllBindings();
         const box = (id) => app.root.querySelector(`[data-element-id="${id}"]`);
         assert(!box('btn').classList.contains('action-offline'),
@@ -6734,14 +6739,14 @@ const tests = {
         }
         assert(!box('lbl').classList.contains('action-offline'), 'a label reaches nothing');
 
-        app.state['device.d.connected'] = true;
-        app.evaluateAllBindings(['device.d.connected']);
+        app.state['device.d.connected'] = true; app.state['device.d.presence'] = 'online';
+        app.evaluateAllBindings(['device.d.connected', 'device.d.presence']);
         assert(!box('btn').classList.contains('action-offline'), 'the device is back: unmarked');
 
         // The press is re-pointed in the Builder and saved: the next
         // definition says the button reaches nothing, and its mark goes.
-        app.state['device.d.connected'] = false;
-        app.evaluateAllBindings(['device.d.connected']);
+        app.state['device.d.connected'] = false; app.state['device.d.presence'] = 'offline';
+        app.evaluateAllBindings(['device.d.connected', 'device.d.presence']);
         assert(box('btn').classList.contains('action-offline'), 'marked again');
         app.handleMessage({ type: 'ui.definition', ui: served(['cam']) });
         assert(!box('btn').classList.contains('action-offline'),
@@ -6761,7 +6766,7 @@ const tests = {
             placements: { btn: { x: 5, y: 5, w: 20, h: 10 } },
         });
         renderProject(app, builderCopy);
-        app.state = { 'device.d.connected': false };
+        app.state = { 'device.d.connected': false, 'device.d.presence': 'offline' };
         const ui = JSON.parse(JSON.stringify(builderCopy.ui));
         ui.pages[0].elements[0].action_devices = ['d'];
         app.handleMessage({ type: 'ui.definition', ui });
@@ -7117,7 +7122,12 @@ const tests = {
             app.evaluateAllBindings(Object.keys(state));
             return { app, el: app.root.querySelector(`[data-element-id="${def.id}"]`) };
         };
-        const set = (m, key, value) => { m.app.state[key] = value; m.app.evaluateAllBindings([key]); };
+        // One key and its value, or several keys at once (one batch).
+        const set = (m, key, value) => {
+            const changes = typeof key === 'object' ? key : { [key]: value };
+            Object.assign(m.app.state, changes);
+            m.app.evaluateAllBindings(Object.keys(changes));
+        };
         const face = (el) => {
             const layer = el.querySelector(':scope > .panel-button-image-layer');
             const kids = [...el.children].map((c) => `${c.tagName.toLowerCase()}.${c.getAttribute('class') || ''}`
@@ -7128,8 +7138,8 @@ const tests = {
                 + ` | src=${JSON.stringify(el.getAttribute('data-avc-text-src'))}`
                 + ` | class="${el.className}" aria-current=${el.getAttribute('aria-current')}`;
         };
-        const down = { 'device.d1.connected': false };
-        const up = { 'device.d1.connected': true };
+        const down = { 'device.d1.connected': false, 'device.d1.presence': 'offline' };
+        const up = { 'device.d1.connected': true, 'device.d1.presence': 'online' };
         const states = { key: 'device.d1.mode', default_state: 'a', states: {
             a: { label: 'A', bg_color: '#ff0000', icon: 'play', icon_color: '#00ff00' },
             b: { text_color: '#0000ff', button_image: '/b.png' },
@@ -7187,7 +7197,7 @@ const tests = {
             const m = mount({ id: name, ...def }, { ...up, 'device.d1.mode': values[0] });
             const seen = [face(m.el)];
             for (const v of values.slice(1)) { set(m, 'device.d1.mode', v); seen.push(face(m.el)); }
-            if (name.startsWith('offline')) { set(m, 'device.d1.connected', false); seen.push(face(m.el)); }
+            if (name.startsWith('offline')) { set(m, { 'device.d1.connected': false, 'device.d1.presence': 'offline' }); seen.push(face(m.el)); }
             got[name] = seen;
         }
         const toggle = (extra) => ({ do: { press: [{ action: 'state.set', key: 'var.on', value: true,
@@ -7240,7 +7250,7 @@ const tests = {
             states: { a: { text_color: '#ff0000', bg_color: '#00ff00', opacity: 0.5 } } } } } },
             { ...up, 'device.d1.mode': 'a' });
         got.offline_ignored_theme_colour = [face(t.el)];
-        set(t, 'device.d1.connected', false);
+        set(t, { 'device.d1.connected': false, 'device.d1.presence': 'offline' });
         got.offline_ignored_theme_colour.push(face(t.el));
         t = themed({ id: 'toggle_ignored_theme_colour', type: 'button', label: 'Own', bindings: toggle({}) },
             { 'var.on': false });
@@ -7323,8 +7333,8 @@ const tests = {
                 put(steps * 0.25, 'input'); m.look(); advance(10);
                 put(steps * 0.5, 'input'); m.look(); advance(10);
                 m.set(LEVEL_KEY, 10); m.look();
-                m.set('device.d.connected', false); m.look();
-                m.set('device.d.connected', true); m.look();
+                m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' }); m.look();
+                m.set({ 'device.d.connected': true, 'device.d.presence': 'online' }); m.look();
                 put(steps * 0.75, 'input'); m.look();
                 advance(500); m.look();
                 put(steps * 0.75, 'change');
@@ -7466,13 +7476,13 @@ const tests = {
                 advance(1000); m.look();
                 // The device going away and back while the handle is held draws nothing under the finger.
                 mouse(wrap, 'mousedown', 80, 50); m.look();
-                m.set('device.d.connected', false); m.look();
-                m.set('device.d.connected', true); m.look();
+                m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' }); m.look();
+                m.set({ 'device.d.connected': true, 'device.d.presence': 'online' }); m.look();
                 mouse(document, 'mouseup', 80, 50); m.look();
                 // A drag on a device that has gone away puts the readout back to unknown.
-                m.set('device.d.connected', false);
+                m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
                 mouse(wrap, 'mousedown', 100, 60); mouse(document, 'mouseup', 100, 60); m.look();
-                m.set('device.d.connected', true);
+                m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
                 // The page redrawn mid-drag: the release goes out, the old drag listens no more.
                 mouse(wrap, 'mousedown', 150, 40);
                 m.app.renderCurrentPage();
@@ -7672,7 +7682,7 @@ const tests = {
             .filter((row) => row.classList.contains('active')).map((row) => row.dataset.value);
         const items = [{ value: 'a' }, { value: 'b' }, { value: 'c' }];
         const bound = { show: { value: { key: CHOICE_KEY } } };
-        const live = { state: { 'device.d.connected': true, [CHOICE_KEY]: 'a' } };
+        const live = { state: { 'device.d.connected': true, 'device.d.presence': 'online', [CHOICE_KEY]: 'a' } };
         const tap = (m, index) => m.node().querySelectorAll('.list-item')[index].click();
 
         const reported = levelMount({ id: 'x', type: 'list', items, bindings: bound }, live);
@@ -7708,13 +7718,13 @@ const tests = {
         const m = levelMount({
             id: 'x', type: 'list', items: [{ value: 'a' }, { value: 'b' }],
             bindings: { show: { value: { key: CHOICE_KEY } } },
-        }, { state: { 'device.d.connected': true, [CHOICE_KEY]: 'a' } });
-        m.set('device.d.connected', false);
+        }, { state: { 'device.d.connected': true, 'device.d.presence': 'online', [CHOICE_KEY]: 'a' } });
+        m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
         assert(lit(m).length === 0, `unreachable: ${lit(m)}`);
         m.node().querySelectorAll('.list-item')[1].click();
         assert(lit(m).length === 0, `a tap while unreachable: ${lit(m)}`);
         assert(m.sent.length === 1 && m.sent[0].type === 'ui.select', 'the tap still sends');
-        m.set('device.d.connected', true);
+        m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
         assert(JSON.stringify(lit(m)) === '["a"]', `back, its reading lit: ${lit(m)}`);
     },
 
@@ -7726,7 +7736,7 @@ const tests = {
         const m = levelMount({
             id: 'x', type: 'list', list_style: 'static',
             bindings: { show: { items: { source: 'state', key_pattern: 'var.st.*' }, value: { key: CHOICE_KEY } } },
-        }, { state: { 'device.d.connected': true, 'var.st.a': 'A', 'var.st.b': 'B', [CHOICE_KEY]: 'b' } });
+        }, { state: { 'device.d.connected': true, 'device.d.presence': 'online', 'var.st.a': 'A', 'var.st.b': 'B', [CHOICE_KEY]: 'b' } });
         assert(JSON.stringify(lit(m)) === '["b"]', `static at draw: ${lit(m)}`);
         m.set('var.st.c', 'C');
         assert(JSON.stringify(lit(m)) === '["b"]', `static after its rows are drawn again: ${lit(m)}`);
@@ -7845,7 +7855,7 @@ const tests = {
                 withFakeClock((advance) => {
                     let m;
                     try {
-                        m = levelMount({ id: 'x', ...def }, { state: { 'device.d.connected': true, ...mountState } });
+                        m = levelMount({ id: 'x', ...def }, { state: { 'device.d.connected': true, 'device.d.presence': 'online', ...mountState } });
                         m.advance = advance;
                         const look = m.look;
                         m.look = () => {
@@ -8040,9 +8050,9 @@ const CHOICE_KEY = 'device.d.v';
 function choiceReadings(m, key) {
     m.look();
     for (const value of ['b', null, 'zz', null]) { m.set(key, value); m.look(); }
-    m.set('device.d.connected', false); m.look();
+    m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' }); m.look();
     m.set(key, 'a'); m.look();
-    m.set('device.d.connected', true); m.look();
+    m.set({ 'device.d.connected': true, 'device.d.presence': 'online' }); m.look();
     m.set(key, undefined); m.look();
     for (const value of [0, '', 'a', true, 7]) { m.set(key, value); m.look(); }
 }
@@ -8256,9 +8266,9 @@ function meterReadings(m, key, advance) {
     for (const value of [-30, -6, -1, 5, -70, 60, 250, -5, 0, null, 33.333, 0.05, -0.04, 72.6]) {
         m.set(key, value); advance(400); m.look();
     }
-    m.set('device.d.connected', false); m.look();
+    m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' }); m.look();
     m.set(key, 30); m.look();
-    m.set('device.d.connected', true); m.look();
+    m.set({ 'device.d.connected': true, 'device.d.presence': 'online' }); m.look();
     m.set(key, undefined); m.look();
     for (const value of ['55', '-20', ' 7 ', true, false, '', 'abc', 1e21, -1e-9, 42]) {
         m.set(key, value); advance(400); m.look();
@@ -8288,7 +8298,7 @@ Object.assign(tests, {
         const bound = { bindings: { show: { value: { key: METER_KEY } } } };
         const gauge = (id, extra) => ({ id, type: 'gauge', label: 'Level', ...bound, ...extra });
         const meter = (id, extra) => ({ id, type: 'level_meter', label: 'Mic', ...bound, ...extra });
-        const live = { 'device.d.connected': true };
+        const live = { 'device.d.connected': true, 'device.d.presence': 'online' };
         const themeDefaults = (app) => {
             app.theme.elementDefaults = {
                 gauge: { gauge_color: '#0a0a0a', gauge_bg_color: '#1b1b1b', tick_count: 3, show_value: false, text_color: '#2c2c2c' },
@@ -8434,7 +8444,7 @@ Object.assign(tests, {
                 let m;
                 try {
                     m = levelMount(def, {
-                        state: { 'device.d.connected': true },
+                        state: { 'device.d.connected': true, 'device.d.presence': 'online' },
                         edit: def.id === 'c_design',
                         before: def.id === 'c_themed' ? (app) => { app.theme.elementDefaults = { clock: { text_color: '#00ff00', font_size: 12 } }; } : undefined,
                     });
@@ -8566,7 +8576,7 @@ Object.assign(tests, {
             withFakeTime((advance) => {
                 let m;
                 try {
-                    m = levelMount(def, { state: { 'device.d.connected': true }, ...opts });
+                    m = levelMount(def, { state: { 'device.d.connected': true, 'device.d.presence': 'online' }, ...opts });
                     keypadPresses(m, advance);
                 } catch (e) {
                     (m ? m.steps : []).push({ threw: String(e && e.message) });
@@ -10255,7 +10265,7 @@ const READING_ELEMENTS = [
 ];
 
 const READING_STATE = {
-    'device.d.connected': true, 'device.e.connected': true,
+    'device.d.connected': true, 'device.d.presence': 'online', 'device.e.connected': true, 'device.e.presence': 'online',
     'device.d.mute': 'on', 'device.d.power': true, 'device.d.input': 'b', 'device.d.v': 40,
     'device.d.field': 'Podium', 'device.d.sel': '1', 'device.e.input': 'a',
     'device.d.src.1.name': 'Laptop', 'device.d.src.2.name': 'Camera',
@@ -10348,20 +10358,20 @@ Object.assign(tests, {
         // forgotten; a key nothing reads; a key one control reads; a second
         // device under one control; the whole state replaced.
         run('every_reading', { elements: READING_ELEMENTS, state: READING_STATE }, (m) => {
-            m.set({ 'device.d.connected': false });
-            m.set({ 'device.d.asleep': true });
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
+            m.set({ 'device.d.asleep': true, 'device.d.presence': 'asleep' });
             m.set({ 'var.nothing': 1 });
             m.set({ 'device.d.v': 55 });
-            m.set({ 'device.d.connected': true });
-            m.clear(['device.d.connected']);
-            m.set({ 'device.e.connected': false });
-            m.set({ 'device.d.connected': false });
-            m.set({ 'device.e.connected': true });
+            m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
+            m.clear(['device.d.connected', 'device.d.presence']);
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'offline' });
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'asleep' });
+            m.set({ 'device.e.connected': true, 'device.e.presence': 'online' });
             m.set({ 'device.d.src.3.name': 'Doc cam', 'device.d.mute': 'off' });
             m.set({ 'device.d.input.1.connected': false });
-            m.set({ 'device.d.asleep': false, 'device.x.connected': false });
-            m.snapshot({ ...READING_STATE, 'device.d.connected': false });
-            m.snapshot({ 'device.d.connected': true });
+            m.set({ 'device.d.asleep': false, 'device.d.presence': 'offline', 'device.x.connected': false, 'device.x.presence': 'offline' });
+            m.snapshot({ ...READING_STATE, 'device.d.connected': false, 'device.d.presence': 'offline' });
+            m.snapshot({ 'device.d.connected': true, 'device.d.presence': 'online' });
             m.redraw();
         });
 
@@ -10382,10 +10392,10 @@ Object.assign(tests, {
         const allLabels = [...platformLabels, ...childLabels, ...oddLabels];
         const valued = {};
         for (const e of allLabels) valued[e.bindings.show.value.key] = `v:${e.id}`;
-        run('platform_keys', { elements: allLabels, state: { ...valued, 'device.d.connected': true, '': 1 } }, (m) => {
-            m.set({ 'device.d.connected': false });
+        run('platform_keys', { elements: allLabels, state: { ...valued, 'device.d.connected': true, 'device.d.presence': 'online', '': 1 } }, (m) => {
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
             m.set({ 'device..connected': false });
-            m.set({ 'device.d.connected': true });
+            m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
         });
 
         // A wake control keeps its reading while its device is asleep on
@@ -10401,21 +10411,21 @@ Object.assign(tests, {
             { id: 'w_bad', type: 'label', text: '', wake_devices: 'd',
               bindings: { show: { value: { key: 'device.d.v' } } } },
         ];
-        const wakeState = { 'device.d.connected': true, 'device.e.connected': true, 'device.d.power': false, 'device.d.input': 'a', 'device.e.v': 3, 'device.d.v': 4 };
+        const wakeState = { 'device.d.connected': true, 'device.d.presence': 'online', 'device.e.connected': true, 'device.e.presence': 'online', 'device.d.power': false, 'device.d.input': 'a', 'device.e.v': 3, 'device.d.v': 4 };
         run('wake', { elements: wakeElements, state: wakeState }, (m) => {
-            m.set({ 'device.d.connected': false });
-            m.set({ 'device.d.asleep': true });
-            m.set({ 'device.e.connected': false, 'device.e.asleep': true });
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
+            m.set({ 'device.d.asleep': true, 'device.d.presence': 'asleep' });
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'asleep', 'device.e.asleep': true });
             m.set({ 'device.d.asleep': 'true' });
             m.set({ 'device.d.input.1.asleep': true });
-            m.set({ 'device.d.asleep': false });
-            m.set({ 'device.d.connected': true });
+            m.set({ 'device.d.asleep': false, 'device.d.presence': 'offline' });
+            m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
         });
 
         // The design canvas draws the control as designed, whatever the room says.
-        run('design_canvas', { elements: [...READING_ELEMENTS, ...wakeElements.slice(0, 1)], state: { ...READING_STATE, 'device.d.connected': false, 'device.d.asleep': true }, edit: true }, (m) => {
-            m.set({ 'device.d.connected': true });
-            m.set({ 'device.d.connected': false });
+        run('design_canvas', { elements: [...READING_ELEMENTS, ...wakeElements.slice(0, 1)], state: { ...READING_STATE, 'device.d.connected': false, 'device.d.presence': 'asleep', 'device.d.asleep': true }, edit: true }, (m) => {
+            m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
         });
 
         // A press that cannot land: nothing it reaches is up. A reading mark
@@ -10429,18 +10439,18 @@ Object.assign(tests, {
             { id: 'a_both', type: 'button', label: 'Both', action_devices: ['d'],
               bindings: { show: { look: { key: 'device.d.mute', default_state: 'off', states: { on: { label: 'M' } } } } } },
         ];
-        run('actions', { elements: actionElements, state: { 'device.d.connected': true, 'device.e.connected': true, 'device.d.mute': 'on' } }, (m) => {
-            m.set({ 'device.d.connected': false });
-            m.set({ 'device.e.connected': false });
-            m.set({ 'device.d.connected': true });
-            m.set({ 'device.d.connected': false, 'device.e.connected': true });
-            m.clear(['device.d.connected']);
-            m.set({ 'device.e.connected': false, 'device.d.connected': false });
+        run('actions', { elements: actionElements, state: { 'device.d.connected': true, 'device.d.presence': 'online', 'device.e.connected': true, 'device.e.presence': 'online', 'device.d.mute': 'on' } }, (m) => {
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'offline' });
+            m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline', 'device.e.connected': true, 'device.e.presence': 'online' });
+            m.clear(['device.d.connected', 'device.d.presence']);
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'offline', 'device.d.connected': false, 'device.d.presence': 'offline' });
             m.redraw();
             // An entry with no node to mark is passed over.
             m.app.elementMap.no_node = { elementDef: { id: 'no_node', action_devices: ['d'] } };
             m.app.elementMap.no_class = { el: {}, elementDef: { id: 'no_class', action_devices: ['d'] } };
-            m.set({ 'device.e.connected': true });
+            m.set({ 'device.e.connected': true, 'device.e.presence': 'online' });
         });
 
         // Preview draws the Builder's copy, so what each press reaches comes
@@ -10455,21 +10465,21 @@ Object.assign(tests, {
         });
         run('preview_served', {
             elements: [...actionElements, wakeElements[0]], embedded: true,
-            state: { 'device.d.connected': false, 'device.e.connected': true, 'device.d.asleep': true, 'device.d.power': true, 'device.d.mute': 'on' },
+            state: { 'device.d.connected': false, 'device.d.presence': 'asleep', 'device.e.connected': true, 'device.e.presence': 'online', 'device.d.asleep': true, 'device.d.power': true, 'device.d.mute': 'on' },
         }, (m) => {
             m.frame({ type: 'ui.definition', ui: served({ a_one: ['e'], a_two: ['d'], a_none: ['d'] }, { w_power: [] }) });
             m.set({ 'device.d.power': 'on' });
-            m.set({ 'device.e.connected': false });
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'offline' });
             m.frame({ type: 'ui.definition', ui: served({ a_one: [], a_two: ['d', 'e'] }, { w_power: ['d'], a_one: ['d'] }) });
             m.set({ 'device.d.power': false });
             m.frame({ type: 'ui.definition', ui: { pages: 'none', master_elements: null } });
-            m.set({ 'device.d.connected': true });
+            m.set({ 'device.d.connected': true, 'device.d.presence': 'online' });
             m.frame({ type: 'ui.definition', ui: null });
         });
         // The design canvas keeps nothing from the server.
-        run('canvas_served', { elements: actionElements, embedded: true, edit: true, state: { 'device.d.connected': false } }, (m) => {
+        run('canvas_served', { elements: actionElements, embedded: true, edit: true, state: { 'device.d.connected': false, 'device.d.presence': 'offline' } }, (m) => {
             m.frame({ type: 'ui.definition', ui: served({ a_unset: ['d'] }, {}) });
-            m.set({ 'device.e.connected': false });
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'offline' });
         });
 
         // A matrix is marked one destination at a time, and reads its route keys by name.
@@ -10487,14 +10497,14 @@ Object.assign(tests, {
         for (const style of ['dropdown', 'crosspoint', 'tile_wall']) {
             run(`matrix_${style}`, {
                 elements: [...matrixElements(style), { id: 'mx_other', type: 'label', text: '', bindings: { show: { value: { key: 'device.sw_a.name' } } } }],
-                state: { 'device.sw_a.connected': true, 'device.sw_a.route_1': 1, 'device.sw_b.connected': true, 'device.sw_b.route_1': 2, 'var.route_3': 1 },
+                state: { 'device.sw_a.connected': true, 'device.sw_a.presence': 'online', 'device.sw_a.route_1': 1, 'device.sw_b.connected': true, 'device.sw_b.presence': 'online', 'device.sw_b.route_1': 2, 'var.route_3': 1 },
             }, (m) => {
-                m.set({ 'device.sw_b.connected': false });
+                m.set({ 'device.sw_b.connected': false, 'device.sw_b.presence': 'offline' });
                 m.set({ 'device.sw_a.route_1': 2 });
-                m.set({ 'device.sw_a.connected': false });
+                m.set({ 'device.sw_a.connected': false, 'device.sw_a.presence': 'offline' });
                 m.set({ 'var.route_3': 2 });
                 m.set({ 'device.sw_a.name': 'Switcher' });
-                m.set({ 'device.sw_a.connected': true, 'device.sw_b.connected': true });
+                m.set({ 'device.sw_a.connected': true, 'device.sw_a.presence': 'online', 'device.sw_b.connected': true, 'device.sw_b.presence': 'online' });
             });
         }
 
@@ -10514,17 +10524,17 @@ Object.assign(tests, {
             { id: 't_var', type: 'label', text: '', bindings: { show: { value: { key: 'var.v' } } } },
             { id: 't_none', type: 'label', text: '', bindings: { show: { value: { source: 'macro_progress', macro: 'm' } } } },
         ];
-        run('reach', { elements: reachElements, state: { 'device.d.connected': true, 'device.e.connected': true, 'device.d.power': true, 'var.mode': 'x' } }, (m) => {
+        run('reach', { elements: reachElements, state: { 'device.d.connected': true, 'device.d.presence': 'online', 'device.e.connected': true, 'device.e.presence': 'online', 'device.d.power': true, 'var.mode': 'x' } }, (m) => {
             m.set({ 'var.unread': 1 });
             m.set({ 'var.mode': 'y' });
             m.set({ 'device.d.src.1.name': 'A' });
             m.set({ 'device.d.src': 'flat' });
             m.set({ 'var.row_1': 'R' });
             m.set({ 'var.row': 'no star' });
-            m.set({ 'device.d.connected': false });
-            m.set({ 'device.e.connected': false });
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
+            m.set({ 'device.e.connected': false, 'device.e.presence': 'offline' });
             m.set({ 'device.e.v': 9, 'var.v': 8 });
-            m.set({ 'device.d.asleep': true });
+            m.set({ 'device.d.asleep': true, 'device.d.presence': 'asleep' });
             m.set({ 'device.d.src.1.asleep': true });
             m.set({ 'device.d.power.connected': true });
             m.set({ 'var.d.connected': false, 'plugin.e.asleep': true, 'system.d.connected': false });
@@ -10557,13 +10567,13 @@ Object.assign(tests, {
                 { id: 't_after', type: 'label', text: '', bindings: { show: { value: { key: 'var.after' } } } },
                 { id: 'a_after', type: 'button', label: 'A', action_devices: ['d'] },
             ],
-            state: { 'device.d.connected': true, 'var.after': 1 },
+            state: { 'device.d.connected': true, 'device.d.presence': 'online', 'var.after': 1 },
         }, (m) => {
             const quiet = console.error;
             console.error = () => {};
             try {
                 m.set({ 'var.after': 2 });
-                m.set({ 'device.d.connected': false, 'ui.a_after.bg_color': '#123456' });
+                m.set({ 'device.d.connected': false, 'device.d.presence': 'offline', 'ui.a_after.bg_color': '#123456' });
                 m.set({ 'var.other': 1 });
             } finally {
                 console.error = quiet;
@@ -10602,11 +10612,11 @@ Object.assign(tests, {
             bindings.no_binding = devicesOfBinding(app, {});
             // A reading of two devices is spoiled while either is down.
             const twoDevices = { elementDef: { id: 'two' }, binding: { key: 'device.a.v', key_pattern: 'device.b.*' } };
-            app.state = { 'device.a.connected': true, 'device.b.connected': false };
+            app.state = { 'device.a.connected': true, 'device.a.presence': 'online', 'device.b.connected': false, 'device.b.presence': 'offline' };
             bindings.two_devices = [app.availability.readingOffline(twoDevices)];
-            app.state = { 'device.a.connected': false, 'device.b.connected': true };
+            app.state = { 'device.a.connected': false, 'device.a.presence': 'offline', 'device.b.connected': true, 'device.b.presence': 'online' };
             bindings.two_devices.push(app.availability.readingOffline(twoDevices));
-            app.state = { 'device.a.connected': true, 'device.b.connected': true };
+            app.state = { 'device.a.connected': true, 'device.a.presence': 'online', 'device.b.connected': true, 'device.b.presence': 'online' };
             bindings.two_devices.push(app.availability.readingOffline(twoDevices));
             // The mark goes on the element the map knows, else the node the
             // binding draws into, else nowhere.
@@ -11805,7 +11815,7 @@ function dialogCase(element, steps, extra) {
             pinPage('home', { elements: [pinLabel('h1')] }),
             pinPage('dlg', { page_type: 'overlay', elements: [element], placements: { [element.id]: { x: 5, y: 5, w: 90, h: 90 } } }),
         ]),
-        state: { 'device.d.connected': true, 'device.d.v': 40, 'var.x': 0 },
+        state: { 'device.d.connected': true, 'device.d.presence': 'online', 'device.d.v': 40, 'var.x': 0 },
         elementMap: true,
         steps: [['nav', 'dlg'], ...steps],
         ...extra,
@@ -13445,10 +13455,10 @@ const PRESS_CASES = {
             pinButton('w4', toggle({ toggle_key: 'device.amp.mute', toggle_value: true, on_label: 'Muted' }), { icon: 'volume-x' }),
         ]),
         steps: [
-            snapshot({ 'var.t': 'on', 'device.amp.mute': true, 'device.amp.connected': true }), ['raf'],
+            snapshot({ 'var.t': 'on', 'device.amp.mute': true, 'device.amp.connected': true, 'device.amp.presence': 'online' }), ['raf'],
             ...pressAndLetGo('w1'), ...pressAndLetGo('w2'), ...pressAndLetGo('w3'), ...pressAndLetGo('w4'),
             ['state', { 'var.t': 'off', 'device.amp.mute': false }], ['raf'],
-            ['state', { 'device.amp.mute': true, 'device.amp.connected': false }], ['raf'],
+            ['state', { 'device.amp.mute': true, 'device.amp.connected': false, 'device.amp.presence': 'offline' }], ['raf'],
             ...pressAndLetGo('w4'),
         ],
     },
@@ -13892,8 +13902,8 @@ const BUTTON_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_butto
 const FACE = { raf: 'queued', fetch: {}, recordDefs: true };
 const PIC = 'assets://bg.png';
 const DEV_KEY = 'device.d1.mode';
-const AWAY = { 'device.d1.connected': false };
-const BACK = { 'device.d1.connected': true };
+const AWAY = { 'device.d1.connected': false, 'device.d1.presence': 'offline' };
+const BACK = { 'device.d1.connected': true, 'device.d1.presence': 'online' };
 
 Object.assign(PANEL_STEPS, {
     // The element defaults a theme gives each control type.
@@ -14681,7 +14691,7 @@ Object.assign(tests, {
             { id: 'm', type: 'level_meter', min: -100, max: 2000, ...bound },
         ];
         const after40 = (def, value) => {
-            const m = levelMount(def, { state: { 'device.d.connected': true, [KEY]: 40 } });
+            const m = levelMount(def, { state: { 'device.d.connected': true, 'device.d.presence': 'online', [KEY]: 40 } });
             m.set(KEY, value);
             return SHOWN[def.type](m.node());
         };
@@ -14713,7 +14723,7 @@ Object.assign(tests, {
             { id: 'f', type: 'fader', min: 0, max: 10, ...bound },
         ]) {
             const drawn = (value) => {
-                const m = levelMount(def, { state: { 'device.d.connected': true, [KEY]: 3 }, edit: true });
+                const m = levelMount(def, { state: { 'device.d.connected': true, 'device.d.presence': 'online', [KEY]: 3 }, edit: true });
                 m.set(KEY, value);
                 return SHOWN[def.type](m.node());
             };
@@ -14729,7 +14739,7 @@ Object.assign(tests, {
         const KEY = 'device.d.v';
         const led = { id: 'led', type: 'status_led', bindings: { show: { look: {
             key: KEY, map: { null: '#ff0000', undefined: '#00ff00', on: '#0000ff' }, default: '#9e9e9e' } } } };
-        const m = levelMount(led, { state: { 'device.d.connected': true, [KEY]: 'on' } });
+        const m = levelMount(led, { state: { 'device.d.connected': true, 'device.d.presence': 'online', [KEY]: 'on' } });
         const dot = () => m.node().querySelector('.led-dot');
         const lit = () => `${dot().style.backgroundColor} ${dot().classList.contains('active')}`;
         assert(lit() === 'rgb(0, 0, 255) true', `a reported "on" lights blue, got ${lit()}`);
@@ -14752,7 +14762,7 @@ Object.assign(tests, {
             const seen = [];
             withFakeTime((advance) => {
                 const m = levelMount({ id: 'mt', type: 'clock', clock_mode: 'meeting', duration_minutes: 1 },
-                    { state: { 'device.d.connected': true } });
+                    { state: { 'device.d.connected': true, 'device.d.presence': 'online' } });
                 if (offset) { advance(offset); m.app.renderCurrentPage(); }
                 advance(58000);
                 for (let i = 0; i < 4; i++) { advance(1000); seen.push(m.node().textContent); }
@@ -14776,7 +14786,7 @@ Object.assign(tests, {
 Object.assign(tests, {
     a_picture_that_is_not_text_draws_no_picture() {
         const KEY = 'device.d.mode';
-        const live = { 'device.d.connected': true, [KEY]: 'pic' };
+        const live = { 'device.d.connected': true, 'device.d.presence': 'online', [KEY]: 'pic' };
         const states = (extra) => ({ key: KEY, states: {
             pic: { button_image: 'assets://on.png', ...extra }, num: { button_image: 7 } } });
         const logged = [];
@@ -14874,7 +14884,7 @@ Object.assign(tests, {
 Object.assign(tests, {
     a_null_state_label_draws_no_words() {
         const KEY = 'device.d.mode';
-        const live = { 'device.d.connected': true, [KEY]: 'a' };
+        const live = { 'device.d.connected': true, 'device.d.presence': 'online', [KEY]: 'a' };
         const look = { key: KEY, states: { a: { label: 'A' }, nul: { label: null, bg_color: '#010101' } } };
         const wrong = [];
         const words = (node) => node.querySelector('.panel-label-span')?.textContent ?? node.textContent;
@@ -14912,12 +14922,12 @@ Object.assign(tests, {
         const logged = [];
         const out = {};
         const run = loggingTo(logged, () => {
-            const own = levelMount({ id: 'b', type: 'button', label: 'Own', icon: 7 }, { state: { 'device.d.connected': true } });
+            const own = levelMount({ id: 'b', type: 'button', label: 'Own', icon: 7 }, { state: { 'device.d.connected': true, 'device.d.presence': 'online' } });
             out.own = own.node()?.textContent;
             out.ownIcons = own.node()?.querySelectorAll('svg, img').length;
             const look = { key: 'device.d.m', states: { a: { icon: 7, label: 'A' }, b: { label: 'B' } } };
             const st = levelMount({ id: 'c', type: 'button', label: 'Own', bindings: { show: { look } } },
-                { state: { 'device.d.connected': true, 'device.d.m': 'b' } });
+                { state: { 'device.d.connected': true, 'device.d.presence': 'online', 'device.d.m': 'b' } });
             st.set('device.d.m', 'a');
             out.look = st.node()?.textContent;
             out.lookIcons = st.node()?.querySelectorAll('svg, img').length;
@@ -14941,7 +14951,7 @@ Object.assign(tests, {
             muted: { label: 'Muted', icon: 'volume-x', bg_color: '#ff0000' },
             unmuted: { label: 'Unmuted' },
         } };
-        const up = { 'device.d.connected': true, 'device.d.m': 'muted' };
+        const up = { 'device.d.connected': true, 'device.d.presence': 'online', 'device.d.m': 'muted' };
         const face = (node) => ({
             icons: node.querySelectorAll(':scope > svg, :scope > img').length,
             span: !!node.querySelector(':scope > .panel-label-span'),
@@ -14967,7 +14977,7 @@ Object.assign(tests, {
             if (JSON.stringify(after) !== JSON.stringify(want)) wrong.push(`${name}: unmuted ${JSON.stringify(after)}`);
             if (name === 'nav') continue;
             m.set('device.d.m', 'muted');
-            m.set('device.d.connected', false);
+            m.set({ 'device.d.connected': false, 'device.d.presence': 'offline' });
             const away = face(m.node());
             if (away.icons !== 0 || away.span || away.text !== 'Own') wrong.push(`${name}: away ${JSON.stringify(away)}`);
         }
@@ -15008,7 +15018,7 @@ Object.assign(tests, {
             second: { button_image: 'assets://second.png' },
         } };
         const m = levelMount({ id: 'pic', type: 'image', bindings: { show: { look } } },
-            { state: { 'device.d.connected': true, 'device.d.p': 'first' } });
+            { state: { 'device.d.connected': true, 'device.d.presence': 'online', 'device.d.p': 'first' } });
         const old = m.node().querySelector('img');
         m.set('device.d.p', 'none');
         m.set('device.d.p', 'second');

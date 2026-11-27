@@ -642,7 +642,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -667,7 +668,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": "off",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -691,7 +693,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": "off",
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -716,7 +719,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": "off",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -741,7 +745,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": "off",
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -1261,7 +1266,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": null,
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -1285,7 +1291,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": null,
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -2368,7 +2375,8 @@
           "ui": "navs",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,

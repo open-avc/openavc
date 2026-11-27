@@ -1180,7 +1180,8 @@
           "ui": "images",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -1205,7 +1206,8 @@
           "ui": "images",
           "state": {
             "device.d1.mode": "alt",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -1229,7 +1231,8 @@
           "ui": "images",
           "state": {
             "device.d1.mode": "alt",
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -1254,7 +1257,8 @@
           "ui": "images",
           "state": {
             "device.d1.mode": "alt",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -1279,7 +1283,8 @@
           "ui": "images",
           "state": {
             "device.d1.mode": "alt",
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -2007,6 +2012,7 @@
           "ui": "images",
           "state": {
             "device.d1.connected": false,
+            "device.d1.presence": "offline",
             "device.d1.mode": "on"
           },
           "ready": true,
@@ -3497,7 +3503,8 @@
           "ui": "themed",
           "state": {
             "device.d1.mode": null,
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -3522,7 +3529,8 @@
           "ui": "themed",
           "state": {
             "device.d1.mode": null,
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -4045,7 +4053,8 @@
           "ui": "zones",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -4080,7 +4089,8 @@
           "ui": "zones",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -4105,7 +4115,8 @@
           "ui": "zones",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": false
+            "device.d1.connected": false,
+            "device.d1.presence": "offline"
           },
           "ready": true,
           "grid": null,
@@ -4130,7 +4141,8 @@
           "ui": "zones",
           "state": {
             "device.d1.mode": "on",
-            "device.d1.connected": true
+            "device.d1.connected": true,
+            "device.d1.presence": "online"
           },
           "ready": true,
           "grid": null,
@@ -4166,6 +4178,7 @@
           "ui": "zones",
           "state": {
             "device.d1.connected": false,
+            "device.d1.presence": "offline",
             "device.d1.mode": "faded"
           },
           "ready": true,
