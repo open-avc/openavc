@@ -20,7 +20,7 @@ import { KEYPAD_DIGITS_DEFAULT, KEYPAD_SEND_DELAY_DEFAULT_MS } from "../reviewPr
 import { HONORED_PROPERTIES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { SearchableSelect } from "../../shared/SearchableSelect";
-import { pageGroups } from "../../shared/pickerOptions";
+import { NAVIGATE_SPECIAL_GROUP, pageGroups } from "../../shared/pickerOptions";
 import { CustomControlConfig } from "./CustomControlConfig";
 import { CheckboxRow, FieldHint, FieldRow, type FieldProps } from "./FieldRow";
 import { ButtonImageFields } from "./ButtonImageFields";
@@ -298,10 +298,7 @@ function PageNavFields({ element, pages, onChange }: SectionProps) {
         <SearchableSelect
           value={element.target_page || ""}
           onChange={(target_page) => onChange({ target_page })}
-          groups={[
-            { options: [{ value: "$back", label: "$back (dismiss overlay)", hint: "$back" }] },
-            ...pageGroups(pages),
-          ]}
+          groups={[NAVIGATE_SPECIAL_GROUP, ...pageGroups(pages)]}
           placeholder="Select page..."
           searchPlaceholder="Search pages..."
           style={{ flex: 1 }}
