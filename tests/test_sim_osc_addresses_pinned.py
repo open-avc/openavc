@@ -13,6 +13,7 @@ import logging
 
 import pytest
 
+from openavc.simulator.osc_addresses import AddressArg
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from openavc.transport.osc_codec import osc_decode_message
 
@@ -147,13 +148,14 @@ def test_a_set_value_the_map_lacks_goes_through_the_conversion():
 
 @pytest.mark.parametrize("value_type, value, expected", [
     ("float", 0.25, [("f", 0.25, "float")]),
-    ("number", 2, [("f", 2, "int")]),
+    ("number", 2, [("f", 2.0, "float")]),
     ("integer", 3, [("i", 3, "int")]),
-    ("boolean", True, [("i", True, "bool")]),
+    ("boolean", True, [("i", 1, "int")]),
     ("string", "abc", [("s", "abc", "str")]),
-    ("other", 1.5, [("f", 1.5, "float")]),
+    # A type the strict check refuses still loads; the driver reads it as text.
+    ("other", 1.5, [("s", "1.5", "str")]),
 ])
-def test_a_query_answers_in_the_mapping_type_with_the_value_uncast(value_type, value, expected):
+def test_a_query_answers_in_the_mapping_type_cast_to_its_tag(value_type, value, expected):
     sim = _sim(responses=[{"address": "/v", "mappings": [
         {"arg": 0, "state": "v", "type": value_type},
     ]}])
@@ -170,15 +172,15 @@ def test_a_query_of_an_unset_variable_answers_zero_in_the_device_numbers():
     )
     sim._state.pop("v", None)
     ((_, args),) = sim.handle_message("/v", [])
-    assert _typed(args) == [("f", -2, "int")]
+    assert _typed(args) == [("f", -2.0, "float")]
 
 
-def test_a_query_reverse_maps_and_casts_to_the_tag():
+def test_a_query_reverse_maps_and_a_value_its_tag_cannot_carry_is_not_answered():
     sim = _sim(responses=[_MUTE], state_variables={"mute": {"type": "boolean"}})
     sim._state["mute"] = True
     assert _typed(sim.handle_message("/ch/01/on", [])[0][1]) == [("i", 0, "int")]
     sim._state["mute"] = "maybe"
-    assert _typed(sim.handle_message("/ch/01/on", [])[0][1]) == [("i", "maybe", "str")]
+    assert sim.handle_message("/ch/01/on", []) == []
 
 
 @pytest.mark.parametrize("value_type, expected", [
@@ -193,7 +195,7 @@ def test_a_reverse_mapped_query_casts_float_and_keeps_text(value_type, expected)
     assert _typed(sim.handle_message("/m", [])[0][1]) == expected
 
 
-def test_a_query_reads_the_reverse_map_of_the_last_address_naming_the_variable():
+def test_a_query_reads_the_reverse_map_of_the_address_asked():
     sim = _sim(responses=[
         {"address": "/a", "mappings": [{"state": "k", "type": "string",
                                          "map": {"A1": "on"}}]},
@@ -201,7 +203,7 @@ def test_a_query_reads_the_reverse_map_of_the_last_address_naming_the_variable()
                                          "map": {"7": "on"}}]},
     ])
     sim._state["k"] = "on"
-    assert _typed(sim.handle_message("/a", [])[0][1]) == [("s", "7", "str")]
+    assert _typed(sim.handle_message("/a", [])[0][1]) == [("s", "A1", "str")]
     assert _typed(sim.handle_message("/b", [])[0][1]) == [("i", 7, "int")]
 
 
@@ -233,11 +235,15 @@ def test_the_address_tables_follow_the_rules(caplog):
             {"address": "/empty", "mappings": []},
             {"address": "/c", "mappings": [{"arg": 2, "state": "c"}, {"arg": 1}]},
         ])
-    assert [a for a, _ in sim._osc_address_handlers] == ["/ch/01/fader", "/ch/01/on", "/c"]
-    assert sim._osc_state_to_address == {
-        "fader": ("/ch/01/fader", 0, "f", None),
-        "mute": ("/ch/01/on", 0, "i", {"true": "0", "false": "1"}),
-        "c": ("/c", 2, "f", None),
+    assert [rule.address for rule in sim._osc_address_handlers] == ["/ch/01/fader", "/ch/01/on", "/c"]
+    assert [rule.args for rule in sim._osc_address_handlers] == [
+        (AddressArg("fader", 0, "f", None, None),),
+        (AddressArg("mute", 0, "i", {"0": True, "1": False}, {"true": "0", "false": "1"}),),
+        # A mapping with no type, of a variable that declares none, is text.
+        (AddressArg("c", 2, "s", None, None),),
+    ]
+    assert {key: rule.address for key, rule in sim._osc_state_to_address.items()} == {
+        "fader": "/ch/01/fader", "mute": "/ch/01/on", "c": "/c",
     }
     assert any(
         r.getMessage() == "Auto-gen OSC simulator for acme_mixer: 3 address handlers"
@@ -267,7 +273,7 @@ def test_a_push_casts_the_device_number_to_its_tag(tag_type, value, expected, mo
     assert sent == [("/p", [expected])]
 
 
-def test_a_push_reverse_maps_and_a_value_the_map_lacks_sends_nothing(monkeypatch):
+def test_a_push_reverse_maps_and_a_value_its_tag_cannot_carry_sends_nothing(monkeypatch):
     sim = _sim(responses=[
         _MUTE,
         {"address": "/s", "mappings": [{"state": "s", "type": "string", "map": {"A": "x"}}]},
@@ -310,10 +316,15 @@ def test_a_changed_value_is_pushed_only_to_a_heard_peer_outside_a_message(monkey
     assert sim._state["fader"] == 0.3
 
 
-def test_a_query_mapping_with_no_type_answers_as_a_float():
-    sim = _sim(responses=[{"address": "/u", "mappings": [{"state": "u"}]}])
-    sim._state["u"] = 2
-    assert _typed(sim.handle_message("/u", [])[0][1]) == [("f", 2, "int")]
+def test_a_query_mapping_with_no_type_answers_in_its_variables_type_else_as_text():
+    sim = _sim(
+        responses=[{"address": "/u", "mappings": [{"state": "u"}]},
+                   {"address": "/n", "mappings": [{"state": "n"}]}],
+        state_variables={"n": {"type": "integer"}},
+    )
+    sim._state.update(u=2, n=2)
+    assert _typed(sim.handle_message("/u", [])[0][1]) == [("s", "2", "str")]
+    assert _typed(sim.handle_message("/n", [])[0][1]) == [("i", 2, "int")]
 
 
 def test_a_script_handler_typed_argument_of_the_wrong_length_is_refused(caplog):

@@ -94,13 +94,11 @@ from openavc.simulator.inline_device import (
 )
 from openavc.simulator.inline_device import merge_inline_protocol as _merge_inline_protocol
 from openavc.simulator.osc_addresses import (
-    PushTarget,
+    OscAddress,
     address_rules,
     normalize_osc_args,
     push_targets,
     system_reply,
-    tagged,
-    type_tag,
 )
 from openavc.simulator.osc_simulator import OSCDispatchMixin
 from openavc.simulator.push_channels import PushChannels
@@ -337,11 +335,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         the two flags that keep state written while answering from echoing
         as a push: ``_handling_command`` for a line on any transport,
         ``_handling_osc`` for an OSC message."""
-        self._osc_address_handlers: list[tuple[str, list[dict]]] = []
+        self._osc_address_handlers: list[OscAddress] = []
         self._osc_script_handlers: list[OSCScriptHandler] = []
         self._handling_command = False
         self._handling_osc = False
-        self._osc_state_to_address: dict[str, PushTarget] = {}
+        self._osc_state_to_address: dict[str, OscAddress] = {}
         if self._is_osc:
             self._build_osc_address_handlers()
             self._osc_state_to_address = push_targets(self._osc_address_handlers)
@@ -632,27 +630,36 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         )
         if script is not None:
             return self._execute_osc_script_handler(script, address, args)
-        for addr_pattern, mappings in self._osc_address_handlers:
-            if fnmatch.fnmatch(address, addr_pattern):
-                return self._osc_rule_answer(address, args, mappings)
+        for rule in self._osc_address_handlers:
+            if fnmatch.fnmatch(address, rule.address):
+                return self._osc_rule_answer(address, args, rule)
         logger.debug("%s: unmatched OSC address: %s", self.device_id, address)
         return None
 
     def _osc_rule_answer(
-        self, address: str, args: list[tuple[str, Any]], mappings: list[dict]
+        self, address: str, args: list[tuple[str, Any]], rule: OscAddress
     ) -> list[tuple[str, list[tuple[str, Any]]]]:
         """A message to a rule's address: with args it sets and is echoed
-        back, without it is answered with the variables' values."""
+        back, without it is answered with the address's own message
+        (``OscAddress.message``), or not at all when a value has no wire
+        form."""
         if args:
-            self._osc_set(mappings, args)
+            self._osc_set(rule.mappings, args)
             return [(address, args)]
-        return [(address, self._osc_query(mappings))]
+        message = rule.message(lambda key: self._state.get(key, 0), self._to_wire)
+        if message is None:
+            logger.debug("%s: %s holds a value no OSC argument carries; not answered",
+                         self.device_id, address)
+            return []
+        return [(address, message)]
 
-    def _osc_set(self, mappings: list[dict], args: list[tuple[str, Any]]) -> None:
+    def _osc_set(self, mappings: tuple[Any, ...], args: list[tuple[str, Any]]) -> None:
         """Each mapping's argument into its variable: through the entry of the
         mapping's map it picks (``map_entry``, the driver's own lookup), else
         the variable's conversion, then its type."""
         for mapping in mappings:
+            if not isinstance(mapping, dict):
+                continue
             arg_idx = mapping.get("arg", 0)
             state_key = mapping.get("state")
             if state_key and arg_idx < len(args):
@@ -661,29 +668,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
                 if not found:
                     mapped = self._from_wire(state_key, value)
                 self.set_state(state_key, self._coerce_value(state_key, mapped))
-
-    def _osc_query(self, mappings: list[dict]) -> list[tuple[str, Any]]:
-        """Each variable the mappings name, as an argument in its mapping's
-        tag."""
-        answer: list[tuple[str, Any]] = []
-        for mapping in mappings:
-            state_key = mapping.get("state")
-            value_type = mapping.get("type", "float")
-            if state_key:
-                tag = type_tag(value_type)
-                answer.append((tag, self._osc_answer(state_key, tag)))
-        return answer
-
-    def _osc_answer(self, state_key: str, tag: str) -> Any:
-        """A variable's value as a query answers it: the device's token from
-        the variable's push target (e.g. mute false -> 1) cast to ``tag``,
-        else the device's number, uncast."""
-        value = self._state.get(state_key, 0)
-        target = self._osc_state_to_address.get(state_key)
-        raw = target.device_token(value) if target else None
-        if raw is not None:
-            return tagged(raw, tag)
-        return self._to_wire(state_key, value)
 
     def _execute_osc_script_handler(
         self, handler: OSCScriptHandler, address: str, args: list[tuple[str, Any]]
@@ -1379,7 +1363,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _build_osc_address_handlers(self) -> None:
         """The address rules a message is matched against (osc_addresses)."""
-        self._osc_address_handlers = address_rules(self._rules)
+        self._osc_address_handlers = address_rules(
+            self._rules, self._driver_def.get("state_variables")
+        )
         logger.info(
             "Auto-gen OSC simulator for %s: %d address handlers",
             self.driver_id, len(self._osc_address_handlers),
@@ -1537,20 +1523,18 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return self._peer_heard()
 
     def _push_osc_state(self, key: str, value: Any) -> None:
-        """Send an OSC message to the connected driver for a state change:
-        the device's token from the reverse map (nothing when the map has none
-        for the value), else the device's number, cast to the target's tag."""
+        """Send the connected driver the message of the address a change to
+        ``key`` is pushed on, with ``value`` in it: the same message a query
+        of that address answers (``OscAddress.message``), so nothing when a
+        value in it has no wire form."""
         from openavc.transport.osc_codec import osc_encode_message
 
         target = self._osc_state_to_address[key]
-        if target.reverse_map:
-            raw = target.device_token(value)
-            if raw is None:
-                return
-            osc_value = tagged(raw, target.tag)
-        else:
-            osc_value = tagged(self._to_wire(key, value), target.tag)
-        self.push_datagram(osc_encode_message(target.address, [(target.tag, osc_value)]))
+        message = target.message(
+            lambda name: value if name == key else self._state.get(name, 0), self._to_wire,
+        )
+        if message is not None:
+            self.push_datagram(osc_encode_message(target.address, message))
 
     def _script_reply(self, key: str) -> str | None:
         """A script handler's ``reply(key)``: the text this device sends to

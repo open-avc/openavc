@@ -194,9 +194,9 @@ def test_an_unreadable_min_is_announced_as_zero_and_named_once(tmp_path, caplog)
 
 @pytest.mark.parametrize("declared, tag", [
     ("float", "f"), ("number", "f"), ("integer", "i"), ("boolean", "i"), ("string", "s"),
-    # A reply mapping's type the strict check refuses still loads; it goes
-    # out, as a null one does, as the float a mapping with no type is.
-    ("double", "f"), (None, "f"),
+    # A reply mapping's type the strict check refuses still loads; the driver
+    # reads it, as it reads a null one, as text, so it goes out as text.
+    ("double", "s"), (None, "s"),
 ])
 def test_an_osc_value_goes_out_under_its_types_tag(declared, tag):
     from openavc.simulator.osc_addresses import type_tag

@@ -4,18 +4,28 @@ A response rule with an ``address:`` names, one mapping per argument, the state
 variables a message to that address carries. ``yaml_auto`` answers a message
 WITH arguments by setting them and one WITHOUT by reporting them, and pushes a
 change made outside the protocol to the peer. This module holds what those
-three share: the rules read from the definition (``address_rules``); per
-variable, where a change is pushed (``push_targets``: the LAST address naming
-it, its type tag, its value map turned round so a value finds the device's
-token); the tag a value goes out under (``type_tag`` for a variable,
-``tag_for`` for a bare value a script hands ``respond``); and the one rule a
-value is cast to its tag by (``tagged``).
+three share, read once per address from the rule as the driver reads it
+(``reply_rule.read_reply_rule``: a mapping with no type takes its variable's):
 
-Two answers differ, and the pins hold them: a query of a value the reverse map
-lacks answers with the device's number as the conversion gives it, uncast
-(``osc_encode_message`` casts it the same way on the wire), where a push of one
-sends nothing; and a query reads the reverse map of the variable's push
-target, the last address naming it, while its tag is the asking mapping's own.
+* ``address_rules``: each rule's address, its mappings, and the arguments of
+  the message it reads (``AddressArg``: the variable, the position the driver
+  reads it at, the tag, the value map both ways).
+* THE message an address carries (``OscAddress.message``), which a query
+  answers and a push sends alike: every variable it names at its own
+  position, in its own map's words, a position no mapping reads sent as nil.
+* ``push_targets``: per variable, which address a change is pushed on (the
+  LAST address naming it).
+* the tag a value goes out under (``type_tag`` for a mapping's type,
+  ``tag_for`` for a bare value a script hands ``respond``), and the one rule a
+  value is cast to its tag by (``tagged``).
+
+What a value goes out as is what the driver reads back as that value: the
+device's token when the mapping's map names one (``"A1"`` for ``on``), else
+the device's own number from the variable's conversion, since the driver reads
+a value its map does not name as it came (a level of -20 beside a map naming
+only ``-inf``). A value no argument can carry that way (text where the tag is
+a number, or a number the map reads as another value) holds the whole message
+back: the query is not answered and the change is not pushed.
 
 The console's own addresses (``system_reply``) are answered before any rule;
 the validator counts them as covered from the same table.
@@ -23,10 +33,14 @@ the validator counts them as covered from the same table.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from functools import partial
 from typing import Any, NamedTuple
 
 from openavc.core.condition_eval import value_words
-from openavc.drivers.spec import is_value_type, value_type_traits
+from openavc.drivers.compiled_protocol import map_entry
+from openavc.drivers.reply_rule import OSC, read_reply_rule
+from openavc.drivers.spec import value_type_traits_or_text
 
 # The type tags osc_encode_message understands.
 OSC_TYPE_TAGS = frozenset("fishdbTFN")
@@ -69,17 +83,16 @@ def system_reply(
 
 def type_tag(value_type: object) -> str:
     """The OSC tag a value of ``value_type`` goes out under: the value type
-    table's ``osc_tag``. The type is a reply mapping's coercion. One the
-    strict check refuses still loads, and it goes out, as a null one does, as
-    a float: the type a mapping without one is answered in, whose value is
-    sent uncast."""
-    known = value_type is not None and is_value_type(value_type)
-    return value_type_traits(value_type if known else "float").osc_tag
+    table's ``osc_tag``. The type is a reply mapping's, as the driver reads
+    it; a mapping with none, a null one, or one the strict check refuses
+    (which still loads) the driver reads as text, so it goes out as text."""
+    return value_type_traits_or_text(value_type).osc_tag
 
 
 def tagged(value: Any, tag: str) -> Any:
     """``value`` as the tag carries it: a float for ``f``, an int for ``i``
-    (a boolean 1 or 0), text for ``s``; anything else as it is."""
+    (a boolean 1 or 0), text for ``s``; anything else as it is. Raises
+    (ValueError, TypeError, OverflowError) for a value the tag cannot carry."""
     if tag == "f":
         return float(value)
     if tag == "i":
@@ -89,14 +102,24 @@ def tagged(value: Any, tag: str) -> Any:
     return value
 
 
-class PushTarget(NamedTuple):
-    """Where a change to one variable is pushed: the address, the argument
-    the mapping reads, its tag, and its value map turned round (the value's
-    lowercase text -> the device's token), None without one."""
+# A value an argument's tag cannot carry.
+_UNCARRIED = (ValueError, TypeError, OverflowError)
 
-    address: str
-    arg: Any
+# What a position of a message that no mapping reads is sent as.
+NIL = ("N", None)
+
+
+class AddressArg(NamedTuple):
+    """One argument of an address's message: the variable it carries, the
+    position the driver reads it at (``arg``, 0 when the mapping names none),
+    the tag it goes out under, and the mapping's value map as written (the
+    device's token -> the value) and turned round (the value's lowercase words
+    -> the device's token), None without one."""
+
+    state: str
+    arg: int
     tag: str
+    value_map: Mapping[Any, Any] | None
     reverse_map: dict[str, str] | None
 
     def device_token(self, value: Any) -> str | None:
@@ -107,38 +130,105 @@ class PushTarget(NamedTuple):
             return None
         return self.reverse_map.get(value_words(value).lower())
 
+    def wire_value(self, value: Any, device_number: Callable[[], Any]) -> tuple[bool, Any]:
+        """What this argument carries for ``value``, as (True, the value cast
+        to the tag): the device's token, else ``device_number()``, the
+        device's own number for it. (False, None) when no value on the wire
+        reads back as ``value``: the tag cannot carry it, or the number is a
+        key of the map, which the driver reads as that key's value."""
+        token = self.device_token(value)
+        raw = token if token is not None else device_number()
+        try:
+            wire = tagged(raw, self.tag)
+        except _UNCARRIED:
+            return False, None
+        if token is None and map_entry(self.value_map, wire)[0]:
+            return False, None
+        return True, wire
 
-def address_rules(responses: Any) -> list[tuple[str, list[dict]]]:
-    """Each response rule's address with its mappings, in rule order; a rule
-    with no address or no mappings is left out."""
-    rules: list[tuple[str, list[dict]]] = []
+
+class OscAddress(NamedTuple):
+    """One response rule's address: its mappings as the driver reads them
+    (what a message with arguments sets) and the arguments of the message it
+    reads, in the order the rule names them."""
+
+    address: str
+    mappings: tuple[Any, ...]
+    args: tuple[AddressArg, ...]
+
+    def message(
+        self, value_of: Callable[[str], Any], to_wire: Callable[[str, Any], Any]
+    ) -> list[tuple[str, Any]] | None:
+        """The message's (tag, value) arguments for the variables' values
+        (``value_of``; ``to_wire`` gives a value's device number): each at its
+        own position, the first mapping naming a position answering it, and
+        a position no mapping reads sent as nil. None when a value has no
+        wire form (``AddressArg.wire_value``): the device says nothing."""
+        slots: dict[int, tuple[str, Any]] = {}
+        for arg in self.args:
+            if arg.arg in slots:
+                continue
+            value = value_of(arg.state)
+            carried, wire = arg.wire_value(value, partial(to_wire, arg.state, value))
+            if not carried:
+                return None
+            slots[arg.arg] = (arg.tag, wire)
+        width = max(slots, default=-1) + 1
+        return [slots.get(position, NIL) for position in range(width)]
+
+
+def _position(mapping: Mapping[str, Any]) -> int | None:
+    """The argument a mapping reads (0 when it names none); None for one that
+    is not a whole number from 0, which the strict check refuses."""
+    arg = mapping.get("arg", 0)
+    if isinstance(arg, int) and not isinstance(arg, bool) and arg >= 0:
+        return arg
+    return None
+
+
+def _address_arg(mapping: Any) -> AddressArg | None:
+    """One mapping as an argument of its address's message; None for one that
+    names no variable or no usable position."""
+    if not isinstance(mapping, dict) or not mapping.get("state"):
+        return None
+    position = _position(mapping)
+    if position is None:
+        return None
+    value_map = mapping.get("map")
+    value_map = value_map if isinstance(value_map, dict) and value_map else None
+    reverse_map = (
+        {value_words(value).lower(): str(token) for token, value in value_map.items()}
+        if value_map else None
+    )
+    return AddressArg(
+        mapping["state"], position, type_tag(mapping.get("type")), value_map, reverse_map,
+    )
+
+
+def address_rules(responses: Any, state_variables: Any = None) -> list[OscAddress]:
+    """Each response rule with an address, as an ``OscAddress``, in rule
+    order, its mappings read as the driver reads them (typed by
+    ``state_variables``); a rule with no address or no mappings is left
+    out."""
+    rules: list[OscAddress] = []
     for resp_def in responses:
-        address = resp_def.get("address")
-        if not address:
+        if not isinstance(resp_def, dict) or not resp_def.get("address"):
             continue
-        mappings = resp_def.get("mappings", [])
-        if mappings:
-            rules.append((address, mappings))
+        read = read_reply_rule(resp_def, state_variables)
+        if read.form != OSC or not read.mappings:
+            continue
+        args = tuple(a for a in map(_address_arg, read.mappings) if a is not None)
+        rules.append(OscAddress(resp_def["address"], read.mappings, args))
     return rules
 
 
-def push_targets(rules: list[tuple[str, list[dict]]]) -> dict[str, PushTarget]:
-    """Every variable a mapping names -> its PushTarget, the last mapping
-    naming it winning."""
-    targets: dict[str, PushTarget] = {}
-    for address, mappings in rules:
-        for mapping in mappings:
-            state_key = mapping.get("state")
-            if not state_key:
-                continue
-            arg = mapping.get("arg", 0)
-            tag = type_tag(mapping.get("type", "float"))
-            value_map = mapping.get("map")
-            reverse_map = (
-                {value_words(state_val).lower(): str(osc_val) for osc_val, state_val in value_map.items()}
-                if value_map else None
-            )
-            targets[state_key] = PushTarget(address, arg, tag, reverse_map)
+def push_targets(rules: list[OscAddress]) -> dict[str, OscAddress]:
+    """Every variable an address carries -> the address a change to it is
+    pushed on, the last rule naming it winning."""
+    targets: dict[str, OscAddress] = {}
+    for rule in rules:
+        for arg in rule.args:
+            targets[arg.state] = rule
     return targets
 
 
