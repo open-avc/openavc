@@ -14,6 +14,13 @@
  * panel only draws it. tests/test_panel_presence_mirror.py holds the two
  * words to the server's and fails a panel module that reads a part again.
  *
+ * A wake press (`wake_devices`: a command that works with the device off the
+ * network, such as a Wake-on-LAN Power On) goes out under every word but
+ * those where no command goes out at all (`TAKES_NO_COMMAND`, a paused
+ * device). A device asleep or restarting when it was paused keeps that word,
+ * so there the panel leaves the wake press unmarked and the server's refusal
+ * says the device is paused.
+ *
  * A press to a device whose connection is held open until it answers (one
  * gone quiet in standby whose port still opens) goes out while the hold
  * lasts, and the word stays `offline` for the whole spell: the hold opens
@@ -76,6 +83,10 @@ const ONLINE = 'online';
 // The word for a device put to sleep on purpose, whose wake control keeps
 // its reading.
 const ASLEEP = 'asleep';
+// The words under which no press lands, one that works with the device off
+// the network included (the server's TAKES_NO_COMMAND): paused for Live Test
+// or a Device Audit.
+const TAKES_NO_COMMAND = new Set(['paused']);
 
 /**
  * The device a state key reports FROM, or null when it names none.
@@ -302,8 +313,16 @@ export class Availability {
     markActions() {
         for (const [id, entry] of Object.entries(this._host.elementMap())) {
             const el = entry?.el;
-            if (el && el.classList) this._markAction(el, this._actionDevices(id, entry));
+            if (el && el.classList) {
+                this._markAction(el, this._actionDevices(id, entry), this.wakeDevices(entry?.elementDef));
+            }
         }
+    }
+
+    /** Whether a wake press to this device is refused: its word takes no command at all. */
+    _wakeRefused(deviceId) {
+        if (this._host.editMode()) return false;
+        return TAKES_NO_COMMAND.has(this._presence(deviceId));
     }
 
     /** The devices a control's press reaches: Preview's served copy, else its own definition's. */
@@ -313,15 +332,17 @@ export class Availability {
             : entry?.elementDef?.action_devices;
     }
 
-    _markAction(el, devices) {
-        if (!Array.isArray(devices) || !devices.length) {
+    _markAction(el, devices, wakes = []) {
+        const commanded = Array.isArray(devices) ? devices : [];
+        if (!commanded.length && !wakes.length) {
             // Preview re-reads this without a re-render when the server's
             // definition moves, so a control that now reaches nothing has
             // to lose a mark it was drawn with.
             el.classList.remove('action-offline');
             return;
         }
-        const stranded = devices.every(id => this.deviceOffline(id));
+        const stranded = commanded.every(id => this.deviceOffline(id))
+            && wakes.every(id => this._wakeRefused(id));
         // Never both: an element already carrying the reading mark has
         // been drained, and adding a second dashed edge over it would draw
         // the border twice.

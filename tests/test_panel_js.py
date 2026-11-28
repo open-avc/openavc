@@ -212,6 +212,7 @@ SCENARIOS = [
     "fader_with_no_unit_prints_no_unit",
     "asleep_device_keeps_its_wake_control_live",
     "availability_reads_the_presence_word",
+    "a_wake_press_is_marked_only_where_no_command_goes_out",
     "a_change_of_presence_alone_redraws_the_device",
     "q213_a_connectivity_flip_reaches_bindings_on_that_device",
     "q213_child_entity_keys_belong_to_their_parent_device",

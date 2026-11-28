@@ -721,7 +721,10 @@ send its wake command, such as Power On, stay live with their feedback showing;
 every other control bound to the device is marked as it is for any device that
 cannot be reached, and a press on one says "<device> is asleep. Power On wakes
 it." A control whose press sends only a command that works while the device is
-offline (a Power On by Wake-on-LAN) is never marked as one that will be refused.
+offline (a Power On by Wake-on-LAN) is not marked as one that will be refused,
+unless the device is paused for Live Test or a Device Audit, which takes no
+command at all. A press that reaches several devices is marked only when none of
+them would take it.
 Bind a label to `device.<id>.presence`, `asleep` or `offline_detail` to show it.
 
 This matters most on the controls that carry a number somebody acts on. A fader

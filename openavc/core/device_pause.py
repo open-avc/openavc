@@ -199,6 +199,12 @@ class DevicePauseMixin:
         """
         return bool(self.state.get(f"device.{device_id}.paused"))
 
+    def pause_holder(self, device_id: str) -> str:
+        """Who holds this device's pause, in the device page's words ("a
+        Device Audit"), or "" when it names nobody: what a refused command
+        says (core/device_commands.py ``_offline_refusal``)."""
+        return PAUSE_HOLDERS.get(self.state.get(f"device.{device_id}.paused_for") or "", "")
+
     def pause_held(self, device_id: str) -> HeldPause | None:
         """The device's pause, when it began and who holds it, or None when
         it is not paused: what the alert monitor asks how long the absence

@@ -4,12 +4,14 @@
 device manager publishes it as ``device.<id>.presence``. The panel's
 availability (``web/panel/modules/availability.js``) reads that word for
 whether a reading can be believed, whether a press can land and whether a
-wake control keeps its reading. Three things keep it one rule:
+wake control keeps its reading. Four things keep it one rule:
 
 * the word that means up there is the server's one word that takes
   commands, so a reading the panel believes and a press it leaves unmarked
   are what the command gate lets through;
 * the word that keeps a wake control live is the server's ``asleep``;
+* the words that mark a wake press are the server's ``TAKES_NO_COMMAND``, so
+  a Power On the panel marks is one the command gate refuses;
 * no panel module reads the parts the word is made of (``connected``,
   ``asleep``, ``paused``, ``restarting``, ``orphaned``) to decide for itself.
 
@@ -24,7 +26,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from openavc.core.device_presence import ASLEEP, PRESENCE_WORDS, TAKES_COMMANDS
+from openavc.core.device_presence import ASLEEP, PRESENCE_WORDS, TAKES_COMMANDS, TAKES_NO_COMMAND
 
 REPO = Path(__file__).resolve().parents[1]
 PANEL = REPO / "openavc" / "web" / "panel"
@@ -86,3 +88,16 @@ def test_the_part_regex_still_sees_a_read() -> None:
     for line in ("state()[`device.${deviceId}.presence`]",
                  "'connected', 'enabled', 'name', 'offline_detail',"):
         assert not _PART_READ.search(line), line
+
+
+def test_the_words_that_mark_a_wake_press_are_the_ones_that_take_no_command() -> None:
+    src = AVAILABILITY.read_text(encoding="utf-8")
+    match = re.search(r"^const TAKES_NO_COMMAND\s*=\s*new Set\(\[([^\]]*)\]\);", src, re.MULTILINE)
+    assert match, "found no TAKES_NO_COMMAND in availability.js -- the regex is stale"
+    words = frozenset(re.findall(r"'([^']*)'", match.group(1)))
+    assert words == TAKES_NO_COMMAND, (
+        "core/device_presence.py TAKES_NO_COMMAND is no longer the set the panel marks "
+        "a wake press under (availability.js TAKES_NO_COMMAND): the panel would leave "
+        "a Power On live the server refuses, or mark one that goes out"
+    )
+    assert words <= set(PRESENCE_WORDS)

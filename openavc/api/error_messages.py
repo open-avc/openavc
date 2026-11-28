@@ -431,6 +431,12 @@ def _worded_refusal(exc: Exception, device: str, at_panel: bool) -> str | None:
 
 
 def _worded_device_state(exc: Exception, device: str) -> str | None:
+    # Paused for Live Test or a Device Audit: every command is refused until
+    # the pause ends, the wake command too, so this comes before "asleep".
+    paused_for = getattr(exc, "paused_for", None)
+    if paused_for is not None:
+        held = f" for {paused_for}" if paused_for else ""
+        return f"{device or 'The equipment'} is paused{held}. It takes commands again when the pause ends."
     # A commanded restart, refused while the device is still coming back.
     # Same refusal as "not connected" and a different instruction: nobody
     # needs to go and look at anything, they need to wait. Read off the

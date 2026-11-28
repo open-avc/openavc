@@ -80,7 +80,7 @@ Bind a status label, a trigger or a condition to it rather than combining
 | `online` | connected |
 | `restarting` | coming back from a restart or a wake that one of its commands started |
 | `asleep` | put to sleep by one of its commands (a display's standby, a computer shut down). Its wake command still goes out |
-| `paused` | paused by Live Test or a Device Audit |
+| `paused` | paused by Live Test or a Device Audit. It takes no command until the pause ends, its wake command included |
 | `waiting_for_driver` | waiting for its driver to be installed |
 | `disabled` | turned off in the project |
 | `offline` | out of reach. `offline_reason` and `offline_detail` say why |

@@ -27,13 +27,15 @@ announces a command asks ``params_shown`` for the copy it may show
 (``core/command_gates.py``).
 
 The rule worth knowing before changing it: whether a command goes out now is
-one rule, ``command_goes_out``. The device accepts commands (connected, or
-its connection held open until it answers, ``accepts_commands``, which is also
-the gate a setting write passes), or the command declares
-``available_offline``. send_command's gate, a macro's "skip if offline" and a
-group command's offline skip all ask it, so a skip never drops a command the
-send would have let through: the Wake-on-LAN Power On is needed exactly while
-the device is offline.
+one rule, ``command_goes_out``. Nothing goes out to a paused device, a command
+declaring ``available_offline`` included: the pause holds it for Live Test or a
+Device Audit, and a Wake-on-LAN Power On would switch the equipment on under
+it. Otherwise the device accepts commands (connected, or its connection held
+open until it answers, ``accepts_commands``, which is also the gate a setting
+write passes), or the command declares ``available_offline``. send_command's
+gate, a macro's "skip if offline" and a group command's offline skip all ask
+it, so a skip never drops a command the send would have let through: the
+Wake-on-LAN Power On is needed exactly while the device is offline.
 
 Mixed into DeviceManager (core/device_manager.py).
 """
@@ -58,11 +60,12 @@ from openavc.core.command_gates import (
 from openavc.core.device_errors import (
     device_asleep,
     device_error_text,
+    device_paused,
     device_restarting,
     mark_failed_command,
     not_connected,
 )
-from openavc.core.device_presence import TAKES_COMMANDS
+from openavc.core.device_presence import TAKES_COMMANDS, TAKES_NO_COMMAND
 from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.secret_audience import Exit
 
@@ -120,7 +123,8 @@ class DeviceCommandsMixin:
     ``state``, ``events``, ``_devices`` and ``_sleep`` (core/device_away.py),
     and asks ``_live_driver``, ``_require_control_target``,
     ``restart_seconds_left``, ``presence_of`` and ``_note_command_sent``
-    (core/device_away.py) and ``kick_reconnect`` (core/device_reconnect.py).
+    (core/device_away.py), ``is_paused`` and ``pause_holder``
+    (core/device_pause.py) and ``kick_reconnect`` (core/device_reconnect.py).
     """
 
     state: StateStore
@@ -178,9 +182,10 @@ class DeviceCommandsMixin:
         # The connected-gate is skipped for commands the driver declares
         # available_offline — a handler that needs no live connection (e.g. a
         # Wake-on-LAN power_on) so a macro, panel button, or schedule can wake a
-        # device that has gone fully off the network. Param validation below
-        # still runs for every command. A connection held offline until the
-        # device answers is open, so it takes commands (accepts_commands).
+        # device that has gone fully off the network, but not one paused for
+        # somebody else's session. Param validation below still runs for every
+        # command. A connection held offline until the device answers is open,
+        # so it takes commands (accepts_commands).
         if not self.command_goes_out(device_id, command):
             # Someone just asked for this device by name. That is the clearest
             # signal we ever get that it's wanted back, and most of the people
@@ -221,8 +226,12 @@ class DeviceCommandsMixin:
         Inside a commanded-restart window the refusal is the same refusal but a
         different sentence: "not connected" sends the reader to look at the
         device, and the honest instruction there is to wait. The same for a
-        device we put to sleep, which its wake command brings back.
+        device we put to sleep, which its wake command brings back. A pause
+        comes first: it refuses the wake command too, and it outlasts a
+        restart window, since nothing reconnects a paused device.
         """
+        if self.is_paused(device_id):
+            return device_paused(device_id, self.pause_holder(device_id))
         remaining = self.restart_seconds_left(device_id)
         if remaining is not None:
             return device_restarting(device_id, remaining)
@@ -261,12 +270,20 @@ class DeviceCommandsMixin:
     def command_goes_out(self, device_id: str, command: str) -> bool:
         """Whether this command sent to this device now would go out.
 
-        The device accepts commands (accepts_commands), or the command
-        declares available_offline. The one rule for send_command's gate, a
-        macro's "skip if offline" and a group command's offline skip, so a
-        skip never drops a command the send would have let through: the
-        Wake-on-LAN Power On is needed exactly while the device is offline.
+        None under a word that takes no command (core/device_presence.py
+        ``TAKES_NO_COMMAND``: paused, whoever holds the pause), a command
+        declaring available_offline included. The pause is asked as well
+        (``is_paused``), because a device asleep or restarting when it was
+        paused keeps that word, and its wake command is the one that must not
+        go out. Otherwise the device accepts commands (accepts_commands), or
+        the command declares available_offline. The one rule for
+        send_command's gate, a macro's "skip if offline" and a group
+        command's offline skip, so a skip never drops a command the send
+        would have let through: the Wake-on-LAN Power On is needed exactly
+        while the device is offline.
         """
+        if self.is_paused(device_id) or self.presence_of(device_id) in TAKES_NO_COMMAND:
+            return False
         if self.accepts_commands(device_id):
             return True
         driver = self._devices.get(device_id)

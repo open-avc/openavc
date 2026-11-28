@@ -231,7 +231,9 @@ async def test_paused_from_online(book_path, widget_class):
     assert readers.at_drop == QUIET_FINE_REFUSED
     assert readers.word_at_drop == "paused"
     assert readers.now() == QUIET_FINE_REFUSED
-    assert readers.now("power_on")["goes_out"] is True
+    # Held for somebody else's session: a command that needs no connection
+    # is refused too.
+    assert readers.now("power_on")["goes_out"] is False
     assert readers.word() == "paused"
 
 
@@ -252,6 +254,8 @@ async def test_paused_while_asleep(book_path, widget_class):
     _drop(dm, driver)
     await dm.pause_device("widget")
     assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": False}
+    # The word stays asleep under the pause, and the wake is refused.
+    assert readers.now("power_on")["goes_out"] is False
     assert readers.word() == "asleep"
 
 

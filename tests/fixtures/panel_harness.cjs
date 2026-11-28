@@ -2982,6 +2982,44 @@ const tests = {
         same('the design canvas, whatever the word', { 'device.tv.presence': 'offline' }, up);
     },
 
+    // A wake press (a command that works with the device off the network,
+    // `wake_devices`) goes out whatever the device's word, except under the
+    // words where no command goes out at all (core/device_presence.py
+    // TAKES_NO_COMMAND): a device paused for Live Test or a Device Audit. A
+    // press that also reaches another device is marked only when that one
+    // is away too.
+    a_wake_press_is_marked_only_where_no_command_goes_out() {
+        const app = mkApp();
+        const wake = { action: 'device.command', device: 'tv', command: 'power_on' };
+        const proj = project({
+            elements: [
+                { id: 'on', type: 'button', label: 'Power On', wake_devices: ['tv'],
+                  bindings: { do: { press: [wake] } } },
+                { id: 'all', type: 'button', label: 'All On', wake_devices: ['tv'], action_devices: ['amp'],
+                  bindings: { do: { press: [wake, { action: 'device.command', device: 'amp', command: 'on' }] } } },
+            ],
+            placements: { on: { x: 5, y: 5, w: 20, h: 10 }, all: { x: 30, y: 5, w: 20, h: 10 } },
+        });
+        app.state = {};
+        renderProject(app, proj);
+        const marked = (id) => app.root.querySelector(`[data-element-id="${id}"]`).classList.contains('action-offline');
+        const refused = new Set(['paused']);
+        const words = ['disabled', 'waiting_for_driver', 'online', 'restarting', 'asleep', 'paused', 'offline', 'connecting'];
+        for (const word of words) {
+            for (const amp of ['online', 'offline']) {
+                app.state = { 'device.tv.presence': word, 'device.amp.presence': amp };
+                app.evaluateAllBindings();
+                const want = { on: refused.has(word), all: refused.has(word) && amp !== 'online' };
+                const got = { on: marked('on'), all: marked('all') };
+                assert(JSON.stringify(got) === JSON.stringify(want),
+                    `tv ${word}, amp ${amp}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+            }
+        }
+        app.state = {};
+        app.evaluateAllBindings();
+        assert(!marked('on') && !marked('all'), 'no word yet: nothing is marked');
+    },
+
     // A change of the word alone redraws what reads the device: the server
     // writes it with every part it is made of, `connected` among them, and a
     // pause or a sleep moves the word without moving `connected`.

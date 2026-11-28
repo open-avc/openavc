@@ -33,6 +33,11 @@ quiet for good. ``on_purpose`` is the whole question, asked with how long
 the device has been paused; past the hour the alert monitor judges it as it
 judges a fault, and says who holds the pause.
 
+A paused device takes no command, one that needs no connection included
+(``TAKES_NO_COMMAND``). Because restarting and asleep come first, the word
+does not show a pause under them, and the command gate asks the pause as
+well as the word.
+
 A device that went silent and whose port still opens is reconnected, held
 offline until it answers, and dropped again on a cycle. The word stays
 ``offline`` for the whole spell: whether a connection is open at this moment
@@ -47,8 +52,9 @@ devicePresence.ts, which its status dot, device list, device page, Dashboard
 and pickers read the word through; tests/test_ide_presence_mirror.py holds
 it to these words. The panel reads the word in web/panel/modules/
 availability.js: every word but ``online`` greys a control's reading and
-marks a press that reaches nothing up, and ``asleep`` keeps a wake control's
-reading; tests/test_panel_presence_mirror.py holds its two words to these.
+marks a press that reaches nothing up, ``asleep`` keeps a wake control's
+reading, and ``TAKES_NO_COMMAND`` marks a wake press too;
+tests/test_panel_presence_mirror.py holds its words to these.
 The cloud service shows the word through the Programmer's copy, run as it
 stands, and holds what its assistant is taught about the word to these words.
 """
@@ -79,8 +85,17 @@ AWAY_ON_PURPOSE: frozenset[str] = frozenset({RESTARTING, ASLEEP, PAUSED})
 # its pause for as long as its panel is open.
 PAUSE_ON_PURPOSE_SECONDS = 3600.0
 # A command sent now goes out. So does one declaring available_offline, and
-# any command while a held connection is open (see above).
+# any command while a held connection is open (see above), except under
+# TAKES_NO_COMMAND.
 TAKES_COMMANDS: frozenset[str] = frozenset({ONLINE})
+# No command sent now goes out, one declaring available_offline (a
+# Wake-on-LAN Power On) included: the device is held for Live Test or a
+# Device Audit, and a wake would switch the equipment on under it. A device
+# asleep or restarting when it was paused keeps that word, so the command
+# gate asks the pause itself as well (core/device_commands.py
+# ``command_goes_out``); the panel, which reads the word alone, marks a wake
+# press under these words.
+TAKES_NO_COMMAND: frozenset[str] = frozenset({PAUSED})
 # Counted as a device in trouble: a fault is what keeps it away.
 IN_TROUBLE: frozenset[str] = frozenset({OFFLINE})
 

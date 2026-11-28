@@ -4,8 +4,8 @@ and what each failure carries for the sentence somebody reads.
 The doors above the manager (the REST routes, the panel, macros, scripts, the
 cloud) turn these into the words a person sees, through ``friendly_error``.
 They read the facts off attributes, never out of the message: ``device_id``
-names the device the way somebody in the room knows it, ``restart_seconds``
-and ``asleep_wake`` say why it is away, and ``failed_command`` says which
+names the device the way somebody in the room knows it, ``restart_seconds``,
+``asleep_wake`` and ``paused_for`` say why it is away, and ``failed_command`` says which
 command a driver's own exception came from. ``device_error_text`` is THE
 words ``device.error.<id>`` carries for an exception, the empty one included.
 
@@ -102,6 +102,21 @@ def device_asleep(device_id: str, wake_label: str) -> ConnectionError:
     exc = ConnectionError(f"Device '{device_id}' is asleep")
     exc.device_id = device_id
     exc.asleep_wake = wake_label
+    return exc
+
+
+def device_paused(device_id: str, holder: str) -> ConnectionError:
+    """The "somebody else holds it" refusal: the device is paused for Live
+    Test or a Device Audit (core/device_pause.py), and no command goes out
+    until the pause ends, a wake command included. ``holder`` is who holds it
+    in the device page's words ("a Device Audit"), empty when nobody is
+    named; ``paused_for`` carries it for ``friendly_error``, read as an
+    attribute like ``asleep_wake``.
+    """
+    held = f" for {holder}" if holder else ""
+    exc = ConnectionError(f"Device '{device_id}' is paused{held}")
+    exc.device_id = device_id
+    exc.paused_for = holder
     return exc
 
 

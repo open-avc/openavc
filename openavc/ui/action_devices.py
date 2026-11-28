@@ -44,7 +44,10 @@ that device is left out of ``action_devices`` and listed in ``wake_devices``
 instead. The panel keeps a control live for a device that is ASLEEP (put to
 sleep on purpose, its presence word ``asleep``) when its press reaches that device in
 ``wake_devices``: the Power On button stays usable and its feedback is the true
-"off" while every other control bound to the device greys out. Which commands
+"off" while every other control bound to the device greys out. A paused
+device takes no command, this one included, and the panel marks a press to
+it from its presence word (core/device_presence.py ``TAKES_NO_COMMAND``), so
+the device stays listed in ``wake_devices`` whatever its state. Which commands
 work offline is the drivers' answer, so the caller passes ``works_offline``;
 without it every command counts as needing a connection, as before.
 """
