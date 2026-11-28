@@ -190,6 +190,7 @@ SCENARIOS = [
     "layout_container_border_does_not_shift_its_contents",
     "layout_container_border_from_a_stylesheet_is_converted_too",
     "layout_parent_cycle_does_not_hang",
+    "layout_repeated_id_draws_its_first_copy",
     "layout_aspect_lock_centres_within_its_box",
     "layout_unlocked_elements_take_their_box",
     "layout_overlay_uses_percentages",

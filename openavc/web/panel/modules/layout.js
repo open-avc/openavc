@@ -383,11 +383,19 @@ export function drawElementTree(page, layout, surface, how) {
     }
 }
 
-/** The page's elements by the parent they draw inside (null: the page). */
+/**
+ * The page's elements by the parent they draw inside (null: the page). Of two
+ * sharing an id only the first is kept, the one a press reaches, so a later
+ * copy met earlier in the walk is not drawn in its place.
+ */
 function groupByParent(elements) {
-    const ids = new Set(elements.map(e => e?.id).filter(Boolean));
+    const firsts = new Map();
+    for (const element of elements) {
+        if (element?.id && !firsts.has(element.id)) firsts.set(element.id, element);
+    }
+    const ids = new Set(firsts.keys());
     const byParent = new Map();
-    for (const element of elements.filter(e => e?.id)) {
+    for (const element of firsts.values()) {
         const key = ids.has(element.parent) ? element.parent : null;
         if (!byParent.has(key)) byParent.set(key, []);
         byParent.get(key).push(element);
@@ -416,9 +424,9 @@ function drawSubtree(element, ctx, host) {
 }
 
 /**
- * Is this element one to draw now? Each id draws once, so an element listed
- * twice, or a parent cycle a hand-edited project could introduce, draws
- * once; and not at all when this layout hides it.
+ * Is this element one to draw now? Each id draws once (a later copy of an id
+ * is already left out by groupByParent), so a parent cycle a hand-edited
+ * project could introduce draws once; and not at all when this layout hides it.
  */
 function claim(element, ctx) {
     if (!element?.id) return false;

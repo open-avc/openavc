@@ -2477,6 +2477,30 @@ const tests = {
             'an unrelated element still renders when two containers name each other');
     },
 
+    // Two controls under one id (a hand-edited or imported project): the
+    // first copy is drawn, the one a press reaches, wherever the later copy
+    // sits in the walk.
+    layout_repeated_id_draws_its_first_copy() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [
+                el('twin', 'button', { parent: 'box', label: 'first' }),
+                el('twin', 'button', { label: 'second' }),
+                el('box', 'group'),
+            ],
+            placements: {
+                box: { x: 10, y: 10, w: 50, h: 50 },
+                twin: { x: 20, y: 20, w: 40, h: 20 },
+            },
+        }));
+        const surface = document.querySelector('#panel-root .panel-page');
+        assert(surface.querySelectorAll('[data-element-id="twin"]').length === 1, 'an id is drawn once');
+        assert(surface.querySelector('[data-element-id="box"] [data-element-id="twin"]'),
+            'the first copy is drawn, inside its container');
+        assert(!surface.querySelector(':scope > [data-element-id="twin"]'),
+            'the later copy is not drawn at page level');
+    },
+
     // An aspect-locked element holds its ratio when its box is stretched.
     layout_aspect_lock_centres_within_its_box() {
         const app = mkApp();
