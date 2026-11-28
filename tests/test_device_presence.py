@@ -77,6 +77,35 @@ def test_on_purpose(word, paused_seconds, quiet):
     assert presence.on_purpose(word, paused_seconds) is quiet
 
 
+@pytest.mark.parametrize(("word", "paused_seconds", "trouble"), [
+    (presence.OFFLINE, None, True),
+    (presence.OFFLINE, HOUR, True),
+    (presence.ASLEEP, None, False),
+    (presence.RESTARTING, None, False),
+    (presence.PAUSED, HOUR - 1, False),
+    # Past the hour a pause is counted as a fault is, as the alert monitor
+    # judges it; a sleep stays quiet however long it is paused.
+    (presence.PAUSED, HOUR, True),
+    (presence.RESTARTING, HOUR, True),
+    (presence.ASLEEP, HOUR, False),
+    (presence.ONLINE, None, False),
+    (presence.CONNECTING, None, False),
+    (presence.DISABLED, None, False),
+    (presence.WAITING_FOR_DRIVER, None, False),
+    (None, None, False),
+])
+def test_in_trouble(word, paused_seconds, trouble):
+    assert presence.in_trouble(word, paused_seconds) is trouble
+
+
+@pytest.mark.parametrize("paused_seconds", [None, 0.0, HOUR - 1, HOUR])
+@pytest.mark.parametrize("word", presence.PRESENCE_WORDS)
+def test_a_device_kept_quiet_is_never_in_trouble(word, paused_seconds):
+    # The heartbeat never counts a device the alert monitor leaves alone.
+    if presence.on_purpose(word, paused_seconds):
+        assert not presence.in_trouble(word, paused_seconds)
+
+
 def test_the_hour_outlasts_a_restart_window():
     from openavc.drivers.restart_window import RESTART_SECONDS_MAX
 

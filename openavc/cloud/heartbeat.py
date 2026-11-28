@@ -15,7 +15,7 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import build_heartbeat_payload
-from openavc.core.device_presence import IN_TROUBLE
+from openavc.core.device_presence import AWAY_ON_PURPOSE, in_trouble
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -195,20 +195,28 @@ class HeartbeatCollector:
             return 0  # DeviceManager or StateStore may not be fully initialized
 
     def _get_devices_error(self) -> int:
-        """Number of devices in trouble, as their presence word says
-        (core/device_presence.py ``IN_TROUBLE``): kept away by a fault the
-        connection-fault classifier published. Command errors are transient
-        events, not state.
+        """Number of devices in trouble, as the alert monitor judges them
+        (core/device_presence.py ``in_trouble``): kept away by a fault the
+        connection-fault classifier published, or paused past the hour a pause
+        stays away on purpose. Command errors are transient events, not state.
         """
         try:
-            count = 0
-            for device in self._devices.list_devices():
-                device_id = device.get("id", "")
-                if self._state.get(f"device.{device_id}.presence") in IN_TROUBLE:
-                    count += 1
-            return count
+            now = time.time()
+            return sum(
+                1 for device in self._devices.list_devices()
+                if self._in_trouble(device.get("id", ""), now)
+            )
         except (AttributeError, TypeError):
             return 0  # DeviceManager or StateStore may not be fully initialized
+
+    def _in_trouble(self, device_id: str, now: float) -> bool:
+        """Whether one device counts in ``devices_error``. The pause is asked
+        only for a word that is away on purpose, the one case it decides."""
+        word = self._state.get(f"device.{device_id}.presence")
+        if word not in AWAY_ON_PURPOSE:
+            return in_trouble(word)
+        pause = self._devices.pause_held(device_id)
+        return in_trouble(word, pause.seconds(now) if pause is not None else None)
 
     def _get_ws_client_count(self) -> int:
         """Number of active local WebSocket clients."""

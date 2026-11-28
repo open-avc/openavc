@@ -760,7 +760,7 @@
           },
           "devices_error": {
             "type": "integer",
-            "description": "Devices in a fault now.",
+            "description": "Devices in trouble now: a fault, or a pause past its hour.",
             "x-since": "0.5.14"
           },
           "active_ws_clients": {

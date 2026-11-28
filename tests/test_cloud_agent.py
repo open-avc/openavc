@@ -1049,19 +1049,29 @@ class TestHeartbeat:
     async def test_devices_error_counts_devices_kept_away_by_a_fault(self):
         """devices_error counts the devices whose presence word is offline:
         a fault is published (the device manager writes the word with it).
+        A pause counts once it outlasts the hour it stays away on purpose.
 
         The metric used to read ``device.<id>.error``, a state key nothing
         writes (device errors are events), so it always reported 0 to the
         cloud even with faulting hardware.
         """
+        import time
+
+        from openavc.core.device_pause import HeldPause
+        from openavc.core.device_presence import PAUSE_ON_PURPOSE_SECONDS
         from openavc.core.state_store import StateStore
         from openavc.cloud.heartbeat import HeartbeatCollector
 
         ids = ["proj", "amp", "cam", "screen", "dsp"]
+        paused_since = {"screen": time.time()}
 
         class FakeDevices:
             def list_devices(self):
                 return [{"id": device_id} for device_id in ids]
+
+            def pause_held(self, device_id):
+                since = paused_since.get(device_id)
+                return None if since is None else HeldPause(since, "live_test")
 
         state = StateStore()
         # proj is faulted; amp reconnected; cam is asleep on purpose; screen is
@@ -1077,6 +1087,9 @@ class TestHeartbeat:
         metrics = await collector.collect()
         assert metrics["devices_error"] == 1
         assert metrics["device_count"] == 5
+
+        paused_since["screen"] -= PAUSE_ON_PURPOSE_SECONDS + 1
+        assert (await collector.collect())["devices_error"] == 2
 
     @pytest.mark.asyncio
     async def test_the_heartbeat_says_whether_this_system_is_notify_only(self):

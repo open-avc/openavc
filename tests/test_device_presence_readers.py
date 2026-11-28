@@ -3,8 +3,8 @@ be in.
 
 The alert monitor asks whether the device's absence is on purpose (asleep,
 restarting or paused because we asked: nothing is wrong, so no alert fires;
-tests/test_pause_alerts.py has a pause's hour), the cloud
-heartbeat counts the devices in trouble, and the command gate decides whether
+tests/test_quiet_device_alerts.py has a pause's hour), the cloud
+heartbeat counts the devices in trouble (a fault, or a pause past its hour), and the command gate decides whether
 a press goes out. Each is read at the moment ``connected`` is written, which
 is when the monitor judges a drop, and again once the publishing has settled,
 beside the presence word the state publishes (``device.<id>.presence``,
@@ -28,6 +28,7 @@ from openavc.core import device_sleep
 from openavc.core.connection_fault import UNREACHABLE, ConnectionFaultError
 from openavc.core.device_errors import DriverBuildError
 from openavc.core.device_manager import DeviceManager
+from openavc.core.device_presence import PAUSE_ON_PURPOSE_SECONDS
 from openavc.core.device_sleep import SleepBook
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -256,6 +257,43 @@ async def test_paused_while_asleep(book_path, widget_class):
     assert readers.now() == {"quiet": True, "trouble": 0, "goes_out": False}
     # The word stays asleep under the pause, and the wake is refused.
     assert readers.now("power_on")["goes_out"] is False
+    assert readers.word() == "asleep"
+
+
+def _past_the_hour(dm: DeviceManager) -> None:
+    dm._pause_since["widget"] -= PAUSE_ON_PURPOSE_SECONDS + 1
+
+
+async def test_paused_past_the_hour(book_path, widget_class):
+    # Past the hour the monitor judges the pause as it judges a fault, and the
+    # heartbeat counts it as one.
+    dm, readers = await _manager(book_path)
+    _connect(dm)
+    await dm.pause_device("widget")
+    _past_the_hour(dm)
+    assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": False}
+    assert readers.word() == "paused"
+
+
+async def test_paused_inside_a_restart_past_the_hour(book_path, widget_class):
+    dm, readers = await _manager(book_path)
+    driver = _connect(dm)
+    await dm.send_command("widget", "reboot", {})
+    _drop(dm, driver)
+    await dm.pause_device("widget")
+    _past_the_hour(dm)
+    assert readers.now() == {"quiet": False, "trouble": 1, "goes_out": False}
+    assert readers.word() == "restarting"
+
+
+async def test_paused_while_asleep_past_the_hour(book_path, widget_class):
+    dm, readers = await _manager(book_path)
+    driver = _connect(dm)
+    await dm.send_command("widget", "power_off", {})
+    _drop(dm, driver)
+    await dm.pause_device("widget")
+    _past_the_hour(dm)
+    assert readers.now() == QUIET_FINE_REFUSED
     assert readers.word() == "asleep"
 
 

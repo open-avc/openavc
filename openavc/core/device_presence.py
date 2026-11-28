@@ -6,7 +6,7 @@ a part it is made of, so whoever judges ``connected`` the moment it is
 written reads the word that goes with it. Each reader asks this module what
 a word means rather than combining the parts itself: the alert monitor
 whether the absence is on purpose, the cloud heartbeat whether the device is
-in trouble, the command gate whether a command goes out.
+in trouble (``in_trouble``), the command gate whether a command goes out.
 
 The words, first match wins:
 
@@ -31,7 +31,8 @@ for as long as it lasts: Live Test renews its pause while its panel is open,
 so a laptop left open in the rack would keep the device's offline alerts
 quiet for good. ``on_purpose`` is the whole question, asked with how long
 the device has been paused; past the hour the alert monitor judges it as it
-judges a fault, and says who holds the pause.
+judges a fault, and says who holds the pause, and the heartbeat counts it as
+a device in trouble (``in_trouble``).
 
 A paused device takes no command, one that needs no connection included
 (``TAKES_NO_COMMAND``). Because restarting and asleep come first, the word
@@ -97,7 +98,8 @@ TAKES_COMMANDS: frozenset[str] = frozenset({ONLINE})
 # ``command_goes_out``); the panel, which reads the word alone, marks a wake
 # press under these words.
 TAKES_NO_COMMAND: frozenset[str] = frozenset({DISABLED, WAITING_FOR_DRIVER, PAUSED})
-# Counted as a device in trouble: a fault is what keeps it away.
+# Counted as a device in trouble: a fault is what keeps it away. So is a
+# pause past its hour, which the word does not show (``in_trouble``).
 IN_TROUBLE: frozenset[str] = frozenset({OFFLINE})
 
 
@@ -135,3 +137,13 @@ def on_purpose(word: Any, paused_seconds: float | None = None) -> bool:
     if paused_seconds is None or paused_seconds < PAUSE_ON_PURPOSE_SECONDS:
         return True
     return word == ASLEEP
+
+
+def in_trouble(word: Any, paused_seconds: float | None = None) -> bool:
+    """Whether the device counts as in trouble: a fault keeps it away
+    (``IN_TROUBLE``), or an absence that was on purpose no longer is, a
+    pause past its hour (``on_purpose``), which the alert monitor then judges
+    as it judges a fault. ``paused_seconds`` is as ``on_purpose`` takes it."""
+    if word in IN_TROUBLE:
+        return True
+    return word in AWAY_ON_PURPOSE and not on_purpose(word, paused_seconds)

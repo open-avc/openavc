@@ -322,7 +322,7 @@ MESSAGES: tuple[Message, ...] = (
         Field("disk_percent", "number", 63.2, "Disk use."),
         Field("device_count", "integer", 8, "Devices in the project."),
         Field("devices_connected", "integer", 7, "Devices connected now."),
-        Field("devices_error", "integer", 1, "Devices in a fault now."),
+        Field("devices_error", "integer", 1, "Devices in trouble now: a fault, or a pause past its hour."),
         Field("active_ws_clients", "integer", 2, "Panels and IDEs connected now."),
         Field("notify_only", "boolean", False,
               "The local tell-me-don't-install switch; absent when nobody read it.",
