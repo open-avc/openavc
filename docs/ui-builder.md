@@ -107,10 +107,10 @@ Validate also asks the device's driver whether each command you have chosen has 
 
 Validate also lists what a page holds that it should not, the same things the AI assistant is refused when it tries to write them. A binding left half set up in the Bindings panel shows here; the rest mostly come from a hand-edited or imported file:
 
-- **Two controls with the same id**, on one page, on two pages, or as a master element. A press on the second one runs the first one's actions.
+- **Two controls with the same id**, on one page, on two pages, or as a master element. On one page the panel draws only the first, and anywhere else a press on a later one runs the first one's actions.
 - **A control id that breaks the ID rule**: anything but a lowercase letter followed by lowercase letters, digits and underscores, such as `Power-On`. Rename it in the control's Basic properties.
 - **Two pages with the same id**, or a page id starting with `$`, which the panel reads as one of its own moves.
-- **Arrangements that clash**: two with the same id or the same orientation, or one that inherits from itself, from an arrangement that is not on the page, or round in a loop.
+- **Arrangements that clash**: two with the same id or the same orientation (the panel draws only the first), or one that inherits from itself, from an arrangement that is not on the page, or round in a loop.
 - **A binding that is not finished, or that the panel cannot read**, such as a toggle with no state key to watch or no Off Action, a Tap / Long Press button with no Long Press Action, an action with a field it needs left empty, or an appearance whose states are a list rather than one entry per value.
 
 The project still opens with any of these in it, and every edit around them still saves. A save that adds one more of the first four kinds is refused with the sentence Validate would show. A binding you are still setting up always saves.
