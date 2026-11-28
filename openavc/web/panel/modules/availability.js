@@ -59,6 +59,11 @@
  *
  * The panel lends what it holds (`host`), each read at call time: its state
  * object is replaced wholesale by a snapshot, and its element map by a redraw.
+ *
+ * `readingOffline` and `deviceIdForKey` are copied on the server
+ * (ui/reading_offline.py), for its account of what a toggle's press sends
+ * (core/ui_events.py `resolve_press`): a toggle presses the way its light is
+ * drawn. tests/test_press_parity.py holds the two to one corpus.
  */
 
 // The `device.<id>.*` properties the PLATFORM maintains rather than the device
