@@ -66,6 +66,19 @@ export const AWAY_ASKED_FOR: ReadonlySet<PresenceWord> = new Set<PresenceWord>([
   "paused",
 ]);
 
+/**
+ * No command sent now goes out, one that works while the device is offline
+ * (a Wake-on-LAN Power On) included: no driver runs the device, or Live Test
+ * or a Device Audit holds it. The server's TAKES_NO_COMMAND, in the server's
+ * order. A device asleep or restarting when it was paused keeps that word,
+ * and the server refuses its commands too.
+ */
+export const TAKES_NO_COMMAND: readonly PresenceWord[] = [
+  "disabled",
+  "waiting_for_driver",
+  "paused",
+];
+
 /** What a person reads for the word, in a tooltip or beside a name.
  *  `connecting` reads as offline: not connected, and with no look of its own
  *  yet. A pause names who holds it where the holder is known (pausedText.ts). */

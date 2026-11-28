@@ -19,13 +19,20 @@ async function convert(m: MacroConfig, offlineDevices = ["widget_1", "widget_2"]
   return macroToScript(m, GROUPS, await loadWorksOffline(m, GROUPS, getDevice));
 }
 
+// The presence words under which no command goes out, a wake included
+// (core/device_presence.py TAKES_NO_COMMAND), as the script writes them.
+const TAKES_NONE = '["disabled", "waiting_for_driver", "paused"]';
+
 describe("a converted macro's 'skip if offline'", () => {
-  it("never guards a command that works while the device is offline", async () => {
+  it("guards a command that works while the device is offline only against a device that takes none", async () => {
     const src = await convert(
       macro([{ action: "device.command", device: "widget_1", command: "wake", skip_if_offline: true }]),
     );
     expect(src).not.toContain('if state.get("device.widget_1.connected")');
-    expect(src).toContain('await devices.send("widget_1", "wake")');
+    expect(src).toContain(
+      `if state.get("device.widget_1.presence") not in ${TAKES_NONE}:  # skip_if_offline`,
+    );
+    expect(src).toContain('    await devices.send("widget_1", "wake")');
   });
 
   it("still guards a command that needs the device", async () => {
@@ -45,15 +52,17 @@ describe("a converted macro's 'skip if offline'", () => {
 });
 
 describe("a converted group command", () => {
-  it("sends a command that works offline to every member", async () => {
+  it("sends a command that works offline to every member that takes commands", async () => {
     const src = await convert(macro([{ action: "group.command", group: "wall", command: "wake" }]));
-    expect(src).not.toContain("continue  # offline devices are skipped");
+    expect(src).not.toContain('state.get(f"device.{device_id}.connected")');
+    expect(src).toContain(`    if state.get(f"device.{device_id}.presence") in ${TAKES_NONE}:`);
   });
 
-  it("skips only the members whose command needs them connected", async () => {
+  it("skips only the members whose command needs them connected, and any that takes none", async () => {
     const src = await convert(macro([{ action: "group.command", group: "wall", command: "wake" }]), ["widget_2"]);
     expect(src).toContain(
-      `if not state.get(f"device.{device_id}.connected") and device_id not in ["widget_2"]:`,
+      `if state.get(f"device.{device_id}.presence") in ${TAKES_NONE} or ` +
+        `(not state.get(f"device.{device_id}.connected") and device_id not in ["widget_2"]):`,
     );
   });
 

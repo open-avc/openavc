@@ -28,6 +28,7 @@ from openavc.core.device_presence import (
     IN_TROUBLE,
     PRESENCE_WORDS,
     TAKES_COMMANDS,
+    TAKES_NO_COMMAND,
 )
 
 REPO = Path(__file__).resolve().parents[1]
@@ -71,6 +72,14 @@ def test_what_the_ide_draws_as_asked_for_is_never_trouble_and_never_takes_a_comm
     assert AWAY_ON_PURPOSE <= asked_for, "the IDE draws as a fault a word the server keeps quiet"
     assert not asked_for & IN_TROUBLE
     assert not asked_for & TAKES_COMMANDS
+
+
+def test_the_words_a_converted_macro_skips_a_wake_on_are_the_servers() -> None:
+    """A macro turned into a script skips a wake command to a device the
+    command gate refuses it to (components/macros/macroHelpers.ts)."""
+    words = _array("TAKES_NO_COMMAND")
+    assert frozenset(words) == TAKES_NO_COMMAND
+    assert words == [w for w in PRESENCE_WORDS if w in TAKES_NO_COMMAND], "not in the server's order"
 
 
 def test_no_other_programmer_module_reads_the_parts_of_the_word() -> None:

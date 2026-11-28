@@ -5,6 +5,7 @@ import { referencedKey, writtenOperator } from "../../api/conditionEval";
 import type { StepNames } from "./commandLabels";
 import { timingWarnings } from "./conversionTiming";
 import { BACK, DISMISS } from "../shared/pageType";
+import { TAKES_NO_COMMAND } from "../shared/devicePresence";
 
 export interface StepTypeInfo {
   action: string;
@@ -495,6 +496,23 @@ function _pyComment(s: string): string {
  * context, any other `$<key>` the state) — mirroring the macro engine, which
  * resolves `$` references in command params and state.set values at runtime
  * (top level only, so nested values recurse with resolution off). */
+/** The presence words that take no command, as a Python list. */
+function _takesNone(): string {
+  return _pyValue([...TAKES_NO_COMMAND], false);
+}
+
+/** The condition a converted group command skips a member on, or "" for
+ *  none: a member whose command needs it connected while it is not, and any
+ *  member that takes no command, a wake included. */
+function _groupSkip(deviceIds: string[], sendsOffline: (id: string) => boolean): string {
+  const offline = deviceIds.filter(sendsOffline);
+  const notConnected = 'not state.get(f"device.{device_id}.connected")';
+  const takesNone = `state.get(f"device.{device_id}.presence") in ${_takesNone()}`;
+  if (!offline.length) return deviceIds.length ? notConnected : "";
+  if (offline.length === deviceIds.length) return takesNone;
+  return `${takesNone} or (${notConnected} and device_id not in ${_pyValue(offline, false)})`;
+}
+
 function _pyValue(v: unknown, resolveDollar: boolean): string {
   if (v === null || v === undefined) return "None";
   if (typeof v === "boolean") return v ? "True" : "False";
@@ -595,10 +613,17 @@ function _generateStepLines(
         const device = _pyEscape(step.device ?? "");
         const params = step.params ? `, ${_pyParamsDict(step.params)}` : "";
         const sendLine = `await devices.send("${device}", "${_pyEscape(step.command ?? "")}"${params})`;
-        // A command that works while the device is offline is never skipped,
-        // matching the macro engine: a Wake-on-LAN Power On is needed exactly then.
-        if (step.skip_if_offline && !worksOffline?.(step.device ?? "", step.command ?? "")) {
+        // A command that works while the device is offline is skipped only
+        // where no command goes out (a paused device), matching the macro
+        // engine: a Wake-on-LAN Power On is needed exactly while it is offline.
+        const offline = worksOffline?.(step.device ?? "", step.command ?? "");
+        if (step.skip_if_offline && !offline) {
           lines.push(`${indent}if state.get("device.${device}.connected"):  # skip_if_offline`);
+          lines.push(`${indent}    ${sendLine}`);
+        } else if (step.skip_if_offline) {
+          lines.push(
+            `${indent}if state.get("device.${device}.presence") not in ${_takesNone()}:  # skip_if_offline`,
+          );
           lines.push(`${indent}    ${sendLine}`);
         } else {
           lines.push(`${indent}${sendLine}`);
@@ -615,16 +640,12 @@ function _generateStepLines(
         lines.push(
           `${indent}for device_id in ${_pyValue(deviceIds, false)}:`
         );
-        // Members whose command works while offline are sent it anyway, as the
-        // macro engine does.
-        const sendsOffline = deviceIds.filter((id) => worksOffline?.(id, step.command ?? ""));
-        if (sendsOffline.length < deviceIds.length) {
-          const exempt = sendsOffline.length
-            ? ` and device_id not in ${_pyValue(sendsOffline, false)}`
-            : "";
-          lines.push(
-            `${indent}    if not state.get(f"device.{device_id}.connected")${exempt}:`
-          );
+        // Members whose command works while offline are sent it anyway,
+        // unless they take no command at all (a paused device), as the macro
+        // engine does.
+        const skip = _groupSkip(deviceIds, (id) => !!worksOffline?.(id, step.command ?? ""));
+        if (skip) {
+          lines.push(`${indent}    if ${skip}:`);
           lines.push(
             `${indent}        continue  # offline devices are skipped, matching the macro engine`
           );
