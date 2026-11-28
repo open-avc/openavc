@@ -243,9 +243,10 @@ export class PanelTheme {
         // The last theme asked for and the settings over it (apply): an
         // answer for any other theme is for nobody.
         this._asked = { themeId: null, settings: {} };
-        // How many times a saved theme has changed under the panel: an answer
-        // asked for before the last change is the file as it was.
-        this._changes = 0;
+        // How many times each saved theme has changed under the panel, and how
+        // many times every theme may have (a change naming none): an answer
+        // asked for before its theme's last change is the file as it was.
+        this._changes = { any: 0, of: new Map() };
         // The Theme Studio's working copy (takeWorkingCopy).
         this.inline = null;
         // The Builder's count of saved-theme changes last seen (takeSavedCount).
@@ -279,7 +280,7 @@ export class PanelTheme {
      */
     takeSavedCount(msg) {
         if (!Object.prototype.hasOwnProperty.call(msg, 'themesVersion')) return;
-        if (this._savedCount !== undefined && msg.themesVersion !== this._savedCount) this._letGo();
+        if (this._savedCount !== undefined && msg.themesVersion !== this._savedCount) this._letGo(null);
         this._savedCount = msg.themesVersion;
     }
 
@@ -311,10 +312,10 @@ export class PanelTheme {
             return Promise.resolve();
         }
 
-        const changes = this._changes;
+        const changes = this._changesTo(themeId);
         return fetchTheme(themeId)
             .then(theme => {
-                if (changes !== this._changes || this._asked.themeId !== themeId) return;
+                if (changes !== this._changesTo(themeId) || this._asked.themeId !== themeId) return;
                 if (theme) this.current = theme;
                 const asked = this._asked.settings;
                 this._putOn(theme || fallbackTheme(asked), asked, repaint);
@@ -360,24 +361,38 @@ export class PanelTheme {
      * `themeId` naming it, or none when any may have). The theme in hand is
      * used again while the definition names it, so the page would keep its
      * old look, or the fallback when the theme was missing, until it was
-     * reloaded: when the theme the definition names changed, it is fetched
-     * again and the page redrawn in place on it. The Theme Studio's working
-     * copy stays. Nothing happens before the first draw, which fetches the
-     * theme itself. Not for the Builder's canvas or Preview, which take the
-     * theme from the Builder.
+     * reloaded: the theme that changed is let go, in hand or on its way, so
+     * the next ask fetches it as saved, and when it is the one the definition
+     * names it is fetched again now and the page redrawn in place on it. The
+     * Theme Studio's working copy stays. Nothing happens before the first
+     * draw, which fetches the theme itself. Not for the Builder's canvas or
+     * Preview, which take the theme from the Builder.
      */
     takeChange(themeId) {
         if (!this.firstSettled) return;
+        this._letGo(themeId ?? null);
         const settings = this._host.settings() || {};
         if (themeId != null && themeId !== themeIdOf(settings)) return;
-        this._letGo();
         this.apply(settings, { repaint: false }).then(() => this._host.draw());
     }
 
-    /** A saved theme changed: the theme in hand goes, and so does every answer already on its way. */
-    _letGo() {
-        this.current = null;
-        this._changes += 1;
+    /**
+     * A saved theme changed (`themeId`, or any when null): it goes from hand,
+     * and so does every answer for it already on its way.
+     */
+    _letGo(themeId) {
+        if (themeId === null) this._changes.any += 1;
+        else this._changes.of.set(themeId, this._changesOf(themeId) + 1);
+        if (themeId === null || this.current?.id === themeId) this.current = null;
+    }
+
+    /** How many times this theme has changed under the panel, by its own changes and changes naming none. */
+    _changesTo(themeId) {
+        return this._changes.any + this._changesOf(themeId);
+    }
+
+    _changesOf(themeId) {
+        return this._changes.of.get(themeId) || 0;
     }
 
     /** The theme in hand for this id: the Theme Studio's working copy first, else the one applied last. */

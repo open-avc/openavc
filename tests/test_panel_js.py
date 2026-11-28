@@ -417,6 +417,7 @@ SCENARIOS = [
     "a_theme_redraw_that_fails_leaves_the_next_theme_free_to_go_on",
     "two_themes_asked_for_draw_the_one_asked_for_last",
     "a_theme_asked_for_before_it_was_saved_is_not_drawn_over_the_saved_one",
+    "a_theme_saved_while_another_is_drawn_is_drawn_as_saved",
     "a_variable_the_new_theme_lacks_is_taken_off_the_page",
     "a_theme_that_cannot_be_had_still_takes_the_projects_settings",
     # A theme that moves only the page's own colour draws the page again.

@@ -9611,8 +9611,9 @@ Object.assign(tests, {
 // A definition names a theme; the panel fetches it, or takes the working copy
 // the Theme Studio hands it, sets its variables on the document, draws its
 // first page once the theme is in hand (or after a second without it) and
-// draws again when a later theme changes how controls look. A theme that
-// cannot be had falls back to a plain light or dark look. A page with no
+// draws again when a later theme changes how the page looks. A theme that
+// cannot be had goes on as one with no variables, the stylesheet's own look
+// (the light built-in's colours for a light project). A page with no
 // background of its own takes the theme's. The Theme Studio's preview outlines
 // the control under the pointer and names the one clicked. Each case records,
 // step by step, the document's style and font, the page's background, a
@@ -10121,6 +10122,51 @@ Object.assign(tests, {
             assert(rootVar('--panel-bg') === '#222222', `the theme as saved goes on, got ${rootVar('--panel-bg')}`);
             await m.wait(400); await m.wait(10);
             assert(rootVar('--panel-bg') === '#222222', `the answer asked for before the save is not drawn, got ${rootVar('--panel-bg')}`);
+        });
+    },
+
+    // A theme saved while the project draws another, then named again, is
+    // drawn as saved: whether the panel had it in hand, an answer for it was
+    // still on its way, or the save reached the Builder's canvas as a count.
+    async a_theme_saved_while_another_is_drawn_is_drawn_as_saved() {
+        const t0 = themeFixture('t0', { variables: { panel_bg: '#000000' } });
+        const before = themeFixture('t1', { variables: { panel_bg: '#111111' } });
+        const saved = themeFixture('t1', { variables: { panel_bg: '#222222' } });
+        const answersForT1 = (answers) => {
+            const others = window.fetch;
+            window.fetch = (url) => (String(url).endsWith('/api/themes/t1') ? themeAnswer(answers.shift()) : others(url));
+        };
+        // In hand: t1 is drawn, the project moves to t0 (still on its way), t1 is saved and named again.
+        await themeCheck({ answers: { t0: { after: 500, answer: t0 } } }, async (m) => {
+            answersForT1([before, saved]);
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 't0' }); await m.wait(10);
+            m.app.handleMessage({ type: 'themes.changed', theme_id: 't1' });
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#222222', `the theme in hand as it was saved, got ${rootVar('--panel-bg')}`);
+            await m.wait(500);
+        });
+        // On its way: an answer for t1 asked for before the save lands after the one asked for since.
+        await themeCheck({ answers: { t0 } }, async (m) => {
+            answersForT1([{ after: 500, answer: before }, { after: 100, answer: saved }]);
+            m.snapshot(); m.definition({ theme_id: 't0' }); await m.wait(10);
+            m.definition({ theme_id: 't1' }); m.definition({ theme_id: 't0' }); await m.wait(10);
+            m.app.handleMessage({ type: 'themes.changed', theme_id: 't1' });
+            m.definition({ theme_id: 't1' }); await m.wait(100);
+            assert(rootVar('--panel-bg') === '#222222', `the theme as saved goes on, got ${rootVar('--panel-bg')}`);
+            await m.wait(400); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#222222', `the answer asked for before the save is not drawn, got ${rootVar('--panel-bg')}`);
+        });
+        // The Builder's canvas: its count of saved-theme changes moves while t1 is on its way.
+        await themeCheck({ answers: { t0 } }, async (m) => {
+            answersForT1([{ after: 500, answer: before }, { after: 100, answer: saved }]);
+            m.app._takeEditorView({ themesVersion: 0 });
+            m.snapshot(); m.definition({ theme_id: 't0' }); await m.wait(10);
+            m.definition({ theme_id: 't1' });
+            m.app._takeEditorView({ themesVersion: 1 });
+            m.definition({ theme_id: 't1' }); await m.wait(100);
+            await m.wait(400); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#222222', `the canvas draws the theme as saved, got ${rootVar('--panel-bg')}`);
         });
     },
 
