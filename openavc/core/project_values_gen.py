@@ -216,13 +216,17 @@ def _keys_inside(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
     ``{"style.cell_size": {"zero_is_blank": True}}`` for ``ZERO_IS_BLANK``,
     ``{"bindings.do.press.hold_repeat_ms": {"default": 200}}`` for
     ``KEY_DEFAULTS``."""
+    zero_blanks = [
+        (f"{field}.{key}", "zero_is_blank", True)
+        for field, keys in _dict_field_keys(model, "ZERO_IS_BLANK").items() for key in keys
+    ]
+    defaults = [
+        (f"{field}.{key}", "default", value)
+        for field, values in _dict_field_keys(model, "KEY_DEFAULTS").items() for key, value in values.items()
+    ]
     entries: dict[str, dict[str, Any]] = {}
-    for field, keys in _dict_field_keys(model, "ZERO_IS_BLANK").items():
-        for key in sorted(keys):
-            entries.setdefault(f"{field}.{key}", {})["zero_is_blank"] = True
-    for field, defaults in _dict_field_keys(model, "KEY_DEFAULTS").items():
-        for key in sorted(defaults):
-            entries.setdefault(f"{field}.{key}", {})["default"] = defaults[key]
+    for path, word, value in zero_blanks + defaults:
+        entries.setdefault(path, {})[word] = value
     return dict(sorted(entries.items()))
 
 
