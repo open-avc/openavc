@@ -89,13 +89,14 @@ PAUSE_ON_PURPOSE_SECONDS = 3600.0
 # TAKES_NO_COMMAND.
 TAKES_COMMANDS: frozenset[str] = frozenset({ONLINE})
 # No command sent now goes out, one declaring available_offline (a
-# Wake-on-LAN Power On) included: the device is held for Live Test or a
+# Wake-on-LAN Power On) included: no driver runs the device (turned off in
+# the project, its driver not installed), or it is held for Live Test or a
 # Device Audit, and a wake would switch the equipment on under it. A device
 # asleep or restarting when it was paused keeps that word, so the command
 # gate asks the pause itself as well (core/device_commands.py
 # ``command_goes_out``); the panel, which reads the word alone, marks a wake
 # press under these words.
-TAKES_NO_COMMAND: frozenset[str] = frozenset({PAUSED})
+TAKES_NO_COMMAND: frozenset[str] = frozenset({DISABLED, WAITING_FOR_DRIVER, PAUSED})
 # Counted as a device in trouble: a fault is what keeps it away.
 IN_TROUBLE: frozenset[str] = frozenset({OFFLINE})
 

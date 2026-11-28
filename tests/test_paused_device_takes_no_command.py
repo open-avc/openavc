@@ -27,7 +27,13 @@ from openavc.core.device_manager import (
     PAUSED_FOR_LIVE_TEST,
     DeviceManager,
 )
-from openavc.core.device_presence import ASLEEP, PAUSED
+from openavc.core.device_presence import (
+    ASLEEP,
+    DISABLED,
+    PAUSED,
+    TAKES_NO_COMMAND,
+    WAITING_FOR_DRIVER,
+)
 from openavc.core.device_sleep import SleepBook
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
@@ -201,3 +207,32 @@ async def test_a_sleeping_device_paused_is_refused_as_paused_not_asleep(acme):
     sentence = friendly_error(exc, device="Lobby Display")
     assert sentence.startswith("Lobby Display is paused for a Device Audit.")
     assert "wakes it" not in sentence
+
+
+# ── every word that takes no command ─────────────────────────────────────────
+
+
+async def _in_state(dm: DeviceManager, word: str) -> None:
+    """Put the device in the state ``word`` names, the way the manager does."""
+    if word == PAUSED:
+        await dm.pause_device("acme1", purpose=PAUSED_FOR_AUDIT)
+        return
+    config = {"driver": "acme_widget", "name": "Acme"}
+    dm._devices.pop("acme1")
+    if word == DISABLED:
+        dm._register_disabled("acme1", config, "Acme")
+    elif word == WAITING_FOR_DRIVER:
+        await dm._register_orphan("acme1", config, "Acme")
+    else:
+        raise AssertionError(f"no way to stage {word!r}: extend _in_state")
+
+
+@pytest.mark.parametrize("word", sorted(TAKES_NO_COMMAND))
+async def test_no_command_goes_out_under_a_word_that_takes_none(acme, word):
+    """The server holds to the set the panel marks a wake press under."""
+    dm, driver, state = acme
+    await _in_state(dm, word)
+    assert _word(state) == word
+    assert dm.command_goes_out("acme1", "power_on") is False
+    assert dm.command_goes_out("acme1", "beep") is False
+    assert driver.calls == []

@@ -2985,9 +2985,9 @@ const tests = {
     // A wake press (a command that works with the device off the network,
     // `wake_devices`) goes out whatever the device's word, except under the
     // words where no command goes out at all (core/device_presence.py
-    // TAKES_NO_COMMAND): a device paused for Live Test or a Device Audit. A
-    // press that also reaches another device is marked only when that one
-    // is away too.
+    // TAKES_NO_COMMAND): a device paused for Live Test or a Device Audit,
+    // turned off in the project, or waiting for its driver. A press that
+    // also reaches another device is marked only when that one is away too.
     a_wake_press_is_marked_only_where_no_command_goes_out() {
         const app = mkApp();
         const wake = { action: 'device.command', device: 'tv', command: 'power_on' };
@@ -3003,7 +3003,7 @@ const tests = {
         app.state = {};
         renderProject(app, proj);
         const marked = (id) => app.root.querySelector(`[data-element-id="${id}"]`).classList.contains('action-offline');
-        const refused = new Set(['paused']);
+        const refused = new Set(['paused', 'disabled', 'waiting_for_driver']);
         const words = ['disabled', 'waiting_for_driver', 'online', 'restarting', 'asleep', 'paused', 'offline', 'connecting'];
         for (const word of words) {
             for (const amp of ['online', 'offline']) {

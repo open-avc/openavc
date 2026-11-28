@@ -722,8 +722,8 @@ every other control bound to the device is marked as it is for any device that
 cannot be reached, and a press on one says "<device> is asleep. Power On wakes
 it." A control whose press sends only a command that works while the device is
 offline (a Power On by Wake-on-LAN) is not marked as one that will be refused,
-unless the device is paused for Live Test or a Device Audit, which takes no
-command at all. A press that reaches several devices is marked only when none of
+unless the device takes no command at all: paused for Live Test or a Device
+Audit, turned off in the project, or waiting for its driver to be installed. A press that reaches several devices is marked only when none of
 them would take it.
 Bind a label to `device.<id>.presence`, `asleep` or `offline_detail` to show it.
 

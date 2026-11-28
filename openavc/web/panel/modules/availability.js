@@ -16,8 +16,8 @@
  *
  * A wake press (`wake_devices`: a command that works with the device off the
  * network, such as a Wake-on-LAN Power On) goes out under every word but
- * those where no command goes out at all (`TAKES_NO_COMMAND`, a paused
- * device). A device asleep or restarting when it was paused keeps that word,
+ * those where no command goes out at all (`TAKES_NO_COMMAND`: a device
+ * turned off, waiting for its driver, or paused). A device asleep or restarting when it was paused keeps that word,
  * so there the panel leaves the wake press unmarked and the server's refusal
  * says the device is paused.
  *
@@ -84,9 +84,9 @@ const ONLINE = 'online';
 // its reading.
 const ASLEEP = 'asleep';
 // The words under which no press lands, one that works with the device off
-// the network included (the server's TAKES_NO_COMMAND): paused for Live Test
-// or a Device Audit.
-const TAKES_NO_COMMAND = new Set(['paused']);
+// the network included (the server's TAKES_NO_COMMAND): turned off in the
+// project, waiting for its driver, or paused for Live Test or a Device Audit.
+const TAKES_NO_COMMAND = new Set(['disabled', 'waiting_for_driver', 'paused']);
 
 /**
  * The device a state key reports FROM, or null when it names none.
