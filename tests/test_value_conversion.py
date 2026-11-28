@@ -401,8 +401,8 @@ async def test_a_push_is_not_sent_in_a_form_whose_rule_reads_another_value():
     # A later rule can match the rendered line and still read something else
     # where the value goes (here an optional digit that matches nothing,
     # leaving the rest of the line to ".*"). Sent, the driver would store that
-    # instead of the simulator's value, so the first rendering goes out as
-    # before.
+    # instead of the simulator's value; the first rule reads "xyz" back in
+    # neither form, so there is no reply at all.
     definition = copy.deepcopy(RECEIVER)
     definition["child_entity_types"]["channel"]["state_variables"]["level"] = {
         "type": "string", "label": "Level",
@@ -420,7 +420,7 @@ async def test_a_push_is_not_sent_in_a_form_whose_rule_reads_another_value():
     sim = _sim(definition)
     assert sim._format_state_reply("channel.2.level", "B") == "REP 2 LVL B"
     assert sim._format_state_reply("channel.2.level", "7") == "REP 2 LEVEL 7"
-    assert sim._format_state_reply("channel.2.level", "xyz") == "REP 2 LVL xyz"
+    assert sim._format_state_reply("channel.2.level", "xyz") is None
 
     driver = _driver(definition)
     await driver.on_data_received(b"REP 2 LEVEL xyz")
