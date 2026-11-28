@@ -9,6 +9,7 @@ holds, or the device said nothing.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -186,3 +187,41 @@ async def test_one_argument_no_message_can_carry_holds_back_the_whole_message():
     pair.sim._state.update(left=1, right="loud")
     assert await pair.query("/acme/pair") == []
     assert pair.held("left", "right") == {"left": None, "right": None}
+
+
+def _cue_reply() -> _Pair:
+    """A device that answers with JSON text in one argument and a level in
+    the next."""
+    return _Pair([{"address": "/acme/reply/cue", "mappings": [
+        {"arg": 0, "json_path": "data.name", "state": "cue_name", "type": "string"},
+        {"arg": 0, "json_path": "data.number", "state": "cue_number", "type": "integer"},
+        {"arg": 1, "state": "level", "type": "float"},
+    ]}], {
+        "cue_name": {"type": "string"},
+        "cue_number": {"type": "integer"},
+        "level": {"type": "number"},
+    })
+
+
+@pytest.mark.asyncio
+async def test_a_json_path_argument_is_answered_as_the_json_the_driver_reads():
+    pair = _cue_reply()
+    pair.sim._state.update(cue_name="Intro Music", cue_number=3, level=0.5)
+    ((address, args),) = await pair.query("/acme/reply/cue")
+    assert address == "/acme/reply/cue"
+    assert args[0][0] == "s"
+    assert json.loads(args[0][1]) == {"data": {"name": "Intro Music", "number": 3}}
+    assert args[1] == ("f", 0.5)
+    assert pair.held("cue_name", "cue_number", "level") == {
+        "cue_name": "Intro Music", "cue_number": 3, "level": 0.5,
+    }
+
+
+def test_a_json_path_argument_sets_what_the_driver_would_read_from_it():
+    pair = _cue_reply()
+    pair.sim.handle_message("/acme/reply/cue", [
+        ("s", '{"data": {"name": "Outro", "number": 9}}'), ("f", 0.25),
+    ])
+    assert {key: pair.sim._state.get(key) for key in ("cue_name", "cue_number", "level")} == {
+        "cue_name": "Outro", "cue_number": 9, "level": 0.25,
+    }

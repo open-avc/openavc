@@ -58,7 +58,9 @@ from openavc.drivers.capture_ref import capture_group, names_a_capture
 from openavc.drivers.command_form import command_form
 from openavc.drivers.declared_names import child_variables, child_writable_props
 from openavc.drivers.http_commands import request_target
+from openavc.drivers.json_replies import JSON_PATH_MISSING
 from openavc.drivers.line_ending import decode_delimiter, sent_line_ending
+from openavc.drivers.osc_wire import arg_value
 from openavc.drivers.send_framing import framed_send
 from openavc.drivers.spec import bare_placeholder, placeholder_names, without_null_sections
 from openavc.drivers.transport_choice import declared_transport, effective_transport
@@ -654,20 +656,20 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return [(address, message)]
 
     def _osc_set(self, mappings: tuple[Any, ...], args: list[tuple[str, Any]]) -> None:
-        """Each mapping's argument into its variable: through the entry of the
-        mapping's map it picks (``map_entry``, the driver's own lookup), else
-        the variable's conversion, then its type."""
+        """Each mapping's argument into its variable, read as the driver reads
+        it (``osc_wire.arg_value``: its position, through its ``json_path``):
+        through the entry of the mapping's map it picks (``map_entry``, the
+        driver's own lookup), else the variable's conversion, then its
+        type."""
         for mapping in mappings:
-            if not isinstance(mapping, dict):
+            state_key = mapping.get("state") if isinstance(mapping, dict) else None
+            value = arg_value(mapping, args) if state_key else JSON_PATH_MISSING
+            if value is JSON_PATH_MISSING:
                 continue
-            arg_idx = mapping.get("arg", 0)
-            state_key = mapping.get("state")
-            if state_key and arg_idx < len(args):
-                _, value = args[arg_idx]
-                found, mapped = map_entry(mapping.get("map"), value)
-                if not found:
-                    mapped = self._from_wire(state_key, value)
-                self.set_state(state_key, self._coerce_value(state_key, mapped))
+            found, mapped = map_entry(mapping.get("map"), value)
+            if not found:
+                mapped = self._from_wire(state_key, value)
+            self.set_state(state_key, self._coerce_value(state_key, mapped))
 
     def _execute_osc_script_handler(
         self, handler: OSCScriptHandler, address: str, args: list[tuple[str, Any]]

@@ -33,6 +33,7 @@ the validator counts them as covered from the same table.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from functools import partial
 from typing import Any, NamedTuple
@@ -114,13 +115,16 @@ class AddressArg(NamedTuple):
     position the driver reads it at (``arg``, 0 when the mapping names none),
     the tag it goes out under, and the mapping's value map as written (the
     device's token -> the value) and turned round (the value's lowercase words
-    -> the device's token), None without one."""
+    -> the device's token), None without one. ``json_path`` is the path's
+    segments for a mapping that reads the argument as JSON text (none for its
+    whole value), None for one that reads the argument itself."""
 
     state: str
     arg: int
     tag: str
     value_map: Mapping[Any, Any] | None
     reverse_map: dict[str, str] | None
+    json_path: tuple[str, ...] | None = None
 
     def device_token(self, value: Any) -> str | None:
         """The device's token for ``value``, filed and read under the value's
@@ -162,19 +166,56 @@ class OscAddress(NamedTuple):
         """The message's (tag, value) arguments for the variables' values
         (``value_of``; ``to_wire`` gives a value's device number): each at its
         own position, the first mapping naming a position answering it, and
-        a position no mapping reads sent as nil. None when a value has no
+        a position no mapping reads sent as nil. Mappings that read one
+        position as JSON (``json_path``) share it: it goes out as the JSON
+        text holding each one's value at its path. None when a value has no
         wire form (``AddressArg.wire_value``): the device says nothing."""
-        slots: dict[int, tuple[str, Any]] = {}
+        slots: dict[int, Any] = {}
         for arg in self.args:
-            if arg.arg in slots:
+            if not _answers(slots, arg):
                 continue
             value = value_of(arg.state)
             carried, wire = arg.wire_value(value, partial(to_wire, arg.state, value))
             if not carried:
                 return None
-            slots[arg.arg] = (arg.tag, wire)
+            _place(slots, arg, wire)
         width = max(slots, default=-1) + 1
-        return [slots.get(position, NIL) for position in range(width)]
+        return [_sent(slots.get(position)) for position in range(width)]
+
+
+def _answers(slots: dict[int, Any], arg: AddressArg) -> bool:
+    """Whether ``arg`` answers its position: it is the first to name it, or
+    it reads the position as JSON beside the JSON mappings before it."""
+    held = slots.get(arg.arg)
+    return held is None or (isinstance(held, dict) and bool(arg.json_path))
+
+
+def _place(slots: dict[int, Any], arg: AddressArg, wire: Any) -> None:
+    """``wire`` into its position: the (tag, value) argument, the whole JSON
+    value for an empty path, or the value at its path in the position's JSON
+    document (a path through a value another path set is left out)."""
+    if arg.json_path is None:
+        slots[arg.arg] = (arg.tag, wire)
+        return
+    if not arg.json_path:
+        slots[arg.arg] = ("s", json.dumps(wire))
+        return
+    node = slots.setdefault(arg.arg, {})
+    for segment in arg.json_path[:-1]:
+        node = node.setdefault(segment, {})
+        if not isinstance(node, dict):
+            return
+    node[arg.json_path[-1]] = wire
+
+
+def _sent(held: Any) -> tuple[str, Any]:
+    """A position as it goes out: nil for none, a JSON document as its
+    text, an argument as it is."""
+    if held is None:
+        return NIL
+    if isinstance(held, dict):
+        return ("s", json.dumps(held))
+    return held
 
 
 def _position(mapping: Mapping[str, Any]) -> int | None:
@@ -200,8 +241,14 @@ def _address_arg(mapping: Any) -> AddressArg | None:
         {value_words(value).lower(): str(token) for token, value in value_map.items()}
         if value_map else None
     )
+    # The runtime's reply reader, imported here: the validator loads this
+    # module for its console addresses, and needs none of what it brings.
+    from openavc.drivers.json_replies import path_segments
+
+    json_path = mapping.get("json_path")
     return AddressArg(
         mapping["state"], position, type_tag(mapping.get("type")), value_map, reverse_map,
+        tuple(path_segments(json_path)) if json_path is not None else None,
     )
 
 

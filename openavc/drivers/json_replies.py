@@ -83,9 +83,9 @@ def _step(node: Any, seg: str) -> Any:
     return JSON_PATH_MISSING
 
 
-def _segments(path: Any) -> list[str]:
+def path_segments(path: Any) -> list[str]:
     """A dotted path's keys and indices (empty segments dropped); none for
-    an empty path."""
+    an empty path. The simulator builds an OSC argument's JSON along them."""
     if not path:
         return []
     return [seg for seg in str(path).split(".") if seg]
@@ -104,7 +104,7 @@ def extract_json_path(raw_value: Any, path: Any, collapse: bool = True) -> Any:
     question of it rather than storing it -- a ``contains`` mapping.
     """
     node = _parsed(raw_value)
-    for seg in _segments(path):
+    for seg in path_segments(path):
         if node is JSON_PATH_MISSING:
             break
         node = _step(node, seg)

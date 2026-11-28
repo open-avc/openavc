@@ -84,9 +84,10 @@ def build_osc_args(
     return args
 
 
-def _arg_value(mapping: dict[str, Any], args: list[tuple[str, Any]]) -> Any:
+def arg_value(mapping: dict[str, Any], args: list[tuple[str, Any]]) -> Any:
     """The positional arg a flat mapping reads (through its ``json_path``
-    when it has one), or ``_NO_ARG``."""
+    when it has one), or ``_NO_ARG``. A generated OSC simulator's set reads
+    a message's arguments with it, as the driver reads them."""
     arg_index = mapping.get("arg", 0)
     if arg_index >= len(args):
         return _NO_ARG
@@ -247,7 +248,7 @@ class OscWire:
             state_key = mapping.get("state")
             if not state_key:
                 continue
-            raw_value = _arg_value(mapping, args)
+            raw_value = arg_value(mapping, args)
             if raw_value is _NO_ARG:
                 continue
             flat.append(
