@@ -18,7 +18,8 @@ page review. Written once each, they agree on what draws.
   (``*``, or a list of page ids; left out, the schema's ``*``), it is not
   hidden, and its type is one the panel draws.
 - **The navigation words** are ``$back`` and ``$dismiss``, the moves the panel
-  makes itself; a target starting with ``$`` names no page.
+  makes itself; a target starting with ``$`` names no page. A page move lands
+  when it names a page of the project or one of those words (``reaches``).
 - **An overlay's box**, as a percentage of the screen, is the one it sets, and
   for a side it leaves blank the type's default: a dialog 31.25 by 37.5 (400 by
   300 on the 1280 by 800 reference), a sidebar 25 wide. A sidebar is the
@@ -147,6 +148,13 @@ def any_master_draws(masters: Sequence[Any], pages: Sequence[Any], drawn_types: 
 def is_navigation_word(target: Any) -> bool:
     """Whether ``target`` is one of the moves the panel makes itself."""
     return target in NAVIGATION_WORDS
+
+
+def reaches(target: Any, page_ids: Collection[str]) -> bool:
+    """Whether a page move to ``target`` lands: a page of the project (one of
+    ``page_ids``), or one of the moves the panel makes itself. Only a string
+    is either."""
+    return isinstance(target, str) and (target in page_ids or is_navigation_word(target))
 
 
 def names_no_page(target: Any) -> bool:

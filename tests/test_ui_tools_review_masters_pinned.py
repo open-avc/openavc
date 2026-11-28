@@ -24,13 +24,16 @@ BIG_THUMB = "slider thumb is 1120px"
 SMALL = {"x": 0, "y": 0, "w": 1, "h": 1}
 
 
-def _project(*, masters=None, pages=None, theme=True) -> dict:
+def _project(*, masters=None, pages=None, theme=True, idle_page=None, macros=()) -> dict:
     settings = {"theme_overrides": {
         "element_defaults": {"slider": {"thumb_size": 80}},
     }} if theme else {}
+    if idle_page is not None:
+        settings["idle_page"] = idle_page
     return {
         "project": {"id": "acme_room", "name": "Acme Room"},
         "devices": [{"id": "amp", "driver": "acme_amp", "name": "Amplifier"}],
+        "macros": list(macros),
         "ui": {
             "settings": settings,
             "master_elements": masters if masters is not None else [
@@ -173,6 +176,7 @@ async def test_one_page_is_reviewed_without_the_masters():
 #: operator nobody knows, a master in a container. Each control has a box and
 #: something to draw, so the page review says nothing of its own.
 _HELD = _project(
+    idle_page="first",
     masters=[{"id": "go", "type": "button", "label": "Go", "pages": "*", "parent": "box",
               "placements": {"landscape": {"x": 80, "y": 80, "w": 15, "h": 15}}}],
     pages=[
@@ -246,14 +250,18 @@ async def test_a_clean_page_in_full():
 
 @pytest.mark.asyncio
 async def test_masters_alone_can_make_a_project_dirty():
-    engine = _engine(_project(pages=[]))
+    engine = _engine(_project(pages=[], idle_page=""))
     result = await _call(engine, "review_ui", {})
     assert list(result) == [
         "pages_checked", "masters_checked", "finding_count", "master_elements",
         "status", "note",
     ]
     assert result["pages_checked"] == []
-    assert result["finding_count"] == 4
+    # The master review's four, then m_tiny's page 'main', which is gone.
+    assert result["finding_count"] == 5
+    assert result["master_elements"][-1] == (
+        "Master element 'm_tiny' shows on page 'main', which does not exist. The pages are: none."
+    )
     assert result["status"] == "findings"
     assert result["note"].startswith("The write landed -- these are warnings")
 
@@ -427,3 +435,53 @@ async def test_the_element_door_refuses_an_id_change_too():
         "Element 'btn': an id cannot be changed here -- delete it and add it "
         "again under the new id."
     )}
+
+
+#: A project naming a page it does not have outside its pages' controls: the
+#: idle page, a master's pages and a macro's page move, inside a branch.
+_NAMES_NO_PAGE = _project(
+    idle_page="ghost",
+    masters=[{"id": "m_nav", "type": "button", "label": "Nav", "pages": ["main", "gone"],
+              "placements": {"landscape": {"x": 80, "y": 80, "w": 15, "h": 15}}}],
+    macros=[{"id": "evening", "name": "Evening", "steps": [
+        {"action": "conditional", "condition": {"key": "var.x", "operator": "truthy"},
+         "then_steps": [{"action": "ui.navigate", "page": "lost"}]},
+    ]}],
+)
+
+
+@pytest.mark.asyncio
+async def test_a_page_the_idle_page_a_master_or_a_macro_names_that_is_not_there_is_reported():
+    result = await _call(_engine(_NAMES_NO_PAGE), "review_ui", {})
+    assert list(result) == [
+        "pages_checked", "masters_checked", "finding_count", "pages", "master_elements",
+        "settings", "macros", "status", "note",
+    ]
+    assert result["settings"] == [
+        "The idle page 'ghost' does not exist, so an idle panel returns to 'main' instead. "
+        "The pages are: clean, main.",
+    ]
+    assert result["master_elements"] == [
+        "Master element 'm_nav' shows on page 'gone', which does not exist. "
+        "The pages are: clean, main.",
+    ]
+    assert result["macros"] == [
+        "Macro 'evening' navigates to page 'lost', which does not exist. The pages are: clean, main.",
+    ]
+    assert result["finding_count"] == sum(map(len, result["pages"].values())) + 3
+    assert result["status"] == "findings"
+
+
+@pytest.mark.asyncio
+async def test_one_page_named_leaves_the_idle_page_and_the_macros_out():
+    result = await _call(_engine(_NAMES_NO_PAGE), "review_ui", {"page_id": "clean"})
+    assert result == {
+        "pages_checked": ["clean"],
+        "masters_checked": 0,
+        "finding_count": 0,
+        "status": "clean",
+        "note": (
+            "Nothing to report: every id is used once, every control has a box it fits in, "
+            "no two collide, and every binding points at something that exists."
+        ),
+    }

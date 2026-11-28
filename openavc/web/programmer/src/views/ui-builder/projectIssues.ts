@@ -4,7 +4,8 @@
  * Dashboard's update notice gives all come from here, so they never disagree.
  *
  * Two answers come from the platform, asked together: what it says about each
- * command (`api/commandIssues.ts`) and what the pages hold that they may not
+ * command (`api/commandIssues.ts`), and what the pages hold that they may not
+ * with each page the idle page, masters and macros name that is not there
  * (`api/pageIssues.ts`).
  *
  * A version is the project object the store holds; an edit replaces it, so a
@@ -28,8 +29,8 @@ const asked = new WeakMap<ProjectConfig, Promise<ValidationIssue[]>>();
 export function projectIssues(project: ProjectConfig, fresh = false): Promise<ValidationIssue[]> {
   const known = fresh ? undefined : asked.get(project);
   if (known) return known;
-  const found = Promise.all([commandIssues(projectCommandActions(project)), pageIssues(project.ui)])
-    .then(([commands, pages]) => validateProject(project, commands, pages));
+  const found = Promise.all([commandIssues(projectCommandActions(project)), pageIssues(project)])
+    .then(([commands, held]) => validateProject(project, commands, held?.issues, held?.missing_pages));
   asked.set(project, found);
   return found;
 }

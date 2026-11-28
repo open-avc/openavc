@@ -1,10 +1,11 @@
 /**
  * The Builder's Validate: what a project's controls, pages, master elements,
- * macro steps, triggers and idle page name that is not there (a condition's
- * value naming a variable or device the project lacks included), what the
- * platform said about each command and about what the pages hold that they
- * may not (an id two controls share, a container or an inherits that names
- * nothing or loops, a binding the panel cannot read: `api/pageIssues.ts`),
+ * macro steps and triggers name that is not there (a condition's value naming
+ * a variable or device the project lacks included), what the platform said
+ * about each command, about what the pages hold that they may not (an id two
+ * controls share, a container or an inherits that names nothing or loops, a
+ * binding the panel cannot read) and about each page the idle page, a master's
+ * pages or a macro's page move names that is not there (`api/pageIssues.ts`),
  * and what the page review says about each page.
  *
  * A control's checks are `CONTROL_CHECKS`, run in order for page and master
@@ -15,10 +16,13 @@
  * and the AI write path reach the same verdict about the same page.
  *
  * The AI door's counterpart is openavc/ui/page_references.py, which asks most
- * of the same questions of a page in its own sentences, and one this cannot (a
- * value_map against a select's options); the two are not pinned to each other,
- * except that both reach every place an action sits
- * (tests/fixtures/action_reference_cases.json).
+ * of the same questions of a page's controls in its own sentences, and one
+ * this cannot (a value_map against a select's options); the two are not
+ * pinned to each other, except that both reach every place an action sits
+ * (tests/fixtures/action_reference_cases.json). A page named outside the
+ * pages' controls (the idle page, a master's pages, a macro's page move) is
+ * openavc/ui/missing_pages.py's alone, which Validate lists as the AI's
+ * review does.
  */
 import type {
   Layout,
@@ -31,7 +35,7 @@ import type {
   UIPage,
 } from "../../api/types";
 import { readsNoValue, referencedKey } from "../../api/conditionEval";
-import type { PageIssue } from "../../api/pageIssues";
+import type { MissingPage, PageIssue } from "../../api/pageIssues";
 import {
   ACTION_SLOTS,
   REFERENCE_NOUNS,
@@ -39,9 +43,9 @@ import {
   brokenReference,
   nestedActions,
   pageExists,
+  placedSteps,
   rowRoutes,
   slotActions,
-  stepAndBranches,
   type BindingRefIds,
   type BrokenReference,
 } from "./bindingActions";
@@ -383,9 +387,9 @@ function pageIssues(
 }
 
 /** A master element: the control checks with no page, its own review, then
- *  each page it names that is not in the project. */
-function masterIssues(mel: MasterElement, refs: ProjectRefs, theme: ElementDefaults): ValidationIssue[] {
-  const issues: ValidationIssue[] = [
+ *  each page it names that the platform says is not in the project. */
+function masterIssues(mel: MasterElement, refs: ProjectRefs, theme: ElementDefaults, missing: MissingByPlace): ValidationIssue[] {
+  return [
     ...controlIssues(mel, "", "Master Elements", refs),
     ...reviewMasterElement(mel, theme).map((finding): ValidationIssue => ({
       severity: "warning",
@@ -393,24 +397,53 @@ function masterIssues(mel: MasterElement, refs: ProjectRefs, theme: ElementDefau
       location: `Master Elements > ${finding.elementId}`,
       elementId: finding.elementId,
     })),
+    ...said(missing.masters, mel.id, `Master Elements > ${mel.id}`),
   ];
-  if (Array.isArray(mel.pages)) {
-    for (const pid of mel.pages) {
-      if (!refs.pageIds.has(pid)) {
-        issues.push({ severity: "error", message: `References deleted page "${pid}"`, location: `Master Elements > ${mel.id}` });
-      }
-    }
-  }
-  return issues;
 }
 
 /** What a finding calls a step with no description, by the kind of thing the
- *  step names. A step's page is not checked, so a page has no entry. */
-const UNNAMED_STEP: Record<BrokenReference["kind"], string> = {
+ *  step names. A step's page move is the platform's to judge (`MissingByPlace`),
+ *  so a page has no entry. */
+const UNNAMED_STEP: Record<Exclude<BrokenReference["kind"], "page">, string> = {
   device: "device.command",
   macro: "call macro",
-  page: "ui.navigate",
 };
+
+/** What Validate calls a step that moves to a page, with no description. */
+const UNNAMED_NAVIGATE = "ui.navigate";
+
+/** The platform's missing pages (`api/pageIssues.ts`), by where each is
+ *  named: a master's under its id, a macro step's under its macro's id and
+ *  the step's path, the idle page's in `settings`. */
+interface MissingByPlace {
+  masters: Map<string, MissingPage[]>;
+  steps: Map<string, MissingPage[]>;
+  settings: MissingPage[];
+}
+
+function stepKey(macro: string, path: string): string {
+  return `${macro}\n${path}`;
+}
+
+function missingByPlace(missing: readonly MissingPage[]): MissingByPlace {
+  const byPlace: MissingByPlace = { masters: new Map(), steps: new Map(), settings: [] };
+  const add = (map: Map<string, MissingPage[]>, key: string, one: MissingPage) =>
+    map.set(key, [...(map.get(key) ?? []), one]);
+  for (const one of missing) {
+    if (one.element !== null) add(byPlace.masters, one.element, one);
+    else if (one.macro !== null) add(byPlace.steps, stepKey(one.macro, one.step ?? ""), one);
+    else byPlace.settings.push(one);
+  }
+  return byPlace;
+}
+
+/** The missing pages kept under `key`, said at `location` and taken, so two
+ *  masters or macros with one id say them once, under the first. */
+function said(map: Map<string, MissingPage[]>, key: string, location: string): ValidationIssue[] {
+  const here = map.get(key) ?? [];
+  map.delete(key);
+  return here.map((one) => ({ severity: "error", message: one.message, location }));
+}
 
 /** The device group a group command names that is not in the project. */
 function missingGroup(step: MacroStep, refs: ProjectRefs): string | null {
@@ -418,28 +451,38 @@ function missingGroup(step: MacroStep, refs: ProjectRefs): string | null {
   return refs.groupIds.has(step.group) ? null : step.group;
 }
 
-/** The device, macro or page a step names that is not in the project: the
- *  field an action names, read as a control's action is (`brokenReference`), in
- *  the same words; and a group command's device group, which no control action
- *  names. `at` places a finding, given what to call a step with no description. */
+/** The device or macro a step names that is not in the project: the field an
+ *  action names, read as a control's action is (`brokenReference`), in the
+ *  same words; and a group command's device group, which no control action
+ *  names. A page is the platform's (`stepIssues`). `at` places a finding, given
+ *  what to call a step with no description. */
 function stepReferenceIssues(step: MacroStep, at: (unnamed: string) => string, refs: ProjectRefs): ValidationIssue[] {
   const group = missingGroup(step, refs);
   if (group) return [{ severity: "error", message: `Device group "${group}" not found`, location: at("group.command") }];
   const broken = brokenReference(step as unknown as Record<string, unknown>, refs);
-  if (!broken) return [];
+  if (!broken || broken.kind === "page") return [];
   return [{ severity: "error", message: validateSays(broken), location: at(UNNAMED_STEP[broken.kind]) }];
 }
 
-/** One macro step: what it names that is not there, then what the platform
- *  said about it, then what its Skip If, or a Conditional's or Wait Until's
+/** Where a step is in the project: its macro's label and id, and its path. */
+interface StepPlace {
+  prefix: string;
+  macro: string;
+  path: string;
+}
+
+/** One macro step: what it names that is not there, the page it moves to
+ *  that the platform says is not there, then what the platform said about its
+ *  command, then what its Skip If, or a Conditional's or Wait Until's
  *  condition, compares with that the project does not define. */
-function stepIssues(step: MacroStep, prefix: string, refs: ProjectRefs): ValidationIssue[] {
-  const at = (unnamed: string) => `${prefix} > ${step.description || unnamed}`;
-  const said = refs.commandIssues?.get(step as unknown as Record<string, unknown>) ?? [];
+function stepIssues(step: MacroStep, place: StepPlace, refs: ProjectRefs, missing: MissingByPlace): ValidationIssue[] {
+  const at = (unnamed: string) => `${place.prefix} > ${step.description || unnamed}`;
+  const commandSaid = refs.commandIssues?.get(step as unknown as Record<string, unknown>) ?? [];
   const conditions = [step.skip_if, step.condition].filter(isPlainObject) as ConditionRead[];
   return [
     ...stepReferenceIssues(step, at, refs),
-    ...said.map((message): ValidationIssue => ({ severity: "error", message, location: at(step.action) })),
+    ...said(missing.steps, stepKey(place.macro, place.path), at(UNNAMED_NAVIGATE)),
+    ...commandSaid.map((message): ValidationIssue => ({ severity: "error", message, location: at(step.action) })),
     ...conditionValueIssues(conditions, at(step.action), refs),
   ];
 }
@@ -456,22 +499,21 @@ function triggerIssues(trigger: TriggerConfig, prefix: string, refs: ProjectRefs
 
 /** Every step of every macro, nested branches included, in the order the
  *  macro holds them, then its triggers. */
-function macroIssues(macros: MacroConfig[], refs: ProjectRefs): ValidationIssue[] {
+function macroIssues(macros: MacroConfig[], refs: ProjectRefs, missing: MissingByPlace): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const macro of macros) {
     const prefix = `Macro "${macro.name}"`;
-    for (const step of macro.steps) {
-      for (const each of stepAndBranches(step)) issues.push(...stepIssues(each, prefix, refs));
+    for (const [path, step] of placedSteps(macro.steps)) {
+      issues.push(...stepIssues(step, { prefix, macro: macro.id, path }, refs, missing));
     }
     for (const trigger of macro.triggers ?? []) issues.push(...triggerIssues(trigger, prefix, refs));
   }
   return issues;
 }
 
-function idlePageIssues(project: ProjectConfig, pageIds: ReadonlySet<string>): ValidationIssue[] {
-  const idlePage = project.ui.settings.idle_page;
-  if (!idlePage || pageIds.has(idlePage)) return [];
-  return [{ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" }];
+/** The idle page, when the platform says it names a page that is not there. */
+function idlePageIssues(missing: MissingByPlace): ValidationIssue[] {
+  return missing.settings.map((one) => ({ severity: "error", message: one.message, location: "Settings > Idle Page" }));
 }
 
 /** The platform's page issues by the page they are on, in its order; a
@@ -491,11 +533,15 @@ function heldByPage(held: readonly PageIssue[]): Map<string | null, PageIssue[]>
  *   how Validate came to answer "No Issues" for a control the device refuses.
  * @param held What the platform says the pages and master elements hold that
  *   they may not (`api/pageIssues.ts`). Omitted, likewise, claims nothing.
+ * @param missing Each page the platform says the idle page, a master or a
+ *   macro step names that is not there (`api/pageIssues.ts`). Omitted, the
+ *   same: nothing here judges those.
  */
 export function validateProject(
   project: ProjectConfig,
   commandIssues?: Map<Record<string, unknown>, string[]>,
   held: readonly PageIssue[] = [],
+  missing: readonly MissingPage[] = [],
 ): ValidationIssue[] {
   const refs: ProjectRefs = {
     pageIds: new Set(project.ui.pages.map((p) => p.id)),
@@ -508,6 +554,7 @@ export function validateProject(
   const theme = sliderThemeDefaults(project);
   const review = { theme, masters: project.ui.master_elements ?? [] };
   const byPage = heldByPage(held);
+  const byPlace = missingByPlace(missing);
   const onPages = project.ui.pages.flatMap((page) => {
     const here = byPage.get(page.id) ?? [];
     byPage.delete(page.id);
@@ -516,8 +563,8 @@ export function validateProject(
   return [
     ...onPages,
     ...(byPage.get(null) ?? []).map((issue) => heldIssue(issue)),
-    ...(project.ui.master_elements || []).flatMap((mel) => masterIssues(mel, refs, theme)),
-    ...macroIssues(project.macros, refs),
-    ...idlePageIssues(project, refs.pageIds),
+    ...(project.ui.master_elements || []).flatMap((mel) => masterIssues(mel, refs, theme, byPlace)),
+    ...macroIssues(project.macros, refs, byPlace),
+    ...idlePageIssues(byPlace),
   ];
 }

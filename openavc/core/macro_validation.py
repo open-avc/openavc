@@ -63,7 +63,7 @@ from openavc.core.state_store import (
 )
 from openavc.drivers.param_labels import param_label as _readable_param
 from openavc.drivers.param_validation import required_param_sentence
-from openavc.ui.page_rules import NAVIGATION_WORDS
+from openavc.ui.page_rules import reaches
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -681,9 +681,9 @@ class _ProjectRefs:
     #: is shape-only, so a group listing a device that does not exist saves
     #: silently and the fan-out then reports the ghost as an offline device.
     groups: Mapping[str, list[str]]
-    #: The pages a page move can land on: the project's, and the panel's own
-    #: ``$back`` and ``$dismiss``.
-    page_targets: frozenset[str]
+    #: The project's page ids. A page move lands on one of them, or is one of
+    #: the panel's own moves (``page_rules.reaches``).
+    pages: frozenset[str]
 
     @classmethod
     def of(cls, project: Any) -> _ProjectRefs:
@@ -691,7 +691,7 @@ class _ProjectRefs:
             devices=_ids(project, "devices"),
             macros=_ids(project, "macros"),
             groups={g.id: list(g.device_ids or []) for g in _listed(project, "device_groups")},
-            page_targets=_ids(getattr(project, "ui", None), "pages") | frozenset(NAVIGATION_WORDS),
+            pages=_ids(getattr(project, "ui", None), "pages"),
         )
 
 
@@ -732,7 +732,7 @@ def _macro_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
 
 def _page_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
     page = step.get("page")
-    if not page or page in refs.page_targets:
+    if not page or reaches(page, refs.pages):
         return []
     return [f"{path}: page '{page}' not found in project"]
 

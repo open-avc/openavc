@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { validateProject } from "./validateProject";
-import type { PageIssue } from "../../api/pageIssues";
+import type { MissingPage, PageIssue } from "../../api/pageIssues";
 import type { ProjectConfig } from "../../api/types";
 
 // Validate is the list an integrator reads before handing a room over. These
@@ -57,11 +57,21 @@ function project({ elements = [], pages, masters = [], macros = [], groups, idle
 
 /** What Validate says apart from the page review, which has its own pins and
  *  whose sentences open with the element's id and type. */
-function checked(p: ProjectConfig, answers?: Map<Record<string, unknown>, string[]>, held?: PageIssue[]) {
-  return validateProject(p, answers, held).filter(
+function checked(
+  p: ProjectConfig,
+  answers?: Map<Record<string, unknown>, string[]>,
+  held?: PageIssue[],
+  missing?: MissingPage[],
+) {
+  return validateProject(p, answers, held, missing).filter(
     (i) => !(i.elementId && i.message.startsWith(`${i.elementId} (`)),
   );
 }
+
+/** A page the platform says something outside the pages' controls names
+ *  that is not there (`missing_pages`); its sentence is the platform's. */
+const missingPage = (message: string, at: Partial<MissingPage> = {}): MissingPage =>
+  ({ code: "missing", message, element: null, macro: null, step: null, ...at });
 
 const at = (id: string, where = "") => ({
   location: `Main > ${id}${where}`,
@@ -484,16 +494,28 @@ describe("validateProject: a page and its arrangements", () => {
 });
 
 describe("validateProject: master elements", () => {
-  it("runs the control checks with no page, then the master's own review, then its pages", () => {
+  it("runs the control checks with no page, then the master's own review, then the pages the platform says it names that are not there", () => {
     const master = {
       id: "mb", type: "button", label: "M", pages: ["main", "ghost_page", "gone_page"],
       placement: { x: 0, y: 85, w: 20, h: 12.5 },
       bindings: { do: { press: [{ action: "macro", macro: "ghost" }] } },
     };
-    expect(checked(project({ masters: [master] }))).toEqual([
+    const missing = [
+      missingPage("Master element 'mb' shows on page 'ghost_page', which does not exist.", { element: "mb" }),
+      missingPage("Master element 'mb' shows on page 'gone_page', which does not exist.", { element: "mb" }),
+    ];
+    expect(checked(project({ masters: [master] }), undefined, [], missing)).toEqual([
       { severity: "error", message: 'Macro "ghost" not found', location: "Master Elements > mb > press", pageId: "", elementId: "mb" },
-      { severity: "error", message: 'References deleted page "ghost_page"', location: "Master Elements > mb" },
-      { severity: "error", message: 'References deleted page "gone_page"', location: "Master Elements > mb" },
+      { severity: "error", message: "Master element 'mb' shows on page 'ghost_page', which does not exist.", location: "Master Elements > mb" },
+      { severity: "error", message: "Master element 'mb' shows on page 'gone_page', which does not exist.", location: "Master Elements > mb" },
+    ]);
+  });
+
+  it("says what is said of two masters with one id once, under the first", () => {
+    const master = { id: "mb", type: "button", label: "M", pages: ["ghost_page"], placement: { x: 0, y: 85, w: 20, h: 12.5 }, bindings: { do: { press: [{ action: "macro", macro: "all_on" }] } } };
+    const missing = [missingPage("Master element 'mb' shows on page 'ghost_page', which does not exist.", { element: "mb" })];
+    expect(checked(project({ masters: [master, { ...master }] }), undefined, [], missing).map((i) => i.message)).toEqual([
+      "Master element 'mb' shows on page 'ghost_page', which does not exist.",
     ]);
   });
 
@@ -592,19 +614,34 @@ describe("validateProject: macro steps", () => {
     ]);
   });
 
-  it("names a step's page that is not in the project, and never the panel's own targets", () => {
+  it("places each page move the platform says goes to no page at its step, nested branches included", () => {
     const macros = [{
       id: "m", name: "M",
       steps: [
         { action: "ui.navigate", page: "ghost_page" },
-        { action: "ui.navigate", page: "$back", description: "Back" },
-        { action: "ui.navigate", page: "$dismiss" },
-        { action: "ui.navigate", page: "other", description: "Other page" },
+        { action: "conditional", description: "If on", then_steps: [
+          { action: "delay", seconds: 1 },
+          { action: "ui.navigate", page: "lost", description: "Go lost" },
+        ], else_steps: [{ action: "ui.navigate", page: "gone" }] },
+        { action: "macro", macro: "ghost_macro", description: "Run it" },
       ],
     }];
-    expect(checked(project({ macros }))).toEqual([
-      { severity: "error", message: 'Navigate to deleted page "ghost_page"', location: 'Macro "M" > ui.navigate' },
+    const missing = [
+      missingPage("Macro 'm' navigates to page 'ghost_page', which does not exist.", { macro: "m", step: "steps[0]" }),
+      missingPage("Macro 'm' navigates to page 'lost', which does not exist.", { macro: "m", step: "steps[1].then_steps[1]" }),
+      missingPage("Macro 'm' navigates to page 'gone', which does not exist.", { macro: "m", step: "steps[1].else_steps[0]" }),
+    ];
+    expect(checked(project({ macros }), undefined, [], missing)).toEqual([
+      { severity: "error", message: "Macro 'm' navigates to page 'ghost_page', which does not exist.", location: 'Macro "M" > ui.navigate' },
+      { severity: "error", message: "Macro 'm' navigates to page 'lost', which does not exist.", location: 'Macro "M" > Go lost' },
+      { severity: "error", message: "Macro 'm' navigates to page 'gone', which does not exist.", location: 'Macro "M" > ui.navigate' },
+      { severity: "error", message: 'Macro "ghost_macro" not found', location: 'Macro "M" > Run it' },
     ]);
+  });
+
+  it("judges no step's page itself: that is the platform's", () => {
+    const macros = [{ id: "m", name: "M", steps: [{ action: "ui.navigate", page: "ghost_page" }] }];
+    expect(checked(project({ macros }))).toEqual([]);
   });
 
   it("reads only the field the step's action names", () => {
@@ -672,24 +709,26 @@ describe("validateProject: what is left out of a project", () => {
 });
 
 describe("validateProject: the idle page, and the order of the whole list", () => {
-  it("names an idle page that is not in the project, last", () => {
+  it("names an idle page the platform says is not in the project, last", () => {
     const button = { id: "b1", type: "button", label: "B", bindings: { do: { press: [{ action: "macro", macro: "ghost" }] } } };
     const master = { id: "mb", type: "button", label: "M", pages: ["ghost_page"], placement: { x: 0, y: 85, w: 20, h: 12.5 }, bindings: { do: { press: [{ action: "macro", macro: "all_on" }] } } };
     const macros = [{ id: "m", name: "M", steps: [{ action: "macro", macro: "ghost" }] }];
-    expect(checked(project({ elements: [button], masters: [master], macros, idle: "ghost_idle" })).map((i) => i.location)).toEqual([
+    const idle = missingPage("The idle page 'ghost_idle' does not exist, so an idle panel returns to 'main' instead.");
+    const missing = [idle, missingPage("Master element 'mb' shows on page 'ghost_page', which does not exist.", { element: "mb" })];
+    expect(checked(project({ elements: [button], masters: [master], macros, idle: "ghost_idle" }), undefined, [], missing).map((i) => i.location)).toEqual([
       "Main > b1 > press",
       "Master Elements > mb",
       'Macro "M" > call macro',
       "Settings > Idle Page",
     ]);
-    expect(checked(project({ idle: "ghost_idle" }))).toEqual([
-      { severity: "error", message: 'Idle page "ghost_idle" does not exist', location: "Settings > Idle Page" },
+    expect(checked(project({ idle: "ghost_idle" }), undefined, [], [idle])).toEqual([
+      { severity: "error", message: "The idle page 'ghost_idle' does not exist, so an idle panel returns to 'main' instead.", location: "Settings > Idle Page" },
     ]);
   });
 
-  it("takes an idle page that exists, and none", () => {
-    expect(checked(project({ idle: "other" }))).toEqual([]);
-    expect(checked(project({ idle: "" }))).toEqual([]);
+  it("judges no idle page or master's pages itself: those are the platform's", () => {
+    const master = { id: "mb", type: "button", label: "M", pages: ["ghost_page"], placement: { x: 0, y: 85, w: 20, h: 12.5 }, bindings: { do: { press: [{ action: "macro", macro: "all_on" }] } } };
+    expect(checked(project({ masters: [master], idle: "ghost_idle" }))).toEqual([]);
   });
 });
 
@@ -778,7 +817,6 @@ describe("validateProject: what the platform says the pages hold", () => {
       { severity: "error", message: 'Macro "ghost" not found', ...at("b1", " > press") },
       { severity: "error", message: "UI page '$x': ...", location: "Other > page", pageId: "other" },
       { severity: "error", message: "Element 'mb' already exists on page 'main'", location: "Master Elements > mb", elementId: "mb" },
-      { severity: "error", message: 'References deleted page "ghost_page"', location: "Master Elements > mb" },
     ]);
   });
 

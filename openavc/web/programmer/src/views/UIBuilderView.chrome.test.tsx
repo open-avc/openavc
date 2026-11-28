@@ -348,15 +348,31 @@ describe("Validate's report, row by row", () => {
   it("lists what the platform says a page holds that it may not, under the control, from the pages it holds", async () => {
     const p = makeProject();
     seed(p);
-    pageChecks.pageIssues.mockResolvedValueOnce([{
-      code: "element_id_taken", message: "Element 'lbl' already exists on page 'main'",
-      page: "main", element: "lbl", layout: null,
-    }]);
+    pageChecks.pageIssues.mockResolvedValueOnce({
+      issues: [{
+        code: "element_id_taken", message: "Element 'lbl' already exists on page 'main'",
+        page: "main", element: "lbl", layout: null,
+      }],
+      missing_pages: [],
+    });
     await renderPage(UIBuilderView);
     await act(async () => { await seen.CanvasToolbar.onValidate(); });
     const row = screen.getByText("Element 'lbl' already exists on page 'main'").parentElement!.parentElement!;
     expect(row.textContent).toBe("ERRElement 'lbl' already exists on page 'main'Main > lbl");
-    expect(pageChecks.pageIssues).toHaveBeenCalledWith(useProjectStore.getState().project!.ui);
+    expect(pageChecks.pageIssues).toHaveBeenCalledWith(useProjectStore.getState().project!);
+  });
+
+  it("lists a page the platform says the idle page names that is not there, under the setting", async () => {
+    seed(makeProject());
+    const said = "The idle page 'ghost' does not exist, so an idle panel returns to 'main' instead. The pages are: main.";
+    pageChecks.pageIssues.mockResolvedValueOnce({
+      issues: [],
+      missing_pages: [{ code: "idle_page_missing", message: said, element: null, macro: null, step: null }],
+    });
+    await renderPage(UIBuilderView);
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    const row = screen.getByText(said).parentElement!.parentElement!;
+    expect(row.textContent).toBe(`ERR${said}Settings > Idle Page`);
   });
 
   it("counts one issue in the singular, marks an error, and goes to a page-wide issue's page", async () => {

@@ -75,6 +75,10 @@ own route, then, under every action, the off action and long-press action it
 carries and a value_map's entries, at every depth (``_action_findings``). The
 places are the page review's (``do_action_dicts``), and a test holds the two to
 one list.
+
+A page named outside the pages' controls (the idle page, a master's
+``pages``, a macro's page move) is ``ui/missing_pages.py``'s, which the
+Builder's Validate asks rather than answering itself.
 """
 
 from __future__ import annotations
@@ -88,7 +92,8 @@ from openavc.drivers.param_labels import param_label
 from openavc.drivers.param_validation import required_param_sentence
 from openavc.ui.matrix_model import resolve_axis
 from openavc.ui.page_review import _NESTED_ACTION_FIELDS, Finding, _entry_name
-from openavc.ui.page_rules import NAVIGATION_WORDS
+from openavc.ui.missing_pages import no_such_page
+from openavc.ui.page_rules import NAVIGATION_WORDS, reaches
 
 #: Navigation targets that are not page ids and never will be: the page rules'
 #: navigation words (``ui/page_rules.py``).
@@ -353,27 +358,20 @@ def _grant_findings(
     ]
 
 
-def _reachable(target: str, page_ids: set[str]) -> bool:
-    """Whether the panel can go to ``target``: a page of this project, or its own ``$back``/``$dismiss``."""
-    return target in page_ids or target in NAVIGATION_SENTINELS
-
-
 def _navigation_finding(
     at: _Holder | _Site, target: Any, project: _Project, key: str,
 ) -> Finding | None:
-    """A move to a page that does not exist, said the same wherever it is written.
+    """A move to a page that does not exist, said the same wherever it is
+    written. Whether it lands is ``page_rules.reaches``, which a macro step's
+    move asks too, and the sentence ends as every one about a page that is not
+    there does (``ui/missing_pages.no_such_page``).
 
     A target that is not a name says nothing.
     """
     target = _named(target)
-    if target is None or _reachable(target, project.page_ids):
+    if target is None or reaches(target, project.page_ids):
         return None
-    return at.finding(
-        "dangling_reference",
-        f"navigates to page '{target}', which does not exist. "
-        f"The pages are: {_listed(project.page_ids)}.",
-        key,
-    )
+    return at.finding("dangling_reference", f"navigates to {no_such_page(target, project.page_ids)}", key)
 
 
 @dataclass(frozen=True)

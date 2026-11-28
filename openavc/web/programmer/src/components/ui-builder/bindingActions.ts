@@ -280,8 +280,21 @@ function isCommandStep(step: MacroStep): boolean {
  * step is about a step it visits.
  */
 export function stepAndBranches(step: MacroStep): MacroStep[] {
-  const found = [step];
-  step.then_steps?.forEach((s) => found.push(...stepAndBranches(s)));
-  step.else_steps?.forEach((s) => found.push(...stepAndBranches(s)));
-  return found;
+  return placedSteps([step]).map(([, each]) => each);
+}
+
+/**
+ * Each of a macro's steps and every step its branches hold, in
+ * `stepAndBranches`' order, with its path in the macro (`steps[0]`,
+ * `steps[0].then_steps[1]`): the path the platform places a step at.
+ */
+export function placedSteps(steps: readonly MacroStep[] | undefined, under = "steps"): [string, MacroStep][] {
+  return (steps ?? []).flatMap((step, i): [string, MacroStep][] => {
+    const path = `${under}[${i}]`;
+    return [
+      [path, step],
+      ...placedSteps(step.then_steps, `${path}.then_steps`),
+      ...placedSteps(step.else_steps, `${path}.else_steps`),
+    ];
+  });
 }

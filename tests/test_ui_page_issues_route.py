@@ -1,5 +1,7 @@
 """``POST /api/ui/page-issues``: what the UI the Builder holds holds that it
-may not, placed, from ``openavc.ui.page_structure``.
+may not, placed, from ``openavc.ui.page_structure``, and each page its idle
+page, masters and macros name that it does not have, from
+``openavc.ui.missing_pages``.
 
 The Builder posts its UI unsaved and shows what comes back; a reply that
 fails reads there as no issues, so the route answers every JSON shape rather
@@ -15,6 +17,7 @@ import pytest
 
 from openavc.api.routes.page_issues import UI_BODY_MAX
 from openavc.main import app
+from openavc.ui import missing_pages as pr
 from openavc.ui import page_report
 from openavc.ui import page_structure as ps
 
@@ -69,15 +72,37 @@ async def test_each_issue_comes_back_placed_in_the_checks_order():
 
 
 async def test_a_clean_ui_and_an_empty_one_have_none():
-    assert (await _post({"ui": {"pages": [], "master_elements": []}})).json() == {"issues": []}
-    assert (await _post({"ui": {}})).json() == {"issues": []}
+    none = {"issues": [], "missing_pages": []}
+    assert (await _post({"ui": {"pages": [], "master_elements": []}})).json() == none
+    assert (await _post({"ui": {}})).json() == none
+    assert (await _post({"ui": {"settings": {}}, "macros": []})).json() == none
+
+
+async def test_each_page_the_idle_page_masters_and_macros_name_that_is_not_there_comes_back_placed():
+    ui = {
+        "settings": {"idle_page": "ghost"},
+        "pages": [{"id": "main", "elements": []}],
+        "master_elements": [{"id": "nav", "type": "label", "pages": ["main", "gone"]}],
+    }
+    macros = [{"id": "evening", "steps": [
+        {"action": "conditional", "then_steps": [{"action": "ui.navigate", "page": "lost"}]},
+    ]}]
+    reply = await _post({"ui": ui, "macros": macros})
+    assert reply.status_code == 200, reply.text
+    said = reply.json()["missing_pages"]
+    assert [(m["code"], m["element"], m["macro"], m["step"]) for m in said] == [
+        (pr.IDLE_PAGE_MISSING, None, None, None),
+        (pr.MASTER_PAGE_MISSING, "nav", None, None),
+        (pr.MACRO_PAGE_MISSING, None, "evening", "steps[0].then_steps[0]"),
+    ]
+    assert [pr.MissingPage(**m) for m in said] == pr.missing_pages(ui, macros)
 
 
 async def test_what_the_page_review_says_of_a_control_is_left_to_it():
     ui = {"pages": [{"id": "main", "elements": [
         {"id": "go", "type": "button", "bindings": {"do": {"press": [{"action": "launch_rocket"}]}}},
     ]}]}
-    assert (await _post({"ui": ui})).json() == {"issues": []}
+    assert (await _post({"ui": ui})).json() == {"issues": [], "missing_pages": []}
 
 
 @pytest.mark.parametrize("body", [
@@ -86,6 +111,10 @@ async def test_what_the_page_review_says_of_a_control_is_left_to_it():
             "master_elements": [{"id": [1], "bindings": {"do": "x", "show": []}}, 2]}},
     {"ui": {"pages": [{"elements": [{"bindings": {"do": {"press": [{"action": {"action": "macro"}}]},
                                                   "show": {"visible_when": {"any": "x", "all": [3]}}}}]}]}},
+    {"ui": {"settings": {"idle_page": ["x"]}, "pages": [{"id": None}],
+            "master_elements": [{"id": None, "pages": [None, ["x"], "x"]}]},
+     "macros": [None, 3, {"id": {"a": 1}, "steps": [None, {"action": "ui.navigate", "page": {"a": 1}},
+                                                    {"then_steps": "x", "else_steps": [3]}]}]},
     # The page review is asked about each of these: each runs an action nothing dispatches.
     {"ui": {"pages": [{"id": "p", "elements": [
         {"id": "m", "type": "matrix", "bindings": {"do": {"route": [{"action": "launch_rocket"}]}},
@@ -98,10 +127,12 @@ async def test_any_json_is_answered(body):
     reply = await _post(body)
     assert reply.status_code == 200, reply.text
     assert isinstance(reply.json()["issues"], list)
+    assert isinstance(reply.json()["missing_pages"], list)
 
 
 @pytest.mark.parametrize("body", [
     [], "x", {}, {"ui": []}, {"ui": {"pages": {}}}, {"ui": {"master_elements": "x"}},
+    {"ui": {"settings": []}}, {"ui": {}, "macros": {}},
 ])
 async def test_a_body_that_is_not_a_ui_is_refused(body):
     assert (await _post(body)).status_code == 400

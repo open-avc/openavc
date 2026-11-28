@@ -9,7 +9,10 @@ is there). A custom control's markup is read for what fails in this
 environment (``core/custom_ui_review.py``). ``review_ui`` asks the same of the
 whole project on demand, read-only, and first what its pages hold that they
 may not (``ui/page_report.reported_issues``, the issues the Builder's
-Validate shows): a write's own door refuses those before it builds.
+Validate shows): a write's own door refuses those before it builds. It also
+names each page the idle page, a master or a macro names that the project
+does not have (``ui/missing_pages.missing_pages``, which Validate shows
+too).
 
 So a page is reviewed one way for both: with the masters that draw under it,
 the theme its sliders are measured against, the driver's declared ranges and
@@ -31,6 +34,12 @@ from openavc.cloud.tools.ui_lookups import (
     longest_first,
     range_lookup,
     reference_lookups,
+)
+from openavc.ui.missing_pages import (
+    IDLE_PAGE_MISSING,
+    MACRO_PAGE_MISSING,
+    MASTER_PAGE_MISSING,
+    missing_pages,
 )
 from openavc.ui.page_references import reference_findings
 from openavc.ui.page_review import review_master_element, review_page
@@ -220,11 +229,15 @@ class UIReview:
         ``touched`` filter, every arrangement. It fills nothing in -- an
         auto-fill needs a write to belong to, and answering a question should
         not change the project -- so a range mismatch is reported and never
-        repaired. One page named leaves the masters out.
+        repaired. One page named leaves the masters, the idle page and the
+        macros out.
 
         What the pages hold that they may not comes first, page by page and
         then on the masters. It is asked of the whole project, since an id
-        is used once across every page, and kept to the page named.
+        is used once across every page, and kept to the page named. A page the
+        project names outside its pages' controls that it does not have is
+        said where it is named: a master's after the masters' own findings,
+        the idle page under ``settings``, a macro's page move under ``macros``.
         """
         pages = [p for p in self.project.ui.pages if not only or p.id == only]
         if only and not pages:
@@ -234,13 +247,28 @@ class UIReview:
             }
         issues = reported_issues(self.project.ui.pages, self.project.ui.master_elements)
         by_page = self._pages(pages, issues)
-        masters = [] if only else self._masters(issues)
+        masters, elsewhere = ([], {}) if only else self._beyond_the_pages(issues)
         result: dict = {
             "pages_checked": [p.id for p in pages],
             "masters_checked": 0 if only else len(self.project.ui.master_elements),
-            "finding_count": sum(map(len, by_page.values())) + len(masters),
+            "finding_count": (
+                sum(map(len, by_page.values())) + len(masters) + sum(map(len, elsewhere.values()))
+            ),
         }
-        return _whole_reply(result, by_page, masters)
+        return _whole_reply(result, by_page, masters, elsewhere)
+
+    def _beyond_the_pages(self, issues: list) -> tuple[list[str], dict[str, list[str]]]:
+        """What the masters hold, their review and each page they name that
+        is not there; then, by where it is named (``settings``, ``macros``),
+        the rest of the pages the project names that it does not have."""
+        said: dict[str, list[str]] = {}
+        for missing in missing_pages(self.project.ui, self.project.macros):
+            said.setdefault(missing.code, []).append(missing.message)
+        masters = self._masters(issues) + said.get(MASTER_PAGE_MISSING, [])
+        return masters, {
+            "settings": said.get(IDLE_PAGE_MISSING, []),
+            "macros": said.get(MACRO_PAGE_MISSING, []),
+        }
 
     def _masters(self, issues: list) -> list[str]:
         """What the masters hold that they may not, then each master's review."""
@@ -284,12 +312,13 @@ class UIReview:
         return findings, adjustments
 
 
-def _whole_reply(result: dict, by_page: dict, masters: list) -> dict:
+def _whole_reply(result: dict, by_page: dict, masters: list, elsewhere: dict) -> dict:
     """The review's counts, then what it found, then whether that is clean."""
     if by_page:
         result["pages"] = by_page
     if masters:
         result["master_elements"] = masters
+    result.update({where: said for where, said in elsewhere.items() if said})
     found = result["finding_count"]
     result["status"] = "findings" if found else "clean"
     result["note"] = WARNING_NOTE if found else _CLEAN_NOTE
