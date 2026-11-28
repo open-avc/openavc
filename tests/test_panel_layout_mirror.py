@@ -73,6 +73,12 @@ PAGES = [
         {"id": "base", "orientation": "square", "placements": {"e1": {"x": 4, "y": 4, "w": 4, "h": 4}}},
         {"id": "top", "orientation": "portrait", "inherits": "base", "placements": {"e2": _BOX}},
     ]},
+    # ...and the later one the arrangement for the screen's orientation: both
+    # draw the first, so a portrait screen falls back to the primary.
+    {"layouts": [
+        {"id": "a", "primary": True, "orientation": "landscape", "placements": {"e1": _BOX}},
+        {"id": "a", "orientation": "portrait", "placements": {"e1": {"x": 4, "y": 4, "w": 4, "h": 4}}},
+    ]},
     # Inheriting from nothing, and no layout for the portrait screen.
     {"layouts": [{"id": "only", "primary": True, "orientation": "landscape", "inherits": "gone",
                   "placements": {"e1": _BOX}}]},

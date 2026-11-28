@@ -78,10 +78,11 @@ function viewportSize() {
 /**
  * The arrangement a page renders in on glass turned `orientation`: its
  * placements and hidden ids with the `inherits` chain folded down, and which
- * layout was chosen.
+ * layout was chosen. Of two arrangements sharing an id only the first is
+ * drawn, as of two controls.
  */
 export function selectLayout(page, orientation) {
-    const layouts = Array.isArray(page?.layouts) ? page.layouts : [];
+    const layouts = firstOfEachId(Array.isArray(page?.layouts) ? page.layouts : []);
     const chosen = chosenLayout(layouts, orientation);
     if (!chosen) return { placements: {}, hidden: new Set(), id: null, orientation: null };
     const { placements, hidden } = foldDown(inheritsChain(layouts, chosen));
@@ -400,7 +401,7 @@ function groupByParent(elements) {
     return byParent;
 }
 
-/** Each id's first element, in page order, leaving out one with no id. */
+/** Each id's first control or arrangement, in page order, leaving out one with no id. */
 function firstOfEachId(elements) {
     const firsts = new Map();
     for (const element of elements) {
