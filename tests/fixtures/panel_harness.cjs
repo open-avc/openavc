@@ -10171,6 +10171,27 @@ Object.assign(tests, {
             }
         });
     },
+
+    // A page with no background of its own is painted from the theme's page
+    // defaults when it is drawn, not by CSS: a theme that moves only that
+    // colour has to draw the page again, as one that moves a control does.
+    async a_theme_that_moves_only_the_page_colour_draws_the_page_again() {
+        const t1 = themeFixture('t1');
+        const t3 = themeFixture('t3', { variables: { panel_bg: '#303030' } });
+        await themeCheck({ answers: { t1, t3 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            const page = () => m.app.root.querySelector(':scope > .panel-page');
+            assert(page().style.backgroundColor === 'rgb(16, 24, 32)', `t1's page colour, got ${page().style.backgroundColor}`);
+            m.definition({ theme_id: 't3' }); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#303030', `t3 is on, got ${rootVar('--panel-bg')}`);
+            assert(page().style.backgroundColor === 'rgb(48, 48, 48)',
+                `the page is painted in t3's colour, got ${page().style.backgroundColor}`);
+            // The same theme with a page colour of its own changes nothing on the page.
+            const drawn = m.n;
+            m.definition({ theme_id: 't3' }, { background: { color: '#445566' } }); await m.wait(10);
+            assert(m.n === drawn + 1, `one draw for the definition, got ${m.n - drawn}`);
+        });
+    },
 });
 
 // --- ui.<id>.* overrides, as a script or macro sets and clears them ----------

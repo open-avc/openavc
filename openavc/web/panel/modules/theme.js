@@ -392,9 +392,13 @@ export class PanelTheme {
         return backgroundFromDefaults(this.pageDefaults, this.variables);
     }
 
-    /** What a theme changes on a page only when the page is drawn: its element defaults. */
+    /**
+     * What a theme changes on a page only when the page is drawn: its
+     * element defaults, and the background a page with none of its own takes
+     * (resolved here, not by CSS). Every variable reaches the page at once.
+     */
     _look() {
-        return JSON.stringify(this.elementDefaults);
+        return JSON.stringify([this.elementDefaults, this._pageBackground()]);
     }
 
     /** Put a theme on, and ask for the page again when that moved how it looks. */

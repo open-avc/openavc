@@ -419,6 +419,8 @@ SCENARIOS = [
     "a_theme_asked_for_before_it_was_saved_is_not_drawn_over_the_saved_one",
     "a_variable_the_new_theme_lacks_is_taken_off_the_page",
     "a_theme_that_cannot_be_had_still_takes_the_projects_settings",
+    # A theme that moves only the page's own colour draws the page again.
+    "a_theme_that_moves_only_the_page_colour_draws_the_page_again",
     # ui.<id>.label, bg_color, text_color, opacity and visible set and cleared
     # on every kind of control, over a look and a visible_when, before a draw
     # and through a redraw, pinned whole (tests/fixtures/panel_override_pins.json).

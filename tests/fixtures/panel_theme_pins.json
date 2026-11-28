@@ -873,7 +873,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(48, 48, 48);"
+            "position: relative; background-color: rgb(16, 24, 32);"
           ]
         ],
         "b": [
@@ -883,7 +883,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 6,
+        "n": 7,
         "t": 0
       }
     ],
@@ -1174,7 +1174,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(16, 24, 32);"
+            "position: relative; background-color: rgb(48, 48, 48);"
           ]
         ],
         "b": [
@@ -1184,7 +1184,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 3,
+        "n": 4,
         "t": 0
       },
       {
@@ -1202,7 +1202,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 4,
+        "n": 5,
         "fx": [
           "/api/themes/t2"
         ],
@@ -1223,7 +1223,7 @@
           "#00ff00"
         ],
         "nb": 0,
-        "n": 5,
+        "n": 6,
         "t": 0
       },
       {
@@ -1241,7 +1241,7 @@
           "#00ff00"
         ],
         "nb": 0,
-        "n": 6,
+        "n": 7,
         "fx": [
           "/api/themes/t1"
         ],
@@ -1262,7 +1262,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 7,
+        "n": 8,
         "t": 0
       },
       {
@@ -1280,7 +1280,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 8,
+        "n": 9,
         "fx": [
           "/api/themes/gone"
         ],
@@ -1301,24 +1301,6 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 9,
-        "t": 0
-      },
-      {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "",
-        "bg": [
-          [
-            "position: relative; background-color: rgb(16, 24, 32);"
-          ]
-        ],
-        "b": [
-          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
-        ],
-        "gc": [
-          "#4CAF50"
-        ],
-        "nb": 0,
         "n": 10,
         "t": 0
       },
@@ -1337,7 +1319,25 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 10,
+        "n": 11,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 11,
         "t": 0
       }
     ],
@@ -1428,7 +1428,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(16, 24, 32);"
+            "position: relative; background-color: rgb(48, 48, 48);"
           ]
         ],
         "b": [
@@ -1438,7 +1438,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 3,
+        "n": 4,
         "t": 1
       },
       {
@@ -1446,7 +1446,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(16, 24, 32);"
+            "position: relative; background-color: rgb(48, 48, 48);"
           ]
         ],
         "b": [
@@ -1456,7 +1456,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 3,
+        "n": 4,
         "t": 0
       },
       {
@@ -1464,7 +1464,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(16, 24, 32);"
+            "position: relative; background-color: rgb(48, 48, 48);"
           ]
         ],
         "b": [
@@ -1474,7 +1474,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 3,
+        "n": 4,
         "t": 0
       }
     ],
@@ -1822,9 +1822,8 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(10, 10, 10);",
-            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
-            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+            "position: relative;",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"plain.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0;"
           ]
         ],
         "b": [
@@ -1834,7 +1833,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 5,
+        "n": 6,
         "t": 0
       },
       {
@@ -1853,7 +1852,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 6,
+        "n": 7,
         "fx": [
           "/api/themes/none"
         ],
@@ -1864,8 +1863,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative;",
-            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"plain.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0;"
+            null
           ]
         ],
         "b": [
@@ -1875,7 +1873,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 6,
+        "n": 8,
         "t": 0
       },
       {
@@ -1893,28 +1891,10 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 7,
+        "n": 9,
         "fx": [
           "/api/themes/t1"
         ],
-        "t": 0
-      },
-      {
-        "r": "--panel-bg: #00ff00; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "",
-        "bg": [
-          [
-            null
-          ]
-        ],
-        "b": [
-          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
-        ],
-        "gc": [
-          "#4CAF50"
-        ],
-        "nb": 0,
-        "n": 7,
         "t": 0
       },
       {
@@ -1932,7 +1912,25 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 8,
+        "n": 10,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #00ff00; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 255, 0);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 11,
         "fx": [
           "/api/themes/gone"
         ],
@@ -1953,7 +1951,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 9,
+        "n": 12,
         "t": 0
       }
     ],
@@ -2183,25 +2181,6 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(0, 170, 0);",
-            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/o.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
-          ]
-        ],
-        "b": [
-          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
-        ],
-        "gc": [
-          "#4CAF50"
-        ],
-        "nb": 0,
-        "n": 4,
-        "t": 0
-      },
-      {
-        "r": "--panel-bg: #121212;",
-        "ff": "",
-        "bg": [
-          [
             "position: relative; background-color: var(panel_bg);",
             "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"see%20var%28hero%29%20here\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
           ]
@@ -2232,7 +2211,26 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 5,
+        "n": 6,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: var(panel_bg);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"see%20var%28hero%29%20here\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 6,
         "t": 0
       }
     ],
@@ -2356,9 +2354,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(10, 10, 10);",
-            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
-            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+            "position: relative; background-color: rgb(16, 24, 32);"
           ]
         ],
         "b": [
@@ -2368,7 +2364,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 2,
+        "n": 3,
         "t": 1
       },
       {
@@ -2376,9 +2372,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(10, 10, 10);",
-            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
-            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+            "position: relative; background-color: rgb(16, 24, 32);"
           ]
         ],
         "b": [
@@ -2391,7 +2385,7 @@
         "ov": [
           "width: 100%; height: 100%; position: relative; background-color: rgb(119, 136, 153);"
         ],
-        "n": 2,
+        "n": 3,
         "t": 1
       }
     ],
@@ -2514,44 +2508,7 @@
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(16, 24, 32);"
-          ]
-        ],
-        "b": [
-          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
-        ],
-        "gc": [
-          "#4CAF50"
-        ],
-        "nb": 0,
-        "n": 5,
-        "t": 0
-      },
-      {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "",
-        "bg": [
-          [
-            "position: relative; background-color: rgb(16, 24, 32);"
-          ]
-        ],
-        "b": [
-          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
-        ],
-        "gc": [
-          "#4CAF50"
-        ],
-        "nb": 0,
-        "n": 6,
-        "t": 0,
-        "m": []
-      },
-      {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "",
-        "bg": [
-          [
-            "position: relative; background-color: rgb(16, 24, 32);"
+            null
           ]
         ],
         "b": [
@@ -2636,6 +2593,43 @@
         ],
         "nb": 0,
         "n": 8,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 9,
+        "t": 0,
+        "m": []
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 9,
         "t": 0
       }
     ],
