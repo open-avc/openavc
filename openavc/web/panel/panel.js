@@ -1830,23 +1830,8 @@ class PanelApp {
         applyStyle(el, this.theme.styleFor(element.type, element.style));
         drawIcon(el, element);
 
-        const onPress = (e) => {
-            e.preventDefault();
-            el.classList.add('pressing');
-            this.send({ type: 'ui.press', element_id: element.id });
-        };
-        const onRelease = (e) => {
-            e.preventDefault();
-            el.classList.remove('pressing');
-            this.send({ type: 'ui.release', element_id: element.id });
-        };
-
-        el.addEventListener('mousedown', onPress);
-        el.addEventListener('mouseup', onRelease);
-        el.addEventListener('mouseleave', () => el.classList.remove('pressing'));
-        el.style.touchAction = 'none';
-        el.addEventListener('touchstart', onPress);
-        el.addEventListener('touchend', onRelease, { passive: false });
+        // A tap, as a button's is pressed and let go (modules/press.js).
+        attachPress(el, element, pressOf(element), this._pressHost());
 
         if (element.bindings?.show?.look) {
             this.bindings.push({

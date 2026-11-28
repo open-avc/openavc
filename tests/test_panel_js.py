@@ -507,8 +507,11 @@ SCENARIOS = [
     "builder_link_takes_and_sends_as_today",
     # What a button's press sends: tap, toggle, hold to repeat, tap or hold,
     # the release that cannot be missed, on the canvas, and the camera
-    # preset's own press, pinned whole (tests/fixtures/panel_press_pins.json).
+    # preset's tap, pinned whole (tests/fixtures/panel_press_pins.json).
     "button_press_sends_as_today",
+    # A camera preset's press ends however the browser delivers the release:
+    # at the window, a cancel, the window losing focus, once.
+    "a_camera_preset_press_ends_however_the_release_arrives",
     # A control's caption, the icon beside its words on every side, words a
     # look or an override changes beside an icon, and the accessible name,
     # pinned whole (tests/fixtures/panel_words_pins.json).

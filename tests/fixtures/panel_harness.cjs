@@ -13706,13 +13706,24 @@ const PRESS_CASES = {
         ]),
         steps: [['render']],
     },
-    // The camera preset's press: press and release, nothing at the window.
+    // The camera preset's press, a tap: pressed and let go by mouse and by
+    // touch, cancelled, let go where only the window heard, the window losing
+    // focus, a release nobody pressed for, the pointer leaving before the
+    // release, and a preset whose action names a mode, still a tap.
     camera_preset_press: {
         ...PRESSING,
-        ui: onePage('cam', [{ id: 'p1', type: 'camera_preset', label: 'Wide', preset_number: 2 }, { id: 'p2', type: 'camera_preset' }]),
+        ui: onePage('cam', [
+            { id: 'p1', type: 'camera_preset', label: 'Wide', preset_number: 2 }, { id: 'p2', type: 'camera_preset' },
+            { id: 'p3', type: 'camera_preset', bindings: { do: { press: [{ ...MACRO, mode: 'hold_repeat' }] } } },
+        ]),
         steps: [
             ...pressAndLetGo('p1'), ...pressAndLetGo('p1', [], 'touchstart', 'touchend'),
+            ...pressAndLetGo('p1', [], 'touchstart', 'touchcancel'),
+            ['fire', atEl('p1'), 'touchstart'], ['winfire', 'touchend'],
+            ['fire', atEl('p1'), 'touchstart'], ['winfire', 'blur'],
+            ['fire', atEl('p1'), 'mouseup'],
             ['fire', atEl('p2'), 'mousedown'], ['fire', atEl('p2'), 'mouseleave'], ['winfire', 'mouseup'],
+            ['fire', atEl('p3'), 'mousedown'], ['wait', 400], ['fire', atEl('p3'), 'mouseup'],
         ],
     },
 };
@@ -13721,6 +13732,49 @@ Object.assign(tests, {
     async button_press_sends_as_today() {
         const got = await driveCases({}, PRESS_CASES);
         comparePins('press', got, PRESS_PINS.press);
+    },
+});
+
+// --- A camera preset's press ends however the release arrives ---------------
+//
+// Kiosk WebViews and mobile browsers sometimes swallow a control's own
+// touchend. A preset pressed and never let go would stay drawn pressed, and
+// its release would never reach the server.
+
+/** The frames a step sent, as `type` words. */
+const sentTypes = (step) => (step.s || []).map((f) => f.type);
+/** Whether the preset is drawn pressed after a step. */
+const drawnPressed = (step) => /panel-button pressing/.test(step.h || '');
+
+Object.assign(tests, {
+    async a_camera_preset_press_ends_however_the_release_arrives() {
+        const at = atEl('p1');
+        const ui = onePage('cam', [{ id: 'p1', type: 'camera_preset', label: 'Wide', preset_number: 2 }]);
+        const endings = {
+            'a release only the window heard': ['touchstart', [['winfire', 'touchend']]],
+            'a cancel at the preset': ['touchstart', [['fire', at, 'touchcancel']]],
+            'a cancel only the window heard': ['touchstart', [['winfire', 'touchcancel']]],
+            'the window losing focus': ['touchstart', [['winfire', 'blur']]],
+            'a release the browser will not let be cancelled': ['touchstart', [['fire', at, 'touchend', { cancelable: false }]]],
+            'a mouse let go after leaving the preset': ['mousedown', [['fire', at, 'mouseleave'], ['winfire', 'mouseup']]],
+        };
+        for (const [how, [down, ending]] of Object.entries(endings)) {
+            // Every other way a release can arrive, after the first: none sends a second.
+            const after = [['winfire', 'mouseup'], ['winfire', 'touchend'], ['winfire', 'touchcancel'], ['winfire', 'blur']];
+            const steps = await driveCase({ ...PRESSING, ui, steps: [['fire', at, down], ...ending, ...after] });
+            const [, pressed, ...rest] = steps;
+            assert(!pressed.threw && sentTypes(pressed).join() === 'ui.press' && drawnPressed(pressed),
+                `${how}: the press sends ui.press and draws it pressed, got ${JSON.stringify(pressed)}`);
+            const ended = rest.slice(0, ending.length);
+            const released = ended.flatMap(sentTypes);
+            assert(released.join() === 'ui.release', `${how}: one ui.release, got ${JSON.stringify(released)}`);
+            assert(!drawnPressed(ended[ended.length - 1]), `${how}: the preset is no longer drawn pressed`);
+            const later = rest.slice(ending.length).flatMap(sentTypes);
+            assert(later.length === 0, `${how}: nothing more once it was let go, got ${JSON.stringify(later)}`);
+        }
+        // A release nobody pressed for sends nothing.
+        const [, unpressed] = await driveCase({ ...PRESSING, ui, steps: [['fire', at, 'mouseup']] });
+        assert(sentTypes(unpressed).length === 0, `a release with no press sends nothing, got ${JSON.stringify(unpressed.s)}`);
     },
 });
 

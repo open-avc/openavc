@@ -1,6 +1,6 @@
 /**
- * A button's press: which frame it sends when it is pressed and when it is
- * let go, in each of its four modes.
+ * A press: which frame it sends when it is pressed and when it is let go, a
+ * button's in each of its four modes and a camera preset's, always a tap.
  *
  *   tap         -- `ui.press` at the press
  *   hold_repeat -- `ui.press` at the press and again every interval while held
@@ -27,7 +27,13 @@
 import { sameValue } from './compare.js';
 
 /**
- * What a button's press binding asks for. The binding is a list of actions,
+ * Controls whose press is a tap whatever their first action says: a camera
+ * preset's editor offers actions and no mode.
+ */
+const TAP_ONLY_TYPES = new Set(['camera_preset']);
+
+/**
+ * What a control's press binding asks for. The binding is a list of actions,
  * and its mode and the mode's settings come from the first; a press that is
  * one action rather than a list is read the same way.
  *
@@ -37,7 +43,7 @@ import { sameValue } from './compare.js';
 export function pressOf(element) {
     const { pressBinding, isList } = firstAction(element);
     return {
-        mode: modeOf(pressBinding),
+        mode: TAP_ONLY_TYPES.has(element.type) ? 'tap' : modeOf(pressBinding),
         repeatMs: pressBinding.hold_repeat_ms || 200,
         thresholdMs: pressBinding.hold_threshold_ms || 500,
         // Read again at each press: the toggle compares what it says then.

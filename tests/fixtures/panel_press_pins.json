@@ -3602,7 +3602,7 @@
   "camera_preset_press": [
    {
     "op": "mount",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "o": [],
     "d": [
      "<div id=\"connection-status\"></div>",
@@ -3631,9 +3631,10 @@
    },
    {
     "op": "fire",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "f": "1",
     "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
     "s": [
      {
       "type": "ui.press",
@@ -3643,9 +3644,10 @@
    },
    {
     "op": "fire",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "f": "1",
     "n": "home||",
+    "wl": "",
     "s": [
      {
       "type": "ui.release",
@@ -3655,9 +3657,10 @@
    },
    {
     "op": "fire",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "f": "1",
     "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
     "s": [
      {
       "type": "ui.press",
@@ -3667,9 +3670,10 @@
    },
    {
     "op": "fire",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "f": "1",
     "n": "home||",
+    "wl": "",
     "s": [
      {
       "type": "ui.release",
@@ -3679,9 +3683,93 @@
    },
    {
     "op": "fire",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button pressing\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "f": "1",
     "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
+    "s": [
+     {
+      "type": "ui.press",
+      "element_id": "p1"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "p1"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
+    "s": [
+     {
+      "type": "ui.press",
+      "element_id": "p1"
+     }
+    ]
+   },
+   {
+    "op": "winfire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "p1"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button pressing\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
+    "s": [
+     {
+      "type": "ui.press",
+      "element_id": "p1"
+     }
+    ]
+   },
+   {
+    "op": "winfire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "p1"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button pressing\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
     "s": [
      {
       "type": "ui.press",
@@ -3691,14 +3779,52 @@
    },
    {
     "op": "fire",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
     "f": "1",
     "n": "home||"
    },
    {
     "op": "winfire",
     "f": "1",
+    "n": "home||",
+    "wl": "",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "p2"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button pressing\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "mouseup touchend touchcancel blur",
+    "s": [
+     {
+      "type": "ui.press",
+      "element_id": "p3"
+     }
+    ]
+   },
+   {
+    "op": "wait",
+    "f": "1",
     "n": "home||"
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\">2\nWide</div><div class=\"panel-element panel-button\" data-element-id=\"p2\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div><div class=\"panel-element panel-button\" data-element-id=\"p3\" data-element-type=\"camera_preset\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Preset</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "wl": "",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "p3"
+     }
+    ]
    }
   ]
  }
