@@ -61,7 +61,7 @@ def _json_body(body: bytes) -> Any:
         raise HTTPException(status_code=413, detail="UI too large (max 10 MB)")
     try:
         return json.loads(body or b"{}", parse_constant=_refuse_constant)
-    except ValueError as e:
+    except (ValueError, RecursionError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
 
 

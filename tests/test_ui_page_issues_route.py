@@ -107,6 +107,13 @@ async def test_a_body_that_is_not_a_ui_is_refused(body):
     assert (await _post(body)).status_code == 400
 
 
+async def test_json_nested_deeper_than_it_can_be_read_is_refused():
+    async with _client() as http:
+        reply = await http.post("/api/ui/page-issues", content=b"[" * 100_000 + b"]" * 100_000)
+    assert reply.status_code == 400
+    assert reply.json()["detail"].startswith("Invalid JSON")
+
+
 async def test_not_json_and_a_number_json_does_not_have_are_refused():
     async with _client() as http:
         for content in (b"{", b'{"ui": {"pages": [{"id": NaN}]}}'):
