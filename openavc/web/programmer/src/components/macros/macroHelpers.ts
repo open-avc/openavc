@@ -496,6 +496,18 @@ function _pyComment(s: string): string {
  * context, any other `$<key>` the state) — mirroring the macro engine, which
  * resolves `$` references in command params and state.set values at runtime
  * (top level only, so nested values recurse with resolution off). */
+/** What a converted step's "skip if offline" sends on, or "" for none: the
+ *  device connected, for a command that needs it; for one that works while
+ *  it is offline (a Wake-on-LAN Power On, needed exactly then), a word that
+ *  takes commands, since a paused device takes none. As the macro engine. */
+function _offlineGuard(step: MacroStep, device: string, worksOffline?: WorksOffline): string {
+  if (!step.skip_if_offline) return "";
+  if (!worksOffline?.(step.device ?? "", step.command ?? "")) {
+    return `state.get("device.${device}.connected")`;
+  }
+  return `state.get("device.${device}.presence") not in ${_takesNone()}`;
+}
+
 /** The presence words that take no command, as a Python list. */
 function _takesNone(): string {
   return _pyValue([...TAKES_NO_COMMAND], false);
@@ -613,17 +625,9 @@ function _generateStepLines(
         const device = _pyEscape(step.device ?? "");
         const params = step.params ? `, ${_pyParamsDict(step.params)}` : "";
         const sendLine = `await devices.send("${device}", "${_pyEscape(step.command ?? "")}"${params})`;
-        // A command that works while the device is offline is skipped only
-        // where no command goes out (a paused device), matching the macro
-        // engine: a Wake-on-LAN Power On is needed exactly while it is offline.
-        const offline = worksOffline?.(step.device ?? "", step.command ?? "");
-        if (step.skip_if_offline && !offline) {
-          lines.push(`${indent}if state.get("device.${device}.connected"):  # skip_if_offline`);
-          lines.push(`${indent}    ${sendLine}`);
-        } else if (step.skip_if_offline) {
-          lines.push(
-            `${indent}if state.get("device.${device}.presence") not in ${_takesNone()}:  # skip_if_offline`,
-          );
+        const guard = _offlineGuard(step, device, worksOffline);
+        if (guard) {
+          lines.push(`${indent}if ${guard}:  # skip_if_offline`);
           lines.push(`${indent}    ${sendLine}`);
         } else {
           lines.push(`${indent}${sendLine}`);
