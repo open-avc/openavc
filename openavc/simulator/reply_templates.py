@@ -19,13 +19,16 @@ exactly ``re``'s, so every branch of an alternation is parsed though only one is
 emitted. A slot is placed by where its group was emitted, never found again by
 its text, so a wire token the pattern's own text also writes stays one slot.
 
-Whatever the walk builds is then held to the pattern itself (``_reads_back``):
+Whatever the walk builds is then held to the pattern itself (``reads_back``):
 filled with a sample (a ``{name}`` slot its group's own text, a wire token
 itself), the pattern must match it the way the driver searches a line, each
 slot group capturing exactly what went in. A reply that fails is None, so the
 walk can never hand the simulator text its own pattern rejects (an anchor
 mid-pattern, a word boundary between two letters, an earlier branch that takes
-the line). Only the simulator calls this. Standard library only.
+the line). ``reads_back`` is the one test of a reply against its pattern: the
+simulator asks it again of each line it renders from a real value
+(``state_replies.first_read_back``). Only the simulator calls this. Standard
+library only.
 """
 
 from __future__ import annotations
@@ -68,6 +71,15 @@ _PROBES = ("0", "a", "A", " ")
 
 def _is_mark(ch: str) -> bool:
     return _MARK_BASE <= ord(ch) <= _MARK_LAST
+
+
+def reads_back(pattern: re.Pattern, line: str, captures: dict[int, str]) -> bool:
+    """True when ``pattern`` finds ``line`` the way the driver searches one
+    and each group in ``captures`` takes exactly its text: a group that
+    matches but captures something else would hand the driver another
+    value."""
+    m = pattern.search(line)
+    return bool(m) and all(m.group(group) == text for group, text in captures.items())
 
 
 def _class_emit(body: str) -> str | None:
@@ -265,8 +277,8 @@ class _PatternWalk:
         return emission
 
     def reads_back(self, emission: str) -> bool:
-        """True when the pattern, compiled as the driver compiles it, finds
-        ``emission`` with its slots filled (``_fills``) and each slot group
+        """True when the pattern, compiled as the driver compiles it, reads
+        ``emission`` back with its slots filled (``_fills``): each slot group
         captures exactly what went in its slot. A pattern ``re`` refuses
         reads nothing back."""
         try:
@@ -277,8 +289,7 @@ class _PatternWalk:
             line = emission
             for group, text in fill.items():
                 line = line.replace(self.marks[group], text)
-            m = rx.search(line)
-            if m and all(m.group(group) == text for group, text in fill.items()):
+            if reads_back(rx, line, fill):
                 return True
         return False
 

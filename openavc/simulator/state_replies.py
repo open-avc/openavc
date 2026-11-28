@@ -32,7 +32,7 @@ from typing import Any
 
 from openavc.core.condition_eval import value_words
 from openavc.drivers.compiled_protocol import value_to_wire
-from openavc.simulator.reply_templates import fill_template, slot_text
+from openavc.simulator.reply_templates import fill_template, reads_back, slot_text
 
 # A response rule's ``match:`` compiled the way the driver reads it
 # (``search``), with the capture group the value is read from; None when the
@@ -75,14 +75,11 @@ def first_read_back(lines: list[tuple[str, str, ReadBack]]) -> str | None:
 
     A rule that matches the line but captures something other than exactly
     the rendered value in the value's group is not enough: it would hand the
-    driver a different value from the one the simulator holds. A rendering
-    with no rule (its pattern does not compile) reads nothing back."""
+    driver a different value from the one the simulator holds
+    (``reply_templates.reads_back``). A rendering with no rule (its pattern
+    does not compile) reads nothing back."""
     for line, text, rule in lines:
-        if rule is None:
-            continue
-        pattern, group = rule
-        match = pattern.search(line)
-        if match and match.group(group) == text:
+        if rule is not None and reads_back(rule[0], line, {rule[1]: text}):
             return line
     return None
 
